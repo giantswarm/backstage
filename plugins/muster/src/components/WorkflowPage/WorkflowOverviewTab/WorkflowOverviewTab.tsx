@@ -3,7 +3,7 @@ import { Alert, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
   DateComponent,
-  SectionHeader,
+  PageSection,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MusterWorkflow } from '../../../lib/k8s';
 import { ServerPrefixInfo } from '../../../lib/toolGrouping';
@@ -14,18 +14,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: 'var(--bui-space-6)',
-  },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 'var(--bui-space-3)',
-    // SectionHeader carries margins meant for a page's flow; these sections
-    // space their parts by the gap alone, as the agent and skill pages do.
-    '& > div:first-child > h2': { marginBottom: 0 },
-    '& > div:first-child > p': {
-      marginTop: 'var(--bui-space-1)',
-      marginBottom: 0,
-    },
   },
   description: {
     margin: 0,
@@ -94,30 +82,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.warning.dark,
   },
 }));
-
-/** A section of the tab: a small heading, then what it says. */
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-}) {
-  const classes = useStyles();
-  return (
-    <section className={classes.section} aria-label={title}>
-      <SectionHeader
-        as="h2"
-        variant="title-x-small"
-        title={title}
-        description={description}
-      />
-      {children}
-    </section>
-  );
-}
 
 /** The workflow's inputs as a friendly list: name, type, required, default. */
 function ArgumentsList({ workflow }: { workflow: MusterWorkflow }) {
@@ -215,7 +179,7 @@ export function WorkflowOverviewTab({
         />
       )}
 
-      <Section title="What it’s for">
+      <PageSection title="What it’s for">
         {description ? (
           // Plain text, not GSMarkdownContent: the definition's description
           // is a sentence, and the page renders it as written.
@@ -232,16 +196,16 @@ export function WorkflowOverviewTab({
             Created <DateComponent value={created} relative tooltip />
           </Text>
         )}
-      </Section>
+      </PageSection>
 
-      <Section
+      <PageSection
         title="What it needs"
         description="An agent passes these inputs when running it."
       >
         <ArgumentsList workflow={workflow} />
-      </Section>
+      </PageSection>
 
-      <Section
+      <PageSection
         title="How it runs"
         description="Steps in order. A step whose condition does not hold is skipped — there is no branching."
       >
@@ -253,7 +217,7 @@ export function WorkflowOverviewTab({
           installation={installation}
           hasSession={hasSession}
         />
-      </Section>
+      </PageSection>
     </div>
   );
 }

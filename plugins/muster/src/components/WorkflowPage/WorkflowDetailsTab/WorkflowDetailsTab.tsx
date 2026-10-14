@@ -66,7 +66,7 @@ function WorkflowTechnicalDetails({ workflow }: { workflow: MusterWorkflow }) {
 
 export type WorkflowDetailsTabProps = {
   workflow: MusterWorkflow;
-  /** The plain facts: where it comes from, how agents call it, its age. */
+  /** The plain facts: where it comes from and how agents call it. */
   facts: Fact[];
 };
 

@@ -5,3 +5,4 @@ export {
   useWorkflowPageTarget,
 } from './workflowPageTarget';
 export type { WorkflowPageTarget } from './workflowPageTarget';
+export { WORKFLOW_PAGE_TABS } from './workflowTabs';

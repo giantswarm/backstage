@@ -69,7 +69,9 @@ them and never invent a palette.
   Do not add a raw `<Helmet>`.
 - Type scale beats pixel-matching an artboard. Page sections and wizard
   sub-sections use `SectionHeader` as `h2` with `variant="title-x-small"`;
-  only a wizard's step heading is `title-small`.
+  only a wizard's step heading is `title-small`. A detail page tab's sections
+  are `PageSection` (`ui-react`), which draws that heading and names the
+  region by it.
 
 ### Lists
 

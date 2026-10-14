@@ -36,6 +36,21 @@ jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
   useGitOpsSource: (...args: unknown[]) => mockUseGitOpsSource(...args),
 }));
 
+// Watched, not replaced: the manifest is serialized only once it is opened.
+const mockToKubectlYaml = jest.fn();
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
+  const actual = jest.requireActual(
+    '@giantswarm/backstage-plugin-kubernetes-react',
+  );
+  return {
+    ...actual,
+    toKubectlYaml: (object: never) => {
+      mockToKubectlYaml(object);
+      return actual.toKubectlYaml(object);
+    },
+  };
+});
+
 let mockWorkflows: MusterWorkflow[] = [];
 let mockAuthenticated = true;
 jest.mock('../MusterInstanceProvider', () => ({
@@ -259,10 +274,6 @@ function makeApi() {
       max_duration_ms: 18000,
       per_day: [],
     })),
-    getWorkflow: jest.fn(async () => ({
-      workflow: { name: 'deploy', steps: [] },
-      yaml: 'name: deploy\nsteps: []\n',
-    })),
   };
 }
 
@@ -422,8 +433,17 @@ describe('WorkflowPage', () => {
     }
   });
 
-  it('lands an address it no longer has on Overview', async () => {
-    await renderAt(`${BASE}/deploy/runs?installation=gazelle`);
+  it('links its tabs with the address’s own query, adding none it lacks', async () => {
+    await renderAt(`${BASE}/deploy`);
+
+    expect(screen.getByRole('tab', { name: 'Usage' })).toHaveAttribute(
+      'href',
+      `${BASE}/deploy/usage`,
+    );
+  });
+
+  it('lands an address it no longer has on Overview, keeping its query', async () => {
+    await renderAt(`${BASE}/deploy/runs?installation=gazelle&foo=b`);
 
     expect(
       await screen.findByRole('region', { name: 'What it’s for' }),
@@ -433,6 +453,10 @@ describe('WorkflowPage', () => {
         'aria-selected',
         'true',
       ),
+    );
+    expect(screen.getByRole('tab', { name: 'Usage' })).toHaveAttribute(
+      'href',
+      `${BASE}/deploy/usage?installation=gazelle&foo=b`,
     );
   });
 
@@ -905,7 +929,7 @@ describe('WorkflowPage', () => {
   });
 
   it('lists the plain facts on Details, then the CR’s bookkeeping in a Technical details fold-out', async () => {
-    const api = await renderAt(`${BASE}/deploy/details?installation=gazelle`);
+    await renderAt(`${BASE}/deploy/details?installation=gazelle`);
 
     const facts = screen.getByRole('region', { name: 'Workflow details' });
     expect(facts).toHaveTextContent(
@@ -915,7 +939,8 @@ describe('WorkflowPage', () => {
     expect(within(facts).getByText('workflow_deploy')).toBeInTheDocument();
     expect(within(facts).getByText('Called as a step by')).toBeInTheDocument();
     expect(within(facts).getByText('No other workflow')).toBeInTheDocument();
-    expect(within(facts).getByText('Created')).toBeInTheDocument();
+    // When it was created is on Overview only.
+    expect(within(facts).queryByText('Created')).toBeNull();
 
     const trigger = screen.getByRole('button', { name: 'Technical details' });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -925,7 +950,6 @@ describe('WorkflowPage', () => {
     expect(screen.getByText('muster')).toBeInTheDocument();
     // The raw YAML is the menu's manifest, not part of the page.
     expect(screen.queryByRole('textbox')).toBeNull();
-    expect(api.getWorkflow).not.toHaveBeenCalled();
   });
 
   it('links the workflows that call it as a step on Details', async () => {
@@ -949,7 +973,9 @@ describe('WorkflowPage', () => {
   });
 
   it('shows the CR’s manifest from "View manifest" in its menu, with a copy button', async () => {
+    mockToKubectlYaml.mockClear();
     await renderAt(`${BASE}/deploy?installation=gazelle`);
+    expect(mockToKubectlYaml).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(
@@ -1118,11 +1144,13 @@ describe('WorkflowPage', () => {
     mockAuthenticated = false;
     const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
 
+    // Overview names what it needs the session for; statistics are on Usage.
     expect(
       screen.getByText(
-        /Statistics, the last run and the read-only badge need a muster session/,
+        /The last run on the flow and the read-only badge need a muster session/,
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/Statistics need/)).toBeNull();
     expect(screen.queryByText('Only reads')).toBeNull();
     expect(screen.queryByTestId('workflow-last-run')).toBeNull();
     expect(api.listExecutions).not.toHaveBeenCalled();
@@ -1145,10 +1173,9 @@ describe('WorkflowPage', () => {
     const api = await renderAt(`${BASE}/deploy/usage?installation=gazelle`);
 
     expect(
-      screen.getByText(
-        /Statistics, the last run and the read-only badge need a muster session/,
-      ),
+      screen.getByText(/Statistics need a muster session/),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/The last run on the flow/)).toBeNull();
     expect(screen.queryByText(/Every run counts/)).toBeNull();
     expect(api.getWorkflowStats).not.toHaveBeenCalled();
   });

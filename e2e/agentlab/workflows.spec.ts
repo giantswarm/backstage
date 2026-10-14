@@ -8,9 +8,8 @@ import { lab } from './lab';
  * workflows, and a workflow's page reads, in tabs, what it is for and how it
  * runs (Overview: the step canvas with the last run on it), its statistics
  * (Usage) and its facts (Details), with its manifest in the ⋮ menu. The lab
- * ships the
- * read-only `lab-cluster-overview`, which lists namespaces and then pods
- * through mcp-kubernetes.
+ * ships the read-only `lab-cluster-overview`, which lists namespaces and then
+ * pods through mcp-kubernetes.
  */
 
 const WORKFLOW = 'lab-cluster-overview';

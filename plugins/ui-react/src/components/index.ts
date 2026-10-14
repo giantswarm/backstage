@@ -40,6 +40,7 @@ export * from './MultiplePicker';
 export * from './MultipleSelect';
 export * from './NotAvailable';
 export * from './PageHeaderActions';
+export * from './PageSection';
 export * from './RouteTabs';
 export * from './SectionHeader';
 export * from './ShellDocumentTitle';

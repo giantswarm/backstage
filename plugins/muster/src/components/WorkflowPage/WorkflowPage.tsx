@@ -3,6 +3,7 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useParams,
   useSearchParams,
 } from 'react-router-dom';
@@ -14,20 +15,16 @@ import { useQuery } from '@tanstack/react-query';
 import {
   BreadcrumbItem,
   countNoun,
-  DateComponent,
   EmptyStateCard,
   type Fact,
   LoadingIndicator,
-  ManifestDialog,
   MoreActionsMenu,
   type MoreActionsMenuItem,
-  RouteTabSpec,
   ShellDocumentTitle,
   ShellPage,
   ShellPageBadgeSkeleton,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { toKubectlYaml } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { musterApiRef } from '../../apis';
 import { MusterWorkflow } from '../../lib/k8s';
 import {
@@ -50,21 +47,16 @@ import { EffectBadge, SessionGate, StateBadge } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
 import { WorkflowDetailsTab } from './WorkflowDetailsTab';
+import { WorkflowManifestDialog } from './WorkflowManifestDialog';
 import { WorkflowOverviewTab } from './WorkflowOverviewTab';
 import { WorkflowUsageTab } from './WorkflowUsageTab';
 import {
   WorkflowPageTarget,
   WorkflowPageTargetProvider,
 } from './workflowPageTarget';
+import { WORKFLOW_PAGE_TABS } from './workflowTabs';
 
 const WORKFLOW_TOOL_PREFIX = 'workflow_';
-
-/** The page's tabs; Overview is the index, so the page's own address. */
-const TABS: RouteTabSpec[] = [
-  { id: 'overview', path: '', title: 'Overview' },
-  { id: 'usage', path: 'usage', title: 'Usage' },
-  { id: 'details', path: 'details', title: 'Details' },
-];
 
 export type WorkflowPageProps = {
   /**
@@ -149,6 +141,9 @@ function WorkflowPageContent({
   const musterApi = useApi(musterApiRef);
   const paths = useCustomizePaths();
   const basePath = useSplatBasePath();
+  // The address's own query, as it is: the tab links and the redirect keep
+  // it, the same while loading and once loaded.
+  const { search } = useLocation();
   const { workflows, mcpServers, activeInstallationInfo } = useMusterInstance();
   const session = useMusterSession();
   const hasSession =
@@ -159,14 +154,12 @@ function WorkflowPageContent({
   const gitOps = isGitOpsManaged(workflow);
   const steps = workflow.getSteps();
   const args = Object.entries(workflow.getArgs());
-  const created = workflow.getCreatedTimestamp();
   const category = workflow.getCategory();
   const prefixes = useMemo(() => serverPrefixInfos(mcpServers), [mcpServers]);
   const connectors = useMemo(
     () => serversOfTools(toolsOfWorkflow(workflow, workflows), prefixes),
     [workflow, workflows, prefixes],
   );
-  const search = installationSearch(installation);
 
   // The read-only hint is derived per session by the aggregator on the
   // workflow's tool, so it is read off the tools endpoint, never the CR.
@@ -201,7 +194,6 @@ function WorkflowPageContent({
   const [gitOpsOpen, setGitOpsOpen] = useState(false);
   const [manifestOpen, setManifestOpen] = useState(false);
   const inGit = isFluxReconciled(readProvenance(workflow));
-  const manifest = useMemo(() => toKubectlYaml(workflow), [workflow]);
   const menu: MoreActionsMenuItem[] = [];
   if (inGit) {
     menu.push({
@@ -232,23 +224,17 @@ function WorkflowPageContent({
       ? [{ label: 'Connectors used', value: connectors.join(', ') }]
       : []),
     { label: 'Called as a step by', value: <CalledBy workflow={workflow} /> },
-    ...(created
-      ? [
-          {
-            label: 'Created',
-            value: <DateComponent value={created} relative tooltip />,
-          },
-        ]
-      : []),
   ];
 
-  const sessionGate: ReactNode = hasSession ? undefined : (
-    <SessionGate
-      session={session}
-      installation={installation}
-      context="Statistics, the last run and the read-only badge need a muster session."
-    />
-  );
+  // Each tab names what it needs the session for.
+  const sessionGate = (context: string): ReactNode =>
+    hasSession ? undefined : (
+      <SessionGate
+        session={session}
+        installation={installation}
+        context={context}
+      />
+    );
 
   return (
     <WorkflowPageTargetProvider target={target}>
@@ -272,7 +258,7 @@ function WorkflowPageContent({
         // either (T53): a long one takes the title block's whole row, and the
         // header's actions then wrap under it at the left. Overview opens
         // with it instead.
-        tabs={TABS}
+        tabs={WORKFLOW_PAGE_TABS}
         tabsSearch={search}
       >
         <Routes>
@@ -283,7 +269,9 @@ function WorkflowPageContent({
                 workflow={workflow}
                 installation={installation}
                 hasSession={hasSession}
-                sessionGate={sessionGate}
+                sessionGate={sessionGate(
+                  'The last run on the flow and the read-only badge need a muster session.',
+                )}
                 prefixes={prefixes}
               />
             }
@@ -295,7 +283,7 @@ function WorkflowPageContent({
                 name={name}
                 installation={installation}
                 hasSession={hasSession}
-                sessionGate={sessionGate}
+                sessionGate={sessionGate('Statistics need a muster session.')}
               />
             }
           />
@@ -316,21 +304,10 @@ function WorkflowPageContent({
             onOpenChange={setGitOpsOpen}
           />
         )}
-        <ManifestDialog
+        <WorkflowManifestDialog
+          workflow={workflow}
           isOpen={manifestOpen}
           onOpenChange={setManifestOpen}
-          title="Workflow manifest"
-          manifest={manifest}
-          description={
-            workflow.cluster ? (
-              <>
-                As stored on cluster <strong>{workflow.cluster}</strong>, minus
-                server-side-apply bookkeeping.
-              </>
-            ) : (
-              'As stored on the cluster, minus server-side-apply bookkeeping.'
-            )
-          }
         />
       </ShellPage>
     </WorkflowPageTargetProvider>
@@ -351,6 +328,9 @@ function WorkflowPageContent({
  *   rates and runs per day.
  * - **Details** (`details`): where it comes from and how agents call it, then
  *   the CR's bookkeeping in a "Technical details" fold-out.
+ *
+ * Any other address under the page's redirects to Overview, keeping its
+ * query.
  *
  * The ⋮ menu shows the CR's manifest and, for a workflow Flux reconciles,
  * where in Git to change it. Technical detail is disclosed where it belongs,
@@ -377,6 +357,7 @@ function WorkflowPageBody({
   const [searchParams] = useSearchParams();
   const installationParam = searchParams.get('installation') ?? undefined;
   const paths = useCustomizePaths();
+  const { search } = useLocation();
   const { workflows, isLoading, isLoadingInstallations, activeInstallation } =
     useMusterInstance();
 
@@ -401,8 +382,8 @@ function WorkflowPageBody({
           { label: name },
         ]}
         badges={<ShellPageBadgeSkeleton />}
-        tabs={TABS}
-        tabsSearch={installationSearch(installationParam)}
+        tabs={WORKFLOW_PAGE_TABS}
+        tabsSearch={search}
       >
         <LoadingIndicator label="Reading the workflow…" />
       </ShellPage>

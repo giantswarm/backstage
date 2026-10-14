@@ -12,8 +12,9 @@ import {
   CollapsibleMarkdown,
   DateComponent,
   type Fact,
-  SectionHeader,
+  PageSection,
   ShowMore,
+  TechnicalDetailsFoldOut,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -34,7 +35,6 @@ import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { skillsRouteRef } from '../../routes';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { ModelServingStatus } from '../ModelServingStatus';
-import { TechnicalDetailsFoldOut } from '../TechnicalDetailsFoldOut';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
 import {
@@ -48,21 +48,6 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(4),
-  },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1.5),
-  },
-  sectionHead: {
-    display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: theme.spacing(1),
-    // SectionHeader carries a bottom margin meant for a description under
-    // it; these sections put their own content there.
-    '& h2': { marginBottom: 0 },
   },
   // Readable cards that each open the skill's own page: what it is, in its
   // own words, and where it comes from.
@@ -98,28 +83,6 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1),
   },
 }));
-
-/** A section of the plain overview: a small heading, then what it says. */
-function Section({
-  title,
-  action,
-  children,
-}: {
-  title: string;
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  const classes = useStyles();
-  return (
-    <section className={classes.section} aria-label={title}>
-      <div className={classes.sectionHead}>
-        <SectionHeader as="h2" variant="title-x-small" title={title} />
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 /** The skill as the catalog discovered it, when the catalog has it. */
 function useCatalogSkills(): Map<string, DiscoveredSkill> {
@@ -224,7 +187,7 @@ function SkillsSection({
     ) : undefined;
 
   return (
-    <Section title="Skills" action={action}>
+    <PageSection title="Skills" action={action}>
       {skills.length === 0 ? (
         <Flex direction="column" gap="2" align="start">
           <Text variant="body-medium" color="secondary">
@@ -271,7 +234,7 @@ function SkillsSection({
           )}
         </ShowMore>
       )}
-    </Section>
+    </PageSection>
   );
 }
 
@@ -317,7 +280,7 @@ function ConnectorsSection({
   }
 
   return (
-    <Section title="Connectors">
+    <PageSection title="Connectors">
       <Text variant="body-medium">{reach}</Text>
       {(direct.length > 0 || subAgents.length > 0) && (
         <div className={classes.rows}>
@@ -349,7 +312,7 @@ function ConnectorsSection({
         </div>
       )}
       {isFailing && <FailureMarker />}
-    </Section>
+    </PageSection>
   );
 }
 
@@ -389,10 +352,10 @@ function InstructionsSection({
   }
 
   return (
-    <Section title="Instructions">
+    <PageSection title="Instructions">
       {body}
       {isFailing && <FailureMarker />}
-    </Section>
+    </PageSection>
   );
 }
 
@@ -437,7 +400,7 @@ export function AgentPlainOverview({
 
   return (
     <div className={classes.sections}>
-      <Section title="What it’s for">
+      <PageSection title="What it’s for">
         {description ? (
           <Text as="p" variant="body-medium" style={{ margin: 0 }}>
             {description}
@@ -447,7 +410,7 @@ export function AgentPlainOverview({
             No description yet.
           </Text>
         )}
-      </Section>
+      </PageSection>
 
       <InstructionsSection
         agent={agent}

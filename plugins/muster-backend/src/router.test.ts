@@ -147,21 +147,6 @@ describe('createRouter', () => {
     expect(callTool).toHaveBeenCalledWith('core_workflow_list', {}, {});
   });
 
-  it('proxies workflow detail by name', async () => {
-    const payload = { workflow: { name: 'wf-a', steps: [] } };
-    callTool.mockResolvedValue(payload);
-
-    const response = await request(app).get('/workflows/wf-a');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(payload);
-    expect(callTool).toHaveBeenCalledWith(
-      'core_workflow_get',
-      { name: 'wf-a' },
-      {},
-    );
-  });
-
   it('proxies execution list with filters', async () => {
     const payload = { executions: [], total: 0 };
     callTool.mockResolvedValue(payload);

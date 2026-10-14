@@ -1,5 +1,8 @@
 import sha256 from 'crypto-js/sha256';
-import { CONNECTOR_GROUPS } from '@giantswarm/backstage-plugin-muster';
+import {
+  CONNECTOR_GROUPS,
+  WORKFLOW_PAGE_TABS,
+} from '@giantswarm/backstage-plugin-muster';
 import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
 
 /** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
@@ -12,6 +15,14 @@ const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
  */
 const CONNECTOR_SUBTABS: ReadonlySet<string> = new Set(
   CONNECTOR_GROUPS.map(group => group.path).filter(Boolean),
+);
+
+/**
+ * A workflow page's tabs below its own address (Overview, the index, left
+ * out), a fixed set too.
+ */
+const WORKFLOW_TABS: ReadonlySet<string> = new Set(
+  WORKFLOW_PAGE_TABS.map(tab => tab.path).filter(Boolean),
 );
 
 /** Model hosting's create flows by their last path segment, as page names. */
@@ -239,14 +250,19 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Muster (removed)' };
       break;
 
-    // A workflow's page, with its tab as the view (never its name).
+    // A workflow's page, with its tab as the view (never its name). Its tabs
+    // are a closed set; any other address under it only redirects to
+    // Overview, so that momentary view is a 'redirect' rather than a second
+    // Overview visit or a view named by free text from the URL.
     case pathname.startsWith('/agent-platform/workflows/'): {
-      const parts = pathname.split('/');
-      payload = {
-        page: 'Workflow',
-        // Overview is the workflow page's index.
-        view: parts[4] || 'overview',
-      };
+      const tab = pathname.split('/').slice(4).filter(Boolean).join('/');
+      let view = 'redirect';
+      if (tab === '') {
+        view = 'overview';
+      } else if (WORKFLOW_TABS.has(tab)) {
+        view = tab;
+      }
+      payload = { page: 'Workflow', view };
       break;
     }
 

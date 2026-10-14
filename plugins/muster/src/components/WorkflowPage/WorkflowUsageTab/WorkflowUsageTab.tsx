@@ -30,11 +30,7 @@ export function WorkflowUsageTab({
         Every run counts, whether an agent, another workflow or a person started
         it.
       </Text>
-      <WorkflowStatistics
-        name={name}
-        installation={installation}
-        hasSession={hasSession}
-      />
+      <WorkflowStatistics name={name} installation={installation} />
     </Flex>
   );
 }

@@ -25,6 +25,7 @@ import {
   FactsColumn,
   LoadingIndicator,
   MoreActionsMenu,
+  PageSection,
   type RouteTabSpec,
   SectionHeader,
   ShellPage,
@@ -105,26 +106,7 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 'var(--bui-space-6)',
   },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 'var(--bui-space-3)',
-    // SectionHeader carries a bottom margin meant for a description under
-    // it; these sections put their own content there.
-    '& h2': { marginBottom: 0 },
-  },
 });
-
-/** A section of a tab: a small heading, then what it says. */
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  const classes = useStyles();
-  return (
-    <section className={classes.section} aria-label={title}>
-      <SectionHeader as="h2" variant="title-x-small" title={title} />
-      {children}
-    </section>
-  );
-}
 
 /**
  * What the skill is for, in its own words, and why the page offers less than
@@ -157,7 +139,7 @@ function OverviewTab({
           description="Its SKILL.md could not be read, so this page shows only what the listing knows and the skill cannot be edited here."
         />
       )}
-      <Section title="What it’s for">
+      <PageSection title="What it’s for">
         {skill.description ? (
           <Text as="p" variant="body-medium" style={{ margin: 0 }}>
             {skill.description}
@@ -167,7 +149,7 @@ function OverviewTab({
             Its SKILL.md gives no description.
           </Text>
         )}
-      </Section>
+      </PageSection>
     </div>
   );
 }
