@@ -94,6 +94,8 @@ describe('ToolResultViewer', () => {
       expect(screen.queryByText(/rows? shown/)).toBeNull();
     });
 
+    // 300 rows re-filtered on every typed key: past Jest's 5 s default under
+    // CI's full coverage run, as the other 300-row tests are.
     it('renders the first 50 of 300 rows, reveals more a page at a time, and filters', async () => {
       await renderInTestApp(<ToolResultViewer result={podList(300)} />);
 
@@ -123,6 +125,6 @@ describe('ToolResultViewer', () => {
       expect(
         screen.getByText('No row matches “nothing-like-this”.'),
       ).toBeInTheDocument();
-    });
+    }, 30_000);
   });
 });
