@@ -979,6 +979,26 @@ describe('KagentApiClient', () => {
         ),
       ).rejects.toMatchObject({ name: 'StreamTransportError' });
     });
+
+    it('resolves a 202 with no events, as the unary answer does', async () => {
+      // The backend's "still running": accepted, nothing to relay. Not a
+      // stream that failed to open — a transport failure here would send the
+      // caller to verify, and report the answer as failed when the check
+      // cannot see it yet.
+      fetchMock.mockResolvedValue(jsonResponse({ status: 'pending' }, 202));
+      const events: unknown[] = [];
+
+      await expect(
+        buildClient().streamAnswer(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          answer,
+          event => events.push(event),
+        ),
+      ).resolves.toBeUndefined();
+      expect(events).toEqual([]);
+    });
   });
 
   describe('aborting a stream', () => {
