@@ -40,8 +40,10 @@ update this file in the same change.
   the shell is the only renderer.
 - Fixed product decisions: there are no Organization selectors; the
   Environment (installation) selector appears only with more than one
-  installation; the UI is light mode only; workflows are read-only; runtimes,
-  budgets, organizations and workspaces have no UI.
+  installation; the UI is light mode only; workflows are not created, edited
+  or deleted in the UI, but a workflow's Run it tab runs it (reversing D11's
+  read-only page); runtimes, budgets, organizations and workspaces have no
+  UI.
 - A feature that needs a meta-agent role (`agentPlatform.metaAgents.<role>`)
   hides when the role is unconfigured, unresolvable or ambiguous. Production
   needs qualified names, a GitHub token and the avatar service; see
@@ -179,6 +181,9 @@ them and never invent a palette.
   `formatBytes` in `agent-platform-common/src/formatNumbers.ts`. Relative dates:
   `getRelativeDate` (`ui-react`). Durations read "1.2 s" and "420 ms".
 - Copy affordances: `CopyButton`. Manifests: `ManifestDialog`.
+- Running a tool: `ToolRunPanel` (muster `ToolDetail`), the argument form,
+  Run button, run note and result that a tool's page and a workflow's Run it
+  tab share. Do not build a second run form or result viewer.
 - Meta-agent hand-off strips: `MetaAgentBanner`; session starts go through
   `useMetaAgentHandoff`.
 - Before writing a helper, grep `ui-react/src/utils`,

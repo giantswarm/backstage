@@ -7,10 +7,9 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom';
-import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { Link, Text } from '@backstage/ui';
-import { useQuery } from '@tanstack/react-query';
 import {
   BreadcrumbItem,
   countNoun,
@@ -26,7 +25,6 @@ import {
   useFactTextVariant,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
 import { MusterWorkflow } from '../../lib/k8s';
 import {
   isFluxReconciled,
@@ -37,7 +35,10 @@ import {
 } from '../../lib/gitops';
 import { toolEffect } from '../../lib/toolAnnotations';
 import { serverPrefixInfos } from '../../lib/toolGrouping';
-import { findReferencedBy } from '../../lib/workflowReferences';
+import {
+  findReferencedBy,
+  WORKFLOW_TOOL_PREFIX,
+} from '../../lib/workflowReferences';
 import { serversOfTools, toolsOfWorkflow } from '../../lib/workflowTools';
 import {
   customizeExternalRouteRef,
@@ -50,14 +51,15 @@ import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
 import { WorkflowDetailsTab } from './WorkflowDetailsTab';
 import { WorkflowManifestDialog } from './WorkflowManifestDialog';
 import { WorkflowOverviewTab } from './WorkflowOverviewTab';
+import { WorkflowRunTab } from './WorkflowRunTab';
+import { workflowRunsAsCaller } from './WorkflowRunTab/workflowRunsAsCaller';
 import { WorkflowUsageTab } from './WorkflowUsageTab';
 import {
   WorkflowPageTarget,
   WorkflowPageTargetProvider,
 } from './workflowPageTarget';
 import { WORKFLOW_PAGE_TABS } from './workflowTabs';
-
-const WORKFLOW_TOOL_PREFIX = 'workflow_';
+import { useWorkflowTool } from './useWorkflowTool';
 
 export type WorkflowPageProps = {
   /**
@@ -131,7 +133,6 @@ function WorkflowPageContent({
   workflow: MusterWorkflow;
   installation?: string;
 } & WorkflowPageProps) {
-  const musterApi = useApi(musterApiRef);
   const paths = useCustomizePaths();
   const basePath = useSplatBasePath();
   // The address's own query, as it is: the tab links and the redirect keep
@@ -149,19 +150,21 @@ function WorkflowPageContent({
   const args = Object.entries(workflow.getArgs());
   const category = workflow.getCategory();
   const prefixes = useMemo(() => serverPrefixInfos(mcpServers), [mcpServers]);
+  const stepTools = useMemo(
+    () => toolsOfWorkflow(workflow, workflows),
+    [workflow, workflows],
+  );
   const connectors = useMemo(
-    () => serversOfTools(toolsOfWorkflow(workflow, workflows), prefixes),
-    [workflow, workflows, prefixes],
+    () => serversOfTools(stepTools, prefixes),
+    [stepTools, prefixes],
+  );
+  const asCaller = useMemo(
+    () => workflowRunsAsCaller(stepTools, prefixes, mcpServers, installation),
+    [stepTools, prefixes, mcpServers, installation],
   );
 
-  // The read-only hint is derived per session by the aggregator on the
-  // workflow's tool, so it is read off the tools endpoint, never the CR.
-  const toolQuery = useQuery({
-    queryKey: ['muster', 'workflow-tool', installation, toolName],
-    queryFn: () => musterApi.describeTool(toolName, installation),
-    enabled: hasSession,
-    staleTime: 30_000,
-  });
+  // The badge and the Run it tab's form both read the workflow's tool.
+  const toolQuery = useWorkflowTool(toolName, installation, hasSession);
   const effect = toolQuery.data ? toolEffect(toolQuery.data) : undefined;
 
   const target = useMemo<WorkflowPageTarget>(
@@ -270,6 +273,23 @@ function WorkflowPageContent({
             }
           />
           <Route
+            path="run"
+            element={
+              <WorkflowRunTab
+                installation={installation}
+                toolName={toolName}
+                hasSession={hasSession}
+                sessionGate={sessionGate(
+                  'Running a workflow needs a muster session.',
+                )}
+                tool={toolQuery}
+                effect={effect}
+                asCaller={asCaller}
+                connectors={connectors}
+              />
+            }
+          />
+          <Route
             path="usage"
             element={
               <WorkflowUsageTab
@@ -308,15 +328,18 @@ function WorkflowPageContent({
 }
 
 /**
- * A workflow's page in the agent-platform shell — read-only by decision D11:
- * no create, edit or delete forms; changes happen through Git or agents via
- * muster, and the page's one change action (`editAction`, where another
- * plugin attaches one) hands the workflow to the workflow agent. Three tabs,
- * each its own address under the page's:
+ * A workflow's page in the agent-platform shell. It has no create, edit or
+ * delete forms: changes happen through Git or agents via muster, and the
+ * page's one change action (`editAction`, where another plugin attaches one)
+ * hands the workflow to the workflow agent. It runs the workflow, though, as
+ * a tool's page runs a tool (decision D11, which kept the page read-only, is
+ * reversed). Four tabs, each its own address under the page's:
  *
  * - **Overview** (the index): what it is for, when it was created, what it
  *   needs and how it runs (the flow canvas, coloured by the last run — a step
  *   expands in place to its details, the flow can go full screen).
+ * - **Run it** (`run`): the tool page's argument form, Run button and result
+ *   for the workflow's `workflow_<name>` tool.
  * - **Usage** (`usage`): its statistics — the last run, muster's run totals,
  *   rates and runs per day.
  * - **Details** (`details`): where it comes from and how agents call it, then

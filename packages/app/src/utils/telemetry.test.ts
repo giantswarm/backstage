@@ -338,6 +338,10 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Workflow', view: 'overview' },
     ],
     [
+      '/agent-platform/workflows/my-workflow/run',
+      { page: 'Workflow', view: 'run' },
+    ],
+    [
       '/agent-platform/workflows/my-workflow/usage',
       { page: 'Workflow', view: 'usage' },
     ],
@@ -351,7 +355,7 @@ describe('getTelemetryPageViewPayload', () => {
     ],
     // An address the page no longer has only redirects to Overview.
     [
-      '/agent-platform/workflows/my-workflow/run',
+      '/agent-platform/workflows/my-workflow/runs',
       { page: 'Workflow', view: 'redirect' },
     ],
     [
@@ -676,6 +680,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/mcp-servers',
       '/agent-platform/workflows',
       '/agent-platform/workflows/my-workflow',
+      '/agent-platform/workflows/my-workflow/run',
       '/agent-platform/workflows/my-workflow/usage',
       '/agent-platform/workflows/my-workflow/details',
       '/agent-platform',

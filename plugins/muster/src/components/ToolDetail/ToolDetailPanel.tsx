@@ -68,13 +68,27 @@ export interface ToolDetailPanelProps {
   installation?: string;
   /** One line beside the run button, e.g. what running the tool does. */
   note?: string;
+  /**
+   * What the tool is: a connector's or muster's own tool, or the tool muster
+   * runs a workflow as (`workflow_<name>`). A workflow's page says what it is
+   * for on Overview, so its run form leaves the description out and speaks
+   * of inputs and the workflow.
+   */
+  subject?: 'tool' | 'workflow';
+  /**
+   * Called once each call ends, returned or failed: a workflow records a
+   * failed run too, so its run records are worth re-reading either way.
+   */
+  onRan?: () => void;
 }
 
 /**
  * The body of a tool's page, in sections down its single column: the
  * tool's description, its input schema folded away, "Try it" (the argument
  * form and the run button) and the result. The page's header carries the
- * name and the markers.
+ * name and the markers. A workflow's Run it tab renders the same body for
+ * the workflow's tool, without the description and with "Inputs" for "Try
+ * it".
  *
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
  * form (typed widgets, inline validation, remembered last-used args), and
@@ -86,6 +100,8 @@ export function ToolDetailPanel({
   name,
   installation,
   note,
+  subject = 'tool',
+  onRan,
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
   // The last call that returned, kept on screen while a re-run is pending:
@@ -136,9 +152,12 @@ export function ToolDetailPanel({
   }, [fields]);
 
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'A tool call from the explorer; its arguments are free text and stay out.',
+    // A workflow's run is reported, without its inputs. A tool call from the
+    // explorer is not: it is a probe, and its arguments are free text.
+    event: () =>
+      subject === 'workflow'
+        ? { name: 'Muster.workflowRan', attributes: {} }
+        : null,
     mutationFn: async (args: Record<string, unknown>) => {
       const startedAt = performance.now();
       const result = await musterApi.callTool(name, args, installation);
@@ -147,6 +166,7 @@ export function ToolDetailPanel({
     onSuccess: setLastResult,
     // A failed call says so above; an older result below would read as its.
     onError: () => setLastResult(undefined),
+    onSettled: () => onRan?.(),
   });
 
   const setValue = (key: string, value: FormValue) =>
@@ -212,25 +232,27 @@ export function ToolDetailPanel({
   return (
     <Flex direction="column" gap="5">
       {/* Headed as the agent, skill and workflow pages head theirs. */}
-      <Section title="What it’s for">
-        {data?.description ? (
-          <Text
-            as="p"
-            variant="body-medium"
-            style={{
-              margin: 0,
-              whiteSpace: 'pre-wrap',
-              overflowWrap: 'anywhere',
-            }}
-          >
-            {data.description}
-          </Text>
-        ) : (
-          <Text as="p" variant="body-medium" color="secondary">
-            Its connector gives no description.
-          </Text>
-        )}
-      </Section>
+      {subject === 'tool' && (
+        <Section title="What it’s for">
+          {data?.description ? (
+            <Text
+              as="p"
+              variant="body-medium"
+              style={{
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {data.description}
+            </Text>
+          ) : (
+            <Text as="p" variant="body-medium" color="secondary">
+              Its connector gives no description.
+            </Text>
+          )}
+        </Section>
+      )}
 
       {data?.inputSchema && (
         // Technical detail, folded in place and boxed as the other pages'
@@ -246,10 +268,12 @@ export function ToolDetailPanel({
         </TechnicalDetailsFoldOut>
       )}
 
-      <Section title="Try it">
+      <Section title={subject === 'workflow' ? 'Inputs' : 'Try it'}>
         {fields.length === 0 ? (
           <Text as="p" variant="body-medium" color="secondary">
-            This tool takes no arguments.
+            {subject === 'workflow'
+              ? 'This workflow takes no inputs.'
+              : 'This tool takes no arguments.'}
           </Text>
         ) : (
           fields.map(field => (
@@ -282,7 +306,7 @@ export function ToolDetailPanel({
           <Box mt="3">
             <Alert
               status="danger"
-              title="Could not run the tool"
+              title={`Could not run the ${subject}`}
               description={(mutation.error as Error).message}
             />
           </Box>

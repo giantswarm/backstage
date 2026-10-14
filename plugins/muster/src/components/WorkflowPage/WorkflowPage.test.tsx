@@ -220,7 +220,14 @@ function makeApi() {
       name,
       description: 'Runs the workflow.',
       annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: { app: { type: 'string', description: 'The app name' } },
+        required: ['app'],
+      },
     })),
+    callTool: jest.fn(async () => ({ deployed: 'shop' })),
+    getAuthStatus: jest.fn(async () => ({ servers: [] })),
     listExecutions: jest.fn(async (options: { status?: string }) => {
       // Per-status totals: muster's own counts, read off a one-row page.
       if (options.status) {
@@ -253,18 +260,37 @@ function makeApi() {
     getExecution: jest.fn(async (id: string) =>
       id === 'run-1' ? COMPLETED_RUN_DETAIL : FAILED_RUN_DETAIL,
     ),
-    filterTools: jest.fn(async () => ({
-      total: 2,
-      filtered_count: 2,
-      truncated: false,
-      tools: [
-        {
-          name: 'x_kubernetes_get_pods',
-          annotations: { readOnlyHint: true },
-        },
-        { name: 'x_kubernetes_apply', annotations: { readOnlyHint: false } },
-      ],
-    })),
+    filterTools: jest.fn(async (options: { pattern?: string } = {}) =>
+      // The workflow's own tool, looked up by its name; else the catalogue.
+      options.pattern
+        ? {
+            total: 1,
+            filtered_count: 1,
+            truncated: false,
+            tools: [
+              {
+                name: options.pattern,
+                kind: 'workflow',
+                annotations: { readOnlyHint: true },
+              },
+            ],
+          }
+        : {
+            total: 2,
+            filtered_count: 2,
+            truncated: false,
+            tools: [
+              {
+                name: 'x_kubernetes_get_pods',
+                annotations: { readOnlyHint: true },
+              },
+              {
+                name: 'x_kubernetes_apply',
+                annotations: { readOnlyHint: false },
+              },
+            ],
+          },
+    ),
     getWorkflowStats: jest.fn(async () => ({
       workflow_name: 'deploy',
       runs: 2,
@@ -333,6 +359,8 @@ const BASE = '/agent-platform/workflows';
 beforeEach(() => {
   mockWorkflows = [DEPLOY];
   mockAuthenticated = true;
+  // Run it remembers a run's inputs per installation and tool.
+  window.localStorage.clear();
   mockUseGitOpsSource.mockReset();
   mockUseGitOpsSource.mockReturnValue({
     inGit: false,
@@ -383,7 +411,12 @@ describe('WorkflowPage', () => {
     );
     expect(await screen.findByText('Only reads')).toBeInTheDocument();
     // The derived hint comes off the tools endpoint, never the CR.
-    expect(api.describeTool).toHaveBeenCalledWith('workflow_deploy', 'gazelle');
+    expect(api.filterTools).toHaveBeenCalledWith(
+      expect.objectContaining({
+        installation: 'gazelle',
+        pattern: 'workflow_deploy',
+      }),
+    );
     // One column: no facts beside the content, everything in the tabs.
     expect(screen.queryByRole('complementary')).toBeNull();
   });
@@ -429,6 +462,7 @@ describe('WorkflowPage', () => {
 
     for (const [name, path] of [
       ['Overview', ''],
+      ['Run it', '/run'],
       ['Usage', '/usage'],
       ['Details', '/details'],
     ]) {
@@ -1049,7 +1083,7 @@ describe('WorkflowPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers no run, create, edit or delete affordances of its own — the page is read-only (D11)', async () => {
+  it('offers no create, edit or delete affordances of its own, and runs only from Run it', async () => {
     await renderAt(`${BASE}/deploy?installation=gazelle`);
 
     // Anchored: step buttons may name a tool such as kubernetes · delete.
@@ -1057,7 +1091,116 @@ describe('WorkflowPage', () => {
     expect(screen.queryByRole('button', { name: /^delete/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^create/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^run/i })).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Run' })).toBeNull();
+    // Overview → Run it → Usage → Details.
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      'Overview',
+      'Run it',
+      'Usage',
+      'Details',
+    ]);
+  });
+
+  it('runs the workflow on Run it with the tool page’s form, and shows the result', async () => {
+    const api = await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+
+    // The tool page's form, for the workflow's tool, without the description
+    // Overview already gives.
+    const inputs = await screen.findByRole('region', { name: 'Inputs' });
+    expect(screen.queryByRole('region', { name: 'What it’s for' })).toBeNull();
+    expect(api.describeTool).toHaveBeenCalledWith('workflow_deploy', 'gazelle');
+    // A workflow on read-only tools changes nothing; its connector has its
+    // own credentials, so the note does not claim it runs as the person.
+    expect(within(inputs).getByText('Nothing is changed.')).toBeInTheDocument();
+    expect(screen.getByText('Only reads')).toBeInTheDocument();
+
+    await userEvent.type(
+      within(inputs).getByRole('textbox', { name: /app/i }),
+      'shop',
+    );
+    await userEvent.click(within(inputs).getByRole('button', { name: 'Run' }));
+
+    await waitFor(() =>
+      expect(api.callTool).toHaveBeenCalledWith(
+        'workflow_deploy',
+        expect.objectContaining({ app: 'shop' }),
+        'gazelle',
+      ),
+    );
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
+  });
+
+  it('reads the run records again after a run, so Usage counts it', async () => {
+    const api = await renderAt(`${BASE}/deploy/usage?installation=gazelle`);
+    await waitFor(() => expect(api.listExecutions).toHaveBeenCalled());
+    const before = api.listExecutions.mock.calls.length;
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Run it' }));
+    const inputs = await screen.findByRole('region', { name: 'Inputs' });
+    await userEvent.type(
+      within(inputs).getByRole('textbox', { name: /app/i }),
+      'shop',
+    );
+    await userEvent.click(within(inputs).getByRole('button', { name: 'Run' }));
+    await screen.findByRole('heading', { level: 2, name: 'Result' });
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+    await waitFor(() =>
+      expect(api.listExecutions.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it('says on Run it that the run needs a sign-in to a connector its steps call', async () => {
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'kubernetes', status: 'auth_required' }],
+    } as never);
+    await renderAt(`${BASE}/deploy/run?installation=gazelle`, api);
+
+    expect(
+      await screen.findByText('Sign in to a connector first'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/muster refuses the run until you are/),
+    ).toBeInTheDocument();
+    // The form still shows: signing in makes the run possible.
+    expect(
+      await screen.findByRole('button', { name: 'Run' }),
+    ).toBeInTheDocument();
+  });
+
+  it('explains on Run it, instead of a form, a workflow muster offers the person no tool for', async () => {
+    const api = makeApi();
+    api.filterTools.mockImplementation(async () => ({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    }));
+    await renderAt(`${BASE}/deploy/run?installation=gazelle`, api);
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'No tool “workflow_deploy” for you on gazelle',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+    // Not described: describing a tool muster lacks is an error, not an answer.
+    expect(api.describeTool).not.toHaveBeenCalled();
+    expect(screen.queryByText('Only reads')).toBeNull();
+  });
+
+  it('asks for a muster session on Run it in place of the form', async () => {
+    mockAuthenticated = false;
+    const api = await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+
+    expect(
+      screen.getByText(/Running a workflow needs a muster session/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+    expect(api.filterTools).not.toHaveBeenCalled();
+    expect(api.describeTool).not.toHaveBeenCalled();
   });
 
   it('offers no Edit in Git… for a workflow outside Git', async () => {
@@ -1289,10 +1432,10 @@ describe('WorkflowPage at phone width', () => {
   });
   afterEach(() => layout.restore());
 
-  it('keeps the three tabs and the menu, with the facts on Details rather than folded above the content', async () => {
+  it('keeps the four tabs and the menu, with the facts on Details rather than folded above the content', async () => {
     await renderAt(`${BASE}/deploy/details?installation=gazelle`);
 
-    for (const name of ['Overview', 'Usage', 'Details']) {
+    for (const name of ['Overview', 'Run it', 'Usage', 'Details']) {
       expect(screen.getByRole('tab', { name })).toBeInTheDocument();
     }
     expect(
@@ -1302,6 +1445,23 @@ describe('WorkflowPage at phone width', () => {
     expect(
       screen.getByRole('region', { name: 'Workflow details' }),
     ).toHaveTextContent('workflow_deploy');
+  });
+
+  it('runs the workflow from Run it at phone width with the same form', async () => {
+    const api = await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+
+    const inputs = await screen.findByRole('region', { name: 'Inputs' });
+    await userEvent.click(within(inputs).getByRole('button', { name: 'Run' }));
+    // Required input left empty: the form says so on the field, not a call.
+    expect(api.callTool).not.toHaveBeenCalled();
+    await userEvent.type(
+      within(inputs).getByRole('textbox', { name: /app/i }),
+      'shop',
+    );
+    await userEvent.click(within(inputs).getByRole('button', { name: 'Run' }));
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
   });
 
   it('lists the steps in place of the canvas: groups indented, gates as lines, cleanup as its own section', async () => {

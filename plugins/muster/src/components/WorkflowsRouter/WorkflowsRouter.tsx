@@ -5,8 +5,8 @@ import { WorkflowPage } from '../WorkflowPage';
 import { CustomizeTabRedirect } from '../CustomizeTabRedirect';
 
 /**
- * Routing within the Agent Platform's Workflows sub-page: a workflow's
- * read-only page (per decision D11 no create/edit/delete lives there). The
+ * Routing within the Agent Platform's Workflows sub-page: a workflow's page
+ * (no create, edit or delete lives there; it runs the workflow). The
  * list is the Customize screen's Workflows tab, so the index sends there.
  * Mounted inside MusterProviders by the workflows sub-page.
  *

@@ -7,6 +7,7 @@ import type { RouteTabSpec } from '@giantswarm/backstage-plugin-ui-react';
  */
 export const WORKFLOW_PAGE_TABS: RouteTabSpec[] = [
   { id: 'overview', path: '', title: 'Overview' },
+  { id: 'run', path: 'run', title: 'Run it' },
   { id: 'usage', path: 'usage', title: 'Usage' },
   { id: 'details', path: 'details', title: 'Details' },
 ];
