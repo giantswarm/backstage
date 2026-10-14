@@ -1890,17 +1890,18 @@ describe('createRouter', () => {
       expect(response.body.error.message).toContain('no such agent');
     });
 
-    it('answers 202 for a turn that is still running, never a 5xx', async () => {
-      // The contract of the unary route: a turn that outlived the wait is still
-      // running, and `MiddlewareFactory.error()` would forward a 500 to Sentry.
+    it('keeps a new turn silent past the first-event wait an error, never a 202', async () => {
+      // Unlike a resumed one, a new turn is answered with a task snapshot at
+      // once; silence is a failure the frontend checks against the history
+      // (whether the message landed), which a 202 would skip.
       streamMessage.mockRejectedValue(
         turnPendingError('The agent on gazelle has not finished.'),
       );
 
       const response = await post();
 
-      expect(response.status).toBe(202);
-      expect(response.body).toEqual({ status: 'pending' });
+      expect(response.status).toBe(500);
+      expect(response.body.error.name).toBe('KagentTurnPendingError');
     });
 
     it('ends the relay cleanly when the upstream body dies mid-stream', async () => {

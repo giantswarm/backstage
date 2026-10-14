@@ -332,13 +332,6 @@ async function relayEventStream(
     if (res.writableEnded || upstreamControl.signal.aborted) {
       return;
     }
-    // A turn that outlived the wait for its first event is still running: the
-    // unary routes' 202, not a 5xx that would reach Sentry. The frontend
-    // follows the poll exactly as it does after a cut stream.
-    if (isTurnPendingError(error)) {
-      res.status(202).json({ status: 'pending' });
-      return;
-    }
     throw error;
   }
 
@@ -1095,21 +1088,34 @@ export async function createRouter(
    * answers 202, after which only the conversation poll can tell what became of
    * the turn — and if the turn never lands, the page has nothing to show. Over a
    * stream the events arrive as they happen and a cut stream is visible as such.
+   *
+   * A resumed turn that says nothing within the wait for its first event — the
+   * approved tool runs before the agent speaks — is still running: a 202, as on
+   * the unary answer route, and the page follows the poll. Only here: on the
+   * messages stream a silent start stays an error, which the frontend checks
+   * against the history.
    */
   router.post('/kagent/sessions/:sessionId/answer/stream', async (req, res) => {
     const { client } = resolveInstallation(req);
     const { agent, answer } = readAnswerBody(req);
     const userToken = readUserToken(req, { required: true });
 
-    await relayEventStream(res, logger, signal =>
-      client.streamAnswer(
-        readSessionId(req),
-        agent,
-        answer,
-        { userToken },
-        signal,
-      ),
-    );
+    try {
+      await relayEventStream(res, logger, signal =>
+        client.streamAnswer(
+          readSessionId(req),
+          agent,
+          answer,
+          { userToken },
+          signal,
+        ),
+      );
+    } catch (error) {
+      if (!isTurnPendingError(error)) {
+        throw error;
+      }
+      res.status(202).json({ status: 'pending' });
+    }
   });
 
   // The one served-model call the browser cannot make itself: a try of a

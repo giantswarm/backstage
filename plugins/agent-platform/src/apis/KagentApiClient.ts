@@ -556,9 +556,10 @@ export class KagentApiClient implements KagentApi {
     }
 
     if (response.status === 202) {
-      // The backend's "still running", as on the unary routes: the turn
-      // outlived the wait for its first event. Resolved like a stream that
-      // ended without one, so the caller follows the turn through the poll.
+      // The answer route's "still running", as on the unary routes: the
+      // resumed turn outlived the wait for its first event. Resolved like a
+      // stream that ended without one, so the caller follows the turn through
+      // the poll.
       return;
     }
 
