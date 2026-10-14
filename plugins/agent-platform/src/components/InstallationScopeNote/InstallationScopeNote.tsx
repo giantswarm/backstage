@@ -8,8 +8,13 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 
 export type InstallationScopeNoteProps = {
-  /** The component the tab reads (kagent for the agent-platform tabs). */
-  component: PlatformComponent;
+  /**
+   * The component the tab reads (kagent for the agent-platform tabs). Left
+   * out where no one component stands for what the tab reads (Model hosting:
+   * KServe, model-manager, cluster-manager); the note then names only an
+   * environment the portal does not know.
+   */
+  component?: PlatformComponent;
 };
 
 /**
@@ -37,7 +42,7 @@ export function InstallationScopeNote({
       </Text>
     );
   }
-  if (entry.probe === 'answered' && !entry.components[component]) {
+  if (component && entry.probe === 'answered' && !entry.components[component]) {
     return (
       <Text variant="body-small" color="secondary">
         {PLATFORM_COMPONENT_LABELS[component]} is not installed on {scope}.

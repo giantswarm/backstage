@@ -1372,5 +1372,25 @@ describe('ServingPage', () => {
     expect(
       screen.getByText('Could not read 1 environment'),
     ).toBeInTheDocument();
+    // Nothing was read, so nothing is known to be running or not: the
+    // warning speaks, not the table's empty line (one pinned environment).
+    expect(screen.queryByText(NO_SERVED_MODELS)).toBeNull();
+  });
+
+  it('still says no model is running where another environment was read', async () => {
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      installations: ['inst-1'],
+      servedModels: [],
+      gpuNodes: [],
+      unreachableInstallations: ['inst-3'],
+    });
+
+    await renderSection();
+
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(NO_SERVED_MODELS)).toBeInTheDocument();
   });
 });

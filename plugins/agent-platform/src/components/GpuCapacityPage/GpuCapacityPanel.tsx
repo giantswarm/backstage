@@ -798,7 +798,13 @@ export function GpuCapacityPanel({
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading nodes…" />;
-  } else {
+  } else if (
+    // Where no environment could be read (one pinned, say), the alert
+    // below is the answer: "No GPU nodes found" would claim what was not
+    // seen.
+    readableInstallations.length > 0 ||
+    unavailableEntries.length === 0
+  ) {
     body = (
       <Text variant="body-medium" color="secondary">
         {readableInstallations.length > 0
@@ -828,7 +834,13 @@ export function GpuCapacityPanel({
         {unavailableEntries.length > 0 && (
           <Alert
             status="info"
-            title="GPU capacity is unavailable for some environments"
+            // "Some" only while others were read: under one pinned
+            // environment, or when none could be read, it is all of them.
+            title={
+              readableInstallations.length > 0
+                ? 'GPU capacity is unavailable for some environments'
+                : 'GPU capacity is unavailable'
+            }
             description={
               <UnavailableDescription entries={unavailableEntries} />
             }

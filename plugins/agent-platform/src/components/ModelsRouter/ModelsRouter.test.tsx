@@ -29,6 +29,24 @@ jest.mock('../ModelHostingKpis', () => ({
   ),
 }));
 
+// The section's installation scope, as far as the header's Environment
+// control is concerned; the control and the scope note have their own tests,
+// so markers stand in.
+const scopeState = { isSingleInstallation: false, isLoading: false };
+jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  useInstallationScope: () => scopeState,
+}));
+jest.mock('../EnvironmentSelect', () => ({
+  EnvironmentSelect: ({ component }: { component?: string }) => (
+    <div data-testid="environment-select">environment:{component}</div>
+  ),
+}));
+jest.mock('../InstallationScopeNote', () => ({
+  InstallationScopeNote: ({ component }: { component?: string }) => (
+    <div data-testid="scope-note">note:{component}</div>
+  ),
+}));
+
 // Whether an installation in view runs cluster-manager: what offers the GPU
 // pools and the Model cache tab.
 let mockClusterManager: string[] = [];
@@ -103,6 +121,8 @@ const withServingLayer: Partial<ServingContextValue> = {
 describe('ModelsRouter', () => {
   beforeEach(() => {
     mockClusterManager = [];
+    scopeState.isSingleInstallation = false;
+    scopeState.isLoading = false;
     mockUseServing.mockReset();
     mockUseServing.mockReturnValue(noServingLayer);
   });
@@ -204,6 +224,69 @@ describe('ModelsRouter', () => {
         expect(screen.getByText(`hosting-kpis: ${scope}`)).toBeInTheDocument();
       },
     );
+
+    describe('environment scope', () => {
+      it.each([
+        ['serving', 'serving-view'],
+        ['capacity', 'capacity-view'],
+        ['cache', 'cache-view'],
+      ])(
+        "offers the Environment control in the %s view's header, before its actions",
+        async (view, content) => {
+          mockClusterManager = ['inst-1'];
+          renderTab(`/agent-platform/models/${view}`);
+
+          expect(await screen.findByText(content)).toBeInTheDocument();
+          const header = screen
+            .getByRole('heading', { level: 1 })
+            .closest('div')?.parentElement?.parentElement as HTMLElement;
+          // No component: the views read KServe, model-manager and
+          // cluster-manager, none of which stands for the others.
+          expect(
+            within(header).getByTestId('environment-select'),
+          ).toHaveTextContent(/^environment:$/);
+        },
+      );
+
+      it('hides the Environment control on a single-installation portal', async () => {
+        scopeState.isSingleInstallation = true;
+        renderTab('/agent-platform/models/serving');
+
+        expect(await screen.findByText('serving-view')).toBeInTheDocument();
+        expect(screen.queryByTestId('environment-select')).toBeNull();
+      });
+
+      it('hides the Environment control while the installations are read', async () => {
+        scopeState.isLoading = true;
+        renderTab('/agent-platform/models/serving');
+
+        expect(await screen.findByText('serving-view')).toBeInTheDocument();
+        expect(screen.queryByTestId('environment-select')).toBeNull();
+      });
+
+      it('heads each view with the scope note, above its figures', async () => {
+        renderTab('/agent-platform/models/serving');
+
+        const note = await screen.findByTestId('scope-note');
+        expect(note).toHaveTextContent(/^note:$/);
+        expect(
+          note.compareDocumentPosition(screen.getByText(/^hosting-kpis/)) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
+
+      it('keeps the installation scope in the tab links', async () => {
+        renderTab('/agent-platform/models/serving?installation=inst-1');
+
+        expect(await screen.findByText('serving-view')).toBeInTheDocument();
+        expect(
+          screen.getByRole('tab', { name: 'GPU capacity' }),
+        ).toHaveAttribute(
+          'href',
+          '/agent-platform/models/capacity?installation=inst-1',
+        );
+      });
+    });
 
     it('shows no figures on a portal without a serving layer', async () => {
       mockUseServing.mockReturnValue(noServingLayer);

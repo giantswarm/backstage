@@ -75,4 +75,15 @@ describe('InstallationScopeNote', () => {
       screen.getByText(/knows no environment named “nowhere”/),
     ).toBeInTheDocument();
   });
+
+  it('without a component, names only an installation the portal does not know', () => {
+    mockScope = 'wombat';
+    expect(render(<InstallationScopeNote />).container).toBeEmptyDOMElement();
+
+    mockScope = 'nowhere';
+    render(<InstallationScopeNote />);
+    expect(
+      screen.getByText(/knows no environment named “nowhere”/),
+    ).toBeInTheDocument();
+  });
 });

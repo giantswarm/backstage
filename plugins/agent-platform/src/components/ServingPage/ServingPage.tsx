@@ -531,6 +531,16 @@ export function ServingPage() {
   // served-model reads alone, not the GPU node and pod reads beside them.
   const isReadingServedModels =
     (serving.isLoadingServedModels ?? serving.isLoading) && rows.length === 0;
+  // Every environment in view failed to read (one pinned, say): nothing
+  // listed is not "no model is running", so the table's empty line gives way
+  // to the warning below.
+  const nothingRead =
+    rows.length === 0 &&
+    emptyGroups.length === 0 &&
+    serving.unreachableInstallations.length > 0 &&
+    installations.every(name =>
+      serving.unreachableInstallations.includes(name),
+    );
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
     emptyBody = <LoadingIndicator label="Reading the serving layer…" />;
@@ -586,11 +596,10 @@ export function ServingPage() {
         <Flex direction="column" gap="3">
           <Text color="secondary">{description}</Text>
 
-          {isReadingServedModels ? (
+          {isReadingServedModels && (
             <LoadingIndicator label="Reading the served models…" />
-          ) : (
-            servedModelsTable
           )}
+          {!isReadingServedModels && !nothingRead && servedModelsTable}
           {!openedRow && lifecyclePanel}
 
           <UnreachableInstallationsAlert

@@ -7,6 +7,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import { Flex } from '@backstage/ui';
+import { useInstallationScope } from '@giantswarm/backstage-plugin-gs';
 import {
   ShellPage,
   useSplatBasePath,
@@ -25,6 +26,8 @@ import { EditModelPage } from '../EditModelPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
 import { ModelCachePage } from '../ModelCachePage';
+import { EnvironmentSelect } from '../EnvironmentSelect';
+import { InstallationScopeNote } from '../InstallationScopeNote';
 import {
   AddGpuNodePoolRoute,
   AddModelBackendRoute,
@@ -110,7 +113,9 @@ function shellHostingTabs(clusterManager: boolean) {
 /**
  * One Model hosting tab: its headline figures — only those about what the
  * tab lists (`ModelHostingKpis`'s scope), so the row does not repeat on every
- * tab — above the view.
+ * tab — above the view. Under a pinned environment the portal does not know
+ * (a stale deep link), the scope note says so first: the views read nothing
+ * there.
  */
 const HostingView = ({
   kpis,
@@ -120,6 +125,7 @@ const HostingView = ({
   children: ReactNode;
 }) => (
   <Flex direction="column" gap="5">
+    <InstallationScopeNote />
     {kpis && <ModelHostingKpis scope={kpis} />}
     {children}
   </Flex>
@@ -138,10 +144,20 @@ const HostingView = ({
  * The tabs and figures show where a serving layer exists; a deep link on a
  * portal without one keeps the frame and lets the view's own empty state
  * speak.
+ *
+ * The views read the section's installation scope, the one Customize's
+ * Environment control sets, so the same control leads this header, before
+ * the view's actions. It shows only with more than one installation
+ * (decision O5), gated here as on Usage (`UsageScopeBar`), so a
+ * single-installation header keeps no empty slot. No `component`: the views
+ * read KServe, model-manager and cluster-manager, and no one platform
+ * component stands for them, so the options carry only their access state.
  */
 const ShellModelHosting = () => {
   const basePath = useSplatBasePath();
   const { search } = useLocation();
+  const { isSingleInstallation, isLoading: isScopeLoading } =
+    useInstallationScope();
   const serving = useServing();
   const servingLayer = hasServingLayer(serving);
   const clusterManager = useClusterManagerAvailability(
@@ -159,7 +175,15 @@ const ShellModelHosting = () => {
         { label: 'Model hosting' },
       ]}
       description="Run models on your own GPUs, so data stays in your clusters."
+      actions={
+        !isScopeLoading && !isSingleInstallation ? (
+          <EnvironmentSelect />
+        ) : undefined
+      }
       tabs={servingLayer ? shellHostingTabs(offersCache) : undefined}
+      // As Usage's tabs: a switch keeps `?installation=`, so each view's
+      // address names the environment it shows.
+      tabsSearch={search}
     >
       <Routes>
         <Route
