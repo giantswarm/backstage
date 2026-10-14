@@ -4,7 +4,7 @@ import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
   SectionHeader,
-  SimpleAccordion,
+  TechnicalDetailsFoldOut,
   YamlEditorFormField,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -233,16 +233,17 @@ export function ToolDetailPanel({
       </Section>
 
       {data?.inputSchema && (
-        // Technical detail, folded in place: the form below is the schema
-        // drawn for people. Opened, it is as tall as a result may be.
-        <SimpleAccordion title="Input schema" headingLevel={2}>
+        // Technical detail, folded in place and boxed as the other pages'
+        // Technical details: the form below is the schema drawn for people.
+        // Opened, it is as tall as a result may be.
+        <TechnicalDetailsFoldOut title="Input schema" defaultExpanded={false}>
           <YamlEditorFormField
             value={JSON.stringify(data.inputSchema, null, 2)}
             language="json"
             readOnly
             maxHeight={RESULT_MAX_HEIGHT}
           />
-        </SimpleAccordion>
+        </TechnicalDetailsFoldOut>
       )}
 
       <Section title="Try it">

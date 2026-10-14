@@ -29,6 +29,20 @@ describe('TechnicalDetailsFoldOut', () => {
     expect(screen.getByText('The conditions')).toBeInTheDocument();
   });
 
+  it('names one piece of technical detail by its own title', () => {
+    render(
+      <TechnicalDetailsFoldOut title="Input schema" defaultExpanded={false}>
+        <p>The schema</p>
+      </TechnicalDetailsFoldOut>,
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Input schema' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Technical details' }),
+    ).toBeNull();
+  });
+
   it('only seeds the first render by default, as on the agent page', () => {
     const { rerender } = renderFoldOut(false);
 

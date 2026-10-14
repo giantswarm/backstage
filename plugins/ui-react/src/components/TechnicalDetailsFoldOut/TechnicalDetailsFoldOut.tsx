@@ -25,6 +25,11 @@ export type TechnicalDetailsFoldOutProps = {
    * render, as on the agent page.
    */
   followDefaultExpanded?: boolean;
+  /**
+   * The trigger's label, for one piece of technical detail with a name of its
+   * own (a tool's "Input schema"). Defaults to "Technical details".
+   */
+  title?: string;
   children: ReactNode;
 };
 
@@ -33,11 +38,13 @@ export type TechnicalDetailsFoldOutProps = {
  * technical detail on a page, never a page-wide switch. Controlled, so the
  * cards inside (which read the HelmRelease, GitOps source and conditions)
  * mount only while open: bui's panel otherwise stays mounted, merely hidden.
- * Shared by the agent, model and connector pages.
+ * Shared by the agent, model and connector pages, and under its own `title`
+ * by the tool page's input schema.
  */
 export function TechnicalDetailsFoldOut({
   defaultExpanded,
   followDefaultExpanded = false,
+  title = 'Technical details',
   children,
 }: TechnicalDetailsFoldOutProps) {
   const classes = useStyles();
@@ -64,7 +71,7 @@ export function TechnicalDetailsFoldOut({
       onExpandedChange={toggle}
     >
       {/* h2: a section of the page beside its other sections. */}
-      <AccordionTrigger level={2}>Technical details</AccordionTrigger>
+      <AccordionTrigger level={2}>{title}</AccordionTrigger>
       <AccordionPanel>{isExpanded ? children : null}</AccordionPanel>
     </Accordion>
   );

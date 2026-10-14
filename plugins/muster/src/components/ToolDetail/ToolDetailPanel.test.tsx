@@ -53,13 +53,18 @@ describe('ToolDetailPanel', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Try it' }),
     ).toBeInTheDocument();
-    // Folded: the form is the schema drawn for people.
+    // Folded: the form is the schema drawn for people. Mounted only once
+    // opened, as the other pages' Technical details are.
     expect(
       screen.getByRole('button', { name: 'Input schema' }),
     ).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/"What to echo"/)).not.toBeInTheDocument();
     expect(
       screen.getByRole('textbox', { name: /message/i }),
     ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Input schema' }));
+    expect(await screen.findByText(/"What to echo"/)).toBeInTheDocument();
   });
 
   it('says so when the connector gives the tool no description', async () => {
