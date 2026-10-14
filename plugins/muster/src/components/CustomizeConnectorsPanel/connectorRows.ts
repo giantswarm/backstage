@@ -1,5 +1,5 @@
 import type { StatusDotTone } from '@giantswarm/backstage-plugin-ui-react';
-import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
+import { countNoun, joinNames } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MCPServer,
   mcpServerStateSeverity,
@@ -235,4 +235,116 @@ export function musterReach(
     return state.pending ? undefined : 'not-connected';
   }
   return state.answered || state.reachable === true ? 'connected' : undefined;
+}
+
+/**
+ * Where the search's tool names come from: muster's tool catalogue, read in
+ * full, read only in part (cut off at its limit), still being read (or the
+ * muster session that reads it still opening), failed, or not asked for (no
+ * muster session).
+ */
+export type CatalogueState =
+  'loaded' | 'partial' | 'loading' | 'failed' | 'unavailable';
+
+/** The catalogue's {@link CatalogueState}, from what its query reports. */
+export function catalogueState({
+  answered,
+  truncated,
+  loading,
+  failed,
+}: {
+  /** muster listed the tools. */
+  answered: boolean;
+  /** It listed only part of them. */
+  truncated: boolean;
+  /** The listing, or the session it needs, is under way. */
+  loading: boolean;
+  failed: boolean;
+}): CatalogueState {
+  if (answered) {
+    return truncated ? 'partial' : 'loaded';
+  }
+  if (loading) {
+    return 'loading';
+  }
+  return failed ? 'failed' : 'unavailable';
+}
+
+/**
+ * What the search could not look at, for a catalogue it did not read in full.
+ * A failed read says nothing: the list's danger alert already says the search
+ * covers connector names only.
+ */
+const UNSEARCHED_CATALOGUE: Partial<Record<CatalogueState, string>> = {
+  partial: 'Some tools were not searched: muster returned only part of them.',
+  loading: 'Only connector names were searched: the tools are still loading.',
+  unavailable:
+    'Only connector names were searched: tools need a muster session.',
+};
+
+/** Why the tools of the connectors in a group were not searched. */
+type UnsearchedReason = 'sign-in' | 'unreachable' | 'unlisted';
+
+const UNSEARCHED_REASONS: Record<UnsearchedReason, string> = {
+  'sign-in': 'they need your sign-in',
+  unreachable: 'they could not be read',
+  unlisted: 'muster listed none of them',
+};
+
+function unsearchedSentence(names: string[], reason: UnsearchedReason): string {
+  const whose =
+    names.length === 1
+      ? names[0]
+      : `${countNoun(names.length, 'connector')} (${joinNames(names)})`;
+  return `The tools of ${whose} were not searched: ${UNSEARCHED_REASONS[reason]}.`;
+}
+
+/**
+ * What a search that found no connector could not look at, where the tool
+ * may still be: the catalogue, while it is not read in full; and the
+ * connectors muster listed no tools of because they wait on this person's
+ * sign-in or do not answer. Until this person's sign-ins are known
+ * (`signInsKnown`), every connector without tools is named, since a sign-in
+ * may hide them. muster's own row is left out (without its catalogue,
+ * nothing was searched), as are deactivated connectors and the shadowed
+ * servers whose name a family takes.
+ */
+export function unsearchedToolsNotes(
+  catalogue: CatalogueState,
+  rows: readonly { entry: ServerListEntry; reach?: ConnectorReach }[],
+  signInsKnown: boolean,
+): string[] {
+  const catalogueNote = UNSEARCHED_CATALOGUE[catalogue];
+  if (catalogue !== 'loaded' && catalogue !== 'partial') {
+    return catalogueNote ? [catalogueNote] : [];
+  }
+  const reasonOf = (reach?: ConnectorReach): UnsearchedReason | undefined => {
+    if (reach === 'sign-in') {
+      return 'sign-in';
+    }
+    if (reach === 'not-connected') {
+      return 'unreachable';
+    }
+    return reach === 'deactivated' || signInsKnown ? undefined : 'unlisted';
+  };
+  const byReason = new Map<UnsearchedReason, string[]>();
+  for (const { entry, reach } of rows) {
+    const reason = reasonOf(reach);
+    if (
+      reason === undefined ||
+      entry.row.kind === 'core' ||
+      entry.shadowed ||
+      entry.toolCount !== 0
+    ) {
+      continue;
+    }
+    byReason.set(reason, [...(byReason.get(reason) ?? []), entry.id]);
+  }
+  return [
+    ...(catalogueNote ? [catalogueNote] : []),
+    ...(['sign-in', 'unreachable', 'unlisted'] as const).flatMap(reason => {
+      const names = byReason.get(reason);
+      return names ? [unsearchedSentence(names, reason)] : [];
+    }),
+  ];
 }
