@@ -1,4 +1,5 @@
 import { ReactNode, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Accordion,
   AccordionGroup,
@@ -168,8 +169,11 @@ function ToolRow({
  * dropdown (only when the tools both read and change things) with a count per
  * choice, and per tool its effect and an inline
  * Try it that runs the tool through muster. A short list (`SEARCH_MIN` or
- * fewer) is read, not searched, so it shows neither; a long one renders a
- * page of tools at a time.
+ * fewer) is read, not searched, so it shows neither, unless the tab opened
+ * with a search; a long one renders a page of tools at a time. The search is
+ * seeded once from the page's `?q=`: the Customize list's search links a
+ * connector it matched by its tools here with it, so the tab opens on the
+ * matching tools.
  */
 export function ConnectorToolsTab({
   installation,
@@ -180,7 +184,16 @@ export function ConnectorToolsTab({
   signInGate,
 }: ConnectorToolsTabProps) {
   const classes = useStyles();
-  const [query, setQuery] = useState('');
+  const { search } = useLocation();
+  // Seeded once from `?q=`, as Customize's search is, and not written back:
+  // every change of the address is a page view.
+  const [initialQuery] = useState(
+    () => new URLSearchParams(search).get('q') ?? '',
+  );
+  const [query, setQuery] = useState(initialQuery);
+  // A search the tab opened with keeps its field, short list or not, so it
+  // can be read and cleared; clearing it does not take the field away.
+  const openedSearched = initialQuery.trim() !== '';
   const [openTool, setOpenTool] = useState<string | undefined>();
 
   const { tools: listed, shortName } = tools;
@@ -228,8 +241,9 @@ export function ConnectorToolsTab({
   }
 
   // Three tools are read at a glance; a search and a filter over them is
-  // volume framing.
-  const searchable = all.length > SEARCH_MIN;
+  // volume framing, unless a search is already in force.
+  const searchable =
+    all.length > SEARCH_MIN || openedSearched || query.trim() !== '';
 
   return (
     <Flex direction="column" gap="0">
