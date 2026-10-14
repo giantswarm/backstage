@@ -20,6 +20,25 @@ export {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 export type { Provenance } from '@giantswarm/backstage-plugin-kubernetes-react';
 
+/**
+ * The object's kind: its own `kind`, else its class's. Items of a Kubernetes
+ * list response need not carry `kind`, and the list hooks hand them over as
+ * they come.
+ */
+export function resourceKind(obj: KubeObject): string {
+  return obj.getKind() || (obj.constructor as typeof KubeObject).kind;
+}
+
+/**
+ * Whether Flux reconciles the object — applied by a Kustomization or rendered
+ * by a HelmRelease — so its desired state can be traced back to a source.
+ * Narrower than `isGitOpsManaged`, which also holds for a chart installed by
+ * hand with `helm install`.
+ */
+export function isFluxReconciled(p: Provenance): boolean {
+  return Boolean(p.fluxKustomization || p.fluxHelmRelease);
+}
+
 /** `namespace/name`, or just the name for an object without a namespace. */
 export function qualifiedName(name: string, namespace?: string): string {
   return namespace ? `${namespace}/${name}` : name;
@@ -210,7 +229,7 @@ export function toManifestYaml(
   ).jsonData.spec;
   const manifest = {
     apiVersion: obj.getApiVersion() || 'muster.giantswarm.io/v1alpha1',
-    kind: obj.getKind() || 'MCPServer',
+    kind: resourceKind(obj),
     metadata: {
       name: obj.getName(),
       namespace: obj.getNamespace() ?? defaultNamespace,

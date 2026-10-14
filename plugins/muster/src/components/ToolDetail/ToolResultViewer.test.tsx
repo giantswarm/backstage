@@ -94,6 +94,8 @@ describe('ToolResultViewer', () => {
       expect(screen.queryByText(/rows? shown/)).toBeNull();
     });
 
+    // Each filter value is pasted in one change: typed key by key, the 300
+    // rows are re-filtered per keystroke, past Jest's 5 s default on CI.
     it('renders the first 50 of 300 rows, reveals more a page at a time, and filters', async () => {
       await renderInTestApp(<ToolResultViewer result={podList(300)} />);
 
@@ -107,18 +109,19 @@ describe('ToolResultViewer', () => {
       // The filter matches any cell's text, case-insensitively, and starts
       // the filtered list at its first page again.
       const filter = screen.getByRole('searchbox', { name: 'Filter rows' });
-      await userEvent.type(filter, 'POD-29');
+      await userEvent.click(filter);
+      await userEvent.paste('POD-29');
       // pod-29 and pod-290 … pod-299.
       expect(renderedPods()).toHaveLength(11);
       expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
 
       await userEvent.clear(filter);
-      await userEvent.type(filter, 'pending');
+      await userEvent.paste('pending');
       expect(renderedPods()).toHaveLength(50);
       expect(screen.getByText('50 rows shown, 100 more')).toBeInTheDocument();
 
       await userEvent.clear(filter);
-      await userEvent.type(filter, 'nothing-like-this');
+      await userEvent.paste('nothing-like-this');
       expect(renderedPods()).toHaveLength(0);
       expect(
         screen.getByText('No row matches “nothing-like-this”.'),

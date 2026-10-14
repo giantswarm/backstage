@@ -1,4 +1,4 @@
-import { isSoleInstallation } from './soleInstallation';
+import { isSoleInstallation, nothingCouldBeRead } from './soleInstallation';
 
 const base = {
   scope: 'all',
@@ -38,5 +38,29 @@ describe('isSoleInstallation', () => {
         isLoading: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe('nothingCouldBeRead', () => {
+  it('is true when every installation in view failed', () => {
+    expect(
+      nothingCouldBeRead({ installations: ['a'], unreadable: ['a'] }),
+    ).toBe(true);
+    // Failed before it could say what it runs: nothing in view at all.
+    expect(nothingCouldBeRead({ installations: [], unreadable: ['a'] })).toBe(
+      true,
+    );
+  });
+
+  it('is false while one in view was read, or nothing failed', () => {
+    expect(
+      nothingCouldBeRead({ installations: ['a', 'b'], unreadable: ['b'] }),
+    ).toBe(false);
+    expect(nothingCouldBeRead({ installations: [], unreadable: [] })).toBe(
+      false,
+    );
+    expect(nothingCouldBeRead({ installations: ['a'], unreadable: [] })).toBe(
+      false,
+    );
   });
 });

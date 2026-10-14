@@ -197,7 +197,7 @@ function SessionsIndexPageContent() {
             ends `isLoading`; one paused offline does not. */}
         <UnreachableInstallationsAlert
           installations={unreachableInstallations}
-          resourceName="Sessions"
+          resourceName="sessions"
           failures={readFailures}
           isLoading={isLoading}
         />

@@ -2,17 +2,19 @@ import { createApiRef } from '@backstage/core-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { GiantSwarmMark } from '../../../assets/logo';
 import { ShellSignInPage } from './ShellSignInPage';
 import {
   PROVIDER_STORAGE_KEY,
   type ShellSignInProvider,
 } from './useProviderSignIn';
 
-const stubLogo = () => <span data-testid="logo" />;
-const mockLogoIcon = jest.fn(stubLogo);
-jest.mock('../../nav/LogoIcon', () => ({
-  LogoIcon: () => mockLogoIcon(),
+const mockBrandingAssets: string[] = [];
+jest.mock('../../branding/useBranding', () => ({
+  useBranding: () => ({
+    isLoading: false,
+    hasAsset: (name: string) => mockBrandingAssets.includes(name),
+    getAssetUrl: (name: string) => `/api/branding/${name}?v=1`,
+  }),
 }));
 
 const identity = {
@@ -75,7 +77,9 @@ function renderPage({
     <ShellSignInPage onSignInSuccess={onSignInSuccess} providers={options} />,
     {
       initialRouteEntries: [path],
-      config: { app: { portals: { agentPlatform: true } } },
+      config: {
+        app: { title: 'Acme Portal', portals: { agentPlatform: true } },
+      },
       apis: [analytics, [mainRef, main], [fallbackRef, fallback]],
     },
   );
@@ -86,39 +90,56 @@ describe('ShellSignInPage', () => {
   afterEach(() => {
     localStorage.clear();
     delete document.documentElement.dataset.agentShell;
-    mockLogoIcon.mockImplementation(stubLogo);
+    mockBrandingAssets.length = 0;
   });
 
-  it('puts the logo mark in the title, beside "Agent Platform" (T71)', async () => {
+  it('makes the full Giant Swarm logo the title, without "Agent Platform"', async () => {
     renderPage();
 
     const heading = await screen.findByRole('heading', {
       level: 1,
-      name: 'Agent Platform',
+      name: 'Giant Swarm',
     });
-    const logo = within(heading).getByTestId('logo');
+    const logo = within(heading).getByRole('img', { name: 'Giant Swarm' });
     expect(heading.firstElementChild).toBe(logo);
-    expect(heading).toHaveTextContent(/^Agent Platform$/);
+    // The lockup, not the ant alone: its wordmark is drawn in `currentColor`.
+    expect(logo.querySelector('[fill="currentColor"]')).not.toBeNull();
+    expect(heading).toHaveTextContent(/^$/);
+    expect(screen.queryByText('Agent Platform')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: 'Giant Swarm' }),
+    ).toBeInTheDocument();
   });
 
-  it('reads as the Giant Swarm Agent Platform with the Giant Swarm ant (T71)', async () => {
-    mockLogoIcon.mockImplementation(() => <GiantSwarmMark />);
+  it('names the title and the card after the portal for a custom logo', async () => {
+    mockBrandingAssets.push('home-logo.svg');
     renderPage();
 
     const heading = await screen.findByRole('heading', {
       level: 1,
-      name: 'Giant Swarm Agent Platform',
+      name: 'Acme Portal',
     });
+    expect(within(heading).getByRole('img')).toHaveAttribute(
+      'src',
+      '/api/branding/home-logo.svg?v=1',
+    );
     expect(
-      within(heading).getByRole('img', { name: 'Giant Swarm' }),
+      screen.getByRole('region', { name: 'Acme Portal' }),
     ).toBeInTheDocument();
+  });
+
+  it('holds the logo’s row, so the buttons do not move when it arrives', async () => {
+    renderPage();
+
+    const heading = await screen.findByRole('heading', { level: 1 });
+    expect(heading).toHaveStyle({ minHeight: '40px' });
   });
 
   it('shows one card with a button and message per sign-in option', async () => {
     renderPage();
 
     expect(
-      await screen.findByRole('heading', { name: 'Agent Platform' }),
+      await screen.findByRole('heading', { name: 'Giant Swarm' }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Sign in with GitHub' }),
@@ -267,7 +288,7 @@ describe('ShellSignInPage', () => {
 
   it('marks the document as the shell while it shows on a classic URL', async () => {
     const { result } = renderPage({ path: '/catalog' });
-    await screen.findByRole('heading', { name: 'Agent Platform' });
+    await screen.findByRole('heading', { name: 'Giant Swarm' });
 
     expect(document.documentElement).toHaveAttribute('data-agent-shell', '');
     result.unmount();
@@ -278,7 +299,7 @@ describe('ShellSignInPage', () => {
     // AgentShellThemeRoot owns the mark on `/` and keeps it after sign-in.
     document.documentElement.dataset.agentShell = '';
     const { result } = renderPage({ path: '/' });
-    await screen.findByRole('heading', { name: 'Agent Platform' });
+    await screen.findByRole('heading', { name: 'Giant Swarm' });
 
     result.unmount();
     expect(document.documentElement).toHaveAttribute('data-agent-shell', '');
@@ -286,7 +307,7 @@ describe('ShellSignInPage', () => {
 
   it('fills the dynamic viewport, so a phone does not scroll the card page (T22 P5)', async () => {
     renderPage();
-    await screen.findByRole('heading', { name: 'Agent Platform' });
+    await screen.findByRole('heading', { name: 'Giant Swarm' });
 
     const css = Array.from(document.querySelectorAll('style'))
       .map(style => style.textContent ?? '')

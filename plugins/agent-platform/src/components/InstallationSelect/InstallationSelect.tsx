@@ -285,7 +285,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   const unreachableNote = (
     <UnreachableInstallationsAlert
       installations={unreachableInstallations}
-      resourceName="ModelConfigs"
+      resourceName="model configs"
     />
   );
   const notes = (

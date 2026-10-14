@@ -233,6 +233,9 @@ describe('GpuCapacityPanel', () => {
   });
 
   it('shows no empty table when every installation is unavailable', async () => {
+    // One pinned environment, or every one in view, failed: the alert is all
+    // the panel knows, so it neither says "some" nor claims there are no
+    // nodes.
     await renderInTestApp(
       <GpuCapacityPanel
         nodes={[]}
@@ -242,7 +245,11 @@ describe('GpuCapacityPanel', () => {
       />,
     );
 
-    expect(screen.getByText('No GPU nodes found.')).toBeInTheDocument();
+    expect(screen.getByText('GPU capacity is unavailable')).toBeInTheDocument();
+    expect(
+      screen.getByText(/inst-1: the nodes could not be read/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/No GPU nodes found/)).toBeNull();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 

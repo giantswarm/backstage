@@ -1,3 +1,4 @@
+import type { Page, Route } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
 
@@ -68,4 +69,78 @@ test('a workflow’s page loads with its steps on a canvas, a step selectable, n
       admin.getByRole('main').getByRole('button', { name }),
     ).toHaveCount(0);
   }
+});
+
+/**
+ * Stages the lab workflow as rendered by a Flux HelmRelease: the labels the
+ * helm-controller stamps, added to the workflow list the page reads, so the
+ * page treats it as changed through Git whatever installed it in the lab.
+ */
+async function stageFluxWorkflow(page: Page) {
+  await page.route('**/api/kubernetes/proxy/**', async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const body = await response.json().catch(() => undefined);
+    if (body?.kind !== 'WorkflowList' || !Array.isArray(body.items)) {
+      await route.fulfill({ response });
+      return;
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        items: body.items.map(
+          (item: { metadata?: { name?: string; labels?: object } }) =>
+            item.metadata?.name === WORKFLOW
+              ? {
+                  ...item,
+                  metadata: {
+                    ...item.metadata,
+                    labels: {
+                      ...item.metadata.labels,
+                      'helm.toolkit.fluxcd.io/name': 'e2e-workflows',
+                      'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
+                    },
+                  },
+                }
+              : item,
+        ),
+      },
+    });
+  });
+}
+
+test('a GitOps-managed workflow says where in Git to change it, from Edit in Git… in its menu', async ({
+  admin,
+}) => {
+  await stageFluxWorkflow(admin);
+  await open(admin, `${workflowPath}?installation=${lab.installation}`);
+  await expect(
+    admin.getByRole('heading', { level: 1, name: WORKFLOW }),
+  ).toBeVisible();
+
+  await admin
+    .getByRole('button', { name: 'More actions', exact: true })
+    .click();
+  await admin
+    .getByRole('menuitem', { name: 'Edit in Git…', exact: true })
+    .click();
+
+  const dialog = admin.getByRole('dialog');
+  await expect(dialog).toContainText(`Edit or remove ${WORKFLOW}`);
+  await expect(dialog).toContainText(
+    'Managed through GitOps: make the change in Git, or Flux reverts it.',
+  );
+  // The staged HelmRelease does not exist in the lab, so its source is not
+  // found; the dialog still names it and says what to change.
+  await expect(dialog).toContainText(
+    'HelmRelease agent-platform/e2e-workflows',
+    { timeout: 30_000 },
+  );
+  await expect(dialog).toContainText(
+    `Change the values that render ${WORKFLOW}`,
+  );
 });
