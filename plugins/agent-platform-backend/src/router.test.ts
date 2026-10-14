@@ -12,7 +12,7 @@ import {
   KagentClient,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
-import { turnPendingError, upstreamError } from './kagent/errors';
+import { upstreamError } from './kagent/errors';
 import { createRouter, kagentProbeUrl, RouterOptions } from './router';
 
 /**
@@ -2027,19 +2027,6 @@ describe('createRouter', () => {
       expect(response.body.error.message).toContain('no such agent');
     });
 
-    it('answers 202 for a turn that is still running, never a 5xx', async () => {
-      // The contract of the unary route: a turn that outlived the wait is still
-      // running, and `MiddlewareFactory.error()` would forward a 500 to Sentry.
-      streamMessage.mockRejectedValue(
-        turnPendingError('The agent on gazelle has not finished.'),
-      );
-
-      const response = await post();
-
-      expect(response.status).toBe(202);
-      expect(response.body).toEqual({ status: 'pending' });
-    });
-
     it('ends the relay cleanly when the upstream body dies mid-stream', async () => {
       // A gateway cutting the upstream connection must not crash the route or
       // surface as anything: an unterminated stream is the frontend's cue to
@@ -2266,17 +2253,42 @@ describe('createRouter', () => {
       expect(answerConfirmation).not.toHaveBeenCalled();
     });
 
-    it('answers 202 for a resumed turn that is still running, never a 5xx', async () => {
-      // Seen on gazelle: the resumed turn outlived the wait and the route let
-      // `KagentTurnPendingError` through as a 500.
-      streamAnswer.mockRejectedValue(
-        turnPendingError('The agent on gazelle has not finished.'),
+    it('answers at once and keeps a silent turn alive with keep-alive comments', async () => {
+      // Seen on gazelle: a resumed turn is silent until the agent produces
+      // something, and a silent response is what a door's idle timeout cuts.
+      // The headers go out before the first event, and SSE comments — which
+      // no consumer reads as an event — fill the silence.
+      const frame =
+        'data: {"statusUpdate":{"taskId":"task-1","status":{"state":"TASK_STATE_COMPLETED"}}}\n\n';
+      const encoder = new TextEncoder();
+      streamAnswer.mockResolvedValue(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              await new Promise(resolve => setTimeout(resolve, 120));
+              controller.enqueue(encoder.encode(frame));
+              controller.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          },
+        ),
       );
+      const heartbeating = await buildApp(twoInstallations, {
+        streamHeartbeatMs: 20,
+      });
 
-      const response = await post();
+      const response = await request(heartbeating)
+        .post('/kagent/sessions/abc/answer/stream')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(validBody);
 
-      expect(response.status).toBe(202);
-      expect(response.body).toEqual({ status: 'pending' });
+      expect(response.status).toBe(200);
+      expect(response.text).toMatch(/^(: keep-alive\n\n)+data: /);
+      expect(response.text.endsWith(frame)).toBe(true);
     });
 
     it('validates the body exactly as the unary answer route does', async () => {

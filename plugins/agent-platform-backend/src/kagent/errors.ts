@@ -176,10 +176,9 @@ export interface ErrorContext {
  *   which a2a-go reports under that code.
  * - `InvalidArgument` is a rejected request; each caller says what that means.
  * - `AlreadyExists` / `FailedPrecondition` / `Aborted` are conflicts.
- * - `DeadlineExceeded` / `Canceled` is a timeout — our own deadline on a unary
- *   call, or one kagent reports: a pending turn for a send, an upstream failure
- *   otherwise (kagent is deployed and unwell, not absent). A stream's own
- *   first-event bound does not come through here; see `KagentClient.openStream`.
+ * - `DeadlineExceeded` / `Canceled` is our own timeout: a pending turn for a
+ *   send, an upstream failure otherwise (kagent is deployed and unwell, not
+ *   absent).
  * - A socket-level cause (nothing listening, no such host, a TLS refusal),
  *   whatever code it arrived under, is "kagent is not deployed here" — a 404
  *   the frontend silences, marked transport-borne so a send verifies rather

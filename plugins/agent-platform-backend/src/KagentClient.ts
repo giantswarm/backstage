@@ -19,7 +19,6 @@ import {
   StreamResponseSchema,
   TaskSchema,
   type Part,
-  type StreamResponse,
   type Task,
 } from './kagent/gen/a2a_pb';
 import {
@@ -45,7 +44,6 @@ import {
   isUpstreamError,
   mapConnectError,
   turnPendingError,
-  upstreamError,
 } from './kagent/errors';
 import {
   A2A_EXTENSIONS_HEADER,
@@ -85,17 +83,6 @@ export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 
 /** Default per-request timeout toward a kagent controller. */
 export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
-
-/** What the wait for a stream's first event answers once the request timeout has passed without one. */
-const NO_EVENT_YET = Symbol('kagent.noEventYet');
-
-/**
- * Upper bound on reading an answer's stream that was handed back as pending
- * (see `openStream`) — the same bound the router puts on a relay, for the same
- * reason: an agent that never writes a terminal state must not pin an upstream
- * connection open indefinitely.
- */
-const PENDING_STREAM_MAX_DURATION_MS = 30 * 60_000;
 
 /**
  * How long to wait for an A2A turn before answering "still running".
@@ -600,17 +587,18 @@ export class KagentClient {
    * arrives on this turn is then a typed request the answer panel can render.
    * Each `StreamResponse` is relayed as one SSE `data:` frame carrying its JSON
    * (`{task}`, `{message}`, `{statusUpdate}`, `{artifactUpdate}`), so the router
-   * relays bytes and the frontend interprets. The returned {@link Response} has
-   * been opened (its first event awaited under the ordinary request timeout, as
-   * the gateway answers a `task` snapshot the moment the turn is accepted) so a
-   * rejection before the turn starts surfaces as an error here rather than as an
-   * empty stream; the caller relays its body and owns its lifetime through
-   * `signal`. No event within that timeout means kagent is unwell: an upstream
-   * timeout.
+   * relays bytes and the frontend interprets. The returned {@link Response} is
+   * answered at once, without waiting for the first event — a resumed task, for
+   * one, says nothing until the agent does, and an approved tool can run for
+   * minutes first. The caller relays its body and owns its lifetime through
+   * `signal`.
    *
-   * A stream that dies mid-turn — a gateway's request timeout, an Envoy drain —
-   * ends with one `{error}` frame and closes. The turn survives that as it
-   * survives a cut `SendMessage`: losing this connection does not stop the
+   * A rejection before any event — the turn never started — ends the stream
+   * with one `{error}` frame carrying the HTTP `status` (and `reason`) the
+   * unary route would have answered, so the caller can still tell a decision
+   * from a broken pipe. A stream that dies mid-turn — a gateway's request
+   * timeout, an Envoy drain — ends with one `{error}` frame and closes. The
+   * turn survives that as it survives a cut `SendMessage`: losing this connection does not stop the
    * agent, and the conversation poll shows it finish.
    */
   async streamMessage(
@@ -647,12 +635,6 @@ export class KagentClient {
    * cancelled at 30 s and the task left `submitted` with nothing to poll for.
    * Over a stream the browser follows the turn's events as they happen, a cut
    * stream is visible as such, and no deadline of ours bounds the agent's work.
-   *
-   * Unlike a new message, a resumed task can be silent for longer than the
-   * request timeout: kagent says nothing until the agent does, and the tool an
-   * approval releases runs first. That is reported as {@link turnPendingError}
-   * — the router's 202, after which the page follows the poll — and the stream
-   * is read to its end here rather than dropped, so the turn keeps its caller.
    */
   async streamAnswer(
     sessionId: string,
@@ -667,9 +649,7 @@ export class KagentClient {
   ): Promise<Response> {
     const target = this.targetOf(sessionId, agent);
     const message = await this.buildAnswerMessage(target, answer, options);
-    return this.openStream(target, message, options, signal, {
-      silenceIsPending: true,
-    });
+    return this.openStream(target, message, options, signal);
   }
 
   /**
@@ -683,80 +663,51 @@ export class KagentClient {
     message: OutboundMessage,
     options: KagentRequestOptions,
     signal: AbortSignal,
-    {
-      silenceIsPending = false,
-    }: {
-      /**
-       * Report a first event slower than the request timeout as a pending turn
-       * rather than an upstream timeout: the turn is resuming, not starting.
-       */
-      silenceIsPending?: boolean;
-    } = {},
   ): Promise<Response> {
     const request = this.buildRequest(target, message);
-    // The call follows the relay's signal — except once it is handed back as
-    // pending, when it is detached from it (below).
-    const call = new AbortController();
-    const followRelay = () => call.abort();
-    signal.addEventListener('abort', followRelay, { once: true });
     const stream = this.a2aService
       .sendStreamingMessage(request, {
         headers: this.turnHeaders(options),
-        signal: call.signal,
+        signal,
       })
       [Symbol.asyncIterator]();
-
-    // The first event is awaited under the ordinary request timeout, so a
-    // rejection — which kagent answers at once — surfaces as an error here,
-    // with its own status.
-    const firstEvent = stream.next();
-    let first: IteratorResult<StreamResponse> | typeof NO_EVENT_YET;
-    try {
-      first = await this.firstEventWithin(firstEvent);
-    } catch (error) {
-      if (signal.aborted) {
-        // The caller hung up before kagent answered. Nothing to report to
-        // anyone — rethrown for the router to swallow as a closed connection.
-        throw error;
-      }
-      throw this.mapError(error, this.sendContext(true));
-    }
-
-    if (first === NO_EVENT_YET) {
-      if (!silenceIsPending) {
-        call.abort();
-        throw upstreamError(
-          `The kagent API for installation '${this.installation.name}' did not start the turn within ${this.timeoutMs}ms.`,
-          'timeout',
-        );
-      }
-      // A resumed turn that has said nothing yet. Answered now as pending, not
-      // held: a silent response is what a gateway in front of Backstage cuts,
-      // and the page follows the poll from a 202 as it does from a cut stream.
-      // The call is detached from the relay and read to its end, because
-      // dropping a stream before its first event can take the turn with it.
-      signal.removeEventListener('abort', followRelay);
-      this.readToEnd(stream, firstEvent, call);
-      throw turnPendingError(
-        `The agent on installation '${this.installation.name}' has produced nothing within ${this.timeoutMs}ms; the turn is still running.`,
-      );
-    }
 
     const encoder = new TextEncoder();
     const frame = (payload: unknown) =>
       encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
     const logger = this.logger;
     const installationName = this.installation.name;
+    const refusal = (error: unknown) =>
+      this.mapError(error, this.sendContext(false));
 
     const body = new ReadableStream<Uint8Array>({
       async start(controller) {
+        let sawEvent = false;
         try {
-          let next = first;
-          while (!next.done) {
+          for (;;) {
+            const next = await stream.next();
+            if (next.done) {
+              break;
+            }
+            sawEvent = true;
             controller.enqueue(frame(toJson(StreamResponseSchema, next.value)));
-            next = await stream.next();
           }
         } catch (error) {
+          if (!sawEvent && !signal.aborted) {
+            // Refused before the turn started: what the unary route would
+            // have answered, carried in-band because the headers are gone.
+            const mapped = refusal(error);
+            controller.enqueue(
+              frame({
+                error: {
+                  status: httpStatusOf(mapped),
+                  message: mapped.message,
+                  reason: (mapped as { reason?: string }).reason,
+                },
+              }),
+            );
+            return;
+          }
           // The stream died mid-turn (a gateway's request timeout, an Envoy
           // drain, a runtime failure the gateway reports in-band). One error
           // frame says so; the turn keeps running regardless, and an
@@ -1438,51 +1389,6 @@ export class KagentClient {
       this.logger,
       this.turnTimeoutMs,
     );
-  }
-
-  /**
-   * A stream's first event, or {@link NO_EVENT_YET} once the request timeout
-   * has passed without it. The read itself is left running.
-   */
-  private firstEventWithin<T>(
-    next: Promise<T>,
-  ): Promise<T | typeof NO_EVENT_YET> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<typeof NO_EVENT_YET>(resolve => {
-      timer = setTimeout(() => resolve(NO_EVENT_YET), this.timeoutMs);
-    });
-    return Promise.race([next, timeout]).finally(() => clearTimeout(timer));
-  }
-
-  /**
-   * Read a stream handed back as pending to its end, relaying nothing, so the
-   * turn keeps a caller for as long as it runs. Bounded like a relay.
-   */
-  private readToEnd(
-    stream: AsyncIterator<StreamResponse>,
-    firstEvent: Promise<IteratorResult<StreamResponse>>,
-    call: AbortController,
-  ): void {
-    const bound = setTimeout(
-      () => call.abort(),
-      PENDING_STREAM_MAX_DURATION_MS,
-    );
-    bound.unref?.();
-    void (async () => {
-      try {
-        let next = await firstEvent;
-        while (!next.done) {
-          next = await stream.next();
-        }
-      } catch (error) {
-        this.logger.debug(
-          `A pending kagent event stream for installation '${this.installation.name}' ended before the turn did`,
-          { error: String(error) },
-        );
-      } finally {
-        clearTimeout(bound);
-      }
-    })();
   }
 }
 

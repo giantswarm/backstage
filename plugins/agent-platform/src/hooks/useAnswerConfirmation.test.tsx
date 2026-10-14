@@ -289,9 +289,10 @@ describe('useAnswerConfirmation', () => {
     });
 
     it('follows a resumed turn still running before its first event through the poll', async () => {
-      // The streaming route's 202: the client resolves with no events. The
-      // answer went through and the turn is running, so this is the page's
-      // "following" state — not a failure, and nothing to verify.
+      // A stream that ended cleanly before the agent said anything — the
+      // relay's duration bound, after nothing but keep-alives — resolves with
+      // no events. The turn may well be running, so this is the page's
+      // "following" state: not a failure, and nothing to verify.
       streamAnswer.mockResolvedValue(undefined);
 
       const { result, invalidateQueries } = renderWith(agent);

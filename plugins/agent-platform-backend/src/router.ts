@@ -56,6 +56,8 @@ export interface RouterOptions {
    * an answer in time. Tests leave it out and get an immediate warm-up.
    */
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
+  /** How often a streaming route writes its keep-alive. Overridable for tests. */
+  streamHeartbeatMs?: number;
 }
 
 /**
@@ -313,26 +315,15 @@ function readAnswerBody(req: express.Request): {
 const STREAM_MAX_DURATION_MS = 30 * 60_000;
 
 /**
- * Answer a turn that is still running ({@link isTurnPendingError}) with the
- * 202 every send route shares, and rethrow anything else.
+ * How often the streaming routes write an SSE comment while they relay.
  *
- * Never a 5xx for it: `MiddlewareFactory.error()` forwards those to Sentry —
- * one issue per long turn, for the thing an agent is supposed to do. The
- * caller follows the conversation poll from the 202.
+ * A turn can be silent for minutes — a resumed task says nothing until the
+ * agent does, and an approved tool runs first — and a silent response is what
+ * an idle timeout in front of Backstage cuts (15 s on Envoy Gateway's
+ * default). A comment is bytes on the wire that no SSE consumer reads as an
+ * event, so the stream, and the page's live preview, survive the silence.
  */
-function answerTurnPending(
-  error: unknown,
-  res: express.Response,
-  logger: LoggerService,
-): void {
-  if (!isTurnPendingError(error)) {
-    throw error;
-  }
-  logger.debug('A kagent turn is still running; answering 202', {
-    error: (error as Error).message,
-  });
-  res.status(202).json({ status: 'pending' });
-}
+const STREAM_HEARTBEAT_MS = 5_000;
 
 /**
  * Relay one upstream event stream to the browser as SSE.
@@ -344,16 +335,22 @@ function answerTurnPending(
  *
  * - **Before the upstream stream opens**, errors propagate to the error
  *   middleware exactly as on the non-streaming routes — a malformed body is a
- *   400, an unknown agent a 404, a rejected token a 401, a session that is
- *   still working on the previous turn a 409. Nothing has been dispatched, and
- *   the caller hears so. The one exception is a turn reported still running,
- *   which is a 202 as on the unary routes.
+ *   400, an answer to a task that is not waiting a 409. Nothing has been
+ *   dispatched, and the caller hears so. kagent's own refusal of the turn (an
+ *   unknown session, a rejected token, a session still working on the
+ *   previous turn) comes after the headers, as the stream's only frame: an
+ *   `{error}` carrying the status this route would otherwise have answered.
  * - **After it opens**, the route has already answered 200 and can only relay
  *   or stop. A relay that ends without a terminal event — kagent cut off by a
  *   gateway, this response cut off by the browser's own door, the duration
  *   bound — is not reported as anything, because the turn survives it: the
  *   frontend treats an unterminated stream as "still running" and follows the
  *   poll, the same contract as the unary routes' 202.
+ *
+ * The headers go out as soon as the upstream stream is opened — before its
+ * first event, which may be minutes away — and a `: keep-alive` comment every
+ * {@link STREAM_HEARTBEAT_MS} keeps a silent stream inside a door's idle
+ * timeout.
  *
  * The relay is flush-wrapped because Backstage's root router applies
  * `compression()` globally, which buffers `res.write()` until `res.end()` —
@@ -363,6 +360,7 @@ function answerTurnPending(
 async function relayEventStream(
   res: express.Response,
   logger: LoggerService,
+  heartbeatMs: number,
   open: (signal: AbortSignal) => Promise<Response>,
 ): Promise<void> {
   // One signal governs the whole relay: the browser going away and the
@@ -383,10 +381,7 @@ async function relayEventStream(
     if (res.writableEnded || upstreamControl.signal.aborted) {
       return;
     }
-    // A turn still running before its stream opened is the unary routes'
-    // 202: the frontend follows the poll exactly as after a cut stream.
-    answerTurnPending(error, res, logger);
-    return;
+    throw error;
   }
 
   res.status(200);
@@ -423,6 +418,15 @@ async function relayEventStream(
     return;
   }
 
+  // Written between chunks only: each chunk is one whole frame as the client
+  // enqueued it, and the writes share this event loop, so a comment never
+  // lands inside a frame.
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded && !upstreamControl.signal.aborted) {
+      res.write(': keep-alive\n\n');
+    }
+  }, heartbeatMs);
+
   const reader = body.getReader();
   try {
     for (;;) {
@@ -443,6 +447,7 @@ async function relayEventStream(
       { error: String(error) },
     );
   } finally {
+    clearInterval(heartbeat);
     clearTimeout(maxDurationTimer);
     res.end();
   }
@@ -451,7 +456,7 @@ async function relayEventStream(
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { logger, config } = options;
+  const { logger, config, streamHeartbeatMs = STREAM_HEARTBEAT_MS } = options;
 
   const installations = readKagentInstallationsFromConfig(config, logger);
   const timeoutMs =
@@ -1064,9 +1069,16 @@ export async function createRouter(
       );
       res.json(result);
     } catch (error) {
+      if (!isTurnPendingError(error)) {
+        throw error;
+      }
       // Accepted, not finished. The caller stops waiting and reads the outcome
       // from the conversation poll like any other progress.
-      answerTurnPending(error, res, logger);
+      logger.debug(
+        'A kagent turn outlived its timeout; answering 202 and leaving it running',
+        { turnTimeoutMs },
+      );
+      res.status(202).json({ status: 'pending' });
     }
   });
 
@@ -1089,7 +1101,7 @@ export async function createRouter(
         readMessageBody(req);
       const userToken = readUserToken(req, { required: true });
 
-      await relayEventStream(res, logger, signal =>
+      await relayEventStream(res, logger, streamHeartbeatMs, signal =>
         client.streamMessage(
           readSessionId(req),
           { namespace: agentNamespace, name: agentName },
@@ -1158,7 +1170,10 @@ export async function createRouter(
       // Same contract as the messages route: a turn still running is a 202, not a
       // failure. The answer has been accepted by then; only the agent's reply is
       // outstanding.
-      answerTurnPending(error, res, logger);
+      if (!isTurnPendingError(error)) {
+        throw error;
+      }
+      res.status(202).json({ status: 'pending' });
     }
   });
 
@@ -1179,7 +1194,7 @@ export async function createRouter(
     const { agent, answer } = readAnswerBody(req);
     const userToken = readUserToken(req, { required: true });
 
-    await relayEventStream(res, logger, signal =>
+    await relayEventStream(res, logger, streamHeartbeatMs, signal =>
       client.streamAnswer(
         readSessionId(req),
         agent,

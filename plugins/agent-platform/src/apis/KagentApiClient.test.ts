@@ -1092,12 +1092,55 @@ describe('KagentApiClient', () => {
       ).rejects.toMatchObject({ name: 'StreamTransportError' });
     });
 
-    it('resolves a 202 with no events, as the unary answer does', async () => {
-      // The backend's "still running": accepted, nothing to relay. Not a
-      // stream that failed to open — a transport failure here would send the
-      // caller to verify, and report the answer as failed when the check
-      // cannot see it yet.
-      fetchMock.mockResolvedValue(jsonResponse({ status: 'pending' }, 202));
+    it.each([
+      [409, 'ConflictError'],
+      [401, 'UnauthorizedError'],
+      [404, 'NotFoundError'],
+    ])(
+      'reports an in-band %i before any event as the same error that status is',
+      async (status, name) => {
+        // The backend answers the headers before kagent has said anything, so
+        // a refusal of the turn comes as the stream's only frame.
+        fetchMock.mockResolvedValue(
+          sseResponse([
+            `data: {"error":{"status":${status},"message":"refused"}}\n\n`,
+          ]),
+        );
+
+        await expect(
+          buildClient().streamAnswer(
+            'gazelle',
+            'abc123',
+            { namespace: 'kagent', name: 'a' },
+            answer,
+            () => {},
+          ),
+        ).rejects.toMatchObject({ name, status, message: 'refused' });
+      },
+    );
+
+    it('reports an in-band 5xx before any event as a transport failure to verify', async () => {
+      fetchMock.mockResolvedValue(
+        sseResponse([
+          'data: {"error":{"status":500,"message":"kagent failed"}}\n\n',
+        ]),
+      );
+
+      await expect(
+        buildClient().streamAnswer(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          answer,
+          () => {},
+        ),
+      ).rejects.toMatchObject({ name: 'StreamTransportError' });
+    });
+
+    it('resolves a stream that carried only keep-alive comments, for the poll to follow', async () => {
+      fetchMock.mockResolvedValue(
+        sseResponse([': keep-alive\n\n', ': keep-alive\n\n']),
+      );
       const events: unknown[] = [];
 
       await expect(

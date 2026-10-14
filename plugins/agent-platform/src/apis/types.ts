@@ -234,8 +234,7 @@ export interface KagentApi {
    * Resolving means the stream ended — **not** that the turn did. Gateways cut
    * long-lived responses (60 s on a stock route) and the turn survives the cut,
    * so a resolve without a terminal event means "still running, follow the
-   * poll", the exact contract of {@link sendMessage}'s 202. The streaming
-   * route's own 202 resolves the same way, with no events.
+   * poll", the exact contract of {@link sendMessage}'s 202.
    *
    * Rejections split the same way the backend splits them: a **decision** (a
    * rejected request, an unknown instance, a second message during a turn)

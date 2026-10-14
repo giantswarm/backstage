@@ -564,14 +564,16 @@ describe('KagentClient against a fake controller', () => {
     it('refuses a second message during a turn as a 409', async () => {
       const { client } = build({ turn: () => ({ kind: 'long' }) });
       const id = await created(client);
-      const first = client.streamMessage(
+      const first = await client.streamMessage(
         id,
         AGENT,
         { messageId: 'm1', text: 'long' },
         USER,
         new AbortController().signal,
       );
-      await first;
+      // The stream is answered before the turn starts; its first frame is
+      // what says the turn is running.
+      await first.body!.getReader().read();
 
       await expect(
         client.sendMessage(id, AGENT, { messageId: 'm2', text: 'again' }, USER),
@@ -663,34 +665,27 @@ describe('KagentClient against a fake controller', () => {
       });
     });
 
-    it('reports a new message with no first event within the request timeout as an upstream timeout', async () => {
-      // A new turn is answered with a task snapshot at once; silence means
-      // kagent is unwell, unlike a resumed turn (see the answer tests).
-      const { client } = build({}, [delayFirstEvent(700)]);
-      const id = await created(client);
-
-      await expect(
-        client.streamMessage(
-          id,
-          AGENT,
-          { messageId: 'm1', text: 'x' },
-          USER,
-          new AbortController().signal,
-        ),
-      ).rejects.toMatchObject({ name: 'UpstreamError', reason: 'timeout' });
-    });
-
-    it('maps a rejection before the stream opens to the caller’s error', async () => {
+    it('carries a rejection before any event in-band, with the status the unary route answers', async () => {
+      // The stream is answered before kagent has said anything, so a refusal
+      // can no longer be the response's status; the one frame carries it.
       const { client } = build();
-      await expect(
-        client.streamMessage(
-          'not-a-session',
-          AGENT,
-          { messageId: 'm1', text: 'x' },
-          USER,
-          new AbortController().signal,
-        ),
-      ).rejects.toMatchObject({ name: 'NotFoundError' });
+
+      const response = await client.streamMessage(
+        'not-a-session',
+        AGENT,
+        { messageId: 'm1', text: 'x' },
+        USER,
+        new AbortController().signal,
+      );
+
+      expect(await frames(response)).toEqual([
+        {
+          error: {
+            status: 404,
+            message: expect.stringContaining('That session does not exist'),
+          },
+        },
+      ]);
     });
   });
 
@@ -883,18 +878,11 @@ describe('KagentClient against a fake controller', () => {
       });
     });
 
-    it('reports a resumed turn silent past the request timeout as pending, and leaves it running', async () => {
-      // Seen on gazelle: the resumed turn produced nothing within the request
-      // timeout, and the route answered 500. A resumed task says nothing until
-      // the agent does; that is the 202 contract, not a failure.
-      let call: AbortSignal | undefined;
+    it('relays a resumed turn whose first event comes after the request timeout', async () => {
+      // Seen on gazelle: the resumed turn said nothing within the request
+      // timeout and the route answered 500. A resumed task is silent until the
+      // agent produces something; that is a turn running, not kagent unwell.
       const { client } = build({ turn: () => approval }, [
-        next => async request => {
-          if (request.stream) {
-            call = request.signal;
-          }
-          return next(request);
-        },
         delayFirstEvent(700),
       ]);
       const id = await created(client);
@@ -906,39 +894,22 @@ describe('KagentClient against a fake controller', () => {
       )) as {
         task: { id: string };
       };
-      const relay = new AbortController();
 
-      await expect(
-        client.streamAnswer(
-          id,
-          AGENT,
-          { messageId: 'm2', taskId: paused.task.id, decision: 'approve' },
-          USER,
-          relay.signal,
-        ),
-      ).rejects.toMatchObject({
-        name: TURN_PENDING_ERROR_NAME,
-        message: expect.stringContaining('within 500ms'),
+      const response = await client.streamAnswer(
+        id,
+        AGENT,
+        { messageId: 'm2', taskId: paused.task.id, decision: 'approve' },
+        USER,
+        new AbortController().signal,
+      );
+
+      const events = (await frames(response)) as Record<string, unknown>[];
+      expect(events.at(-1)).toEqual({
+        statusUpdate: expect.objectContaining({
+          taskId: paused.task.id,
+          status: expect.objectContaining({ state: 'TASK_STATE_COMPLETED' }),
+        }),
       });
-
-      // The router answers the 202 and the browser connection closes. The
-      // upstream call must outlive it: dropping a stream before its first
-      // event can take the turn with it.
-      relay.abort();
-      expect(call?.aborted).toBe(false);
-      for (let attempt = 0; attempt < 50; attempt += 1) {
-        const { tasks } = (await client.listSessionTasks(id, USER)) as {
-          tasks: { id: string; status: { state: string } }[];
-        };
-        if (
-          tasks.find(task => task.id === paused.task.id)?.status.state ===
-          'TASK_STATE_COMPLETED'
-        ) {
-          return;
-        }
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-      throw new Error('the resumed turn never completed');
     });
 
     it('refuses to stream an answer to a task that is not waiting, as a 409', async () => {
