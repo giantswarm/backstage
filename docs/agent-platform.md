@@ -1134,6 +1134,18 @@ never fold. A summary is open while its run is in progress and collapsed after.
 folds out its exact call. The pending approval card always shows the exact
 arguments Allow would run.
 
+**"Show tool activity" hides the work, not detail** (PO, S9). One small
+switch at the end of the header's meta line, after "Started …", on by default
+and stored per person (`useShowToolActivity`, key `showToolActivity` in the
+`agent-platform` bucket). Off, the timeline keeps
+messages, attachments, turn endings, questions and the approval the session is
+waiting on (`openApprovalId`: the newest one, unanswered, while the session
+awaits input), and drops work summaries, lone reasoning and every other
+permission request (`isConversationSegment`). A turn left empty shows no
+marker; the "Working…" row stays. The conversation and the switch wait for the
+stored choice (cached for the app load, the default after 3 s), so the work
+never shows and then hides.
+
 **The composer is docked** (T40): `position: sticky` at the end of the
 conversation column, offset by `--agent-shell-mobile-bar-height` on phones, and
 the column is at least the view's height (`useDockedComposerLayout`).
