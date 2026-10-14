@@ -35,7 +35,9 @@ export type LlmUsageView = {
 export type LlmUsageOptions = LlmUsageQueryOptions & {
   /**
    * Also query the spend over the window before this one, reported as
-   * `usage.totals.previousCostUsd`. Off by default: one more query.
+   * `usage.totals.previousCostUsd` when the data reaches back to that
+   * window's start. Off by default: two more queries, one of them a day's
+   * read to check that reach.
    */
   comparePrevious?: boolean;
   /**
@@ -55,7 +57,7 @@ const UNKNOWN_MODEL = 'Unknown model';
  * default its last `WINDOW_DAYS` across every organization, or the window and
  * the organization `options` name.
  *
- * Twelve queries (a thirteenth with `comparePrevious`, two more with
+ * Twelve queries (two more with `comparePrevious`, two more with
  * `dailyCalls`): ten instant and two range, written out one call at a time.
  * A *fixed* list of hook calls rather than `useQueries` — the same shape
  * `useMimirResourceUsage` uses for its four — and not wrapped in a local
@@ -228,6 +230,11 @@ export function useLlmUsage(
     query: llmUsageQueries.previousCost,
     enabled: enabled && comparePrevious,
   });
+  const previousCostCovered = useMimirQuery({
+    installationName,
+    query: llmUsageQueries.previousCostCovered,
+    enabled: enabled && comparePrevious,
+  });
 
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
@@ -253,7 +260,8 @@ export function useLlmUsage(
     unpricedLookups.isLoading ||
     costPerDay.isLoading ||
     tokensPerDay.isLoading ||
-    (comparePrevious && previousCost.isLoading) ||
+    (comparePrevious &&
+      (previousCost.isLoading || previousCostCovered.isLoading)) ||
     (dailyCalls && callsPerDay.isLoading);
   // The two **range** queries count as page failures alongside the instant
   // vectors. A failed range query leaves `reduceDaily` with nothing, and since
@@ -311,6 +319,11 @@ export function useLlmUsage(
       previousCost: comparePrevious
         ? (previousCost.data?.data?.result ?? [])
         : undefined,
+      // A failed check hides the change too: claiming a baseline nobody
+      // verified is the error this check exists to stop.
+      previousCostCovered:
+        !previousCostCovered.error &&
+        (previousCostCovered.data?.data?.result ?? []).length > 0,
     });
   }, [
     enabled,
@@ -336,6 +349,8 @@ export function useLlmUsage(
     windowDays,
     comparePrevious,
     previousCost.data,
+    previousCostCovered.data,
+    previousCostCovered.error,
     dailyCalls,
     callsPerDay.data,
     callsPerDay.error,

@@ -134,14 +134,21 @@ Muster's workflows, read-only.
 
 - **Overview** — platform health and trends from the LLM gateway.
 - **Cost** — spend from the gateway, by agent and model.
-- **Connectors** — every caller's tool calls from muster's metrics, always 30
-  days. Only where the muster plugin is registered.
+- **Connectors** — every caller's tool calls from muster's metrics. Only where
+  the muster plugin is registered.
 - **Your sessions** — the person's own usage from their kagent sessions,
-  limited to what kagent keeps.
+  limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
+  30 days by default); wider ranges are disabled there.
 
 Gateway figures cover everyone's traffic and need the installation's metrics
 (see the configuration page); without them, Overview and Cost say so and still
 show the person's own session figures.
+
+Each installation's metrics start on a different day. When the selected range
+reaches back further than the data, Overview, Cost and Connectors say where
+their data starts and how many of the range's days it covers; otherwise they
+say nothing. Cost shows the change against the previous range only when the
+data covers all of it.
 
 ## Profile and settings
 
@@ -2069,7 +2076,8 @@ everyone's calls; Your sessions prices only the reader's tokens.
   midnight, and an instant query per chart,
   `increase(...[<elapsed-since-midnight>])`, fills the last row
   (`applyTodayPartial`). The Cost tab's spend change compares whole windows
-  (`previousCost`, an offset query).
+  (`previousCost`, an offset query), and only when `previousCostCovered`
+  finds cost samples in the day before the previous window starts.
 - **The axis is the window.** `reduceDaily` renders every day of
   `dailyWindowDayKeys()`, zeros included; otherwise recharts drew a one-day
   metric as one bar across the chart. `StackedBarChart`'s `maxBarWidth` is the
@@ -2177,8 +2185,33 @@ The 7, 30 or 90-day toggle (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
 out of the URL) drives every view. Gateway views query the window directly.
 Your sessions narrows kagent's `windowDays` answer client-side (`narrowDaily`)
 and disables wider choices; its by-agent and top tables still cover kagent's
-full window. muster's MCP section stays at 30 days. `windowDays` and
-`windowStart` travel in the response, so no heading hardcodes a window.
+full window. muster's MCP section passes the window to `/usage` as hours
+and buckets it by day. `windowDays` and `windowStart` travel in the response,
+so no heading hardcodes a window.
+
+**Where the data starts is read from the data**, never configured, and shown
+only when it is after the window's first day (`usageDataStart` in
+`agent-platform-common`):
+
+- Gateway views: `firstSampledDay` takes the earliest day any daily range
+  answer (cost, tokens, calls) has a point for, else today's partial. No extra
+  query; a zero is a day the series existed, so it counts. `usage.dataStart`
+  feeds `DataStartNote` on Overview and Cost.
+- Connectors: muster-backend's `/usage` returns `data_start`, the first bucket
+  any outcome series has a sample for.
+- The spend delta: one more instant query with `comparePrevious`,
+  `count(last_over_time(<cost>[1d] offset <2 × window>))`, scoped like
+  `previousCost`. Empty or failed drops `previousCostUsd`, which hides the
+  delta; the Spend tile's hint says it shows only when the data covers the
+  previous window.
+
+A series is absent, not zero, before its label set's first call since the
+gateway or muster pod started, so a long quiet stretch at the start of the
+window after a restart also reads as the data starting later.
+
+`sessionUsage.maxAgeMs` defaults to `windowDays` plus one day. Set explicitly,
+it does not follow `windowDays`: a value below the window drops sessions idle
+for longer than it, though their turns are inside the window.
 
 ### Your top connectors is prefix-derived
 

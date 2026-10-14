@@ -172,6 +172,7 @@ describe('llmUsageQueriesFor', () => {
       'durationP50',
       'durationP95',
       'previousCost',
+      'previousCostCovered',
     ] as const) {
       expect(queries[key]).toContain(only);
     }
@@ -189,6 +190,15 @@ describe('llmUsageQueriesFor', () => {
         '7d',
         '7d',
       )}`,
+    );
+  });
+
+  it('asks whether spend was recorded in the day before the previous window', () => {
+    expect(llmUsageQueriesFor({ days: 7 }).previousCostCovered).toBe(
+      'count(last_over_time(agentgateway_gen_ai_client_cost_usd_total[1d] offset 14d))',
+    );
+    expect(llmUsageQueriesFor({ days: 90 }).previousCostCovered).toContain(
+      '[1d] offset 180d',
     );
   });
 
@@ -304,8 +314,13 @@ describe('counterIncrease', () => {
   });
 
   it('is what every usage query counts with — no bare increase() or rate()', () => {
+    // The coverage check counts series that exist, not a counter's growth.
+    const { previousCostCovered: _, ...counted } = llmUsageQueriesFor({
+      days: 7,
+      org: 'support',
+    });
     const all = [
-      ...Object.values(llmUsageQueriesFor({ days: 7, org: 'support' })),
+      ...Object.values(counted),
       ...Object.values(llmUsageRangeQueriesFor()),
       ...Object.values(todayPartialQueries('600s')),
     ];

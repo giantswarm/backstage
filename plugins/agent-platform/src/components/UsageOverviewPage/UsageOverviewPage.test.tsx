@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { usageRouteRef } from '../../routes';
 import type { LlmUsage } from '../../lib/llmUsage';
+import { formatUsageDay } from '../../lib/usageWindow';
 import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageOverviewPage } from './UsageOverviewPage';
 
@@ -355,6 +356,29 @@ describe('UsageOverviewPage', () => {
     ).toBeNull();
     // The rest of the view is still true without them.
     expect(screen.getByText('Gateway health')).toBeInTheDocument();
+  });
+
+  it('says where the gateway’s data starts when it cuts the window short', async () => {
+    view.usage = {
+      ...usage(),
+      windowDays: 90,
+      dataStart: { day: '2026-09-09', coveredDays: 36 },
+    };
+
+    renderPage('/agent-platform/usage/overview?window=90d');
+
+    expect(
+      await screen.findByText(
+        `The gateway's data starts on ${formatUsageDay('2026-09-09')}, so its figures cover 36 of the 90 days.`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing about the data start when the data covers the window', async () => {
+    renderPage();
+
+    expect(await screen.findByText('Spend')).toBeInTheDocument();
+    expect(screen.queryByText(/data starts on/)).toBeNull();
   });
 
   it('reads the window from the URL', async () => {

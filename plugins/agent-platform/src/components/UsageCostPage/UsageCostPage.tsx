@@ -12,6 +12,7 @@ import {
 import {
   CostKpiTiles,
   CostPerDayCard,
+  DataStartNote,
   LlmByAgentTable,
   LlmByModelTable,
   LlmUsageState,
@@ -117,6 +118,7 @@ export function UsageCostPage() {
 
         {view.state === 'ready' && usage && (
           <>
+            <DataStartNote usage={usage} />
             <CostKpiTiles usage={usage} currency={currency} windowDays={days} />
             {/* Beside the headline it qualifies: every figure on this page
                 understates the bill by what an unpriced model spent, and

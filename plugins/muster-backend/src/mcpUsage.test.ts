@@ -229,6 +229,8 @@ describe('getMcpUsage', () => {
     );
     expect(nonEmpty).toHaveLength(2);
     expect(nonEmpty[1]).toMatchObject({ ok: 20, error: 1 });
+    // The first sampled step's bucket, by its start.
+    expect(usage.data_start).toBe(nonEmpty[0].start);
 
     expect(usage.totals).toEqual({
       calls: 31,
@@ -320,6 +322,8 @@ describe('getMcpUsage', () => {
           ),
         );
         expect(usage.totals.calls).toBe(day);
+        // The pre-window sample does not move where the data starts.
+        expect(usage.data_start).toBe(usage.buckets[0].start);
         expect(usage.servers).toEqual([
           { server: 'jira', calls: day, errors: 0 },
         ]);
@@ -345,6 +349,44 @@ describe('getMcpUsage', () => {
 
       expect(usage.totals.calls).toBe(3);
       expect(usage.servers).toEqual([{ server: 'jira', calls: 3, errors: 0 }]);
+    });
+  });
+
+  describe('where the data starts', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    function clientWithDays(days: number) {
+      return fakeClient((tool, args) => {
+        if (tool === 'core_mcpserver_list') {
+          return SERVER_LIST;
+        }
+        const end = Date.parse(String(args.end)) / 1000;
+        const lines = ['Result Type: matrix', 'Result: {outcome="ok"} =>'];
+        for (let day = days - 1; day >= 0; day--) {
+          lines.push(`${day === days - 1 ? 0 : 2} @[${end - day * 86400}]`);
+        }
+        return days > 0 ? lines.join('\n') : 'Result Type: matrix\nResult:';
+      });
+    }
+
+    it('is the first daily bucket with a sample, a zero included', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
+
+      const usage = await getMcpUsage(clientWithDays(3), INSTALLATION, {}, 168);
+
+      expect(usage.buckets).toHaveLength(7);
+      expect(usage.data_start).toBe('2026-10-12T00:00:00.000Z');
+    });
+
+    it('is absent when no bucket has a sample', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
+
+      const usage = await getMcpUsage(clientWithDays(0), INSTALLATION, {}, 168);
+
+      expect(usage.available).toBe(true);
+      expect(usage).not.toHaveProperty('data_start');
     });
   });
 

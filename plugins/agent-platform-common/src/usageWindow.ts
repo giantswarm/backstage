@@ -69,3 +69,56 @@ export function formatUsageWindowParam(
 export function usageWindowLabel(days: UsageWindowDays): string {
   return `${days} days`;
 }
+
+/**
+ * Where a source's data starts inside the selected window, when it starts
+ * after the window does — the case where the figures cover fewer days than
+ * the control names.
+ *
+ * Every installation's metrics start on a different day (when its gateway or
+ * muster began exporting them), so the views read it from the data rather than
+ * from configuration, and only mention it when it cuts the window short.
+ */
+export type UsageDataStart = {
+  /** The first UTC day with data, as `YYYY-MM-DD`. */
+  day: string;
+  /** How many of the window's days that leaves covered, today included. */
+  coveredDays: number;
+};
+
+/**
+ * The data start to mention for a window, or `undefined` when the data covers
+ * the window's first day — or there is no data at all, which the views' empty
+ * states already say.
+ *
+ * `windowDays` are the window's UTC days as `YYYY-MM-DD`, oldest first (the
+ * keys the daily charts render); `firstDataDay` is the earliest of them that
+ * holds any sample. Day keys compare as strings.
+ */
+export function usageDataStart(
+  windowDays: readonly string[],
+  firstDataDay: string | undefined,
+): UsageDataStart | undefined {
+  if (!firstDataDay || windowDays.length === 0) {
+    return undefined;
+  }
+  if (firstDataDay <= windowDays[0]) {
+    return undefined;
+  }
+  const coveredDays = windowDays.filter(day => day >= firstDataDay).length;
+  return { day: firstDataDay, coveredDays };
+}
+
+/** A `YYYY-MM-DD` UTC day as a date with its year, e.g. `9 Sep 2026`. */
+export function formatUsageDay(day: string): string {
+  const at = Date.parse(`${day}T00:00:00Z`);
+  if (Number.isNaN(at)) {
+    return day;
+  }
+  return new Date(at).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}

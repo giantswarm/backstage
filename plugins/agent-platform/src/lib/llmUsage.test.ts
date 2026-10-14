@@ -7,6 +7,7 @@ import {
   applyTodayPartial,
   buildLlmUsage,
   cacheReadShare,
+  firstSampledDay,
   foldSeries,
   hasAnyLlmUsage,
   reduceByAgent,
@@ -944,5 +945,59 @@ describe('foldSeries', () => {
       series: ['a', 'Other'],
       rows: [{ day: '2026-09-04', a: 5, Other: 0 }],
     });
+  });
+});
+
+describe('firstSampledDay', () => {
+  // Midnight of 10 Sep 2026: a point there totals 9 Sep.
+  const SEP_10 = Date.UTC(2026, 8, 10) / 1000;
+  const DAY = 86400;
+
+  it('is the earliest day any daily series has a point for, by the day it covers', () => {
+    expect(
+      firstSampledDay(
+        [
+          [{ metric: {}, values: [[SEP_10 + DAY, '1']] }],
+          [{ metric: {}, values: [[SEP_10, '0']] }],
+        ],
+        { day: '2026-10-14', samples: [] },
+      ),
+    ).toBe('2026-09-09');
+  });
+
+  it('skips values that are not numbers, and series that failed or were not asked for', () => {
+    expect(
+      firstSampledDay(
+        [
+          [
+            {
+              metric: {},
+              values: [
+                [SEP_10, 'NaN'],
+                [SEP_10 + DAY, '2'],
+              ],
+            },
+          ],
+          null,
+          undefined,
+        ],
+        { day: '2026-10-14', samples: [] },
+      ),
+    ).toBe('2026-09-10');
+  });
+
+  it('is today when only today’s partial has data', () => {
+    expect(
+      firstSampledDay([[]], {
+        day: '2026-10-14',
+        samples: [undefined, [{ metric: {}, value: [SEP_10, '3'] }]],
+      }),
+    ).toBe('2026-10-14');
+  });
+
+  it('is undefined without any data', () => {
+    expect(
+      firstSampledDay([[], undefined], { day: '2026-10-14', samples: [[]] }),
+    ).toBeUndefined();
   });
 });

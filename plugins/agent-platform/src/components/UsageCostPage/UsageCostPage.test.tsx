@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { usageRouteRef } from '../../routes';
 import type { LlmUsage } from '../../lib/llmUsage';
+import { formatUsageDay } from '../../lib/usageWindow';
 import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageCostPage } from './UsageCostPage';
 
@@ -176,6 +177,29 @@ describe('UsageCostPage with gateway metrics', () => {
 
     expect(await screen.findByText('$10.00')).toBeInTheDocument();
     expect(screen.queryByText(/vs previous/)).toBeNull();
+  });
+
+  it('says where the gateway’s data starts when it cuts the window short', async () => {
+    view.usage = {
+      ...usage(),
+      windowDays: 90,
+      dataStart: { day: '2026-09-09', coveredDays: 36 },
+    };
+
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        `The gateway's data starts on ${formatUsageDay('2026-09-09')}, so its figures cover 36 of the 90 days.`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing about the data start when the data covers the window', async () => {
+    renderPage();
+
+    expect(await screen.findByText('Spend')).toBeInTheDocument();
+    expect(screen.queryByText(/data starts on/)).toBeNull();
   });
 
   it('converts the money to the installation currency and labels it estimated', async () => {

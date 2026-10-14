@@ -178,6 +178,26 @@ describe('useLlmUsage with options', () => {
   });
 
   it('reports the previous period’s spend when asked', () => {
+    const { previousCost, previousCostCovered } = llmUsageQueriesFor();
+    answers.set(previousCost, [
+      { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
+    ]);
+    answers.set(previousCostCovered, [
+      { metric: {}, value: [1757462400, '3'] },
+    ]);
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { comparePrevious: true }),
+    );
+
+    expect(issued).toContain(previousCost);
+    expect(issued).toContain(previousCostCovered);
+    expect(result.current.usage?.totals.previousCostUsd).toBe(4.5);
+  });
+
+  it('drops the previous period’s spend when the data does not reach its start', () => {
+    // On a gateway whose metrics began inside the previous window, that
+    // window's spend is partial, and a change against it overstates growth.
     const { previousCost } = llmUsageQueriesFor();
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
@@ -187,14 +207,37 @@ describe('useLlmUsage with options', () => {
       useLlmUsage('gazelle', { comparePrevious: true }),
     );
 
-    expect(issued).toContain(previousCost);
-    expect(result.current.usage?.totals.previousCostUsd).toBe(4.5);
+    expect(result.current.usage?.totals).toHaveProperty('previousCostUsd');
+    expect(result.current.usage?.totals.previousCostUsd).toBeUndefined();
+  });
+
+  it('drops the previous period’s spend when the coverage check fails', () => {
+    const { previousCost, previousCostCovered } = llmUsageQueriesFor();
+    answers.set(previousCost, [
+      { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
+    ]);
+    answers.set(previousCostCovered, [
+      { metric: {}, value: [1757462400, '3'] },
+    ]);
+    failed.add(previousCostCovered);
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { comparePrevious: true }),
+    );
+
+    expect(result.current.isError).toBe(false);
+    expect(result.current.usage?.totals.previousCostUsd).toBeUndefined();
   });
 
   it('compares one organization with its own previous period', () => {
-    const { previousCost } = llmUsageQueriesFor({ org: 'support' });
+    const { previousCost, previousCostCovered } = llmUsageQueriesFor({
+      org: 'support',
+    });
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '2.25'] },
+    ]);
+    answers.set(previousCostCovered, [
+      { metric: {}, value: [1757462400, '1'] },
     ]);
 
     const { result } = renderHook(() =>
@@ -208,8 +251,11 @@ describe('useLlmUsage with options', () => {
     expect(result.current.usage?.totals.previousCostUsd).toBe(2.25);
   });
 
-  it('waits for the comparison it asked for', () => {
-    pending.add(llmUsageQueriesFor().previousCost);
+  it.each([
+    ['spend', llmUsageQueriesFor().previousCost],
+    ['coverage check', llmUsageQueriesFor().previousCostCovered],
+  ])('waits for the comparison’s %s it asked for', (_label, query) => {
+    pending.add(query);
 
     expect(
       renderHook(() => useLlmUsage('gazelle', { comparePrevious: true })).result
@@ -284,5 +330,48 @@ describe('useLlmUsage daily calls (the Overview heatmap)', () => {
     expect(result.current.isError).toBe(false);
     expect(result.current.usage).toBeDefined();
     expect(result.current.usage?.callsPerDay).toBeNull();
+  });
+});
+
+describe('useLlmUsage data start', () => {
+  const { dailyRangeWindow } = jest.requireActual<
+    typeof import('../lib/llmUsageQueries')
+  >('../lib/llmUsageQueries');
+  const DAY = 86400;
+
+  it('names the day the gateway’s data starts when it starts inside the window', () => {
+    const { end } = dailyRangeWindow(Date.now(), 7);
+    // The newest two complete days hold data; the five before do not.
+    const first = Number(end) - DAY;
+    answers.set(llmUsageRangeQueries.tokensPerDayByType, [
+      {
+        metric: { gen_ai_token_type: 'input' },
+        values: [
+          [first, '10'],
+          [Number(end), '0'],
+        ],
+      },
+    ]);
+
+    const { result } = renderHook(() => useLlmUsage('gazelle', { days: 7 }));
+
+    expect(result.current.usage?.dataStart).toEqual({
+      day: new Date((first - DAY) * 1000).toISOString().slice(0, 10),
+      coveredDays: 3,
+    });
+  });
+
+  it('says nothing when the data covers the whole window', () => {
+    const { start } = dailyRangeWindow(Date.now(), 7);
+    answers.set(llmUsageRangeQueries.costPerDayByModel, [
+      {
+        metric: { gen_ai_response_model: 'm' },
+        values: [[Number(start), '0']],
+      },
+    ]);
+
+    const { result } = renderHook(() => useLlmUsage('gazelle', { days: 7 }));
+
+    expect(result.current.usage?.dataStart).toBeUndefined();
   });
 });

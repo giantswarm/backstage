@@ -253,6 +253,20 @@ export function llmUsageQueriesFor({ days, org }: LlmUsageQueryOptions = {}) {
     unpricedLookups: `sum by (gen_ai_request_model, gen_ai_response_model, status) ${counterIncrease(`${CatalogLookups.name}{status!="Exact"}`, window)} > 0`,
     /** {@link cost} over the window before this one. */
     previousCost: `sum by (${BY_AGENT_MODEL_TYPE}) ${counterIncrease(`${Cost.name}${only}`, window, window)}`,
+    /**
+     * Whether spend was recorded in the day before the previous window began:
+     * one sample, or none when the data starts later. Without it,
+     * {@link previousCost} covers only part of its window, and the change
+     * against it overstates growth — on a gateway whose metrics began
+     * mid-window it read "▲ 330%".
+     *
+     * A day, not {@link SERIES_BIRTH_LOOKBACK}'s hour: a series exists only
+     * from a label set's first call since its gateway pod started, so a quiet
+     * hour after a restart would hide a comparison that is fine. A day of
+     * samples is still a small read whatever the window. The same metric and
+     * scope as `previousCost`, so it answers for exactly that figure.
+     */
+    previousCostCovered: `count(last_over_time(${Cost.name}${only}[1d] offset ${formatDuration(2 * durationSeconds(window))}))`,
   };
 }
 

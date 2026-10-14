@@ -5,6 +5,7 @@ import type {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { deriveTokenRates, type TokenRates } from './costEstimate';
 import { WINDOW_DAYS } from './llmUsageQueries';
+import { usageDataStart, type UsageDataStart } from './usageWindow';
 
 /**
  * Reducers turning Mimir's answers into the rows the LLM usage views render.
@@ -157,7 +158,8 @@ export type LlmUsageTotals = {
   cacheReadSharePct: number | undefined;
   /**
    * The spend over the window before this one, when it was asked for:
-   * `undefined` when nothing was priced then.
+   * `undefined` when nothing was priced then, or when the data does not reach
+   * back to that window's start.
    */
   previousCostUsd?: number | undefined;
 };
@@ -182,6 +184,12 @@ export type LlmUsage = {
   reliability: LlmReliability;
   unpricedModels: UnpricedModelRow[];
   rates: TokenRates;
+  /**
+   * Where the gateway's data starts, when that is after the window's first
+   * day: every figure then covers fewer days than the window names.
+   * `undefined` when the data covers the whole window, or there is none.
+   */
+  dataStart?: UsageDataStart;
 };
 
 /**
@@ -698,6 +706,44 @@ function fillDays(
   return rows;
 }
 
+/**
+ * The first window day any daily series or today's partial holds a sample
+ * for, as `YYYY-MM-DD` — where the gateway's data starts, as far as the window
+ * can tell. `undefined` when nothing in the window has a sample.
+ *
+ * Read off the daily range answers the charts already have, so knowing it
+ * costs no query. A point counts whatever its value: a zero is a day the
+ * series existed and nothing happened, which is data; no point at all is a
+ * day the gateway recorded nothing. Labelled by the day it covers, as in
+ * {@link reduceDaily}.
+ */
+export function firstSampledDay(
+  daily: (MimirMatrixSample[] | null | undefined)[],
+  today: { day: string; samples: (MimirMetricSample[] | undefined)[] },
+): string | undefined {
+  let first: number | undefined;
+  for (const samples of daily) {
+    for (const sample of samples ?? []) {
+      for (const [at, raw] of sample.values ?? []) {
+        if (
+          sampleValue(raw) !== undefined &&
+          Number.isFinite(at) &&
+          (first === undefined || at < first)
+        ) {
+          first = at;
+        }
+      }
+    }
+  }
+  if (first !== undefined) {
+    return new Date(first * 1000 - DAY_MS).toISOString().slice(0, 10);
+  }
+  const todayHasData = today.samples.some(samples =>
+    (samples ?? []).some(sample => instantValue(sample) !== undefined),
+  );
+  return todayHasData ? today.day : undefined;
+}
+
 /** Assemble everything the two Mimir views read. */
 export function buildLlmUsage(options: {
   cost: MimirMetricSample[] | undefined;
@@ -735,6 +781,12 @@ export function buildLlmUsage(options: {
    * comparison was not asked for, which leaves `previousCostUsd` out.
    */
   previousCost?: MimirMetricSample[];
+  /**
+   * Whether the data reaches back to the previous window's start, from
+   * `previousCostCovered`. `false` leaves `previousCostUsd` undefined: a
+   * window only partly recorded is no baseline for a change.
+   */
+  previousCostCovered?: boolean;
 }): LlmUsage {
   const { cost, tokens, calls } = options;
 
@@ -813,7 +865,10 @@ export function buildLlmUsage(options: {
       avgTokensPerCall: ratePerCall(totalTokens, totalCalls),
       cacheReadSharePct: cacheReadShare(tokenTypes),
       ...(options.previousCost && {
-        previousCostUsd: optionalSum(sumBy(options.previousCost, () => 'all')),
+        previousCostUsd:
+          options.previousCostCovered === false
+            ? undefined
+            : optionalSum(sumBy(options.previousCost, () => 'all')),
       }),
     },
     tokenTypes,
@@ -831,6 +886,16 @@ export function buildLlmUsage(options: {
     }),
     unpricedModels: reduceUnpricedModels(options.unpricedLookups),
     rates: deriveTokenRates(costByType, tokensByType),
+    dataStart: usageDataStart(
+      options.days,
+      firstSampledDay(
+        [options.costPerDay, options.tokensPerDay, options.callsPerDay],
+        {
+          day: options.today,
+          samples: [options.costToday, options.tokensToday, options.callsToday],
+        },
+      ),
+    ),
   };
 }
 

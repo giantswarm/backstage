@@ -42,6 +42,13 @@ export interface McpUsageResponse {
   range_hours: number;
   step_hours: number;
   buckets: McpUsageBucket[];
+  /**
+   * The start of the first bucket holding any sample, ISO timestamp — where
+   * muster's metrics start inside the window. Absent when no bucket has one.
+   * A bucket seeded with zeros has no sample; a series that existed and
+   * counted nothing does.
+   */
+  data_start?: string;
   totals: {
     calls: number;
     errors: number;
@@ -443,6 +450,20 @@ export async function getMcpUsage(
     }
   }
 
+  // The first step any outcome series has a sample for, so the page can say
+  // when the window reaches back further than the metrics do.
+  let firstSampled: number | undefined;
+  for (const series of byOutcomeOverTime) {
+    for (const point of series.points) {
+      if (
+        Number.isFinite(point.value) &&
+        (firstSampled === undefined || point.ts < firstSampled)
+      ) {
+        firstSampled = point.ts;
+      }
+    }
+  }
+
   // Per-tool rollup (sum every step's increase per series).
   const toolRows = new Map<string, McpUsageToolRow>();
   for (const series of byToolOutcome) {
@@ -503,6 +524,9 @@ export async function getMcpUsage(
     range_hours: hours,
     step_hours: stepHours,
     buckets: [...buckets.values()],
+    ...(firstSampled !== undefined && {
+      data_start: new Date((firstSampled - stepSeconds) * 1000).toISOString(),
+    }),
     totals: {
       calls: totalCalls,
       errors: totalErrors,
