@@ -4,7 +4,10 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PageHeaderActionsProvider,
+  ShellScopeProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
@@ -296,20 +299,23 @@ async function renderAt(
     </Routes>
   );
   await renderInTestApp(
-    <QueryClientProvider client={queryClient}>
-      <PageHeaderActionsProvider>
-        {inShell ? (
-          <>
-            <nav aria-label="Main">
-              <a href="/agent-platform/sessions">Sessions</a>
-            </nav>
-            <div id="content">{page}</div>
-          </>
-        ) : (
-          page
-        )}
-      </PageHeaderActionsProvider>
-    </QueryClientProvider>,
+    // The shell mounts the scope around its pages, as the app does.
+    <ShellScopeProvider>
+      <QueryClientProvider client={queryClient}>
+        <PageHeaderActionsProvider>
+          {inShell ? (
+            <>
+              <nav aria-label="Main">
+                <a href="/agent-platform/sessions">Sessions</a>
+              </nav>
+              <div id="content">{page}</div>
+            </>
+          ) : (
+            page
+          )}
+        </PageHeaderActionsProvider>
+      </QueryClientProvider>
+    </ShellScopeProvider>,
     {
       initialRouteEntries: [path],
       mountedRoutes: {
@@ -946,10 +952,54 @@ describe('WorkflowPage', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('x_kubernetes_get_pods')).toBeNull();
     await userEvent.click(trigger);
-    expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
-    expect(screen.getByText('muster')).toBeInTheDocument();
+    // A fact per row, as the plain facts above.
+    const [, technical] = screen
+      .getAllByRole('definition')
+      .map(value => value.closest('dl')!)
+      .filter((list, index, lists) => lists.indexOf(list) === index);
+    expect(
+      within(technical)
+        .getAllByRole('term')
+        .map(term => term.textContent),
+    ).toEqual(['Namespace', 'Referenced tools']);
+    expect(
+      within(technical).getByText('x_kubernetes_get_pods'),
+    ).toBeInTheDocument();
+    // Facts read at the shell's body size.
+    expect(within(facts).getByText('workflow_deploy')).toHaveAttribute(
+      'data-variant',
+      'body-medium',
+    );
+    expect(within(technical).getByText('muster')).toHaveAttribute(
+      'data-variant',
+      'body-medium',
+    );
     // The raw YAML is the menu's manifest, not part of the page.
     expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('gives the labels a row of their own in Technical details, one label per line', async () => {
+    mockWorkflows = [gitOpsDeploy()];
+    await renderAt(`${BASE}/deploy/details?installation=gazelle`);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Technical details' }),
+    );
+    const labels = screen.getByText('Labels').closest('dt')!
+      .nextElementSibling as HTMLElement;
+    expect(labels.tagName).toBe('DD');
+    expect(
+      within(labels).getByText(
+        'helm.toolkit.fluxcd.io/name=agent-platform-workflows',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(labels).getByText(
+        'helm.toolkit.fluxcd.io/namespace=agent-platform',
+      ),
+    ).toBeInTheDocument();
+    // Namespace is a row of its own, not run into the labels.
+    expect(within(labels).queryByText('muster')).toBeNull();
   });
 
   it('links the workflows that call it as a step on Details', async () => {

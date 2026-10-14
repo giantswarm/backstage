@@ -10,7 +10,6 @@ import {
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { Link, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
 import { useQuery } from '@tanstack/react-query';
 import {
   BreadcrumbItem,
@@ -20,9 +19,11 @@ import {
   LoadingIndicator,
   MoreActionsMenu,
   type MoreActionsMenuItem,
+  Mono,
   ShellDocumentTitle,
   ShellPage,
   ShellPageBadgeSkeleton,
+  useFactTextVariant,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
@@ -68,14 +69,6 @@ export type WorkflowPageProps = {
   editAction?: ReactElement;
 };
 
-const useStyles = makeStyles({
-  mono: {
-    fontFamily: 'monospace',
-    fontSize: 13,
-    wordBreak: 'break-all',
-  },
-});
-
 /** The shell's Customize page and its Workflows tab, where the app binds them. */
 function useCustomizePaths(): { customize?: string; workflows?: string } {
   const customizeRoute = useRouteRef(customizeExternalRouteRef);
@@ -97,16 +90,17 @@ function installationSearch(installation?: string): string {
 function CalledBy({ workflow }: { workflow: MusterWorkflow }) {
   const detailRoute = useRouteRef(workflowDetailRouteRef);
   const { workflows } = useMusterInstance();
+  const variant = useFactTextVariant();
   const name = workflow.getName();
   const referencedBy = useMemo(
     () => findReferencedBy(name, workflows),
     [name, workflows],
   );
   if (referencedBy.length === 0) {
-    return <Text variant="body-small">No other workflow</Text>;
+    return <Text variant={variant}>No other workflow</Text>;
   }
   return (
-    <Text variant="body-small">
+    <Text variant={variant}>
       {referencedBy.map((ref, index) => {
         const base = detailRoute?.({ name: ref.getName() });
         return (
@@ -115,7 +109,7 @@ function CalledBy({ workflow }: { workflow: MusterWorkflow }) {
             {base ? (
               <Link
                 href={`${base}${installationSearch(ref.cluster)}`}
-                variant="body-small"
+                variant={variant}
               >
                 {ref.getName()}
               </Link>
@@ -137,7 +131,6 @@ function WorkflowPageContent({
   workflow: MusterWorkflow;
   installation?: string;
 } & WorkflowPageProps) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const paths = useCustomizePaths();
   const basePath = useSplatBasePath();
@@ -218,7 +211,7 @@ function WorkflowPageContent({
     ...(category ? [{ label: 'Category', value: category }] : []),
     {
       label: 'Tool name',
-      value: <code className={classes.mono}>{toolName}</code>,
+      value: <Mono>{toolName}</Mono>,
     },
     ...(connectors.length > 0
       ? [{ label: 'Connectors used', value: connectors.join(', ') }]

@@ -4,7 +4,10 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PageHeaderActionsProvider,
+  ShellScopeProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockPhoneLayout,
   type MockedLayout,
@@ -217,21 +220,24 @@ async function renderAt(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <QueryClientProvider client={queryClient}>
-      <PageHeaderActionsProvider>
-        <Routes>
-          {/* The connector wizard, where Edit leads. */}
-          <Route
-            path="/agent-platform/connectors/new"
-            element={<LocationProbe />}
-          />
-          <Route
-            path="/agent-platform/connectors/:server/*"
-            element={<ConnectorPage usedBy={usedBy} />}
-          />
-        </Routes>
-      </PageHeaderActionsProvider>
-    </QueryClientProvider>,
+    // The shell mounts the scope around its pages, as the app does.
+    <ShellScopeProvider>
+      <QueryClientProvider client={queryClient}>
+        <PageHeaderActionsProvider>
+          <Routes>
+            {/* The connector wizard, where Edit leads. */}
+            <Route
+              path="/agent-platform/connectors/new"
+              element={<LocationProbe />}
+            />
+            <Route
+              path="/agent-platform/connectors/:server/*"
+              element={<ConnectorPage usedBy={usedBy} />}
+            />
+          </Routes>
+        </PageHeaderActionsProvider>
+      </QueryClientProvider>
+    </ShellScopeProvider>,
     {
       initialRouteEntries: [path],
       apis: [[musterApiRef, api as never]],
@@ -733,14 +739,16 @@ describe('ConnectorPage Details tab', () => {
     await renderAt(`${BASE}/jira/details`);
     await userEvent.click(foldOut());
 
-    // bui's body-small (12px) is lifted to body-medium's size on this tab.
+    // FactList sets its labels and values, Mono among them, in bui's
+    // body-medium (14px) inside the shell.
     for (const text of [
       '1 of 1 instance healthy',
       'muster/jira',
       'Auto start',
     ]) {
-      expect(getComputedStyle(screen.getByText(text)).fontSize).toBe(
-        'var(--bui-font-size-3)',
+      expect(screen.getByText(text)).toHaveAttribute(
+        'data-variant',
+        'body-medium',
       );
     }
   });

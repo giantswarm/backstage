@@ -20,6 +20,7 @@ import {
   CatalogNoMatch,
   matchesQuery,
   Mono,
+  useFactTextVariant,
   ShowMore,
   StackedRowList,
   type StackedRowItem,
@@ -91,10 +92,14 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-/** A note in the secondary voice the detail blocks use for their asides. */
+/**
+ * A note in the secondary voice the detail blocks use for their asides, at
+ * the size of the fact list it is a value in.
+ */
 function Note({ children }: { children: ReactNode }) {
+  const variant = useFactTextVariant();
   return (
-    <Text variant="body-small" color="secondary">
+    <Text variant={variant} color="secondary">
       {children}
     </Text>
   );
