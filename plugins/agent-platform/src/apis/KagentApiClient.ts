@@ -26,13 +26,8 @@ import {
   SessionStatesResponse,
   SessionUsageResponse,
   normalizeTaskList,
-  parseCreatedSessionId,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
-import {
-  createSseDataDecoder,
-  readStreamFrame,
-  type StreamFrame,
-} from '../lib/kagentStreamTurn';
+import { createSseDataDecoder, readStreamFrame } from '../lib/kagentStreamTurn';
 import {
   ConfirmationAnswerRequest,
   KAGENT_AUTH_HEADER,
@@ -132,98 +127,6 @@ export const UNAUTHORIZED_ERROR_NAME = 'UnauthorizedError';
 
 export function isUnauthorizedError(error: unknown): boolean {
   return (error as Error | undefined)?.name === UNAUTHORIZED_ERROR_NAME;
-}
-
-/**
- * The error a failed backend answer is reported as: named by its status, so
- * callers classify a write's failures the same whether the status arrived as
- * the response's own or in-band on a stream.
- */
-function statusError(
-  status: number,
-  message: string,
-  options: {
-    reason?: string;
-    requestId?: string;
-    /** See {@link KagentApiClient.throwIfNotOk}. */
-    badRequestIsMissing: boolean;
-  },
-): Error {
-  // What `describeReadFailure` turns into the page's words: the status,
-  // the backend's failure reason and the request id it sent toward kagent.
-  const fields: KagentRequestErrorFields = {
-    status,
-    reason: options.reason,
-    requestId: options.requestId,
-  };
-  const error = Object.assign(new Error(message), fields);
-  // A 400 from this proxy means the backend has no kagent endpoint
-  // configured for the requested installation (its `resolveInstallation`
-  // raises InputError for a name outside the allowlist). That allowlist is
-  // `gs.installations` entries with a `baseDomain`, which is not the same set
-  // as the installations the frontend considers reachable — so this is
-  // ordinary operation, not a coding error, and belongs on the same silent
-  // "kagent isn't available here" path as a 404. Left unmapped it would be
-  // retried with backoff and surfaced to the user as a read failure.
-  //
-  // Only for callers that cannot produce a 400 of their own — see
-  // `badRequestIsMissing`.
-  if (status === 400 && options.badRequestIsMissing) {
-    error.name = 'NotFoundError';
-  }
-  if (status === 401) {
-    error.name = UNAUTHORIZED_ERROR_NAME;
-  }
-  if (status === 403) {
-    error.name = 'ForbiddenError';
-  }
-  if (status === 404) {
-    error.name = 'NotFoundError';
-  }
-  // A send refused because the session is still working on the previous
-  // turn — kagent holds one active task per session. Named so the page can
-  // explain it and offer to cancel that turn, rather than showing a generic
-  // failure over a composer the next attempt will fail from again.
-  if (status === 409) {
-    error.name = CONFLICT_ERROR_NAME;
-  }
-  if (status === 503) {
-    error.name = 'ServiceUnavailableError';
-  }
-  return error;
-}
-
-/**
- * What a stream's `{error}` frame before any event is reported as: the turn
- * was refused before it started.
- *
- * The backend answers the headers before kagent has said anything, so its
- * refusal arrives as this frame, carrying the status the route would
- * otherwise have answered — mapped here exactly as that status would be. A
- * 5xx says nothing about whether the turn started, so it is the transport
- * failure the caller verifies, as a 5xx response would be. A frame without a
- * status is kagent's own words and a decision.
- */
-function frameRefusal(
-  installation: string,
-  frame: Extract<StreamFrame, { kind: 'error' }>,
-  requestId: string | undefined,
-): Error {
-  if (frame.status === undefined) {
-    return upstreamError(
-      `The agent on ${installation} did not accept the message: ${frame.message}`,
-    );
-  }
-  if (frame.status >= 500) {
-    return streamTransportError(
-      `The streaming send failed with status ${frame.status}: ${frame.message}`,
-    );
-  }
-  return statusError(frame.status, frame.message, {
-    reason: frame.reason,
-    requestId,
-    badRequestIsMissing: false,
-  });
 }
 
 /**
@@ -459,51 +362,6 @@ export class KagentApiClient implements KagentApi {
     }
   }
 
-  async createSession(
-    installation: string,
-    agent: { namespace: string; name: string },
-    name: string,
-    requestId: string,
-  ): Promise<{ sessionId: string }> {
-    const { url, headers } = await this.prepare(
-      '/kagent/sessions',
-      installation,
-    );
-    const response = await this.fetchApi.fetch(url, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agentNamespace: agent.namespace,
-        agentName: agent.name,
-        name,
-        requestId,
-      }),
-    });
-
-    // `badRequestIsMissing: false` for the same reason as the rename: this route
-    // answers 400 for a rejected title, which is nothing like "kagent is absent
-    // from this installation".
-    await this.throwIfNotOk(response, { badRequestIsMissing: false });
-
-    // The one write whose body is **required**. The others tolerate an empty
-    // response because nothing in it is needed; here the generated instance id
-    // is the entire point, and without it there is nowhere to navigate — so an
-    // unreadable body has to fail rather than resolve into a broken link.
-    const body = await response.json().catch(() => undefined);
-    const sessionId = parseCreatedSessionId(body);
-    if (!sessionId) {
-      throw upstreamError(
-        isErrorEnvelope(body) &&
-          typeof body.message === 'string' &&
-          body.message
-          ? body.message
-          : 'kagent accepted the new session but did not say which one it created, so it cannot be opened. It may still have been created — check the list.',
-      );
-    }
-
-    return { sessionId };
-  }
-
   async cancelTask(
     installation: string,
     sessionId: string,
@@ -710,7 +568,6 @@ export class KagentApiClient implements KagentApi {
     const decoder = new TextDecoder();
     const sse = createSseDataDecoder();
     let sawEvent = false;
-    let refusal: Error | undefined;
 
     const consumeFrame = (data: string) => {
       const frame = readStreamFrame(data);
@@ -727,12 +584,9 @@ export class KagentApiClient implements KagentApi {
         // the poll rather than hearing a failure that may only have cut the
         // preview short.
         if (!sawEvent) {
-          refusal = frameRefusal(
-            installation,
-            frame,
-            response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+          throw upstreamError(
+            `The agent on ${installation} did not accept the message: ${frame.message}`,
           );
-          throw refusal;
         }
       }
       // 'unreadable' frames cost their own liveness and nothing else.
@@ -753,7 +607,7 @@ export class KagentApiClient implements KagentApi {
         consumeFrame(data);
       }
     } catch (error) {
-      if (error === refusal) {
+      if ((error as Error)?.name === 'UpstreamError') {
         throw error;
       }
       // The stream died mid-read — the gateway's request timeout is the routine
@@ -920,15 +774,50 @@ export class KagentApiClient implements KagentApi {
       const { message: bodyMessage, reason } =
         (errorData as { error?: { message?: string; reason?: string } })
           ?.error ?? {};
-      throw statusError(
-        response.status,
-        bodyMessage ?? `kagent request failed with status ${response.status}`,
-        {
-          reason,
-          requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
-          badRequestIsMissing,
-        },
-      );
+      const message =
+        bodyMessage ?? `kagent request failed with status ${response.status}`;
+      // What `describeReadFailure` turns into the page's words: the status,
+      // the backend's failure reason and the request id it sent toward kagent.
+      const fields: KagentRequestErrorFields = {
+        status: response.status,
+        reason,
+        requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+      };
+      const error = Object.assign(new Error(message), fields);
+      // A 400 from this proxy means the backend has no kagent endpoint
+      // configured for the requested installation (its `resolveInstallation`
+      // raises InputError for a name outside the allowlist). That allowlist is
+      // `gs.installations` entries with a `baseDomain`, which is not the same set
+      // as the installations the frontend considers reachable — so this is
+      // ordinary operation, not a coding error, and belongs on the same silent
+      // "kagent isn't available here" path as a 404. Left unmapped it would be
+      // retried with backoff and surfaced to the user as a read failure.
+      //
+      // Only for callers that cannot produce a 400 of their own — see
+      // `badRequestIsMissing`.
+      if (response.status === 400 && badRequestIsMissing) {
+        error.name = 'NotFoundError';
+      }
+      if (response.status === 401) {
+        error.name = UNAUTHORIZED_ERROR_NAME;
+      }
+      if (response.status === 403) {
+        error.name = 'ForbiddenError';
+      }
+      if (response.status === 404) {
+        error.name = 'NotFoundError';
+      }
+      // A send refused because the session is still working on the previous
+      // turn — kagent holds one active task per session. Named so the page can
+      // explain it and offer to cancel that turn, rather than showing a generic
+      // failure over a composer the next attempt will fail from again.
+      if (response.status === 409) {
+        error.name = CONFLICT_ERROR_NAME;
+      }
+      if (response.status === 503) {
+        error.name = 'ServiceUnavailableError';
+      }
+      throw error;
     }
   }
 }

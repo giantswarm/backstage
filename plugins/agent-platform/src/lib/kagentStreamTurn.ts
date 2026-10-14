@@ -811,17 +811,7 @@ export function createSseDataDecoder(): {
 /** What one SSE `data:` frame of the relayed stream turned out to hold. */
 export type StreamFrame =
   | { kind: 'event'; result: unknown }
-  | {
-      kind: 'error';
-      message: string;
-      /**
-       * The HTTP status the backend would have answered, on a refusal before
-       * any event (it writes the frame after the headers have gone).
-       */
-      status?: number;
-      /** The backend's failure reason, when the status carries one. */
-      reason?: string;
-    }
+  | { kind: 'error'; message: string }
   | { kind: 'unreadable' };
 
 /**
@@ -848,19 +838,13 @@ export function readStreamFrame(data: string): StreamFrame {
   }
   const error = (envelope as { error?: unknown }).error;
   if (error) {
-    const { message, status, reason } = error as {
-      message?: unknown;
-      status?: unknown;
-      reason?: unknown;
-    };
+    const message = (error as { message?: unknown })?.message;
     return {
       kind: 'error',
       message:
         typeof message === 'string' && message
           ? message
           : 'the agent rejected the message without saying why',
-      ...(typeof status === 'number' && { status }),
-      ...(typeof reason === 'string' && { reason }),
     };
   }
   if ('result' in envelope) {

@@ -25,7 +25,6 @@ import {
   MESSAGE_TEXT_MAX_LENGTH,
   readKagentInstallationsFromConfig,
   REQUEST_ID_HEADER,
-  REQUEST_ID_MAX_LENGTH,
   SESSION_NAME_MAX_LENGTH,
   SESSION_SHARE_MAX_TTL_SECONDS,
   type SessionSharePermissionInput,
@@ -56,8 +55,6 @@ export interface RouterOptions {
    * an answer in time. Tests leave it out and get an immediate warm-up.
    */
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
-  /** How often a streaming route writes its keep-alive. Overridable for tests. */
-  streamHeartbeatMs?: number;
 }
 
 /**
@@ -105,11 +102,7 @@ function readRequiredString(
   return trimmed;
 }
 
-/**
- * A session title, bounded. Shared by the create and rename routes so the two
- * cannot drift apart — a title accepted by one and refused by the other would be
- * a create the user could not undo by renaming.
- */
+/** A session title, bounded as the controller bounds it. */
 function readSessionName(body: Record<string, unknown>): string {
   const name = readRequiredString(body, 'name');
   if (name.length > SESSION_NAME_MAX_LENGTH) {
@@ -118,29 +111,6 @@ function readSessionName(body: Record<string, unknown>): string {
     );
   }
   return name;
-}
-
-/**
- * The idempotency key of a create, when the caller supplied one.
- *
- * The browser generates one per submission and reuses it on a retry, so a
- * create whose answer was lost does not make a second session: the controller
- * keys idempotency on `(creator, request_id)`. A caller that sends none gets a
- * fresh one, which makes *its* retry a second create — the honest behaviour
- * for a caller that did not ask for idempotency, and what keeps the body an
- * addition rather than a new requirement.
- */
-function readRequestId(body: Record<string, unknown>): string {
-  if (body.requestId === undefined) {
-    return randomUUID();
-  }
-  const requestId = readRequiredString(body, 'requestId');
-  if (requestId.length > REQUEST_ID_MAX_LENGTH) {
-    throw new InputError(
-      `requestId must be at most ${REQUEST_ID_MAX_LENGTH} characters`,
-    );
-  }
-  return requestId;
 }
 
 /**
@@ -315,17 +285,6 @@ function readAnswerBody(req: express.Request): {
 const STREAM_MAX_DURATION_MS = 30 * 60_000;
 
 /**
- * How often the streaming routes write an SSE comment while they relay.
- *
- * A turn can be silent for minutes — a resumed task says nothing until the
- * agent does, and an approved tool runs first — and a silent response is what
- * an idle timeout in front of Backstage cuts (15 s on Envoy Gateway's
- * default). A comment is bytes on the wire that no SSE consumer reads as an
- * event, so the stream, and the page's live preview, survive the silence.
- */
-const STREAM_HEARTBEAT_MS = 5_000;
-
-/**
  * Relay one upstream event stream to the browser as SSE.
  *
  * Shared by the streaming routes (a message, an answer): `open` opens the
@@ -335,22 +294,15 @@ const STREAM_HEARTBEAT_MS = 5_000;
  *
  * - **Before the upstream stream opens**, errors propagate to the error
  *   middleware exactly as on the non-streaming routes — a malformed body is a
- *   400, an answer to a task that is not waiting a 409. Nothing has been
- *   dispatched, and the caller hears so. kagent's own refusal of the turn (an
- *   unknown session, a rejected token, a session still working on the
- *   previous turn) comes after the headers, as the stream's only frame: an
- *   `{error}` carrying the status this route would otherwise have answered.
+ *   400, an unknown agent a 404, a rejected token a 401, a session that is
+ *   still working on the previous turn a 409. Nothing has been dispatched, and
+ *   the caller hears so.
  * - **After it opens**, the route has already answered 200 and can only relay
  *   or stop. A relay that ends without a terminal event — kagent cut off by a
  *   gateway, this response cut off by the browser's own door, the duration
  *   bound — is not reported as anything, because the turn survives it: the
  *   frontend treats an unterminated stream as "still running" and follows the
  *   poll, the same contract as the unary routes' 202.
- *
- * The headers go out as soon as the upstream stream is opened — before its
- * first event, which may be minutes away — and a `: keep-alive` comment every
- * {@link STREAM_HEARTBEAT_MS} keeps a silent stream inside a door's idle
- * timeout.
  *
  * The relay is flush-wrapped because Backstage's root router applies
  * `compression()` globally, which buffers `res.write()` until `res.end()` —
@@ -360,7 +312,6 @@ const STREAM_HEARTBEAT_MS = 5_000;
 async function relayEventStream(
   res: express.Response,
   logger: LoggerService,
-  heartbeatMs: number,
   open: (signal: AbortSignal) => Promise<Response>,
 ): Promise<void> {
   // One signal governs the whole relay: the browser going away and the
@@ -418,15 +369,6 @@ async function relayEventStream(
     return;
   }
 
-  // Written between chunks only: each chunk is one whole frame as the client
-  // enqueued it, and the writes share this event loop, so a comment never
-  // lands inside a frame.
-  const heartbeat = setInterval(() => {
-    if (!res.writableEnded && !upstreamControl.signal.aborted) {
-      res.write(': keep-alive\n\n');
-    }
-  }, heartbeatMs);
-
   const reader = body.getReader();
   try {
     for (;;) {
@@ -447,7 +389,6 @@ async function relayEventStream(
       { error: String(error) },
     );
   } finally {
-    clearInterval(heartbeat);
     clearTimeout(maxDurationTimer);
     res.end();
   }
@@ -456,7 +397,7 @@ async function relayEventStream(
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { logger, config, streamHeartbeatMs = STREAM_HEARTBEAT_MS } = options;
+  const { logger, config } = options;
 
   const installations = readKagentInstallationsFromConfig(config, logger);
   const timeoutMs =
@@ -806,47 +747,6 @@ export async function createRouter(
   });
 
   /**
-   * Start a session for one agent: create its Session record.
-   *
-   * The agent's namespace and name are the Agent object's, as the caller read
-   * them from the resource; the platform Harness is picked in the client from
-   * the template's own status. `name` is required because the controller does
-   * not auto-title — a session created without one has no title at all; the
-   * frontend derives it from the first prompt (see "Starting a session" in
-   * docs/agent-platform.md). `requestId` is the browser's idempotency key; see
-   * {@link readRequestId}.
-   *
-   * The token is **required**, for the same reason the other writes require it:
-   * the controller decides whose session this is from the identity the gateway
-   * derived from the token alone.
-   *
-   * Nothing expected reaches a 5xx. A malformed body is a 400, a template no
-   * Harness admits or a `request_id` reused with other parameters is a 409 —
-   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
-   */
-  router.post('/kagent/sessions', async (req, res) => {
-    const { client } = resolveInstallation(req);
-
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const agentNamespace = readRequiredString(body, 'agentNamespace');
-    const agentName = readRequiredString(body, 'agentName');
-    const name = readSessionName(body);
-    const requestId = readRequestId(body);
-
-    const result = await client.createSession(
-      { namespace: agentNamespace, name: agentName },
-      name,
-      requestId,
-      { userToken: readUserToken(req, { required: true }) },
-    );
-
-    // 201 for a create. The body is the controller's `CreateSessionResponse`
-    // as JSON: the frontend needs the generated session id out of it, and this
-    // proxy stays transport.
-    res.status(201).json(result);
-  });
-
-  /**
    * One session's metadata and stored events. Express matches these paths
    * exactly, so this and the list route above do not shadow each other.
    *
@@ -907,7 +807,7 @@ export async function createRouter(
    *
    * The name is all this takes: it goes to `SessionService/UpdateSessionName`,
    * which changes the name and nothing else. It is trimmed and bounded here
-   * ({@link readSessionName}, the same check as the create) and validated again
+   * ({@link readSessionName}) and validated again
    * by the controller (200 characters, no control characters, no surrounding
    * whitespace).
    *
@@ -1101,7 +1001,7 @@ export async function createRouter(
         readMessageBody(req);
       const userToken = readUserToken(req, { required: true });
 
-      await relayEventStream(res, logger, streamHeartbeatMs, signal =>
+      await relayEventStream(res, logger, signal =>
         client.streamMessage(
           readSessionId(req),
           { namespace: agentNamespace, name: agentName },
@@ -1194,7 +1094,7 @@ export async function createRouter(
     const { agent, answer } = readAnswerBody(req);
     const userToken = readUserToken(req, { required: true });
 
-    await relayEventStream(res, logger, streamHeartbeatMs, signal =>
+    await relayEventStream(res, logger, signal =>
       client.streamAnswer(
         readSessionId(req),
         agent,

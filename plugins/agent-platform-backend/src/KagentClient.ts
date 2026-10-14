@@ -19,10 +19,10 @@ import {
   StreamResponseSchema,
   TaskSchema,
   type Part,
+  type StreamResponse,
   type Task,
 } from './kagent/gen/a2a_pb';
 import {
-  CreateSessionResponseSchema,
   CreateSessionShareResponseSchema,
   DeleteSessionResponseSchema,
   GetSessionResponseSchema,
@@ -121,14 +121,6 @@ export const SESSION_NAME_MAX_LENGTH = 200;
  * the bound a caller actually meets, rather than the body parser's.
  */
 export { MESSAGE_TEXT_MAX_LENGTH };
-
-/**
- * Bounds of the controller's `request_id` (`CreateSessionRequest`,
- * `min_len: 1, max_len: 128`), which the browser supplies so a retried create
- * is idempotent. Checked here so a bad one is a 400 with our words rather than
- * an `InvalidArgument` with the controller's.
- */
-export const REQUEST_ID_MAX_LENGTH = 128;
 
 /**
  * Longest lifetime this proxy will request for a session share, in seconds.
@@ -420,54 +412,6 @@ export class KagentClient {
   }
 
   /**
-   * `SessionService/CreateSession` — start a conversation with one Agent. The
-   * Agent names the Harness it runs on, so nothing is picked here.
-   *
-   * An Agent whose Harness has not compiled a ready revision cannot start a
-   * session: the controller answers `FailedPrecondition`, which is a 409
-   * naming the agent — a stale list or a platform state, not a fault.
-   *
-   * `requestId` is the browser's, one per submission and reused on a retry:
-   * the controller keys idempotency on `(creator, request_id)` and answers the
-   * existing session for a repeat with the same parameters, `AlreadyExists`
-   * (409) for a repeat with different ones.
-   */
-  async createSession(
-    agent: { namespace: string; name: string },
-    name: string,
-    requestId: string,
-    options: KagentRequestOptions,
-  ): Promise<unknown> {
-    const agentRef = `${agent.namespace}/${agent.name}`;
-
-    const response = await this.call(
-      () =>
-        this.sessionService.createSession(
-          {
-            agent: { namespace: agent.namespace, name: agent.name },
-            requestId,
-            name,
-          },
-          this.callOptions(options),
-        ),
-      {
-        endpoint: 'session create',
-        missingResource: `Installation '${this.installation.name}' cannot start a session: kagent does not know the agent '${agentRef}'.`,
-        invalidArgument: reason =>
-          new InputError(
-            `kagent on installation '${this.installation.name}' did not accept the new session: ${reason}`,
-          ),
-        failedPrecondition: reason =>
-          new ConflictError(
-            `The agent '${agentRef}' on installation '${this.installation.name}' cannot start a session yet: ${reason}`,
-          ),
-      },
-    );
-    this.remember(response.session);
-    return toJson(CreateSessionResponseSchema, response);
-  }
-
-  /**
    * `SessionService/GetSession` — one session, as `{session}`.
    *
    * The controller scopes this by the caller, so a session belonging to
@@ -587,18 +531,16 @@ export class KagentClient {
    * arrives on this turn is then a typed request the answer panel can render.
    * Each `StreamResponse` is relayed as one SSE `data:` frame carrying its JSON
    * (`{task}`, `{message}`, `{statusUpdate}`, `{artifactUpdate}`), so the router
-   * relays bytes and the frontend interprets. The returned {@link Response} is
-   * answered at once, without waiting for the first event — a resumed task, for
-   * one, says nothing until the agent does, and an approved tool can run for
-   * minutes first. The caller relays its body and owns its lifetime through
+   * relays bytes and the frontend interprets. The returned {@link Response} has
+   * been opened (its first event awaited under the ordinary request timeout, as
+   * the gateway answers a `task` snapshot the moment the turn is accepted) so a
+   * rejection before the turn starts surfaces as an error here rather than as an
+   * empty stream; the caller relays its body and owns its lifetime through
    * `signal`.
    *
-   * A rejection before any event — the turn never started — ends the stream
-   * with one `{error}` frame carrying the HTTP `status` (and `reason`) the
-   * unary route would have answered, so the caller can still tell a decision
-   * from a broken pipe. A stream that dies mid-turn — a gateway's request
-   * timeout, an Envoy drain — ends with one `{error}` frame and closes. The
-   * turn survives that as it survives a cut `SendMessage`: losing this connection does not stop the
+   * A stream that dies mid-turn — a gateway's request timeout, an Envoy drain —
+   * ends with one `{error}` frame and closes. The turn survives that as it
+   * survives a cut `SendMessage`: losing this connection does not stop the
    * agent, and the conversation poll shows it finish.
    */
   async streamMessage(
@@ -672,42 +614,35 @@ export class KagentClient {
       })
       [Symbol.asyncIterator]();
 
+    // The first event is awaited under the ordinary request timeout: a slow
+    // start means kagent is unwell, not that the agent is thinking.
+    let first: IteratorResult<StreamResponse>;
+    try {
+      first = await this.withTimeout(stream.next(), this.timeoutMs, signal);
+    } catch (error) {
+      if (signal.aborted) {
+        // The caller hung up before kagent answered. Nothing to report to
+        // anyone — rethrown for the router to swallow as a closed connection.
+        throw error;
+      }
+      throw this.mapError(error, this.sendContext(true));
+    }
+
     const encoder = new TextEncoder();
     const frame = (payload: unknown) =>
       encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
     const logger = this.logger;
     const installationName = this.installation.name;
-    const refusal = (error: unknown) =>
-      this.mapError(error, this.sendContext(false));
 
     const body = new ReadableStream<Uint8Array>({
       async start(controller) {
-        let sawEvent = false;
         try {
-          for (;;) {
-            const next = await stream.next();
-            if (next.done) {
-              break;
-            }
-            sawEvent = true;
+          let next = first;
+          while (!next.done) {
             controller.enqueue(frame(toJson(StreamResponseSchema, next.value)));
+            next = await stream.next();
           }
         } catch (error) {
-          if (!sawEvent && !signal.aborted) {
-            // Refused before the turn started: what the unary route would
-            // have answered, carried in-band because the headers are gone.
-            const mapped = refusal(error);
-            controller.enqueue(
-              frame({
-                error: {
-                  status: httpStatusOf(mapped),
-                  message: mapped.message,
-                  reason: (mapped as { reason?: string }).reason,
-                },
-              }),
-            );
-            return;
-          }
           // The stream died mid-turn (a gateway's request timeout, an Envoy
           // drain, a runtime failure the gateway reports in-band). One error
           // frame says so; the turn keeps running regardless, and an
@@ -1274,7 +1209,7 @@ export class KagentClient {
 
   /**
    * Where a call on `sessionId` goes when the caller names no Agent: the one
-   * remembered from a list, a create or a read of the session, else read off
+   * remembered from a list or a read of the session, else read off
    * the Session now. The context is the session id, as in {@link targetOf} —
    * see there for why that is correct rather than a shortcut.
    */
@@ -1389,6 +1324,37 @@ export class KagentClient {
       this.logger,
       this.turnTimeoutMs,
     );
+  }
+
+  private withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    signal: AbortSignal,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(
+          new ConnectError('first event timed out', Code.DeadlineExceeded),
+        );
+      }, timeoutMs);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new ConnectError('aborted', Code.Canceled));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      promise.then(
+        value => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', onAbort);
+          resolve(value);
+        },
+        error => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', onAbort);
+          reject(error);
+        },
+      );
+    });
   }
 }
 

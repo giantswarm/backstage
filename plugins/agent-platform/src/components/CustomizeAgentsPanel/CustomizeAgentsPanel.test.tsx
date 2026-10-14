@@ -8,9 +8,10 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
-import { agentsRouteRef } from '../../routes';
+import { agentsRouteRef, installationsExternalRouteRef } from '../../routes';
 import { CustomizeAgentsPanel } from './CustomizeAgentsPanel';
 
 let mockAgents: Partial<AgentsContextValue>;
@@ -20,6 +21,54 @@ jest.mock('../AgentsDataProvider', () => ({
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
+// The inventory the panel reads to tell an environment without kagent, and
+// which environment's failure the gate explains (the real selectors). The
+// gate itself, covered by its own tests in gs, renders a marker naming it.
+let mockInventoryEntries: InstallationInventoryEntry[] = [];
+jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
+  useInstallationInventory: () => ({
+    entries: mockInventoryEntries,
+    home: mockInventoryEntries.find(entry => entry.home)?.installation,
+    isLoading: false,
+    isProbing: false,
+    installationsWith: (component: 'kagent') =>
+      mockInventoryEntries
+        .filter(
+          entry =>
+            !entry.muted &&
+            entry.probe === 'answered' &&
+            entry.components[component],
+        )
+        .map(entry => entry.installation),
+    refresh: () => {},
+  }),
+  InventoryFailureGate: ({
+    failure,
+  }: {
+    failure: { installation: string };
+  }) => <div>Inventory gate: {failure.installation}</div>,
+}));
+function environment(
+  installation: string,
+  overrides: Partial<InstallationInventoryEntry> & { kagent?: boolean } = {},
+): InstallationInventoryEntry {
+  const { kagent = true, ...rest } = overrides;
+  return {
+    installation,
+    home: false,
+    accessState: 'healthy',
+    muted: false,
+    probe: 'answered',
+    components: { kagent, muster: true, kserve: false, capi: true },
+    ...rest,
+  };
+}
+beforeEach(() => {
+  mockInventoryEntries = [environment('golem', { home: true })];
+});
+const failedProbe = (name: string) => Object.assign(new Error(name), { name });
+
 let mockSessions: SessionRow[] = [];
 jest.mock('../SessionsDataProvider', () => ({
   SessionsDataProvider: ({ children }: { children: ReactNode }) => (
@@ -78,7 +127,10 @@ const notes = row({
 
 function renderPanel(search = '', storage: StorageApi = mockApis.storage()) {
   return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
-    mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/agents': agentsRouteRef,
+      '/installations': installationsExternalRouteRef,
+    },
     apis: [[storageApiRef, storage]],
   });
 }
@@ -139,7 +191,10 @@ describe('CustomizeAgentsPanel', () => {
   beforeEach(() => {
     mockAgents = {
       rows: [triage, notes],
+      scope: 'all',
+      installations: ['golem'],
       isLoading: false,
+      isLoadingMore: false,
       hasInstallations: true,
       unreachableInstallations: [],
     };
@@ -260,14 +315,255 @@ describe('CustomizeAgentsPanel', () => {
 
     mockAgents = { ...mockAgents, isLoading: false };
     await renderPanel();
-    expect(screen.getByText('No agents yet')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'No agents yet' }),
+    ).toBeInTheDocument();
   });
 
   it('reports the installations it could not read instead of an empty state', async () => {
     mockAgents = { ...mockAgents, rows: [], unreachableInstallations: ['lab'] };
     await renderPanel();
     expect(screen.queryByText('No agents yet')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Create your first agent' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/lab/)).toBeInTheDocument();
+  });
+
+  describe('empty and incomplete lists (A25)', () => {
+    it('invites creating the first agent where the fleet answered with none', async () => {
+      mockAgents = { ...mockAgents, rows: [] };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'No agents yet' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/An agent is an assistant/)).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Create your first agent' }),
+      ).toHaveAttribute('href', '/agent-platform/agents/new');
+      expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    });
+
+    it('says when no environments are configured', async () => {
+      mockInventoryEntries = [];
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        installations: [],
+        hasInstallations: false,
+      };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'No environments configured' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: 'Create your first agent' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('says a pinned environment has no kagent, while the rest still loads', async () => {
+      mockInventoryEntries = [
+        environment('golem'),
+        environment('dingo', { kagent: false }),
+      ];
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        scope: 'dingo',
+        installations: [],
+        isLoading: true,
+      };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', {
+          name: 'kagent is not installed on dingo',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Agents run on environments with kagent. Choose another environment, or enable the Agent Platform on dingo.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Go to Installations' }),
+      ).toHaveAttribute('href', '/installations');
+      expect(
+        screen.queryByLabelText('Reading your agents…'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('No agents yet')).not.toBeInTheDocument();
+    });
+
+    it('names the only environment when it has no kagent, with no other to choose', async () => {
+      mockInventoryEntries = [environment('golem', { kagent: false })];
+      mockAgents = { ...mockAgents, rows: [], installations: [] };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', {
+          name: 'kagent is not installed on golem',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Agents run on environments with kagent. Enable the Agent Platform on golem to create agents there.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('says when no environment runs kagent under All environments', async () => {
+      mockInventoryEntries = [
+        environment('golem', { kagent: false }),
+        environment('dingo', { kagent: false }),
+        // Switched off in the sidebar, and without kagent either.
+        environment('lab', { muted: true, kagent: false }),
+      ];
+      mockAgents = { ...mockAgents, rows: [], installations: [] };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', {
+          name: 'kagent is not installed on any environment',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Go to Installations' }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not invite creating an agent where no environment in reach runs kagent', async () => {
+      // golem answered without kagent; lab runs it but its access is down, so
+      // the create flow has nowhere to deploy to.
+      mockInventoryEntries = [
+        environment('golem', { kagent: false }),
+        environment('lab', { accessState: 'degraded', probe: 'pending' }),
+      ];
+      mockAgents = { ...mockAgents, rows: [], installations: [] };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'No agents to list' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('No environment this portal can reach runs kagent.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('No agents yet')).not.toBeInTheDocument();
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+    });
+
+    it('leaves an environment that could not be asked to the inventory gate', async () => {
+      mockInventoryEntries = [
+        environment('golem', {
+          home: true,
+          probe: 'failed',
+          error: failedProbe('UnauthorizedError'),
+        }),
+      ];
+      mockAgents = { ...mockAgents, rows: [], installations: [] };
+      await renderPanel();
+
+      expect(screen.getByText('Inventory gate: golem')).toBeInTheDocument();
+      expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+    });
+
+    it('explains an empty list by an environment other than home that could not be asked', async () => {
+      // The home answered without kagent; dingo might run it, but its probe
+      // was refused, so it is the only explanation of the empty list.
+      mockInventoryEntries = [
+        environment('golem', { home: true, kagent: false }),
+        environment('dingo', {
+          probe: 'failed',
+          error: failedProbe('ForbiddenError'),
+        }),
+      ];
+      mockAgents = { ...mockAgents, rows: [], installations: [] };
+      await renderPanel();
+
+      expect(screen.getByText('Inventory gate: dingo')).toBeInTheDocument();
+      expect(screen.queryByText('No agents to list')).not.toBeInTheDocument();
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the gate to the home environment while the list has rows', async () => {
+      mockInventoryEntries = [
+        environment('golem', { home: true }),
+        environment('dingo', {
+          probe: 'failed',
+          error: failedProbe('ForbiddenError'),
+        }),
+      ];
+      await renderPanel();
+
+      expect(screen.getByText('Support triage')).toBeInTheDocument();
+      expect(screen.queryByText(/Inventory gate/)).not.toBeInTheDocument();
+    });
+
+    it('says a pinned environment is unknown, instead of blaming another one', async () => {
+      mockInventoryEntries = [
+        environment('golem', {
+          home: true,
+          probe: 'failed',
+          error: failedProbe('UnauthorizedError'),
+        }),
+        environment('dingo'),
+      ];
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        scope: 'old-lab',
+        installations: [],
+      };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'Unknown environment' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'This portal knows no environment named “old-lab”. Choose another environment.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Inventory gate/)).not.toBeInTheDocument();
+      expect(screen.queryByText('No agents to list')).not.toBeInTheDocument();
+    });
+
+    it('names an environment switched off in Cluster access that runs kagent', async () => {
+      mockInventoryEntries = [
+        environment('golem', { home: true, kagent: false }),
+        environment('lab', { muted: true }),
+      ];
+      mockAgents = { ...mockAgents, rows: [], installations: [] };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'No agents to list' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'lab runs kagent but is switched off in Cluster access, so its agents are not read.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+    });
+
+    it('shows a thin bar while more environments are still read, over the same list', async () => {
+      mockAgents = { ...mockAgents, isLoadingMore: true };
+      await renderRerenderablePanel();
+
+      const list = screen.getByRole('list', { name: 'Agents' });
+      expect(within(list).getByText('Support triage')).toBeInTheDocument();
+      expect(
+        await screen.findByRole('progressbar', { name: 'Loading more agents' }),
+      ).toBeInTheDocument();
+
+      // The last environment answers: the bar goes, the list stays mounted.
+      mockAgents = { ...mockAgents, isLoadingMore: false };
+      act(() => rerenderPanel());
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      expect(screen.getByRole('list', { name: 'Agents' })).toBe(list);
+    });
   });
 
   it('holds the read warning until the read settles, and keeps it closed', async () => {

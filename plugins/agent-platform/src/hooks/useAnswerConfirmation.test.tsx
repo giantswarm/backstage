@@ -288,26 +288,6 @@ describe('useAnswerConfirmation', () => {
       expect(listSessionTasks).not.toHaveBeenCalled();
     });
 
-    it('follows a resumed turn still running before its first event through the poll', async () => {
-      // A stream that ended cleanly before the agent said anything — the
-      // relay's duration bound, after nothing but keep-alives — resolves with
-      // no events. The turn may well be running, so this is the page's
-      // "following" state: not a failure, and nothing to verify.
-      streamAnswer.mockResolvedValue(undefined);
-
-      const { result, invalidateQueries } = renderWith(agent);
-
-      await act(async () => {
-        await result.current.answer({ taskId: 'task-1', decision: 'approve' });
-      });
-
-      expect(result.current.error).toBeNull();
-      expect(result.current.failed).toBeNull();
-      expect(result.current.isStreamLost).toBe(true);
-      expect(listSessionTasks).not.toHaveBeenCalled();
-      expect(invalidationFor(invalidateQueries, TASKS_KEY)).toBeDefined();
-    });
-
     it('verifies a transport failure before any event against the history', async () => {
       streamAnswer.mockRejectedValue(transportError('connection reset'));
       listSessionTasks.mockImplementation(async () => [

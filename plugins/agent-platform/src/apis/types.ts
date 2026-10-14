@@ -116,37 +116,6 @@ export interface KagentApi {
   getSessionUsage(installation: string): Promise<SessionUsageResponse>;
 
   /**
-   * Start a session with one agent — create its AgentInstance — and return
-   * its id.
-   *
-   * Creating the instance says nothing to the agent yet. Talking happens
-   * through {@link sendMessage} / {@link streamMessage} with the returned id,
-   * which every turn is routed by.
-   *
-   * `name` is required even though the controller treats it as optional,
-   * because it does not auto-title: an instance created without one has no
-   * title at all. Derive it with `deriveSessionTitle`.
-   *
-   * `requestId` is this submission's idempotency key: the controller keys
-   * creates on it, so a retry with the same id yields the same instance rather
-   * than a second one. One per submission, reused across its retries.
-   *
-   * The agent's namespace and name are its **real** ones, as read from its
-   * `Agent` — never decoded from a session's `agent_id`, whose encoding
-   * is lossy.
-   *
-   * As with {@link renameSession}, a 400 here does **not** mean "kagent isn't
-   * available on this installation": it is how the backend reports a rejected
-   * body; an agent no Harness admits is a 409.
-   */
-  createSession(
-    installation: string,
-    agent: { namespace: string; name: string },
-    name: string,
-    requestId: string,
-  ): Promise<{ sessionId: string }>;
-
-  /**
    * Stop the turn a session is running: cancel its task on the server.
    *
    * Cutting the stream does not stop a turn — the agent keeps working and the

@@ -1,11 +1,6 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import { ConfigReader } from '@backstage/config';
-import {
-  Code,
-  ConnectError,
-  createRouterTransport,
-  Interceptor,
-} from '@connectrpc/connect';
+import { Code, ConnectError, createRouterTransport } from '@connectrpc/connect';
 import {
   deriveKagentApiBaseUrl,
   isTransportFailure,
@@ -16,6 +11,7 @@ import {
 import { A2A_EXTENSIONS_HEADER, HITL_EXTENSION_URI } from './kagent/hitl';
 import {
   createFakeController,
+  FakeController,
   FakeControllerOptions,
   TurnScript,
 } from './kagent/testing/fakeController';
@@ -31,57 +27,29 @@ const AGENTS: NonNullable<FakeControllerOptions['agents']> = [
 ];
 
 /** A client wired to a fresh fake controller over an in-memory transport. */
-function build(
-  options: FakeControllerOptions = {},
-  interceptors: Interceptor[] = [],
-) {
+function build(options: FakeControllerOptions = {}) {
   const fake = createFakeController({ agents: AGENTS, ...options });
   const client = new KagentClient(
     installation,
     logger,
-    createRouterTransport(fake.routes, { transport: { interceptors } }),
+    createRouterTransport(fake.routes),
     500,
     800,
   );
   return { fake, client };
 }
 
-/**
- * Holds back the first event of every streaming response by `delayMs`, as a
- * turn that is slow to produce anything does.
- */
-function delayFirstEvent(delayMs: number): Interceptor {
-  return next => async request => {
-    const response = await next(request);
-    if (!response.stream) {
-      return response;
-    }
-    const events = response.message;
-    return {
-      ...response,
-      message: (async function* delayed() {
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        yield* events;
-      })(),
-    };
-  };
-}
-
-/** Create a session and return its id. */
-async function created(
-  client: KagentClient,
+/** Start a session, as agent-manager does, and return its id. */
+function created(
+  fake: FakeController,
   requestId = 'req-1',
   options = USER,
-): Promise<string> {
-  const body = (await client.createSession(
-    AGENT,
-    'Ingress check',
+  agent = AGENT,
+): string {
+  return fake.startSession(options.userToken, agent, {
     requestId,
-    options,
-  )) as {
-    session: { id: string };
-  };
-  return body.session.id;
+    name: 'Ingress check',
+  }).id;
 }
 
 /** Drain a streaming Response into its SSE `data:` payloads, parsed. */
@@ -158,7 +126,7 @@ describe('KagentClient against a fake controller', () => {
   describe('identity', () => {
     it('sends the bearer and never an identity header, on every RPC', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
       await client.listSessions(USER);
       await client.getSession(id, USER);
       await client.updateSessionName(id, 'Renamed', USER);
@@ -185,7 +153,6 @@ describe('KagentClient against a fake controller', () => {
       );
       expect(services).toEqual(
         new Set([
-          'SessionService/CreateSession',
           'SessionService/ListSessions',
           'SessionService/GetSession',
           'SessionService/UpdateSessionName',
@@ -234,88 +201,12 @@ describe('KagentClient against a fake controller', () => {
   });
 
   describe('sessions are Session records', () => {
-    it('creates a session of the Agent and answers the proto JSON', async () => {
-      const { client } = build();
-
-      const body = (await client.createSession(
-        AGENT,
-        'Ingress check',
-        'req-1',
-        USER,
-      )) as {
-        session: Record<string, unknown>;
-      };
-
-      expect(body.session).toEqual(
-        expect.objectContaining({
-          id: expect.any(String),
-          creator: 'dev@lab.local',
-          name: 'Ingress check',
-          state: 'RUNTIME_STATE_READY',
-          agent: { namespace: 'kagent', name: 'sre-agent' },
-          contextId: expect.any(String),
-          createdAt: expect.any(String),
-        }),
-      );
-    });
-
-    it('creates once for a repeated request_id and refuses a reuse with other parameters', async () => {
-      const { fake, client } = build();
-
-      const first = await created(client, 'req-idem');
-      const second = await created(client, 'req-idem');
-
-      expect(second).toBe(first);
-      expect(fake.sessions.size).toBe(1);
-
-      await expect(
-        client.createSession(
-          { namespace: 'kagent', name: 'orphan' },
-          'x',
-          'req-idem',
-          USER,
-        ),
-      ).rejects.toMatchObject({ name: 'ConflictError' });
-    });
-
-    it('refuses to start a session on an Agent without a ready revision, as a 409 naming it', async () => {
-      const { client } = build();
-      await expect(
-        client.createSession(
-          { namespace: 'kagent', name: 'orphan' },
-          'x',
-          'req-2',
-          USER,
-        ),
-      ).rejects.toMatchObject({
-        name: 'ConflictError',
-        message: expect.stringContaining(
-          "'kagent/orphan' on installation 'gazelle' cannot start a session yet: Agent does not have a ready prepared revision",
-        ),
-      });
-    });
-
-    it('reports an unknown Agent as a 409 too and a rejected name as a 400', async () => {
-      const { client } = build();
-      await expect(
-        client.createSession(
-          { namespace: 'kagent', name: 'nope' },
-          'x',
-          'req-3',
-          USER,
-        ),
-      ).rejects.toMatchObject({ name: 'ConflictError' });
-      await expect(
-        client.createSession(AGENT, ' padded ', 'req-4', USER),
-      ).rejects.toMatchObject({ name: 'InputError' });
-    });
-
     it('lists only the caller’s sessions, walking every page', async () => {
-      const { client } = build();
+      const { fake, client } = build();
       for (let i = 0; i < 3; i += 1) {
-        await created(client, `mine-${i}`);
+        created(fake, `mine-${i}`);
       }
-      await created(client, 'theirs', OTHER);
+      created(fake, 'theirs', OTHER);
 
       const mine = (await client.listSessions(USER)) as {
         sessions: { creator: string }[];
@@ -332,19 +223,14 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('narrows the listing to one Agent on request', async () => {
-      const { client } = build({
+      const { fake, client } = build({
         agents: [
           ...AGENTS,
           { namespace: 'kagent', name: 'other', ready: true },
         ],
       });
-      await created(client, 'a');
-      await client.createSession(
-        { namespace: 'kagent', name: 'other' },
-        'o',
-        'b',
-        USER,
-      );
+      created(fake, 'a');
+      created(fake, 'b', USER, { namespace: 'kagent', name: 'other' });
 
       const narrowed = (await client.listSessions(USER, {
         agent: { namespace: 'kagent', name: 'other' },
@@ -360,7 +246,7 @@ describe('KagentClient against a fake controller', () => {
 
     it('reads, renames and deletes one session, scoped to the caller', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
 
       expect(await client.getSession(id, USER)).toEqual({
         session: expect.objectContaining({ id, name: 'Ingress check' }),
@@ -393,7 +279,7 @@ describe('KagentClient against a fake controller', () => {
   describe('turns over A2A v1', () => {
     it('addresses a turn to the Agent with the session’s context, so no new session starts', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
 
       await client.sendMessage(
         id,
@@ -409,9 +295,9 @@ describe('KagentClient against a fake controller', () => {
       expect(fake.tasks.get(id)?.[0]?.task.contextId).toBe(id);
     });
 
-    it('reads a session’s tasks through the Agent it remembers from the create, and through a fresh read otherwise', async () => {
+    it('reads a session’s tasks through the Agent it remembers, and through a fresh read otherwise', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
       await client.sendMessage(
         id,
         AGENT,
@@ -441,7 +327,7 @@ describe('KagentClient against a fake controller', () => {
 
     it('streams the turn as SSE frames of StreamResponse JSON, routed by the session header with HITL requested', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
 
       const response = await client.streamMessage(
         id,
@@ -484,8 +370,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('answers the finished task for a unary send', async () => {
-      const { client } = build();
-      const id = await created(client);
+      const { fake, client } = build();
+      const id = created(fake);
 
       const body = (await client.sendMessage(
         id,
@@ -505,8 +391,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('lists the conversation oldest first, shaped as asked', async () => {
-      const { client } = build();
-      const id = await created(client);
+      const { fake, client } = build();
+      const id = created(fake);
       await client.sendMessage(
         id,
         AGENT,
@@ -543,7 +429,7 @@ describe('KagentClient against a fake controller', () => {
 
     it('reads one task by id with the session header', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
       const sent = (await client.sendMessage(
         id,
         AGENT,
@@ -562,18 +448,16 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('refuses a second message during a turn as a 409', async () => {
-      const { client } = build({ turn: () => ({ kind: 'long' }) });
-      const id = await created(client);
-      const first = await client.streamMessage(
+      const { fake, client } = build({ turn: () => ({ kind: 'long' }) });
+      const id = created(fake);
+      const first = client.streamMessage(
         id,
         AGENT,
         { messageId: 'm1', text: 'long' },
         USER,
         new AbortController().signal,
       );
-      // The stream is answered before the turn starts; its first frame is
-      // what says the turn is running.
-      await first.body!.getReader().read();
+      await first;
 
       await expect(
         client.sendMessage(id, AGENT, { messageId: 'm2', text: 'again' }, USER),
@@ -591,7 +475,7 @@ describe('KagentClient against a fake controller', () => {
             ? { kind: 'long' }
             : { kind: 'reply', text: 'Back to work.' },
       });
-      const id = await created(client);
+      const id = created(fake);
       // Not awaited: the in-memory router transport hands the stream over only
       // once the handler returns, and the handler returns on the cancel. (The
       // h2c suite reads the stream live and cancels mid-way.)
@@ -638,10 +522,10 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('ends a stream that dies mid-turn with one error frame', async () => {
-      const { client } = build({
+      const { fake, client } = build({
         turn: () => ({ kind: 'fail', reason: 'model_not_found' }),
       });
-      const id = await created(client);
+      const id = created(fake);
 
       const response = await client.streamMessage(
         id,
@@ -665,27 +549,17 @@ describe('KagentClient against a fake controller', () => {
       });
     });
 
-    it('carries a rejection before any event in-band, with the status the unary route answers', async () => {
-      // The stream is answered before kagent has said anything, so a refusal
-      // can no longer be the response's status; the one frame carries it.
+    it('maps a rejection before the stream opens to the caller’s error', async () => {
       const { client } = build();
-
-      const response = await client.streamMessage(
-        'not-a-session',
-        AGENT,
-        { messageId: 'm1', text: 'x' },
-        USER,
-        new AbortController().signal,
-      );
-
-      expect(await frames(response)).toEqual([
-        {
-          error: {
-            status: 404,
-            message: expect.stringContaining('That session does not exist'),
-          },
-        },
-      ]);
+      await expect(
+        client.streamMessage(
+          'not-a-session',
+          AGENT,
+          { messageId: 'm1', text: 'x' },
+          USER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'NotFoundError' });
     });
   });
 
@@ -722,8 +596,8 @@ describe('KagentClient against a fake controller', () => {
     };
 
     it('pauses the turn with the typed request, because the extension was requested', async () => {
-      const { client } = build({ turn: () => approval });
-      const id = await created(client);
+      const { fake, client } = build({ turn: () => approval });
+      const id = created(fake);
 
       const body = (await client.sendMessage(
         id,
@@ -745,7 +619,7 @@ describe('KagentClient against a fake controller', () => {
 
     it('resumes the paused task with the decision built from the recorded request', async () => {
       const { fake, client } = build({ turn: () => approval });
-      const id = await created(client);
+      const id = created(fake);
       const paused = (await client.sendMessage(
         id,
         AGENT,
@@ -813,7 +687,7 @@ describe('KagentClient against a fake controller', () => {
       // payload, but over SendStreamingMessage — so no deadline of ours ends the
       // agent's turn, and the events arrive as they happen.
       const { fake, client } = build({ turn: () => approval });
-      const id = await created(client);
+      const id = created(fake);
       const paused = (await client.sendMessage(
         id,
         AGENT,
@@ -878,43 +752,9 @@ describe('KagentClient against a fake controller', () => {
       });
     });
 
-    it('relays a resumed turn whose first event comes after the request timeout', async () => {
-      // Seen on gazelle: the resumed turn said nothing within the request
-      // timeout and the route answered 500. A resumed task is silent until the
-      // agent produces something; that is a turn running, not kagent unwell.
-      const { client } = build({ turn: () => approval }, [
-        delayFirstEvent(700),
-      ]);
-      const id = await created(client);
-      const paused = (await client.sendMessage(
-        id,
-        AGENT,
-        { messageId: 'm1', text: 'delete it' },
-        USER,
-      )) as {
-        task: { id: string };
-      };
-
-      const response = await client.streamAnswer(
-        id,
-        AGENT,
-        { messageId: 'm2', taskId: paused.task.id, decision: 'approve' },
-        USER,
-        new AbortController().signal,
-      );
-
-      const events = (await frames(response)) as Record<string, unknown>[];
-      expect(events.at(-1)).toEqual({
-        statusUpdate: expect.objectContaining({
-          taskId: paused.task.id,
-          status: expect.objectContaining({ state: 'TASK_STATE_COMPLETED' }),
-        }),
-      });
-    });
-
     it('refuses to stream an answer to a task that is not waiting, as a 409', async () => {
-      const { client } = build();
-      const id = await created(client);
+      const { fake, client } = build();
+      const id = created(fake);
       const done = (await client.sendMessage(
         id,
         AGENT,
@@ -935,8 +775,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('answers a question positionally and refuses a mismatched answer count', async () => {
-      const { client } = build({ turn: () => question });
-      const id = await created(client);
+      const { fake, client } = build({ turn: () => question });
+      const id = created(fake);
       const paused = (await client.sendMessage(
         id,
         AGENT,
@@ -992,8 +832,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('refuses to answer a task that is not waiting, as a 409', async () => {
-      const { client } = build();
-      const id = await created(client);
+      const { fake, client } = build();
+      const id = created(fake);
       const done = (await client.sendMessage(
         id,
         AGENT,
@@ -1093,8 +933,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('reports a turn that outlives its timeout as pending once the message landed', async () => {
-      const { client } = build({ turn: () => ({ kind: 'long' }) });
-      const id = await created(client);
+      const { fake, client } = build({ turn: () => ({ kind: 'long' }) });
+      const id = created(fake);
 
       const error = (await client
         .sendMessage(id, AGENT, { messageId: 'm1', text: 'slow' }, USER)

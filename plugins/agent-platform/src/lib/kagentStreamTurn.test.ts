@@ -108,19 +108,6 @@ describe('readStreamFrame', () => {
       ),
     ).toEqual({ kind: 'error', message: 'runtime gone' });
   });
-
-  it('keeps the status and reason of a refusal before any event', () => {
-    expect(
-      readStreamFrame(
-        '{"error":{"status":503,"message":"kagent is unavailable","reason":"unavailable"}}',
-      ),
-    ).toEqual({
-      kind: 'error',
-      message: 'kagent is unavailable',
-      status: 503,
-      reason: 'unavailable',
-    });
-  });
 });
 
 describe('applyStreamEvent on A2A v1 StreamResponse frames', () => {

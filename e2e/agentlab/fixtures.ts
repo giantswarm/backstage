@@ -609,12 +609,17 @@ export async function startSessionOnReadyAgent(
   let reached: () => void = () => {};
   const held = new Promise<void>(resolve => (release = resolve));
   const onItsWay = new Promise<void>(resolve => (reached = resolve));
-  const createSession = /\/api\/agent-platform\/kagent\/sessions\?/;
+  // The start is agent-manager's start_session, called through muster.
   if (whileStarting) {
-    await page.route(createSession, async route => {
+    await page.route('**/api/muster/call**', async route => {
+      const call = route.request().postDataJSON() as { name?: string } | null;
+      if (call?.name !== 'x_agent-manager_start_session') {
+        await route.fallback();
+        return;
+      }
       reached();
       await held;
-      await route.continue();
+      await route.fallback();
     });
   }
   // Exact: the dialog's own Start, not a longer button name.

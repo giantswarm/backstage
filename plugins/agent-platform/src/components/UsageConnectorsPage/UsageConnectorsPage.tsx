@@ -9,8 +9,8 @@ import { UsageColumn } from '../UsageColumn';
  *
  * Named for what it is about, connectors and their tools, rather than for the
  * protocol (MCP) they speak. It used to sit at the foot of Overview; it moved
- * here so Overview fits one screen (T52), and because "how are my connectors
- * doing" is a question of its own (`usage-metrics-ia.md`).
+ * here because "how are my connectors doing" is a question of its own
+ * (`usage-metrics-ia.md`).
  *
  * The content is the muster plugin's, contributed through the `sections`
  * extension input of `sub-page:agent-platform/usage` (see `mcpUsageSection`
