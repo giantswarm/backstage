@@ -3,7 +3,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { UnpricedModelRow } from '../../../lib/llmUsage';
 import { PricingCoverageNote } from './PricingCoverageNote';
 

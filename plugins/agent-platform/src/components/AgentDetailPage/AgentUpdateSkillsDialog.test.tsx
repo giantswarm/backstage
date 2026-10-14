@@ -45,9 +45,39 @@ type Scenario = {
   refreshed?: AgentSkillEntry[];
   validateError?: Error;
   updateError?: Error;
+  /** What update_agent's commit dry run throws (the confirm's write still works). */
+  commitDryRunError?: Error;
+  /** What only the pull request itself throws (the dry run passed). */
+  commitError?: Error;
+  /** What the commit dry run would write; default: what validate_agent answered. */
+  committed?: AgentSkillEntry[];
+  /** Holds the agent's read until it settles. */
+  agentHeld?: Promise<void>;
+  /** Holds validate_agent's answer until it settles. */
+  validateHeld?: Promise<void>;
+  /** Holds the commit dry run's answer until it settles. */
+  commitDryRunHeld?: Promise<void>;
+  /** validate_agent's violations. */
+  violations?: string[];
+  /** How many skills the page shows for the agent. */
+  skillCount?: number;
   /** The dialog is open in commit mode: an agent applied from git. */
   commit?: boolean;
 };
+
+// As agent-manager answers it over MCP: the code, then its wrapped error.
+const MISSING_RELEASE_FILE = new Error(
+  "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer-agent is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer-agent.yaml there): change it in the file that defines it",
+);
+const MISSING_PATH =
+  'management-clusters/gazelle/extras/agent-manager/pr-reviewer-agent.yaml';
+const HEAD2 = '4e6d8c0a2b4f6e8d0c2a4b6d8f0e2c4a6b8d0f2e';
+
+function commitDryRuns(callTool: jest.Mock) {
+  return callTool.mock.calls.filter(
+    ([tool, args]) => tool === 'x_agent-manager_update_agent' && args.dryRun,
+  );
+}
 
 function makeMusterApi(scenario: Scenario = {}) {
   const refreshed = scenario.refreshed ?? [
@@ -59,8 +89,10 @@ function makeMusterApi(scenario: Scenario = {}) {
     async (name: string, args: Record<string, unknown>) => {
       switch (name) {
         case 'x_agent-manager_get_agent':
+          await scenario.agentHeld;
           return AGENT;
         case 'x_agent-manager_validate_agent':
+          await scenario.validateHeld;
           if (scenario.validateError) {
             throw scenario.validateError;
           }
@@ -72,7 +104,8 @@ function makeMusterApi(scenario: Scenario = {}) {
             ...(scenario.commit ? { mode: 'commit' } : {}),
           });
           return {
-            valid: true,
+            valid: !scenario.violations,
+            errors: scenario.violations,
             mode: 'update',
             schemaVersion: '1.0.0',
             schemaSource: 'registry',
@@ -86,7 +119,25 @@ function makeMusterApi(scenario: Scenario = {}) {
           if (scenario.updateError) {
             throw scenario.updateError;
           }
+          if (args.mode === 'commit' && args.dryRun) {
+            await scenario.commitDryRunHeld;
+            if (scenario.commitDryRunError) {
+              throw scenario.commitDryRunError;
+            }
+            return {
+              ...committedTo(),
+              dryRun: true,
+              agent: AGENT,
+              before: { skills: CURRENT },
+              after: { skills: scenario.committed ?? refreshed },
+              changed: ['skills'],
+              manifests: { ociRepository: '', helmRelease: '', values: {} },
+            };
+          }
           if (args.mode === 'commit') {
+            if (scenario.commitError) {
+              throw scenario.commitError;
+            }
             return committedTo('https://github.com/giantswarm/agents/pull/7');
           }
           return {
@@ -109,7 +160,13 @@ const analyticsApi = mockApis.analytics.mock();
 const onUpdated = jest.fn();
 const onOpenChange = jest.fn();
 
-function Host({ mode }: { mode?: 'apply' | 'commit' }) {
+function Host({
+  mode,
+  skillCount,
+}: {
+  mode?: 'apply' | 'commit';
+  skillCount?: number;
+}) {
   const updating = useUpdateAgent('gazelle');
   return (
     <AgentUpdateSkillsDialog
@@ -119,6 +176,7 @@ function Host({ mode }: { mode?: 'apply' | 'commit' }) {
       displayName="PR reviewer"
       isOpen
       mode={mode}
+      skillCount={skillCount}
       onOpenChange={onOpenChange}
       updating={updating}
       onUpdated={onUpdated}
@@ -139,7 +197,10 @@ async function renderDialog(scenario: Scenario = {}) {
       ]}
     >
       <QueryClientProvider client={queryClient}>
-        <Host mode={scenario.commit ? 'commit' : 'apply'} />
+        <Host
+          mode={scenario.commit ? 'commit' : 'apply'}
+          skillCount={scenario.skillCount}
+        />
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -168,9 +229,91 @@ describe('AgentUpdateSkillsDialog', () => {
     const current = screen.getByTestId('skill-refresh-incident');
     expect(current).toHaveTextContent('Already at the head');
 
+    // The name and its source are separate lines, not one run-on string.
+    const name = within(moving).getByText('pr-review');
+    const source = within(moving).getByText(
+      'giantswarm/agent-skills · pr-review',
+    );
+    expect(name.parentElement).toBe(source.parentElement);
+    expect(name.parentElement).toHaveClass('bui-Flex');
+
     const digest = screen.getByTestId('skill-refresh-runbooks');
     expect(digest).toHaveTextContent('Pinned by digest — left alone');
     expect(digest).toHaveTextContent('n/a');
+    // The digest, not the repository the Skill column already names.
+    expect(within(digest).getByTitle(OCI)).toHaveTextContent(
+      'sha256:0123456789ab',
+    );
+  });
+
+  it('shows a placeholder row per skill the page knows of and a progress line until the skills are read, with the confirm locked', async () => {
+    let settle: () => void = () => {};
+    const held = new Promise<void>(resolve => (settle = resolve));
+    await renderDialog({ agentHeld: held, skillCount: CURRENT.length });
+
+    const table = screen.getByRole('table', { name: 'Skills and their pins' });
+    expect(table).toHaveAttribute('aria-busy', 'true');
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(CURRENT.length);
+    expect(
+      await screen.findByText('Asking agent-manager which skills would move…'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Update all skills' }),
+    ).toBeDisabled();
+
+    settle();
+    expect(
+      await screen.findByText(/Confirming re-pins the skills marked above/),
+    ).toBeInTheDocument();
+    expect(table).toHaveAttribute('aria-busy', 'false');
+    expect(
+      screen.queryByText('Asking agent-manager which skills would move…'),
+    ).not.toBeInTheDocument();
+    // The real rows took the placeholders' place, one for one.
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(CURRENT.length);
+    expect(screen.queryAllByTestId('cell-skeleton')).toHaveLength(0);
+  });
+
+  it('shows three placeholder rows when the page did not say how many skills there are', async () => {
+    await renderDialog({ agentHeld: new Promise(() => {}) });
+
+    expect(
+      screen
+        .getByRole('table', { name: 'Skills and their pins' })
+        .querySelectorAll('tbody tr'),
+    ).toHaveLength(3);
+  });
+
+  it('lists the pins while the dry run runs, holding the head and outcome cells in place', async () => {
+    let settle: () => void = () => {};
+    const held = new Promise<void>(resolve => (settle = resolve));
+    await renderDialog({ validateHeld: held });
+
+    const moving = await screen.findByTestId('skill-refresh-pr-review');
+    expect(within(moving).getByTitle(PINNED)).toBeInTheDocument();
+    expect(within(moving).queryByTitle(HEAD)).not.toBeInTheDocument();
+    expect(moving).not.toHaveTextContent('Moves to the head');
+    expect(within(moving).getAllByTestId('cell-skeleton')).toHaveLength(2);
+    // A digest pin never moves, so it has nothing to wait for.
+    expect(screen.getByTestId('skill-refresh-runbooks')).toHaveTextContent(
+      'Pinned by digest — left alone',
+    );
+    // The columns are sized up front, not by what arrives.
+    expect(
+      screen
+        .getByRole('table', { name: 'Skills and their pins' })
+        .querySelectorAll('colgroup col'),
+    ).toHaveLength(4);
+    expect(
+      screen.getByRole('button', { name: 'Update all skills' }),
+    ).toBeDisabled();
+
+    settle();
+    expect(
+      await within(moving).findByText('Moves to the head'),
+    ).toBeInTheDocument();
+    expect(within(moving).getByTitle(HEAD)).toBeInTheDocument();
+    expect(within(moving).queryAllByTestId('cell-skeleton')).toHaveLength(0);
   });
 
   it('confirms with update_agent and refreshSkills only, then hands the result over', async () => {
@@ -218,7 +361,8 @@ describe('AgentUpdateSkillsDialog', () => {
 
       const moving = await screen.findByTestId('skill-refresh-pr-review');
       expect(within(moving).getByTitle(PINNED)).toBeInTheDocument();
-      expect(within(moving).getByTitle(HEAD)).toBeInTheDocument();
+      // The head shows once the commit dry run has answered too.
+      expect(await within(moving).findByTitle(HEAD)).toBeInTheDocument();
       expect(moving).toHaveTextContent('Moves to the head');
       expect(
         screen.getByText(/opens a pull request as you with the new pins/),
@@ -226,11 +370,19 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(
         screen.queryByRole('button', { name: 'Update all skills' }),
       ).not.toBeInTheDocument();
-      expect(
-        callTool.mock.calls.some(
-          ([tool]) => tool === 'x_agent-manager_update_agent',
-        ),
-      ).toBe(false);
+      // Only update_agent's commit dry run, which opens nothing.
+      const writes = callTool.mock.calls.filter(
+        ([tool]) => tool === 'x_agent-manager_update_agent',
+      );
+      expect(writes.map(([, args]) => args)).toEqual([
+        {
+          namespace: 'kagent',
+          name: 'pr-reviewer',
+          refreshSkills: true,
+          mode: 'commit',
+          dryRun: true,
+        },
+      ]);
     });
 
     it('opens the pull request with update_agent mode: commit, shows it, and reports the commit event', async () => {
@@ -242,10 +394,11 @@ describe('AgentUpdateSkillsDialog', () => {
       await userEvent.click(confirm);
 
       expect(
-        await screen.findByRole('link', { name: /Open the pull request/ }),
+        await screen.findByRole('link', { name: /Review pull request/ }),
       ).toHaveAttribute('href', 'https://github.com/giantswarm/agents/pull/7');
       const write = callTool.mock.calls.find(
-        ([tool]) => tool === 'x_agent-manager_update_agent',
+        ([tool, args]) =>
+          tool === 'x_agent-manager_update_agent' && !args.dryRun,
       );
       expect(write?.[1]).toEqual({
         namespace: 'kagent',
@@ -289,6 +442,152 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(onOpenChange).not.toHaveBeenCalledWith(false);
       expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
     });
+
+    it('says agent-manager has no file for the release, and offers no pull request, when the commit dry run is refused so', async () => {
+      const { callTool } = await renderDialog({
+        commit: true,
+        commitDryRunError: MISSING_RELEASE_FILE,
+      });
+
+      expect(
+        await screen.findByText('agent-manager cannot open this pull request'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('flux-giantswarm/pr-reviewer-agent'),
+      ).toBeInTheDocument();
+      expect(screen.getByText(MISSING_PATH)).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', {
+          name: 'giantswarm/giantswarm-management-clusters',
+        }),
+      ).toHaveAttribute(
+        'href',
+        'https://github.com/giantswarm/giantswarm-management-clusters',
+      );
+      // The plan stays: it is what to change by hand.
+      expect(screen.getByTestId('skill-refresh-pr-review')).toHaveTextContent(
+        'Moves to the head',
+      );
+      expect(
+        screen.queryByText(/opens a pull request as you/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Open pull request' }),
+      ).toBeDisabled();
+      expect(
+        callTool.mock.calls.some(
+          ([tool, args]) =>
+            tool === 'x_agent-manager_update_agent' && !args.dryRun,
+        ),
+      ).toBe(false);
+    });
+
+    it('says the same when only the pull request is refused that way', async () => {
+      await renderDialog({ commit: true, commitError: MISSING_RELEASE_FILE });
+      await screen.findByTestId('skill-refresh-pr-review');
+      const confirm = screen.getByRole('button', { name: 'Open pull request' });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      await userEvent.click(confirm);
+
+      expect(
+        await screen.findByText('agent-manager cannot open this pull request'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/is not in agent-manager's directory/),
+      ).not.toBeInTheDocument();
+      expect(confirm).toBeDisabled();
+      expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+    });
+
+    it('asks no commit dry run when every git skill is already at its head', async () => {
+      const { callTool } = await renderDialog({
+        commit: true,
+        refreshed: CURRENT,
+        commitDryRunError: MISSING_RELEASE_FILE,
+      });
+
+      expect(
+        await screen.findByText(
+          "Every git skill is already at its repository's default-branch head.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('agent-manager cannot open this pull request'),
+      ).not.toBeInTheDocument();
+      expect(commitDryRuns(callTool)).toHaveLength(0);
+    });
+
+    it('asks no commit dry run when validate_agent reports violations', async () => {
+      const { callTool } = await renderDialog({
+        commit: true,
+        violations: ['skills[0]: unresolvable'],
+      });
+
+      expect(
+        await screen.findByText('agent-manager refuses the update'),
+      ).toBeInTheDocument();
+      expect(commitDryRuns(callTool)).toHaveLength(0);
+    });
+
+    it('says it is checking while the commit dry run runs, and promises no pull request until it answers', async () => {
+      let settle: () => void = () => {};
+      const held = new Promise<void>(resolve => (settle = resolve));
+      await renderDialog({ commit: true, commitDryRunHeld: held });
+
+      expect(
+        await screen.findByText(
+          'Asking agent-manager whether it can open the pull request…',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Open pull request' }),
+      ).toBeDisabled();
+      expect(
+        screen.queryByText(/Confirming opens a pull request/),
+      ).not.toBeInTheDocument();
+      // validate_agent's head is not final yet: the cells wait for the plan.
+      const moving = screen.getByTestId('skill-refresh-pr-review');
+      expect(within(moving).queryByTitle(HEAD)).not.toBeInTheDocument();
+      expect(within(moving).getAllByTestId('cell-skeleton')).toHaveLength(2);
+
+      settle();
+      expect(
+        await screen.findByText(/Confirming opens a pull request/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          'Asking agent-manager whether it can open the pull request…',
+        ),
+      ).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Open pull request' }),
+        ).toBeEnabled(),
+      );
+    });
+
+    it('shows the pins the commit dry run would write', async () => {
+      await renderDialog({
+        commit: true,
+        committed: [
+          {
+            name: 'pr-review',
+            path: 'pr-review',
+            git: { url: REPO, commit: HEAD2 },
+          },
+          {
+            name: 'incident',
+            path: 'incident',
+            git: { url: REPO, commit: HEAD },
+          },
+          { name: 'runbooks', oci: OCI },
+        ],
+      });
+
+      const moving = await screen.findByTestId('skill-refresh-pr-review');
+      expect(await within(moving).findByTitle(HEAD2)).toBeInTheDocument();
+      expect(within(moving).queryByTitle(HEAD)).not.toBeInTheDocument();
+    });
   });
 
   it('locks the confirm when every git skill is already at its head', async () => {
@@ -318,6 +617,10 @@ describe('AgentUpdateSkillsDialog', () => {
     expect(
       screen.getByText(/GitHub answered 404 — the repository does not exist/),
     ).toBeInTheDocument();
+    // No head will come: the row says so rather than looking pending.
+    const row = screen.getByTestId('skill-refresh-pr-review');
+    expect(row).not.toHaveTextContent('…');
+    expect(within(row).queryAllByTestId('cell-skeleton')).toHaveLength(0);
     expect(
       screen.getByRole('button', { name: 'Update all skills' }),
     ).toBeDisabled();

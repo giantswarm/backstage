@@ -182,7 +182,7 @@ test('agent edit: an agent applied from git dry-runs in mode commit and opens on
   await commit.click();
 
   await expect(
-    admin.getByRole('link', { name: /Open the pull request/ }),
+    admin.getByRole('link', { name: /Review pull request/ }),
   ).toHaveAttribute('href', PULL_REQUEST);
   const committed = writeButton(admin, /^Proposed$/);
   await expect(

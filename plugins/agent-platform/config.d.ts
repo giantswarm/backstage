@@ -11,7 +11,7 @@ export interface Config {
     /** Model metadata the platform itself does not report. */
     models?: {
       /**
-       * Context-window sizes per model, in tokens, for the chat's memory
+       * Context-window sizes per model, in tokens, for the chat's context
        * indicator — nothing in the platform reports a hosted model's window
        * (kagent's ModelConfig has no such field), so it is configured here.
        *

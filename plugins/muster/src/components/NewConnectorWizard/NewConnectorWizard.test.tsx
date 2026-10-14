@@ -573,7 +573,7 @@ describe('shell connector wizard', () => {
         screen.getByText('Customize / Connectors / jira'),
       ).toBeInTheDocument();
       await waitFor(() =>
-        expect(document.title).toBe('Edit jira · Connectors · Agent Platform'),
+        expect(document.title).toBe('Edit jira · Connectors'),
       );
       expect(screen.getByLabelText(/^Server address/)).toHaveValue(
         'https://jira.example.com/mcp',

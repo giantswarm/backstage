@@ -158,8 +158,9 @@ Invariants:
 - core-components tables keep the shell's `overflow-x: auto` and scroll.
 
 Test the phone branch in jsdom with `mockPhoneLayout()` (and
-`mockDesktopLayout()` for the other branch); call `restore()` on the result in
-`afterEach`. jsdom has no `matchMedia`, so without it only the desktop branch
+`mockDesktopLayout()` for the other branch), imported from
+`@giantswarm/backstage-plugin-ui-react/testUtils`; call `restore()` on the
+result in `afterEach`. jsdom has no `matchMedia`, so without it only the desktop branch
 is ever tested.
 
 ## Table Structure

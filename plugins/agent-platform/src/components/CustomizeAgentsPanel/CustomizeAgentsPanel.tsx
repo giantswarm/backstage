@@ -166,9 +166,9 @@ const useStyles = makeStyles({
       overflowWrap: 'anywhere',
     },
   },
-  // At phone width a name, a description and a readiness reason wrap to two
-  // lines instead of being cut to one (T22 P2): a phone has no hover to read
-  // the rest in a tooltip.
+  // At phone width a name and a description wrap to two lines instead of
+  // being cut to one (T22 P2): a phone has no hover to read the rest in a
+  // tooltip.
   twoLines: TWO_LINES,
 });
 
@@ -295,7 +295,11 @@ function AgentListItem({
               {row.name}
             </Text>
             {/* The state shows only when it needs a look, as in the
-                prototype; a Ready agent's state is on its own page. */}
+                prototype; a Ready agent's state is on its own page. The
+                state keeps to its few words (T104): the reason is its
+                tooltip, and the agent's page says it in full, which is where
+                a phone reads it (the row is one link, so no hint button can
+                sit in it). */}
             {status.tone !== 'success' && (
               <span className={classes.status} title={row.readinessMessage}>
                 <StatusDot tone={status.tone} />
@@ -305,18 +309,6 @@ function AgentListItem({
               </span>
             )}
           </div>
-          {/* On a phone the reason a not-Ready agent needs a look is said in
-              the row; elsewhere it is the state's tooltip. */}
-          {isPhone && status.tone !== 'success' && row.readinessMessage && (
-            <Text
-              as="span"
-              variant="body-small"
-              color="secondary"
-              className={classes.twoLines}
-            >
-              {row.readinessMessage}
-            </Text>
-          )}
           {row.description && (
             <Text
               as="span"
@@ -584,6 +576,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
         resourceName="Agents"
+        isLoading={isLoading}
       />
       <AgentsHelperBanner />
       {/* The person's recent agents, while the tab shows everything: a search

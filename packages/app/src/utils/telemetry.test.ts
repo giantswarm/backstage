@@ -128,6 +128,40 @@ describe('getTelemetryPageViewPayload', () => {
     },
   );
 
+  it.each(['infrastructure', 'internal'])(
+    'reports the Connectors tab’s %s sub-tab as its subview',
+    sub => {
+      expect(
+        getTelemetryPageViewPayload(`/customize/connectors/${sub}`),
+      ).toEqual({
+        page: 'Customize',
+        view: 'connectors',
+        subview: sub,
+        path: `/customize/connectors/${sub}`,
+      });
+    },
+  );
+
+  it('reports the retired Families path without a subview, as it redirects', () => {
+    expect(
+      getTelemetryPageViewPayload('/customize/connectors/families'),
+    ).toEqual({
+      page: 'Customize',
+      view: 'connectors',
+      path: '/customize/connectors/families',
+    });
+  });
+
+  it('reports no subview for a path below a sub-tab, which redirects', () => {
+    expect(
+      getTelemetryPageViewPayload('/customize/connectors/infrastructure/x'),
+    ).toEqual({
+      page: 'Customize',
+      view: 'connectors',
+      path: '/customize/connectors/infrastructure/x',
+    });
+  });
+
   it('reports an unknown Customize tab without a view', () => {
     expect(getTelemetryPageViewPayload('/customize/whatever')).toEqual({
       page: 'Customize',
@@ -389,11 +423,22 @@ describe('getTelemetryPageViewPayload', () => {
       });
     });
 
-    it('names one model without naming it in page or view', () => {
+    it.each([
+      '/customize/models/gazelle/agent-platform/gpt-4o',
+      '/customize/models/gazelle/agent-platform/gpt-4o/',
+    ])('names one model without naming it in page or view: %s', pathname => {
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Model detail',
+        path: pathname,
+      });
+    });
+
+    // The old path only redirects; the page it lands on reports Model detail.
+    it("counts a model's former path apart, so an old link is one Model detail", () => {
       const pathname = '/agent-platform/models/gazelle/agent-platform/gpt-4o';
 
       expect(getTelemetryPageViewPayload(pathname)).toEqual({
-        page: 'Model detail',
+        page: 'Model detail redirect',
         path: pathname,
       });
     });
@@ -584,7 +629,11 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/agents',
       '/customize/skills',
       '/customize/connectors',
+      '/customize/connectors/infrastructure',
+      '/customize/connectors/families',
+      '/customize/connectors/internal',
       '/customize/models',
+      '/customize/models/gazelle/agent-platform/gpt-4o',
       '/customize/workflows',
       '/installations',
       '/clusters',

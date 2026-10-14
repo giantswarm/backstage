@@ -1,4 +1,5 @@
-import { useCallback, useMemo } from 'react';
+import { Fragment, type ReactNode, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
@@ -17,12 +18,14 @@ import {
   type CatalogFacet,
   CatalogFilterBar,
   CatalogNoMatch,
+  countNoun,
   EmptyStateCard,
   INITIAL_ROWS,
   LoadingIndicator,
   ShowMore,
-  StackedRowList,
+  StackedRow,
   type StackedRowItem,
+  StackedRowList,
   StatusDot,
   isAwaitingData,
   stopRowPress,
@@ -30,17 +33,30 @@ import {
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import type { ServerAuthStatus } from '../../apis/types';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
-import type { ServerListEntry } from '../../lib/serverList';
+import type { ServerListEntry, ServerListRow } from '../../lib/serverList';
+import {
+  CONNECTOR_GROUPS,
+  type ConnectorGroup,
+  type ConnectorGroupInfo,
+  connectorGroup,
+  connectorGroupInfo,
+  MUSTER_DESCRIPTION,
+} from '../../lib/connectorGroups';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
   authStatusQueryKey,
-  ServerAuthActions,
+  deactivatedSignInGate,
+  ServerSignInStatus,
   SessionGate,
+  SignInStatusActions,
+  SignInStatusText,
+  type StatusText,
+  useConnectorGroupPaths,
   useServerPageLinks,
+  useServerSignInStatus,
   useToolCatalogue,
 } from '../shared';
 import {
@@ -50,6 +66,10 @@ import {
   type ConnectorReach,
   connectorReach,
   connectorStatus,
+  musterAuthLabel,
+  musterReach,
+  type MusterSessionState,
+  musterStatus,
   rowServer,
   toolsLabel,
 } from './connectorRows';
@@ -79,6 +99,8 @@ const useStyles = makeStyles({
 
 export type CustomizeConnectorsPanelProps = {
   search: string;
+  /** The sub-tab to list; the customer's own connectors by default. */
+  group?: ConnectorGroup;
 };
 
 type Row = {
@@ -87,10 +109,21 @@ type Row = {
   description?: string;
   auth: string;
   tools?: string;
-  authStatus?: ServerAuthStatus;
+  /** The row's state, from muster's sign-in report and the server's own. */
+  status: StatusText;
+  /** The muster server to sign in to, where muster asks this person to. */
   signInServer?: string;
+  /** Why that sign-in cannot help now (a deactivated connector). */
+  signInGate?: string;
   reach?: ConnectorReach;
 };
+
+/** A row muster asks this person to sign in to. */
+type SignInRow = Row & { signInServer: string };
+
+function hasSignIn(row: Row): row is SignInRow {
+  return row.signInServer !== undefined;
+}
 
 /**
  * The Connectors tab's facets (T49): how a person signs in, and whether the
@@ -152,29 +185,138 @@ function ConnectorStatusCell({
   row: Row;
   installation: string;
 }) {
-  const status = connectorStatus(row.entry, row.authStatus);
+  if (!hasSignIn(row)) {
+    // Pressing a plain state opens the connector, like the rest of the row.
+    return (
+      <Cell>{row.status.label ? <StatusDot {...row.status} /> : null}</Cell>
+    );
+  }
   return (
     <Cell>
-      <Flex align="center" justify="between" gap="2">
-        <StatusDot tone={status.tone} label={status.label} />
-        {row.signInServer && (
-          // The row opens the connector; the sign-in must not.
-          <span
-            onPointerDown={stopRowPress}
-            onPointerUp={stopRowPress}
-            onClick={stopRowPress}
-            onKeyDown={stopRowPress}
-            role="presentation"
-          >
-            <ServerAuthActions
-              noun="connector"
-              serverName={row.signInServer}
-              installation={installation}
-            />
-          </span>
-        )}
-      </Flex>
+      {/* The row opens the connector; the sign-in and the hint must not. */}
+      <span
+        onPointerDown={stopRowPress}
+        onPointerUp={stopRowPress}
+        onClick={stopRowPress}
+        onKeyDown={stopRowPress}
+        role="presentation"
+      >
+        <ServerSignInStatus
+          noun="connector"
+          serverName={row.signInServer}
+          installation={installation}
+          status={row.status}
+          signInGate={row.signInGate}
+        />
+      </span>
     </Cell>
+  );
+}
+
+type StackedRowProps = Omit<StackedRowItem, 'id'>;
+
+/**
+ * A stacked row whose connector muster asks this person to sign in to, from
+ * one hook call, so the answer to a click on the button reaches the state:
+ * the state and its hint on line 1; the Sign in button in the row's actions;
+ * an outstanding sign-in's way back into the page ("Reopen sign-in page",
+ * "Open sign-in page ↗") on a line of its own under the description, since
+ * at the end of line 1 it would squeeze the name to a few characters.
+ */
+function SignInStackedRow({
+  row,
+  installation,
+  description,
+  ...props
+}: StackedRowProps & {
+  row: SignInRow;
+  installation: string;
+  description?: ReactNode;
+}) {
+  const signInStatus = useServerSignInStatus({
+    noun: 'connector',
+    serverName: row.signInServer,
+    installation,
+    status: row.status,
+    signInGate: row.signInGate,
+  });
+  const { parts } = signInStatus;
+  // Only a sign-in has buttons: an empty actions slot would still take its
+  // gap at the end of line 1.
+  const actions =
+    parts.kind === 'sign-in' ? (
+      <SignInStatusActions signInStatus={signInStatus} />
+    ) : null;
+  const waiting = parts.kind === 'sign-in' && parts.wait !== undefined;
+  const details =
+    waiting || description ? (
+      <Flex direction="column" gap="2" align="start">
+        {description}
+        {waiting ? actions : null}
+      </Flex>
+    ) : undefined;
+  return (
+    <StackedRow
+      {...props}
+      status={
+        <SignInStatusText
+          serverName={row.signInServer}
+          signInStatus={signInStatus}
+        />
+      }
+      {...(actions && !waiting ? { actions } : {})}
+      {...(details ? { details } : {})}
+    />
+  );
+}
+
+function ConnectorStackedRow({
+  row,
+  installation,
+  href,
+  toolsPending,
+}: {
+  row: Row;
+  installation: string;
+  href?: string;
+  toolsPending: boolean;
+}) {
+  const classes = useStyles();
+  const description = row.description ? (
+    <Text
+      variant="body-small"
+      color="secondary"
+      className={classes.description}
+    >
+      {row.description}
+    </Text>
+  ) : undefined;
+  const props: StackedRowProps = {
+    title: row.entry.id,
+    ...(href ? { href } : {}),
+    leading: (
+      <span className={classes.tile} aria-hidden>
+        {row.entry.id.charAt(0).toUpperCase()}
+      </span>
+    ),
+    facts: [row.auth, row.tools ?? (toolsPending ? '…' : '')],
+  };
+  if (hasSignIn(row)) {
+    return (
+      <SignInStackedRow
+        {...props}
+        row={row}
+        installation={installation}
+        description={description}
+      />
+    );
+  }
+  return (
+    <StackedRow
+      {...props}
+      {...(row.status.label ? { status: <StatusDot {...row.status} /> } : {})}
+      {...(description ? { details: description } : {})}
+    />
   );
 }
 
@@ -184,12 +326,14 @@ function ConnectorStatusCell({
  * Sign in button was clipped out of reach inside the Status cell. A stacked
  * row per connector instead:
  *
- * - line 1: the letter tile, the connector's name (the row's link) and its
- *   state;
+ * - line 1: the letter tile, the connector's name (the row's link), its
+ *   state, and Sign in at the end as the row's action;
  * - line 2: how one signs in · its tools;
- * - under them, the description (two lines) and the sign-in, outside the
- *   link. The sign-in grows into a sentence and a second button while it
- *   waits on the person, so it gets the row's width, not the end of line 1.
+ * - under them, the description (two lines), and an outstanding sign-in's
+ *   way back into the page.
+ *
+ * Each row is a component of its own, as `StackedRowList`'s children, so a
+ * row with a sign-in reads its state and its buttons from one hook call.
  */
 function ConnectorStackedList({
   rows,
@@ -202,58 +346,29 @@ function ConnectorStackedList({
   hrefOf: (row: Row) => string | undefined;
   toolsPending: boolean;
 }) {
-  const classes = useStyles();
-  const items = rows.map<StackedRowItem>(row => {
-    const status = connectorStatus(row.entry, row.authStatus);
-    const href = hrefOf(row);
-    const details =
-      row.description || row.signInServer ? (
-        <Flex direction="column" gap="2" align="start">
-          {row.description && (
-            <Text
-              variant="body-small"
-              color="secondary"
-              className={classes.description}
-            >
-              {row.description}
-            </Text>
-          )}
-          {row.signInServer && (
-            <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-              <ServerAuthActions
-                noun="connector"
-                serverName={row.signInServer}
-                installation={installation}
-              />
-            </Flex>
-          )}
-        </Flex>
-      ) : undefined;
-    return {
-      id: row.id,
-      title: row.entry.id,
-      ...(href ? { href } : {}),
-      leading: (
-        <span className={classes.tile} aria-hidden>
-          {row.entry.id.charAt(0).toUpperCase()}
-        </span>
-      ),
-      ...(status.label
-        ? { status: <StatusDot tone={status.tone} label={status.label} /> }
-        : {}),
-      facts: [row.auth, row.tools ?? (toolsPending ? '…' : '')],
-      ...(details ? { details } : {}),
-    };
-  });
-  return <StackedRowList rows={items} aria-label="Connectors" />;
+  return (
+    <StackedRowList aria-label="Connectors">
+      {rows.map(row => (
+        <ConnectorStackedRow
+          key={row.id}
+          row={row}
+          installation={installation}
+          href={hrefOf(row)}
+          toolsPending={toolsPending}
+        />
+      ))}
+    </StackedRowList>
+  );
 }
 
 function ConnectorsTable({
   search,
   installation,
+  group,
 }: {
   search: string;
   installation: string;
+  group: ConnectorGroup;
 }) {
   const { mcpServers, activeInstallationInfo } = useMusterInstance();
   const session = useMusterSession();
@@ -269,15 +384,63 @@ function ConnectorsTable({
     enabled: hasSession,
   });
 
-  const listRows = useMemo(
-    () =>
-      serverListRows(mcpServers, catalogue.data?.tools ?? undefined).filter(
-        row => row.row.kind !== 'core',
-      ),
+  // Every sub-tab's rows, muster's own among the internal ones: the search
+  // counts what it finds on the other sub-tabs.
+  const everyRow = useMemo(
+    () => serverListRows(mcpServers, catalogue.data?.tools ?? undefined),
     [mcpServers, catalogue.data],
+  );
+  const rowsByGroup = useMemo(() => {
+    const byGroup: Record<ConnectorGroup, ServerListRow[]> = {
+      yours: [],
+      infrastructure: [],
+      internal: [],
+    };
+    for (const row of everyRow) {
+      byGroup[connectorGroup(row.row)].push(row);
+    }
+    return byGroup;
+  }, [everyRow]);
+  const listRows = rowsByGroup[group];
+  // muster's own row reports only what was observed: the backend's probe,
+  // the session, and whether muster listed its tools.
+  const sessionFailed = session.failure !== undefined;
+  const answered = catalogue.data !== undefined;
+  const catalogueFailed = Boolean(catalogue.error);
+  const musterSession = useMemo<MusterSessionState>(
+    () => ({
+      requiresAuth: activeInstallationInfo?.requiresAuth,
+      reachable: activeInstallationInfo?.reachable,
+      authenticated: session.authenticated,
+      pending: session.pending,
+      failed: sessionFailed,
+      answered,
+      catalogueFailed,
+    }),
+    [
+      activeInstallationInfo?.requiresAuth,
+      activeInstallationInfo?.reachable,
+      session.authenticated,
+      session.pending,
+      sessionFailed,
+      answered,
+      catalogueFailed,
+    ],
   );
   const toRow = useCallback(
     (entry: ServerListEntry): Row => {
+      if (entry.row.kind === 'core') {
+        const reach = musterReach(musterSession);
+        return {
+          id: entry.key,
+          entry,
+          description: MUSTER_DESCRIPTION,
+          auth: musterAuthLabel(musterSession.requiresAuth),
+          tools: toolsLabel(entry),
+          status: musterStatus(musterSession),
+          ...(reach ? { reach } : {}),
+        };
+      }
       const server = rowServer(entry, installation);
       const status =
         entry.row.kind === 'server'
@@ -293,14 +456,17 @@ function ConnectorsTable({
         description: server?.getDescription(),
         auth: authLabel(server),
         tools: toolsLabel(entry),
-        ...(status ? { authStatus: status } : {}),
+        status: connectorStatus(entry, status),
         ...(asksSignIn && server?.canAuthenticateInteractively()
           ? { signInServer: entry.id }
+          : {}),
+        ...(server?.getSuspended()
+          ? { signInGate: deactivatedSignInGate('connector') }
           : {}),
         ...(reach ? { reach } : {}),
       };
     },
-    [installation, authStatus.data],
+    [installation, authStatus.data, musterSession],
   );
   // The whole list decides which filters can tell connectors apart; the
   // searched one is what they then narrow.
@@ -361,22 +527,38 @@ function ConnectorsTable({
     },
   ];
 
+  const info = connectorGroupInfo(group);
+  // Where a search that finds nothing here finds something: on an empty
+  // sub-tab too, where the palette's "+N more" may land.
+  const otherMatches = (
+    <OtherGroupMatches
+      group={group}
+      rowsByGroup={rowsByGroup}
+      search={search}
+    />
+  );
   let list;
   if (listRows.length === 0) {
     list = (
-      <EmptyStateCard
-        title="No connectors yet"
-        description="Add a connector to give agents its tools."
-      />
+      <Flex direction="column" gap="2">
+        <EmptyStateCard
+          title={info.empty.title}
+          description={info.empty.description}
+        />
+        {otherMatches}
+      </Flex>
     );
   } else if (rows.length === 0) {
     list = (
-      <CatalogNoMatch
-        plural="connectors or tools"
-        search={search}
-        isFiltered={filters.isFiltered}
-        onClearFilters={filters.clear}
-      />
+      <Flex direction="column" gap="2">
+        <CatalogNoMatch
+          plural="connectors or tools"
+          search={search}
+          isFiltered={filters.isFiltered}
+          onClearFilters={filters.clear}
+        />
+        {otherMatches}
+      </Flex>
     );
   } else {
     // `serverListEntries` sorts by name, and ShowMore hands the table a page of
@@ -413,6 +595,11 @@ function ConnectorsTable({
 
   return (
     <Flex direction="column" gap="4">
+      {info.description && (
+        <Text as="p" variant="body-medium" color="secondary">
+          {info.description}
+        </Text>
+      )}
       <CatalogFilterBar
         dimensions={filters.dimensions}
         onSelect={filters.select}
@@ -448,7 +635,61 @@ function ConnectorsTable({
   );
 }
 
-function Panel({ search }: CustomizeConnectorsPanelProps) {
+/**
+ * Where a search that finds nothing on this sub-tab finds something: the
+ * other sub-tabs with their match counts, as links that keep the search. The
+ * command palette's "+N more" lands on the default sub-tab, whatever it found.
+ */
+function OtherGroupMatches({
+  group,
+  rowsByGroup,
+  search,
+}: {
+  group: ConnectorGroup;
+  rowsByGroup: Record<ConnectorGroup, ServerListRow[]>;
+  search: string;
+}) {
+  const paths = useConnectorGroupPaths();
+  const location = useLocation();
+  const query = search.trim();
+  const matches = useMemo(
+    () =>
+      query === ''
+        ? []
+        : CONNECTOR_GROUPS.filter(other => other.id !== group)
+            .map(other => ({
+              other,
+              count: serverListEntries(rowsByGroup[other.id], query).length,
+            }))
+            .filter(({ count }) => count > 0),
+    [group, rowsByGroup, query],
+  );
+  if (matches.length === 0) {
+    return null;
+  }
+  const link = (other: ConnectorGroupInfo) => {
+    const href = paths.group(other.id);
+    return href ? (
+      <Link href={`${href}${location.search}`}>{other.title}</Link>
+    ) : (
+      other.title
+    );
+  };
+  return (
+    <Text as="p" variant="body-medium" color="secondary">
+      The search matches{' '}
+      {matches.map(({ other, count }, index) => (
+        <Fragment key={other.id}>
+          {index > 0 && ' and '}
+          {countNoun(count, 'connector')} on {link(other)}
+        </Fragment>
+      ))}
+      .
+    </Text>
+  );
+}
+
+function Panel({ search, group = 'yours' }: CustomizeConnectorsPanelProps) {
   const { activeInstallation, isLoading } = useMusterInstance();
 
   let body;
@@ -463,7 +704,11 @@ function Panel({ search }: CustomizeConnectorsPanelProps) {
     );
   } else {
     body = (
-      <ConnectorsTable search={search} installation={activeInstallation} />
+      <ConnectorsTable
+        search={search}
+        installation={activeInstallation}
+        group={group}
+      />
     );
   }
   return (
@@ -475,7 +720,10 @@ function Panel({ search }: CustomizeConnectorsPanelProps) {
 }
 
 /**
- * The Connectors tab of the shell's Customize screen: the active muster's
+ * One sub-tab of the Connectors tab of the shell's Customize screen
+ * (`connectorGroup`: the customer's own connectors, those for the
+ * infrastructure the platform runs on, or the platform's internal servers with
+ * muster itself): the active muster's
  * servers as flat rows with how one signs in, their tool count and state, and
  * a sign-in where muster asks this person for one; filtered by sign-in and by
  * connection where those tell connectors apart (T49). Must be mounted inside a

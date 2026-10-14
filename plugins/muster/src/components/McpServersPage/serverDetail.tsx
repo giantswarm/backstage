@@ -20,6 +20,8 @@ import {
   CatalogNoMatch,
   matchesQuery,
   ShowMore,
+  StackedRowList,
+  type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import {
@@ -40,7 +42,12 @@ import {
   formatRelativeTime,
   formatTimestamp,
 } from '../../lib/formatRelativeTime';
-import { StateBadge, severityTone, useServerPageLinks } from '../shared';
+import {
+  StateBadge,
+  severityTone,
+  TruncatedListNote,
+  useServerPageLinks,
+} from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
   mono: {
@@ -74,13 +81,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     alignSelf: 'stretch',
     margin: '0 calc(-1 * var(--bui-space-2))',
     padding: '0 var(--bui-space-2)',
-  },
-  capabilityList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1),
-    marginTop: theme.spacing(1),
-    fontSize: 13,
   },
   errorPre: {
     whiteSpace: 'pre-wrap',
@@ -676,22 +676,32 @@ export function useServerCapabilityCounts(
 }
 
 /**
- * A server's resources or prompts: a page of {@link INITIAL_ROWS} at a time,
- * and a search over them once there are more than a page — a server's handful
- * is read, not searched. The search starts the paging over.
+ * A server's resources or prompts as stacked rows, a name over its
+ * description: a page of {@link INITIAL_ROWS} at a time, and a search over them
+ * once there are more than a page — a server's handful is read, not searched.
+ * The search starts the paging over. The tab carries the count, so the list
+ * states none of its own.
  */
 function CapabilityList<T>({
   items,
   noun,
+  label,
+  truncated,
+  total,
   searchText,
-  render,
+  row,
 }: {
   items: T[];
   noun: string;
+  /** The list's accessible name, e.g. "Prompts". */
+  label: string;
+  /** muster flagged the list as cut at its limit. */
+  truncated?: boolean;
+  /** How many muster says exist; the tab's count is read elsewhere. */
+  total?: number;
   searchText: (item: T) => string;
-  render: (item: T) => ReactNode;
+  row: (item: T) => StackedRowItem;
 }) {
-  const classes = useStyles();
   const [query, setQuery] = useState('');
   const searchable = items.length > INITIAL_ROWS;
   const shown = searchable
@@ -699,9 +709,9 @@ function CapabilityList<T>({
     : items;
 
   return (
-    <>
+    <Flex direction="column" gap="2">
       {searchable && (
-        <Box mt="2" style={{ maxWidth: 360 }}>
+        <Box style={{ maxWidth: 360 }}>
           <SearchField
             aria-label={`Search ${noun}s`}
             placeholder={`Search ${items.length} ${noun}s`}
@@ -711,19 +721,32 @@ function CapabilityList<T>({
           />
         </Box>
       )}
+      <TruncatedListNote
+        plural={`${noun}s`}
+        truncated={truncated}
+        shown={items.length}
+        total={total}
+      />
       {shown.length === 0 ? (
-        <Box mt="1">
-          <CatalogNoMatch plural={`${noun}s`} search={query} />
-        </Box>
+        <CatalogNoMatch plural={`${noun}s`} search={query} />
       ) : (
         <ShowMore key={query} items={shown} noun={noun}>
           {visible => (
-            <Box className={classes.capabilityList}>{visible.map(render)}</Box>
+            <StackedRowList aria-label={label} rows={visible.map(row)} />
           )}
         </ShowMore>
       )}
-    </>
+    </Flex>
   );
+}
+
+/**
+ * A short title for a resource the server gives no name: the URI's last path
+ * segment, so the full URI can sit on the row's unclamped second line.
+ */
+export function resourceUriLabel(uri: string): string {
+  const path = uri.replace(/^[a-z][a-z0-9+.-]*:\/*/i, '').replace(/\/+$/, '');
+  return path.slice(path.lastIndexOf('/') + 1) || uri;
 }
 
 /**
@@ -772,30 +795,29 @@ export function ServerResources({
   }
 
   return (
-    <Box>
-      <Note>
-        {data?.total ?? resources.length} resource(s)
-        {data?.truncated ? ' (first page)' : ''}
-      </Note>
-      <CapabilityList
-        items={resources}
-        noun="resource"
-        searchText={resource =>
-          [resource.uri, resource.name, resource.description].join(' ')
-        }
-        render={resource => (
-          <Box key={`${resource.server}:${resource.uri}`}>
-            <Mono>{resource.uri}</Mono>
-            {resource.name ? ` — ${resource.name}` : ''}
-            {resource.description && (
-              <Text as="p" variant="body-small" color="secondary">
-                {resource.description}
-              </Text>
-            )}
-          </Box>
-        )}
-      />
-    </Box>
+    <CapabilityList
+      items={resources}
+      noun="resource"
+      label="Resources"
+      truncated={data?.truncated}
+      total={data?.total}
+      searchText={resource =>
+        [resource.uri, resource.name, resource.description]
+          .filter(Boolean)
+          .join(' ')
+      }
+      // The title is clamped to two lines, so it is the name, or a short
+      // label for a nameless resource. The URI is what an agent asks for: it
+      // sits in full on the second line, which wraps instead.
+      row={resource => ({
+        id: `${resource.server}:${resource.uri}`,
+        title: resource.name || resourceUriLabel(resource.uri),
+        facts: [<Mono key="uri">{resource.uri}</Mono>],
+        details: resource.description ? (
+          <Note>{resource.description}</Note>
+        ) : undefined,
+      })}
+    />
   );
 }
 
@@ -849,29 +871,23 @@ export function ServerPrompts({
       : promptName;
 
   return (
-    <Box>
-      <Note>
-        {data?.total ?? prompts.length} prompt(s)
-        {data?.truncated ? ' (first page)' : ''}
-      </Note>
-      <CapabilityList
-        items={prompts}
-        noun="prompt"
-        searchText={prompt =>
-          [shortName(prompt.name), prompt.description].join(' ')
-        }
-        render={prompt => (
-          <Box key={prompt.name}>
-            <Mono>{shortName(prompt.name)}</Mono>
-            {prompt.description && (
-              <Text as="p" variant="body-small" color="secondary">
-                {prompt.description}
-              </Text>
-            )}
-          </Box>
-        )}
-      />
-    </Box>
+    <CapabilityList
+      items={prompts}
+      noun="prompt"
+      label="Prompts"
+      truncated={data?.truncated}
+      total={data?.total}
+      searchText={prompt =>
+        [shortName(prompt.name), prompt.description].filter(Boolean).join(' ')
+      }
+      row={prompt => ({
+        id: prompt.name,
+        title: shortName(prompt.name),
+        details: prompt.description ? (
+          <Note>{prompt.description}</Note>
+        ) : undefined,
+      })}
+    />
   );
 }
 

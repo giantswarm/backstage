@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { screen, waitFor, within } from '@testing-library/react';
+import { type ReactNode, useState } from 'react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
@@ -7,7 +7,7 @@ import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { agentsRouteRef } from '../../routes';
@@ -80,6 +80,23 @@ function renderPanel(search = '', storage: StorageApi = mockApis.storage()) {
   return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
     mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
     apis: [[storageApiRef, storage]],
+  });
+}
+
+// Re-render the panel from inside the test app (its own `rerender` would drop
+// the app around it), so a test can change what `useAgents` answers and watch
+// one mounted panel follow, the way the provider's updates do.
+let rerenderPanel: () => void = () => {};
+function RerenderablePanel() {
+  const [, setTick] = useState(0);
+  rerenderPanel = () => setTick(tick => tick + 1);
+  return <CustomizeAgentsPanel search="" />;
+}
+
+function renderRerenderablePanel() {
+  return renderInTestApp(<RerenderablePanel />, {
+    mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    apis: [[storageApiRef, mockApis.storage()]],
   });
 }
 
@@ -251,6 +268,40 @@ describe('CustomizeAgentsPanel', () => {
     await renderPanel();
     expect(screen.queryByText('No agents yet')).not.toBeInTheDocument();
     expect(screen.getByText(/lab/)).toBeInTheDocument();
+  });
+
+  it('holds the read warning until the read settles, and keeps it closed', async () => {
+    // One environment has failed already, the rest are still being read.
+    mockAgents = {
+      ...mockAgents,
+      rows: [],
+      isLoading: true,
+      unreachableInstallations: ['lab'],
+    };
+    await renderRerenderablePanel();
+    expect(
+      await screen.findByLabelText('Reading your agents…'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    // The read settles, with that failure as its answer.
+    mockAgents = { ...mockAgents, isLoading: false };
+    act(() => rerenderPanel());
+    expect(
+      screen.queryByLabelText('Reading your agents…'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
+
+    // Closed, then an environment joins the read and it settles on the same
+    // failure: the warning stays closed.
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    mockAgents = { ...mockAgents, isLoading: true };
+    act(() => rerenderPanel());
+    mockAgents = { ...mockAgents, isLoading: false };
+    act(() => rerenderPanel());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   describe('favorites', () => {
@@ -529,14 +580,19 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
     );
   });
 
-  it('says why a not-Ready agent needs a look in the row, not a tooltip', async () => {
+  it('keeps a not-Ready agent’s state to its few words; its page says why', async () => {
+    const reason =
+      'Model config sonnet not found. The agent references a model config that does not exist in its namespace, so the controller cannot render its deployment; create the model config or pick another one.';
+    mockAgents = {
+      ...mockAgents,
+      rows: [triage, { ...failing, readinessMessage: reason }],
+    };
     await renderPanel();
 
     const costs = items().find(item => within(item).queryByText(longName))!;
     expect(within(costs).getByText('Failed')).toBeInTheDocument();
-    expect(
-      within(costs).getByText('Model config sonnet not found'),
-    ).toBeInTheDocument();
+    // The paragraph used to fill two lines of the row.
+    expect(within(costs).queryByText(reason)).not.toBeInTheDocument();
     // A Ready agent says nothing extra.
     expect(items()[0]).toHaveTextContent(/Support triageSorts tickets/);
   });

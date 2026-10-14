@@ -8,7 +8,10 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 
 /**
- * Every PromQL query the LLM usage views run, in one place.
+ * Every PromQL query the LLM usage views run, in one place. Built by
+ * functions, never at module load: the metric definitions come from gs, and a
+ * module that merely imports this file (the plugin's index, through the model
+ * page) must not need them to be there.
  *
  * Built from the constants in the gs plugin's central metric registry rather
  * than from metric-name strings, which is what makes the dependency visible
@@ -253,12 +256,6 @@ export function llmUsageQueriesFor({ days, org }: LlmUsageQueryOptions = {}) {
   };
 }
 
-/** The installation-wide queries over the default window. */
-export const llmUsageQueries = (() => {
-  const { previousCost: _previousCost, ...queries } = llmUsageQueriesFor();
-  return queries;
-})();
-
 /**
  * The daily range queries, optionally for one organization. `[1d]` rather than
  * the window: each evaluation point totals the day it closes, which is what a
@@ -280,9 +277,6 @@ export function llmUsageRangeQueriesFor({
     callsPerDay: `sum ${counterIncrease(`${RequestDuration.name}_count${only}`, '1d')}`,
   };
 }
-
-/** The installation-wide range queries. */
-export const llmUsageRangeQueries = llmUsageRangeQueriesFor();
 
 const DAY_SECONDS = 86400;
 
@@ -450,7 +444,9 @@ export const RATE_WINDOW = '7d';
  * The extra label costs nothing in practice: the cardinality is agents ×
  * models × token types on one installation.
  */
-export const tokenRateQueries = {
-  cost: `sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) ${counterIncrease(Cost.name, RATE_WINDOW)}`,
-  tokens: `sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) ${counterIncrease(`${TokenUsage.name}_sum`, RATE_WINDOW)}`,
-} as const;
+export function tokenRateQueries() {
+  return {
+    cost: `sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) ${counterIncrease(Cost.name, RATE_WINDOW)}`,
+    tokens: `sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) ${counterIncrease(`${TokenUsage.name}_sum`, RATE_WINDOW)}`,
+  } as const;
+}

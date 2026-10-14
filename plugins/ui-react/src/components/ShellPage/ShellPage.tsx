@@ -143,10 +143,10 @@ export interface ShellPageProps {
   /** The page's h1. */
   title: ReactNode;
   /**
-   * The document title's parts, most specific first; " · Agent Platform"
-   * follows (`ShellDocumentTitle`). Defaults to the title when it is text, or
-   * the current breadcrumb, then the breadcrumb above it. Give it when the h1
-   * is not text, e.g. the session's rename button.
+   * The document title's parts, most specific first; the suffix from
+   * `ShellDocumentTitleProvider` follows. Defaults to the title when it is
+   * text, or the current breadcrumb, then the breadcrumb above it. Give it
+   * when the h1 is not text, e.g. the session's rename button.
    */
   documentTitle?: string | ReadonlyArray<string | undefined>;
   /** Ancestors of the page above the title, the current page last. */

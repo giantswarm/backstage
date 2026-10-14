@@ -1,14 +1,17 @@
-import { screen, within } from '@testing-library/react';
+import { useState } from 'react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { useLocation } from 'react-router-dom';
+import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow } from '../AgentsDataProvider';
 import type { ModelRow } from '../ModelsTable';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { CustomizeModelsPanel } from './CustomizeModelsPanel';
 
 const sonnet: ModelRow = {
@@ -41,6 +44,7 @@ const qwen: ModelRow = {
 
 let mockModelRows: ModelRow[];
 let mockModelsLoading = false;
+let mockUnreachableInstallations: string[] = [];
 let mockServingInstallations: string[] = [];
 const agents = [
   { id: 'a', modelConfigId: 'golem/support/sonnet' },
@@ -54,7 +58,7 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({
     isLoading: mockModelsLoading,
     hasInstallations: true,
-    unreachableInstallations: [],
+    unreachableInstallations: mockUnreachableInstallations,
   }),
 }));
 jest.mock('../AgentsDataProvider', () => ({
@@ -71,7 +75,29 @@ jest.mock('../ServingProvider', () => ({
 
 function renderPanel(search = '') {
   return renderInTestApp(<CustomizeModelsPanel search={search} />, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+    },
+  });
+}
+
+// Re-render the panel from inside the test app (its own `rerender` would drop
+// the app around it), so a test can change what the mocked providers answer
+// and watch one mounted panel follow.
+let rerenderPanel: () => void = () => {};
+function RerenderablePanel() {
+  const [, setTick] = useState(0);
+  rerenderPanel = () => setTick(tick => tick + 1);
+  return <CustomizeModelsPanel search="" />;
+}
+
+function renderRerenderablePanel() {
+  return renderInTestApp(<RerenderablePanel />, {
+    mountedRoutes: {
+      '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+    },
   });
 }
 
@@ -79,6 +105,7 @@ describe('CustomizeModelsPanel', () => {
   beforeEach(() => {
     mockModelRows = [sonnet, qwen];
     mockModelsLoading = false;
+    mockUnreachableInstallations = [];
     mockServingInstallations = [];
   });
 
@@ -99,6 +126,72 @@ describe('CustomizeModelsPanel', () => {
     expect(
       within(row).getByRole('link', { name: 'Sonnet 4.5' }),
     ).toHaveAttribute('href', row.getAttribute('data-href'));
+  });
+
+  it('links each model to its page beside Customize › Models', async () => {
+    await renderPanel();
+
+    expect(screen.getByRole('link', { name: 'Sonnet 4.5' })).toHaveAttribute(
+      'href',
+      '/customize/models/golem/support/sonnet',
+    );
+  });
+
+  describe('a model the controller did not accept', () => {
+    const rejected: ModelRow = {
+      ...sonnet,
+      id: 'golem/support/mistral',
+      name: 'mistral',
+      displayName: 'Mistral',
+      readiness: 'notAccepted',
+      readinessMessage: 'Secret support/mistral-key not found',
+    };
+
+    function PathProbe() {
+      return <div data-testid="path">{useLocation().pathname}</div>;
+    }
+
+    it('keeps the label short and gives the reason in a hint, without opening the model', async () => {
+      mockModelRows = [rejected, sonnet];
+      await renderInTestApp(
+        <ShellScopeProvider>
+          <PathProbe />
+          <CustomizeModelsPanel search="" />
+        </ShellScopeProvider>,
+        {
+          mountedRoutes: {
+            '/agent-platform/models': modelsRouteRef,
+            '/customize': customizeExternalRouteRef,
+          },
+        },
+      );
+      const path = screen.getByTestId('path').textContent;
+
+      const row = screen.getAllByRole('row')[1];
+      expect(within(row).getByText('Not accepted')).toBeInTheDocument();
+      expect(
+        within(row).queryByText('Secret support/mistral-key not found'),
+      ).toBeNull();
+
+      await userEvent.click(
+        within(row).getByRole('button', { name: 'About the state of Mistral' }),
+      );
+
+      expect(
+        await screen.findByRole('dialog', {
+          name: 'About the state of Mistral',
+        }),
+      ).toHaveTextContent('Secret support/mistral-key not found');
+      // The press stays with the hint: the row does not open the model.
+      expect(screen.getByTestId('path')).toHaveTextContent(path ?? '');
+    });
+
+    it('gives an accepted model no hint', async () => {
+      await renderPanel();
+      expect(
+        screen.queryByRole('button', { name: /^About the state of/ }),
+      ).toBeNull();
+    });
   });
 
   it('narrows to the search', async () => {
@@ -190,6 +283,24 @@ describe('CustomizeModelsPanel', () => {
     mockModelRows = [];
     await renderPanel();
     expect(screen.getByText('No models yet')).toBeInTheDocument();
+  });
+
+  it('holds the read warning until the read settles', async () => {
+    mockModelRows = [];
+    mockModelsLoading = true;
+    mockUnreachableInstallations = ['lab'];
+    await renderRerenderablePanel();
+    expect(
+      await screen.findByLabelText('Reading your models…'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    mockModelsLoading = false;
+    act(() => rerenderPanel());
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
+    expect(screen.queryByText('No models yet')).not.toBeInTheDocument();
   });
 });
 

@@ -13,9 +13,8 @@ import {
 import { LinearProgress } from '@material-ui/core';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 
-import { modelDetailRouteRef } from '../../routes';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import {
   CatalogNoMatch,
   countNoun,
@@ -24,6 +23,7 @@ import {
   ShowMore,
   type StackedRowItem,
   StackedRowList,
+  StatusHint,
   stopRowPress,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -37,6 +37,7 @@ import {
 } from '../../lib/modelManagerServing';
 import { formatBytes } from '../../lib/formatNumbers';
 import {
+  SERVED_MODEL_READINESS,
   SERVED_MODEL_READINESS_ORDER,
   type ServedModel,
   type ServedModelReadiness,
@@ -482,14 +483,13 @@ export function downloadPercent(
  * The line under a download row's `Downloading` label, from the job alone:
  * the backend's progress message with the figures — `pulling 6f7f… · 31 % ·
  * 114 MiB / 381 MiB` — as far as it reports them, `Queued` before it starts,
- * `Starting…` while it has said nothing yet; `Download failed: <reason>`
- * under a failed one's `Not ready`.
+ * `Starting…` while it has said nothing yet; `Download failed` under a
+ * failed one's `Not ready`, the backend's error in the status hint
+ * ({@link servedModelStatusExplanation}).
  */
 export function downloadLine(download: ServedModelDownload): string {
   if (download.phase === 'failed') {
-    return download.error
-      ? `Download failed: ${download.error}`
-      : 'Download failed';
+    return 'Download failed';
   }
   const parts: string[] = [];
   if (download.status) {
@@ -514,29 +514,21 @@ export function downloadLine(download: ServedModelDownload): string {
  * The lines under the readiness label of {@link ServedModelStatusCell}, each
  * from the row's fields only — no capabilities, no installation lookups — so
  * a row says the same thing wherever it renders: a download row's progress
- * ({@link downloadLine}); else the backend's explanation where it named a
- * reason (the label says the word, this line says why — the scheduler's
- * text, the kubelet's — under it, not only on hover), then a served model's
- * memory state ({@link memoryLine}, the GPU share included) — for a model
- * that runs or could: a serving object that is pending, failed or being
- * deleted has no footprint to report, whatever its inventory entry says
- * (KServe lists the preset's weights as the size of a model it has not
- * started).
+ * ({@link downloadLine}); else a served model's memory state
+ * ({@link memoryLine}, the GPU share included) — for a model that runs or
+ * could: a serving object that is pending, failed or being deleted has no
+ * footprint to report, whatever its inventory entry says (KServe lists the
+ * preset's weights as the size of a model it has not started). Never the
+ * backend's explanation of a troubled state, which can run to a paragraph
+ * (the scheduler's text): that is the status hint
+ * ({@link servedModelStatusExplanation}).
  */
 export function servedModelStatusLines(row: ServedModelRow): string[] {
   if (isDownloadRow(row)) {
     return [downloadLine(row.download)];
   }
-  const lines: string[] = [];
-  const explanation = explanationLine(row);
-  if (explanation) {
-    lines.push(explanation);
-  }
   const memory = hasFootprint(row.readiness) ? memoryLine(row) : undefined;
-  if (memory) {
-    lines.push(memory);
-  }
-  return lines;
+  return memory ? [memory] : [];
 }
 
 /** Whether a row in this state can have memory figures worth a line. */
@@ -550,14 +542,53 @@ function hasFootprint(readiness: ServedModelReadiness): boolean {
 }
 
 /**
- * The backend's explanation as a line of its own — only where the backend
- * also named a reason; a row without one keeps its explanation on hover, as
- * before.
+ * Whether a row's state needs a look: the backend named a reason for it
+ * (`Unschedulable`, `ImagePullBackOff`), or its label warns (`Not serving`,
+ * `Not ready`). Its explanation then sits behind an info icon a press opens
+ * on a touch screen too, rather than in a `title=` alone.
  */
-function explanationLine(
-  row: Pick<ServedModelRow, 'readinessReason' | 'readinessMessage'>,
+function isTroubled(
+  row: Pick<ServedModelRow, 'readiness' | 'readinessReason'>,
+): boolean {
+  if (row.readinessReason) {
+    return true;
+  }
+  const { intent } = SERVED_MODEL_READINESS[row.readiness];
+  return intent === 'warning' || intent === 'negative';
+}
+
+/**
+ * The explanation of a troubled row's state, for its status hint: the
+ * backend's error for a failed pull, else its readiness message. Undefined
+ * for a row whose state needs no look, which keeps its message on hover
+ * (and, on a phone, under the label) as before.
+ */
+export function servedModelStatusExplanation(
+  row: ServedModelRow,
 ): string | undefined {
-  return row.readinessReason ? row.readinessMessage : undefined;
+  if (!isTroubled(row)) {
+    return undefined;
+  }
+  if (isDownloadRow(row) && row.download.phase === 'failed') {
+    return row.download.error ?? row.readinessMessage;
+  }
+  return row.readinessMessage;
+}
+
+/**
+ * A row's readiness label with its explanation where the state needs a look:
+ * the label and the backend's word stay, the sentences go behind the hint.
+ */
+function ServedRowReadiness({ row }: { row: ServedModelRow }) {
+  const explanation = servedModelStatusExplanation(row);
+  return (
+    <ServedReadinessLabel
+      readiness={row.readiness}
+      reason={row.readinessReason}
+      title={explanation ? undefined : row.readinessMessage}
+      hint={<StatusHint subject={row.name} explanation={explanation} />}
+    />
+  );
 }
 
 export type ServedModelStatusCellProps = {
@@ -567,16 +598,17 @@ export type ServedModelStatusCellProps = {
 /**
  * The one status cell of a served model: the readiness label
  * ({@link ServedReadinessLabel} — the vocabulary's word and glyph, the
- * backend's reason after it, the explanation as the tooltip) with the lines
- * of {@link servedModelStatusLines} under it — `Pending · Unschedulable` /
- * `0/3 nodes are available: 3 Insufficient nvidia.com/gpu.`, `Ready` /
- * `6.6 GiB in memory · 100 % GPU · evicts 13:05`, `Available` / `Not
- * loaded` — the memory line explained on hover ({@link memoryLineTitle}).
- * What used to be the Memory column, told where the status is. On a download
- * row the line is the pull's progress (`Downloading` / `pulling 6f7f… · 31 %
- * · 114 MiB / 381 MiB`) with a progress bar under it while the pull runs,
- * and the failure in red once it has failed (`Not ready` / `Download
- * failed: …`).
+ * backend's reason after it) with the lines of {@link servedModelStatusLines}
+ * under it — `Ready` / `6.6 GiB in memory · 100 % GPU · evicts 13:05`,
+ * `Available` / `Not loaded` — the memory line explained on hover
+ * ({@link memoryLineTitle}). What used to be the Memory column, told where
+ * the status is. A troubled state keeps to its words — `Pending ·
+ * Unschedulable` — with the backend's explanation (the scheduler's text) in
+ * a hint beside them; a healthy one keeps its explanation on hover. On a
+ * download row the line is the pull's progress (`Downloading` / `pulling
+ * 6f7f… · 31 % · 114 MiB / 381 MiB`) with a progress bar under it while the
+ * pull runs, and the failure in red once it has failed (`Not ready` /
+ * `Download failed`, the error in the hint).
  */
 export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
   const lines = servedModelStatusLines(row);
@@ -587,11 +619,7 @@ export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
   return (
     <Cell>
       <Flex direction="column" gap="1">
-        <ServedReadinessLabel
-          readiness={row.readiness}
-          reason={row.readinessReason}
-          title={row.readinessMessage}
-        />
+        <ServedRowReadiness row={row} />
         {lines.map(line => (
           <Text
             key={line}
@@ -1072,14 +1100,15 @@ export function describePlacement(row: ServedModelRow): string | undefined {
 
 /**
  * The status lines of a phone row: {@link servedModelStatusLines}, plus the
- * backend's explanation where it named no reason — on a table that one lives
- * in the label's `title=`, which a phone never shows (T22 B13).
+ * backend's explanation of a state that needs no look — on a table that one
+ * lives in the label's `title=`, which a phone never shows (T22 B13). A
+ * troubled state's explanation is the label's hint, as on the table.
  */
 export function phoneStatusLines(row: ServedModelRow): string[] {
   const lines = servedModelStatusLines(row);
   if (
     !isDownloadRow(row) &&
-    !row.readinessReason &&
+    !isTroubled(row) &&
     row.readinessMessage &&
     !lines.includes(row.readinessMessage)
   ) {
@@ -1190,7 +1219,8 @@ function PhoneUsedBy({
  *   steps toggle) at the end — always reachable.
  * - Line 2: where the weights come from, the runtime (where the group's rows
  *   differ), where it runs and on how many GPUs.
- * - Under them: the status lines (the explanation inline, not on hover), the
+ * - Under them: the status lines (a healthy state's explanation inline, not
+ *   on hover; a troubled one's in the label's hint, which a press opens), the
  *   download's progress, the description, a per-row endpoint with its copy
  *   action, the features and APIs in words, and what uses it.
  */
@@ -1223,12 +1253,7 @@ export function servedModelStackedRow(
   return {
     id: row.id,
     title: row.name,
-    status: (
-      <ServedReadinessLabel
-        readiness={row.readiness}
-        reason={row.readinessReason}
-      />
-    ),
+    status: <ServedRowReadiness row={row} />,
     facts: [
       source,
       row.publicName ? `model name ${row.publicName}` : undefined,
@@ -1416,7 +1441,7 @@ export function ServedModelsTable({
   renderGroupDetail,
   emptyGroups,
 }: ServedModelsTableProps) {
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const { modelDetail: modelDetailRoute } = useCustomizePaths();
 
   const hrefFor = useCallback(
     (consumer: ServedModelConsumer) =>

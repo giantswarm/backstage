@@ -14,22 +14,12 @@ import SearchIcon from '@material-ui/icons/Search';
 import { LogoIcon } from '../../nav/LogoIcon';
 import { usePortals } from '../agentArea';
 import { agentShellNavItems, SEARCH_FOLLOWS } from '../navItems';
+import { RailFrame } from './RailFrame';
 import { RailItem } from './RailItem';
 import { type RailLayout, useBarItemStyles } from './railLayout';
 import { SkipLink } from './SkipLink';
 
 const useStyles = makeStyles({
-  rail: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    zIndex: 1000,
-    background: 'var(--agent-shell-rail-bg, var(--bui-bg-neutral-1))',
-    borderRight: '1px solid var(--bui-border-1)',
-    overflow: 'hidden',
-    boxSizing: 'border-box',
-  },
   column: {
     height: '100%',
     boxSizing: 'border-box',
@@ -58,6 +48,15 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
   },
+  // The collapsed rail centres each item on the rail's one axis, the axis
+  // the logo and the expand button sit on: links and Search fill the rail's
+  // inner width, the profile trigger is narrower and would sit left.
+  compactList: {
+    '& > li': {
+      display: 'flex',
+      justifyContent: 'center',
+    },
+  },
   mobileList: {
     height: '100%',
     flexDirection: 'row',
@@ -71,6 +70,23 @@ const useStyles = makeStyles({
     '&:hover': {
       color: 'var(--bui-fg-primary)',
       textDecoration: 'none',
+    },
+  },
+  // The collapsed rail has one icon item's width for the logo. A branding
+  // logo icon (`logo-icon.svg/png`, at `app.branding.logo.height`) can be
+  // wider than that: it scales down to fit, keeping its proportions, rather
+  // than being cut off by the rail's edge.
+  compactLogo: {
+    display: 'flex',
+    justifyContent: 'center',
+    maxWidth: '100%',
+    '& > *': {
+      minWidth: 0,
+      maxWidth: '100%',
+    },
+    '& img, & svg': {
+      maxWidth: '100%',
+      objectFit: 'contain',
     },
   },
   recent: {
@@ -250,19 +266,17 @@ function AgentShellRail() {
     );
   }
 
-  // SidebarPage pads the content by the classic sidebar's width for the same
-  // pin state, so the rail takes exactly that width.
   const compact = !isPinned;
   const layout: RailLayout = compact ? 'collapsed' : 'expanded';
   const desktopTop = top.filter(item => !item.mobileOnly);
-  const width = isPinned
-    ? sidebarConfig.drawerWidthOpen
-    : sidebarConfig.drawerWidthClosed;
+  const listClassName = compact
+    ? `${classes.list} ${classes.compactList}`
+    : classes.list;
 
   return (
     <>
       <SkipLink />
-      <nav aria-label="Main" className={classes.rail} style={{ width }}>
+      <RailFrame resizable={!compact}>
         <Flex
           direction="column"
           gap="4"
@@ -278,7 +292,15 @@ function AgentShellRail() {
             pl={compact ? undefined : '2'}
             pr={compact ? undefined : '1'}
           >
-            <Link href="/" aria-label="Agent Platform" className={classes.logo}>
+            <Link
+              href="/"
+              aria-label="Agent Platform"
+              className={
+                compact
+                  ? `${classes.logo} ${classes.compactLogo}`
+                  : classes.logo
+              }
+            >
               <Flex align="center" gap="2">
                 <LogoIcon />
                 {!compact && (
@@ -296,7 +318,7 @@ function AgentShellRail() {
               onPress={toggleSidebarPinState}
             />
           </Flex>
-          <ul className={classes.list}>
+          <ul className={listClassName}>
             {desktopTop.map(item => (
               <Fragment key={item.id}>
                 <RailItem item={item} layout={layout} />
@@ -316,14 +338,14 @@ function AgentShellRail() {
             </div>
           )}
           <Box pt="2" className={classes.bottom}>
-            <ul className={classes.list}>
+            <ul className={listClassName}>
               {bottom.map(item => (
                 <RailItem key={item.id} item={item} layout={layout} />
               ))}
             </ul>
           </Box>
         </Flex>
-      </nav>
+      </RailFrame>
     </>
   );
 }

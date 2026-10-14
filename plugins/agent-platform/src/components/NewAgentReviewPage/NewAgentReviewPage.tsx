@@ -185,7 +185,7 @@ function CreateAgentReview() {
     });
     if (target) {
       // The detail page shows the template converging on the platform Harness
-      // (get_agent_status until ready or failed) for the agent it was handed.
+      // (get_agent_status until ready) for the agent it was handed.
       navigate(target, {
         state: {
           [AGENT_CREATED_STATE_KEY]: {

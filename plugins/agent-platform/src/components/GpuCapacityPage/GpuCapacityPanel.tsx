@@ -20,9 +20,9 @@ import {
   NAMED_IN_SENTENCE,
   ShowMore,
   SimpleAccordion,
+  StatusHint,
   usePhoneColumns,
   usePhoneLayout,
-  useTouchInput,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { formatTime } from '../../lib/modelManagerServing';
@@ -300,25 +300,23 @@ export function phoneNodeFacts(
 
 /**
  * The node name with {@link describeNode} under it. A node that is not a
- * serving target is dimmed (not one model-image presets still serve on), and
- * the serving layer's reason is on hover — or, where nothing hovers (a phone,
- * a touch screen), said under the name (`showReason`, T22 B15). At phone
- * width the name wraps rather than truncates, and `phoneFacts` follow it.
+ * serving target is dimmed (not one model-image presets still serve on), its
+ * few words keep to the cell, and the serving layer's reason is the
+ * {@link StatusHint} beside them: a tooltip on hover, a popover on a press,
+ * which is how a phone or a touch screen reads it (T22 B15). At phone width
+ * the name wraps rather than truncates, and `phoneFacts` follow it.
  */
 function NodeCell({
   node,
   isPhone,
-  showReason,
   phoneFacts,
 }: {
   node: GpuNode;
   isPhone: boolean;
-  showReason: boolean;
   phoneFacts: string[];
 }) {
   const description = describeNode(node);
   const ineligible = node.eligible === false;
-  const reason = showReason ? eligibilityDetail(node) : undefined;
   const wrap = isPhone ? { overflowWrap: 'anywhere' as const } : undefined;
   return (
     <Cell>
@@ -334,29 +332,29 @@ function NodeCell({
       >
         {node.name}
       </Text>
-      {/* The reason line starts with what the description says, so it
-          replaces it — except "Not ready", which it does not repeat. */}
-      {description && (!reason || !node.ready) && (
-        <Text
-          variant="body-medium"
-          color="secondary"
-          truncate={isPhone ? undefined : true}
-          title={ineligible ? eligibilityDetail(node) : description}
-          style={wrap}
+      {description && (
+        <span
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            minWidth: 0,
+          }}
         >
-          {description}
-        </Text>
-      )}
-      {reason && (
-        <Text
-          as="p"
-          variant="body-small"
-          color="secondary"
-          data-testid="gpu-node-reason"
-          style={{ overflowWrap: 'anywhere' }}
-        >
-          {reason}
-        </Text>
+          <Text
+            variant="body-medium"
+            color="secondary"
+            truncate={isPhone ? undefined : true}
+            title={description}
+            style={{ ...wrap, minWidth: 0 }}
+          >
+            {description}
+          </Text>
+          <StatusHint
+            subject={node.name}
+            explanation={eligibilityDetail(node)}
+          />
+        </span>
       )}
       {isPhone &&
         phoneFacts.map(fact => (
@@ -501,15 +499,12 @@ function gpuFigure(
 /** How the panel is being read: at phone width, and whether anything hovers. */
 type CapacityLayout = {
   isPhone: boolean;
-  /** Say a node's ineligibility reason under it rather than on hover. */
-  showReason: boolean;
   /** The page drops the Environment column; a phone row names it otherwise. */
   showInstallation: boolean;
 };
 
 const DESKTOP_LAYOUT: CapacityLayout = {
   isPhone: false,
-  showReason: false,
   showInstallation: true,
 };
 
@@ -529,7 +524,6 @@ function getColumnConfig(
         <NodeCell
           node={node}
           isPhone={layout.isPhone}
-          showReason={layout.showReason}
           phoneFacts={
             layout.isPhone
               ? phoneNodeFacts(node, {
@@ -708,7 +702,7 @@ export type GpuCapacityPanelProps = {
  * memory as the budget, what the loaded models take of it, and a marker when
  * one of them sits on the GPU; a fleet of such hosts shows no GPU columns.
  * A node the serving layer will not place a model on (`eligible: false`) is
- * dimmed and says so under its name, the reason on hover; where the layer
+ * dimmed and says so under its name, the reason in a hint; where the layer
  * gives no verdict, a node without a cache beside one that holds it gets the
  * softer hint in its cache cell.
  */
@@ -735,7 +729,6 @@ export function GpuCapacityPanel({
   hideColumns,
 }: GpuCapacityPanelProps) {
   const isPhone = usePhoneLayout();
-  const isTouch = useTouchInput();
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
   const noCacheHints = useMemo(
     () =>
@@ -746,16 +739,13 @@ export function GpuCapacityPanel({
       ),
     [nodes],
   );
-  // Nothing hovers on a phone or a touch screen: the reason is said there.
-  const showReason = isPhone || isTouch;
   const columnConfig = useMemo(
     () =>
       getColumnConfig(columns, noCacheHints, {
         isPhone,
-        showReason,
         showInstallation: !hideColumns?.includes('installation'),
       }).filter(column => !hideColumns?.includes(column.id as 'installation')),
-    [columns, noCacheHints, hideColumns, isPhone, showReason],
+    [columns, noCacheHints, hideColumns, isPhone],
   );
   const shownColumns = usePhoneColumns(
     columnConfig,
@@ -830,9 +820,7 @@ export function GpuCapacityPanel({
             ' A backend host has no GPU figures because its API hides the accelerator, so its budget is host memory, and accelerated marks a loaded model on the GPU.'}
           {columns.cache && ' Cached models skip the download when served.'}
           {hasIneligible &&
-            ` A node is not a serving target when it is outside the serving layer's node selector or cannot mount the model cache; the reason is ${
-              showReason ? 'under its name' : 'on hover'
-            }.`}
+            " A node is not a serving target when it is outside the serving layer's node selector or cannot mount the model cache; the info icon beside it says which."}
         </Text>
 
         {body}

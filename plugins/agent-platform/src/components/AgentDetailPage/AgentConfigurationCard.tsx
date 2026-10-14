@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Box, Flex, Text } from '@backstage/ui';
+import { Box, Flex, Link as BuiLink, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
@@ -18,19 +18,18 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import type { ClientServingSummary } from '../../lib/serving';
-import { describeToolset } from '../../lib/toolset';
+import { bindsGateway, describeToolset } from '../../lib/toolset';
 import { deploymentDetailsExternalRouteRef } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { MONO } from '../Mono';
 import { FailureMarker } from './FailureMarker';
 import {
   describeToolScope,
   isGatewayServerBinding,
   mcpBindingId,
 } from './helpers';
-
-/** Monospace for identifiers the reader may retype into `kubectl`. */
-const MONO: React.CSSProperties = { fontFamily: 'monospace' };
 
 /**
  * How the model is described: the ModelConfig's friendly name, with the model id
@@ -42,20 +41,28 @@ const MONO: React.CSSProperties = { fontFamily: 'monospace' };
  * Falls back to the bare reference when the ModelConfig cannot be read — which is
  * normal for a non-admin, since ModelConfigs live in namespaces they may not have
  * access to — rather than implying the agent has no model.
+ *
+ * The ModelConfig line opens the model's page, which says why a model is not
+ * accepted, where the ModelConfig could be read: otherwise the page could only
+ * say it cannot load it. Plain text too where the agent has no namespace to
+ * resolve it in.
  */
 function ModelValue({
   modelConfigName,
   modelConfig,
   modelServing,
+  installation,
   namespace,
   isFailing,
 }: {
   modelConfigName?: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
+  installation: string;
   namespace?: string;
   isFailing: boolean;
 }) {
+  const { modelDetail: modelDetailHref } = useCustomizePaths();
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <NotAvailable />;
   }
@@ -67,6 +74,10 @@ function ModelValue({
   // ModelConfig line below already shows it. The model itself leads instead,
   // still in monospace like every identifier here.
   const displayName = modelConfig?.getDisplayNameAnnotation();
+  const href =
+    modelConfig && namespace
+      ? modelDetailHref?.({ installation, namespace, name: modelConfigName })
+      : undefined;
 
   return (
     <Flex direction="column" gap="1">
@@ -84,9 +95,20 @@ function ModelValue({
       )}
       <Text variant="body-small" color="secondary">
         ModelConfig{' '}
-        <span style={MONO}>
-          {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
-        </span>
+        {href ? (
+          <BuiLink
+            href={href}
+            variant="body-small"
+            color="secondary"
+            style={MONO}
+          >
+            {`${namespace}/${modelConfigName}`}
+          </BuiLink>
+        ) : (
+          <span style={MONO}>
+            {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
+          </span>
+        )}
       </Text>
       {modelServing && <ModelServingStatus serving={modelServing} />}
       {isFailing && <FailureMarker />}
@@ -179,7 +201,7 @@ function ToolsValue({
   const directBindings = mcpBindings.filter(
     binding => !isGatewayServerBinding(agent, binding),
   );
-  const hasGateway = directBindings.length < mcpBindings.length;
+  const hasGateway = bindsGateway(agent);
   const agentRefs = agent.getSubAgentBindings();
 
   if (mcpBindings.length === 0 && agentRefs.length === 0) {
@@ -273,6 +295,8 @@ function DeployedByValue({ agent }: { agent: Agent }) {
 
 export type AgentConfigurationCardProps = {
   agent: Agent;
+  /** The page's installation, as the overview's model fact links with it. */
+  installation: string;
   modelConfig?: ModelConfig;
   /** The serving layer's word on the model behind `modelConfig`, when it has one. */
   modelServing?: ClientServingSummary;
@@ -292,6 +316,7 @@ export type AgentConfigurationCardProps = {
  */
 export function AgentConfigurationCard({
   agent,
+  installation,
   modelConfig,
   modelServing,
   failure,
@@ -307,6 +332,7 @@ export function AgentConfigurationCard({
         modelConfigName={agent.getModelConfigName()}
         modelConfig={modelConfig}
         modelServing={modelServing}
+        installation={installation}
         namespace={namespace}
         isFailing={failure?.field === 'model'}
       />

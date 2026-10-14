@@ -7,7 +7,7 @@ import {
 } from '@backstage/core-plugin-api';
 import { readPortals } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { ShellSignInPage } from '../../agentShell/ShellSignInPage';
-import { signInProviders } from '../signInProviders';
+import { shellSignInProviders, signInProviders } from '../signInProviders';
 
 /**
  * The portal's sign-in page.
@@ -24,17 +24,20 @@ export function AppSignInPage(props: {
   onSignInSuccess: (identityApi: IdentityApi) => void;
 }) {
   const configApi = useApi(configApiRef);
-  const providers = useMemo(
-    () =>
-      configApi.has('gs.authProvider') ? signInProviders(configApi) : undefined,
-    [configApi],
-  );
+  const page = useMemo(() => {
+    if (!configApi.has('gs.authProvider')) {
+      return undefined;
+    }
+    return readPortals(configApi).agentPlatform
+      ? { shell: true as const, providers: shellSignInProviders(configApi) }
+      : { shell: false as const, providers: signInProviders(configApi) };
+  }, [configApi]);
 
-  if (!providers) {
+  if (!page) {
     return <ProxiedSignInPage {...props} provider="guest" />;
   }
-  if (readPortals(configApi).agentPlatform) {
-    return <ShellSignInPage {...props} providers={providers} />;
+  if (page.shell) {
+    return <ShellSignInPage {...props} providers={page.providers} />;
   }
   // One option signs in automatically (existing session, else
   // an instant popup). Several show the chooser; an existing
@@ -42,8 +45,8 @@ export function AppSignInPage(props: {
   return (
     <SignInPage
       {...props}
-      auto={providers.length === 1}
-      providers={providers}
+      auto={page.providers.length === 1}
+      providers={page.providers}
     />
   );
 }

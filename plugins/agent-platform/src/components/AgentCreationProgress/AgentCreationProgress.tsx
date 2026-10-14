@@ -46,7 +46,8 @@ const WORDING: Record<
 /**
  * The polling half, mounted only for the agent that was just written: the
  * verdict from agent-manager's `get_agent_status`, re-read until the platform
- * Harness reports `ready` or `failed`.
+ * Harness reports `ready`. A `failed` verdict is shown and still re-read in
+ * case it clears (see `useAgentStatus`).
  */
 function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
   const {
@@ -131,7 +132,8 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
 
 /**
  * The agent's readiness right after Deploy, from agent-manager's
- * `get_agent_status` polled until the agent's Harness has a verdict.
+ * `get_agent_status` polled until the agent's Harness reports `ready`, a
+ * `failed` verdict included.
  *
  * Rendered only on the visit that follows a create (the review page hands the
  * agent over in the router state) and only for the agent the page shows;

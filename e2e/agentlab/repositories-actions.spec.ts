@@ -715,7 +715,7 @@ test.describe('repositories: actions', () => {
       const opened = result.getByTestId('pull-request-opened');
       await expect(opened).toContainText(`#4242 ${pullRequest.title}`);
       await expect(
-        opened.getByRole('link', { name: /Open the pull request/ }),
+        opened.getByRole('link', { name: /Review pull request/ }),
       ).toHaveAttribute('href', pullRequest.url);
 
       // The follow: the phases as the manager answered them, with the time
@@ -1178,7 +1178,7 @@ test.describe('repositories: actions', () => {
         'The ask posted to #team-bumblebee (team-bumblebee).',
       );
       await expect(
-        opened.getByRole('link', { name: /Open the pull request/ }),
+        opened.getByRole('link', { name: /Review pull request/ }),
       ).toHaveAttribute(
         'href',
         'https://github.com/giantswarm/github/pull/4244',

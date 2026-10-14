@@ -8,6 +8,7 @@ import type {
   AgentStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  customizeExternalRouteRef,
   agentsRouteRef,
   modelsRouteRef,
   skillsRouteRef,
@@ -17,7 +18,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
@@ -235,11 +236,32 @@ const mockUseAgentToolset = jest.fn();
 jest.mock('../../hooks/useAgentToolset', () => ({
   useAgentToolset: (...args: unknown[]) => mockUseAgentToolset(...args),
 }));
+// The catalogue that names individually picked tools by connector (T103);
+// `lib/toolsetReach` covers the words.
+jest.mock('../../hooks/useReachCatalogue', () => ({
+  useReachCatalogue: () => undefined,
+}));
 const READ_ONLY_TOOLSET = {
   declared: {
     state: 'declared',
     carrier: 'pr-reviewer',
     selectors: ['preset:read-only'],
+  },
+  isReading: false,
+  isUnreadable: false,
+};
+/** A chat-only agent: no binding reaches the gateway. */
+const NO_GATEWAY_TOOLSET = {
+  declared: { state: 'no-gateway' },
+  isReading: false,
+  isUnreadable: false,
+};
+/** Bound to the gateway, but its carrier declares no tools. */
+const NONE_TOOLSET = {
+  declared: {
+    state: 'declared',
+    carrier: 'pr-reviewer',
+    selectors: ['preset:none'],
   },
   isReading: false,
   isUnreadable: false,
@@ -574,6 +596,7 @@ const renderPage = (tab: string = '') =>
     mountedRoutes: {
       '/agent-platform/agents': agentsRouteRef,
       '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
       '/agent-platform/skills': skillsRouteRef,
       '/agent-platform/usage': usageRouteRef,
     },
@@ -714,7 +737,7 @@ describe('AgentDetailPage', () => {
   });
 
   describe('tools', () => {
-    it('renders the toolset one level below the agent', async () => {
+    it('renders the toolset under the Tools tab', async () => {
       stubResources({ resource: makeAgent() });
 
       await renderPage('tools');
@@ -897,9 +920,7 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     // The app layout appends " | <app title>"; the page sets the rest.
-    await waitFor(() =>
-      expect(document.title).toBe('PR reviewer · Agents · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('PR reviewer · Agents'));
     expect(
       screen.getByRole('heading', { level: 1, name: 'PR reviewer' }),
     ).toBeInTheDocument();
@@ -913,9 +934,7 @@ describe('AgentDetailPage', () => {
 
     await renderPage();
 
-    await waitFor(() =>
-      expect(document.title).toBe('pr-reviewer · Agents · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('pr-reviewer · Agents'));
   });
 
   it('lists the configuration as terms and descriptions, not headings', async () => {
@@ -987,6 +1006,41 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     expect(screen.getByText('opus-4-7')).toBeInTheDocument();
+    // No link to a page that could only say it cannot load the model.
+    await openTechnicalDetails();
+    expect(screen.queryByRole('link', { name: /opus-4-7$/ })).toBeNull();
+  });
+
+  it("links the ModelConfig in Technical details to the model's page", async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    expect(
+      screen.getByRole('link', { name: 'agent-platform/opus-4-7' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/models/gazelle/agent-platform/opus-4-7',
+    );
+    // Sized and coloured as the "ModelConfig" line it sits in.
+    expect(
+      screen.getByRole('link', { name: 'agent-platform/opus-4-7' }),
+    ).toHaveAttribute('data-variant', 'body-small');
+  });
+
+  it('keeps the model as text where the agent has no namespace to resolve it in', async () => {
+    const agent = makeAgent();
+    delete agent.jsonData.metadata!.namespace;
+    stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    // Neither the configuration's ModelConfig nor the facts' model name.
+    expect(screen.queryByRole('link', { name: /opus-4-7$/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Claude Opus 4.7' })).toBeNull();
+    expect(screen.getAllByText('opus-4-7').length).toBeGreaterThan(0);
   });
 
   describe('status', () => {
@@ -1620,8 +1674,11 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
       // The header's and the empty list's own.
       expect(
-        screen.getAllByRole('button', { name: 'Start a session' }),
-      ).toHaveLength(2);
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Start a session' }),
+      ).toBeInTheDocument();
       expect(screen.queryByRole('searchbox')).toBeNull();
       expect(screen.queryByRole('table')).toBeNull();
       expect(screen.queryByText(/not a usage total/)).toBeNull();
@@ -1648,6 +1705,9 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByText('You have no sessions with this agent.'),
       ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Use this agent' }),
+      ).toBeNull();
       expect(
         screen.queryByRole('button', { name: 'Start a session' }),
       ).toBeNull();
@@ -1853,7 +1913,7 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: 'Start a session' }),
+        screen.queryByRole('button', { name: 'Use this agent' }),
       ).not.toBeInTheDocument();
 
       // Asked only because the template read came back empty …
@@ -1948,6 +2008,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
       mountedRoutes: {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
       },
       mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [AGENT_PATH],
@@ -2034,6 +2095,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       mountedRoutes: {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
         '/agent-platform/skills': skillsRouteRef,
         '/agent-platform/usage': usageRouteRef,
       },
@@ -2091,7 +2153,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(screen.queryByText('agent-platform/pr-reviewer')).toBeNull();
     });
 
-    it('offers Overview, Sessions and Usage, each at its own URL', async () => {
+    it('offers Overview, Sessions, Tools and Usage, each at its own URL', async () => {
       stubResources({ resource: makeAgent() });
 
       await renderShell();
@@ -2100,11 +2162,13 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(tabs.map(tab => tab.textContent)).toEqual([
         'Overview',
         'Sessions',
+        'Tools',
         'Usage',
       ]);
       expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
         AGENT_PATH,
         `${AGENT_PATH}/sessions`,
+        `${AGENT_PATH}/tools`,
         `${AGENT_PATH}/usage`,
       ]);
       expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
@@ -2112,7 +2176,60 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       );
     });
 
-    it('puts Edit beside "Start a session", with the rest in the menu', async () => {
+    it('leaves the Tools tab out for an agent without the gateway', async () => {
+      mockUseAgentToolset.mockReturnValue(NO_GATEWAY_TOOLSET);
+      stubResources({
+        resource: makeAgent({ spec: { tools: [] } } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Usage',
+      ]);
+    });
+
+    it('leaves the Tools tab out for a gateway-bound agent declaring preset:none', async () => {
+      mockUseAgentToolset.mockReturnValue(NONE_TOOLSET);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Usage',
+      ]);
+    });
+
+    it('draws the Tools tab while loading only on a deep link to it', async () => {
+      stubResources({ isLoading: true });
+
+      const { unmount } = await renderShell('tools');
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Tools',
+        'Usage',
+      ]);
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Tools',
+      );
+      unmount();
+
+      await renderShell();
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Usage',
+      ]);
+    });
+
+    it('puts Edit beside "Use this agent", with the rest in the menu', async () => {
       withAgentManager();
       stubResources({ resource: makeAgent() });
 
@@ -2120,7 +2237,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
 
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
       expect(
-        screen.getAllByRole('button', { name: 'Start a session' })[0],
+        screen.getByRole('button', { name: 'Use this agent' }),
       ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Agent actions' }),
@@ -2134,7 +2251,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
 
       expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
       expect(
-        screen.getAllByRole('button', { name: 'Start a session' })[0],
+        screen.getByRole('button', { name: 'Use this agent' }),
       ).toBeInTheDocument();
     });
 
@@ -2187,10 +2304,11 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(
         screen.getByRole('heading', { name: 'Connectors' }),
       ).toBeInTheDocument();
-      expect(screen.getByText('Can use read-only tools')).toBeInTheDocument();
+      expect(screen.getByText('Can use read-only tools.')).toBeInTheDocument();
+      // The exact tools are the Tools tab, not a link from the section.
       expect(
-        screen.getByRole('link', { name: 'See which tools' }),
-      ).toHaveAttribute('href', `${AGENT_PATH}/tools`);
+        screen.queryByRole('link', { name: 'See which tools' }),
+      ).toBeNull();
 
       // The Kubernetes-resource cards wait behind the technical details.
       expect(
@@ -2276,7 +2394,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(facts).getByRole('link', { name: 'Claude Opus 4.7' }),
       ).toHaveAttribute(
         'href',
-        '/agent-platform/models/gazelle/agent-platform/opus-4-7',
+        '/customize/models/gazelle/agent-platform/opus-4-7',
       );
       // The model it runs, as the secondary line under the name (PO L6).
       expect(
@@ -2359,40 +2477,73 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(sectionTitle('Status')).toBeInTheDocument();
       // Nothing to start a session with yet.
       expect(
-        screen.queryAllByRole('button', { name: 'Start a session' }),
-      ).toHaveLength(0);
+        screen.queryByRole('button', { name: 'Use this agent' }),
+      ).toBeNull();
     });
 
     it('sends the retired Skills tab to the Overview that now shows them', async () => {
       stubResources({ resource: makeAgent() });
 
-      await renderShell('skills');
+      await renderShell('skills?installation=gazelle');
 
       expect(
         screen.getByRole('heading', { name: 'Skills' }),
       ).toBeInTheDocument();
+      // The query string survives the redirect: the tabs carry it.
       expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
         'Overview',
       );
+      expect(screen.getByRole('tab', { selected: true })).toHaveAttribute(
+        'href',
+        `${AGENT_PATH}?installation=gazelle`,
+      );
     });
 
-    it('opens the exact tools one level below the agent', async () => {
+    it('opens the exact tools under the Tools tab', async () => {
       stubResources({ resource: makeAgent() });
 
       await renderShell('tools');
 
       expect(screen.getByTestId('agent-toolset-card')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Tools',
+      );
+      // The agent's trail and title, as on every tab.
       const breadcrumbs = screen.getByRole('navigation', {
         name: 'Breadcrumb',
       });
+      expect(within(breadcrumbs).getByText('PR reviewer')).toBeInTheDocument();
       expect(
-        within(breadcrumbs).getByRole('link', { name: 'PR reviewer' }),
-      ).toHaveAttribute('href', AGENT_PATH);
-      expect(within(breadcrumbs).getByText('Tools')).toBeInTheDocument();
+        within(breadcrumbs).queryByRole('link', { name: 'PR reviewer' }),
+      ).toBeNull();
+      expect(within(breadcrumbs).queryByText('Tools')).toBeNull();
+      await waitFor(() => expect(document.title).toBe('PR reviewer · Agents'));
       // The facts belong to the Overview.
       expect(
         screen.queryByRole('complementary', { name: 'About this agent' }),
       ).toBeNull();
+    });
+
+    it('sends the tools of an agent without the gateway to the Overview', async () => {
+      mockUseAgentToolset.mockReturnValue(NO_GATEWAY_TOOLSET);
+      stubResources({
+        resource: makeAgent({ spec: { tools: [] } } as Partial<AgentInterface>),
+      });
+
+      await renderShell('tools?installation=gazelle');
+
+      expect(screen.queryByTestId('agent-toolset-card')).toBeNull();
+      expect(
+        screen.getByRole('heading', { name: 'Connectors' }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+      // The query string survives the redirect, as from `skills`.
+      expect(screen.getByRole('tab', { selected: true })).toHaveAttribute(
+        'href',
+        `${AGENT_PATH}?installation=gazelle`,
+      );
     });
   });
 
@@ -2511,12 +2662,12 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       // Edit, the primary action and the ⋯: no fourth button to wrap.
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
       expect(
-        screen.getAllByRole('button', { name: 'Start a session' })[0],
+        screen.getByRole('button', { name: 'Use this agent' }),
       ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Agent actions' }),
       ).toBeInTheDocument();
-      expect(screen.getAllByRole('tab')).toHaveLength(3);
+      expect(screen.getAllByRole('tab')).toHaveLength(4);
 
       const details = screen.getByRole('button', { name: 'Details' });
       expect(details).toHaveAttribute('aria-expanded', 'false');

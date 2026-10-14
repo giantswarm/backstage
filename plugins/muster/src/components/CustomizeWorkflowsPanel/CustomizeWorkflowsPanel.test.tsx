@@ -7,7 +7,7 @@ import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import { workflowsRouteRef } from '../../routes';
 import { MusterWorkflow, WORKFLOW_CATEGORY_LABEL } from '../../lib/k8s';

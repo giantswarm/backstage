@@ -14,9 +14,7 @@
       "kind": "MCPServer",
       "listKind": "MCPServerList",
       "plural": "mcpservers",
-      "shortNames": [
-        "mcps"
-      ],
+      "shortNames": ["mcps"],
       "singular": "mcpserver"
     },
     "scope": "Namespaced",
@@ -108,9 +106,7 @@
                                 "type": "string"
                               }
                             },
-                            "required": [
-                              "name"
-                            ],
+                            "required": ["name"],
                             "type": "object"
                           },
                           "expectedIssuer": {
@@ -120,10 +116,7 @@
                           },
                           "grantScope": {
                             "description": "GrantScope decides whom a token obtained from this authorization server\nbelongs to. `session` (the default) keeps today's behavior: the token is\nbound to the login session that completed the browser flow, so every new\nsession signs in again. `subject` files the token under the user's\nidentity as well, so any later session of the same person -- another\nclient, a re-login, a front-end whose bearer rotates -- reuses the grant\nwithout a new consent, until the person signs out of this server\n(`core_auth_logout`) or everywhere. Use `subject` for external accounts\nthe person owns (GitHub), never for tokens that carry session-specific\nauthority.",
-                            "enum": [
-                              "session",
-                              "subject"
-                            ],
+                            "enum": ["session", "subject"],
                             "type": "string"
                           },
                           "issuer": {
@@ -141,9 +134,7 @@
                             "type": "string"
                           }
                         },
-                        "required": [
-                          "issuer"
-                        ],
+                        "required": ["issuer"],
                         "type": "object",
                         "x-kubernetes-validations": [
                           {
@@ -189,9 +180,7 @@
                             "type": "string"
                           }
                         },
-                        "required": [
-                          "region"
-                        ],
+                        "required": ["region"],
                         "type": "object"
                       },
                       "tokenExchange": {
@@ -219,9 +208,7 @@
                                 "type": "string"
                               }
                             },
-                            "required": [
-                              "name"
-                            ],
+                            "required": ["name"],
                             "type": "object"
                           },
                           "connectorId": {
@@ -255,11 +242,7 @@
                       "type": {
                         "default": "none",
                         "description": "Type specifies the authentication type.\nSupported values:\n  - \"oauth\": OAuth 2.0/OIDC authentication\n  - \"none\": No authentication\n  - \"sigv4\": AWS Signature Version 4, signed with muster's own machine\n    identity. See SigV4.",
-                        "enum": [
-                          "oauth",
-                          "none",
-                          "sigv4"
-                        ],
+                        "enum": ["oauth", "none", "sigv4"],
                         "type": "string"
                       }
                     },
@@ -326,10 +309,7 @@
                         "type": "string"
                       }
                     },
-                    "required": [
-                      "instanceArg",
-                      "name"
-                    ],
+                    "required": ["instanceArg", "name"],
                     "type": "object"
                   },
                   "headers": {
@@ -370,11 +350,7 @@
                   },
                   "type": {
                     "description": "Type specifies how this MCP server should be executed.\nSupported values: \"stdio\" for local processes, \"streamable-http\" for HTTP-based servers, \"sse\" for Server-Sent Events.\n\n\"stdio\" is CLI-only. A stdio server is started as a subprocess of the muster\nprocess, so a muster running in Kubernetes mode rejects it: the tool handlers\nfail the call, and a CR applied directly through the API server is reconciled\nto state Failed instead of spawning a process in the muster pod. Run the MCP\nserver as its own workload and use \"streamable-http\" or \"sse\" instead.",
-                    "enum": [
-                      "stdio",
-                      "streamable-http",
-                      "sse"
-                    ],
+                    "enum": ["stdio", "streamable-http", "sse"],
                     "type": "string"
                   },
                   "url": {
@@ -383,9 +359,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "type"
-                ],
+                "required": ["type"],
                 "type": "object"
               },
               "status": {
@@ -421,11 +395,7 @@
                         },
                         "status": {
                           "description": "status of the condition, one of True, False, Unknown.",
-                          "enum": [
-                            "True",
-                            "False",
-                            "Unknown"
-                          ],
+                          "enum": ["True", "False", "Unknown"],
                           "type": "string"
                         },
                         "type": {

@@ -4,13 +4,17 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockPhoneLayout,
-  PageHeaderActionsProvider,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
-import { MANAGEMENT_CLUSTER_LABEL, MCPServer } from '../../lib/k8s';
+import {
+  MANAGEMENT_CLUSTER_LABEL,
+  MCPServer,
+  TOOL_GROUP_LABEL,
+} from '../../lib/k8s';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { ConnectorPage } from './ConnectorPage';
 import { useConnectorPageTarget } from './connectorPageTarget';
@@ -21,6 +25,7 @@ jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
 
 let mockServers: MCPServer[] = [];
 let mockAuthenticated = true;
+let mockLoading = false;
 const mockRefresh = jest.fn();
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -30,9 +35,14 @@ jest.mock('../MusterInstanceProvider', () => ({
     scope: 'gazelle',
     homeInstallation: 'gazelle',
     isSingleInstallation: true,
+    activeInstallationInfo: {
+      name: 'gazelle',
+      requiresAuth: true,
+      endpoint: 'https://muster.gazelle.example.test/mcp',
+    },
     mcpServers: mockServers,
     workflows: [],
-    isLoading: false,
+    isLoading: mockLoading,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
   }),
@@ -46,6 +56,8 @@ jest.mock('../MusterInstanceProvider', () => ({
 }));
 
 const HELM = { 'app.kubernetes.io/managed-by': 'Helm' };
+/** The platform's charts label their infrastructure servers. */
+const INFRASTRUCTURE = { ...HELM, [TOOL_GROUP_LABEL]: 'infrastructure' };
 
 function makeServer(opts: {
   name: string;
@@ -90,14 +102,14 @@ const makeServers = () => [
     name: 'walrus-mcp-kubernetes',
     family: 'kubernetes',
     mc: 'walrus',
-    labels: HELM,
+    labels: INFRASTRUCTURE,
   }),
   makeServer({
     name: 'gazelle-mcp-kubernetes',
     family: 'kubernetes',
     mc: 'gazelle',
     state: 'Failed',
-    labels: HELM,
+    labels: INFRASTRUCTURE,
   }),
   makeServer({
     name: 'jira',
@@ -236,6 +248,7 @@ const BASE = '/agent-platform/connectors';
 beforeEach(() => {
   mockServers = makeServers();
   mockAuthenticated = true;
+  mockLoading = false;
   mockRefresh.mockClear();
 });
 
@@ -260,12 +273,82 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('leads its Connectors crumb back to the sub-tab that lists it', async () => {
+    await renderAt(`${BASE}/kubernetes`);
+    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/infrastructure',
+    );
+  });
+
+  it('points the Connectors crumb at the sub-tab while loading, once it is known', async () => {
+    mockLoading = true;
+    // Read before (the persisted cache): the row is known while loading.
+    await renderAt(`${BASE}/kubernetes`);
+    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/infrastructure',
+    );
+    cleanup();
+
+    await renderAt(`${BASE}/muster`);
+    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/internal',
+    );
+    cleanup();
+
+    // Not read yet: no link rather than one to a sub-tab that may not list it.
+    mockServers = [];
+    await renderAt(`${BASE}/jira`);
+    expect(
+      screen.queryByRole('link', { name: 'Connectors' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows muster's own page with its endpoint to copy, under Internal", async () => {
+    await renderAt(`${BASE}/muster`);
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'muster' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/internal',
+    );
+    expect(
+      screen.getByText(/It comes with the Agent Platform/),
+    ).toBeInTheDocument();
+    // Above the tabs, not among the facts.
+    const endpoint = screen.getByText(
+      'https://muster.gazelle.example.test/mcp',
+    );
+    expect(endpoint.closest('p')).toHaveTextContent(
+      'Endpoint https://muster.gazelle.example.test/mcp',
+    );
+    expect(
+      within(endpoint.closest('p')!).getByRole('button', {
+        name: 'Copy endpoint',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole('tab', { name: /^Tools/ })
+        .compareDocumentPosition(endpoint) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+    // Not a fact: muster has none, so its page has no facts column.
+    expect(
+      screen.queryByRole('complementary', { name: 'Connector details' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('names the connector in the document title', async () => {
     await renderAt(`${BASE}/jira`);
 
-    await waitFor(() =>
-      expect(document.title).toBe('jira · Connectors · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('jira · Connectors'));
   });
 
   it('names its place under Customize without links where Customize is not bound', async () => {
@@ -516,6 +599,28 @@ describe('ConnectorPage', () => {
 
     expect(signedOutHeader).toEqual(['Edit', 'More actions']);
     expect(headerButtons()).toEqual(signedOutHeader);
+  });
+
+  it('says in full why muster could not connect an SSO connector (T104)', async () => {
+    // The Customize list keeps this to "Could not sign in" and a hint.
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        {
+          name: 'grafana',
+          status: 'connected',
+          token_forwarding_enabled: true,
+          sso_attempt_failed: true,
+        },
+      ],
+    } as never);
+    await renderAt(`${BASE}/grafana`, { api });
+
+    expect(
+      await screen.findByText(
+        "grafana authenticates through SSO from muster's own session, so there is nothing to sign in to here. muster tried and failed to establish it for your session — check the connector's trusted audiences with an administrator.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it('offers reconnect, turn off and remove, and confirms a removal', async () => {
