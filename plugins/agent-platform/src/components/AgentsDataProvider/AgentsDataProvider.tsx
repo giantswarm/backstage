@@ -25,10 +25,12 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
+import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
 import {
   AgentRow,
+  agentManagerSessionGate,
   BASELINE_REFETCH_INTERVAL_MS,
   getAgentsRefetchInterval,
   ResolveModelServing,
@@ -397,11 +399,22 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedInstallationsKey]);
 
+  // Sessions start through agent-manager as the person, so an agent on an
+  // installation where that cannot happen carries the reason, and every
+  // session picker leaves it out (`isStartableAgent`). Asked only of the
+  // installations that have agents: no other row needs the answer.
+  const agentManager = useAgentManagerAvailability(
+    Object.keys(agentsByInstallation).filter(
+      cluster => agentsByInstallation[cluster].length > 0,
+    ),
+  );
+
   const value = useMemo<AgentsContextValue>(() => {
     const rows = sortAgentRows(
-      Object.entries(agentsByInstallation).flatMap(([cluster, agents]) =>
-        agents.map(agent =>
-          toAgentRow(
+      Object.entries(agentsByInstallation).flatMap(([cluster, agents]) => {
+        const sessionGate = agentManagerSessionGate(agentManager, cluster);
+        return agents.map(agent => ({
+          ...toAgentRow(
             agent,
             modelConfigsFor(cluster),
             resolveServing,
@@ -410,8 +423,9 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             carriersByInstallation[cluster],
             harnessesByInstallation[cluster],
           ),
-        ),
-      ),
+          ...sessionGate,
+        }));
+      }),
       home,
     );
 
@@ -471,6 +485,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     agentsByInstallation,
+    agentManager,
     carriersByInstallation,
     harnessesByInstallation,
     erroredInstallations,

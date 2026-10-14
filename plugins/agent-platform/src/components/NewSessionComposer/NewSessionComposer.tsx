@@ -33,6 +33,9 @@ import {
   type ClientServingSummary,
 } from '../../lib/serving';
 import type { AgentRow } from '../AgentsDataProvider';
+import { isStartableAgent } from '../../lib/startableAgent';
+
+export { isStartableAgent };
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import {
   isSendKey,
@@ -108,18 +111,6 @@ const useStyles = makeStyles(theme => ({
     },
   },
 }));
-
-/**
- * Whether a session can be started with this agent.
- *
- * Exported so the picker and the callers that decide whether to *offer* a picker
- * at all share one predicate — a page withholding the composer on a different rule
- * than the picker filters on would either show an empty dropdown or hide a usable
- * one.
- */
-export function isStartableAgent(agent: AgentRow): boolean {
-  return agent.readiness === 'ready';
-}
 
 /**
  * The model state worth warning about before a session starts: the serving
@@ -318,9 +309,11 @@ function describeAgent(
   shorten: (text: string) => string = oneShortLine,
 ): string | undefined {
   if (!isStartableAgent(agent)) {
-    return agent.readinessMessage
-      ? `Unavailable: ${shorten(agent.readinessMessage)}`
-      : 'Unavailable right now';
+    if (agent.readiness === 'ready' && agent.isSessionPending) {
+      return 'Checking whether a session can start…';
+    }
+    const reason = agent.sessionBlocker ?? agent.readinessMessage;
+    return reason ? `Unavailable: ${shorten(reason)}` : 'Unavailable right now';
   }
   return agent.description ? shorten(agent.description) : undefined;
 }
