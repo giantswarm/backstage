@@ -1,8 +1,9 @@
 import { expect, expectWizardStep, open, test } from './fixtures';
 
 /**
- * The first-run state of a lab without agents: Home's "No agents yet" card
- * links to the same create form as Customize's New agent button.
+ * The first-run state of a lab without agents: Customize's Agents tab and
+ * Home each show a "No agents yet" card that links to the same create form as
+ * Customize's New agent button.
  *
  * Only a lab that holds no agent shows the card, so the test skips on one that
  * does (another spec's fixture agent, a worker's own). Customize's Agents tab
@@ -20,6 +21,9 @@ test('the first-agent invitation opens the New agent wizard', async ({
     .first();
   await expect(noAgents.or(roster).first()).toBeVisible({ timeout: 60_000 });
   test.skip(await roster.isVisible(), 'the lab holds agents: no invitation');
+  await expect(
+    admin.getByRole('link', { name: 'Create your first agent', exact: true }),
+  ).toHaveAttribute('href', '/agent-platform/agents/new');
 
   await open(admin, '/');
   await admin.getByRole('link', { name: 'Create your first agent' }).click();
