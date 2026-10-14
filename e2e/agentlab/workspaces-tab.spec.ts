@@ -55,13 +55,17 @@ test('a member sees the fixture workspace with its repositories, last sync and S
     row.getByText(/^(Synced|No change|Sync requested|Syncing)$/),
     'the last sync and its result',
   ).toBeVisible();
+  await snapshot(admin, 'workspaces-tab');
+  // When it happened sits behind the state's info icon: a press opens it.
+  const hint = `About the state of ${labWorkspace.name}`;
+  await row.getByRole('button', { name: hint, exact: true }).click();
   await expect(
-    row.getByText(/ ago$/).first(),
-    'the last sync, relative',
-  ).toBeVisible();
+    admin.getByRole('dialog', { name: hint, exact: true }),
+    'the last sync, relative, behind the info icon',
+  ).toContainText(/ ago\./);
+  await admin.keyboard.press('Escape');
   // The Sessions column: the fixture workspace has none.
   await expect(cells.filter({ hasText: /^0$/ })).not.toHaveCount(0);
-  await snapshot(admin, 'workspaces-tab');
 });
 
 test('a person outside the Organization does not see its workspace', async ({
