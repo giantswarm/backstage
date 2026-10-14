@@ -40,11 +40,17 @@ const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 export const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
 
 /**
- * Tool prefixes of the servers whose tools act as the signed-in person and
- * never under muster's own identity: agent-manager starts sessions and
- * creates, changes and deletes agents under the caller's RBAC.
+ * The tools `/call` runs on an installation without a per-user session:
+ * muster's own core tools, except its per-user auth (`core_auth_*`, which
+ * `/auth/*` refuses there). Everything else -- an aggregated server's tools
+ * (`x_<server>_*`, under any server name or prefix), a workflow
+ * (`workflow_*`, whose steps call those tools) or a meta-tool wrapping
+ * another call (`call_tool`) -- acts for the caller and would run under
+ * muster's shared identity.
  */
-const PERSON_ONLY_TOOL_PREFIXES = ['x_agent-manager_'];
+function runsWithoutPerson(name: string): boolean {
+  return name.startsWith('core_') && !name.startsWith('core_auth_');
+}
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -295,6 +301,17 @@ export async function createRouter(
   };
 
   /**
+   * Whether calls to the installation carry the person's token: a configured
+   * entry with an `authProvider`, or any derived entry. MusterMcpClient keys
+   * its session cache on that token, so without one every portal user shares
+   * a single muster session under muster's own identity -- one user's
+   * completed `core_auth_login` would connect a downstream server for
+   * everybody, and any tool would act for nobody in particular.
+   */
+  const hasPerUserSession = (installation: MusterInstallationConfig) =>
+    musterInstallationRequiresAuth(installation);
+
+  /**
    * When the target installation requires per-user auth (a configured entry
    * with an `authProvider`, or any derived entry -- every muster gates), the
    * frontend must forward the person's token; without it the muster server
@@ -323,21 +340,18 @@ export async function createRouter(
 
   /**
    * Without per-user auth muster runs a call under its own identity, shared
-   * by every portal user. Discovery and the core tools tolerate that; a tool
-   * that must act as the person is refused before muster is called.
+   * by every portal user. The discovery routes and muster's core tools
+   * tolerate that; every other tool is refused before muster is called.
    */
   const assertRunsAsPerson = (
     name: string,
     installation: MusterInstallationConfig,
   ) => {
-    if (
-      musterInstallationRequiresAuth(installation) ||
-      !PERSON_ONLY_TOOL_PREFIXES.some(prefix => name.startsWith(prefix))
-    ) {
+    if (hasPerUserSession(installation) || runsWithoutPerson(name)) {
       return;
     }
     throw new NotAllowedError(
-      `The muster installation '${installation.name}' is configured without an authProvider, so '${name}' would run under muster's shared identity instead of yours. A platform admin can set muster.installations[].authProvider for it.`,
+      `The muster installation '${installation.name}' is configured without an authProvider, so '${name}' would run under muster's shared identity instead of yours. A platform admin can give the installation's muster entry an authProvider.`,
     );
   };
 
@@ -577,20 +591,9 @@ export async function createRouter(
 
   // --- Downstream server authentication ------------------------------------
 
-  /**
-   * Downstream, per-server auth state is scoped to one muster MCP session, and
-   * MusterMcpClient keys its session cache on the forwarded user token. An
-   * installation without `authProvider` therefore has no token to key on and
-   * every portal user shares a single session -- so one user's completed
-   * `core_auth_login` would connect a downstream server for everybody, letting
-   * the next user call it under the first user's OAuth grant.
-   *
-   * Read-only discovery tolerates that shared session; per-user auth cannot, so
-   * these two routes are inert unless the installation forwards a user token
-   * (a configured entry with an `authProvider`, or any derived entry).
-   */
-  const hasPerUserSession = (installation: MusterInstallationConfig) =>
-    musterInstallationRequiresAuth(installation);
+  // Downstream, per-server auth state is scoped to one muster MCP session (see
+  // hasPerUserSession), so these two routes are inert unless the installation
+  // forwards a user token.
 
   /**
    * Per-server authentication status for the calling user's muster session
