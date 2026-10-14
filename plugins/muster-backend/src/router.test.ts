@@ -1040,8 +1040,15 @@ describe('createRouter', () => {
     });
   });
 
+  // An installation that forwards the person's token: every tool runs as them.
+  const personApp = () =>
+    buildMultiApp([
+      { name: 'gazelle', url: 'http://g/mcp', authProvider: 'dex' },
+    ]);
+  const asPerson = { authToken: 'user-token' };
+
   describe('/call', () => {
-    it('executes any tool unconditionally', async () => {
+    it('executes a core tool on an installation without per-user auth', async () => {
       callTool.mockResolvedValue({ ok: true });
 
       const response = await request(app)
@@ -1052,7 +1059,7 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith('core_service_list', {}, {});
     });
 
-    it('executes a mutating-looking tool without any gate', async () => {
+    it('executes a mutating-looking core tool without any gate', async () => {
       callTool.mockResolvedValue({ ok: true });
 
       const response = await request(app)
@@ -1074,6 +1081,57 @@ describe('createRouter', () => {
       expect(callTool).not.toHaveBeenCalled();
     });
 
+    /**
+     * Without an authProvider muster would run the call under its own
+     * identity, shared by every portal user. Only muster's core tools run
+     * there: an aggregated server's tool under any name, a workflow whose
+     * steps call one, a meta-tool wrapping another call and per-user auth
+     * are refused before muster is called.
+     */
+    it.each([
+      'x_agent-manager_start_session',
+      'x_agent-manager_create_agent',
+      'x_agent-manager_update_agent',
+      'x_agent-manager_delete_agent',
+      'x_model-manager_load_model',
+      'x_cluster-manager_delete_node_pool',
+      'x_agents_create_agent',
+      'workflow_start-agent-session',
+      'call_tool',
+      'core_auth_login',
+    ])('refuses %s on an installation without per-user auth', async name => {
+      const response = await request(app)
+        .post('/call')
+        .send({
+          name,
+          arguments: {
+            name: 'x_agent-manager_delete_agent',
+            arguments: {},
+          },
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.message).toContain('without an authProvider');
+      expect(response.body.error.message).toContain(name);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
+    it("runs an aggregated server's tool with the person's token", async () => {
+      callTool.mockResolvedValue({ session: { id: 's-1' } });
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_agent-manager_start_session', arguments: {} });
+
+      expect(response.status).toBe(200);
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_start_session',
+        {},
+        asPerson,
+      );
+    });
+
     // cluster-manager's delete_node_pool answers its structured refusal as a
     // second text block; gs-node keeps it as the error's `details`, and the
     // error middleware serializes it next to the message for the frontend.
@@ -1084,8 +1142,9 @@ describe('createRouter', () => {
         ]),
       );
 
-      const response = await request(app)
+      const response = await request(await personApp())
         .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
         .send({ name: 'x_cluster-manager_delete_node_pool', arguments: {} });
 
       expect(response.status).toBe(500);
@@ -1103,6 +1162,11 @@ describe('createRouter', () => {
         .trim()
         .split('\n')
         .map(line => JSON.parse(line));
+    const sweep = async (body: object) =>
+      request(await personApp())
+        .post('/call/progress')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send(body);
 
     it("streams the tool's progress, then its result, as lines", async () => {
       callToolWithProgress.mockImplementation(async (_name, _args, options) => {
@@ -1111,9 +1175,10 @@ describe('createRouter', () => {
         return { swept: 2 };
       });
 
-      const response = await request(app)
-        .post('/call/progress')
-        .send({ name: 'x_marge_sweep', arguments: { team: 'honeybadger' } });
+      const response = await sweep({
+        name: 'x_marge_sweep',
+        arguments: { team: 'honeybadger' },
+      });
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toMatch(/application\/x-ndjson/);
@@ -1125,7 +1190,10 @@ describe('createRouter', () => {
       expect(callToolWithProgress).toHaveBeenCalledWith(
         'x_marge_sweep',
         { team: 'honeybadger' },
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        expect.objectContaining({
+          ...asPerson,
+          signal: expect.any(AbortSignal),
+        }),
       );
     });
 
@@ -1134,9 +1202,7 @@ describe('createRouter', () => {
         new MusterToolError('no team file for "x"'),
       );
 
-      const response = await request(app)
-        .post('/call/progress')
-        .send({ name: 'x_marge_sweep', arguments: {} });
+      const response = await sweep({ name: 'x_marge_sweep', arguments: {} });
 
       expect(response.status).toBe(500);
       expect(response.body.error).toMatchObject({
@@ -1151,9 +1217,7 @@ describe('createRouter', () => {
         throw new MusterToolError('refused', ['{"why":"x"}']);
       });
 
-      const response = await request(app)
-        .post('/call/progress')
-        .send({ name: 'x_marge_sweep', arguments: {} });
+      const response = await sweep({ name: 'x_marge_sweep', arguments: {} });
 
       expect(response.status).toBe(200);
       expect(lines(response.text)).toEqual([
@@ -1177,6 +1241,21 @@ describe('createRouter', () => {
       expect(response.status).toBe(400);
       expect(callToolWithProgress).not.toHaveBeenCalled();
     });
+
+    it.each(['x_agent-manager_start_session', 'workflow_sweep', 'call_tool'])(
+      'refuses %s on an installation without per-user auth',
+      async name => {
+        const response = await request(app)
+          .post('/call/progress')
+          .send({ name, arguments: {} });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.message).toContain(
+          'without an authProvider',
+        );
+        expect(callToolWithProgress).not.toHaveBeenCalled();
+      },
+    );
   });
 
   it('computes workflow stats from executions', async () => {
