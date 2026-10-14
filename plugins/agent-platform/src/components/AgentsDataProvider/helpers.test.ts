@@ -18,8 +18,9 @@ import {
   sortAgentRows,
   toAgentRow,
   describeKagentSwitchedOff,
+  selectAgentsInventoryFailure,
   selectKagentMissing,
-  selectKagentSwitchedOff,
+  selectUnknownPin,
 } from './helpers';
 
 function makeAgent(
@@ -739,25 +740,30 @@ describe('toAgentRow model fields', () => {
   });
 });
 
-describe('selectKagentMissing', () => {
-  const entry = (
-    installation: string,
-    kagent: boolean,
-  ): InstallationInventoryEntry => ({
+function inventoryEntry(
+  installation: string,
+  overrides: Partial<InstallationInventoryEntry> & { kagent?: boolean } = {},
+): InstallationInventoryEntry {
+  const { kagent = true, ...rest } = overrides;
+  return {
     installation,
     home: false,
     accessState: 'healthy',
     muted: false,
     probe: 'answered',
     components: { kagent, muster: true, kserve: false, capi: true },
-  });
+    ...rest,
+  };
+}
 
+const failedProbe = (name: string) => Object.assign(new Error(name), { name });
+
+describe('selectKagentMissing', () => {
   it('offers another environment when one outside the scope runs kagent', () => {
     expect(
       selectKagentMissing(
-        [entry('golem', true), entry('dingo', false)],
+        [inventoryEntry('golem'), inventoryEntry('dingo', { kagent: false })],
         'dingo',
-        ['golem'],
       ),
     ).toEqual({ installations: ['dingo'], canChooseAnother: true });
   });
@@ -765,52 +771,35 @@ describe('selectKagentMissing', () => {
   it('offers none when no environment runs kagent', () => {
     expect(
       selectKagentMissing(
-        [entry('golem', false), entry('dingo', false)],
+        [
+          inventoryEntry('golem', { kagent: false }),
+          inventoryEntry('dingo', { kagent: false }),
+        ],
         'all',
-        [],
       ),
     ).toEqual({ installations: ['golem', 'dingo'], canChooseAnother: false });
+  });
+
+  it('offers none where the only other kagent environment is out of reach', () => {
+    // A signed-out environment is not one the composer can offer agents of.
+    expect(
+      selectKagentMissing(
+        [
+          inventoryEntry('golem', { accessState: 'session-expired' }),
+          inventoryEntry('dingo', { kagent: false }),
+        ],
+        'dingo',
+      ),
+    ).toEqual({ installations: ['dingo'], canChooseAnother: false });
   });
 
   it('is undefined where the scope runs kagent', () => {
     expect(
       selectKagentMissing(
-        [entry('golem', true), entry('dingo', false)],
+        [inventoryEntry('golem'), inventoryEntry('dingo', { kagent: false })],
         'golem',
-        ['golem'],
       ),
     ).toBeUndefined();
-  });
-});
-
-describe('selectKagentSwitchedOff', () => {
-  const entry = (
-    installation: string,
-    overrides: Partial<InstallationInventoryEntry> = {},
-  ): InstallationInventoryEntry => ({
-    installation,
-    home: false,
-    accessState: 'healthy',
-    muted: false,
-    probe: 'answered',
-    components: { kagent: true, muster: true, kserve: false, capi: true },
-    ...overrides,
-  });
-  const entries = [
-    entry('golem'),
-    entry('lab', { muted: true }),
-    entry('dingo', {
-      muted: true,
-      components: { kagent: false, muster: true, kserve: false, capi: true },
-    }),
-  ];
-
-  it('names the switched-off environments that run kagent under All environments', () => {
-    expect(selectKagentSwitchedOff(entries, 'all')).toEqual(['lab']);
-  });
-
-  it('names none under a pinned scope', () => {
-    expect(selectKagentSwitchedOff(entries, 'lab')).toEqual([]);
   });
 });
 
@@ -825,5 +814,81 @@ describe('describeKagentSwitchedOff', () => {
     expect(describeKagentSwitchedOff(['lab', 'dingo'])).toBe(
       'lab, dingo run kagent but are switched off in Cluster access, so their agents are not read.',
     );
+  });
+});
+
+describe('selectUnknownPin', () => {
+  const entries = [inventoryEntry('golem')];
+
+  it('names a pin the inventory does not know', () => {
+    expect(selectUnknownPin({ entries, isLoading: false }, 'old-lab')).toBe(
+      'old-lab',
+    );
+  });
+
+  it('names none for a known pin, under All, or before the inventory answers', () => {
+    expect(
+      selectUnknownPin({ entries, isLoading: false }, 'golem'),
+    ).toBeUndefined();
+    expect(
+      selectUnknownPin({ entries, isLoading: false }, 'all'),
+    ).toBeUndefined();
+    expect(
+      selectUnknownPin({ entries, isLoading: true }, 'old-lab'),
+    ).toBeUndefined();
+    expect(
+      selectUnknownPin({ entries: [], isLoading: false }, 'old-lab'),
+    ).toBeUndefined();
+  });
+});
+
+describe('selectAgentsInventoryFailure', () => {
+  const home = inventoryEntry('golem', {
+    home: true,
+    probe: 'failed',
+    error: failedProbe('UnauthorizedError'),
+  });
+  const other = inventoryEntry('dingo', {
+    probe: 'failed',
+    error: failedProbe('ForbiddenError'),
+  });
+
+  it('names the home environment under All environments', () => {
+    expect(
+      selectAgentsInventoryFailure(
+        { entries: [home, other], home: 'golem' },
+        'all',
+        { unknownPin: undefined, listsNothing: false },
+      ),
+    ).toMatchObject({ installation: 'golem', kind: 'unauthorized' });
+  });
+
+  it('names another environment only when nothing is listed and nothing can be read', () => {
+    const inventory = {
+      entries: [inventoryEntry('golem', { home: true, kagent: false }), other],
+      home: 'golem',
+    };
+    expect(
+      selectAgentsInventoryFailure(inventory, 'all', {
+        unknownPin: undefined,
+        listsNothing: false,
+      }),
+    ).toBeUndefined();
+    expect(
+      selectAgentsInventoryFailure(inventory, 'all', {
+        unknownPin: undefined,
+        listsNothing: true,
+      }),
+    ).toMatchObject({ installation: 'dingo', kind: 'forbidden' });
+  });
+
+  it('names none for an unknown pin', () => {
+    expect(
+      selectAgentsInventoryFailure(
+        { entries: [home, other], home: 'golem' },
+        'old-lab',
+        { unknownPin: 'old-lab', listsNothing: true },
+      ),
+    ).toBeUndefined();
   });
 });

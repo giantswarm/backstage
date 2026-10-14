@@ -17,51 +17,58 @@ import { CustomizeAgentsPanel } from './CustomizeAgentsPanel';
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
-// The inventory the panel reads to tell an environment without kagent, and
-// which environment's failure the gate explains (the real selectors). The
-// gate itself, covered by its own tests in gs, renders a marker naming it.
+// The inventory behind what `useAgents` says about kagent and which
+// environment's failure the gate explains. The gate itself, covered by its
+// own tests in gs, renders a marker naming it.
 let mockInventoryEntries: InstallationInventoryEntry[] = [];
-function mockInstallationsWith(component: 'kagent') {
-  return mockInventoryEntries
-    .filter(
-      entry =>
-        !entry.muted &&
-        entry.probe === 'answered' &&
-        entry.components[component],
-    )
-    .map(entry => entry.installation);
-}
 let mockAgents: Partial<AgentsContextValue>;
-// `kagentMissing` and `kagentSwitchedOff` follow the mocked inventory by the
-// provider's own rules.
+// What `useAgents` says about the inventory (`kagentMissing`,
+// `kagentSwitchedOff`, `unknownPin`, `inventoryFailure`) follows the mocked
+// inventory and rows by the provider's own selectors.
 jest.mock('../AgentsDataProvider', () => {
-  const actual = jest.requireActual('../AgentsDataProvider/helpers');
+  const helpers = jest.requireActual('../AgentsDataProvider/helpers');
+  const gs = jest.requireActual('@giantswarm/backstage-plugin-gs');
   return {
-    describeKagentSwitchedOff: actual.describeKagentSwitchedOff,
-    useAgents: () => ({
-      kagentMissing: actual.selectKagentMissing(
-        mockInventoryEntries,
-        mockAgents.scope ?? 'all',
-        mockInstallationsWith('kagent'),
-      ),
-      kagentSwitchedOff: actual.selectKagentSwitchedOff(
-        mockInventoryEntries,
-        mockAgents.scope ?? 'all',
-      ),
-      ...mockAgents,
-    }),
+    describeKagentSwitchedOff: helpers.describeKagentSwitchedOff,
+    useAgents: () => {
+      const scope = mockAgents.scope ?? 'all';
+      const rows = mockAgents.rows ?? [];
+      const inventory = {
+        entries: mockInventoryEntries,
+        home: mockInventoryEntries.find(entry => entry.home)?.installation,
+        isLoading: false,
+      };
+      const unknownPin = helpers.selectUnknownPin(inventory, scope);
+      return {
+        kagentMissing:
+          rows.length === 0
+            ? helpers.selectKagentMissing(mockInventoryEntries, scope)
+            : undefined,
+        kagentSwitchedOff: gs.installationsSwitchedOffWithComponent(
+          mockInventoryEntries,
+          scope,
+          'kagent',
+        ),
+        unknownPin,
+        inventoryFailure: helpers.selectAgentsInventoryFailure(
+          inventory,
+          scope,
+          {
+            unknownPin,
+            listsNothing:
+              !mockAgents.isLoading &&
+              rows.length === 0 &&
+              (mockAgents.installations ?? []).length === 0,
+          },
+        ),
+        ...mockAgents,
+      };
+    },
   };
 });
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
-  useInstallationInventory: () => ({
-    entries: mockInventoryEntries,
-    home: mockInventoryEntries.find(entry => entry.home)?.installation,
-    isLoading: false,
-    isProbing: false,
-    installationsWith: mockInstallationsWith,
-    refresh: () => {},
-  }),
+  useInstallationInventory: () => ({ refresh: () => {} }),
   InventoryFailureGate: ({
     failure,
   }: {

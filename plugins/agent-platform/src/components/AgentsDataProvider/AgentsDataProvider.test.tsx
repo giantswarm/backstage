@@ -34,14 +34,14 @@ let mockKagent: {
 let mockScope = 'all';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  // The pure inventory selectors (`installationsWithoutComponent` and the
+  // like) are the real ones.
+  ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   ALL_INSTALLATIONS: 'all',
   applyInstallationScope: (installations: string[], scope: string) =>
     scope === 'all'
       ? installations
       : installations.filter(installation => installation === scope),
-  installationsWithoutComponent: jest.requireActual(
-    '@giantswarm/backstage-plugin-gs',
-  ).installationsWithoutComponent,
   useInstallations: () => ({
     installations: mockConfigInstallations.map(name => ({ name })),
     isLoading: false,
@@ -565,6 +565,68 @@ describe('AgentsDataProvider installation scope', () => {
 
     expect(hook.current.kagentMissing).toBeUndefined();
     expect(hook.current.kagentSwitchedOff).toEqual(['beta']);
+  });
+
+  it('holds kagent-missing back while agents are listed', async () => {
+    // The inventory's answer for alpha just changed to "no kagent" while its
+    // agents are still on screen: they are the answer, not the card.
+    mockKagent = {
+      ...mockKagent,
+      installations: ['alpha'],
+      entries: [inventoryEntry('alpha', { home: true, kagent: false })],
+    };
+    mockConfigInstallations = ['alpha'];
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+    expect(hook.current.kagentMissing).toBeUndefined();
+  });
+
+  it('names a pinned installation the portal does not know, and no inventory failure for it', () => {
+    mockScope = 'old-lab';
+    mockKagent = {
+      ...mockKagent,
+      entries: [
+        inventoryEntry('alpha', {
+          home: true,
+          probe: 'failed',
+          error: Object.assign(new Error('401'), { name: 'UnauthorizedError' }),
+        }),
+      ],
+    };
+    mockUseResources.mockReturnValue(result({}));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    expect(hook.current.unknownPin).toBe('old-lab');
+    expect(hook.current.inventoryFailure).toBeUndefined();
+  });
+
+  it('explains an empty list by an installation other than home that could not be asked', async () => {
+    mockKagent = {
+      ...mockKagent,
+      installations: [],
+      entries: [
+        inventoryEntry('alpha', { home: true, kagent: false }),
+        inventoryEntry('beta', {
+          probe: 'failed',
+          error: Object.assign(new Error('403'), { name: 'ForbiddenError' }),
+        }),
+      ],
+    };
+    mockUseResources.mockReturnValue(result({}));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    await waitFor(() =>
+      expect(hook.current.inventoryFailure).toMatchObject({
+        installation: 'beta',
+        kind: 'forbidden',
+      }),
+    );
+    expect(hook.current.unknownPin).toBeUndefined();
   });
 
   it('reports an installation that could not be read next to the rows of the others', async () => {

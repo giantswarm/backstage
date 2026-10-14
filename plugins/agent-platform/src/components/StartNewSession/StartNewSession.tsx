@@ -2,7 +2,10 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Flex, Link, Text } from '@backstage/ui';
-import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  EmptyStateCard,
+  LoadingIndicator,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useCreateSession,
@@ -72,9 +75,14 @@ export type StartNewSessionProps = {
  * conversation.
  *
  * Withheld with a reason when the fleet offers no agent at all. An inert prompt
- * box that refuses every Start would be worse than saying why. Renders nothing
- * while the agents are loading, unless kagent is already known to be missing
- * from every environment in scope.
+ * box that refuses every Start would be worse than saying why. The reasons are
+ * Customize › Agents' own, from the same `useAgents` values. Standalone, it
+ * shows the loading indicator while the agents are read, and the
+ * kagent-missing card (even while other environments still load); the other
+ * layouts render nothing while loading and say a missing kagent in a line.
+ * Where the inventory gate or the installation scope note is the whole answer
+ * (an environment that could not be asked, an unknown pin), it renders
+ * nothing: the caller renders those, as Home does.
  *
  * Reads `useAgents`, so it renders under `AgentsDataProvider`.
  */
@@ -93,8 +101,11 @@ export function StartNewSession({
     isLoading: isLoadingAgents,
     isLoadingMore: isLoadingMoreAgents,
     unreachableInstallations,
+    hasInstallations,
     kagentMissing,
     kagentSwitchedOff,
+    unknownPin,
+    inventoryFailure,
   } = useAgents();
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
   const creation = useCreateSession(entryPoint, { titleMaxLength });
@@ -145,13 +156,16 @@ export function StartNewSession({
 
   // Every environment in scope answered without kagent: no agent can be
   // started there, whatever else is still loading. Customize › Agents says it
-  // with the same card.
-  if (agents.length === 0 && kagentMissing) {
+  // with the same card; above a list of sessions (`inline`) a full card would
+  // crowd the list out, so there the line below says it.
+  if (layout === 'standalone' && kagentMissing) {
     return <KagentMissingCard {...kagentMissing} />;
   }
 
   if (isLoadingAgents) {
-    return null;
+    return layout === 'standalone' ? (
+      <LoadingIndicator label="Reading your agents…" />
+    ) : null;
   }
 
   // The same predicate the picker filters on, so the composer is never offered with
@@ -171,23 +185,38 @@ export function StartNewSession({
       return <FirstAgentCard />;
     }
 
+    // An environment that could not be asked whether it runs kagent, or a pin
+    // the portal does not know: the inventory gate or the scope note the
+    // caller renders is the whole answer, as on Customize › Agents.
+    if (
+      agents.length === 0 &&
+      unreachableInstallations.length === 0 &&
+      agentInstallations.length === 0 &&
+      (unknownPin || inventoryFailure)
+    ) {
+      return null;
+    }
+
     // Distinct situations, and conflating them would tell the user to look in
-    // the wrong place: nothing could be read (look at the warning), the
-    // environments that run kagent are switched off in Cluster access (switch
-    // one back on; Customize › Agents says the same), nothing is deployed and
-    // no environment in reach runs kagent to deploy to, or something is
-    // deployed but none of it is ready (look at the Agents tab, where the
-    // reason is). Standalone, the Agents tab is a link rather than a
-    // neighbouring tab.
+    // the wrong place: nothing could be read (look at the warning), no
+    // environment is configured, the environments that run kagent are
+    // switched off in Cluster access (switch one back on), no environment in
+    // reach runs kagent, or something is deployed but none of it is ready
+    // (look at the Agents tab, where the reason is). Each sentence but the
+    // first and the last is the one Customize › Agents says. Standalone, the
+    // Agents tab is a link rather than a neighbouring tab.
     let reason: string;
     let pointer: 'warning' | 'agentsTab' | undefined;
     if (unreachableInstallations.length > 0 && agents.length === 0) {
       reason = 'No agents could be read to start a session with.';
       pointer = 'warning';
+    } else if (agents.length === 0 && !hasInstallations) {
+      reason =
+        'Agents are read from your environments, and this portal knows none.';
     } else if (agents.length === 0 && kagentSwitchedOff.length > 0) {
       reason = describeKagentSwitchedOff(kagentSwitchedOff);
     } else if (agents.length === 0) {
-      reason = 'No agents are deployed on the reachable environments.';
+      reason = 'No environment this portal can reach runs kagent.';
     } else {
       reason =
         agents.length === 1

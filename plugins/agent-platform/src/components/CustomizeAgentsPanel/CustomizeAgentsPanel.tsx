@@ -6,10 +6,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
-  ALL_INSTALLATIONS,
-  classifyInventoryFailure,
   InventoryFailureGate,
-  selectInventoryFailure,
   useInstallationInventory,
 } from '@giantswarm/backstage-plugin-gs';
 import {
@@ -466,7 +463,6 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const classes = useStyles();
   const {
     rows,
-    scope,
     installations,
     isLoading,
     isLoadingMore,
@@ -474,6 +470,8 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     unreachableInstallations,
     kagentMissing,
     kagentSwitchedOff,
+    unknownPin,
+    inventoryFailure,
   } = useAgents();
   const inventory = useInstallationInventory();
   const buildAvatarUrl = useAgentAvatarUrl();
@@ -539,38 +537,17 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     />
   );
 
-  const pinned = scope === ALL_INSTALLATIONS ? null : scope;
-  // A pin the portal does not know (a stale `?installation=` deep link): no
-  // inventory to ask, and nothing else on the panel can say why it is empty.
-  const unknownPin =
-    pinned !== null &&
-    !inventory.isLoading &&
-    inventory.entries.length > 0 &&
-    !inventory.entries.some(entry => entry.installation === pinned);
-  const isEmpty = !isLoading && rows.length === 0;
-  // The environment this tab reads could not be asked whether it runs kagent:
-  // the pinned one, or the home one under "All environments" -- or, when
-  // the list is empty with nowhere to read agents from, any environment in
-  // scope, since that failure is then the only explanation there is.
-  const inventoryFailure = unknownPin
-    ? undefined
-    : (selectInventoryFailure(inventory, pinned) ??
-      (isEmpty && installations.length === 0 && pinned === null
-        ? inventory.entries
-            .filter(entry => !entry.muted)
-            .map(classifyInventoryFailure)
-            .find(failure => failure !== undefined)
-        : undefined));
-
   let body;
   if (rows.length === 0 && unknownPin) {
+    // A pin the portal does not know (a stale `?installation=` deep link): no
+    // inventory to ask, and nothing else on the panel can say why it is empty.
     body = (
       <EmptyStateCard
         title="Unknown environment"
-        description={`This portal knows no environment named “${pinned}”. Choose another environment.`}
+        description={`This portal knows no environment named “${unknownPin}”. Choose another environment.`}
       />
     );
-  } else if (rows.length === 0 && kagentMissing) {
+  } else if (kagentMissing) {
     body = (
       // Every environment in scope answered without kagent: nothing can be
       // listed or created there, whatever else is still loading.

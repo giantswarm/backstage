@@ -54,6 +54,8 @@ const loadedAgents: AgentsContextValue = {
   unreachableInstallations: [],
   kagentMissing: undefined,
   kagentSwitchedOff: [],
+  unknownPin: undefined,
+  inventoryFailure: undefined,
 };
 
 function render(props: StartNewSessionProps, { agentsBound = true } = {}) {
@@ -139,11 +141,26 @@ describe('StartNewSession', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders nothing while the agents are loading', async () => {
+  it('inline, renders nothing while the agents are loading', async () => {
+    mockUseAgents.mockReturnValue({ ...loadedAgents, isLoading: true });
+
+    await render({ entryPoint: 'sessionsList' });
+
+    expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: 'Prompt' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Start a new session')).not.toBeInTheDocument();
+  });
+
+  it('standalone, shows the loading indicator while the agents are loading', async () => {
     mockUseAgents.mockReturnValue({ ...loadedAgents, isLoading: true });
 
     await render({ entryPoint: 'home', layout: 'standalone' });
 
+    expect(
+      await screen.findByLabelText('Reading your agents…'),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('textbox', { name: 'Prompt' }),
     ).not.toBeInTheDocument();
@@ -170,6 +187,23 @@ describe('StartNewSession', () => {
     expect(
       screen.queryByRole('textbox', { name: 'Prompt' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('inline, says no environment in reach runs kagent instead of a full card', async () => {
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      scope: 'dingo',
+      installations: [],
+      kagentMissing: { installations: ['dingo'], canChooseAnother: true },
+    });
+
+    await render({ entryPoint: 'sessionsList' });
+
+    expect(
+      screen.getByText('No environment this portal can reach runs kagent.'),
+    ).toHaveAttribute('data-variant', 'body-small');
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
   });
 
   describe('when no agent is ready', () => {
