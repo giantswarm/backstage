@@ -41,6 +41,7 @@ import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
+import { useShowToolActivity } from '../../hooks/useShowToolActivity';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
 import { AvatarSize } from '../../lib/agentAvatar';
@@ -603,6 +604,21 @@ export function SessionDetailPage() {
     [rowId, pinned, togglePin],
   );
 
+  // Whether the conversation shows the agent's tool activity, kept per
+  // person. Storage backed like the pin, so it works from the shared header.
+  const { showToolActivity, setShowToolActivity } = useShowToolActivity();
+  const toolActivity = useMemo(
+    () => ({
+      isShown: showToolActivity,
+      onChange: (show: boolean) => {
+        // A failed write only loses the choice for later visits; the switch
+        // goes back to the stored state.
+        setShowToolActivity(show).catch(() => {});
+      },
+    }),
+    [showToolActivity, setShowToolActivity],
+  );
+
   const actions = useMemo(
     () =>
       row ? (
@@ -613,9 +629,19 @@ export function SessionDetailPage() {
           isUserScoped={isUserScoped}
           runtimeLoss={runtimeLoss}
           pin={pin}
+          toolActivity={toolActivity}
         />
       ) : null,
-    [row, sessionTitle, deletion, openRename, isUserScoped, runtimeLoss, pin],
+    [
+      row,
+      sessionTitle,
+      deletion,
+      openRename,
+      isUserScoped,
+      runtimeLoss,
+      pin,
+      toolActivity,
+    ],
   );
   useProvidePageHeaderActions(actions);
 
@@ -1360,6 +1386,7 @@ export function SessionDetailPage() {
             handoff?.prepared ? 'Prepared by the portal' : undefined
           }
           connectorOf={connectorOf}
+          showToolActivity={showToolActivity}
         />
 
         {bottomControl}

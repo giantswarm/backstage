@@ -94,6 +94,32 @@ test('a session starts from the home screen with a two-line message, its compose
     await expect(message).toBeVisible();
     await expectClearOfBottomBar(admin, message, 'the session composer');
     await expectNoHorizontalScroll(admin, 'the session page');
+
+    // The header's "Show tool activity" switch (S9) fits the phone header,
+    // and off leaves the conversation without its work summaries. The choice
+    // is the admin's for every session, so it is put back on.
+    const toolActivity = admin.getByRole('switch', {
+      name: 'Show tool activity',
+      exact: true,
+    });
+    const toolActivityLabel = admin.getByText('Show tool activity', {
+      exact: true,
+    });
+    await expect(toolActivity).toBeAttached();
+    if (!(await toolActivity.isChecked())) {
+      await toolActivityLabel.click();
+    }
+    await expect(toolActivity).toBeChecked();
+    await toolActivityLabel.click();
+    await expect(toolActivity).not.toBeChecked();
+    await expect(admin.getByTestId('timeline-work-summary')).toHaveCount(0);
+    await expect(admin.getByText('Nothing else.').first()).toBeVisible();
+    await expectNoHorizontalScroll(
+      admin,
+      'the session page with tool activity hidden',
+    );
+    await toolActivityLabel.click();
+    await expect(toolActivity).toBeChecked();
   } finally {
     await deleteCurrentSession(admin);
   }

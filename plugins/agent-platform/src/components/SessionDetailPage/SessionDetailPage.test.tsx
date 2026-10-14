@@ -2262,6 +2262,36 @@ describe('SessionDetailPage', () => {
       );
     });
 
+    it('hides the tool activity from the header switch, and remembers it', async () => {
+      // S9: one switch, on by default, kept per person like the pin.
+      await renderShell();
+
+      expect(lastProvidedActions().props.toolActivity.isShown).toBe(true);
+      expect(
+        screen.getByRole('button', { name: /Used 2 tools/ }),
+      ).toBeInTheDocument();
+
+      await act(async () =>
+        lastProvidedActions().props.toolActivity.onChange(false),
+      );
+
+      await waitFor(() =>
+        expect(lastProvidedActions().props.toolActivity.isShown).toBe(false),
+      );
+      expect(
+        screen.queryByRole('button', { name: /Used 2 tools/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+
+      // Back on for the next test: the store is the test app's localStorage.
+      await act(async () =>
+        lastProvidedActions().props.toolActivity.onChange(true),
+      );
+      await waitFor(() =>
+        expect(lastProvidedActions().props.toolActivity.isShown).toBe(true),
+      );
+    });
+
     it('keeps the cost chip in the composer there too', async () => {
       await renderShell();
 

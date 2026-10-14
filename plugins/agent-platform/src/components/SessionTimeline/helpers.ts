@@ -158,6 +158,30 @@ export function segmentTurn(items: TimelineItem[]): TimelineSegment[] {
   return segments;
 }
 
+/**
+ * Whether a segment stays when the person hides tool activity: the
+ * conversation, and anything the agent is waiting on them for.
+ *
+ * Hidden are the work summaries, reasoning and permission requests already
+ * decided — the how of the agent's work. A question stays answered or not:
+ * it is something the agent said, and the reply under it would otherwise
+ * answer nothing on screen. A request still awaiting its verdict always
+ * stays, because the turn cannot go on without the person.
+ */
+export function isConversationSegment(segment: TimelineSegment): boolean {
+  if (segment.kind === 'work') {
+    return false;
+  }
+  const { item } = segment;
+  if (item.kind === 'reasoning') {
+    return false;
+  }
+  if (item.kind === 'approval') {
+    return item.asks === 'input' || item.verdict === undefined;
+  }
+  return true;
+}
+
 export type WorkSummary = {
   /** The plain summary line, e.g. "Loaded 1 skill · Used 3 tools". */
   label: string;

@@ -5,7 +5,7 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
+import { ButtonIcon, Menu, MenuItem, MenuTrigger, Switch } from '@backstage/ui';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -50,6 +50,7 @@ export function SessionActionsMenu({
   triggerLabel = 'Session actions',
   onDeleted,
   pin,
+  toolActivity,
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
@@ -76,6 +77,13 @@ export function SessionActionsMenu({
    * own.
    */
   pin?: { isPinned: boolean; onToggle: () => void };
+  /**
+   * The "Show tool activity" switch, first in the row. A view preference
+   * rather than an action on the session, so a switch in sight rather than a
+   * menu item that hides its state. Absent in a list, which shows no
+   * conversation.
+   */
+  toolActivity?: { isShown: boolean; onChange: (show: boolean) => void };
 }) {
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const toastApi = useApi(toastApiRef);
@@ -126,6 +134,13 @@ export function SessionActionsMenu({
 
   return (
     <>
+      {toolActivity && (
+        <Switch
+          label="Show tool activity"
+          isSelected={toolActivity.isShown}
+          onChange={toolActivity.onChange}
+        />
+      )}
       {pin && (
         <ButtonIcon
           icon={<PinIcon filled={pin.isPinned} size={17} />}

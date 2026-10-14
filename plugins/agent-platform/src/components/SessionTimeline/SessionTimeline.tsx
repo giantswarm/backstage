@@ -20,6 +20,7 @@ import { WorkSummary } from './WorkSummary';
 import {
   authorLabel,
   groupIntoTurns,
+  isConversationSegment,
   isUserItem,
   segmentTurn,
 } from './helpers';
@@ -213,6 +214,12 @@ export type SessionTimelineProps = {
   firstMessageCaption?: string;
   /** Names a tool call's connector in the plain register (UX review M2). */
   connectorOf?: ConnectorOf;
+  /**
+   * Whether the agent's tool activity is shown. Off leaves the conversation
+   * and whatever waits on the person (see `isConversationSegment`); the
+   * "Working…" row stays, so a turn in progress still says so.
+   */
+  showToolActivity?: boolean;
 };
 
 /**
@@ -235,6 +242,7 @@ export function SessionTimeline({
   isCancellingTurn = false,
   firstMessageCaption,
   connectorOf,
+  showToolActivity = true,
 }: SessionTimelineProps) {
   const classes = useStyles();
 
@@ -386,7 +394,10 @@ export function SessionTimeline({
         // window moving.
         const turnIndex = firstShown + offset;
         const isLastTurn = turnIndex === turns.length - 1;
-        const segments = segmentTurn(turn.items);
+        const allSegments = segmentTurn(turn.items);
+        const segments = showToolActivity
+          ? allSegments
+          : allSegments.filter(isConversationSegment);
         // The agent's side of the turn opens with its name and face, once —
         // everything until the next user bubble is then implicitly the agent's.
         const entries: ReactNode[] = [];
