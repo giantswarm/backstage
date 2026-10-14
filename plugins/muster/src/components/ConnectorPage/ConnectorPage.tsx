@@ -73,7 +73,6 @@ import {
   LiveAction,
   serverLiveActions,
 } from '../ServerPage/serverActions';
-import { GitOpsEditDialog } from '../ServerPage/GitOpsEditDialog';
 import { ServerCapabilityTab } from '../ServerPage/ServerCapabilityTab';
 import { ServerInstancesTab } from '../ServerPage/ServerInstancesTab';
 import {
@@ -85,6 +84,7 @@ import {
   authActionParts,
   deactivatedSignInGate,
   familyHealthLabel,
+  GitOpsEditDialog,
   ServerAuthActions,
   serverStateLabel,
   SessionGate,
@@ -682,7 +682,8 @@ function ConnectorPageContent({
         </Flex>
         {singular && gitOpsManaged && (
           <GitOpsEditDialog
-            server={singular}
+            resource={singular}
+            noun="connector"
             isOpen={gitOpsOpen}
             onOpenChange={setGitOpsOpen}
           />

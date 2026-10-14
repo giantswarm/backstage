@@ -30,6 +30,12 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   }) => <textarea aria-label={label} value={value} readOnly />,
 }));
 
+// "Edit in Git…" looks the workflow's GitOps source up through flux-react.
+const mockUseGitOpsSource = jest.fn();
+jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
+  useGitOpsSource: (...args: unknown[]) => mockUseGitOpsSource(...args),
+}));
+
 let mockWorkflows: MusterWorkflow[] = [];
 let mockAuthenticated = true;
 jest.mock('../MusterInstanceProvider', () => ({
@@ -310,7 +316,33 @@ const BASE = '/agent-platform/workflows';
 beforeEach(() => {
   mockWorkflows = [DEPLOY];
   mockAuthenticated = true;
+  mockUseGitOpsSource.mockReset();
+  mockUseGitOpsSource.mockReturnValue({
+    inGit: false,
+    isLoading: false,
+    errors: [],
+  });
 });
+
+/** DEPLOY as rendered by the agent-platform chart's HelmRelease. */
+function gitOpsDeploy(): MusterWorkflow {
+  const json = DEPLOY.jsonData as unknown as {
+    metadata: Record<string, unknown>;
+  };
+  return new MusterWorkflow(
+    {
+      ...DEPLOY.jsonData,
+      metadata: {
+        ...json.metadata,
+        labels: {
+          'helm.toolkit.fluxcd.io/name': 'agent-platform-workflows',
+          'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
+        },
+      },
+    } as never,
+    'gazelle',
+  );
+}
 
 describe('WorkflowPage', () => {
   it('heads the page with its place under Customize, the honest badge and the description', async () => {
@@ -840,6 +872,62 @@ describe('WorkflowPage', () => {
     expect(screen.queryByRole('button', { name: /^create/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^run/i })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Run' })).toBeNull();
+  });
+
+  it('has no menu for a workflow outside Git', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+
+    expect(
+      screen.queryByRole('button', { name: 'More actions' }),
+    ).not.toBeInTheDocument();
+    expect(mockUseGitOpsSource).not.toHaveBeenCalled();
+  });
+
+  it('says where in Git to change a GitOps-managed workflow, from "Edit in Git…" in its menu', async () => {
+    mockWorkflows = [gitOpsDeploy()];
+    mockUseGitOpsSource.mockReturnValue({
+      inGit: true,
+      isLoading: false,
+      url: 'https://github.com/giantswarm/management-clusters/tree/abc123/management-clusters/gazelle',
+      changeRequestTerm: 'pull request',
+      errors: [],
+      kustomization: {
+        name: 'collection',
+        namespace: 'flux-giantswarm',
+        path: './management-clusters/gazelle',
+      },
+      helmRelease: {
+        name: 'agent-platform-workflows',
+        namespace: 'agent-platform',
+      },
+    });
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Edit in Git…' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Edit or remove deploy');
+    expect(
+      within(dialog).getByRole('link', {
+        name: /management-clusters\/gazelle/,
+      }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/management-clusters/tree/abc123/management-clusters/gazelle',
+    );
+    expect(dialog).toHaveTextContent(
+      'Find where HelmRelease agent-platform/agent-platform-workflows and its values',
+    );
+    expect(dialog).toHaveTextContent(
+      'Do not edit or add a kind: Workflow document: the chart would render the workflow again.',
+    );
+    expect(mockUseGitOpsSource).toHaveBeenCalledWith(
+      expect.any(MusterWorkflow),
+      'gazelle',
+    );
   });
 
   it('shows an attached edit action beside the title, with the workflow to act on', async () => {

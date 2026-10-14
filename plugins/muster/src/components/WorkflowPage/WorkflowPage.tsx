@@ -1,9 +1,20 @@
-import { ReactElement, useMemo } from 'react';
+import { ReactElement, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 
-import { Alert, Box, Flex, Link, Text } from '@backstage/ui';
+import {
+  Alert,
+  Box,
+  ButtonIcon,
+  Flex,
+  Link,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Text,
+} from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useQuery } from '@tanstack/react-query';
 import {
   BreadcrumbItem,
@@ -12,6 +23,7 @@ import {
   EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
+  MENU_WIDTH,
   SectionHeader,
   ShellDocumentTitle,
   ShellPage,
@@ -39,6 +51,7 @@ import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
   DisclosureAccordion,
   EffectBadge,
+  GitOpsEditDialog,
   SessionGate,
   StateBadge,
 } from '../shared';
@@ -344,6 +357,24 @@ function WorkflowPageContent({
     { label: name },
   ];
 
+  // Where in Git to change it, as on a GitOps-managed connector's page. The
+  // menu holds nothing else, so a workflow outside Git has none.
+  const [gitOpsOpen, setGitOpsOpen] = useState(false);
+  const menu = gitOps ? (
+    <MenuTrigger>
+      <ButtonIcon
+        icon={<MoreVertIcon />}
+        aria-label="More actions"
+        variant="tertiary"
+      />
+      <Menu maxWidth={MENU_WIDTH}>
+        <MenuItem id="edit-in-git" onAction={() => setGitOpsOpen(true)}>
+          Edit in Git…
+        </MenuItem>
+      </Menu>
+    </MenuTrigger>
+  ) : undefined;
+
   const facts = [
     {
       label: 'Source',
@@ -378,6 +409,7 @@ function WorkflowPageContent({
         title={name}
         breadcrumbs={breadcrumbs}
         actions={editAction}
+        menu={menu}
         badges={
           <>
             {effect && <EffectBadge effect={effect} subject="workflow" />}
@@ -547,6 +579,14 @@ function WorkflowPageContent({
             </Flex>
           </DisclosureAccordion>
         </Flex>
+        {gitOps && (
+          <GitOpsEditDialog
+            resource={workflow}
+            noun="workflow"
+            isOpen={gitOpsOpen}
+            onOpenChange={setGitOpsOpen}
+          />
+        )}
       </ShellPage>
     </WorkflowPageTargetProvider>
   );
