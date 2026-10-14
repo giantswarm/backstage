@@ -11,6 +11,18 @@ import {
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  ALL_INSTALLATIONS,
+  classifyInventoryFailure,
+  installationsWithComponent,
+  installationsWithoutComponent,
+  selectInventoryFailure,
+  type InstallationInventory,
+  type InstallationInventoryEntry,
+  type InstallationScope,
+  type InventoryFailure,
+} from '@giantswarm/backstage-plugin-gs';
+import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
+import {
   summarizeClientServing,
   type ClientServingState,
   type ClientServingSummary,
@@ -413,5 +425,101 @@ export function sortAgentRows(rows: AgentRow[], home?: string): AgentRow[] {
       rank(a.installation) - rank(b.installation) ||
       a.installation.localeCompare(b.installation) ||
       a.name.localeCompare(b.name),
+  );
+}
+
+/**
+ * The environments in scope that answered without kagent, so no agent can be
+ * listed or created there -- `installationsWithoutComponent`, the rule every
+ * tab says "kagent is not installed on <environment>" by.
+ */
+export type KagentMissing = {
+  /** The environments in scope, each answered without kagent. */
+  installations: string[];
+  /** Another environment runs kagent, so the Environment select is a way out. */
+  canChooseAnother: boolean;
+};
+
+/**
+ * {@link KagentMissing} for the scope, or `undefined` when kagent is not known
+ * to be missing from it (see `installationsWithoutComponent`).
+ */
+export function selectKagentMissing(
+  entries: InstallationInventoryEntry[],
+  scope: InstallationScope,
+): KagentMissing | undefined {
+  const installations = installationsWithoutComponent(entries, scope, 'kagent');
+  if (!installations) {
+    return undefined;
+  }
+  return {
+    installations,
+    canChooseAnother: installationsWithComponent(entries, 'kagent').some(
+      installation => !installations.includes(installation),
+    ),
+  };
+}
+
+/**
+ * What every page says when no agent is read because the environments that
+ * run kagent are switched off in Cluster access
+ * (`installationsSwitchedOffWithComponent`).
+ */
+export function describeKagentSwitchedOff(installations: string[]): string {
+  return installations.length === 1
+    ? `${installations[0]} runs kagent but is switched off in Cluster access, so its agents are not read.`
+    : `${joinNames(
+        installations,
+      )} run kagent but are switched off in Cluster access, so their agents are not read.`;
+}
+
+/**
+ * The pinned environment, when the inventory has answered and knows no
+ * environment by that name (a stale `?installation=` deep link): nothing to
+ * ask, and nothing else can say why nothing is listed.
+ */
+export function selectUnknownPin(
+  inventory: Pick<InstallationInventory, 'entries' | 'isLoading'>,
+  scope: InstallationScope,
+): string | undefined {
+  if (
+    scope === ALL_INSTALLATIONS ||
+    inventory.isLoading ||
+    inventory.entries.length === 0 ||
+    inventory.entries.some(entry => entry.installation === scope)
+  ) {
+    return undefined;
+  }
+  return scope;
+}
+
+/**
+ * The environment that could not be asked whether it runs kagent, as the
+ * agents lists explain it: the pinned one, or the home one under "All
+ * environments" -- or, when nothing is listed and no environment in scope
+ * runs kagent within reach (`listsNothing`), any environment in scope not
+ * switched off, since that failure is then the only explanation there is.
+ * `undefined` for an unknown pin, which is its own explanation.
+ */
+export function selectAgentsInventoryFailure(
+  inventory: Pick<InstallationInventory, 'entries' | 'home'>,
+  scope: InstallationScope,
+  {
+    unknownPin,
+    listsNothing,
+  }: { unknownPin: string | undefined; listsNothing: boolean },
+): InventoryFailure | undefined {
+  if (unknownPin) {
+    return undefined;
+  }
+  const pinned = scope === ALL_INSTALLATIONS ? null : scope;
+  return (
+    selectInventoryFailure(inventory, pinned) ??
+    (listsNothing && pinned === null
+      ? inventory.entries
+          .filter(entry => !entry.muted)
+          .map(classifyInventoryFailure)
+          .find(failure => failure !== undefined)
+      : undefined)
   );
 }

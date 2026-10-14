@@ -18,6 +18,8 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   applyInstallationScope,
+  installationsSwitchedOffWithComponent,
+  type InventoryFailure,
   useInstallationInventory,
   useInstallations,
   useInstallationScope,
@@ -33,7 +35,11 @@ import {
   agentManagerSessionGate,
   BASELINE_REFETCH_INTERVAL_MS,
   getAgentsRefetchInterval,
+  type KagentMissing,
   ResolveModelServing,
+  selectAgentsInventoryFailure,
+  selectKagentMissing,
+  selectUnknownPin,
   TRANSITIONAL_REFETCH_INTERVAL_MS,
   sortAgentRows,
   toAgentRow,
@@ -72,6 +78,32 @@ export type AgentsContextValue = {
    * an empty result is distinguishable from a partial/failed one.
    */
   unreachableInstallations: string[];
+  /**
+   * No agent is listed and every environment in scope answered without
+   * kagent: none can be listed or created there, whatever else is still
+   * loading. `undefined` otherwise -- including while one of them is still
+   * being asked, and under "All environments" while one switched off in
+   * Cluster access runs kagent. Read as is: it already holds only when there
+   * are no rows.
+   */
+  kagentMissing: KagentMissing | undefined;
+  /**
+   * Under "All environments", the environments switched off in Cluster access
+   * that run kagent: their agents are not read until one is switched back on.
+   * Empty under a pinned scope.
+   */
+  kagentSwitchedOff: string[];
+  /**
+   * The pinned environment, when the portal knows none by that name (a stale
+   * `?installation=` deep link).
+   */
+  unknownPin: string | undefined;
+  /**
+   * The environment that could not be asked whether it runs kagent and so
+   * explains what is (not) listed, for the inventory gate to name with its
+   * remedy (`selectAgentsInventoryFailure`).
+   */
+  inventoryFailure: InventoryFailure | undefined;
 };
 
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
@@ -115,6 +147,31 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     scope,
   );
   const isProbing = inventory.isLoading || inventory.isProbing;
+  // What the inventory says about the scope beyond the installations to
+  // query, read by every page that explains an empty agents list. Each
+  // derived fresh each render, so the value memo is keyed on their contents.
+  const kagentMissing = selectKagentMissing(inventory.entries, scope);
+  const kagentMissingKey = kagentMissing
+    ? `${kagentMissing.installations.join(',')}|${kagentMissing.canChooseAnother}`
+    : '';
+  const kagentSwitchedOff = installationsSwitchedOffWithComponent(
+    inventory.entries,
+    scope,
+    'kagent',
+  );
+  const kagentSwitchedOffKey = kagentSwitchedOff.join(',');
+  const unknownPin = selectUnknownPin(inventory, scope);
+  // The inputs of `selectAgentsInventoryFailure` beyond the rows: which
+  // entries failed and why, and which one is the home.
+  const inventoryFailuresKey = `${inventory.home ?? ''}|${inventory.entries
+    .filter(entry => entry.probe === 'failed')
+    .map(
+      entry =>
+        `${entry.installation}:${entry.muted}:${entry.error?.name ?? ''}:${
+          entry.error?.message ?? ''
+        }`,
+    )
+    .join(',')}`;
 
   // allInstallations/scopedInstallations are derived fresh each render; key
   // memos/effects on their contents rather than their (unstable) identity.
@@ -448,6 +505,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // the "no installations configured" empty state instead of a spinner.
     const hasInstallations = allInstallations.length > 0;
     const isBusy = hasInstallations && (isProbing || isLoading || !homeSettled);
+    const isRowsLoading = isBusy && rows.length === 0;
 
     // "More rows may still arrive", from two independent sources.
     //
@@ -476,11 +534,22 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
       rows,
       scope,
       installations: scopedInstallations,
-      isLoading: isBusy && rows.length === 0,
+      isLoading: isRowsLoading,
       isLoadingMore:
         rows.length > 0 && (pendingInstallations.length > 0 || isProbing),
       hasInstallations,
       unreachableInstallations,
+      kagentMissing: rows.length === 0 ? kagentMissing : undefined,
+      kagentSwitchedOff,
+      unknownPin,
+      inventoryFailure: selectAgentsInventoryFailure(inventory, scope, {
+        unknownPin,
+        // Nothing listed, nothing loading, and nowhere to read agents from.
+        listsNothing:
+          !isRowsLoading &&
+          rows.length === 0 &&
+          scopedInstallations.length === 0,
+      }),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -498,6 +567,10 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     resolveServing,
     allInstallationsKey,
     scopedInstallationsKey,
+    kagentMissingKey,
+    kagentSwitchedOffKey,
+    unknownPin,
+    inventoryFailuresKey,
   ]);
 
   return (

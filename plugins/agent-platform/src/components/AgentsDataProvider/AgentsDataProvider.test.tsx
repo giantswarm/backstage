@@ -2,6 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { Query } from '@tanstack/react-query';
 import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
 import { markAgentDeployed } from '../../lib/pendingAgentCreations';
 import { buildResourceErrors } from '../resourceErrorFixtures';
 import { AgentsDataProvider, useAgents } from './AgentsDataProvider';
@@ -23,6 +24,8 @@ let mockKagent: {
   isProbing: boolean;
   isLoading?: boolean;
   home?: string;
+  /** The inventory's entries, for the kagent-missing rule. */
+  entries?: InstallationInventoryEntry[];
 } = {
   installations: ['alpha', 'beta', 'gaggle'],
   isProbing: false,
@@ -31,6 +34,9 @@ let mockKagent: {
 let mockScope = 'all';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  // The pure inventory selectors (`installationsWithoutComponent` and the
+  // like) are the real ones.
+  ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   ALL_INSTALLATIONS: 'all',
   applyInstallationScope: (installations: string[], scope: string) =>
     scope === 'all'
@@ -41,7 +47,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     isLoading: false,
   }),
   useInstallationInventory: () => ({
-    entries: [],
+    entries: mockKagent.entries ?? [],
     home: mockKagent.home,
     isLoading: mockKagent.isLoading ?? false,
     isProbing: mockKagent.isProbing,
@@ -161,6 +167,22 @@ function result({
   }));
   const errors = buildResourceErrors({ failed, notFound });
   return { resources, clustersData, isLoading, errors };
+}
+
+function inventoryEntry(
+  installation: string,
+  overrides: Partial<InstallationInventoryEntry> & { kagent?: boolean } = {},
+): InstallationInventoryEntry {
+  const { kagent = true, ...rest } = overrides;
+  return {
+    installation,
+    home: false,
+    accessState: 'healthy',
+    muted: false,
+    probe: 'answered',
+    components: { kagent, muster: true, kserve: false, capi: true },
+    ...rest,
+  };
 }
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -536,6 +558,105 @@ describe('AgentsDataProvider installation scope', () => {
     expect(hook.current.scope).toBe('beta');
     expect(hook.current.installations).toEqual(['beta']);
     expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('says kagent is missing from a pinned installation that answered without it', () => {
+    mockScope = 'beta';
+    mockKagent = {
+      ...mockKagent,
+      installations: ['alpha'],
+      entries: [
+        inventoryEntry('alpha', { home: true }),
+        inventoryEntry('beta', { kagent: false }),
+      ],
+    };
+    mockUseResources.mockReturnValue(result({}));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    expect(hook.current.kagentMissing).toEqual({
+      installations: ['beta'],
+      canChooseAnother: true,
+    });
+  });
+
+  it('does not say kagent is missing while a switched-off installation runs it', () => {
+    mockKagent = {
+      ...mockKagent,
+      installations: [],
+      entries: [
+        inventoryEntry('alpha', { home: true, kagent: false }),
+        inventoryEntry('beta', { muted: true }),
+      ],
+    };
+    mockUseResources.mockReturnValue(result({}));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    expect(hook.current.kagentMissing).toBeUndefined();
+    expect(hook.current.kagentSwitchedOff).toEqual(['beta']);
+  });
+
+  it('holds kagent-missing back while agents are listed', async () => {
+    // The inventory's answer for alpha just changed to "no kagent" while its
+    // agents are still on screen: they are the answer, not the card.
+    mockKagent = {
+      ...mockKagent,
+      installations: ['alpha'],
+      entries: [inventoryEntry('alpha', { home: true, kagent: false })],
+    };
+    mockConfigInstallations = ['alpha'];
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+    expect(hook.current.kagentMissing).toBeUndefined();
+  });
+
+  it('names a pinned installation the portal does not know, and no inventory failure for it', () => {
+    mockScope = 'old-lab';
+    mockKagent = {
+      ...mockKagent,
+      entries: [
+        inventoryEntry('alpha', {
+          home: true,
+          probe: 'failed',
+          error: Object.assign(new Error('401'), { name: 'UnauthorizedError' }),
+        }),
+      ],
+    };
+    mockUseResources.mockReturnValue(result({}));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    expect(hook.current.unknownPin).toBe('old-lab');
+    expect(hook.current.inventoryFailure).toBeUndefined();
+  });
+
+  it('explains an empty list by an installation other than home that could not be asked', async () => {
+    mockKagent = {
+      ...mockKagent,
+      installations: [],
+      entries: [
+        inventoryEntry('alpha', { home: true, kagent: false }),
+        inventoryEntry('beta', {
+          probe: 'failed',
+          error: Object.assign(new Error('403'), { name: 'ForbiddenError' }),
+        }),
+      ],
+    };
+    mockUseResources.mockReturnValue(result({}));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    await waitFor(() =>
+      expect(hook.current.inventoryFailure).toMatchObject({
+        installation: 'beta',
+        kind: 'forbidden',
+      }),
+    );
+    expect(hook.current.unknownPin).toBeUndefined();
   });
 
   it('reports an installation that could not be read next to the rows of the others', async () => {

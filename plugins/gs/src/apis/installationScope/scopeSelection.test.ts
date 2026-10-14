@@ -3,6 +3,8 @@ import { ALL_INSTALLATIONS } from './installationScopeStore';
 import {
   applyInstallationScope,
   describeInstallationScopeOption,
+  installationsSwitchedOffWithComponent,
+  installationsWithComponent,
   installationsWithoutComponent,
   isPlatformInstallation,
   selectPlatformInstallations,
@@ -255,5 +257,52 @@ describe('installationsWithoutComponent', () => {
         'kagent',
       ),
     ).toBeUndefined();
+  });
+});
+
+describe('installationsWithComponent', () => {
+  it('lists the reachable installations that answered with the component, in inventory order', () => {
+    const degraded = entry('lynx', {
+      accessState: 'degraded',
+      components: { kagent: true, muster: true, kserve: false, capi: true },
+    });
+    expect(
+      installationsWithComponent(
+        [golem, wombat, pending, switchedOff, degraded],
+        'kagent',
+      ),
+    ).toEqual(['golem']);
+    expect(
+      installationsWithComponent([golem, wombat, switchedOff], 'muster'),
+    ).toEqual(['golem', 'wombat']);
+  });
+});
+
+describe('installationsSwitchedOffWithComponent', () => {
+  it('lists the switched-off installations that run the component under All installations', () => {
+    expect(
+      installationsSwitchedOffWithComponent(
+        [golem, wombat, switchedOff],
+        ALL_INSTALLATIONS,
+        'kagent',
+      ),
+    ).toEqual(['yak']);
+    expect(
+      installationsSwitchedOffWithComponent(
+        [golem, switchedOff],
+        ALL_INSTALLATIONS,
+        'kserve',
+      ),
+    ).toEqual([]);
+  });
+
+  it('lists none under a pinned scope', () => {
+    expect(
+      installationsSwitchedOffWithComponent(
+        [golem, switchedOff],
+        'yak',
+        'kagent',
+      ),
+    ).toEqual([]);
   });
 });

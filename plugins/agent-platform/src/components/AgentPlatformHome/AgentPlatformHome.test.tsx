@@ -5,8 +5,24 @@ import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { agentsRouteRef, sessionsRouteRef } from '../../routes';
+import {
+  applyInstallationScope,
+  installationsSwitchedOffWithComponent,
+  installationsWithComponent,
+  type InstallationInventoryEntry,
+  type InstallationScope,
+} from '@giantswarm/backstage-plugin-gs';
+import {
+  agentsRouteRef,
+  installationsExternalRouteRef,
+  sessionsRouteRef,
+} from '../../routes';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
+import {
+  selectAgentsInventoryFailure,
+  selectKagentMissing,
+  selectUnknownPin,
+} from '../AgentsDataProvider/helpers';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { AgentPlatformHome } from './AgentPlatformHome';
 import {
@@ -60,7 +76,19 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   }),
 }));
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
-  InstallationInventoryGate: () => <div data-testid="inventory-gate" />,
+  ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
+  useInstallationInventory: () => ({ refresh: () => {} }),
+  // The gate itself, covered by its own tests in gs, renders a marker naming
+  // the environment it explains.
+  InventoryFailureGate: ({
+    failure,
+  }: {
+    failure: { installation: string };
+  }) => (
+    <div data-testid="inventory-gate">
+      Inventory gate: {failure.installation}
+    </div>
+  ),
 }));
 
 const mockUseAgents = jest.fn<AgentsContextValue, []>();
@@ -141,7 +169,63 @@ const loadedAgents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  kagentMissing: undefined,
+  kagentSwitchedOff: [],
+  unknownPin: undefined,
+  inventoryFailure: undefined,
 };
+
+function environment(
+  installation: string,
+  overrides: Partial<InstallationInventoryEntry> & { kagent?: boolean } = {},
+): InstallationInventoryEntry {
+  const { kagent = true, ...rest } = overrides;
+  return {
+    installation,
+    home: false,
+    accessState: 'healthy',
+    muted: false,
+    probe: 'answered',
+    components: { kagent, muster: true, kserve: false, capi: true },
+    ...rest,
+  };
+}
+
+/**
+ * What `useAgents` answers once the fleet settled with no agent and the
+ * inventory holding `entries`, by the provider's own rules.
+ */
+function agentsOver(
+  entries: InstallationInventoryEntry[],
+  scope: InstallationScope = 'all',
+): AgentsContextValue {
+  const installations = applyInstallationScope(
+    installationsWithComponent(entries, 'kagent'),
+    scope,
+  );
+  const unknownPin = selectUnknownPin({ entries, isLoading: false }, scope);
+  return {
+    ...loadedAgents,
+    rows: [],
+    scope,
+    installations,
+    hasInstallations: entries.length > 0,
+    kagentMissing: selectKagentMissing(entries, scope),
+    kagentSwitchedOff: installationsSwitchedOffWithComponent(
+      entries,
+      scope,
+      'kagent',
+    ),
+    unknownPin,
+    inventoryFailure: selectAgentsInventoryFailure(
+      { entries, home: entries.find(entry => entry.home)?.installation },
+      scope,
+      { unknownPin, listsNothing: installations.length === 0 },
+    ),
+  };
+}
+
+const failedProbe = (name: string) => Object.assign(new Error(name), { name });
 
 // Re-render the home from inside the test app (its own `rerender` would drop
 // the app around it), so a test can change what `useAgents` answers and watch
@@ -192,6 +276,7 @@ function render({
         mountedRoutes: {
           '/agent-platform/sessions': sessionsRouteRef,
           '/agent-platform/agents': agentsRouteRef,
+          '/installations': installationsExternalRouteRef,
         },
       }),
     },
@@ -282,7 +367,23 @@ describe('AgentPlatformHome', () => {
     await render();
 
     expect(screen.getByTestId('installation-scope-note')).toBeInTheDocument();
-    expect(screen.getByTestId('inventory-gate')).toBeInTheDocument();
+    expect(screen.queryByTestId('inventory-gate')).not.toBeInTheDocument();
+  });
+
+  it('explains an environment that could not be asked whether it runs kagent', async () => {
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      inventoryFailure: {
+        installation: 'gazelle',
+        kind: 'forbidden',
+        error: failedProbe('ForbiddenError'),
+      },
+    });
+    await render();
+
+    expect(screen.getByText('Inventory gate: gazelle')).toBeInTheDocument();
+    // The agents that could be read are still offered.
+    expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeInTheDocument();
   });
 
   it('leaves the Slack promo out on a portal that has not enabled it', async () => {
@@ -349,6 +450,231 @@ describe('AgentPlatformHome', () => {
     expect(
       screen.getByText(/Could not read 1 environment/),
     ).toBeInTheDocument();
+  });
+
+  describe('when the environments in scope have no agent to start', () => {
+    const prompt = () => screen.queryByRole('textbox', { name: 'Prompt' });
+
+    it('says a pinned environment has no kagent, even while the rest still loads', async () => {
+      mockUseAgents.mockReturnValue({
+        ...agentsOver(
+          [
+            environment('golem', { home: true }),
+            environment('dingo', { kagent: false }),
+          ],
+          'dingo',
+        ),
+        isLoading: true,
+      });
+      await render();
+
+      expect(
+        screen.getByRole('heading', {
+          name: 'kagent is not installed on dingo',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Agents run on environments with kagent. Choose another environment, or enable the Agent Platform on dingo.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Go to Installations' }),
+      ).toHaveAttribute('href', '/installations');
+      expect(prompt()).not.toBeInTheDocument();
+      // No loading indicator, not even the one still in its delay.
+      expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
+      // The card names the environment; the scope note would say it again.
+      expect(
+        screen.queryByTestId('installation-scope-note'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('names the only environment when it has no kagent, with no other to choose', async () => {
+      mockUseAgents.mockReturnValue(
+        agentsOver([environment('golem', { home: true, kagent: false })]),
+      );
+      await render();
+
+      expect(
+        screen.getByRole('heading', {
+          name: 'kagent is not installed on golem',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Agents run on environments with kagent. Enable the Agent Platform on golem to create agents there.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/No agents are deployed/),
+      ).not.toBeInTheDocument();
+      expect(prompt()).not.toBeInTheDocument();
+    });
+
+    it('says when no environment runs kagent under All environments', async () => {
+      mockUseAgents.mockReturnValue(
+        agentsOver([
+          environment('golem', { home: true, kagent: false }),
+          environment('dingo', { kagent: false }),
+          // Switched off in the sidebar, and without kagent either.
+          environment('lab', { muted: true, kagent: false }),
+        ]),
+      );
+      await render();
+
+      expect(
+        screen.getByRole('heading', {
+          name: 'kagent is not installed on any environment',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Agents run on environments with kagent. Enable the Agent Platform on one of your environments to create agents.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Go to Installations' }),
+      ).toBeInTheDocument();
+    });
+
+    it('names an environment switched off in Cluster access that runs kagent, as Customize does', async () => {
+      // lab runs kagent but is switched off in Cluster access: switching it
+      // back on is the way to its agents, not installing kagent.
+      mockUseAgents.mockReturnValue(
+        agentsOver([
+          environment('golem', { home: true, kagent: false }),
+          environment('lab', { muted: true }),
+        ]),
+      );
+      await render();
+
+      expect(
+        screen.getByText(
+          'lab runs kagent but is switched off in Cluster access, so its agents are not read.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/No agents are deployed/),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('No agents yet')).not.toBeInTheDocument();
+      expect(prompt()).not.toBeInTheDocument();
+    });
+
+    it('names every environment switched off in Cluster access that runs kagent', async () => {
+      mockUseAgents.mockReturnValue(
+        agentsOver([
+          environment('golem', { home: true, kagent: false }),
+          environment('lab', { muted: true }),
+          environment('dingo', { muted: true }),
+        ]),
+      );
+      await render();
+
+      expect(
+        screen.getByText(
+          'lab, dingo run kagent but are switched off in Cluster access, so their agents are not read.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('invites creating the first agent where kagent runs and no agent is deployed', async () => {
+      mockUseAgents.mockReturnValue(
+        agentsOver([
+          environment('golem', { home: true }),
+          environment('dingo', { kagent: false }),
+        ]),
+      );
+      await render();
+
+      expect(
+        screen.getByRole('heading', { name: 'No agents yet' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Create your first agent' }),
+      ).toHaveAttribute('href', '/agent-platform/agents/new');
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+    });
+
+    it('says when no environment in reach runs kagent, as Customize does', async () => {
+      // golem answered without kagent; lab runs it but its access is down, so
+      // there is nowhere to deploy to, and kagent is not known missing.
+      mockUseAgents.mockReturnValue(
+        agentsOver([
+          environment('golem', { home: true, kagent: false }),
+          environment('lab', { accessState: 'degraded', probe: 'pending' }),
+        ]),
+      );
+      await render();
+
+      expect(
+        screen.getByText('No environment this portal can reach runs kagent.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+      expect(screen.queryByText('No agents yet')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/No agents are deployed/),
+      ).not.toBeInTheDocument();
+    });
+
+    it('leaves an environment that could not be asked to the inventory gate', async () => {
+      // The home answered without kagent; dingo might run it, but its probe
+      // was refused, so it is the only explanation, as on Customize.
+      mockUseAgents.mockReturnValue(
+        agentsOver([
+          environment('golem', { home: true, kagent: false }),
+          environment('dingo', {
+            probe: 'failed',
+            error: failedProbe('ForbiddenError'),
+          }),
+        ]),
+      );
+      await render();
+
+      expect(screen.getByText('Inventory gate: dingo')).toBeInTheDocument();
+      expect(screen.queryByText(/runs kagent/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+      expect(prompt()).not.toBeInTheDocument();
+    });
+
+    it('leaves a pin the portal does not know to the scope note', async () => {
+      mockUseAgents.mockReturnValue(
+        agentsOver([environment('golem', { home: true })], 'old-lab'),
+      );
+      await render();
+
+      expect(screen.getByTestId('installation-scope-note')).toBeInTheDocument();
+      expect(screen.queryByText(/kagent/)).not.toBeInTheDocument();
+      expect(prompt()).not.toBeInTheDocument();
+    });
+
+    it('says when the portal knows no environment, as Customize does', async () => {
+      mockUseAgents.mockReturnValue({ ...agentsOver([]), installations: [] });
+      await render();
+
+      expect(
+        screen.getByText(
+          'Agents are read from your environments, and this portal knows none.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('waits for an environment that is still being asked before saying anything', async () => {
+      mockUseAgents.mockReturnValue({
+        ...agentsOver([
+          environment('golem', { home: true, kagent: false }),
+          environment('dingo', { probe: 'pending' }),
+        ]),
+        isLoading: true,
+      });
+      await render();
+
+      expect(
+        await screen.findByLabelText('Reading your agents…'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+    });
   });
 
   it('says the Agent Platform is not enabled when its routes are not bound', async () => {
