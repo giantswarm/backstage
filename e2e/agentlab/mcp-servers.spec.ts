@@ -167,9 +167,21 @@ test('searching a tool name narrows the table to the connectors offering it', as
   await expect(
     admin.getByRole('searchbox', { name: 'Search tools', exact: true }),
   ).toHaveValue('cluster_health');
+  const tool = admin.getByRole('link', { name: /^cluster_health/ }).first();
+  await expect(tool).toBeVisible({ timeout: 60_000 });
+
+  // A tool opens on its page; the browser's Back lands on the same search.
+  await tool.click();
+  await expect(admin).toHaveURL(
+    new RegExp(
+      `/agent-platform/connectors/${KUBERNETES_FAMILY}/tools/[^?]+\\?.*q=cluster_health`,
+    ),
+  );
+  await admin.goBack();
   await expect(
-    admin.getByRole('link', { name: /^cluster_health/ }),
-  ).toBeVisible({ timeout: 60_000 });
+    admin.getByRole('searchbox', { name: 'Search tools', exact: true }),
+  ).toHaveValue('cluster_health');
+  await expect(tool).toBeVisible({ timeout: 60_000 });
 });
 
 test('Connect to muster opens the session, and the OAuth fixture signs in per connector through Dex', async ({

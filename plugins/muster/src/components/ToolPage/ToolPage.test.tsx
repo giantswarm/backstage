@@ -164,16 +164,19 @@ describe('ToolPage', () => {
     expect(screen.queryByText(/Nothing is changed/)).not.toBeInTheDocument();
   });
 
-  it('leads back to the Tools search it was opened from', async () => {
+  it('leads back to the Tools search and filter it was opened from', async () => {
     await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle&q=list`,
+      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle&q=list&effect=reads`,
     );
     expect(
       within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
         'link',
         { name: 'aws-root' },
       ),
-    ).toHaveAttribute('href', `${BASE}/aws-root?installation=gazelle&q=list`);
+    ).toHaveAttribute(
+      'href',
+      `${BASE}/aws-root?installation=gazelle&q=list&effect=reads`,
+    );
   });
 
   it('does not show a tool under a server that does not offer it', async () => {

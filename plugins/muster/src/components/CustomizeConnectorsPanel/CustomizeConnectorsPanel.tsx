@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useCallback, useMemo } from 'react';
+import { Fragment, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
@@ -89,14 +89,6 @@ const useStyles = makeStyles({
     justifyContent: 'center',
     fontWeight: 700,
     color: 'var(--bui-fg-secondary)',
-  },
-  // A phone row's description: two lines, then the connector's page.
-  description: {
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-    overflowWrap: 'anywhere',
   },
 });
 
@@ -229,12 +221,10 @@ type StackedRowProps = Omit<StackedRowItem, 'id'>;
 function SignInStackedRow({
   row,
   installation,
-  description,
   ...props
 }: StackedRowProps & {
   row: SignInRow;
   installation: string;
-  description?: ReactNode;
 }) {
   const signInStatus = useServerSignInStatus({
     noun: 'connector',
@@ -251,13 +241,6 @@ function SignInStackedRow({
       <SignInStatusActions signInStatus={signInStatus} />
     ) : null;
   const waiting = parts.kind === 'sign-in' && parts.wait !== undefined;
-  const details =
-    waiting || description ? (
-      <Flex direction="column" gap="2" align="start">
-        {description}
-        {waiting ? actions : null}
-      </Flex>
-    ) : undefined;
   return (
     <StackedRow
       {...props}
@@ -268,7 +251,7 @@ function SignInStackedRow({
         />
       }
       {...(actions && !waiting ? { actions } : {})}
-      {...(details ? { details } : {})}
+      {...(waiting && actions ? { details: actions } : {})}
     />
   );
 }
@@ -285,17 +268,9 @@ function ConnectorStackedRow({
   toolsPending: boolean;
 }) {
   const classes = useStyles();
-  const description = row.description ? (
-    <Text
-      variant="body-small"
-      color="secondary"
-      className={classes.description}
-    >
-      {row.description}
-    </Text>
-  ) : undefined;
   const props: StackedRowProps = {
     title: row.entry.id,
+    ...(row.description ? { description: row.description } : {}),
     ...(href ? { href } : {}),
     leading: (
       <span className={classes.tile} aria-hidden>
@@ -306,19 +281,13 @@ function ConnectorStackedRow({
   };
   if (hasSignIn(row)) {
     return (
-      <SignInStackedRow
-        {...props}
-        row={row}
-        installation={installation}
-        description={description}
-      />
+      <SignInStackedRow {...props} row={row} installation={installation} />
     );
   }
   return (
     <StackedRow
       {...props}
       {...(row.status.label ? { status: <StatusDot {...row.status} /> } : {})}
-      {...(description ? { details: description } : {})}
     />
   );
 }

@@ -82,6 +82,44 @@ describe('ToolDetailPanel', () => {
     ).toBeInTheDocument();
   });
 
+  it('keeps the last result on screen while a re-run is pending', async () => {
+    const api = makeApi();
+    await renderPanel(api);
+
+    await screen.findByText('Echoes a message back.');
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
+
+    (api.callTool as jest.Mock).mockImplementation(() => new Promise(() => {}));
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(
+      await screen.findByRole('button', { name: /Running/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
+  });
+
+  it('drops the last result when a call fails', async () => {
+    const api = makeApi();
+    await renderPanel(api);
+
+    await screen.findByText('Echoes a message back.');
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    await screen.findByRole('heading', { level: 2, name: 'Result' });
+
+    (api.callTool as jest.Mock).mockRejectedValue(new Error('boom'));
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(
+      await screen.findByText('Could not run the tool'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeNull();
+  });
+
   it('shows a note beside the Run button when given one', async () => {
     await renderPanel(makeApi(), 'Nothing is changed.');
 

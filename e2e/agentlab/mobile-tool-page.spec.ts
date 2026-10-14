@@ -38,6 +38,8 @@ test("a connector's tools are rows that open a page of their own, where a tool r
   ).toBeVisible();
   const run = admin.getByRole('button', { name: 'Run', exact: true });
   await connectToMuster(admin, run);
+  // The form, not the skeleton drawn while the tool is described.
+  await expect(run).toBeVisible({ timeout: 60_000 });
   await expectNoHorizontalScroll(admin, "a tool's page");
   await run.click();
   await expect(

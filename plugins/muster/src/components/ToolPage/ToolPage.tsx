@@ -56,8 +56,13 @@ export function tryItNote(
  */
 export function ToolPage() {
   const { server: key = '', tool = '' } = useParams();
-  // The Tools search the tool was opened from: the way back keeps it.
-  const toolsQuery = new URLSearchParams(useLocation().search).get('q');
+  // The Tools search and filter the tool was opened from: the way back
+  // keeps them.
+  const params = new URLSearchParams(useLocation().search);
+  const toolsView = {
+    q: params.get('q') ?? undefined,
+    effect: params.get('effect')?.split(',').filter(Boolean),
+  };
   const paths = useConnectorGroupPaths();
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
@@ -95,9 +100,7 @@ export function ToolPage() {
   });
   const annotations = described.data?.annotations ?? listed?.annotations;
 
-  const toolsHref = links.server(serverKey, activeInstallation, {
-    q: toolsQuery ?? undefined,
-  });
+  const toolsHref = links.server(serverKey, activeInstallation, toolsView);
   const representative =
     row && activeInstallation
       ? representativeServer(row, activeInstallation)?.server

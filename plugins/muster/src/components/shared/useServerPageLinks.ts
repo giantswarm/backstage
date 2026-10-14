@@ -19,22 +19,34 @@ function withQuery(path: string, query: Record<string, string | undefined>) {
   return search ? `${path}?${search}` : path;
 }
 
+/**
+ * The Tools tab's search and "What it does" filter, as an address carries
+ * them: `?q=` and `?effect=reads,changes`.
+ */
+export interface ToolsListView {
+  q?: string;
+  effect?: readonly string[];
+}
+
 export interface ServerPageLinks {
-  /** A server page -- its Tools, or another tab; `q` pre-fills the Tools filter. */
+  /**
+   * A server page -- its Tools, or another tab; `q` pre-fills the Tools
+   * search and `effect` its "What it does" filter.
+   */
   server: (
     server: string,
     installation: string | undefined,
-    options?: { tab?: ServerPageTab; q?: string },
+    options?: { tab?: ServerPageTab } & ToolsListView,
   ) => string | undefined;
   /**
-   * A tool's page beneath its server; `q` is the Tools search it was opened
-   * from, which the page's way back to the server keeps.
+   * A tool's page beneath its server; `q` and `effect` are the Tools search
+   * and filter it was opened from, which the page's way back keeps.
    */
   tool: (
     server: string,
     tool: string,
     installation: string | undefined,
-    options?: { q?: string },
+    options?: ToolsListView,
   ) => string | undefined;
 }
 
@@ -58,6 +70,7 @@ export function useServerPageLinks(): ServerPageLinks {
         return withQuery(options.tab ? `${base}/${options.tab}` : base, {
           installation,
           q: options.q,
+          effect: options.effect?.join(','),
         });
       },
       tool: (server, tool, installation, options = {}) =>
@@ -65,6 +78,7 @@ export function useServerPageLinks(): ServerPageLinks {
           ? withQuery(toolRoute({ server, tool }), {
               installation,
               q: options.q,
+              effect: options.effect?.join(','),
             })
           : undefined,
     }),

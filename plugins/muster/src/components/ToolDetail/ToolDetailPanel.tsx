@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
@@ -44,6 +44,25 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
   }
 }
 
+/** A section of the tool's page: an `h2` that names its region, then the content. */
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  const headingId = useId();
+  return (
+    <section aria-labelledby={headingId}>
+      <SectionHeader
+        as="h2"
+        variant="title-x-small"
+        title={title}
+        id={headingId}
+      />
+      <Box mt="2">{children}</Box>
+    </section>
+  );
+}
+
+/** A call's outcome as the Result section shows it. */
+type CallResult = { result: unknown; durationMs: number };
+
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
@@ -52,7 +71,7 @@ export interface ToolDetailPanelProps {
 }
 
 /**
- * The body of a tool's page, in sections down the page's full width: the
+ * The body of a tool's page, in sections down its single column: the
  * tool's description, its input schema folded away, "Try it" (the argument
  * form and the run button) and the result. The page's header carries the
  * name and the markers.
@@ -69,7 +88,10 @@ export function ToolDetailPanel({
   note,
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
-  const headingId = useId();
+  // The last call that returned, kept on screen while a re-run is pending:
+  // the result is most of the page, and dropping it would collapse the page
+  // under the reader until the call returns.
+  const [lastResult, setLastResult] = useState<CallResult | undefined>();
 
   const storageKey = argsKey(installation, name);
   const [values, setValues] = useState<Record<string, FormValue>>(() =>
@@ -122,6 +144,9 @@ export function ToolDetailPanel({
       const result = await musterApi.callTool(name, args, installation);
       return { result, durationMs: Math.round(performance.now() - startedAt) };
     },
+    onSuccess: setLastResult,
+    // A failed call says so above; an older result below would read as its.
+    onError: () => setLastResult(undefined),
   });
 
   const setValue = (key: string, value: FormValue) =>
@@ -210,34 +235,26 @@ export function ToolDetailPanel({
         </SimpleAccordion>
       )}
 
-      <section aria-labelledby={`${headingId}-try-it`}>
-        <SectionHeader
-          as="h2"
-          variant="title-x-small"
-          title="Try it"
-          id={`${headingId}-try-it`}
-        />
-        <Box mt="2">
-          {fields.length === 0 ? (
-            <Text as="p" variant="body-medium" color="secondary">
-              This tool takes no arguments.
-            </Text>
-          ) : (
-            fields.map(field => (
-              <ToolArgField
-                key={field.name}
-                field={field}
-                value={values[field.name]}
-                error={fieldErrors[field.name]}
-                jsonMode={
-                  Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
-                }
-                onChange={value => setValue(field.name, value)}
-                onToggleJson={() => toggleJson(field)}
-              />
-            ))
-          )}
-        </Box>
+      <Section title="Try it">
+        {fields.length === 0 ? (
+          <Text as="p" variant="body-medium" color="secondary">
+            This tool takes no arguments.
+          </Text>
+        ) : (
+          fields.map(field => (
+            <ToolArgField
+              key={field.name}
+              field={field}
+              value={values[field.name]}
+              error={fieldErrors[field.name]}
+              jsonMode={
+                Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
+              }
+              onChange={value => setValue(field.name, value)}
+              onToggleJson={() => toggleJson(field)}
+            />
+          ))
+        )}
         <Box mt="2">
           {note ? (
             <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
@@ -259,25 +276,17 @@ export function ToolDetailPanel({
             />
           </Box>
         )}
-      </section>
+      </Section>
 
-      {mutation.isSuccess && (
-        <section aria-labelledby={`${headingId}-result`}>
-          <SectionHeader
-            as="h2"
-            variant="title-x-small"
-            title="Result"
-            id={`${headingId}-result`}
+      {lastResult && (
+        <Section title="Result">
+          <ToolResultViewer
+            result={lastResult.result}
+            durationMs={lastResult.durationMs}
+            onRerun={() => execute(lastArgs)}
+            rerunDisabled={mutation.isPending}
           />
-          <Box mt="2">
-            <ToolResultViewer
-              result={mutation.data.result}
-              durationMs={mutation.data.durationMs}
-              onRerun={() => execute(lastArgs)}
-              rerunDisabled={mutation.isPending}
-            />
-          </Box>
-        </section>
+        </Section>
       )}
     </Flex>
   );
