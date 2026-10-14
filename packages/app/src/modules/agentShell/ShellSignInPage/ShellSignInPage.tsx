@@ -3,10 +3,10 @@ import { Progress } from '@backstage/core-components';
 import type { IdentityApi } from '@backstage/core-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { LogoIcon } from '../../nav/LogoIcon';
 import { useAgentShellArea } from '../agentArea';
 import { setAgentShellMark } from '../AgentShellThemeRoot/useAgentShellAttribute';
 import { agentShellLightColors } from '../theme';
+import { SIGN_IN_LOGO_HEIGHT, SignInLogo } from './SignInLogo';
 import {
   type ShellSignInProvider,
   useProviderSignIn,
@@ -40,10 +40,12 @@ const useStyles = makeStyles({
   },
   title: {
     margin: 0,
+    // Holds the logo's row while the branding manifest loads, so the
+    // buttons do not move down when the logo arrives.
+    minHeight: SIGN_IN_LOGO_HEIGHT,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 'var(--bui-space-2)',
   },
   fullWidth: {
     width: '100%',
@@ -79,8 +81,8 @@ export interface ShellSignInPageProps {
 /**
  * The sign-in window of a deployment that serves the Agent Platform
  * (`app.portals.agentPlatform`): one centered card in the shell's look — the
- * rail's logo beside the name, as one title, then a button per sign-in option
- * with its message, if it has one, beneath. The first option is the primary
+ * full Giant Swarm logo as the title, then a button per sign-in option with
+ * its message, if it has one, beneath. The first option is the primary
  * action. Behaves like upstream's
  * `SignInPage` (see {@link useProviderSignIn}); classic-only deployments keep
  * that page unchanged.
@@ -104,17 +106,11 @@ export function ShellSignInPage({
     <main className={classes.page}>
       <section className={classes.card} aria-labelledby="shell-sign-in-title">
         <Flex direction="column" gap="6">
-          {/* The mark joins the title, beside it as in the rail, so the
-              card reads as the Giant Swarm Agent Platform (T71): the ant's
-              label is "Giant Swarm", which makes the heading's name too.
-              Beside, not above — the brand allows the horizontal form only.
-              The space keeps the two words apart in that name; the flex row
-              does not draw it. */}
+          {/* The logo is the title: its name ("Giant Swarm", or the
+              portal's for a custom logo) is the heading's and the card's.
+              The logo carries the wordmark, so no text sits beside it. */}
           <h1 id="shell-sign-in-title" className={classes.title}>
-            <LogoIcon />{' '}
-            <Text as="span" variant="title-small">
-              Agent Platform
-            </Text>
+            <SignInLogo />
           </h1>
           {error && error.name !== 'PopupRejectedError' && (
             <Alert
