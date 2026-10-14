@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { WorkspaceRow } from '../../lib/workspaceList';
 import type { WorkspacesData } from '../WorkspacesDataProvider';
+import { workspacesRouteRef } from '../../routes';
 import { CustomizeWorkspacesPanel } from './CustomizeWorkspacesPanel';
 
 const docs: WorkspaceRow = {
@@ -93,7 +94,9 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
 }
 
 function renderPanel(search = '') {
-  return renderInTestApp(<CustomizeWorkspacesPanel search={search} />);
+  return renderInTestApp(<CustomizeWorkspacesPanel search={search} />, {
+    mountedRoutes: { '/agent-platform/workspaces': workspacesRouteRef },
+  });
 }
 
 describe('CustomizeWorkspacesPanel', () => {
@@ -168,17 +171,17 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.queryByRole('table')).toBeNull();
   });
 
-  it('shows the empty state with Create workspace, not offered until the editor exists', async () => {
+  it('shows the empty state with Create workspace, opening the editor for the Organization', async () => {
     mockData = data({ rows: [] });
     await renderPanel();
 
     expect(screen.getByText('No workspaces in alpha yet')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Create workspace' }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText('Coming with the workspace page.'),
-    ).toBeInTheDocument();
+      screen.getByRole('link', { name: 'Create workspace' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/workspaces/new?installation=gazelle&organization=alpha',
+    );
   });
 
   it('says so where no environment in scope has the workspace-manager', async () => {
@@ -214,9 +217,7 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(
       screen.getByText('No Organization to show workspaces of'),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Create workspace' }),
-    ).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Create workspace' })).toBeNull();
   });
 
   it('lists the rest and names the installation it could not read', async () => {
@@ -277,7 +278,7 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.getByText(/nothing-like-it/)).toBeInTheDocument();
   });
 
-  it('offers Sync now and Delete, and Open and Edit only once the workspace page exists', async () => {
+  it('offers Sync now, Delete and Edit, and Open only once the workspace page exists', async () => {
     await renderPanel();
 
     await userEvent.click(
@@ -288,8 +289,8 @@ describe('CustomizeWorkspacesPanel', () => {
       'true',
     );
     expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
+      'href',
+      '/agent-platform/workspaces/gazelle/alpha/docs/edit',
     );
     await userEvent.click(screen.getByRole('menuitem', { name: 'Sync now' }));
     expect(mockSync.mutate).toHaveBeenCalled();

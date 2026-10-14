@@ -78,8 +78,8 @@ export const newSkillRouteRef = createSubRouteRef({
   parent: skillsRouteRef,
 });
 
-// The workspace pages (`/agent-platform/workspaces`): the bare path goes to
-// the shell's Customize -> Workspaces tab, which lists them. A page of its own
+// The workspace pages (`/agent-platform/workspaces`); the shell's Customize ->
+// Workspaces tab lists the workspaces. A page of its own
 // beside `page:agent-platform`, like the skill pages.
 export const workspacesRouteRef = createRouteRef();
 

@@ -31,6 +31,16 @@ const editorPath = (name?: string) =>
     : `/agent-platform/workspaces/new?installation=${lab.installation}&organization=${lab.workspaces.organization}`;
 
 const source = (page: Page) => page.getByTestId('workspace-source-0');
+const rowOf = (page: Page, name: string) =>
+  page.getByRole('row').filter({
+    has: page.getByRole('rowheader', { name: new RegExp(`^${name}`) }),
+  });
+
+/** Customize · Workspaces, then its Create workspace, into the editor. */
+async function openFromTab(page: Page): Promise<void> {
+  await open(page, '/customize/workspaces');
+  await page.getByRole('link', { name: 'Create workspace' }).first().click();
+}
 const preview = (page: Page) => page.getByTestId('workspace-preview');
 
 /**
@@ -69,7 +79,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
   let connected = false;
 
   try {
-    await open(admin, editorPath());
+    await openFromTab(admin);
     await expect(
       admin.getByText(/There is no schedule/),
       'the editor has no schedule field, and says how the mirrors sync',
@@ -92,7 +102,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
       );
       await connectToLabGitHub(tools);
       connected = true;
-      await open(admin, editorPath());
+      await openFromTab(admin);
       await startDraft(admin, name);
       await expect(connectPrompt).toHaveCount(0, { timeout: 60_000 });
     }
@@ -140,12 +150,18 @@ test('a member creates a workspace from a language and topic filter, previews, e
     await expect(preview(admin)).toContainText('1 excluded');
 
     await admin.getByRole('button', { name: 'Create workspace' }).click();
-    await expect(admin).toHaveURL(/\/customize\//, {
+    await expect(admin).toHaveURL(/\/customize\/workspaces/, {
       timeout: 60_000,
     });
 
-    // Reopen: the same filters and the exclusion.
-    await open(admin, editorPath(name));
+    // Reopen from the tab's row menu: the same filters and the exclusion.
+    const row = rowOf(admin, name);
+    await expect(row, 'the new workspace is listed').toBeVisible({
+      timeout: 60_000,
+    });
+    await row.getByRole('button', { name: `Actions for ${name}` }).click();
+    await admin.getByRole('menuitem', { name: 'Edit' }).click();
+    await expect(admin).toHaveURL(new RegExp(`${editorPath(name)}$`));
     await expect(
       source(admin).getByRole('button', { name: 'Go', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true', { timeout: 60_000 });

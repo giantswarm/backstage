@@ -464,7 +464,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // The workspace editor: `/agent-platform/workspaces/new`, and
     // `/agent-platform/workspaces/<installation>/<organization>/<name>/edit`,
     // whose segments name a workspace and stay out of the payload. The bare
-    // path only redirects to Customize → Workspaces. Must stay above the
+    // path renders nothing; the list is Customize → Workspaces. Must stay above the
     // generic '/agent-platform' cases below for the reason the profile page
     // gives.
     case pathname === '/agent-platform/workspaces/new':

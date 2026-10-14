@@ -271,8 +271,8 @@ const skillsPage = PageBlueprint.make({
 
 // The workspace editor (`/agent-platform/workspaces/new` and
 // `/agent-platform/workspaces/<installation>/<organization>/<name>/edit`),
-// reached from the shell's Customize -> Workspaces tab; the bare path
-// redirects there. Enabled by default and shell only, like `skillsPage`.
+// reached from the shell's Customize -> Workspaces tab. Enabled by default
+// and shell only, like `skillsPage`.
 const workspacesPage = PageBlueprint.make({
   name: 'workspaces',
   if: AGENT_SHELL_ON,

@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
-import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -15,7 +19,6 @@ import {
   Table,
   Text,
 } from '@backstage/ui';
-import AddIcon from '@material-ui/icons/Add';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditIcon from '@material-ui/icons/Edit';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -36,6 +39,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useWorkspaceActions } from '../../hooks/useWorkspaceActions';
+import { workspaceEditRouteRef } from '../../routes';
 import {
   searchWorkspaces,
   sourcesLabel,
@@ -43,6 +47,7 @@ import {
   syncState,
   type WorkspaceRow,
 } from '../../lib/workspaceList';
+import { CreateWorkspaceButton } from '../CreateWorkspaceButton';
 import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
 import { useWorkspacesData } from '../WorkspacesDataProvider';
 
@@ -50,10 +55,8 @@ import { useWorkspacesData } from '../WorkspacesDataProvider';
 const TOAST_TIMEOUT_MS = 6000;
 
 /**
- * Why Open, Edit and Create workspace are not offered yet: the workspace's
- * page and its editor are built next, at
- * `/agent-platform/workspaces/<installation>/<organization>/<name>` and
- * `…/edit`.
+ * Why Open is not offered yet: the workspace's page is built next, at
+ * `/agent-platform/workspaces/<installation>/<organization>/<name>`.
  */
 const NOT_BUILT_YET = 'Coming with the workspace page';
 
@@ -116,6 +119,12 @@ function LastSyncCell({ row }: { row: WorkspaceRow }) {
 function RowActions({ row }: { row: WorkspaceRow }) {
   const toastApi = useApi(toastApiRef);
   const { sync, remove } = useWorkspaceActions(row.installation, row.name);
+  const editRoute = useRouteRef(workspaceEditRouteRef);
+  const editHref = editRoute?.({
+    installation: row.installation,
+    organization: row.organization,
+    name: row.name,
+  });
   const [isDeleteOpen, setDeleteOpen] = useState(false);
 
   const syncNow = () =>
@@ -174,12 +183,16 @@ function RowActions({ row }: { row: WorkspaceRow }) {
           >
             Delete…
           </MenuItem>
+          <MenuItem
+            iconStart={<EditIcon />}
+            isDisabled={row.deleting || !editHref}
+            href={editHref}
+          >
+            Edit
+          </MenuItem>
           <MenuSection title={NOT_BUILT_YET}>
             <MenuItem iconStart={<OpenInNewIcon />} isDisabled>
               Open
-            </MenuItem>
-            <MenuItem iconStart={<EditIcon />} isDisabled>
-              Edit
             </MenuItem>
           </MenuSection>
         </Menu>
@@ -193,20 +206,6 @@ function RowActions({ row }: { row: WorkspaceRow }) {
         onConfirm={confirmDelete}
       />
     </Cell>
-  );
-}
-
-/** Create workspace, not offered until its editor exists. */
-function CreateWorkspaceAction() {
-  return (
-    <Flex direction="column" align="center" gap="2">
-      <Button variant="primary" iconStart={<AddIcon />} isDisabled>
-        Create workspace
-      </Button>
-      <Text variant="body-small" color="secondary">
-        {NOT_BUILT_YET}.
-      </Text>
-    </Flex>
   );
 }
 
@@ -377,7 +376,7 @@ export function CustomizeWorkspacesPanel({
       <EmptyStateCard
         title={`No workspaces in ${organization} yet`}
         description="A workspace holds the repositories a Session works on, synced for every member of the Organization."
-        actions={<CreateWorkspaceAction />}
+        actions={<CreateWorkspaceButton />}
       />
     );
   } else if (rows.length === 0) {
