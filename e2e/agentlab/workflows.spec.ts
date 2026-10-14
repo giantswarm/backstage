@@ -213,6 +213,10 @@ test('a workflow’s page keeps its statistics on Usage, its facts on Details an
   await expect(
     dialog.getByRole('button', { name: 'Copy manifest', exact: true }),
   ).toBeVisible();
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  // The footer's Close; the header's × is named Close too.
+  await dialog
+    .getByRole('button', { name: 'Close', exact: true })
+    .last()
+    .click();
   await expect(dialog).toBeHidden();
 });
