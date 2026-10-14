@@ -127,8 +127,9 @@ describe('ToolPage', () => {
     expect(
       await screen.findByText('List the buckets of the account.'),
     ).toBeInTheDocument();
-    // Once, beside the title: the panel shows no markers of its own.
-    expect(screen.getAllByText('read-only')).toHaveLength(1);
+    // Once, beside the title, as the Tools list's row says it: the panel
+    // shows no badge of its own.
+    expect(screen.getAllByText('Reads')).toHaveLength(1);
     expect(screen.getByText('Input schema')).toBeInTheDocument();
 
     expect(
@@ -162,6 +163,9 @@ describe('ToolPage', () => {
     );
     expect(await screen.findByText('Runs as you.')).toBeInTheDocument();
     expect(screen.queryByText(/Nothing is changed/)).not.toBeInTheDocument();
+    // The Tools list's word for it, never the server's "destructive".
+    expect(screen.getByText('Changes things')).toBeInTheDocument();
+    expect(screen.queryByText(/destructive/i)).not.toBeInTheDocument();
   });
 
   it('leads back to the Tools search and filter it was opened from', async () => {

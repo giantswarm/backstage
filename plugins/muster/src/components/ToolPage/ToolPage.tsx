@@ -15,8 +15,8 @@ import {
 } from '../../lib/toolGrouping';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
+  EffectBadge,
   SessionGate,
-  ToolMarkers,
   useServerPageLinks,
   useToolDescription,
   useConnectorGroupPaths,
@@ -49,7 +49,7 @@ export function tryItNote(
 
 /**
  * One tool's page, beneath the server offering it: its short and full name,
- * markers, description and input schema, and the typed argument form that runs
+ * what it does, description and input schema, and the typed argument form that runs
  * it, on a page of its own beneath the server. A family's
  * grouped tool asks for the family's instance argument like any other
  * required parameter.
@@ -94,11 +94,14 @@ export function ToolPage() {
   const offered =
     Boolean(listed) ||
     (serverTools.truncated && pageOfTool(tool) === serverKey);
-  // The panel's request, so the markers beside the name cost nothing extra.
+  // The panel's request, so the badge beside the name costs nothing extra.
   const described = useToolDescription(tool, activeInstallation, {
     enabled: offered && session.authenticated,
   });
   const annotations = described.data?.annotations ?? listed?.annotations;
+  // What it does, as the Tools list's row says it; only once the tool is
+  // read, so an unread tool is not called one that changes things.
+  const known = Boolean(described.data ?? listed);
 
   const toolsHref = links.server(serverKey, activeInstallation, toolsView);
   const representative =
@@ -191,7 +194,9 @@ export function ToolPage() {
         { label: serverKey, href: toolsHref },
         { label: shortName },
       ]}
-      badges={<ToolMarkers annotations={annotations} />}
+      badges={
+        known ? <EffectBadge effect={toolEffect({ annotations })} /> : undefined
+      }
       meta={exposedAs}
     >
       {body}
