@@ -35,6 +35,17 @@ jest.mock('../ServingPage', () => ({
   useServingTargets: () => ({ loadTargets: mockLoadTargets }),
 }));
 
+// Which installations withhold cluster-manager and model-manager for want of
+// a per-user sign-in; none unless a case says so.
+let mockSharedIdentity: { clusterManager: string[]; modelManager: string[] } = {
+  clusterManager: [],
+  modelManager: [],
+};
+jest.mock('../ModelHostingSharedIdentity', () => ({
+  ...jest.requireActual('../ModelHostingSharedIdentity'),
+  useModelHostingSharedIdentity: () => mockSharedIdentity,
+}));
+
 let mockPoolInstallations: string[] = ['inst-1'];
 jest.mock('../../hooks/useClusterManager', () => ({
   useClusterManagerAvailability: () => ({
@@ -147,6 +158,7 @@ function renderAt(path: string, element: JSX.Element) {
 }
 
 beforeEach(() => {
+  mockSharedIdentity = { clusterManager: [], modelManager: [] };
   jest.clearAllMocks();
   mockServing = {
     isLoading: false,
@@ -228,6 +240,18 @@ describe('AddGpuNodePoolRoute', () => {
     expect(
       screen.getByText(
         'No environment in reach runs cluster-manager, so no GPU node pool can be added.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says why where cluster-manager runs only behind a muster without per-user sign-in', async () => {
+    mockPoolInstallations = [];
+    mockSharedIdentity = { clusterManager: ['inst-2'], modelManager: [] };
+    await renderAt(path, <AddGpuNodePoolRoute />);
+
+    expect(
+      screen.getByText(
+        /GPU node pools are managed through cluster-manager as you, and muster on inst-2 has no per-user sign-in in this portal/,
       ),
     ).toBeInTheDocument();
   });

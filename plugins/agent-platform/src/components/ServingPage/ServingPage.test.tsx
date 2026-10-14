@@ -36,6 +36,17 @@ const mockUseModelConfigs = jest.fn<ModelConfigsContextValue, []>();
 // cluster-manager is absent on most of these fleets: the controls render
 // nothing. The header cases offer Add GPU node pool through `addAction`.
 let mockPoolAddAction: { open: () => void; isDisabled: boolean } | undefined;
+// Which installations withhold cluster-manager and model-manager for want of
+// a per-user sign-in; none unless a case says so.
+let mockSharedIdentity: { clusterManager: string[]; modelManager: string[] } = {
+  clusterManager: [],
+  modelManager: [],
+};
+jest.mock('../ModelHostingSharedIdentity', () => ({
+  ...jest.requireActual('../ModelHostingSharedIdentity'),
+  useModelHostingSharedIdentity: () => mockSharedIdentity,
+}));
+
 jest.mock('../GpuNodePools', () => ({
   useGpuNodePoolControls: () => ({
     available: false,
@@ -338,6 +349,7 @@ const renderSection = (initialRouteEntries?: string[]) =>
 
 describe('ServingPage', () => {
   beforeEach(() => {
+    mockSharedIdentity = { clusterManager: [], modelManager: [] };
     mockUseServing.mockReset();
     mockUseModelConfigs.mockReset();
     mockStop.mockReset();

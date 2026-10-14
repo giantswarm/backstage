@@ -28,6 +28,11 @@ export type RuntimeLostNoticeProps = {
    * session), it has to say so itself.
    */
   offersNewSession: boolean;
+  /**
+   * Why no new session can start with the agent from this portal
+   * (`AgentRow.sessionBlocker`): the way out names it instead of a button.
+   */
+  newSessionBlocker?: string;
   /** Why the last attempt to start the new session failed, when it did. */
   startError?: string;
 };
@@ -50,6 +55,7 @@ export function RuntimeLostNotice({
   loss,
   agentName,
   offersNewSession,
+  newSessionBlocker,
   startError,
 }: RuntimeLostNoticeProps) {
   const classes = useStyles();
@@ -69,7 +75,9 @@ export function RuntimeLostNotice({
       : '';
 
   let wayOut = `Continue in a new session with ${agent} from the Sessions list.`;
-  if (offersNewSession && loss.reported) {
+  if (newSessionBlocker) {
+    wayOut = `A new session with ${agent} cannot be started from this portal: sessions start through agent-manager as you. ${newSessionBlocker}`;
+  } else if (offersNewSession && loss.reported) {
     wayOut = `Start a new session with ${agent} to carry on — the button under the message box takes your message with it.`;
   } else if (offersNewSession) {
     wayOut = `Send again to retry. If it fails again, start a new session with ${agent} — the button under the message box takes your message with it.`;
