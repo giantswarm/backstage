@@ -310,7 +310,10 @@ export function WorkspaceEditorPage({
       <EditorBody
         availability={availability}
         isEdit={isEdit}
-        isLoading={!draft && (edited.isLoading || availability.isLoading)}
+        isLoading={
+          providersQuery.isLoading ||
+          (!draft && (edited.isLoading || availability.isLoading))
+        }
         loadError={edited.error}
         installation={installation}
         organization={organization}

@@ -292,6 +292,38 @@ describe('WorkspaceEditorPage', () => {
     expect(screen.getByText(/There is no schedule/)).toBeInTheDocument();
   });
 
+  it('shows no source until the provider instances are read', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB, GITLAB],
+      repositories: ACME,
+    });
+    const answer = fake.callTool.getMockImplementation()!;
+    let release: () => void = () => {};
+    const held = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    fake.callTool.mockImplementation(async (name: string, args) => {
+      if (name.endsWith('list_providers')) {
+        await held;
+      }
+      return answer(name, args);
+    });
+    await render(fake);
+
+    await waitFor(() =>
+      expect(fake.callTool.mock.calls.map(([name]) => name)).toContain(
+        'x_workspace-manager_list_providers',
+      ),
+    );
+    expect(screen.queryByText(/^Provider:/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('workspace-source-0')).not.toBeInTheDocument();
+
+    await act(async () => release());
+    expect(
+      await screen.findByRole('button', { name: /Provider$/ }),
+    ).toBeInTheDocument();
+  });
+
   it('shows the connect prompt in place of the owner for an unconnected provider', async () => {
     const fake = createWorkspaceManagerFake({
       providers: [{ ...GITLAB, connected: false }],
