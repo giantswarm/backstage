@@ -3,6 +3,7 @@ import { ALL_INSTALLATIONS } from './installationScopeStore';
 import {
   applyInstallationScope,
   describeInstallationScopeOption,
+  installationsWithoutComponent,
   isPlatformInstallation,
   selectPlatformInstallations,
 } from './scopeSelection';
@@ -179,5 +180,80 @@ describe('describeInstallationScopeOption', () => {
     expect(describeInstallationScopeOption(pending, 'kagent')).toBe(
       'checking…',
     );
+  });
+});
+
+describe('installationsWithoutComponent', () => {
+  const withKagent = (name: string, overrides = {}) =>
+    entry(name, {
+      components: { kagent: true, muster: false, kserve: false, capi: true },
+      ...overrides,
+    });
+
+  it('names a pinned installation that answered without the component', () => {
+    const entries = [withKagent('golem'), entry('dingo')];
+    expect(installationsWithoutComponent(entries, 'dingo', 'kagent')).toEqual([
+      'dingo',
+    ]);
+    expect(
+      installationsWithoutComponent(entries, 'golem', 'kagent'),
+    ).toBeUndefined();
+  });
+
+  it('says nothing while the pinned installation has not answered, or is unknown', () => {
+    expect(
+      installationsWithoutComponent(
+        [entry('dingo', { probe: 'pending' })],
+        'dingo',
+        'kagent',
+      ),
+    ).toBeUndefined();
+    expect(
+      installationsWithoutComponent(
+        [entry('dingo', { probe: 'failed' })],
+        'dingo',
+        'kagent',
+      ),
+    ).toBeUndefined();
+    expect(
+      installationsWithoutComponent([entry('dingo')], 'old-lab', 'kagent'),
+    ).toBeUndefined();
+  });
+
+  it('names every active installation under "all" when none runs the component', () => {
+    expect(
+      installationsWithoutComponent(
+        [entry('golem'), entry('dingo'), entry('lab', { muted: true })],
+        'all',
+        'kagent',
+      ),
+    ).toEqual(['golem', 'dingo']);
+  });
+
+  it('says nothing under "all" while any active installation runs it or has not answered', () => {
+    expect(
+      installationsWithoutComponent(
+        [entry('golem'), withKagent('dingo')],
+        'all',
+        'kagent',
+      ),
+    ).toBeUndefined();
+    expect(
+      installationsWithoutComponent(
+        [entry('golem'), entry('dingo', { probe: 'failed' })],
+        'all',
+        'kagent',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('says nothing under "all" while a switched-off installation runs it', () => {
+    expect(
+      installationsWithoutComponent(
+        [entry('golem'), withKagent('lab', { muted: true })],
+        'all',
+        'kagent',
+      ),
+    ).toBeUndefined();
   });
 });

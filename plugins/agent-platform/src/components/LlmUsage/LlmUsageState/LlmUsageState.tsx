@@ -70,12 +70,12 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
       // Mimir answered and there is genuinely nothing. Worth naming the one
       // reason that is not "nobody used it": an agent that talks to a provider
       // directly never reaches the gateway, so it is invisible here however
-      // busy it is.
+      // busy it is. The window is the one queried, i.e. the selected range.
       return (
         <Text variant="body-medium" color="secondary">
           No model calls went through {installation}'s LLM gateway in the last{' '}
-          {WINDOW_DAYS} days. Agents configured to call a provider directly do
-          not appear here.
+          {view.usage?.windowDays ?? WINDOW_DAYS} days. Agents configured to
+          call a provider directly do not appear here.
         </Text>
       );
 

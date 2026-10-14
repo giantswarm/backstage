@@ -16,6 +16,8 @@ import {
   type CreateAgentResult,
   type DeleteAgentResult,
   type UpdateAgentCommitDryRun,
+  type StartSessionRequest,
+  type StartSessionResult,
   type UpdateAgentResult,
   type ValidateAgentResult,
 } from '../lib/agentManager';
@@ -202,5 +204,39 @@ export class AgentManagerClient {
       name,
       mode: 'commit',
     });
+  }
+
+  /**
+   * Starts a session with an agent, as the person: one `start_session`, the
+   * only way a session starts, so every surface passes the same checks (a
+   * workspace grant's among them). Without `message` it only creates the
+   * session. `requestId` makes a retry answer the session the first attempt
+   * created.
+   */
+  async startSession(
+    request: StartSessionRequest,
+  ): Promise<StartSessionResult & { sessionId: string }> {
+    const result = await this.call<StartSessionResult>(
+      AGENT_MANAGER_TOOLS.startSession,
+      {
+        namespace: request.namespace,
+        name: request.name,
+        ...(request.message ? { message: request.message } : {}),
+        requestId: request.requestId,
+        ...(request.sessionName ? { sessionName: request.sessionName } : {}),
+        ...(request.workspaceGrant
+          ? { workspaceGrant: request.workspaceGrant }
+          : {}),
+      },
+    );
+    // The id is where the person is taken next: an answer without one has
+    // nowhere to go, so it fails rather than resolving into a broken link.
+    const sessionId = result?.session?.id;
+    if (typeof sessionId !== 'string' || !sessionId) {
+      throw new Error(
+        "agent-manager's start_session answered without a session id.",
+      );
+    }
+    return { ...result, sessionId };
   }
 }

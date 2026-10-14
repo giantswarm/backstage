@@ -224,7 +224,7 @@ export function StartNewSession({
       // to make room for.
       collapsible={layout === 'inline'}
       isStarting={creation.isCreating}
-      error={creation.error?.message}
+      error={creation.error ?? undefined}
       onStart={onStart}
     />
   );
