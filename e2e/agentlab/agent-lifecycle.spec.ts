@@ -2,6 +2,7 @@ import {
   createAgentInWizard,
   deleteAgentInPortal,
   expect,
+  expectWizardStep,
   open,
   startSessionOnReadyAgent,
   test,
@@ -11,10 +12,11 @@ import {
  * The whole journey a person takes through the Dev Portal's Agent Platform,
  * as the lab admin: create an agent in the wizard (Details → Skills → Tools →
  * Review → Deploy), watch it become ready on the platform Harness, start a
- * session from its page, get an answer to a first message, and delete the
- * agent again. Each step is the portal's own path: the review is
- * agent-manager's dry run, Deploy its `create_agent`, both through muster as
- * the person; the turn streams from kagent.
+ * session from its page (the dialog cannot be dismissed while the create is
+ * on its way), get an answer to a first message, and delete the agent again.
+ * Each step is the portal's own path: the review is agent-manager's dry run,
+ * Deploy its `create_agent`, both through muster as the person; the turn
+ * streams from kagent.
  *
  * Seconds on a warm lab (the Go ADK boots an agent in about twenty), minutes
  * on a cold worker — the waits allow for the latter. `--grep-invert lifecycle`
@@ -30,20 +32,17 @@ const agentName = `E2E Lifecycle ${stamp}`;
 const agentSlug = `e2e-lifecycle-${stamp}`;
 const prompt = 'Reply with exactly the single word PONG and nothing else.';
 
-test('agent lifecycle: a system prompt past the limit stays on Details', async ({
+test('agent lifecycle: instructions past the limit stay on Details', async ({
   admin,
 }) => {
   await open(admin, '/agent-platform/agents/new');
-  await expect(admin.getByText('Step 1 of 4: Details')).toBeVisible();
-  const field = admin.getByRole('textbox', { name: 'System prompt' });
+  await expectWizardStep(admin, 'Details');
+  const field = admin.getByRole('textbox', { name: 'Instructions' });
   await field.fill('a'.repeat(20001));
   await expect(admin.getByText('20,001 / 20,000 characters')).toBeVisible();
   await expect(field).toHaveAttribute('aria-invalid', 'true');
   await admin.getByRole('button', { name: 'Continue' }).first().click();
-  await expect(
-    admin.getByText('Step 1 of 4: Details'),
-    'a prompt past the limit never reaches the dry run',
-  ).toBeVisible();
+  await expectWizardStep(admin, 'Details');
   await expect(
     admin
       .getByText(/System prompt is 20,001 characters; the limit is 20,000/)
@@ -61,13 +60,24 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
 
   let failure: unknown;
   try {
-    await startSessionOnReadyAgent(admin, prompt);
+    await startSessionOnReadyAgent(admin, prompt, async dialog => {
+      // The X first: Escape starts a transition on the X, and a click that
+      // follows at once finds it unstable, then detached, until it times out.
+      await dialog.getByRole('button', { name: 'Close' }).click();
+      await admin.keyboard.press('Escape');
+      await expect(
+        dialog,
+        'neither Escape nor the header’s X closes the dialog while the create is on its way',
+      ).toBeVisible();
+    });
     await expect(
       admin.getByTestId('timeline-user-message').getByText(prompt),
       "the person's message is on the timeline",
     ).toBeVisible();
+    // The agent's own entry, never any PONG on the page: the prompt carries
+    // the word too (the user's bubble, the session title, the sidebar).
     await expect(
-      admin.getByText(/PONG/).nth(1),
+      admin.getByTestId('timeline-agent-message').filter({ hasText: 'PONG' }),
       "the agent's answer arrives on the timeline",
     ).toBeVisible({ timeout: 3 * 60_000 });
     await expect(

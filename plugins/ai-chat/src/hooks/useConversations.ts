@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import type { ConversationApi, ConversationListItem } from '../api';
 
@@ -24,8 +25,9 @@ export function useConversations(
 
   const {
     data: conversations = [],
-    isLoading,
     error,
+    isPending,
+    fetchStatus,
   } = useQuery({
     queryKey: CONVERSATIONS_QUERY_KEY,
     queryFn: async () => {
@@ -33,6 +35,7 @@ export function useConversations(
       return response.conversations;
     },
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   const refreshConversations = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: CONVERSATIONS_QUERY_KEY });

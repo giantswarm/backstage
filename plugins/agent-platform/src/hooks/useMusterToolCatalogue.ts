@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
 import { musterToolCatalogueQueryKey } from '../lib/queryKeys';
@@ -30,11 +31,12 @@ export function useMusterToolCatalogue(
   const musterApi = useMusterPluginApi();
   const enabled = Boolean(installation) && Boolean(musterApi);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterToolCatalogueQueryKey(installation ?? ''),
     enabled,
     queryFn: () => musterApi!.listTools(installation),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   const serversRequiringAuth = useMemo(
     () => (data?.servers_requiring_auth ?? []).map(server => server.name),

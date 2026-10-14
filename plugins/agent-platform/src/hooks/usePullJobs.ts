@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { modelManagerApiRef } from '../apis';
 import type { ModelManagerApi } from '../apis/ModelManagerApi';
@@ -99,7 +100,7 @@ export function usePullJobs(installations: string[]): PullJobs {
   return useMemo(
     () => ({
       jobs,
-      isLoading: queries.some(query => query.isLoading),
+      isLoading: queries.some(query => isAwaitingData(query)),
       errors: installations.flatMap((installation, index) =>
         queries[index]?.isError
           ? [{ installation, error: queries[index].error as Error }]

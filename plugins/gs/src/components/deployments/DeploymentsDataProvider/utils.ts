@@ -16,8 +16,34 @@ import { getUpdatedTimestamp } from '../utils/getUpdatedTimestamp';
 import { getSourceKind, getSourceName } from '../utils/getSource';
 import { getAttemptedVersion, getVersion } from '../utils/getVersion';
 import { findHelmChartName } from '../utils/findHelmChartName';
-import { MimirWorkloadMetric } from '../../hooks/useMimirWorkloads';
+import {
+  ClustersByInstallation,
+  MimirWorkloadMetric,
+} from '../../hooks/useMimirWorkloads';
 import { findTargetNamespace } from '../utils/findTargetNamespace';
+
+/**
+ * The clusters whose deployments the page shows, per installation: each
+ * installation's own management cluster and the target clusters of its Apps
+ * and HelmReleases. The Mimir workload queries are scoped to them.
+ */
+export function findShownClusters(
+  installations: string[],
+  deployments: (App | HelmRelease)[],
+): ClustersByInstallation {
+  const clusters: ClustersByInstallation = {};
+  for (const installationName of installations) {
+    clusters[installationName] = [installationName];
+  }
+  for (const deployment of deployments) {
+    const targetCluster = findTargetClusterName(deployment);
+    const shown = clusters[deployment.cluster];
+    if (targetCluster && shown && !shown.includes(targetCluster)) {
+      shown.push(targetCluster);
+    }
+  }
+  return clusters;
+}
 
 export type DeploymentData = {
   installationName: string;

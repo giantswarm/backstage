@@ -7,8 +7,10 @@ import { toastApiRef } from '@backstage/frontend-plugin-api';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { crds } from '@giantswarm/k8s-types';
-import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  ModelConfigInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { modelManagerApiRef } from '../../apis';
 import type { ModelManagerApi } from '../../apis/ModelManagerApi';
 import {
@@ -16,7 +18,7 @@ import {
   type ClientServingState,
   type ServedModel,
 } from '../../lib/serving';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import {
   isModelRowMuted,
   ModelRow,
@@ -41,7 +43,10 @@ jest.mock('react-router-dom', () => ({
 // SubRouteRef — and the detail sub-route resolves relative to it.
 const renderTable = (element: React.ReactElement) =>
   renderInTestApp(element, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+    },
   });
 
 const rows: ModelRow[] = [
@@ -83,7 +88,7 @@ describe('ModelsTable', () => {
     expect(screen.getByText('Provider')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('Endpoint')).toBeInTheDocument();
-    expect(screen.getByText('Installation')).toBeInTheDocument();
+    expect(screen.getByText('Environment')).toBeInTheDocument();
   });
 
   it('leaves out the columns it is asked to hide', async () => {
@@ -92,7 +97,7 @@ describe('ModelsTable', () => {
     );
 
     expect(screen.getByText('Model config')).toBeInTheDocument();
-    expect(screen.queryByText('Installation')).not.toBeInTheDocument();
+    expect(screen.queryByText('Environment')).not.toBeInTheDocument();
   });
 
   it('sorts by name instead of the hidden Installation column', async () => {
@@ -144,7 +149,7 @@ describe('ModelsTable', () => {
     const link = screen.getByRole('link', { name: /Qwen 3 \(lab vLLM\)/ });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3',
+      '/customize/models/inst-1/kagent/qwen3',
     );
   });
 
@@ -154,7 +159,7 @@ describe('ModelsTable', () => {
     await userEvent.click(screen.getByText('qwen3-8-27b'));
 
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/models/inst-1/kagent/qwen3',
+      '/customize/models/inst-1/kagent/qwen3',
     );
   });
 
@@ -455,7 +460,7 @@ describe('ModelsTable serving state', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Load failed for qwen3:0.6b',
+          title: 'Could not load qwen3:0.6b',
           description: 'backend is busy',
           status: 'danger',
         }),
@@ -518,7 +523,7 @@ describe('toModelRow', () => {
     const row = toModelRow(
       new ModelConfig(
         {
-          apiVersion: 'kagent.dev/v1alpha3',
+          apiVersion: 'api.kagent.dev/v1alpha3',
           kind: 'ModelConfig',
           metadata: {
             name: 'qwen3',
@@ -543,7 +548,7 @@ describe('toModelRow', () => {
               },
             ],
           },
-        } as crds.kagent.v1alpha3.ModelConfig,
+        } as ModelConfigInterface,
         'inst-1',
       ),
     );
@@ -562,15 +567,47 @@ describe('toModelRow', () => {
     });
   });
 
+  it('marks a stale status, whose message describes the previous spec', () => {
+    const row = toModelRow(
+      new ModelConfig(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'ModelConfig',
+          metadata: { name: 'qwen3', namespace: 'kagent', generation: 2 },
+          spec: { provider: 'OpenAI', model: 'qwen3-8-27b' },
+          status: {
+            observedGeneration: 1,
+            conditions: [
+              {
+                type: 'ResolvedRefs',
+                status: 'False',
+                reason: 'SecretNotFound',
+                message: 'Secret kagent/qwen3 not found',
+                lastTransitionTime: '2026-09-01T00:00:00Z',
+              },
+            ],
+          },
+        } as ModelConfigInterface,
+        'inst-1',
+      ),
+    );
+
+    expect(row.readiness).toBe('pending');
+    expect(row.isStale).toBe(true);
+    // The controller's raw message: `modelStatus` decides what a stale row
+    // shows.
+    expect(row.readinessMessage).toBe('Secret kagent/qwen3 not found');
+  });
+
   it('attaches the served model link when given one', () => {
     const row = toModelRow(
       new ModelConfig(
         {
-          apiVersion: 'kagent.dev/v1alpha3',
+          apiVersion: 'api.kagent.dev/v1alpha3',
           kind: 'ModelConfig',
           metadata: { name: 'qwen3', namespace: 'kagent' },
           spec: { provider: 'OpenAI', model: 'qwen3-8-27b' },
-        } as crds.kagent.v1alpha3.ModelConfig,
+        } as ModelConfigInterface,
         'inst-1',
       ),
       {

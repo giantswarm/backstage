@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Grid } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
@@ -47,6 +48,8 @@ import {
 } from '../../../../../assets/icons/CustomIcons';
 import { ClusterTypes, ClusterProviders } from '../../../utils';
 import { AsyncValue, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import { getClusterKey, useWorkerCapacity } from '../../../../hooks';
+import { WorkerCapacity } from '../../../WorkerCapacity';
 
 interface ProviderLocationDisplayProps {
   provider: string;
@@ -164,6 +167,16 @@ export function ClusterAboutCard() {
 
   useShowErrors(hasSupportedControlPlane ? controlPlaneErrors : null);
 
+  const clusters = useMemo(() => [cluster], [cluster]);
+  const { capacities } = useWorkerCapacity(clusters);
+  const workerCapacity = capacities.get(
+    getClusterKey({
+      installationName,
+      namespace: cluster.getNamespace(),
+      name: cluster.getName(),
+    }),
+  );
+
   const clusterType = calculateClusterType(cluster);
   const description = getClusterDescription(cluster);
   const releaseVersion = getClusterReleaseVersion(cluster);
@@ -218,6 +231,23 @@ export function ClusterAboutCard() {
                 />
               )}
             </AsyncValue>
+          </AboutFieldValue>
+        </AboutField>
+
+        <AboutField label="Worker capacity">
+          <AboutFieldValue>
+            <AsyncValue
+              isLoading={workerCapacity?.isLoading ?? false}
+              errorMessage={workerCapacity?.errorMessage}
+              value={
+                workerCapacity?.capacity && (
+                  <WorkerCapacity
+                    capacity={workerCapacity.capacity}
+                    metricsStatus={workerCapacity.metricsStatus}
+                  />
+                )
+              }
+            />
           </AboutFieldValue>
         </AboutField>
 

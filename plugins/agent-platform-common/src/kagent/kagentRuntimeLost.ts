@@ -21,7 +21,7 @@ import { describeSessionState, FAILED_STATES } from './kagentSessionState';
  * on what it is looking at:
  *
  * - **Reported** ({@link RuntimeLoss.reported} `true`): kagent marks the
- *   `AgentInstance` with a `Failure` whose reason is {@link RUNTIME_LOST_REASON}
+ *   `Session` with a `Failure` whose reason is {@link RUNTIME_LOST_REASON}
  *   once it knows the runtime is gone, and ends such a turn at once with an
  *   A2A error whose message starts with `runtime lost: <cause>`. Definitive:
  *   nothing on this session can continue, and kagent's delete skips the suspend
@@ -29,26 +29,26 @@ import { describeSessionState, FAILED_STATES } from './kagentSessionState';
  * - **Suspected** (`reported` `false`): the interim shape, from before kagent
  *   said so. The turn failed after the runtime's timeout — atenet's
  *   `actor "ai-…" request timed out`, the gateway's `failed to connect to
- *   AgentInstance runtime`, the scheduler's `no free workers available` — and
+ *   Session runtime`, the scheduler's `no free workers available` — and
  *   nothing else distinguishes it from a slow turn. Read as a loss because the
  *   alternative is offering the same retry forever; the retry is still offered
  *   beside the way out, since a cold worker can produce the same text once.
  */
 export type RuntimeLoss = {
-  /** kagent marked the instance's runtime lost, rather than this reading the turn. */
+  /** kagent marked the session's runtime lost, rather than this reading the turn. */
   reported: boolean;
   /** The runtime's words, when there were any — never the whole explanation. */
   cause?: string;
   /**
    * How many turns in a row ended this way, newest first. `1` for the first
    * failure; a reported loss counts what the conversation shows too, and `0`
-   * when it shows nothing yet (the instance was marked before any turn failed).
+   * when it shows nothing yet (the session was marked before any turn failed).
    */
   attempts: number;
 };
 
 /**
- * The `Failure.reason` kagent records on an `AgentInstance` whose runtime is
+ * The `Failure.reason` kagent records on a `Session` whose runtime is
  * lost. Compared leniently — `RuntimeLost` and `runtime-lost` read the same —
  * because the field is a free string on the wire.
  */
@@ -68,7 +68,7 @@ export function isRuntimeLostReason(reason: string | undefined): boolean {
  * - kagent, once it names the cause: `runtime lost: …` (an A2A error message,
  *   or the failed task's reason);
  * - kagent's A2A gateway when the runtime cannot be dialled:
- *   `failed to connect to AgentInstance runtime`;
+ *   `failed to connect to Session runtime`;
  * - atenet, the runtime's ingress, after its resume budget:
  *   `actor "ai-…" request timed out` (the text a person read on gazelle);
  * - Substrate's scheduler when the snapshot's node is gone — a locality miss
@@ -78,7 +78,7 @@ export function isRuntimeLostReason(reason: string | undefined): boolean {
  */
 const RUNTIME_LOST_TEXTS: RegExp[] = [
   /\bruntime lost\b/i,
-  /failed to connect to AgentInstance runtime/i,
+  /failed to connect to (Session|AgentInstance) runtime/i,
   /\bactor\b[^\n]*\brequest timed out\b/i,
   /\bno free workers available\b/i,
   /\bResumeActor\b[^\n]*(timed out|failed)/i,
@@ -163,9 +163,9 @@ export function readConversationRuntimeLoss(
 }
 
 /**
- * The runtime loss kagent **reported** on the instance, when it did.
+ * The runtime loss kagent **reported** on the session, when it did.
  *
- * Feature-detected off the `Failure` the instance carries: a kagent from
+ * Feature-detected off the `Failure` the session carries: a kagent from
  * before the reason existed marks nothing, and this answers `undefined` for it
  * so the interim reading takes over. The failure's message is the cause, with
  * kagent's own `runtime lost: ` prefix dropped — the surfaces say that part in
@@ -187,7 +187,7 @@ export function readReportedRuntimeLoss(
 /**
  * What the session and its conversation together say about the runtime.
  *
- * The instance's word wins: once kagent has marked the runtime lost nothing in
+ * The session's word wins: once kagent has marked the runtime lost nothing in
  * the conversation can contradict it, and the conversation's count of failed
  * attempts is folded in for the wording. Without a mark, the conversation's
  * own reading stands — the interim shape — or nothing.

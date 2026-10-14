@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import {
   applyInstallationScope,
   useInstallationInventory,
@@ -14,6 +15,7 @@ import { sessionsQueryKey } from '../../lib/queryKeys';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
+import { describeReadFailure, type ReadFailure } from '../../lib/readFailure';
 import { SessionRow, sortSessionRows, toSessionRow } from './helpers';
 
 export type SessionsContextValue = {
@@ -48,6 +50,11 @@ export type SessionsContextValue = {
    * common case across the fleet and not something a user can act on.
    */
   unreachableInstallations: string[];
+  /**
+   * Why each of `unreachableInstallations` could not be read, and the request
+   * id the backend sent its call with, so the page can name the cause.
+   */
+  readFailures: Record<string, ReadFailure>;
   /**
    * Installations that reported a session list which is **not** scoped to the
    * signed-in user, because their kagent runs in `unsecure` mode. Rows are still
@@ -90,7 +97,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Which installations run kagent: those whose inventory has the `kagent.dev`
+  // Which installations run kagent: those whose inventory has the `api.kagent.dev`
   // API group and whose access is healthy, home first (gs
   // `useInstallationInventory`, one `GET /apis` per installation shared by every
   // tab), narrowed to the section's scope. Same reason as the other providers,
@@ -202,15 +209,18 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const readSignature = targets
     .map((installation, index) => {
       const query = sessionQueries[index];
+      // `errorUpdatedAt` too: a later failure with another reason or request
+      // id keeps the error's name.
       return `${installation}:${query?.status}:${query?.dataUpdatedAt}:${
-        (query?.error as Error | null)?.name ?? ''
-      }`;
+        query?.errorUpdatedAt
+      }:${(query?.error as Error | null)?.name ?? ''}`;
     })
     .join('|');
 
   const value = useMemo<SessionsContextValue>(() => {
     const rows: SessionRow[] = [];
     const unreachable: string[] = [];
+    const readFailures: Record<string, ReadFailure> = {};
 
     targets.forEach((installation, index) => {
       const query = sessionQueries[index];
@@ -253,6 +263,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
         errorName === 'ServiceUnavailableError';
       if (!notDeployed) {
         unreachable.push(installation);
+        readFailures[installation] = describeReadFailure(query.error);
       }
     });
 
@@ -277,7 +288,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       (isProbing ||
         isLoadingAllowlist ||
         !homeSettled ||
-        sessionQueries.some(query => query.isLoading));
+        sessionQueries.some(isAwaitingData));
 
     const sortedRows = sortSessionRows(rows, home);
 
@@ -298,6 +309,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       isLoadingMore: isBusy && rows.length > 0,
       hasInstallations,
       unreachableInstallations: unreachable,
+      readFailures,
       notUserScopedInstallations,
       notReachableInstallations,
     };

@@ -2,8 +2,6 @@ import {
   KubeObject,
   Provenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import type { GitOpsSource } from '@giantswarm/backstage-plugin-flux-react';
-import type { GitOpsManagedLabelProps } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Provenance detection is implemented in `kubernetes-react`: it only reads labels
@@ -23,21 +21,22 @@ export {
 export type { Provenance } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 /**
- * The `source` for `GitOpsManagedLabel`: only once there is a Git source to
- * resolve. A server reconciled from a HelmRelease that is not itself in Git
- * keeps the plain label, rather than a link that can never resolve.
+ * The object's kind: its own `kind`, else its class's. Items of a Kubernetes
+ * list response need not carry `kind`, and the list hooks hand them over as
+ * they come.
  */
-export function gitOpsLabelSource(
-  source: GitOpsSource,
-): GitOpsManagedLabelProps['source'] {
-  if (!source.inGit && !source.isLoading) {
-    return undefined;
-  }
-  return {
-    url: source.url,
-    isLoading: source.isLoading,
-    errorMessage: source.errorMessage,
-  };
+export function resourceKind(obj: KubeObject): string {
+  return obj.getKind() || (obj.constructor as typeof KubeObject).kind;
+}
+
+/**
+ * Whether Flux reconciles the object — applied by a Kustomization or rendered
+ * by a HelmRelease — so its desired state can be traced back to a source.
+ * Narrower than `isGitOpsManaged`, which also holds for a chart installed by
+ * hand with `helm install`.
+ */
+export function isFluxReconciled(p: Provenance): boolean {
+  return Boolean(p.fluxKustomization || p.fluxHelmRelease);
 }
 
 /** `namespace/name`, or just the name for an object without a namespace. */
@@ -230,7 +229,7 @@ export function toManifestYaml(
   ).jsonData.spec;
   const manifest = {
     apiVersion: obj.getApiVersion() || 'muster.giantswarm.io/v1alpha1',
-    kind: obj.getKind() || 'MCPServer',
+    kind: resourceKind(obj),
     metadata: {
       name: obj.getName(),
       namespace: obj.getNamespace() ?? defaultNamespace,

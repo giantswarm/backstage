@@ -8,10 +8,7 @@ import {
   FactList,
   InfoCard,
 } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  getInstanceTypeArchitectures,
-  useAwsInstanceTypes,
-} from '../awsInstanceTypeInfo';
+import { useMachineTypeCatalog } from '../../../../hooks';
 import { ChipRow } from '../NodePoolConfiguration/ChipRow';
 
 interface ASGNodePoolConfigurationProps {
@@ -28,14 +25,14 @@ export const ASGNodePoolConfiguration = ({
   machinePool,
   awsMachinePool,
 }: ASGNodePoolConfigurationProps) => {
-  const instanceTypeData = useAwsInstanceTypes();
+  const { catalog } = useMachineTypeCatalog('aws');
 
   const instanceType = awsMachinePool?.getInstanceType();
   const zones = awsMachinePool?.getAvailabilityZones();
   const minSize = awsMachinePool?.getMinSize();
   const maxSize = awsMachinePool?.getMaxSize();
   const architectures = instanceType
-    ? getInstanceTypeArchitectures(instanceType, instanceTypeData)
+    ? catalog?.(instanceType)?.architectures
     : undefined;
 
   const shape: Fact[] = [

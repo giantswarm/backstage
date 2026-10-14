@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -18,7 +19,12 @@ import {
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { modelsRouteRef } from '../../routes';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { ServingPage } from './ServingPage';
@@ -27,12 +33,15 @@ import { ServingPage } from './ServingPage';
 const mockUseServing = jest.fn<ServingContextValue, []>();
 const mockUseModelConfigs = jest.fn<ModelConfigsContextValue, []>();
 
+// cluster-manager is absent on most of these fleets: the controls render
+// nothing. The header cases offer Add GPU node pool through `addAction`.
+let mockPoolAddAction: { open: () => void; isDisabled: boolean } | undefined;
 jest.mock('../GpuNodePools', () => ({
-  // cluster-manager is absent on these fleets: the controls render nothing.
   useGpuNodePoolControls: () => ({
     available: false,
     isLoading: false,
     addButton: undefined,
+    addAction: mockPoolAddAction,
     dialogs: undefined,
     panel: undefined,
     cachePanel: undefined,
@@ -40,12 +49,14 @@ jest.mock('../GpuNodePools', () => ({
 }));
 
 const mockGroupsWithoutModels = jest.fn<ServedModelGroup[], []>(() => []);
+// No model-manager the person can write to on most of these fleets: the
+// controls render nothing. The header cases offer Add model backend.
+let mockOpenAddBackend: (() => void) | undefined;
 jest.mock('../ModelBackends', () => ({
-  // No model-manager the person can write to on these fleets: the controls
-  // render nothing.
   useModelBackendControls: () => ({
     available: false,
     addButton: undefined,
+    openAdd: mockOpenAddBackend,
     dialogs: null,
     renderGroupActions: () => null,
     groupsWithoutModels: () => mockGroupsWithoutModels(),
@@ -62,9 +73,9 @@ jest.mock('../ModelConfigsProvider', () => ({
 
 // The write side: the stop mutation and the permission probe are mocked —
 // their own tests cover them; here it is about what the section offers and
-// what it does with the outcome. The Serve dialog is model-manager's
-// (LoadModelDialog, reduced to a marker below): what matters here is when it
-// is offered and what it is opened on.
+// what it does with the outcome. Serve model is a page of its own
+// (ServeModelPage, a route marker below): what matters here is when it is
+// offered and what it is opened on.
 const mockStop = jest.fn();
 const mockUseSelfSubjectAccessReview = jest.fn();
 const mockToastPost = jest.fn();
@@ -112,25 +123,6 @@ jest.mock('@backstage/frontend-plugin-api', () => {
 // gate deciding which rows get a menu at all is the real one.
 jest.mock('../ModelManagerControls', () => ({
   hasRowActions: jest.requireActual('../ModelManagerControls').hasRowActions,
-  PullModelDialog: () => null,
-  LoadModelDialog: ({
-    isOpen,
-    targets,
-    seed,
-  }: {
-    isOpen: boolean;
-    targets: { name: string }[];
-    seed?: { installation?: string; model?: string };
-  }) =>
-    isOpen ? (
-      <div data-testid="load-dialog">
-        {targets.map(target => target.name).join(',')}
-        {seed?.model ? ` seeded ${seed.installation}/${seed.model}` : ''}
-      </div>
-    ) : null,
-  describeLoadTarget: (target: { name: string }) => target.name,
-  ImportModelDialog: ({ isOpen }: { isOpen: boolean }) =>
-    isOpen ? <div data-testid="import-dialog" /> : null,
   DownloadRowActions: ({
     row,
     onDismiss,
@@ -226,7 +218,7 @@ const baseServing: ServingContextValue = {
 function modelConfig(name: string, baseUrl?: string) {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name, namespace: 'kagent' },
       spec: {
@@ -285,7 +277,9 @@ const failedJob: PullJob = {
 // carries the header slot the app's GSPageLayout would provide — and the real
 // rows provider (its inputs are the mocked contexts above), since what the view
 // shows per row is the point of most cases here.
-const HeaderActions = () => <>{usePageHeaderActionsSlot()}</>;
+const HeaderActions = () => (
+  <div data-testid="page-header-actions">{usePageHeaderActionsSlot()}</div>
+);
 
 // Re-render the tree from inside it (renderInTestApp's own rerender would
 // drop the test app around it), so a test can change what the mocked contexts
@@ -304,10 +298,43 @@ const Section = () => {
   );
 };
 
-const renderSection = () =>
-  renderInTestApp(<Section />, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
-  });
+// Where a create flow opened from the view lands: its own page, here a
+// marker with the URL and where its Cancel would return.
+const FlowPage = () => {
+  const { pathname, search, state } = useLocation();
+  return (
+    <div data-testid="flow-page">
+      {pathname}
+      {search} from {(state as { hostingReturnTo?: string })?.hostingReturnTo}
+    </div>
+  );
+};
+
+const renderSection = (initialRouteEntries?: string[]) =>
+  renderInTestApp(
+    <Routes>
+      <Route path="/agent-platform/models/serving/*" element={<FlowPage />} />
+      <Route
+        path="/handoff"
+        element={
+          <Navigate
+            to="/"
+            state={{
+              openedServedModel: { installation: 'inst-1', name: 'qwen3-14b' },
+            }}
+          />
+        }
+      />
+      <Route path="*" element={<Section />} />
+    </Routes>,
+    {
+      mountedRoutes: {
+        '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
+      initialRouteEntries,
+    },
+  );
 
 describe('ServingPage', () => {
   beforeEach(() => {
@@ -322,6 +349,8 @@ describe('ServingPage', () => {
     mockUseMusterPluginApi.mockReturnValue(undefined);
     mockGroupsWithoutModels.mockReset();
     mockGroupsWithoutModels.mockReturnValue([]);
+    mockPoolAddAction = undefined;
+    mockOpenAddBackend = undefined;
     window.sessionStorage.clear();
     mockUsePullJobs.mockReturnValue(noJobs);
     mockUseServing.mockReturnValue(baseServing);
@@ -339,7 +368,9 @@ describe('ServingPage', () => {
     expect(
       screen.queryByRole('button', { name: /Serve model/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/are how agents reach them/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Agents reach these models through their model configs/),
+    ).toBeInTheDocument();
     // Nothing is composed in the browser: no permission probe for a create.
     expect(mockUseSelfSubjectAccessReview).not.toHaveBeenCalledWith(
       'inst-1',
@@ -363,12 +394,46 @@ describe('ServingPage', () => {
     });
 
     await renderSection();
+    expect(
+      screen.getByText(/Serving a model here creates its model config/),
+    ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Serve model/ }));
 
-    expect(screen.getByTestId('load-dialog')).toHaveTextContent('inst-1');
+    expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+      '/agent-platform/models/serving/serve from /',
+    );
+  });
+
+  it('forwards an older release’s ?serve=1 pool link to Serve model’s page, seed and all', async () => {
+    mockUseMusterPluginApi.mockReturnValue({});
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      capabilities: {
+        'inst-1': { ...KSERVE_CR_CAPABILITIES, load: true, presets: true },
+      },
+    });
+
+    await renderSection([
+      '/?serve=1&installation=inst-1&cluster=wc1&pool=gpu-l4&preset=qwen3-8b-fp8',
+    ]);
+
+    expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+      '/agent-platform/models/serving/serve?installation=inst-1&cluster=wc1&pool=gpu-l4&model=qwen3-8b-fp8',
+    );
+  });
+
+  it('opens the steps of the model Serve model handed over', async () => {
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      servedModels: [{ ...qwen, readiness: 'pending', phase: 'starting' }],
+    });
+
+    await renderSection(['/handoff']);
+
+    const panel = await screen.findByTestId('served-model-lifecycle');
     expect(
-      screen.getByText(/Serve a model from a curated preset or stop one/),
-    ).toBeInTheDocument();
+      screen.getByTestId('served-models-group-inst-1/kserve'),
+    ).toContainElement(panel);
   });
 
   it('withholds Serve where a backend can load but muster is not connected', async () => {
@@ -384,6 +449,124 @@ describe('ServingPage', () => {
     expect(
       screen.queryByRole('button', { name: /Serve model/ }),
     ).not.toBeInTheDocument();
+  });
+
+  describe('header actions, in the standard places', () => {
+    const everything: ServingContextValue = {
+      ...baseServing,
+      capabilities: {
+        'inst-1': {
+          ...KSERVE_CR_CAPABILITIES,
+          load: true,
+          presets: true,
+          fitCheck: true,
+          pull: true,
+          search: true,
+        },
+      },
+    };
+    let layout: MockedLayout | undefined;
+
+    beforeEach(() => {
+      mockUseMusterPluginApi.mockReturnValue({});
+      mockUseServing.mockReturnValue(everything);
+      mockOpenAddBackend = jest.fn();
+      mockPoolAddAction = { open: jest.fn(), isDisabled: false };
+    });
+    afterEach(() => {
+      layout?.restore();
+      layout = undefined;
+    });
+
+    const header = () => screen.getByTestId('page-header-actions');
+    const openMenu = async () => {
+      await userEvent.click(
+        within(header()).getByRole('button', { name: 'Model hosting actions' }),
+      );
+      return screen.findByRole('menu');
+    };
+
+    it('puts Serve model last, the import beside it, and adding a backend or a pool in the menu', async () => {
+      layout = mockDesktopLayout();
+      await renderSection();
+
+      expect(
+        within(header())
+          .getAllByRole('button')
+          .map(
+            button => button.textContent || button.getAttribute('aria-label'),
+          ),
+      ).toEqual([
+        'Import from Hugging Face',
+        'Serve model',
+        'Model hosting actions',
+      ]);
+
+      const menu = await openMenu();
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map(item => item.textContent),
+      ).toEqual(['Add model backend', 'Add GPU node pool']);
+      await userEvent.click(
+        within(menu).getByRole('menuitem', { name: 'Add GPU node pool' }),
+      );
+      expect(mockPoolAddAction!.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps one button at phone width, everything else in the menu', async () => {
+      layout = mockPhoneLayout();
+      await renderSection();
+
+      expect(
+        within(header())
+          .getAllByRole('button')
+          .map(
+            button => button.textContent || button.getAttribute('aria-label'),
+          ),
+      ).toEqual(['Serve model', 'Model hosting actions']);
+
+      const menu = await openMenu();
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map(item => item.textContent),
+      ).toEqual([
+        'Import from Hugging Face',
+        'Add model backend',
+        'Add GPU node pool',
+      ]);
+      await userEvent.click(
+        within(menu).getByRole('menuitem', {
+          name: 'Import from Hugging Face',
+        }),
+      );
+      expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+        '/agent-platform/models/serving/import',
+      );
+    });
+
+    it('offers the plain pull beside Serve where nothing imports', async () => {
+      layout = mockDesktopLayout();
+      mockOpenAddBackend = undefined;
+      mockPoolAddAction = undefined;
+      mockUseServing.mockReturnValue({
+        ...everything,
+        capabilities: {
+          'inst-1': {
+            ...everything.capabilities!['inst-1'],
+            search: false,
+          },
+        },
+      });
+      await renderSection();
+
+      expect(
+        within(header())
+          .getAllByRole('button')
+          .map(button => button.textContent),
+      ).toEqual(['Pull model', 'Serve model']);
+    });
   });
 
   it('offers "Stop serving…" on KServe rows and asks before deleting the CR', async () => {
@@ -483,7 +666,7 @@ describe('ServingPage', () => {
 
     beforeEach(() => {
       // muster connected: the installation's model-manager can load, so the
-      // Serve is its dialog.
+      // Serve is its page.
       mockUseMusterPluginApi.mockReturnValue({});
       mockUseServing.mockReturnValue(mixedServing);
     });
@@ -544,7 +727,9 @@ describe('ServingPage', () => {
       await userEvent.click(
         screen.getByRole('button', { name: /Import from Hugging Face/ }),
       );
-      expect(screen.getByTestId('import-dialog')).toBeInTheDocument();
+      expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+        '/agent-platform/models/serving/import',
+      );
     });
 
     it('stops a row model-manager operates through model-manager, without asking the cluster', async () => {
@@ -582,7 +767,7 @@ describe('ServingPage', () => {
       );
     });
 
-    it('opens the Serve dialog on a cached download’s installation and preset', async () => {
+    it('opens Serve model on a cached download’s installation and preset', async () => {
       await renderSection();
 
       await userEvent.click(
@@ -591,11 +776,11 @@ describe('ServingPage', () => {
         }),
       );
 
-      // model-manager's dialog, seeded with the preset the cached weights
-      // belong to: it composes the LLMInferenceService; nothing is composed
-      // here.
-      expect(screen.getByTestId('load-dialog')).toHaveTextContent(
-        'inst-1 seeded inst-1/devstral-small-2',
+      // Serve model's page, seeded with the preset the cached weights belong
+      // to: model-manager composes the LLMInferenceService; nothing is
+      // composed here.
+      expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+        '/agent-platform/models/serving/serve?installation=inst-1&backend=kserve&model=devstral-small-2',
       );
     });
   });
@@ -652,9 +837,7 @@ describe('ServingPage', () => {
 
     expect(screen.getByText('No model backend yet')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /model-manager on inst-1 is running with no backend registered/,
-      ),
+      screen.getByText(/model-manager on inst-1 has no backend registered/),
     ).toBeInTheDocument();
     expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
     expect(container.querySelector('table')).toBeNull();
@@ -675,7 +858,7 @@ describe('ServingPage', () => {
     expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
     expect(
       await screen.findByRole('progressbar', {
-        name: 'Looking for a serving layer',
+        name: 'Reading the serving layer…',
       }),
     ).toBeInTheDocument();
   });
@@ -684,7 +867,7 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(
-      screen.getByText(/Models served on the installations/),
+      screen.getByText(/Agents reach these models through their model configs/),
     ).toBeInTheDocument();
     expect(screen.getByText('qwen3-14b')).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
@@ -710,7 +893,7 @@ describe('ServingPage', () => {
 
     expect(screen.getByRole('link', { name: 'qwen3-14b' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3-14b',
+      '/customize/models/inst-1/kagent/qwen3-14b',
     );
     expect(screen.queryByText('claude')).not.toBeInTheDocument();
     expect(screen.queryByText('other-vllm')).not.toBeInTheDocument();
@@ -726,7 +909,9 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(
-      await screen.findByRole('progressbar', { name: 'Loading served models' }),
+      await screen.findByRole('progressbar', {
+        name: 'Reading the served models…',
+      }),
     ).toBeInTheDocument();
     expect(screen.queryByText(NO_SERVED_MODELS)).not.toBeInTheDocument();
   });
@@ -796,6 +981,52 @@ describe('ServingPage', () => {
     expect(screen.queryByText(NO_SERVED_MODELS)).not.toBeInTheDocument();
   });
 
+  it('holds the read warnings while the served models are read, not while the GPU nodes are', async () => {
+    mockUsePullJobs.mockReturnValue({
+      ...noJobs,
+      errors: [
+        { installation: 'inst-1', error: new Error('502 from the gateway') },
+      ],
+    });
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      isLoading: true,
+      isLoadingServedModels: true,
+      servedModels: [],
+      unreachableInstallations: ['inst-3'],
+    });
+
+    await renderSection();
+
+    expect(
+      await screen.findByRole('progressbar', {
+        name: 'Reading the served models…',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
+
+    // The served-model reads have settled; the GPU node and pod reads, which
+    // the warning is not about, are still going.
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      isLoading: true,
+      isLoadingServedModels: false,
+      servedModels: [],
+      unreachableInstallations: ['inst-3'],
+    });
+    act(() => rerenderSection());
+
+    expect(
+      await screen.findByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read the downloads'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('progressbar', { name: 'Reading the served models…' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('surfaces installations whose LLMInferenceServices could not be read', async () => {
     mockUseServing.mockReturnValue({
       ...baseServing,
@@ -805,12 +1036,11 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(
-      screen.getByText("Couldn't read 1 installation"),
+      screen.getByText('Could not read 1 environment'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/served models couldn't be read/),
+      screen.getByText(/^The served models on inst-3 could not be read\./),
     ).toBeInTheDocument();
-    expect(screen.getByText(/inst-3/)).toBeInTheDocument();
   });
 
   describe('on an Ollama-backed model-manager installation (no node inventory)', () => {
@@ -857,7 +1087,7 @@ describe('ServingPage', () => {
       await renderSection();
 
       expect(
-        screen.getByText(/pull a model onto a backend/),
+        screen.getByText(/Serving a model here creates its model config/),
       ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: /Pull model/ }),
@@ -1023,11 +1253,7 @@ describe('ServingPage', () => {
         const grid = screen.getByRole('grid');
         expect(within(grid).getByText('nope:latest')).toBeInTheDocument();
         expect(within(grid).getByText('Not ready')).toBeInTheDocument();
-        expect(
-          within(grid).getByText(
-            'Download failed: pull model manifest: file does not exist',
-          ),
-        ).toBeInTheDocument();
+        expect(within(grid).getByText('Download failed')).toBeInTheDocument();
         expect(
           screen.getByRole('button', { name: 'Retry download nope:latest' }),
         ).toBeInTheDocument();
@@ -1064,7 +1290,7 @@ describe('ServingPage', () => {
         await renderSection();
 
         expect(
-          screen.getByText('Downloads could not be read'),
+          screen.getByText('Could not read the downloads'),
         ).toBeInTheDocument();
         expect(
           screen.getByText(/inst-2: 502 from the gateway/),
@@ -1143,7 +1369,27 @@ describe('ServingPage', () => {
 
     expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
     expect(
-      screen.getByText("Couldn't read 1 installation"),
+      screen.getByText('Could not read 1 environment'),
     ).toBeInTheDocument();
+    // Nothing was read, so nothing is known to be running or not: the
+    // warning speaks, not the table's empty line (one pinned environment).
+    expect(screen.queryByText(NO_SERVED_MODELS)).toBeNull();
+  });
+
+  it('still says no model is running where another environment was read', async () => {
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      installations: ['inst-1'],
+      servedModels: [],
+      gpuNodes: [],
+      unreachableInstallations: ['inst-3'],
+    });
+
+    await renderSection();
+
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(NO_SERVED_MODELS)).toBeInTheDocument();
   });
 });

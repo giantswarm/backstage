@@ -426,6 +426,25 @@ describe('useServerSignIn', () => {
     expect(result.current.note).not.toContain('core_auth_login');
   });
 
+  it('names the connector in the sign-out note when asked to', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    const { result } = renderHook(
+      () => useServerSignIn('pro', 'gazelle', { noun: 'connector' }),
+      { wrapper: wrapper(api, newQueryClient()) },
+    );
+
+    await waitFor(() => expect(result.current.isConnected).toBe(true));
+    await act(async () => result.current.signOut());
+
+    await waitFor(() =>
+      expect(result.current.note).toBe(
+        "Signed out — the connector's tools are hidden until you sign in again.",
+      ),
+    );
+  });
+
   /** A refusal changed nothing, so nothing is refetched -- only reported. */
   it('surfaces a refused sign-out without invalidating anything', async () => {
     const api = makeApi({

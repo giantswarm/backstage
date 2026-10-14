@@ -1,5 +1,5 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
-import { mockServices } from '@backstage/backend-test-utils';
+import { mockCredentials, mockServices } from '@backstage/backend-test-utils';
 import { AuthenticationError } from '@backstage/errors';
 import {
   AuthLoginResult,
@@ -10,7 +10,7 @@ import express from 'express';
 import request from 'supertest';
 import { createRouter, RouterOptions } from './router';
 
-const REPO = 'giantswarm/bumblebee-plans';
+const REPO = 'giantswarm/meadow-plans';
 const TOKEN_HEADER = 'backstage-muster-authorization';
 
 type Call = { tool: string; args: Record<string, unknown>; authToken: string };
@@ -284,7 +284,7 @@ describe('createRouter', () => {
         tool: 'list_pull_requests',
         args: {
           owner: 'giantswarm',
-          repo: 'bumblebee-plans',
+          repo: 'meadow-plans',
           state: 'open',
           perPage: 100,
         },
@@ -422,7 +422,7 @@ describe('createRouter', () => {
         tool: 'add_issue_comment',
         args: {
           owner: 'giantswarm',
-          repo: 'bumblebee-plans',
+          repo: 'meadow-plans',
           issue_number: 44,
           body: 'Looks good',
         },
@@ -452,7 +452,7 @@ describe('createRouter', () => {
               author: 'alice',
               created_at: 't1',
               html_url:
-                'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r100',
+                'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r100',
             },
             {
               body: 'reply',
@@ -462,7 +462,7 @@ describe('createRouter', () => {
               author: 'bob',
               created_at: 't2',
               html_url:
-                'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r101',
+                'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r101',
             },
           ],
         },
@@ -484,7 +484,7 @@ describe('createRouter', () => {
             body: 'root',
             createdAt: 't1',
             htmlUrl:
-              'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r100',
+              'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r100',
             path: 'plan/PRD.md',
             line: 51,
             side: 'RIGHT',
@@ -495,7 +495,7 @@ describe('createRouter', () => {
             body: 'reply',
             createdAt: 't2',
             htmlUrl:
-              'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r101',
+              'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r101',
             path: 'plan/PRD.md',
             line: 51,
             side: 'RIGHT',
@@ -549,7 +549,7 @@ describe('createRouter', () => {
                 author: 'alice',
                 created_at: 't3',
                 html_url:
-                  'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r200',
+                  'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r200',
               },
             ],
           },
@@ -613,7 +613,7 @@ describe('createRouter', () => {
         tool: 'add_reply_to_pull_request_comment',
         args: {
           owner: 'giantswarm',
-          repo: 'bumblebee-plans',
+          repo: 'meadow-plans',
           pullNumber: 44,
           commentId: 100,
           body: 'Agreed',
@@ -702,7 +702,7 @@ describe('createRouter', () => {
           tool: 'get_repository_tree',
           args: {
             owner: 'giantswarm',
-            repo: 'bumblebee-plans',
+            repo: 'meadow-plans',
             recursive: true,
           },
           authToken: 'dex-id-token',
@@ -808,7 +808,7 @@ describe('createRouter', () => {
       });
       expect(github.calls[0].args).toEqual({
         owner: 'giantswarm',
-        repo: 'bumblebee-plans',
+        repo: 'meadow-plans',
         path: 'plan-a/PRD.md',
         ref: 'refs/heads/main',
       });
@@ -825,6 +825,77 @@ describe('createRouter', () => {
       expect(
         (await request(app).get('/content').query({ path: 'plan-a/' })).status,
       ).toBe(400);
+    });
+
+    describe('cache', () => {
+      const read = (query: Record<string, string>, user?: string) => {
+        const req = request(app).get('/content').query(query);
+        return user
+          ? req.set('authorization', mockCredentials.user.header(user))
+          : req;
+      };
+      const contentCalls = () =>
+        github.calls.filter(c => c.tool === 'get_file_contents');
+
+      let now: number;
+      beforeEach(() => {
+        now = 1_000_000;
+        jest.spyOn(Date, 'now').mockImplementation(() => now);
+        github.contentAnswers.set('get_file_contents', fileContent('v1'));
+      });
+      afterEach(() => jest.restoreAllMocks());
+
+      it('answers a repeated read from the cache, concurrent ones included', async () => {
+        const query = { path: 'plan-a/PRD.md', ref: 'main' };
+        const [first, concurrent] = await Promise.all([
+          read(query),
+          read(query),
+        ]);
+        now += 59_000;
+        const again = await read(query);
+
+        for (const res of [first, concurrent, again]) {
+          expect(res.status).toBe(200);
+          expect(res.body.content).toBe('v1');
+        }
+        expect(contentCalls()).toHaveLength(1);
+      });
+
+      it('reads each path, ref and person on its own', async () => {
+        await read({ path: 'plan-a/PRD.md', ref: 'main' });
+        await read({ path: 'plan-b/PRD.md', ref: 'main' });
+        await read({ path: 'plan-a/PRD.md', ref: 'draft' });
+        await read(
+          { path: 'plan-a/PRD.md', ref: 'main' },
+          'user:default/someone-else',
+        );
+
+        expect(contentCalls()).toHaveLength(4);
+      });
+
+      it('reads a moved ref again once the entry expired', async () => {
+        const query = { path: 'plan-a/PRD.md', ref: 'main' };
+        await read(query);
+        github.contentAnswers.set('get_file_contents', fileContent('v2'));
+
+        now += 60_001;
+        const res = await read(query);
+
+        expect(res.body.content).toBe('v2');
+        expect(contentCalls()).toHaveLength(2);
+      });
+
+      it('keeps no failed read', async () => {
+        const query = { path: 'plan-a/PRD.md', ref: 'main' };
+        github.failNextCallsWith = new Error('404 Not Found');
+        expect((await read(query)).status).toBe(404);
+
+        const res = await read(query);
+
+        expect(res.status).toBe(200);
+        expect(res.body.content).toBe('v1');
+        expect(contentCalls()).toHaveLength(2);
+      });
     });
   });
 

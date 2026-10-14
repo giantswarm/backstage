@@ -17,7 +17,7 @@ describe('InstallationChip', () => {
 
     const chip = screen.getByTestId('installation-chip');
     expect(chip).toHaveTextContent('golem');
-    expect(chip).toHaveAttribute('title', 'Installation golem (testing)');
+    expect(chip).toHaveAttribute('title', 'Environment golem (testing)');
   });
 
   it('works for an installation the configuration does not know', () => {
@@ -27,6 +27,6 @@ describe('InstallationChip', () => {
 
     const chip = screen.getByTestId('installation-chip');
     expect(chip).toHaveTextContent('wombat');
-    expect(chip).toHaveAttribute('title', 'Installation wombat');
+    expect(chip).toHaveAttribute('title', 'Environment wombat');
   });
 });

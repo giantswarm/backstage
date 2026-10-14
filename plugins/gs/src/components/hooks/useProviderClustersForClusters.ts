@@ -8,53 +8,28 @@ import {
   VSphereCluster,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useMemo } from 'react';
+import { installationsByInfraKind } from '../utils/installationsByInfraKind';
 
 export function useProviderClustersForClusters(
   clusterResources: Cluster[],
   { enabled = true },
 ) {
-  const awsInstallations = new Set<string>();
-  const azureInstallations = new Set<string>();
-  const azureManagedInstallations = new Set<string>();
-  const vSphereInstallations = new Set<string>();
-  const vCDInstallations = new Set<string>();
-  clusterResources.forEach(cluster => {
-    const infrastructureRef = cluster.getInfrastructureRef();
-
-    if (!infrastructureRef) {
-      return;
-    }
-
-    if (infrastructureRef.kind === AWSCluster.kind) {
-      awsInstallations.add(cluster.cluster);
-    }
-
-    if (infrastructureRef.kind === AzureCluster.kind) {
-      azureInstallations.add(cluster.cluster);
-    }
-
-    if (infrastructureRef.kind === AzureASOManagedCluster.kind) {
-      azureManagedInstallations.add(cluster.cluster);
-    }
-
-    if (infrastructureRef.kind === VSphereCluster.kind) {
-      vSphereInstallations.add(cluster.cluster);
-    }
-
-    if (infrastructureRef.kind === VCDCluster.kind) {
-      vCDInstallations.add(cluster.cluster);
-    }
-  });
+  const byKind = installationsByInfraKind(clusterResources);
+  const awsInstallations = byKind[AWSCluster.kind] ?? [];
+  const azureInstallations = byKind[AzureCluster.kind] ?? [];
+  const azureManagedInstallations = byKind[AzureASOManagedCluster.kind] ?? [];
+  const vSphereInstallations = byKind[VSphereCluster.kind] ?? [];
+  const vCDInstallations = byKind[VCDCluster.kind] ?? [];
 
   const {
     resources: awsClusters,
     errors: awsClusterErrors,
     isLoading: isLoadingAWSClusters,
   } = useResources(
-    Array.from(awsInstallations),
+    awsInstallations,
     AWSCluster,
     {},
-    { enabled: enabled && awsInstallations.size > 0 },
+    { enabled: enabled && awsInstallations.length > 0 },
   );
 
   const {
@@ -62,10 +37,10 @@ export function useProviderClustersForClusters(
     errors: azureClusterErrors,
     isLoading: isLoadingAzureClusters,
   } = useResources(
-    Array.from(azureInstallations),
+    azureInstallations,
     AzureCluster,
     {},
-    { enabled: enabled && azureInstallations.size > 0 },
+    { enabled: enabled && azureInstallations.length > 0 },
   );
 
   const {
@@ -73,10 +48,10 @@ export function useProviderClustersForClusters(
     errors: azureManagedClusterErrors,
     isLoading: isLoadingAzureManagedClusters,
   } = useResources(
-    Array.from(azureManagedInstallations),
+    azureManagedInstallations,
     AzureASOManagedCluster,
     {},
-    { enabled: enabled && azureManagedInstallations.size > 0 },
+    { enabled: enabled && azureManagedInstallations.length > 0 },
   );
 
   const {
@@ -84,10 +59,10 @@ export function useProviderClustersForClusters(
     errors: vSphereClusterErrors,
     isLoading: isLoadingVSphereClusters,
   } = useResources(
-    Array.from(vSphereInstallations),
+    vSphereInstallations,
     VSphereCluster,
     {},
-    { enabled: enabled && vSphereInstallations.size > 0 },
+    { enabled: enabled && vSphereInstallations.length > 0 },
   );
 
   const {
@@ -95,10 +70,10 @@ export function useProviderClustersForClusters(
     errors: vCDClusterErrors,
     isLoading: isLoadingVCDClusters,
   } = useResources(
-    Array.from(vCDInstallations),
+    vCDInstallations,
     VCDCluster,
     {},
-    { enabled: enabled && vCDInstallations.size > 0 },
+    { enabled: enabled && vCDInstallations.length > 0 },
   );
 
   return useMemo(() => {

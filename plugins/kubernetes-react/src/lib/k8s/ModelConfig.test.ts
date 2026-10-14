@@ -1,11 +1,9 @@
-import { crds } from '@giantswarm/k8s-types';
+import type { ModelConfigInterface } from './kagentApi';
 import {
   deriveModelConfigReadiness,
   ModelConfig,
   ModelConfigCondition,
 } from './ModelConfig';
-
-type ModelConfigInterface = crds.kagent.v1alpha3.ModelConfig;
 
 const AT = '2026-07-31T10:00:00Z';
 
@@ -23,7 +21,7 @@ function makeModelConfig(
 ): ModelConfig {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name: 'opus', namespace: 'kagent', generation },
       spec: { provider: 'Anthropic', model: 'claude-opus-4-7' },
@@ -38,7 +36,7 @@ describe('ModelConfig', () => {
     const withAnnotation = (value?: string) =>
       new ModelConfig(
         {
-          apiVersion: 'kagent.dev/v1alpha3',
+          apiVersion: 'api.kagent.dev/v1alpha3',
           kind: 'ModelConfig',
           metadata: {
             name: 'opus',
@@ -69,9 +67,56 @@ describe('ModelConfig', () => {
   });
 
   it('is the v1alpha3 ModelConfig, single version', () => {
-    expect(ModelConfig.group).toBe('kagent.dev');
+    expect(ModelConfig.group).toBe('api.kagent.dev');
     expect(ModelConfig.plural).toBe('modelconfigs');
     expect(ModelConfig.supportedVersions).toEqual(['v1alpha3']);
+  });
+
+  describe('readiness message', () => {
+    it('explains Not accepted by the condition that failed, not one still Unknown', () => {
+      const modelConfig = makeModelConfig([
+        condition('Accepted', 'Unknown', 'waiting for the controller'),
+        condition('ResolvedRefs', 'False', 'Secret kagent/key not found'),
+      ]);
+      expect(modelConfig.getReadiness()).toBe('notAccepted');
+      expect(modelConfig.getReadinessMessage()).toBe(
+        'Secret kagent/key not found',
+      );
+    });
+
+    it('explains Pending by the condition still Unknown', () => {
+      const modelConfig = makeModelConfig([
+        condition('Accepted', 'True'),
+        condition('ResolvedRefs', 'Unknown', 'resolving the Secret'),
+      ]);
+      expect(modelConfig.getReadinessMessage()).toBe('resolving the Secret');
+    });
+  });
+
+  describe('conditions', () => {
+    it('lists the conditions as the controller wrote them', () => {
+      const conditions = [
+        condition('ResolvedRefs', 'False', 'Secret kagent/key not found'),
+        condition('Accepted', 'True'),
+      ];
+      expect(makeModelConfig(conditions).getConditions()).toEqual(conditions);
+      expect(makeModelConfig().getConditions()).toEqual([]);
+    });
+
+    it('is stale only when the reconciled generation is known and behind', () => {
+      const accepted = [condition('Accepted', 'True')];
+      expect(
+        makeModelConfig(accepted, {
+          generation: 2,
+          observedGeneration: 1,
+        }).isStale(),
+      ).toBe(true);
+      expect(makeModelConfig(accepted).isStale()).toBe(false);
+      // No recorded generation (a default parameter would fill `undefined`).
+      const unrecorded = makeModelConfig(accepted, { generation: 2 });
+      delete unrecorded.jsonData.status!.observedGeneration;
+      expect(unrecorded.isStale()).toBe(false);
+    });
   });
 
   describe('readiness', () => {

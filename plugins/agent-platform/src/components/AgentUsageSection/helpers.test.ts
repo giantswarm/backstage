@@ -3,7 +3,10 @@ import { AgentRow } from '../AgentsDataProvider';
 import {
   fillMissingDays,
   hasAnyUsage,
+  narrowDaily,
+  sessionCountForWindow,
   sortUsageRows,
+  sumDaily,
   toByAgentRows,
 } from './helpers';
 
@@ -87,6 +90,24 @@ describe('toByAgentRows', () => {
     expect(row.agentName).toBe('Unattributed');
     expect(row.href).toBeUndefined();
   });
+
+  it('carries a reported cost, and leaves an unreported one undefined', () => {
+    const [reported, unreported, unattributed] = toByAgentRows(
+      [
+        { ...entry, costUsd: 0.4 },
+        entry,
+        { ...entry, agentId: null, costUsd: 0.1 },
+      ],
+      'gazelle',
+      [agent()],
+      hrefFor,
+      'Unattributed',
+    );
+
+    expect(reported.costUsd).toBe(0.4);
+    expect(unreported).not.toHaveProperty('costUsd');
+    expect(unattributed.costUsd).toBe(0.1);
+  });
 });
 
 describe('fillMissingDays', () => {
@@ -121,6 +142,164 @@ describe('fillMissingDays', () => {
   it('leaves an unparseable first day alone rather than inventing a range', () => {
     const sparse = [day('not-a-date', 5)];
     expect(fillMissingDays(sparse, 3)).toBe(sparse);
+  });
+});
+
+describe('narrowDaily', () => {
+  const NOW = Date.parse('2026-09-04T12:00:00Z');
+  const day = (d: string, turns = 1): UsageDayEntry => ({
+    day: d,
+    inputTokens: 100,
+    outputTokens: 10,
+    turns,
+  });
+
+  it('keeps the last N UTC days, today included', () => {
+    const daily = [
+      day('2026-08-20'),
+      day('2026-08-29'), // the cutoff day itself, 7 days back incl. today
+      day('2026-09-04'),
+    ];
+
+    expect(narrowDaily(daily, 7, NOW).map(entry => entry.day)).toEqual([
+      '2026-08-29',
+      '2026-09-04',
+    ]);
+  });
+
+  it('drops the day just outside the window', () => {
+    const daily = [day('2026-08-28'), day('2026-08-29')];
+
+    expect(narrowDaily(daily, 7, NOW).map(entry => entry.day)).toEqual([
+      '2026-08-29',
+    ]);
+  });
+
+  it('returns nothing for a non-positive window', () => {
+    expect(narrowDaily([day('2026-09-04')], 0, NOW)).toEqual([]);
+  });
+});
+
+describe('sumDaily', () => {
+  it('totals the figures the daily buckets carry', () => {
+    expect(
+      sumDaily([
+        {
+          day: '2026-09-03',
+          inputTokens: 100,
+          outputTokens: 10,
+          turns: 2,
+          toolCalls: 4,
+          lastActiveSessions: 1,
+        },
+        {
+          day: '2026-09-04',
+          inputTokens: 50,
+          outputTokens: 5,
+          turns: 1,
+          toolCalls: 1,
+          lastActiveSessions: 2,
+        },
+      ]),
+    ).toEqual({
+      turns: 3,
+      inputTokens: 150,
+      outputTokens: 15,
+      sessions: 3,
+      toolCalls: 5,
+    });
+  });
+
+  it('leaves sessions and tool calls unknown when a day does not report them', () => {
+    expect(
+      sumDaily([
+        { day: '2026-09-03', inputTokens: 100, outputTokens: 10, turns: 2 },
+        {
+          day: '2026-09-04',
+          inputTokens: 50,
+          outputTokens: 5,
+          turns: 1,
+          toolCalls: 1,
+          lastActiveSessions: 1,
+        },
+      ]),
+    ).toEqual({
+      turns: 3,
+      inputTokens: 150,
+      outputTokens: 15,
+      sessions: undefined,
+      toolCalls: undefined,
+    });
+  });
+
+  it('totals an empty window to zeros', () => {
+    expect(sumDaily([])).toEqual({
+      turns: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      sessions: 0,
+      toolCalls: 0,
+    });
+  });
+});
+
+describe('sessionCountForWindow', () => {
+  const NOW = Date.parse('2026-09-04T12:00:00Z');
+  const usage = {
+    windowDays: 30,
+    totals: { sessions: 15 },
+    daily: [
+      {
+        day: '2026-08-20',
+        inputTokens: 0,
+        outputTokens: 0,
+        turns: 3,
+        lastActiveSessions: 11,
+      },
+      {
+        day: '2026-09-01',
+        inputTokens: 0,
+        outputTokens: 0,
+        turns: 2,
+        lastActiveSessions: 3,
+      },
+      {
+        day: '2026-09-04',
+        inputTokens: 0,
+        outputTokens: 0,
+        turns: 1,
+        lastActiveSessions: 1,
+      },
+    ],
+  } as never;
+
+  it("counts a narrower selection's sessions from the days", () => {
+    expect(sessionCountForWindow(usage, 7, NOW)).toEqual({ days: 7, count: 4 });
+  });
+
+  it("takes the backend's total, and names its window, for a wider one", () => {
+    expect(sessionCountForWindow(usage, 90, NOW)).toEqual({
+      days: 30,
+      count: 15,
+    });
+  });
+});
+
+describe('fillMissingDays past today', () => {
+  it('draws no bar for a day that has not begun', () => {
+    // A 7-day cut holds 7 day keys; filling 7 + 1 from its first drew
+    // tomorrow (QA round 1).
+    const NOW = Date.parse('2026-09-04T12:00:00Z');
+    const filled = fillMissingDays(
+      [
+        { day: '2026-08-29', inputTokens: 0, outputTokens: 0, turns: 0 },
+        { day: '2026-09-04', inputTokens: 0, outputTokens: 0, turns: 0 },
+      ],
+      7,
+      NOW,
+    );
+    expect(filled[filled.length - 1].day).toBe('2026-09-04');
+    expect(filled).toHaveLength(7);
   });
 });
 

@@ -5,6 +5,12 @@ when an installation configures `app.telemetrydeck`, and nothing otherwise. Each
 signal carries a salted, hashed user identifier, never the user's name or email,
 and the portal's release version.
 
+An installation turns telemetry on with its own `app.telemetrydeck.appID`. The
+base config leaves the app ID empty; a portal started with `app.telemetrydeck`
+set and an empty app ID sends no usage data and its backend logs one warning at
+startup saying so. `app.telemetrydeck: null` turns telemetry off without the
+warning.
+
 ## Page views
 
 Every navigation sends one `pageview` signal with the page's name (for example
@@ -20,13 +26,19 @@ nothing.
 
 <!-- portal-events:start -->
 
-| Event                           | When                                                                                              | Attributes and their only possible values                    |
-| ------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `AgentPlatform.agentCreated`    | An agent was created in the Agent Platform, deployed live or committed to Git as a pull request.  | `mode`: `deploy`, `commit`                                   |
-| `AgentPlatform.sessionStarted`  | A session with an agent was started.                                                              | `entryPoint`: `sessionsList`, `agentDetail`, `sessionDetail` |
-| `AgentPlatform.clusterCreated`  | A workload cluster was created through cluster-manager, applied live or committed to Git.         | `mode`: `apply`, `commit`                                    |
-| `AgentPlatform.nodePoolCreated` | A GPU node pool was added to a cluster through cluster-manager, applied live or committed to Git. | `mode`: `apply`, `commit`                                    |
-| `Muster.mcpServerAdded`         | An MCP server was registered in muster through the wizard.                                        | `authMode`: `none`, `own-account`, `platform-sso`, `sigv4`   |
+| Event                                | When                                                                                                                                                                   | Attributes and their only possible values                                                                                                                                                |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AgentPlatform.agentCreated`         | An agent was created in the Agent Platform, deployed live or committed to Git as a pull request.                                                                       | `mode`: `deploy`, `commit`                                                                                                                                                               |
+| `AgentPlatform.agentUpdated`         | An agent's configuration was changed in the Agent Platform — edited, or its skills moved to their latest commits — applied live or committed to Git as a pull request. | `mode`: `apply`, `commit`; `change`: `edited`, `skillsRefreshed`                                                                                                                         |
+| `AgentPlatform.sessionStarted`       | A session with an agent was started.                                                                                                                                   | `entryPoint`: `sessionsList`, `agentDetail`, `sessionDetail`, `home`, `skillDetail`, `createAgentAssist`, `searchPalette`, `skillCreationAssist`, `workflowEdit`, `workflowCreateAssist` |
+| `AgentPlatform.sessionPinChanged`    | A session was pinned to, or unpinned from, the top of the person's session lists.                                                                                      | `change`: `pinned`, `unpinned`                                                                                                                                                           |
+| `AgentPlatform.agentFavoriteChanged` | An agent was added to, or removed from, the person's favorites.                                                                                                        | `change`: `added`, `removed`                                                                                                                                                             |
+| `AgentPlatform.toolActivityChanged`  | The session page's tool activity was shown or hidden, a choice kept for the person's later sessions.                                                                   | `change`: `shown`, `hidden`                                                                                                                                                              |
+| `AgentPlatform.skillProposed`        | A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.                                     | `kind`: `created`, `updated`                                                                                                                                                             |
+| `AgentPlatform.clusterCreated`       | A workload cluster was created through cluster-manager, applied live or committed to Git.                                                                              | `mode`: `apply`, `commit`                                                                                                                                                                |
+| `AgentPlatform.nodePoolCreated`      | A GPU node pool was added to a cluster through cluster-manager, applied live or committed to Git.                                                                      | `mode`: `apply`, `commit`                                                                                                                                                                |
+| `Scaffolder.taskStarted`             | A software template was submitted and its task started.                                                                                                                |                                                                                                                                                                                          |
+| `Muster.mcpServerAdded`              | An MCP server was registered in muster through the wizard.                                                                                                             | `authMode`: `none`, `own-account`, `platform-sso`, `sigv4`                                                                                                                               |
 
 <!-- portal-events:end -->
 

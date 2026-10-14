@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { isListableSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { AgentRow } from '../components/AgentsDataProvider';
@@ -60,14 +61,16 @@ export function useAgentSessions(
 
   const {
     data: sessions,
-    isLoading,
     isError,
+    isPending,
+    fetchStatus,
   } = useQuery({
     // Same key as SessionsDataProvider, deliberately — see the note above.
     queryKey: sessionsQueryKey(installation),
     queryFn: () => kagentApi.listSessions(installation),
     enabled: Boolean(installation),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   // kagent identifies an agent by an encoded `namespace/name`. Match on the
   // encode side rather than decoding kagent's id, because encoding is lossless

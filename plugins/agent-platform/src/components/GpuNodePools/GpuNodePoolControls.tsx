@@ -1,7 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import { Button } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import type { InstallationScope } from '@giantswarm/backstage-plugin-gs';
+import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerAvailability,
@@ -12,23 +18,24 @@ import {
   type GpuNodePoolRow,
   type ModelCacheRow,
 } from '../../hooks/useClusterManager';
+import {
+  useHostingFlowOutcome,
+  useOpenHostingFlow,
+} from '../../hooks/useHostingFlow';
+import { useNodeSizePrices } from '../../hooks/useNodeSizePrices';
 import { useServeIntentRunner } from '../../hooks/useServeIntentRunner';
 import { useServeIntents } from '../../hooks/useServeIntents';
 import {
   CLUSTER_MANAGER_TOOLS,
   type NodePoolWriteResult,
 } from '../../lib/clusterManager';
-import {
-  poolIdOf,
-  servedModelOf,
-  type ServeChoice,
-} from '../../lib/serveIntent';
+import { addGpuNodePoolRouteRef } from '../../routes';
+import { poolIdOf, servedModelOf } from '../../lib/serveIntent';
 import type { ServedModel } from '../../lib/serving';
 import {
   HIDE_INSTALLATION,
   isSoleInstallation,
 } from '../../lib/soleInstallation';
-import { AddGpuNodePoolDialog } from './AddGpuNodePoolDialog';
 import { GpuNodePoolsPanel } from './GpuNodePoolsPanel';
 import { ModelCachePanel } from './ModelCachePanel';
 import type { OpenedPool, PoolServeState } from './PoolLifecyclePanel';
@@ -39,9 +46,19 @@ export type GpuNodePoolControls = {
   /** Some reachable installation's muster lists cluster-manager. */
   available: boolean;
   isLoading: boolean;
-  /** The **Add GPU node pool** button, for the page header or an empty state. */
+  /** The **Add GPU node pool** button, for an empty state. */
   addButton: JSX.Element | undefined;
-  /** The Add and Remove dialogs; render once, anywhere in the page. */
+  /**
+   * **Add GPU node pool** as a page header's action (`ModelHostingActions`):
+   * offered while the installations are read too, disabled until one lists
+   * cluster-manager, and disabled with a reason where none of them has a
+   * cluster; `undefined` where none lists cluster-manager. Opens the flow's
+   * page.
+   */
+  addAction:
+    | { open: () => void; isDisabled: boolean; disabledReason?: string }
+    | undefined;
+  /** The Remove dialogs (pool, cache); render once, anywhere in the page. */
   dialogs: JSX.Element | undefined;
   /** The pools list with **Remove pool**; null where cluster-manager is absent. */
   panel: JSX.Element | undefined;
@@ -52,6 +69,37 @@ export type GpuNodePoolControls = {
    */
   cachePanel: JSX.Element | undefined;
 };
+
+/**
+ * Why Add GPU node pool is disabled when every environment that runs
+ * cluster-manager answered with no cluster: the flow could not succeed.
+ */
+export const NO_CLUSTER_REASON =
+  'No environment in reach has a cluster to add a GPU node pool to.';
+
+/**
+ * The router-state key under which Add GPU node pool hands the pool it
+ * deployed to the GPU pools view, which opens the pool's lifecycle panel on
+ * it (`useHostingFlowOutcome`).
+ */
+export const OPENED_POOL_KEY = 'openedPool';
+
+/** How long the cache-removal toast stays, as the other hosting toasts. */
+const TOAST_TIMEOUT_MS = 6000;
+
+/** An {@link OpenedPool} as the router state carries it, or `undefined`. */
+function parseOpenedPool(value: unknown): OpenedPool | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const pool = value as Partial<OpenedPool>;
+  return typeof pool.id === 'string' &&
+    typeof pool.installation === 'string' &&
+    typeof pool.cluster === 'string' &&
+    typeof pool.poolName === 'string'
+    ? (pool as OpenedPool)
+    : undefined;
+}
 
 /** The row id `useGpuNodePools` gives the pool Deploy just applied. */
 export function openedPoolOf(
@@ -70,12 +118,13 @@ export function openedPoolOf(
  * The GPU node pool controls the Models pages share (GPU capacity, Serving):
  * feature-detected per installation through the person's muster session —
  * where no reachable installation lists cluster-manager, nothing is offered.
- * Deploy closes into the pool's lifecycle panel, an accepted Remove into the
- * teardown in the same panel; a row's chevron opens it later. A preset chosen
- * on the Add form is the pool's serve intent: kept per pool in the browser
- * and served through model-manager as the person once the pool's stack is
- * ready (`useServeIntentRunner`), shown as the panel's last step; Remove
- * clears it.
+ * **Add GPU node pool** opens its own page (`AddGpuNodePoolPage`), whose
+ * Deploy lands back here on the pool's lifecycle panel ({@link
+ * OPENED_POOL_KEY}); an accepted Remove opens the teardown in the same panel;
+ * a row's chevron opens it later. A preset chosen on the Add form is the
+ * pool's serve intent: kept per pool in the browser and served through
+ * model-manager as the person once the pool's stack is ready
+ * (`useServeIntentRunner`), shown as the panel's last step; Remove clears it.
  */
 export function useGpuNodePoolControls(
   installations: string[],
@@ -84,10 +133,12 @@ export function useGpuNodePoolControls(
 ): GpuNodePoolControls {
   const availability = useClusterManagerAvailability(installations);
   const pools = useGpuNodePools(availability.available);
-  const [addOpen, setAddOpen] = useState(false);
+  // What each pool's nodes cost per hour, from cluster-manager's list prices.
+  const prices = useNodeSizePrices(pools.rows);
   const [removing, setRemoving] = useState<GpuNodePoolRow>();
   const [removingCache, setRemovingCache] = useState<ModelCacheRow>();
-  const [opened, setOpened] = useState<OpenedPool>();
+  const deployed = useHostingFlowOutcome(OPENED_POOL_KEY, parseOpenedPool);
+  const [opened, setOpened] = useState<OpenedPool | undefined>(deployed);
   const write = useNodePoolWrite(removing?.installation);
   const cacheWrite = useNodePoolWrite(removingCache?.installation);
   const { info } = useClusterManagerInfo(removing?.installation);
@@ -120,26 +171,6 @@ export function useGpuNodePoolControls(
     (row: ModelCacheRow) => setRemovingCache(row),
     [],
   );
-  // Deploy closes into the lifecycle panel of the pool it applied; the preset
-  // it chose to serve becomes the pool's intent (a Deploy without one clears
-  // an older pool's, so a re-created pool never inherits a choice).
-  const onDeployed = useCallback(
-    (
-      result: NodePoolWriteResult,
-      installation: string,
-      serve?: ServeChoice,
-    ) => {
-      const pool = openedPoolOf(installation, result);
-      setOpened(pool);
-      if (serve) {
-        intents.record(pool, serve);
-      } else {
-        intents.remove([pool.id]);
-      }
-      setAddOpen(false);
-    },
-    [intents],
-  );
   // Remove closes into the teardown: the panel shows the objects going until
   // list_node_pools no longer lists the pool. The intent goes with the pool.
   const onRemoved = useCallback(
@@ -156,6 +187,18 @@ export function useGpuNodePoolControls(
     },
     [intents],
   );
+  // A removed cache simply leaves the list, so a toast is its one
+  // confirmation (a pool closes into its teardown panel instead).
+  const toastApi = useApi(toastApiRef);
+  const onCacheRemoved = useCallback(
+    (row: ModelCacheRow) =>
+      toastApi.post({
+        title: `Removed the model cache ${row.claim.name} on ${row.cluster.name}`,
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      }),
+    [toastApi],
+  );
   const onToggleLifecycle = useCallback(
     (row: GpuNodePoolRow) =>
       setOpened(current =>
@@ -171,6 +214,13 @@ export function useGpuNodePoolControls(
     [],
   );
   const onCloseLifecycle = useCallback(() => setOpened(undefined), []);
+  const openFlow = useOpenHostingFlow();
+  const addPoolRoute = useRouteRef(addGpuNodePoolRouteRef);
+  const openAdd = useCallback(() => {
+    if (addPoolRoute) {
+      openFlow(addPoolRoute());
+    }
+  }, [openFlow, addPoolRoute]);
   const available = availability.available.length > 0;
   // While the installations' server lists are read the cards and the button
   // are in place already, their contents reading: nothing appears later
@@ -191,6 +241,28 @@ export function useGpuNodePoolControls(
     ? HIDE_INSTALLATION
     : undefined;
 
+  // Every installation with cluster-manager answered, and none has a cluster
+  // to add a pool to: the flow cannot succeed, so the action says why
+  // instead of opening it. An installation whose read failed gets the
+  // benefit of the doubt.
+  const noCluster =
+    available &&
+    !pools.isLoading &&
+    availability.available.every(installation =>
+      pools.clusterless.includes(installation),
+    );
+  const addAction = useMemo(
+    () =>
+      shown
+        ? {
+            open: openAdd,
+            isDisabled: !available || noCluster,
+            ...(noCluster ? { disabledReason: NO_CLUSTER_REASON } : {}),
+          }
+        : undefined,
+    [shown, openAdd, available, noCluster],
+  );
+
   // The opened pool's intent, as the panel shows it.
   const serve = useMemo<PoolServeState | undefined>(() => {
     const intent = opened ? intents.intentOf(opened.id) : undefined;
@@ -205,27 +277,38 @@ export function useGpuNodePoolControls(
     };
   }, [opened, intents, servedModels, runner]);
 
+  // Without a cluster to add to, the button says why instead of opening it.
+  const addButton = noCluster ? (
+    <DisabledAction reason={NO_CLUSTER_REASON}>
+      {describedBy => (
+        <Button
+          variant="secondary"
+          iconStart={<AddIcon />}
+          isDisabled
+          aria-describedby={describedBy}
+        >
+          Add GPU node pool
+        </Button>
+      )}
+    </DisabledAction>
+  ) : (
+    <Button
+      variant="secondary"
+      iconStart={<AddIcon />}
+      onPress={openAdd}
+      isDisabled={!available}
+    >
+      Add GPU node pool
+    </Button>
+  );
+
   return {
     available,
     isLoading: availability.isLoading,
-    addButton: shown ? (
-      <Button
-        variant="secondary"
-        iconStart={<AddIcon />}
-        onPress={() => setAddOpen(true)}
-        isDisabled={!available}
-      >
-        Add GPU node pool
-      </Button>
-    ) : undefined,
+    addButton: shown ? addButton : undefined,
+    addAction,
     dialogs: available ? (
       <>
-        <AddGpuNodePoolDialog
-          installations={availability.available}
-          isOpen={addOpen}
-          onOpenChange={setAddOpen}
-          onDeployed={onDeployed}
-        />
         <RemoveGpuNodePoolDialog
           row={removing}
           isOpen={Boolean(removing)}
@@ -253,6 +336,7 @@ export function useGpuNodePoolControls(
           }}
           write={cacheWrite}
           servedModels={servedModels}
+          onRemoved={onCacheRemoved}
         />
       </>
     ) : undefined,
@@ -268,6 +352,7 @@ export function useGpuNodePoolControls(
         onToggleLifecycle={onToggleLifecycle}
         onCloseLifecycle={onCloseLifecycle}
         hideColumns={hideColumns}
+        prices={prices}
       />
     ) : undefined,
     cachePanel: shown ? (

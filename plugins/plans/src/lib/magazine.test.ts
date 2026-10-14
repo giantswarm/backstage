@@ -1,6 +1,6 @@
 import {
   docTitle,
-  historyWindowFromParam,
+  HIVE_HISTORY_WINDOW,
   isPortalPath,
   knowledgeDocs,
   Lane,
@@ -19,11 +19,10 @@ describe('magazine helpers', () => {
     expect(magazineFile('weeks')).toBe('magazine/history-weeks.json');
   });
 
-  it('reads the history window from the query, defaulting to days', () => {
-    expect(historyWindowFromParam('months')).toBe('months');
-    expect(historyWindowFromParam('weeks')).toBe('weeks');
-    expect(historyWindowFromParam(null)).toBe('days');
-    expect(historyWindowFromParam('years')).toBe('days');
+  it('reads the three weeks of history', () => {
+    expect(magazineFile(HIVE_HISTORY_WINDOW)).toBe(
+      'magazine/history-weeks.json',
+    );
   });
 
   it('orders lanes by priority', () => {

@@ -9,11 +9,19 @@ import {
 import { compatWrapper } from '@backstage/core-compat-api';
 import { useApiHolder } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { NavContentBlueprint } from '@backstage/plugin-app-react';
+import {
+  NavContentBlueprint,
+  NavContentComponentProps,
+} from '@backstage/plugin-app-react';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
+import type { Portals } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { useLocation } from 'react-router-dom';
 import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
+import { AgentShellNav } from '../agentShell/AgentShellNav';
+import { isAgentArea, usePortals } from '../agentShell/agentArea';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
+import AndroidIcon from '@material-ui/icons/Android';
 import FolderIcon from '@material-ui/icons/Folder';
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
@@ -72,9 +80,8 @@ function ClusterAccessSidebarItem({ mobile }: { mobile: boolean }) {
 
 /**
  * *Create…*: where the catalog's `createComponent` external route points
- * (`app.routes.bindings`) -- the scaffolder's templates by default, the
- * Repositories page's declaration form where a deployment binds
- * `repositories.create`. Shown only when something is bound.
+ * (`app.routes.bindings`), else the scaffolder page when it is enabled.
+ * Hidden when there is neither.
  */
 function CreateSidebarItem({ fallback }: { fallback?: string }) {
   const createLink = useRouteRef(catalogPlugin.externalRoutes.createComponent);
@@ -85,94 +92,136 @@ function CreateSidebarItem({ fallback }: { fallback?: string }) {
   return <SidebarItem icon={CreateComponentIcon} to={to} text="Create..." />;
 }
 
+function ClassicSidebar({
+  navItems,
+  portals,
+}: {
+  navItems: NavContentComponentProps['navItems'];
+  portals: Portals;
+}) {
+  const searchItem = navItems.take('page:search');
+  const catalogItem = navItems.take('page:catalog');
+  const scaffolderItem = navItems.take('page:scaffolder');
+  const nav = navItems.withComponent(item => (
+    <SidebarItem
+      icon={() => <NavItemIcon>{item.icon}</NavItemIcon>}
+      to={item.href}
+      text={item.title}
+    />
+  ));
+
+  // The Agent Platform lives in its own shell only (its pages carry
+  // `AGENT_SHELL_ON`). With the shell available, the classic portal's one
+  // trace of it is this cross-link into the shell, in a new tab so the
+  // classic portal stays where it is; on an agent-only deployment the classic
+  // pages are reachable by URL alone, and this entry is the way back — in the
+  // same tab, as there is no portal to keep open. Without the shell there is
+  // no entry at all, whatever `app.extensions` lists: the page's own nav item
+  // is never drawn here.
+  nav.take('page:agent-platform');
+  const agentPlatformEntry = portals.agentPlatform ? (
+    <SidebarItem
+      key="agent-platform"
+      icon={AndroidIcon}
+      to="/agent-platform"
+      target={portals.platformPortal ? '_blank' : undefined}
+      text="Agent Platform"
+    />
+  ) : null;
+
+  const group1 = [
+    nav.take('page:home'),
+    catalogItem && (
+      <SidebarItem
+        key="catalog"
+        icon={FolderIcon}
+        to="catalog"
+        text="Catalog"
+      />
+    ),
+    nav.take('page:techdocs'),
+  ].filter(Boolean);
+
+  const group2 = [
+    nav.take('page:gs/deployments'),
+    nav.take('page:gs/clusters'),
+    nav.take('page:gs/installations'),
+    nav.take('page:flux'),
+    agentPlatformEntry,
+    nav.take('page:repositories'),
+    nav.take('page:bot-prs'),
+  ].filter(Boolean);
+
+  // Product: Hive, what the teams plan, build and learned, in one place.
+  // The old Plans, Roadmap and Magazine pages are redirects into it and
+  // carry no nav item of their own.
+  const productGroup = [nav.take('page:plans')].filter(Boolean);
+
+  const group3 = [
+    <AiChatSidebarItem key="ai-chat" />,
+    <CreateSidebarItem
+      key="create"
+      fallback={scaffolderItem ? 'create' : undefined}
+    />,
+  ];
+
+  const menuGroups = [group1, group2, productGroup, group3].filter(
+    g => g.length > 0,
+  );
+
+  return compatWrapper(
+    <>
+      <ClusterAccessConnector />
+      <Sidebar>
+        <SidebarLogo portals={portals} />
+
+        {searchItem && (
+          <SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
+            <SidebarSearchModal />
+          </SidebarGroup>
+        )}
+        <SidebarGroup label="Menu" icon={<MenuIcon />}>
+          {menuGroups.flatMap((group, i) => [
+            <SidebarDivider key={`divider-${i}`} />,
+            ...group,
+          ])}
+          <ClusterAccessSidebarItem mobile />
+        </SidebarGroup>
+        <SidebarSpace />
+        <SidebarDivider />
+        <ClusterAccessSidebarItem mobile={false} />
+        <SidebarDivider />
+        <SidebarGroup
+          label="Settings"
+          icon={<UserSettingsSignInAvatar />}
+          to="/settings"
+        >
+          <SidebarSettings />
+        </SidebarGroup>
+      </Sidebar>
+    </>,
+  );
+}
+
+/**
+ * The app's one nav (`AppNav` takes its content as a singleton): the agent
+ * shell's rail on the agent area's routes while the Agent Platform is
+ * available (`app.portals`, or the person's opt-in flag), the classic sidebar
+ * everywhere else — and, without the Agent Platform, everywhere. Decided per
+ * location at render time, in step with the layout extension's choice of
+ * content region.
+ */
+function AppNavContent({ navItems }: NavContentComponentProps) {
+  const portals = usePortals();
+  const { pathname } = useLocation();
+  if (portals.agentPlatform && isAgentArea(pathname)) {
+    return <AgentShellNav />;
+  }
+  return <ClassicSidebar navItems={navItems} portals={portals} />;
+}
+
 export const SidebarContent = NavContentBlueprint.make({
   params: {
-    component: ({ navItems }) => {
-      const searchItem = navItems.take('page:search');
-      const catalogItem = navItems.take('page:catalog');
-      const scaffolderItem = navItems.take('page:scaffolder');
-      const nav = navItems.withComponent(item => (
-        <SidebarItem
-          icon={() => <NavItemIcon>{item.icon}</NavItemIcon>}
-          to={item.href}
-          text={item.title}
-        />
-      ));
-
-      const group1 = [
-        nav.take('page:home'),
-        catalogItem && (
-          <SidebarItem
-            key="catalog"
-            icon={FolderIcon}
-            to="catalog"
-            text="Catalog"
-          />
-        ),
-        nav.take('page:techdocs'),
-      ].filter(Boolean);
-
-      const group2 = [
-        nav.take('page:gs/deployments'),
-        nav.take('page:gs/clusters'),
-        nav.take('page:gs/installations'),
-        nav.take('page:flux'),
-        nav.take('page:agent-platform'),
-        nav.take('page:repositories'),
-        nav.take('page:bot-prs'),
-      ].filter(Boolean);
-
-      // Product: what the teams plan, build and learned, side by side.
-      const productGroup = [
-        nav.take('page:plans'),
-        nav.take('page:roadmap'),
-        nav.take('page:plans/magazine'),
-      ].filter(Boolean);
-
-      const group3 = [
-        <AiChatSidebarItem key="ai-chat" />,
-        <CreateSidebarItem
-          key="create"
-          fallback={scaffolderItem ? 'create' : undefined}
-        />,
-      ];
-
-      const menuGroups = [group1, group2, productGroup, group3].filter(
-        g => g.length > 0,
-      );
-
-      return compatWrapper(
-        <>
-          <ClusterAccessConnector />
-          <Sidebar>
-            <SidebarLogo />
-
-            {searchItem && (
-              <SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
-                <SidebarSearchModal />
-              </SidebarGroup>
-            )}
-            <SidebarGroup label="Menu" icon={<MenuIcon />}>
-              {menuGroups.flatMap((group, i) => [
-                <SidebarDivider key={`divider-${i}`} />,
-                ...group,
-              ])}
-              <ClusterAccessSidebarItem mobile />
-            </SidebarGroup>
-            <SidebarSpace />
-            <SidebarDivider />
-            <ClusterAccessSidebarItem mobile={false} />
-            <SidebarDivider />
-            <SidebarGroup
-              label="Settings"
-              icon={<UserSettingsSignInAvatar />}
-              to="/settings"
-            >
-              <SidebarSettings />
-            </SidebarGroup>
-          </Sidebar>
-        </>,
-      );
-    },
+    component: AppNavContent,
   },
 });

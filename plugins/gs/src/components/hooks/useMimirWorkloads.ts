@@ -1,12 +1,7 @@
 import { useMemo } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
-import {
-  kubernetesApiRef,
-  kubernetesAuthProvidersApiRef,
-} from '@backstage/plugin-kubernetes-react';
-import { useQueries } from '@tanstack/react-query';
-import { mimirApiRef, MimirMetricSample } from '../../apis/mimir';
-import { useInstallations } from '../../apis/installations';
+import { keepPreviousData, useQueries } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import { MimirMetricSample } from '../../apis/mimir';
 import {
   KubeDeploymentSpecReplicas,
   KubeDeploymentStatusReplicasReady,
@@ -21,6 +16,10 @@ import {
   KubeStatefulsetCreated,
   KubeDaemonsetCreated,
 } from '../../apis/mimir/metrics';
+import { mimirQueryRetry } from './mimirRetry';
+import { sanitizePromQLValue } from './promql';
+import { useMimirInstallations } from './useMimirInstallations';
+import { useMimirQueryFn } from './useMimirQueryFn';
 
 export type WorkloadKind = 'deployment' | 'statefulset' | 'daemonset';
 
@@ -111,8 +110,17 @@ const WORKLOAD_NOISE_LABELS = [
   'service_priority',
 ];
 
-function wrapWithout(metric: string): string {
-  return `max without(${WORKLOAD_NOISE_LABELS.join(', ')}) (${metric})`;
+/**
+ * The query for one workload metric, scoped to the given clusters: a metric
+ * with no `cluster_id` selector aggregates over every cluster and workload of
+ * the installation, which is what times Mimir out under load.
+ */
+export function buildWorkloadQuery(
+  metric: string,
+  clusterIds: string[],
+): string {
+  const ids = clusterIds.map(sanitizePromQLValue).join('|');
+  return `max without(${WORKLOAD_NOISE_LABELS.join(', ')}) (${metric}{cluster_id=~"${ids}"})`;
 }
 
 interface QueryDef {
@@ -124,42 +132,38 @@ interface QueryDef {
   role: 'desired' | 'ready' | 'labels' | 'created';
 }
 
-function buildQueryDefs(installations: string[]): QueryDef[] {
+/** The clusters to query per installation: `cluster_id` values. */
+export type ClustersByInstallation = Record<string, string[]>;
+
+function buildQueryDefs(
+  clustersByInstallation: ClustersByInstallation,
+): QueryDef[] {
   const defs: QueryDef[] = [];
-  for (const installationName of installations) {
+  for (const [installationName, clusters] of Object.entries(
+    clustersByInstallation,
+  )) {
+    // Sorted and deduplicated, so the same clusters render the same query
+    // (and the same query key) whatever order the caller found them in.
+    const clusterIds = [...new Set(clusters)].sort();
+    if (clusterIds.length === 0) continue;
+
     for (const wm of WORKLOAD_METRICS) {
-      defs.push({
-        installationName,
-        metric: wm.desiredMetric,
-        query: wrapWithout(wm.desiredMetric),
-        kind: wm.kind,
-        nameLabel: wm.nameLabel,
-        role: 'desired',
-      });
-      defs.push({
-        installationName,
-        metric: wm.readyMetric,
-        query: wrapWithout(wm.readyMetric),
-        kind: wm.kind,
-        nameLabel: wm.nameLabel,
-        role: 'ready',
-      });
-      defs.push({
-        installationName,
-        metric: wm.labelsMetric,
-        query: wrapWithout(wm.labelsMetric),
-        kind: wm.kind,
-        nameLabel: wm.nameLabel,
-        role: 'labels',
-      });
-      defs.push({
-        installationName,
-        metric: wm.createdMetric,
-        query: wrapWithout(wm.createdMetric),
-        kind: wm.kind,
-        nameLabel: wm.nameLabel,
-        role: 'created',
-      });
+      const roles = [
+        ['desired', wm.desiredMetric],
+        ['ready', wm.readyMetric],
+        ['labels', wm.labelsMetric],
+        ['created', wm.createdMetric],
+      ] as const;
+      for (const [role, metric] of roles) {
+        defs.push({
+          installationName,
+          metric,
+          query: buildWorkloadQuery(metric, clusterIds),
+          kind: wm.kind,
+          nameLabel: wm.nameLabel,
+          role,
+        });
+      }
     }
   }
   return defs;
@@ -232,79 +236,65 @@ function mergeResults(
   return Array.from(workloadMap.values());
 }
 
-export function useMimirWorkloads(options: { installations: string[] }): {
+/**
+ * The workloads (Deployments, StatefulSets, DaemonSets) of the given clusters,
+ * read from each installation's Mimir.
+ *
+ * `clustersByInstallation` names the clusters to query per installation. It is
+ * `undefined` while the caller is still working out which clusters it shows:
+ * nothing is queried and `isLoading` is true.
+ */
+export function useMimirWorkloads(options: {
+  clustersByInstallation: ClustersByInstallation | undefined;
+}): {
   workloads: MimirWorkload[];
   isLoading: boolean;
   errors: Error[];
 } {
-  const { installations } = options;
+  const { clustersByInstallation } = options;
 
-  const mimirApi = useApi(mimirApiRef);
-  const kubernetesApi = useApi(kubernetesApiRef);
-  const kubernetesAuthProvidersApi = useApi(kubernetesAuthProvidersApiRef);
+  const queryMimir = useMimirQueryFn();
+
+  const installations = useMemo(
+    () => Object.keys(clustersByInstallation ?? {}),
+    [clustersByInstallation],
+  );
 
   // Installations without Mimir (`mimirEnabled: false`) are skipped entirely —
   // their queries could only fail, and the deployments list is complete
   // without metrics there. Until the installations config loads, no queries
   // are built and `isLoading` stays true.
-  const { installations: installationsConfig, isLoading: isLoadingConfig } =
-    useInstallations();
-  const mimirInstallations = useMemo(() => {
-    if (isLoadingConfig) {
-      return [];
-    }
-    const withoutMimir = new Set(
-      installationsConfig
-        .filter(({ mimirEnabled }) => mimirEnabled === false)
-        .map(({ name }) => name),
-    );
-    return installations.filter(name => !withoutMimir.has(name));
-  }, [installations, installationsConfig, isLoadingConfig]);
+  const { installations: mimirInstallations, isLoading: isLoadingConfig } =
+    useMimirInstallations(installations);
 
-  const queryDefs = useMemo(
-    () => buildQueryDefs(mimirInstallations),
-    [mimirInstallations],
-  );
+  const queryDefs = useMemo(() => {
+    if (!clustersByInstallation) return [];
+    const withMimir: ClustersByInstallation = {};
+    for (const installationName of mimirInstallations) {
+      withMimir[installationName] = clustersByInstallation[installationName];
+    }
+    return buildQueryDefs(withMimir);
+  }, [clustersByInstallation, mimirInstallations]);
 
   const queryResults = useQueries({
     queries: queryDefs.map(def => ({
       queryKey: ['mimir-workloads', def.installationName, def.query],
       queryFn: async (): Promise<MimirMetricSample[]> => {
-        const cluster = await kubernetesApi.getCluster(def.installationName);
-        if (!cluster) {
-          throw new Error(`Cluster ${def.installationName} not found`);
-        }
-
-        const authProvider =
-          cluster.authProvider === 'oidc'
-            ? `${cluster.authProvider}.${cluster.oidcTokenProvider}`
-            : cluster.authProvider;
-
-        const credentials =
-          await kubernetesAuthProvidersApi.getCredentials(authProvider);
-
-        if (!credentials.token) {
-          throw new Error(
-            `No OIDC token available for installation "${def.installationName}"`,
-          );
-        }
-
-        const response = await mimirApi.query({
-          installationName: def.installationName,
-          query: def.query,
-          oidcToken: credentials.token,
-        });
-
+        const response = await queryMimir(def.installationName, def.query);
         return response.data?.result ?? [];
       },
-      enabled: mimirInstallations.length > 0,
+      // The key holds the installation's cluster ids, so it changes as
+      // clusters come and go; the workloads already answered stay shown.
+      placeholderData: keepPreviousData,
       staleTime: 30_000,
+      retry: mimirQueryRetry,
     })),
   });
 
   const isLoading =
-    (installations.length > 0 && isLoadingConfig) ||
-    queryResults.some(q => q.isLoading);
+    clustersByInstallation === undefined ||
+    isLoadingConfig ||
+    queryResults.some(q => isAwaitingData(q));
 
   const errors = useMemo(
     () =>

@@ -137,6 +137,33 @@ describe('buildTimeline', () => {
     });
   });
 
+  it("reports the newest turn's own usage, without delegated usage", () => {
+    // The context indicator's numerator: what this turn's model calls were sent.
+    // The fixture's newest task is still working and has reported nothing, so
+    // the last *measured* turn is the first — and the subagent's 3100 tokens
+    // are its own session's context, so they are not in it.
+    const { lastTurnTokens } = timelineFor(kagentPrefixed);
+
+    expect(lastTurnTokens).toEqual({
+      total: 1420 + 890,
+      prompt: 1180 + 760,
+      completion: 240 + 130,
+    });
+  });
+
+  it('reports no last-turn usage when no turn reported any', () => {
+    expect(timelineFor(askUserPending).lastTurnTokens).toBeUndefined();
+  });
+
+  it("reads a claude Harness turn's usage as the newest turn's", () => {
+    expect(timelineFor(claudeHarness).lastTurnTokens).toEqual({
+      total: 71338,
+      prompt: 70958,
+      completion: 380,
+      costUsd: 0.13148115,
+    });
+  });
+
   it("counts a claude Harness turn's usage from the message its status carries", () => {
     // kagent 1.1: the Harness reports the turn's usage on the completed
     // status's message only, which a2a-go never moves into history.

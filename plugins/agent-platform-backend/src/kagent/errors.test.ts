@@ -3,7 +3,7 @@ import { Code, ConnectError } from '@connectrpc/connect';
 import { mapConnectError } from './errors';
 
 const logger = mockServices.logger.mock();
-const context = { missingResource: 'gone', endpoint: 'ListAgentInstances' };
+const context = { missingResource: 'gone', endpoint: 'ListSessions' };
 
 function map(error: ConnectError): Error {
   return mapConnectError(error, context, 'gazelle', logger, 1000);
@@ -65,5 +65,18 @@ describe('mapConnectError', () => {
       `kagent API denied a request for installation 'gazelle'`,
       { code: 'Unauthenticated', error: reason },
     );
+  });
+});
+
+describe('the reason an upstream failure carries', () => {
+  it.each([
+    [Code.DeadlineExceeded, 'timeout'],
+    [Code.Unavailable, 'unavailable'],
+    [Code.Internal, 'server-error'],
+  ])('%s is %s', (code, reason) => {
+    expect(map(new ConnectError('boom', code))).toMatchObject({
+      name: 'UpstreamError',
+      reason,
+    });
   });
 });

@@ -28,11 +28,12 @@ jest.mock('../CodeBlock', () => ({
 
 // The organizations and the cloud identities are read from the installation's
 // Kubernetes API; the dialog sees them as the kubernetes-react hook returns.
+let mockOrganizationNames = ['acme'];
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: (_installation: string, resourceClass: { kind: string }) => ({
     resources: (resourceClass.kind === 'Organization'
-      ? ['acme']
+      ? mockOrganizationNames
       : ['default-identity']
     ).map(name => ({ getName: () => name })),
     isLoading: false,
@@ -181,9 +182,15 @@ function makeMusterApi(scenario: Scenario = {}) {
 
 const analyticsApi = mockApis.analytics.mock();
 
-beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
+beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
+  mockOrganizationNames = ['acme'];
+});
 
-async function renderDialog(scenario: Scenario = {}) {
+async function renderDialog(
+  scenario: Scenario = {},
+  installations: string[] = ['inst-1'],
+) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -197,7 +204,7 @@ async function renderDialog(scenario: Scenario = {}) {
     >
       <QueryClientProvider client={queryClient}>
         <CreateClusterDialog
-          installations={['inst-1']}
+          installations={installations}
           isOpen
           onOpenChange={() => {}}
         />
@@ -267,7 +274,7 @@ describe('CreateClusterDialog', () => {
       await screen.findByText('Pull request #7 opened as jane'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /Open the pull request/ }),
+      screen.getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/acme/fleet/pull/7');
     expect(writesOf(callTool)).toEqual([
       [
@@ -340,6 +347,37 @@ describe('CreateClusterDialog', () => {
       await screen.findByText('Connect to cluster-manager'),
     ).toBeInTheDocument();
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('CreateClusterDialog · the selects at scale', () => {
+  // The dialog renders on the classic Clusters page, so its selects stay as on
+  // main: no type-ahead, however long the list.
+  it('keeps plain selects without a search over 300 organizations and 50 installations', async () => {
+    mockOrganizationNames = Array.from(
+      { length: 300 },
+      (_, i) => `org-${String(i).padStart(3, '0')}`,
+    );
+    const user = userEvent.setup();
+    await renderDialog(
+      {},
+      Array.from({ length: 50 }, (_, i) => `inst-${i + 1}`),
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: /Pick an organization/ }),
+    );
+    expect(
+      await screen.findByRole('option', { name: 'org-299' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: /^inst-1/ }));
+    expect(
+      await screen.findByRole('option', { name: 'inst-50' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
   });
 });
 

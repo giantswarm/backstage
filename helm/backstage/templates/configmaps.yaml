@@ -47,9 +47,11 @@ data:
 {{- /* The backend on the CNPG cluster: the image's base config pins
 better-sqlite3, so without this block the engine deploys a cluster the
 backend never uses. Schema division mode, because the CNPG `app` role may not
-CREATE DATABASE, which the default division mode requires. The deployment
-loads this file before appConfig and extraAppConfig, so an operator's
-database block still wins. */}}
+CREATE DATABASE, which the default division mode requires. TLS verified
+against the cluster's CA, mounted beside it: CNPG accepts plaintext clients.
+The deployment loads this file before appConfig and extraAppConfig, so an
+operator's database block still wins. The file is plain YAML so the backend's
+tests load it as the pod does. */}}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -61,13 +63,5 @@ metadata:
     {{- include "labels.backstage" $ | nindent 4 }}
 data:
   app-config-database.yaml: |
-    backend:
-      database:
-        client: pg
-        pluginDivisionMode: schema
-        connection:
-          host: ${POSTGRES_HOST}
-          port: ${POSTGRES_PORT}
-          user: ${POSTGRES_USER}
-          password: ${POSTGRES_PASSWORD}
+    {{- .Files.Get "files/app-config-database.yaml" | nindent 4 }}
 {{- end }}

@@ -5,6 +5,8 @@ export { gsPlugin } from './plugin';
 // Raw StepLayout component for scaffolder page override
 export { StepLayout } from './components/scaffolder/StepLayout/StepLayout';
 export { ReviewStep } from './components/scaffolder/ReviewStep';
+export { useStartTemplateTask } from './components/scaffolder/hooks/useStartTemplateTask';
+export { TemplateSignInError } from './apis/scaffolder/TemplateSignInError';
 
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
@@ -22,6 +24,7 @@ export {
 export {
   useInstallations,
   type InstallationConfig,
+  type InstallationCurrency,
   type UseInstallationsResult,
 } from './apis/installations';
 export { SignedInConfigLoader } from './components/SignedInConfigLoader';
@@ -77,6 +80,7 @@ export {
   useInstallationScopeUrlSync,
   applyInstallationScope,
   describeInstallationScopeOption,
+  installationsWithoutComponent,
   isPlatformInstallation,
   selectPlatformInstallations,
   setInstallationScope,

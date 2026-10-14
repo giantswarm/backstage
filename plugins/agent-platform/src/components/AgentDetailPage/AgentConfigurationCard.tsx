@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Box, Flex, Text } from '@backstage/ui';
+import { Box, Flex, Link as BuiLink, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
@@ -13,17 +13,16 @@ import {
 import {
   DateComponent,
   InfoCard,
+  MONO,
   NotAvailable,
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import type { ClientServingSummary } from '../../lib/serving';
-import { describeToolset } from '../../lib/toolset';
-import {
-  agentDetailRouteRef,
-  deploymentDetailsExternalRouteRef,
-} from '../../routes';
+import { bindsGateway, describeToolset } from '../../lib/toolset';
+import { deploymentDetailsExternalRouteRef } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { FailureMarker } from './FailureMarker';
 import {
@@ -31,9 +30,6 @@ import {
   isGatewayServerBinding,
   mcpBindingId,
 } from './helpers';
-
-/** Monospace for identifiers the reader may retype into `kubectl`. */
-const MONO: React.CSSProperties = { fontFamily: 'monospace' };
 
 /**
  * How the model is described: the ModelConfig's friendly name, with the model id
@@ -45,20 +41,28 @@ const MONO: React.CSSProperties = { fontFamily: 'monospace' };
  * Falls back to the bare reference when the ModelConfig cannot be read — which is
  * normal for a non-admin, since ModelConfigs live in namespaces they may not have
  * access to — rather than implying the agent has no model.
+ *
+ * The ModelConfig line opens the model's page, which says why a model is not
+ * accepted, where the ModelConfig could be read: otherwise the page could only
+ * say it cannot load it. Plain text too where the agent has no namespace to
+ * resolve it in.
  */
 function ModelValue({
   modelConfigName,
   modelConfig,
   modelServing,
+  installation,
   namespace,
   isFailing,
 }: {
   modelConfigName?: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
+  installation: string;
   namespace?: string;
   isFailing: boolean;
 }) {
+  const { modelDetail: modelDetailHref } = useCustomizePaths();
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <NotAvailable />;
   }
@@ -70,6 +74,10 @@ function ModelValue({
   // ModelConfig line below already shows it. The model itself leads instead,
   // still in monospace like every identifier here.
   const displayName = modelConfig?.getDisplayNameAnnotation();
+  const href =
+    modelConfig && namespace
+      ? modelDetailHref?.({ installation, namespace, name: modelConfigName })
+      : undefined;
 
   return (
     <Flex direction="column" gap="1">
@@ -87,9 +95,20 @@ function ModelValue({
       )}
       <Text variant="body-small" color="secondary">
         ModelConfig{' '}
-        <span style={MONO}>
-          {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
-        </span>
+        {href ? (
+          <BuiLink
+            href={href}
+            variant="body-small"
+            color="secondary"
+            style={MONO}
+          >
+            {`${namespace}/${modelConfigName}`}
+          </BuiLink>
+        ) : (
+          <span style={MONO}>
+            {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
+          </span>
+        )}
       </Text>
       {modelServing && <ModelServingStatus serving={modelServing} />}
       {isFailing && <FailureMarker />}
@@ -178,20 +197,19 @@ function ToolsValue({
   toolsHref?: string;
   isFailing: boolean;
 }) {
-  const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const mcpBindings = agent.getMcpBindings();
   const directBindings = mcpBindings.filter(
     binding => !isGatewayServerBinding(agent, binding),
   );
-  const hasGateway = directBindings.length < mcpBindings.length;
-  const agentRefs = agent.getAgentRefs();
+  const hasGateway = bindsGateway(agent);
+  const agentRefs = agent.getSubAgentBindings();
 
   if (mcpBindings.length === 0 && agentRefs.length === 0) {
     return (
       <Flex direction="column" gap="1">
         <Text variant="body-medium">No tools</Text>
         <Text variant="body-small" color="secondary">
-          The agent has nothing beyond its own reasoning.
+          It relies on its own reasoning alone.
         </Text>
       </Flex>
     );
@@ -215,30 +233,21 @@ function ToolsValue({
       ))}
 
       {agentRefs.map(ref => {
-        // Another template invoked over A2A. Same installation and namespace
-        // by definition — a binding cannot cross either — and `name` is what
-        // the agent calls the tool, `templateRef.name` the template behind it.
+        // A same-namespace AgentTemplate compiled into this agent's runtime.
+        // `name` is what the agent calls the tool, `templateRef.name` the
+        // template behind it; a template is not an agent, so there is no
+        // detail page to link.
         const namespace = agent.getNamespace() ?? '';
-        const target = ref.templateRef.name ?? ref.name;
-        const href = agentDetailRoute?.({
-          installation: agent.cluster,
-          namespace,
-          name: target,
-        });
+        const target = ref.templateRef.name;
 
         return (
           <Flex key={`agent/${ref.name}/${target}`} direction="column" gap="1">
             <Text variant="body-medium">
-              Agent{' '}
-              {href ? (
-                <Link to={href}>{`${namespace}/${target}`}</Link>
-              ) : (
-                <span style={MONO}>{`${namespace}/${target}`}</span>
-              )}
+              Sub-agent <span style={MONO}>{`${namespace}/${target}`}</span>
             </Text>
             <Text variant="body-small" color="secondary">
-              Called as the tool <span style={MONO}>{ref.name}</span> over A2A
-              {ref.isolation === 'Dedicated' ? ', in its own instance' : ''}
+              Called as the tool <span style={MONO}>{ref.name}</span>, running
+              inside this agent
             </Text>
           </Flex>
         );
@@ -286,6 +295,8 @@ function DeployedByValue({ agent }: { agent: Agent }) {
 
 export type AgentConfigurationCardProps = {
   agent: Agent;
+  /** The page's installation, as the overview's model fact links with it. */
+  installation: string;
   modelConfig?: ModelConfig;
   /** The serving layer's word on the model behind `modelConfig`, when it has one. */
   modelServing?: ClientServingSummary;
@@ -296,7 +307,7 @@ export type AgentConfigurationCardProps = {
 };
 
 /**
- * What the agent *is*, as its AgentTemplate defines it. Where it runs — the
+ * What the agent *is*, as its template defines it. Where it runs — the
  * installation, `namespace/name` — is in the page header and the Harness in
  * the Status card, so neither is repeated here.
  *
@@ -305,6 +316,7 @@ export type AgentConfigurationCardProps = {
  */
 export function AgentConfigurationCard({
   agent,
+  installation,
   modelConfig,
   modelServing,
   failure,
@@ -312,6 +324,7 @@ export function AgentConfigurationCard({
 }: AgentConfigurationCardProps) {
   const namespace = agent.getNamespace();
   const created = agent.getCreatedTimestamp();
+  const egress = agent.getEgress();
 
   const metadata: Record<string, ReactNode> = {
     Model: (
@@ -319,6 +332,7 @@ export function AgentConfigurationCard({
         modelConfigName={agent.getModelConfigName()}
         modelConfig={modelConfig}
         modelServing={modelServing}
+        installation={installation}
         namespace={namespace}
         isFailing={failure?.field === 'model'}
       />
@@ -330,6 +344,17 @@ export function AgentConfigurationCard({
         isFailing={failure?.field === 'tools'}
       />
     ),
+    ...(egress.length > 0 && {
+      'Extra egress': (
+        <Flex direction="column" gap="1">
+          {egress.map(origin => (
+            <Text key={origin} variant="body-medium" style={MONO}>
+              {origin}
+            </Text>
+          ))}
+        </Flex>
+      ),
+    }),
     Created: created ? (
       <DateComponent value={created} relative />
     ) : (

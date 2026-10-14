@@ -192,6 +192,14 @@ export const KubeNodeStatusAllocatable = {
   source: 'kube-state-metrics',
 } as const satisfies PrometheusMetric;
 
+export const KubeNodeStatusCapacity = {
+  name: 'kube_node_status_capacity',
+  description:
+    'Total resources of a node (CPU, memory, pods), before system reservations. The `resource` label indicates the resource type.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
 export const KubeNodeStatusCondition = {
   name: 'kube_node_status_condition',
   description:
@@ -381,6 +389,7 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   KubeDaemonsetCreated,
   KubeNodeLabels,
   KubeNodeStatusAllocatable,
+  KubeNodeStatusCapacity,
   KubeNodeStatusCondition,
   KubeNodeCreated,
   KubeletRunningPods,

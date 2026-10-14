@@ -11,7 +11,7 @@ import { ASGNodePoolConfiguration } from '../ASGNodePoolConfiguration';
 import { NodePoolConfiguration } from '../NodePoolConfiguration';
 import { NodePoolDetails } from '../NodePoolDetails';
 import { NodePoolNodes } from '../NodePoolNodes';
-import { type AWSNodePoolType } from '../AWSNodePools/helpers';
+import { type AWSNodePoolType } from '../../../nodePools';
 
 interface AWSNodePoolDetailsProps {
   installationName: string;

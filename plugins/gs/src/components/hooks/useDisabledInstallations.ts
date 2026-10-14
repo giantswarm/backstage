@@ -1,5 +1,6 @@
 import { fetchApiRef, useApi } from '@backstage/core-plugin-api';
 import { useIsRestoring, useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { useInstallations } from '../../apis/installations';
 
@@ -27,28 +28,32 @@ export const useDisabledInstallations = () => {
     [baseUrlOverrides],
   );
 
-  const { data: endpointStatuses, isLoading: isLoadingEndpointStatuses } =
-    useQuery({
-      queryKey: ['installations', 'status', ...uniqueEndpoints],
-      queryFn: async () => {
-        const requestPromises = uniqueEndpoints.map(endpoint => {
-          const statusEndpoint = `${endpoint}/.backstage/health/v1/readiness`;
-          return fetchApi.fetch(statusEndpoint, {
-            signal: AbortSignal.timeout(STATUS_CHECK_TIMEOUT),
-          });
+  const {
+    data: endpointStatuses,
+    isPending,
+    fetchStatus,
+  } = useQuery({
+    queryKey: ['installations', 'status', ...uniqueEndpoints],
+    queryFn: async () => {
+      const requestPromises = uniqueEndpoints.map(endpoint => {
+        const statusEndpoint = `${endpoint}/.backstage/health/v1/readiness`;
+        return fetchApi.fetch(statusEndpoint, {
+          signal: AbortSignal.timeout(STATUS_CHECK_TIMEOUT),
         });
+      });
 
-        const results = await Promise.allSettled(requestPromises);
-        return Object.fromEntries(
-          results.map((result, idx) => [
-            uniqueEndpoints[idx],
-            result.status === 'fulfilled',
-          ]),
-        );
-      },
-      retry: false,
-      refetchInterval: STATUS_CHECK_INTERVAL,
-    });
+      const results = await Promise.allSettled(requestPromises);
+      return Object.fromEntries(
+        results.map((result, idx) => [
+          uniqueEndpoints[idx],
+          result.status === 'fulfilled',
+        ]),
+      );
+    },
+    retry: false,
+    refetchInterval: STATUS_CHECK_INTERVAL,
+  });
+  const isLoadingEndpointStatuses = isAwaitingData({ isPending, fetchStatus });
 
   const disabledInstallations = useMemo(() => {
     const installationsWithBaseUrlOverrides = Object.keys(baseUrlOverrides);

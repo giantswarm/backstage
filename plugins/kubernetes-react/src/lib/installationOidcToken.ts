@@ -4,9 +4,8 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 
 /**
- * Mint the user's per-installation OIDC ID token, the same way the
- * `GSOIDCToken` scaffolder field does: `kubernetesApi.getCluster()` →
- * `kubernetesAuthProvidersApi.getCredentials()`.
+ * Mint the user's per-installation OIDC ID token:
+ * `kubernetesApi.getCluster()` → `kubernetesAuthProvidersApi.getCredentials()`.
  *
  * Every installation has its own Dex and its own `oidcTokenProvider`, so there
  * is no fleet-wide token — callers fanning out across installations must mint

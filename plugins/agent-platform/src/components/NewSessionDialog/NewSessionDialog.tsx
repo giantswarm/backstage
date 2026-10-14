@@ -1,6 +1,15 @@
 import { Dialog, DialogBody, DialogHeader } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core/styles';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../AgentsDataProvider';
 import { NewSessionComposer } from '../NewSessionComposer';
+import { PHONE_FULL_SCREEN_DIALOG } from './phoneDialog';
+
+const useStyles = makeStyles({
+  // The whole screen on a phone, so the box and Start stay above the soft
+  // keyboard (T22 C4).
+  dialog: PHONE_FULL_SCREEN_DIALOG,
+});
 
 export type NewSessionDialogProps = {
   isOpen: boolean;
@@ -9,7 +18,7 @@ export type NewSessionDialogProps = {
   isLoadingAgents?: boolean;
   defaultAgent?: AgentRow;
   isStarting: boolean;
-  error?: string;
+  error?: string | Error;
   onStart: (agent: AgentRow, prompt: string) => void;
 };
 
@@ -28,6 +37,9 @@ export type NewSessionDialogProps = {
  * to say so, as well as the only place the prompt still exists. And it cannot be
  * dismissed while a create is in flight, so a stray click outside cannot orphan a
  * write already on its way to kagent. The caller closes it by navigating away.
+ *
+ * At phone width it is the whole screen, as the command palette is: a centred
+ * card would leave the box and its Start button under the soft keyboard.
  */
 export function NewSessionDialog({
   isOpen,
@@ -35,21 +47,13 @@ export function NewSessionDialog({
   isStarting,
   ...composerProps
 }: NewSessionDialogProps) {
+  const classes = useStyles();
   return (
     <Dialog
       isOpen={isOpen}
-      // Gated here rather than only through `isDismissable` /
-      // `isKeyboardDismissDisabled`: those reach the outside click and Escape but
-      // not `DialogHeader`'s own close button, which bui renders unconditionally
-      // and routes through this callback.
-      onOpenChange={next => {
-        if (!isStarting) {
-          onOpenChange(next);
-        }
-      }}
-      isDismissable={!isStarting}
-      isKeyboardDismissDisabled={isStarting}
+      {...dialogDismissLock(isStarting, onOpenChange)}
       width="min(90vw, 560px)"
+      className={classes.dialog}
     >
       <DialogHeader>New session</DialogHeader>
       <DialogBody>

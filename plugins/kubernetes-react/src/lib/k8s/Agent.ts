@@ -1,52 +1,26 @@
-import { crds } from '@giantswarm/k8s-types';
 import { KubeObject } from './KubeObject';
+import {
+  KAGENT_API_GROUP,
+  type AgentCondition,
+  type AgentInterface,
+  type AgentMcpBinding,
+  type AgentSubAgentBinding,
+  type AgentTemplateSpec,
+  type AgentToolBinding,
+} from './kagentApi';
 
-/**
- * `kagent.dev/v1alpha3 AgentTemplate`, the agent unit on kagent API v2.
- *
- * An agent is a template — model, system prompt, tool bindings, commit-pinned
- * skills — that a **Harness** admits by label selector and compiles into a
- * revision; people instantiate it per conversation as an `AgentInstance`. There
- * is no per-agent Deployment, runtime or `spec.type` any more: a bring-your-own
- * runtime is a Harness, not an agent. The class keeps the name `Agent` so the
- * Agent Platform pages read as before; the JSON underneath is the template.
- */
-export type AgentTemplateInterface = crds.kagent.v1alpha3.AgentTemplate;
+export type {
+  AgentCondition,
+  AgentInterface,
+  AgentMcpBinding,
+  AgentStatus,
+  AgentSubAgentBinding,
+  AgentTemplateInterface,
+  AgentTemplateSpec,
+  AgentToolBinding,
+} from './kagentApi';
 
-type AgentInterface = AgentTemplateInterface;
-
-/** One `spec.tools[]` binding: exactly one of `mcp` (a server) or `agent` (another template). */
-export type AgentToolBinding = NonNullable<
-  NonNullable<AgentInterface['spec']>['tools']
->[number];
-
-/**
- * An MCP binding: a same-namespace `RemoteMCPServer` (`server.kind`/`name`),
- * optionally narrowed to some of its tools, optionally requiring approval before
- * a call.
- */
-export type AgentMcpBinding = NonNullable<AgentToolBinding['mcp']>;
-
-/** Another template invoked as a tool over A2A. */
-export type AgentToolAgentRef = NonNullable<AgentToolBinding['agent']>;
-
-/** One `status.harnesses[]` entry: what one admitting Harness reports for the template. */
-export type AgentHarnessStatus = NonNullable<
-  NonNullable<AgentInterface['status']>['harnesses']
->[number];
-
-/**
- * A condition inside a harness entry. The CRD types the list as a union of
- * fixed-length tuples (its `maxItems`), so it is indexed here to recover the
- * element type.
- */
-export type AgentHarnessCondition = NonNullable<
-  AgentHarnessStatus['conditions']
->[number];
-
-type AgentTemplateSkill = NonNullable<
-  NonNullable<AgentInterface['spec']>['skills']
->[number];
+type AgentTemplateSkill = NonNullable<AgentTemplateSpec['skills']>[number];
 
 /**
  * A skill mounted into the agent, flattened for display: where it comes from and
@@ -65,24 +39,16 @@ export type AgentSkill = {
   pin: string;
 };
 
-/**
- * The label a template carries to be admitted by the platform Harness; its value
- * is the Harness name. The Generic chart sets it on every agent it renders; a
- * template without it is admitted by nothing and never becomes ready.
- */
-export const HARNESS_LABEL = 'agent-platform.giantswarm.io/harness';
-
 const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
 const ICON_URL_ANNOTATION = 'ui.giantswarm.io/icon-url';
 
 /**
- * Condition types a Harness sets in its entry of `status.harnesses[]`:
- * `Accepted` (the Harness admits the template), `ResolvedRefs` (the model
- * config, the MCP servers, the agents called as tools and the prompt sources
- * resolve), `Compatible` (the resolved configuration
- * fits the Harness) and `Ready` (the current revision is compiled and its
- * golden snapshot exists). Compile downgrades are the entry's `warnings`, not a
- * condition. Every condition is positive-polarity.
+ * Condition types the controller writes on an Agent: `Accepted` (the Harness
+ * runs this kind of template), `ResolvedRefs` (the model config, the MCP
+ * servers, the sub-agents and the prompt sources resolve), `Compatible` (the
+ * resolved configuration fits the Harness) and `Ready` (the current revision
+ * is compiled and its golden snapshot exists). Compile downgrades are
+ * `status.warnings`, not a condition. Every condition is positive-polarity.
  */
 export const AgentConditionType = {
   Accepted: 'Accepted',
@@ -107,8 +73,8 @@ const BLOCKED_REASON = 'Blocked';
 
 /**
  * Which part of the agent a failure is about: the model, the tools (an MCP
- * server or another agent called as a tool), the system prompt, or the
- * platform (something the agent's author cannot fix).
+ * server or a sub-agent), the system prompt, or the platform (something the
+ * agent's author cannot fix).
  */
 export type AgentFailureField = 'model' | 'tools' | 'systemPrompt' | 'platform';
 
@@ -142,106 +108,42 @@ export function failureFieldOf(
   if (/^resolve (systemPromptFrom|prompt sources?)\b/.test(message)) {
     return 'systemPrompt';
   }
-  if (/^WorkerPool "[^"]*" not found/.test(message)) {
+  if (/^(resolve )?(Harness|WorkerPool) "[^"]*" not found/.test(message)) {
     return 'platform';
   }
   return undefined;
 }
 
 /**
- * What one admitting Harness reports for the template — the same rules
- * agent-manager's `get_agent_status` applies, so the portal and the tool agree:
+ * Readiness of an agent, derived from `status.conditions`.
  *
- * - `ready` — `Ready=True`.
- * - `failed` — `Accepted=False` or `Compatible=False`.
- * - `progressing` — `Accepted=True` while the revision is not ready
- *   (`desiredRevision != latestSuccessfulRevision`, or `Ready != True`).
- * - `pending` — the Harness has not written its verdict yet.
- */
-export type HarnessReadiness = 'ready' | 'progressing' | 'failed' | 'pending';
-
-/**
- * Readiness of an agent, derived from `status.harnesses[]`.
- *
- * - `ready` — the deciding Harness reports the template ready: sessions can start.
- * - `notReady` — admitted and accepted, but the revision is still compiling
- *   (`progressing`).
- * - `failed` — the deciding Harness cannot run the template (`failed`): on
- *   API v2 a reference did not resolve or the configuration does not fit the
- *   Harness. Admission itself is `notAdmitted`; an admitted pair always
- *   reads `Accepted=True`.
- * - `notAdmitted` — no Harness admits the template although the controller has
- *   seen the current spec: the admission label is missing or selects nothing.
- *   Nothing changes without a spec edit, so it is its own not-ready state with
- *   its own reason rather than a `pending` that never resolves.
+ * - `ready` — `Ready=True`: sessions can start.
+ * - `failed` — `Accepted`, `ResolvedRefs` or `Compatible` is `False`: a
+ *   reference did not resolve or the configuration does not fit the Harness.
+ * - `notReady` — accepted, but the revision is still compiling (`Ready` is not
+ *   `True` yet).
  * - `pending` — not reconciled yet, or reconciled against an older generation,
  *   so the status does not describe the current spec. Distinct from
  *   `notReady`: it means "not known yet", not "broken".
  */
-export type AgentReadiness =
-  'ready' | 'notReady' | 'failed' | 'notAdmitted' | 'pending';
+export type AgentReadiness = 'ready' | 'notReady' | 'failed' | 'pending';
 
-/** One admitting Harness, as the pages present it. */
-export type AgentHarness = {
-  name: string;
-  readiness: HarnessReadiness;
-  /** Compile downgrades: features the Harness could not honour. */
-  warnings: string[];
-  desiredRevision?: string;
-  latestSuccessfulRevision?: string;
-  conditions: AgentHarnessCondition[];
-};
-
-const HARNESS_READINESS_ORDER: Record<HarnessReadiness, number> = {
-  ready: 0,
-  progressing: 1,
-  pending: 2,
-  failed: 3,
-};
-
-function harnessStatuses(json: AgentInterface): AgentHarnessStatus[] {
-  return json.status?.harnesses ?? [];
+function conditionsOf(json: AgentInterface): AgentCondition[] {
+  return [...(json.status?.conditions ?? [])];
 }
 
-function harnessConditions(
-  harness: AgentHarnessStatus,
-): AgentHarnessCondition[] {
-  return [...(harness.conditions ?? [])];
-}
-
-function findHarnessCondition(
-  harness: AgentHarnessStatus,
+function findCondition(
+  json: AgentInterface,
   type: string,
-): AgentHarnessCondition | undefined {
-  return harnessConditions(harness).find(condition => condition.type === type);
+): AgentCondition | undefined {
+  return conditionsOf(json).find(condition => condition.type === type);
 }
 
 function conditionStatus(
-  harness: AgentHarnessStatus,
+  json: AgentInterface,
   type: string,
 ): string | undefined {
-  return findHarnessCondition(harness, type)?.status;
-}
-
-/** Derive what one Harness entry says — see {@link HarnessReadiness}. */
-export function deriveHarnessReadiness(
-  harness: AgentHarnessStatus,
-): HarnessReadiness {
-  if (conditionStatus(harness, AgentConditionType.Ready) === 'True') {
-    return 'ready';
-  }
-  if (
-    conditionStatus(harness, AgentConditionType.Accepted) === 'False' ||
-    conditionStatus(harness, AgentConditionType.Compatible) === 'False'
-  ) {
-    return 'failed';
-  }
-  if (conditionStatus(harness, AgentConditionType.Accepted) === 'True') {
-    // Ready is not True here, so the revision is still being prepared —
-    // whether or not `desiredRevision` already differs from the last success.
-    return 'progressing';
-  }
-  return 'pending';
+  return findCondition(json, type)?.status;
 }
 
 /**
@@ -252,10 +154,10 @@ export function deriveHarnessReadiness(
  * behind. The controller stamps it on every status write, but the CRD marks it
  * optional — whereas `metadata.generation` is always set by the apiserver.
  * Treating "absent" as "stale" would fail closed: against a build that writes
- * harness entries but not `status.observedGeneration`, *every* agent on that
+ * conditions but not `status.observedGeneration`, *every* agent on that
  * installation would read `pending`, hiding healthy and broken agents behind the
  * same explanation-free label. Absent means "cannot tell", so this reports
- * `false` and callers report what the harness entries actually say.
+ * `false` and callers report what the conditions actually say.
  */
 export function isAgentStatusStale(json: AgentInterface): boolean {
   const { generation } = json.metadata ?? {};
@@ -269,47 +171,6 @@ export function isAgentStatusStale(json: AgentInterface): boolean {
 }
 
 /**
- * Whether the controller has reconciled exactly the stored spec, so an empty
- * `status.harnesses[]` is a fact about the labels and not a status still to come.
- */
-function isObservedGenerationCurrent(json: AgentInterface): boolean {
-  const { generation } = json.metadata ?? {};
-  const observedGeneration = json.status?.observedGeneration;
-
-  return (
-    typeof generation === 'number' &&
-    typeof observedGeneration === 'number' &&
-    observedGeneration === generation
-  );
-}
-
-/**
- * The Harness entry whose verdict is the agent's: the platform Harness named by
- * the admission label when it reports, else the readiest of the others. The
- * platform Harness is the one sessions from the portal run on, so its verdict
- * is what "can I start a session" needs — another Harness being ready does not
- * make it so.
- */
-export function decidingHarnessStatus(
-  json: AgentInterface,
-): AgentHarnessStatus | undefined {
-  const harnesses = harnessStatuses(json);
-  const platformHarness = json.metadata?.labels?.[HARNESS_LABEL];
-  const labelled = harnesses.find(
-    harness =>
-      platformHarness !== undefined && harness.harness === platformHarness,
-  );
-  if (labelled) {
-    return labelled;
-  }
-  return [...harnesses].sort(
-    (a, b) =>
-      HARNESS_READINESS_ORDER[deriveHarnessReadiness(a)] -
-      HARNESS_READINESS_ORDER[deriveHarnessReadiness(b)],
-  )[0];
-}
-
-/**
  * Derive an agent's readiness from its raw status.
  *
  * Exported as a free function (rather than only as an {@link Agent} method) so
@@ -318,31 +179,25 @@ export function decidingHarnessStatus(
  * reuse the exact same derivation instead of reimplementing it.
  */
 export function deriveAgentReadiness(json: AgentInterface): AgentReadiness {
-  const harnesses = harnessStatuses(json);
-
-  if (harnesses.length === 0) {
-    // No Harness admits the template. Once the controller has looked at the
-    // current spec (observedGeneration caught up) that is a fact about the
-    // labels and nothing changes without a spec edit; before that — or when the
-    // controller records no observedGeneration at all — it is not known yet.
-    return isObservedGenerationCurrent(json) ? 'notAdmitted' : 'pending';
-  }
-
-  if (isAgentStatusStale(json)) {
+  if (conditionsOf(json).length === 0 || isAgentStatusStale(json)) {
     return 'pending';
   }
-
-  const deciding = decidingHarnessStatus(json);
-  switch (deciding ? deriveHarnessReadiness(deciding) : 'pending') {
-    case 'ready':
-      return 'ready';
-    case 'failed':
-      return 'failed';
-    case 'progressing':
-      return 'notReady';
-    default:
-      return 'pending';
+  if (conditionStatus(json, AgentConditionType.Ready) === 'True') {
+    return 'ready';
   }
+  if (
+    conditionStatus(json, AgentConditionType.Accepted) === 'False' ||
+    conditionStatus(json, AgentConditionType.ResolvedRefs) === 'False' ||
+    conditionStatus(json, AgentConditionType.Compatible) === 'False'
+  ) {
+    return 'failed';
+  }
+  if (conditionStatus(json, AgentConditionType.Accepted) === 'True') {
+    // Ready is not True here, so the revision is still being prepared —
+    // whether or not `desiredRevision` already differs from the last success.
+    return 'notReady';
+  }
+  return 'pending';
 }
 
 /**
@@ -355,21 +210,20 @@ export function isAgentTransitional(readiness: AgentReadiness): boolean {
 
 /**
  * When the agent's status last changed, as epoch milliseconds: the most recent
- * `lastTransitionTime` across every Harness entry's conditions, falling back to
- * the creation timestamp for an agent no Harness has reported on yet.
- * `undefined` when neither is parseable.
+ * `lastTransitionTime` across its conditions, falling back to the creation
+ * timestamp for an agent the controller has not reported on yet. `undefined`
+ * when neither is parseable.
  *
  * "Most recent across all conditions" is deliberately an *activity* signal, not
- * a per-condition age: while a Harness is actively flipping conditions it keeps
- * moving, and once the agent is durably stuck it stops. That is what lets a
- * caller back off from polling an agent that is broken rather than still
+ * a per-condition age: while the controller is actively flipping conditions it
+ * keeps moving, and once the agent is durably stuck it stops. That is what lets
+ * a caller back off from polling an agent that is broken rather than still
  * converging.
  */
 export function getAgentStatusChangedAt(
   json: AgentInterface,
 ): number | undefined {
-  const transitionTimes = harnessStatuses(json)
-    .flatMap(harnessConditions)
+  const transitionTimes = conditionsOf(json)
     .map(condition => Date.parse(condition.lastTransitionTime))
     .filter(time => !Number.isNaN(time));
 
@@ -380,17 +234,6 @@ export function getAgentStatusChangedAt(
   const createdAt = Date.parse(json.metadata?.creationTimestamp ?? '');
 
   return Number.isNaN(createdAt) ? undefined : createdAt;
-}
-
-function toAgentHarness(harness: AgentHarnessStatus): AgentHarness {
-  return {
-    name: harness.harness,
-    readiness: deriveHarnessReadiness(harness),
-    warnings: [...(harness.warnings ?? [])],
-    desiredRevision: harness.desiredRevision,
-    latestSuccessfulRevision: harness.latestSuccessfulRevision,
-    conditions: harnessConditions(harness),
-  };
 }
 
 /** The `<reference>@sha256:<digest>` an OCI skill source is, split for display. */
@@ -432,16 +275,21 @@ function toAgentSkill(skill: AgentTemplateSkill): AgentSkill {
 }
 
 /**
- * kagent AgentTemplate — a reusable agent definition (model, system prompt, tool
- * bindings, commit-pinned skills) that Harnesses admit by label and people
- * instantiate per conversation. Rendered by the Generic chart's release, which
- * is what the Flux provenance labels on the object point back to.
+ * kagent Agent — the agent unit on kagent API v2: a template (model, system
+ * prompt, tool bindings, commit-pinned skills), inline under `spec.template`
+ * or named by `spec.templateRef`, paired with the Harness that runs it, named
+ * by `spec.harnessRef` or inline under `spec.harness`. People start sessions
+ * of it; there is no per-agent Deployment or runtime. Rendered by the Generic
+ * chart's release, which is what the Flux provenance labels on the object
+ * point back to; the chart renders the template inline and the Harness by
+ * name, so the template readers below answer for every agent the portal
+ * creates.
  */
 export class Agent extends KubeObject<AgentInterface> {
   static readonly supportedVersions = ['v1alpha3'] as const;
-  static readonly group = 'kagent.dev';
-  static readonly kind = 'AgentTemplate' as const;
-  static readonly plural = 'agenttemplates';
+  static readonly group = KAGENT_API_GROUP;
+  static readonly kind = 'Agent' as const;
+  static readonly plural = 'agents';
 
   /**
    * Friendly name for lists. Prefers the `ui.giantswarm.io/display-name`
@@ -457,38 +305,68 @@ export class Agent extends KubeObject<AgentInterface> {
     return this.getAnnotations()?.[ICON_URL_ANNOTATION];
   }
 
-  getDescription() {
-    return this.jsonData.spec?.description;
+  /**
+   * The inline template. `undefined` when the agent names an `AgentTemplate`
+   * instead, in which case every template reader below answers `undefined`
+   * or empty and {@link getTemplateRef} names where to look.
+   */
+  getTemplate(): AgentTemplateSpec | undefined {
+    return this.jsonData.spec?.template;
   }
 
-  /** Name of the referenced ModelConfig, always in the template's own namespace. */
+  /** The same-namespace `AgentTemplate` the agent runs, when not inline. */
+  getTemplateRef(): string | undefined {
+    return this.jsonData.spec?.templateRef?.name;
+  }
+
+  /**
+   * The same-namespace Harness the agent runs on. `undefined` when the
+   * Harness is inline under `spec.harness`, which the chart never renders.
+   */
+  getHarnessName(): string | undefined {
+    return this.jsonData.spec?.harnessRef?.name;
+  }
+
+  /**
+   * The HTTP(S) origins the agent may reach besides what its revision
+   * compiles (`spec.egress`), such as `https://github.com:443`.
+   */
+  getEgress(): string[] {
+    return [...(this.jsonData.spec?.egress ?? [])];
+  }
+
+  getDescription() {
+    return this.getTemplate()?.description;
+  }
+
+  /** Name of the referenced ModelConfig, always in the agent's own namespace. */
   getModelConfigName() {
-    return this.jsonData.spec?.modelConfig?.name;
+    return this.getTemplate()?.modelConfig?.name;
   }
 
   /** The inline system prompt. A prompt sourced from a ConfigMap reads as undefined. */
   getSystemMessage() {
-    return this.jsonData.spec?.systemPrompt;
+    return this.getTemplate()?.systemPrompt;
   }
 
   /** The ConfigMap key the system prompt is read from, when it is not inline. */
   getSystemMessageSource() {
-    return this.jsonData.spec?.systemPromptFrom;
+    return this.getTemplate()?.systemPromptFrom;
   }
 
   /** The skills mounted into the agent, each with its pin. */
   getSkills(): AgentSkill[] {
-    return (this.jsonData.spec?.skills ?? []).map(toAgentSkill);
+    return (this.getTemplate()?.skills ?? []).map(toAgentSkill);
   }
 
   /** Number of skills mounted by the agent. */
   getSkillCount() {
-    return this.jsonData.spec?.skills?.length ?? 0;
+    return this.getTemplate()?.skills?.length ?? 0;
   }
 
-  /** Every `spec.tools[]` binding: MCP servers and other templates. */
+  /** Every `tools[]` binding: MCP servers and sub-agents. */
   getToolBindings(): AgentToolBinding[] {
-    return [...(this.jsonData.spec?.tools ?? [])];
+    return [...(this.getTemplate()?.tools ?? [])];
   }
 
   /** The MCP servers the agent draws tools from, all in its own namespace. */
@@ -498,45 +376,20 @@ export class Agent extends KubeObject<AgentInterface> {
       .filter((binding): binding is AgentMcpBinding => Boolean(binding));
   }
 
-  /** Other templates this agent invokes as tools (A2A). */
-  getAgentRefs(): AgentToolAgentRef[] {
+  /** The templates this agent runs as sub-agents, compiled into its own runtime. */
+  getSubAgentBindings(): AgentSubAgentBinding[] {
     return this.getToolBindings()
-      .map(binding => binding.agent)
-      .filter((ref): ref is AgentToolAgentRef => Boolean(ref));
+      .map(binding => binding.subAgent)
+      .filter((ref): ref is AgentSubAgentBinding => Boolean(ref));
   }
 
-  /** The Harness the admission label names, when the template carries it. */
-  getHarnessLabel(): string | undefined {
-    return this.getLabels()?.[HARNESS_LABEL];
-  }
-
-  /** Every admitting Harness with its verdict, the deciding one first. */
-  getHarnesses(): AgentHarness[] {
-    const deciding = decidingHarnessStatus(this.jsonData)?.harness;
-    const rank = (harness: AgentHarness) => (harness.name === deciding ? 0 : 1);
-    return harnessStatuses(this.jsonData)
-      .map(toAgentHarness)
-      .sort((a, b) => rank(a) - rank(b));
-  }
-
-  /** The Harness whose verdict is the agent's readiness. See {@link decidingHarnessStatus}. */
-  getDecidingHarness(): AgentHarness | undefined {
-    const deciding = decidingHarnessStatus(this.jsonData);
-    return deciding ? toAgentHarness(deciding) : undefined;
-  }
-
-  /**
-   * The conditions that explain the current readiness: those of the deciding
-   * Harness. `undefined` when no Harness admits the template.
-   */
-  getConditions(): AgentHarnessCondition[] | undefined {
-    const deciding = decidingHarnessStatus(this.jsonData);
-    return deciding ? harnessConditions(deciding) : undefined;
+  /** The controller's conditions on the agent, in the order it wrote them. */
+  getConditions(): AgentCondition[] {
+    return conditionsOf(this.jsonData);
   }
 
   getCondition(type: string) {
-    const deciding = decidingHarnessStatus(this.jsonData);
-    return deciding ? findHarnessCondition(deciding, type) : undefined;
+    return findCondition(this.jsonData, type);
   }
 
   /** Spec revision currently stored, bumped by the apiserver on every change. */
@@ -549,6 +402,16 @@ export class Agent extends KubeObject<AgentInterface> {
     return this.jsonData.status?.observedGeneration;
   }
 
+  /** The revision compiled from the current generation. */
+  getDesiredRevision(): string | undefined {
+    return this.jsonData.status?.desiredRevision;
+  }
+
+  /** The last revision that became ready. */
+  getLatestSuccessfulRevision(): string | undefined {
+    return this.jsonData.status?.latestSuccessfulRevision;
+  }
+
   /**
    * Whether the reported status is known to describe an older spec. See
    * {@link isAgentStatusStale} — notably, this is `false` when the controller
@@ -558,25 +421,18 @@ export class Agent extends KubeObject<AgentInterface> {
     return isAgentStatusStale(this.jsonData);
   }
 
-  /** Readiness derived from the Harness entries. See {@link AgentReadiness}. */
+  /** Readiness derived from the conditions. See {@link AgentReadiness}. */
   getReadiness(): AgentReadiness {
     return deriveAgentReadiness(this.jsonData);
   }
 
   /**
    * Human-readable detail for the current readiness, taken from whichever
-   * condition determined it — or, for a template no Harness admits, the reason
-   * that is so. `undefined` when the agent is ready, or when the state needs no
-   * explanation.
+   * condition determined it. `undefined` when the agent is ready, or when the
+   * state needs no explanation.
    */
   getReadinessMessage(): string | undefined {
     switch (this.getReadiness()) {
-      case 'notAdmitted': {
-        const label = this.getHarnessLabel();
-        return label
-          ? `No Harness admits this agent: the label ${HARNESS_LABEL}=${label} selects none.`
-          : `No Harness admits this agent: it carries no ${HARNESS_LABEL} label.`;
-      }
       // A ResolvedRefs=False ahead of Compatible: a Compatible=False that only
       // reads "blocked by ResolvedRefs" defers to the reference that did not
       // resolve. Only False, though -- an Unknown one explains nothing, and the
@@ -603,9 +459,9 @@ export class Agent extends KubeObject<AgentInterface> {
   }
 
   /**
-   * The root cause of a `failed` agent: the deciding Harness's first `False`
-   * condition in {@link AGENT_CONDITION_STAGE_ORDER} that is not merely
-   * `Blocked` by an earlier one. `undefined` unless the agent is `failed`.
+   * The root cause of a `failed` agent: the first `False` condition in
+   * {@link AGENT_CONDITION_STAGE_ORDER} that is not merely `Blocked` by an
+   * earlier one. `undefined` unless the agent is `failed`.
    */
   getFailure(): AgentFailure | undefined {
     if (this.getReadiness() !== 'failed') {
@@ -629,18 +485,12 @@ export class Agent extends KubeObject<AgentInterface> {
   }
 
   /**
-   * Compile downgrades the admitting Harnesses report — features they could not
-   * honour — prefixed with the Harness name when more than one admits the
-   * template. Independent of readiness: a ready agent can carry them, so they
-   * are reported separately rather than folded into {@link getReadiness}.
+   * Compile downgrades the Harness reports — features it could not honour.
+   * Independent of readiness: a ready agent can carry them, so they are
+   * reported separately rather than folded into {@link getReadiness}.
    */
   getHarnessWarnings(): string[] {
-    const harnesses = this.getHarnesses();
-    return harnesses.flatMap(harness =>
-      harness.warnings.map(warning =>
-        harnesses.length > 1 ? `${harness.name}: ${warning}` : warning,
-      ),
-    );
+    return [...(this.jsonData.status?.warnings ?? [])];
   }
 
   private firstFailingMessage(types: string[]): string | undefined {

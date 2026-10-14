@@ -2,19 +2,16 @@ import { mockServices } from '@backstage/backend-test-utils';
 import { ConfigReader } from '@backstage/config';
 import { Code, ConnectError, createRouterTransport } from '@connectrpc/connect';
 import {
-  AGENT_INSTANCE_HEADER,
   deriveKagentApiBaseUrl,
-  harnessesOf,
   isTransportFailure,
   KagentClient,
   readKagentInstallationsFromConfig,
   TURN_PENDING_ERROR_NAME,
 } from './KagentClient';
-import { create } from '@bufbuild/protobuf';
-import { AgentTemplateSchema } from './kagent/gen/kagent/api/v1alpha1/agent_templates_pb';
 import { A2A_EXTENSIONS_HEADER, HITL_EXTENSION_URI } from './kagent/hitl';
 import {
   createFakeController,
+  FakeController,
   FakeControllerOptions,
   TurnScript,
 } from './kagent/testing/fakeController';
@@ -24,21 +21,14 @@ const logger = mockServices.logger.mock();
 const USER = { userToken: 'user-token' };
 const OTHER = { userToken: 'other-token' };
 const AGENT = { namespace: 'kagent', name: 'sre-agent' };
-const TEMPLATES: NonNullable<FakeControllerOptions['templates']> = [
-  {
-    namespace: 'kagent',
-    name: 'sre-agent',
-    harnesses: [
-      { name: 'claude', ready: false },
-      { name: 'kagent', ready: true },
-    ],
-  },
-  { namespace: 'kagent', name: 'orphan', harnesses: [] },
+const AGENTS: NonNullable<FakeControllerOptions['agents']> = [
+  { namespace: 'kagent', name: 'sre-agent', ready: true },
+  { namespace: 'kagent', name: 'orphan', ready: false },
 ];
 
 /** A client wired to a fresh fake controller over an in-memory transport. */
 function build(options: FakeControllerOptions = {}) {
-  const fake = createFakeController({ templates: TEMPLATES, ...options });
+  const fake = createFakeController({ agents: AGENTS, ...options });
   const client = new KagentClient(
     installation,
     logger,
@@ -49,21 +39,17 @@ function build(options: FakeControllerOptions = {}) {
   return { fake, client };
 }
 
-/** Create an instance and return its id. */
-async function created(
-  client: KagentClient,
+/** Start a session, as agent-manager does, and return its id. */
+function created(
+  fake: FakeController,
   requestId = 'req-1',
   options = USER,
-): Promise<string> {
-  const body = (await client.createSession(
-    AGENT,
-    'Ingress check',
+  agent = AGENT,
+): string {
+  return fake.startSession(options.userToken, agent, {
     requestId,
-    options,
-  )) as {
-    agentInstance: { id: string };
-  };
-  return body.agentInstance.id;
+    name: 'Ingress check',
+  }).id;
 }
 
 /** Drain a streaming Response into its SSE `data:` payloads, parsed. */
@@ -140,7 +126,7 @@ describe('KagentClient against a fake controller', () => {
   describe('identity', () => {
     it('sends the bearer and never an identity header, on every RPC', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
       await client.listSessions(USER);
       await client.getSession(id, USER);
       await client.updateSessionName(id, 'Renamed', USER);
@@ -167,16 +153,14 @@ describe('KagentClient against a fake controller', () => {
       );
       expect(services).toEqual(
         new Set([
-          'AgentTemplateService/GetAgentTemplate',
-          'AgentInstanceService/CreateAgentInstance',
-          'AgentInstanceService/ListAgentInstances',
-          'AgentInstanceService/GetAgentInstance',
-          'AgentInstanceService/UpdateAgentInstanceName',
+          'SessionService/ListSessions',
+          'SessionService/GetSession',
+          'SessionService/UpdateSessionName',
           'A2AService/ListTasks',
           'SystemService/GetCurrentUser',
           'A2AService/SendMessage',
           'A2AService/SendStreamingMessage',
-          'AgentInstanceService/DeleteAgentInstance',
+          'SessionService/DeleteSession',
         ]),
       );
       for (const call of fake.calls) {
@@ -187,9 +171,7 @@ describe('KagentClient against a fake controller', () => {
         // and no other `x-` header than the instance route on the A2A calls.
         expect(call.headers['x-user-id']).toBeUndefined();
         expect(
-          Object.keys(call.headers).filter(
-            name => name.startsWith('x-') && name !== AGENT_INSTANCE_HEADER,
-          ),
+          Object.keys(call.headers).filter(name => name.startsWith('x-')),
         ).toEqual([]);
       }
     });
@@ -218,166 +200,76 @@ describe('KagentClient against a fake controller', () => {
     });
   });
 
-  describe('sessions are AgentInstances', () => {
-    it('creates an instance on the Ready harness and answers the proto JSON', async () => {
+  describe('sessions are Session records', () => {
+    it('lists only the caller’s sessions, walking every page', async () => {
       const { fake, client } = build();
-
-      const body = (await client.createSession(
-        AGENT,
-        'Ingress check',
-        'req-1',
-        USER,
-      )) as {
-        agentInstance: Record<string, unknown>;
-      };
-
-      expect(body.agentInstance).toEqual(
-        expect.objectContaining({
-          id: expect.any(String),
-          creator: 'dev@lab.local',
-          name: 'Ingress check',
-          state: 'AGENT_INSTANCE_STATE_READY',
-          harness: { namespace: 'kagent', name: 'kagent' },
-          agentTemplate: { namespace: 'kagent', name: 'sre-agent' },
-          contextId: expect.any(String),
-          createdAt: expect.any(String),
-        }),
-      );
-      // The Ready harness was picked from the template's status, not guessed.
-      expect(
-        fake.instances.get(body.agentInstance.id as string)?.harness?.name,
-      ).toBe('kagent');
-    });
-
-    it('creates once for a repeated request_id and refuses a reuse with other parameters', async () => {
-      const { fake, client } = build();
-
-      const first = await created(client, 'req-idem');
-      const second = await created(client, 'req-idem');
-
-      expect(second).toBe(first);
-      expect(fake.instances.size).toBe(1);
-
-      await expect(
-        client.createSession(
-          { namespace: 'kagent', name: 'orphan' },
-          'x',
-          'req-idem',
-          USER,
-        ),
-      ).rejects.toMatchObject({ name: 'ConflictError' });
-    });
-
-    it('refuses to start a session on a template no harness admits, as a 409', async () => {
-      const { client } = build();
-      await expect(
-        client.createSession(
-          { namespace: 'kagent', name: 'orphan' },
-          'x',
-          'req-2',
-          USER,
-        ),
-      ).rejects.toMatchObject({
-        name: 'ConflictError',
-        message: expect.stringContaining('No Harness admits'),
-      });
-    });
-
-    it('reports an unknown template as a 404 and a rejected name as a 400', async () => {
-      const { client } = build();
-      await expect(
-        client.createSession(
-          { namespace: 'kagent', name: 'nope' },
-          'x',
-          'req-3',
-          USER,
-        ),
-      ).rejects.toMatchObject({ name: 'NotFoundError' });
-      await expect(
-        client.createSession(AGENT, ' padded ', 'req-4', USER),
-      ).rejects.toMatchObject({ name: 'InputError' });
-    });
-
-    it('lists only the caller’s instances, walking every page', async () => {
-      const { client } = build();
       for (let i = 0; i < 3; i += 1) {
-        await created(client, `mine-${i}`);
+        created(fake, `mine-${i}`);
       }
-      await created(client, 'theirs', OTHER);
+      created(fake, 'theirs', OTHER);
 
       const mine = (await client.listSessions(USER)) as {
-        agentInstances: { creator: string }[];
+        sessions: { creator: string }[];
       };
       const theirs = (await client.listSessions(OTHER)) as {
-        agentInstances: { creator: string }[];
+        sessions: { creator: string }[];
       };
 
-      expect(mine.agentInstances).toHaveLength(3);
-      expect(
-        mine.agentInstances.every(i => i.creator === 'dev@lab.local'),
-      ).toBe(true);
-      expect(theirs.agentInstances).toHaveLength(1);
+      expect(mine.sessions).toHaveLength(3);
+      expect(mine.sessions.every(i => i.creator === 'dev@lab.local')).toBe(
+        true,
+      );
+      expect(theirs.sessions).toHaveLength(1);
     });
 
-    it('narrows the listing to one template on request', async () => {
-      const { client } = build({
-        templates: [
-          ...TEMPLATES,
-          {
-            namespace: 'kagent',
-            name: 'other',
-            harnesses: [{ name: 'kagent', ready: true }],
-          },
+    it('narrows the listing to one Agent on request', async () => {
+      const { fake, client } = build({
+        agents: [
+          ...AGENTS,
+          { namespace: 'kagent', name: 'other', ready: true },
         ],
       });
-      await created(client, 'a');
-      await client.createSession(
-        { namespace: 'kagent', name: 'other' },
-        'o',
-        'b',
-        USER,
-      );
+      created(fake, 'a');
+      created(fake, 'b', USER, { namespace: 'kagent', name: 'other' });
 
       const narrowed = (await client.listSessions(USER, {
-        agentTemplate: { namespace: 'kagent', name: 'other' },
-      })) as { agentInstances: { agentTemplate: { name: string } }[] };
+        agent: { namespace: 'kagent', name: 'other' },
+      })) as { sessions: { agent: { name: string } }[] };
 
-      expect(narrowed.agentInstances.map(i => i.agentTemplate.name)).toEqual([
-        'other',
-      ]);
+      expect(narrowed.sessions.map(i => i.agent.name)).toEqual(['other']);
     });
 
-    it('answers an empty listing without an agentInstances key, which is an empty list', async () => {
+    it('answers an empty listing without a sessions key, which is an empty list', async () => {
       const { client } = build();
       expect(await client.listSessions(USER)).toEqual({});
     });
 
-    it('reads, renames and deletes one instance, scoped to the caller', async () => {
+    it('reads, renames and deletes one session, scoped to the caller', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
 
       expect(await client.getSession(id, USER)).toEqual({
-        agentInstance: expect.objectContaining({ id, name: 'Ingress check' }),
+        session: expect.objectContaining({ id, name: 'Ingress check' }),
       });
-      // Somebody else's instance is indistinguishable from a missing one.
+      // Somebody else's session is indistinguishable from a missing one.
       await expect(client.getSession(id, OTHER)).rejects.toMatchObject({
         name: 'NotFoundError',
       });
 
       expect(await client.updateSessionName(id, 'Renamed', USER)).toEqual({
-        agentInstance: expect.objectContaining({ id, name: 'Renamed' }),
+        session: expect.objectContaining({ id, name: 'Renamed' }),
       });
       await expect(
         client.updateSessionName(id, 'x'.repeat(201), USER),
       ).rejects.toMatchObject({ name: 'InputError' });
 
       expect(await client.deleteSession(id, USER)).toEqual({
-        agentInstance: expect.objectContaining({
+        session: expect.objectContaining({
           id,
-          state: 'AGENT_INSTANCE_STATE_DELETING',
+          state: 'RUNTIME_STATE_DELETING',
         }),
       });
-      expect(fake.instances.has(id)).toBe(false);
+      expect(fake.sessions.has(id)).toBe(false);
       await expect(client.getSession(id, USER)).rejects.toMatchObject({
         name: 'NotFoundError',
       });
@@ -385,9 +277,57 @@ describe('KagentClient against a fake controller', () => {
   });
 
   describe('turns over A2A v1', () => {
-    it('streams the turn as SSE frames of StreamResponse JSON, routed by the instance header with HITL requested', async () => {
+    it('addresses a turn to the Agent with the session’s context, so no new session starts', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
+
+      await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm0', text: 'hello' },
+        USER,
+      );
+
+      const send = fake.calls.find(call => call.method === 'SendMessage')!;
+      expect(send.tenant).toBe('kagent/sre-agent');
+      expect(send.headers['x-kagent-agent-instance-id']).toBeUndefined();
+      expect(fake.sessions.size).toBe(1);
+      expect(fake.tasks.get(id)?.[0]?.task.contextId).toBe(id);
+    });
+
+    it('reads a session’s tasks through the Agent it remembers, and through a fresh read otherwise', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm0', text: 'hi' },
+        USER,
+      );
+
+      // A second client knows nothing about the session yet.
+      const fresh = new KagentClient(
+        installation,
+        logger,
+        createRouterTransport(fake.routes),
+        500,
+        800,
+      );
+      const listed = (await fresh.listSessionTasks(id, USER)) as {
+        tasks: unknown[];
+      };
+      expect(listed.tasks).toHaveLength(1);
+      const [read, list] = fake.calls.slice(-2);
+      expect(`${read.service}/${read.method}`).toBe(
+        'SessionService/GetSession',
+      );
+      expect(list.method).toBe('ListTasks');
+      expect(list.tenant).toBe('kagent/sre-agent');
+    });
+
+    it('streams the turn as SSE frames of StreamResponse JSON, routed by the session header with HITL requested', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
 
       const response = await client.streamMessage(
         id,
@@ -425,13 +365,13 @@ describe('KagentClient against a fake controller', () => {
       const stream = fake.calls.find(
         call => call.method === 'SendStreamingMessage',
       )!;
-      expect(stream.headers[AGENT_INSTANCE_HEADER]).toBe(id);
+      expect(stream.tenant).toBe('kagent/sre-agent');
       expect(stream.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
     });
 
     it('answers the finished task for a unary send', async () => {
-      const { client } = build();
-      const id = await created(client);
+      const { fake, client } = build();
+      const id = created(fake);
 
       const body = (await client.sendMessage(
         id,
@@ -451,8 +391,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('lists the conversation oldest first, shaped as asked', async () => {
-      const { client } = build();
-      const id = await created(client);
+      const { fake, client } = build();
+      const id = created(fake);
       await client.sendMessage(
         id,
         AGENT,
@@ -487,9 +427,9 @@ describe('KagentClient against a fake controller', () => {
       );
     });
 
-    it('reads one task by id with the instance header', async () => {
+    it('reads one task by id with the session header', async () => {
       const { fake, client } = build();
-      const id = await created(client);
+      const id = created(fake);
       const sent = (await client.sendMessage(
         id,
         AGENT,
@@ -504,12 +444,12 @@ describe('KagentClient against a fake controller', () => {
       };
 
       expect(task.id).toBe(sent.task.id);
-      expect(fake.calls.at(-1)?.headers[AGENT_INSTANCE_HEADER]).toBe(id);
+      expect(fake.calls.at(-1)?.tenant).toBe('kagent/sre-agent');
     });
 
     it('refuses a second message during a turn as a 409', async () => {
-      const { client } = build({ turn: () => ({ kind: 'long' }) });
-      const id = await created(client);
+      const { fake, client } = build({ turn: () => ({ kind: 'long' }) });
+      const id = created(fake);
       const first = client.streamMessage(
         id,
         AGENT,
@@ -535,7 +475,7 @@ describe('KagentClient against a fake controller', () => {
             ? { kind: 'long' }
             : { kind: 'reply', text: 'Back to work.' },
       });
-      const id = await created(client);
+      const id = created(fake);
       // Not awaited: the in-memory router transport hands the stream over only
       // once the handler returns, and the handler returns on the cancel. (The
       // h2c suite reads the stream live and cancels mid-way.)
@@ -569,7 +509,7 @@ describe('KagentClient against a fake controller', () => {
         status: { state: string };
       };
       expect(again.status.state).toBe('TASK_STATE_CANCELED');
-      // The instance takes a following turn.
+      // The session takes a following turn.
       const next = (await client.sendMessage(
         id,
         AGENT,
@@ -582,10 +522,10 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('ends a stream that dies mid-turn with one error frame', async () => {
-      const { client } = build({
+      const { fake, client } = build({
         turn: () => ({ kind: 'fail', reason: 'model_not_found' }),
       });
-      const id = await created(client);
+      const id = created(fake);
 
       const response = await client.streamMessage(
         id,
@@ -613,7 +553,7 @@ describe('KagentClient against a fake controller', () => {
       const { client } = build();
       await expect(
         client.streamMessage(
-          'not-an-instance',
+          'not-a-session',
           AGENT,
           { messageId: 'm1', text: 'x' },
           USER,
@@ -656,8 +596,8 @@ describe('KagentClient against a fake controller', () => {
     };
 
     it('pauses the turn with the typed request, because the extension was requested', async () => {
-      const { client } = build({ turn: () => approval });
-      const id = await created(client);
+      const { fake, client } = build({ turn: () => approval });
+      const id = created(fake);
 
       const body = (await client.sendMessage(
         id,
@@ -679,7 +619,7 @@ describe('KagentClient against a fake controller', () => {
 
     it('resumes the paused task with the decision built from the recorded request', async () => {
       const { fake, client } = build({ turn: () => approval });
-      const id = await created(client);
+      const id = created(fake);
       const paused = (await client.sendMessage(
         id,
         AGENT,
@@ -734,11 +674,11 @@ describe('KagentClient against a fake controller', () => {
       expect(
         (prompt.metadata as Record<string, unknown>)[HITL_EXTENSION_URI],
       ).toEqual(expect.objectContaining({ type: 'tool_approval_request' }));
-      // The reply was routed to the instance and asked for the extension too.
+      // The reply was routed to the session and asked for the extension too.
       const send = fake.calls
         .filter(call => call.method === 'SendMessage')
         .at(-1)!;
-      expect(send.headers[AGENT_INSTANCE_HEADER]).toBe(id);
+      expect(send.tenant).toBe('kagent/sre-agent');
       expect(send.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
     });
 
@@ -747,7 +687,7 @@ describe('KagentClient against a fake controller', () => {
       // payload, but over SendStreamingMessage — so no deadline of ours ends the
       // agent's turn, and the events arrive as they happen.
       const { fake, client } = build({ turn: () => approval });
-      const id = await created(client);
+      const id = created(fake);
       const paused = (await client.sendMessage(
         id,
         AGENT,
@@ -787,7 +727,7 @@ describe('KagentClient against a fake controller', () => {
       const stream = fake.calls
         .filter(call => call.method === 'SendStreamingMessage')
         .at(-1)!;
-      expect(stream.headers[AGENT_INSTANCE_HEADER]).toBe(id);
+      expect(stream.tenant).toBe('kagent/sre-agent');
       expect(stream.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
 
       // The controller recorded the resume against the same task, with the
@@ -813,8 +753,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('refuses to stream an answer to a task that is not waiting, as a 409', async () => {
-      const { client } = build();
-      const id = await created(client);
+      const { fake, client } = build();
+      const id = created(fake);
       const done = (await client.sendMessage(
         id,
         AGENT,
@@ -835,8 +775,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('answers a question positionally and refuses a mismatched answer count', async () => {
-      const { client } = build({ turn: () => question });
-      const id = await created(client);
+      const { fake, client } = build({ turn: () => question });
+      const id = created(fake);
       const paused = (await client.sendMessage(
         id,
         AGENT,
@@ -892,8 +832,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('refuses to answer a task that is not waiting, as a 409', async () => {
-      const { client } = build();
-      const id = await created(client);
+      const { fake, client } = build();
+      const id = created(fake);
       const done = (await client.sendMessage(
         id,
         AGENT,
@@ -914,6 +854,69 @@ describe('KagentClient against a fake controller', () => {
   });
 
   describe('failure mapping', () => {
+    it('logs a failed session list with its call, status and request id', async () => {
+      const failing = mockServices.logger.mock();
+      const sent: Array<string | null> = [];
+      const client = new KagentClient(
+        installation,
+        failing,
+        createRouterTransport(router => {
+          router.service(
+            (
+              require('./kagent/gen/kagent/api/v1alpha1/sessions_pb') as typeof import('./kagent/gen/kagent/api/v1alpha1/sessions_pb')
+            ).SessionService,
+            {
+              listSessions(_request, context) {
+                sent.push(context.requestHeader.get('x-request-id'));
+                throw new ConnectError(
+                  'authentication failure: token uses the unknown key',
+                  Code.Unauthenticated,
+                );
+              },
+            },
+          );
+        }),
+        500,
+        500,
+      );
+
+      await expect(
+        client.listSessions({ ...USER, requestId: 'req-42' }),
+      ).rejects.toMatchObject({ name: 'AuthenticationError' });
+
+      expect(sent).toEqual(['req-42']);
+      expect(failing.warn).toHaveBeenCalledWith(
+        "kagent SessionService/ListSessions failed for installation 'gazelle' with status 401",
+        {
+          installation: 'gazelle',
+          call: 'SessionService/ListSessions',
+          status: 401,
+          code: 'Unauthenticated',
+          requestId: 'req-42',
+          error: 'authentication failure: token uses the unknown key',
+        },
+      );
+    });
+
+    it('keeps an absent kagent off the warn log', async () => {
+      const quiet = mockServices.logger.mock();
+      const client = new KagentClient(
+        { name: 'nowhere', apiBaseUrl: 'http://127.0.0.1:1' },
+        quiet,
+        undefined,
+        500,
+        500,
+      );
+      await client
+        .listSessions({ ...USER, requestId: 'req-43' })
+        .catch(() => undefined);
+      expect(quiet.warn).not.toHaveBeenCalled();
+      expect(quiet.debug).toHaveBeenCalledWith(
+        expect.stringContaining('with status 404'),
+        expect.objectContaining({ requestId: 'req-43', status: 404 }),
+      );
+    });
+
     it('reports a socket-level failure as a transport-borne 404', async () => {
       const client = new KagentClient(
         { name: 'nowhere', apiBaseUrl: 'http://127.0.0.1:1' },
@@ -930,8 +933,8 @@ describe('KagentClient against a fake controller', () => {
     });
 
     it('reports a turn that outlives its timeout as pending once the message landed', async () => {
-      const { client } = build({ turn: () => ({ kind: 'long' }) });
-      const id = await created(client);
+      const { fake, client } = build({ turn: () => ({ kind: 'long' }) });
+      const id = created(fake);
 
       const error = (await client
         .sendMessage(id, AGENT, { messageId: 'm1', text: 'slow' }, USER)
@@ -987,38 +990,5 @@ describe('KagentClient against a fake controller', () => {
         message: expect.stringContaining('database down'),
       });
     });
-  });
-});
-
-describe('harnessesOf', () => {
-  it('lists Ready harnesses first, then the rest of the status, then admitting ones without status', () => {
-    const template = create(AgentTemplateSchema, {
-      admittingHarnesses: ['claude', 'kagent', 'codex'],
-      resource: {
-        value: {
-          status: {
-            harnesses: [
-              {
-                harness: 'claude',
-                conditions: [{ type: 'Ready', status: 'False' }],
-              },
-              {
-                harness: 'kagent',
-                conditions: [{ type: 'Ready', status: 'True' }],
-              },
-            ],
-          },
-        },
-      },
-    });
-    expect(harnessesOf(template)).toEqual([
-      { name: 'kagent', ready: true },
-      { name: 'claude', ready: false },
-      { name: 'codex', ready: false },
-    ]);
-  });
-
-  it('is empty for a template nothing admits', () => {
-    expect(harnessesOf(create(AgentTemplateSchema, {}))).toEqual([]);
   });
 });

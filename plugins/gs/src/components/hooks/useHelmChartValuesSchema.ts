@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import $RefParser from '@apidevtools/json-schema-ref-parser';
 import { gitHubApiRef } from '../../apis/github';
@@ -28,7 +29,8 @@ export function useHelmChartValuesSchema(
   const {
     data: schema,
     error: schemaError,
-    isLoading: isLoadingSchema,
+    isPending,
+    fetchStatus,
   } = useQuery({
     queryKey: ['schema', schemaUrl],
     queryFn: async () => {
@@ -75,6 +77,7 @@ export function useHelmChartValuesSchema(
     },
     enabled: Boolean(schemaUrl),
   });
+  const isLoadingSchema = isAwaitingData({ isPending, fetchStatus });
 
   const isLoading = isLoadingTagManifest || isLoadingSchema;
   const error = tagManifestError || schemaError;

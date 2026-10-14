@@ -1,18 +1,6 @@
-import { useState } from 'react';
 import { makeStyles } from '@material-ui/core';
+import { Alert, Text, TextAreaField } from '@backstage/ui';
 import {
-  Alert,
-  Button,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
-  Flex,
-  Text,
-  TextAreaField,
-} from '@backstage/ui';
-import {
-  ALERT_MESSAGE_STYLE,
   ConfirmDialog,
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -21,8 +9,10 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
+import { parseJsonDefinition } from '../../lib/definitionParsers';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
+import { DefinitionEditorDialog } from '../shared';
 
 const useStyles = makeStyles({
   editField: {
@@ -40,6 +30,12 @@ export type LiveAction = {
   /** One sentence saying what muster will actually do (shown in the confirm dialog). */
   description?: string;
   destructive?: boolean;
+  /**
+   * The confirm button's label, naming the action ("Turn off", "Remove") as
+   * the platform's other confirms do. Defaults to "Delete" for a destructive
+   * action and "Confirm" otherwise.
+   */
+  confirmLabel?: string;
 };
 
 /**
@@ -98,7 +94,9 @@ export function ConfirmActionDialog({
         }
       }}
       title={action?.label ?? ''}
-      confirmLabel={action?.destructive ? 'Delete' : 'Confirm'}
+      confirmLabel={
+        action?.confirmLabel ?? (action?.destructive ? 'Delete' : 'Confirm')
+      }
       destructive={action?.destructive}
       isBusy={mutation.isPending}
       error={mutation.error ? mutationErrorMessage(mutation.error) : undefined}
@@ -108,9 +106,8 @@ export function ConfirmActionDialog({
       <Text as="p" variant="body-medium">
         {action?.destructive ? (
           <>
-            This permanently removes the server <code>{server.getName()}</code>{' '}
-            from this muster instance. This is a live mutation and cannot be
-            undone.
+            Permanently removes the connector <code>{server.getName()}</code>{' '}
+            from muster. This cannot be undone.
           </>
         ) : (
           <>
@@ -124,7 +121,7 @@ export function ConfirmActionDialog({
       {mutation.isSuccess && (
         <Alert
           status="success"
-          description="Done. The server list has been refreshed; the connection status may take a few seconds to settle."
+          description="Done. The connection status may take a few seconds to settle."
         />
       )}
     </ConfirmDialog>
@@ -134,8 +131,8 @@ export function ConfirmActionDialog({
 /**
  * Ad-hoc server edit dialog: a JSON editor seeded from the existing server,
  * validated via `core_mcpserver_validate` and saved via
- * `core_mcpserver_update`. Both calls go through the `/call` proxy. New servers
- * are added through the "Register server" flow instead.
+ * `core_mcpserver_update`. New servers are added through the "Register server"
+ * flow instead.
  */
 export function AdHocServerDialog({
   server,
@@ -147,129 +144,30 @@ export function AdHocServerDialog({
   onClose: () => void;
 }) {
   const classes = useStyles();
-  const musterApi = useApi(musterApiRef);
-  const target = server.cluster;
-  const refresh = useMusterMutationRefresh(target);
-  const [value, setValue] = useState('');
-  const [error, setError] = useState<string | undefined>();
-  const [message, setMessage] = useState<string | undefined>();
-
-  const onError = (e: Error) => setError(mutationErrorMessage(e));
-  const validation = useTrackedMutation({
-    event: null,
-    untrackedReason: 'A validation that writes nothing.',
-    mutationFn: (def: Record<string, unknown>) =>
-      musterApi.callTool('core_mcpserver_validate', def, target),
-    onSuccess: () => setMessage('Definition is valid.'),
-    onError,
-  });
-  const update = useTrackedMutation({
-    event: null,
-    untrackedReason: 'An edit of a server, not an addition.',
-    mutationFn: (def: Record<string, unknown>) =>
-      musterApi.callTool('core_mcpserver_update', def, target),
-    onSuccess: () => {
-      refresh();
-      setMessage('Saved. The server list has been refreshed.');
-    },
-    onError,
-  });
-  let busy: 'validate' | 'save' | undefined;
-  if (validation.isPending) {
-    busy = 'validate';
-  } else if (update.isPending) {
-    busy = 'save';
-  }
-
-  // Seeded on open only: `server` is polled, and re-seeding on every refetch
-  // would overwrite what the user is typing.
-  useOnDialogOpen(open, () => {
-    setValue(JSON.stringify(toMcpServerDefinition(server), null, 2));
-    setError(undefined);
-    setMessage(undefined);
-  });
-
-  const parsed = (): Record<string, unknown> | undefined => {
-    try {
-      const obj = JSON.parse(value);
-      setError(undefined);
-      return obj;
-    } catch (e) {
-      setError(`Invalid JSON: ${(e as Error).message}`);
-      return undefined;
-    }
-  };
-
-  const submit = (mutation: typeof validation) => {
-    const def = parsed();
-    if (def) {
-      setMessage(undefined);
-      mutation.mutate(def);
-    }
-  };
-
   return (
-    <Dialog
-      isOpen={open}
-      // Gated here as well: DialogHeader's close button ignores isDismissable.
-      onOpenChange={next => {
-        if (!next && !busy) {
-          onClose();
-        }
-      }}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={Boolean(busy)}
-      width="min(90vw, 860px)"
-    >
-      <DialogHeader>Edit as JSON — {server.getName()}</DialogHeader>
-      <DialogBody>
-        <Flex direction="column" gap="3">
-          <Text as="p" variant="body-medium">
-            Edit the muster server. Validate before saving; both run as live
-            mutations against installation <code>{target}</code>.
-          </Text>
-          <TextAreaField
-            label="Server definition (JSON)"
-            className={classes.editField}
-            rows={12}
-            value={value}
-            onChange={setValue}
-          />
-          {error && (
-            <Alert
-              status="danger"
-              description={<span style={ALERT_MESSAGE_STYLE}>{error}</span>}
-            />
-          )}
-          {message && <Alert status="success" description={message} />}
-        </Flex>
-      </DialogBody>
-      <DialogFooter>
-        <Button
-          variant="secondary"
-          isDisabled={Boolean(busy)}
-          onPress={onClose}
-        >
-          Close
-        </Button>
-        <Button
-          variant="secondary"
-          isDisabled={Boolean(busy)}
-          isPending={busy === 'validate'}
-          onPress={() => submit(validation)}
-        >
-          Validate
-        </Button>
-        <Button
-          variant="primary"
-          isDisabled={Boolean(busy)}
-          isPending={busy === 'save'}
-          onPress={() => submit(update)}
-        >
-          Save
-        </Button>
-      </DialogFooter>
-    </Dialog>
+    <DefinitionEditorDialog
+      open={open}
+      onClose={onClose}
+      installation={server.cluster}
+      title={<>Edit as JSON — {server.getName()}</>}
+      description="Edit the connector."
+      seed={() => JSON.stringify(toMcpServerDefinition(server), null, 2)}
+      parse={parseJsonDefinition}
+      renderEditor={({ value, onChange, invalid }) => (
+        <TextAreaField
+          label="Connector definition (JSON)"
+          className={classes.editField}
+          rows={12}
+          value={value}
+          onChange={onChange}
+          isInvalid={invalid}
+        />
+      )}
+      validateTool="core_mcpserver_validate"
+      saveTool="core_mcpserver_update"
+      saveUntrackedReason="An edit of a server, not an addition."
+      savedMessage="Saved."
+    />
   );
 }
 
@@ -278,9 +176,8 @@ export function AdHocServerDialog({
  * sign-in (see `serverLiveActions`).
  */
 export const OAUTH_SIGN_IN_GATE =
-  'This server authenticates per user session (OAuth), and reconnecting ' +
-  'cannot sign a session in — muster refuses it. Use “Sign in” in the ' +
-  'page header instead.';
+  'This connector signs in per user session (OAuth), which reconnecting ' +
+  'cannot do. Use “Sign in” in the page header.';
 
 /**
  * The live lifecycle and CRUD actions muster offers for an ad-hoc server, each
@@ -316,8 +213,7 @@ export function serverLiveActions(server: MCPServer): {
         label: `Activate ${name}`,
         tool: 'core_service_start',
         args: { name },
-        description:
-          'muster will resume maintaining a connection to this server.',
+        description: 'muster connects it again and keeps it connected.',
       },
       remove,
     };
@@ -328,14 +224,14 @@ export function serverLiveActions(server: MCPServer): {
       tool: 'core_service_stop',
       args: { name },
       description:
-        'muster will disconnect this server and keep it deactivated until it is activated again.',
+        'muster disconnects it and keeps it off until it is activated again.',
     },
     reconnect: {
       label: `Reconnect ${name}`,
       tool: 'core_service_restart',
       args: { name },
       description:
-        'muster will drop the current session to this server and establish a fresh one, re-running tool discovery.',
+        'muster opens a fresh session to it and re-runs tool discovery.',
     },
     reconnectGate: oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined,
     remove,

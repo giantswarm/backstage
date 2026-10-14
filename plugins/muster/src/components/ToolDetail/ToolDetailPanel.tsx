@@ -7,10 +7,14 @@ import {
   Alert,
   Box,
   Button,
+  Flex,
   Text,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  YamlEditorFormField,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { hasMarkers, ToolMarkers, useToolDescription } from '../shared';
 import {
@@ -55,6 +59,10 @@ export interface ToolDetailPanelProps {
    * the page already shows them, as the tool page does beside the tool's name.
    */
   showMarkers?: boolean;
+  /** One line beside the run button, e.g. what running the tool does. */
+  note?: string;
+  /** The run button's label. */
+  runLabel?: string;
 }
 
 /**
@@ -68,6 +76,8 @@ export function ToolDetailPanel({
   name,
   installation,
   showMarkers = true,
+  note,
+  runLabel = 'Execute',
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
 
@@ -86,7 +96,9 @@ export function ToolDetailPanel({
     setFieldErrors({});
   }, [storageKey]);
 
-  const { data, isLoading, error } = useToolDescription(name, installation);
+  const description = useToolDescription(name, installation);
+  const { data, error } = description;
+  const isLoading = isAwaitingData(description);
 
   const fields = useMemo(() => schemaFields(data?.inputSchema), [data]);
 
@@ -169,6 +181,12 @@ export function ToolDetailPanel({
     execute(args);
   };
 
+  const executeButton = (
+    <Button variant="primary" isPending={mutation.isPending} onClick={run}>
+      {mutation.isPending ? 'Running…' : runLabel}
+    </Button>
+  );
+
   if (isLoading) {
     return <DetailSkeleton />;
   }
@@ -241,16 +259,23 @@ export function ToolDetailPanel({
       </Box>
 
       <Box mt="2">
-        <Button variant="primary" isPending={mutation.isPending} onClick={run}>
-          {mutation.isPending ? 'Running…' : 'Execute'}
-        </Button>
+        {note ? (
+          <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
+            {executeButton}
+            <Text variant="body-small" color="secondary">
+              {note}
+            </Text>
+          </Flex>
+        ) : (
+          executeButton
+        )}
       </Box>
 
       {mutation.isError && (
         <Box mt="3">
           <Alert
             status="danger"
-            title="Execution failed"
+            title="Could not run the tool"
             description={(mutation.error as Error).message}
           />
         </Box>

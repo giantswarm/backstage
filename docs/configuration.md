@@ -9,16 +9,16 @@ unauthenticated `index.html`: every path a `config.d.ts` marks
 `@visibility frontend`, served to anyone who can reach the portal, signed in or
 not. It is kept to what the sign-in page needs before anyone is signed in:
 
-| Path                                                                                           | Why it is public                                                                             |
-| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `app.*` (title, baseUrl, release version, extensions, routes, branding, Sentry, TelemetryDeck) | the app shell and the sign-in page render from it                                            |
-| `backend.baseUrl`                                                                              | where the sign-in flow and every request go                                                  |
-| `auth.environment`, `auth.providers.*`                                                         | which providers exist (their secrets are `@visibility secret`)                               |
-| `gs.authProvider`                                                                              | the provider the sign-in page initiates                                                      |
-| `gs.auth.scopes`, `gs.auth.extraScopes`                                                        | the scopes the sign-in requests                                                              |
-| `gs.signInProvider.*`, `gs.signInFallbackProvider.*`                                           | the two sign-in cards                                                                        |
-| `gs.github.brokerAudience`                                                                     | picks the GitHub auth API when the app constructs its APIs, before sign-in; an audience name |
-| `organization.name`, `permission.enabled`                                                      | Backstage core                                                                               |
+| Path                                                                                                    | Why it is public                                                                             |
+| ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `app.*` (title, baseUrl, release version, portals, extensions, routes, branding, Sentry, TelemetryDeck) | the app shell and the sign-in page render from it                                            |
+| `backend.baseUrl`                                                                                       | where the sign-in flow and every request go                                                  |
+| `auth.environment`, `auth.providers.*`                                                                  | which providers exist (their secrets are `@visibility secret`)                               |
+| `gs.authProvider`                                                                                       | the provider the sign-in page initiates                                                      |
+| `gs.auth.scopes`, `gs.auth.extraScopes`                                                                 | the scopes the sign-in requests                                                              |
+| `gs.signInProvider.*`, `gs.signInFallbackProvider.*`                                                    | the two sign-in cards                                                                        |
+| `gs.github.brokerAudience`                                                                              | picks the GitHub auth API when the app constructs its APIs, before sign-in; an audience name |
+| `organization.name`, `permission.enabled`                                                               | Backstage core                                                                               |
 
 The **signed-in config** is served by the authenticated `GET /api/gs/config`,
 once, after the main sign-in, in app-config shape. Everything else a Giant
@@ -272,9 +272,11 @@ login fails with `invalid_scope` on the base set as well.
 
 The cluster details page allows you to configure resource links that will be displayed in place of the default links.
 
+The default links are the Grafana cluster overview dashboard and the Web UI. There is no default Alerts link: Grafana's alerting page is only enabled in the Giant Swarm organization (`orgId=2`), which customers can't access, so only a Giant Swarm staff instance configures one.
+
 ### Configuration example
 
-Below is an example configuration for overriding the default links on the cluster details page:
+Below is the configuration of a Giant Swarm staff instance, which adds the Alerts link to the defaults. Leave the Alerts entry out on a customer instance:
 
 ```yaml
 gs:
@@ -282,7 +284,7 @@ gs:
     resources:
       - label: 'Alerts'
         icon: 'NotificationsNone'
-        url: 'https://grafana.${{BASE_DOMAIN}}/alerting'
+        url: 'https://grafana.${{BASE_DOMAIN}}/alerting?orgId=2'
       - label: 'Web UI'
         icon: 'Public'
         url: 'https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}'
@@ -480,6 +482,21 @@ grafana:
     - id: grafana
       domain: https://grafana.example.com
 ```
+
+## GitHub Actions and Pull Requests tabs
+
+The GitHub Actions and Pull Requests tabs of a Component, and the GitHub
+Actions recent-runs card, read GitHub as the signed-in person. A portal offers
+them only where it has a GitHub login:
+
+- `gs.github`: the person's GitHub grant in muster, or
+- `auth.providers.github`: Backstage's own GitHub provider.
+
+A portal with neither shows none of them, without any `app.extensions` entry:
+their login dialog could not succeed there, since the auth backend has no
+GitHub provider to start. `app.extensions` still turns them off where a GitHub
+login exists (`entity-content:github-actions: false`,
+`entity-content:catalog/pull-requests: false`).
 
 ## Component dependency fetching
 

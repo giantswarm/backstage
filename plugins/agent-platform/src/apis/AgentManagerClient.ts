@@ -11,9 +11,13 @@ import {
   type AgentSpec,
   type AgentStatus,
   type AgentUpdate,
+  type WriteMode,
   type CommitAgentResult,
   type CreateAgentResult,
   type DeleteAgentResult,
+  type UpdateAgentCommitDryRun,
+  type StartSessionRequest,
+  type StartSessionResult,
   type UpdateAgentResult,
   type ValidateAgentResult,
 } from '../lib/agentManager';
@@ -93,7 +97,7 @@ export class AgentManagerClient {
     });
   }
 
-  /** One verdict on the template's readiness on the Harness it names. */
+  /** One verdict on the Agent's readiness on the Harness it names. */
   getAgentStatus(namespace: string, name: string): Promise<AgentStatus> {
     return this.call<AgentStatus>(AGENT_MANAGER_TOOLS.getAgentStatus, {
       namespace,
@@ -122,12 +126,18 @@ export class AgentManagerClient {
   /**
    * The dry run of an update: the values and manifests agent-manager would
    * write for `update` — with `refreshSkills`, every git skill re-pinned to its
-   * default-branch head — and every violation. Nothing is written.
+   * default-branch head — and every violation. Nothing is written. `commit`
+   * answers as `commitUpdateAgent` would: an agent applied from git is
+   * validated rather than refused with `gitops_owned`.
    */
-  validateUpdate(update: AgentUpdate): Promise<ValidateAgentResult> {
+  validateUpdate(
+    update: AgentUpdate,
+    mode: WriteMode = 'apply',
+  ): Promise<ValidateAgentResult> {
     return this.call<ValidateAgentResult>(AGENT_MANAGER_TOOLS.validateAgent, {
       ...update,
       update: true,
+      ...(mode === 'commit' ? { mode } : {}),
     });
   }
 
@@ -151,7 +161,24 @@ export class AgentManagerClient {
   }
 
   /**
-   * Deletes the agent's HelmRelease (helm-controller uninstalls the template
+   * The dry run of `commitUpdateAgent`: the merged values and the pull request
+   * it would open, nothing opened. Unlike `validateUpdate` it reads the
+   * repository's base branch as the person, so it refuses up front what the
+   * commit would, such as a release whose file is not in agent-manager's
+   * directory.
+   */
+  dryRunCommitUpdateAgent(
+    update: AgentUpdate,
+  ): Promise<UpdateAgentCommitDryRun> {
+    return this.call<UpdateAgentCommitDryRun>(AGENT_MANAGER_TOOLS.updateAgent, {
+      ...update,
+      mode: 'commit',
+      dryRun: true,
+    });
+  }
+
+  /**
+   * Deletes the agent's HelmRelease (helm-controller uninstalls the Agent
    * and the agent's RemoteMCPServer with it) and the shared OCIRepository only
    * when nothing else references it. Never with `force`: a GitOps-owned or
    * suspended release is agent-manager's refusal to show, not ours to override.
@@ -177,5 +204,39 @@ export class AgentManagerClient {
       name,
       mode: 'commit',
     });
+  }
+
+  /**
+   * Starts a session with an agent, as the person: one `start_session`, the
+   * only way a session starts, so every surface passes the same checks (a
+   * workspace grant's among them). Without `message` it only creates the
+   * session. `requestId` makes a retry answer the session the first attempt
+   * created.
+   */
+  async startSession(
+    request: StartSessionRequest,
+  ): Promise<StartSessionResult & { sessionId: string }> {
+    const result = await this.call<StartSessionResult>(
+      AGENT_MANAGER_TOOLS.startSession,
+      {
+        namespace: request.namespace,
+        name: request.name,
+        ...(request.message ? { message: request.message } : {}),
+        requestId: request.requestId,
+        ...(request.sessionName ? { sessionName: request.sessionName } : {}),
+        ...(request.workspaceGrant
+          ? { workspaceGrant: request.workspaceGrant }
+          : {}),
+      },
+    );
+    // The id is where the person is taken next: an answer without one has
+    // nowhere to go, so it fails rather than resolving into a broken link.
+    const sessionId = result?.session?.id;
+    if (typeof sessionId !== 'string' || !sessionId) {
+      throw new Error(
+        "agent-manager's start_session answered without a session id.",
+      );
+    }
+    return { ...result, sessionId };
   }
 }

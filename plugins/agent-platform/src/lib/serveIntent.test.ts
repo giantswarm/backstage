@@ -214,7 +214,7 @@ describe('staleServeIntentIds', () => {
 });
 
 describe('serveIntentStep', () => {
-  const href = '/serving?serve=1&pool=gpu-l4';
+  const href = '/serving/serve?pool=gpu-l4';
   const base = {
     intent: intent(),
     stackReady: false,
@@ -265,11 +265,11 @@ describe('serveIntentStep', () => {
     });
   });
 
-  it('shows what load_model threw, with the dialog on the preset as the way out', () => {
+  it('shows what load_model threw, with Serve model on the preset as the way out', () => {
     expect(
       serveIntentStep({
         ...base,
-        serveInDialogHref: `${href}&preset=qwen3-8b-fp8`,
+        servePresetHref: `${href}&model=qwen3-8b-fp8`,
         intent: intent({
           outcome: { kind: 'failed', message: 'backend_error: down', at: T1 },
         }),
@@ -278,8 +278,8 @@ describe('serveIntentStep', () => {
       state: 'failed',
       message: 'model-manager refused: backend_error: down',
       action: {
-        label: 'Serve Qwen3 8B FP8 in the dialog',
-        to: `${href}&preset=qwen3-8b-fp8`,
+        label: 'Serve Qwen3 8B FP8 manually',
+        to: `${href}&model=qwen3-8b-fp8`,
       },
     });
   });

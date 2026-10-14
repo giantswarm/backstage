@@ -1,10 +1,11 @@
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import {
   Badge,
   Cell,
   CellText,
   ColumnConfig,
   Flex,
+  SearchField,
   Table,
   Text,
   useTable,
@@ -12,10 +13,20 @@ import {
 import { LinearProgress } from '@material-ui/core';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 
-import { modelDetailRouteRef } from '../../routes';
-import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import {
+  CatalogNoMatch,
+  countNoun,
+  INITIAL_ROWS,
+  matchesQuery,
+  ShowMore,
+  type StackedRowItem,
+  StackedRowList,
+  StatusHint,
+  stopRowPress,
+  usePhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
   formatContextLength,
@@ -26,6 +37,7 @@ import {
 } from '../../lib/modelManagerServing';
 import { formatBytes } from '../../lib/formatNumbers';
 import {
+  SERVED_MODEL_READINESS,
   SERVED_MODEL_READINESS_ORDER,
   type ServedModel,
   type ServedModelReadiness,
@@ -35,7 +47,7 @@ import type { ModelManagerJobPhase } from '../../lib/modelManager';
 import { describeCopies, describeSplit } from '../../lib/modelManagerServe';
 import { interfaceLabel, sortInterfaces } from '../../lib/servedModelApi';
 import { ServedReadinessLabel } from '../ModelServingStatus';
-import { CopyEndpointButton } from './ServedModelsGroupHeader';
+import { CopyEndpointButton, describeGroup } from './ServedModelsGroupHeader';
 import { ServedModelsGroupCard } from './ServedModelsGroupCard';
 
 /** A kagent ModelConfig that fronts a served model. */
@@ -185,7 +197,7 @@ export type ServedModelGroup = {
 
 /** What the card of a backend without models says, while it is healthy. */
 export const NO_MODELS_ON_BACKEND =
-  'No models served yet — serve or pull one, or remove the backend.';
+  'This backend serves no model yet. Serve or pull one, or remove the backend.';
 
 /**
  * A backend registered with a model-manager that serves nothing yet — a
@@ -471,14 +483,13 @@ export function downloadPercent(
  * The line under a download row's `Downloading` label, from the job alone:
  * the backend's progress message with the figures — `pulling 6f7f… · 31 % ·
  * 114 MiB / 381 MiB` — as far as it reports them, `Queued` before it starts,
- * `Starting…` while it has said nothing yet; `Download failed: <reason>`
- * under a failed one's `Not ready`.
+ * `Starting…` while it has said nothing yet; `Download failed` under a
+ * failed one's `Not ready`, the backend's error in the status hint
+ * ({@link servedModelStatusExplanation}).
  */
 export function downloadLine(download: ServedModelDownload): string {
   if (download.phase === 'failed') {
-    return download.error
-      ? `Download failed: ${download.error}`
-      : 'Download failed';
+    return 'Download failed';
   }
   const parts: string[] = [];
   if (download.status) {
@@ -503,29 +514,21 @@ export function downloadLine(download: ServedModelDownload): string {
  * The lines under the readiness label of {@link ServedModelStatusCell}, each
  * from the row's fields only — no capabilities, no installation lookups — so
  * a row says the same thing wherever it renders: a download row's progress
- * ({@link downloadLine}); else the backend's explanation where it named a
- * reason (the label says the word, this line says why — the scheduler's
- * text, the kubelet's — under it, not only on hover), then a served model's
- * memory state ({@link memoryLine}, the GPU share included) — for a model
- * that runs or could: a serving object that is pending, failed or being
- * deleted has no footprint to report, whatever its inventory entry says
- * (KServe lists the preset's weights as the size of a model it has not
- * started).
+ * ({@link downloadLine}); else a served model's memory state
+ * ({@link memoryLine}, the GPU share included) — for a model that runs or
+ * could: a serving object that is pending, failed or being deleted has no
+ * footprint to report, whatever its inventory entry says (KServe lists the
+ * preset's weights as the size of a model it has not started). Never the
+ * backend's explanation of a troubled state, which can run to a paragraph
+ * (the scheduler's text): that is the status hint
+ * ({@link servedModelStatusExplanation}).
  */
 export function servedModelStatusLines(row: ServedModelRow): string[] {
   if (isDownloadRow(row)) {
     return [downloadLine(row.download)];
   }
-  const lines: string[] = [];
-  const explanation = explanationLine(row);
-  if (explanation) {
-    lines.push(explanation);
-  }
   const memory = hasFootprint(row.readiness) ? memoryLine(row) : undefined;
-  if (memory) {
-    lines.push(memory);
-  }
-  return lines;
+  return memory ? [memory] : [];
 }
 
 /** Whether a row in this state can have memory figures worth a line. */
@@ -539,14 +542,53 @@ function hasFootprint(readiness: ServedModelReadiness): boolean {
 }
 
 /**
- * The backend's explanation as a line of its own — only where the backend
- * also named a reason; a row without one keeps its explanation on hover, as
- * before.
+ * Whether a row's state needs a look: the backend named a reason for it
+ * (`Unschedulable`, `ImagePullBackOff`), or its label warns (`Not serving`,
+ * `Not ready`). Its explanation then sits behind an info icon a press opens
+ * on a touch screen too, rather than in a `title=` alone.
  */
-function explanationLine(
-  row: Pick<ServedModelRow, 'readinessReason' | 'readinessMessage'>,
+function isTroubled(
+  row: Pick<ServedModelRow, 'readiness' | 'readinessReason'>,
+): boolean {
+  if (row.readinessReason) {
+    return true;
+  }
+  const { intent } = SERVED_MODEL_READINESS[row.readiness];
+  return intent === 'warning' || intent === 'negative';
+}
+
+/**
+ * The explanation of a troubled row's state, for its status hint: the
+ * backend's error for a failed pull, else its readiness message. Undefined
+ * for a row whose state needs no look, which keeps its message on hover
+ * (and, on a phone, under the label) as before.
+ */
+export function servedModelStatusExplanation(
+  row: ServedModelRow,
 ): string | undefined {
-  return row.readinessReason ? row.readinessMessage : undefined;
+  if (!isTroubled(row)) {
+    return undefined;
+  }
+  if (isDownloadRow(row) && row.download.phase === 'failed') {
+    return row.download.error ?? row.readinessMessage;
+  }
+  return row.readinessMessage;
+}
+
+/**
+ * A row's readiness label with its explanation where the state needs a look:
+ * the label and the backend's word stay, the sentences go behind the hint.
+ */
+function ServedRowReadiness({ row }: { row: ServedModelRow }) {
+  const explanation = servedModelStatusExplanation(row);
+  return (
+    <ServedReadinessLabel
+      readiness={row.readiness}
+      reason={row.readinessReason}
+      title={explanation ? undefined : row.readinessMessage}
+      hint={<StatusHint subject={row.name} explanation={explanation} />}
+    />
+  );
 }
 
 export type ServedModelStatusCellProps = {
@@ -556,16 +598,17 @@ export type ServedModelStatusCellProps = {
 /**
  * The one status cell of a served model: the readiness label
  * ({@link ServedReadinessLabel} — the vocabulary's word and glyph, the
- * backend's reason after it, the explanation as the tooltip) with the lines
- * of {@link servedModelStatusLines} under it — `Pending · Unschedulable` /
- * `0/3 nodes are available: 3 Insufficient nvidia.com/gpu.`, `Ready` /
- * `6.6 GiB in memory · 100 % GPU · evicts 13:05`, `Available` / `Not
- * loaded` — the memory line explained on hover ({@link memoryLineTitle}).
- * What used to be the Memory column, told where the status is. On a download
- * row the line is the pull's progress (`Downloading` / `pulling 6f7f… · 31 %
- * · 114 MiB / 381 MiB`) with a progress bar under it while the pull runs,
- * and the failure in red once it has failed (`Not ready` / `Download
- * failed: …`).
+ * backend's reason after it) with the lines of {@link servedModelStatusLines}
+ * under it — `Ready` / `6.6 GiB in memory · 100 % GPU · evicts 13:05`,
+ * `Available` / `Not loaded` — the memory line explained on hover
+ * ({@link memoryLineTitle}). What used to be the Memory column, told where
+ * the status is. A troubled state keeps to its words — `Pending ·
+ * Unschedulable` — with the backend's explanation (the scheduler's text) in
+ * a hint beside them; a healthy one keeps its explanation on hover. On a
+ * download row the line is the pull's progress (`Downloading` / `pulling
+ * 6f7f… · 31 % · 114 MiB / 381 MiB`) with a progress bar under it while the
+ * pull runs, and the failure in red once it has failed (`Not ready` /
+ * `Download failed`, the error in the hint).
  */
 export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
   const lines = servedModelStatusLines(row);
@@ -576,11 +619,7 @@ export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
   return (
     <Cell>
       <Flex direction="column" gap="1">
-        <ServedReadinessLabel
-          readiness={row.readiness}
-          reason={row.readinessReason}
-          title={row.readinessMessage}
-        />
+        <ServedRowReadiness row={row} />
         {lines.map(line => (
           <Text
             key={line}
@@ -970,9 +1009,11 @@ function getColumnConfig(
     );
   }
 
+  // "Model config", not "Used by": on Customize › Models "Used by" lists
+  // agents, so one heading means one thing (UX review M16).
   config.push({
     id: 'usedBy',
-    label: 'Used by',
+    label: 'Model config',
     cell: row => {
       const entries = usedByEntries(row);
       return (
@@ -1040,16 +1081,251 @@ function getColumnConfig(
   return config;
 }
 
-/** One group's rows as a table, its columns derived from those rows alone. */
+/** Where a row runs, in words: a split's nodes, its copies', or its one node. */
+export function describePlacement(row: ServedModelRow): string | undefined {
+  if (row.splitNodes) {
+    return `split over ${row.splitNodes.join(', ')}`;
+  }
+  if (row.copyNodes) {
+    return `${row.copyNodes.length} copies on ${row.copyNodes.join(', ')}`;
+  }
+  if (!row.node) {
+    return undefined;
+  }
+  // The pin is intent, the pod is fact; say which the row shows.
+  return row.nodeSource === 'spec'
+    ? `pinned to ${row.node}, no pod yet`
+    : `on ${row.node}`;
+}
+
+/**
+ * The status lines of a phone row: {@link servedModelStatusLines}, plus the
+ * backend's explanation of a state that needs no look — on a table that one
+ * lives in the label's `title=`, which a phone never shows (T22 B13). A
+ * troubled state's explanation is the label's hint, as on the table.
+ */
+export function phoneStatusLines(row: ServedModelRow): string[] {
+  const lines = servedModelStatusLines(row);
+  if (
+    !isDownloadRow(row) &&
+    !isTroubled(row) &&
+    row.readinessMessage &&
+    !lines.includes(row.readinessMessage)
+  ) {
+    return [row.readinessMessage, ...lines];
+  }
+  return lines;
+}
+
+/** A phone row's line of features and APIs, in words where a table had a tooltip. */
+function PhoneCapabilities({ row }: { row: ServedModelRow }) {
+  const chips = (row.capabilities ?? []).filter(capability =>
+    FEATURE_CHIPS.includes(capability),
+  );
+  const interfaces = sortInterfaces(row.interfaces ?? []);
+  const hasFeatures = row.engine !== undefined || chips.length > 0;
+  return (
+    <>
+      {hasFeatures && (
+        <Flex align="center" gap="1" style={{ flexWrap: 'wrap' }}>
+          {row.engine && <Badge size="small">{row.engine}</Badge>}
+          {chips.map(capability => (
+            <Badge key={capability} size="small">
+              {capability}
+            </Badge>
+          ))}
+        </Flex>
+      )}
+      {row.engine && (
+        <Text as="p" variant="body-small" color="secondary">
+          {engineTitle(row.engine)}
+        </Text>
+      )}
+      {lacksToolCalling(row) && (
+        <Flex align="center" gap="1">
+          <span
+            aria-hidden
+            style={{ display: 'inline-flex', color: 'var(--bui-fg-warning)' }}
+          >
+            <ReportProblemIcon fontSize="small" />
+          </span>
+          <Text as="p" variant="body-small">
+            {NO_TOOLS_TITLE}
+          </Text>
+        </Flex>
+      )}
+      {interfaces.length > 0 && (
+        <Text as="p" variant="body-small" color="secondary">
+          API:{' '}
+          {interfaces
+            .map(api => `${interfaceLabel(api.type)} (${api.path})`)
+            .join(' · ')}
+        </Text>
+      )}
+      {interfaces.length === 0 && row.interfaces && row.interfacesReason && (
+        <Text as="p" variant="body-small" color="secondary">
+          No API reported: {row.interfacesReason}
+        </Text>
+      )}
+    </>
+  );
+}
+
+/** A phone row's "Used by": the ModelConfigs as links, each with what its tooltip said. */
+function PhoneUsedBy({
+  row,
+  hrefFor,
+}: {
+  row: ServedModelRow;
+  hrefFor: (consumer: ServedModelConsumer) => string | undefined;
+}) {
+  const entries = usedByEntries(row);
+  if (entries.length === 0) {
+    return isDownloadRow(row) ? null : (
+      <Text as="p" variant="body-small" color="secondary">
+        No model config
+      </Text>
+    );
+  }
+  return (
+    <Flex direction="column" gap="1">
+      {entries.map(consumer => {
+        const href = hrefFor(consumer);
+        const key = `${consumer.namespace}/${consumer.name}`;
+        return (
+          <Text key={key} as="p" variant="body-small" color="secondary">
+            Model config{' '}
+            {href ? (
+              <Link to={href}>{consumer.displayName}</Link>
+            ) : (
+              consumer.displayName
+            )}
+            <span style={{ overflowWrap: 'anywhere' }}>
+              {' '}
+              — {describeUsedBy(consumer)}
+            </span>
+          </Text>
+        );
+      })}
+    </Flex>
+  );
+}
+
+/**
+ * One served model as a phone row (T22 B13): a table of up to ten columns
+ * squeezed every cell to a sliver and clipped the row's actions menu.
+ *
+ * - Line 1: the served name, its readiness, the row's actions (the menu, the
+ *   steps toggle) at the end — always reachable.
+ * - Line 2: where the weights come from, the runtime (where the group's rows
+ *   differ), where it runs and on how many GPUs.
+ * - Under them: the status lines (a healthy state's explanation inline, not
+ *   on hover; a troubled one's in the label's hint, which a press opens), the
+ *   download's progress, the description, a per-row endpoint with its copy
+ *   action, the features and APIs in words, and what uses it.
+ */
+export function servedModelStackedRow(
+  row: ServedModelRow,
+  {
+    columns,
+    sharedEndpoint,
+    hrefFor,
+    renderActions,
+  }: {
+    columns: ServedModelColumns;
+    sharedEndpoint: string | undefined;
+    hrefFor: (consumer: ServedModelConsumer) => string | undefined;
+    renderActions?: (row: ServedModelRow) => ReactNode;
+  },
+): StackedRowItem {
+  const lines = phoneStatusLines(row);
+  const download = isDownloadRow(row) ? row.download : undefined;
+  const percent = download ? downloadPercent(download) : undefined;
+  const description = describeRow(row);
+  const endpoint = endpointOf(row);
+  const ownEndpoint =
+    endpoint && endpoint !== sharedEndpoint ? endpoint : undefined;
+  const source =
+    row.modelSource && row.modelSource !== row.name
+      ? row.modelSource
+      : undefined;
+
+  return {
+    id: row.id,
+    title: row.name,
+    status: <ServedRowReadiness row={row} />,
+    facts: [
+      source,
+      row.publicName ? `model name ${row.publicName}` : undefined,
+      columns.runtime ? row.runtime : undefined,
+      describePlacement(row),
+      row.gpuCount !== undefined ? countNoun(row.gpuCount, 'GPU') : undefined,
+    ],
+    details: (
+      <Flex direction="column" gap="1">
+        {lines.map(line => (
+          <Text
+            key={line}
+            as="p"
+            variant="body-small"
+            color={download?.phase === 'failed' ? 'danger' : 'secondary'}
+          >
+            {line}
+          </Text>
+        ))}
+        {isActiveDownload(row) && (
+          <LinearProgress
+            aria-label={`Downloading ${row.name}`}
+            variant={percent === undefined ? 'indeterminate' : 'determinate'}
+            value={percent}
+          />
+        )}
+        {description && (
+          <Text as="p" variant="body-small" color="secondary">
+            {description}
+          </Text>
+        )}
+        {ownEndpoint && (
+          <Flex align="center" gap="1" style={{ minWidth: 0 }}>
+            <Text
+              as="span"
+              variant="body-small"
+              color="secondary"
+              truncate
+              style={{ minWidth: 0 }}
+            >
+              {ownEndpoint}
+            </Text>
+            <CopyEndpointButton url={ownEndpoint} />
+          </Flex>
+        )}
+        <PhoneCapabilities row={row} />
+        <PhoneUsedBy row={row} hrefFor={hrefFor} />
+      </Flex>
+    ),
+    actions: renderActions?.(row) ?? undefined,
+  };
+}
+
+/**
+ * One group's rows as a table, its columns derived from those rows alone.
+ * A backend with dozens of pulled models shows its first {@link INITIAL_ROWS}
+ * and offers the rest: the table sorts, then `ShowMore` slices the sorted
+ * rows, so the first page is the running models whatever column is sorted.
+ */
 function ServedModelsGroupTable({
   group,
   hrefFor,
   renderActions,
+  query,
 }: {
   group: ServedModelGroup;
   hrefFor: (consumer: ServedModelConsumer) => string | undefined;
   renderActions?: (row: ServedModelRow) => ReactNode;
+  /** The search in force; a new one starts the group over at its first page. */
+  query: string;
 }) {
+  const isPhone = usePhoneLayout();
   const columns = useMemo(() => columnsForRows(group.rows), [group.rows]);
   const columnConfig = useMemo(
     () => getColumnConfig(hrefFor, columns, group.endpoint, renderActions),
@@ -1064,12 +1340,58 @@ function ServedModelsGroupTable({
     paginationOptions: { type: 'none' },
   });
 
-  return <Table<ServedModelRow> {...tableProps} columnConfig={columnConfig} />;
+  return (
+    <ShowMore
+      key={query}
+      items={tableProps.data ?? []}
+      initial={INITIAL_ROWS}
+      noun="model"
+    >
+      {visible =>
+        isPhone ? (
+          // At phone width each model is a stacked row (T22 B13), in the
+          // table's order — the running ones first.
+          <StackedRowList
+            aria-label={`Models on ${group.installation}, ${describeGroup(group)}`}
+            rows={visible.map(row =>
+              servedModelStackedRow(row, {
+                columns,
+                sharedEndpoint: group.endpoint,
+                hrefFor,
+                renderActions,
+              }),
+            )}
+          />
+        ) : (
+          <Table<ServedModelRow>
+            {...tableProps}
+            data={visible}
+            columnConfig={columnConfig}
+          />
+        )
+      }
+    </ShowMore>
+  );
+}
+
+/**
+ * How many rows, across every group, before the page offers a model search:
+ * one Ollama or LM Studio backend easily holds 50 pulled models, three are
+ * read at a glance.
+ */
+const SERVED_MODELS_SEARCH_MIN = INITIAL_ROWS;
+
+/** Whether a row is the model a search names: its served name, its display name, or its source. */
+function matchesServedModel(query: string, row: ServedModelRow): boolean {
+  return matchesQuery(
+    query,
+    [row.name, row.displayName, row.modelSource].filter(Boolean).join(' '),
+  );
 }
 
 /** What the Serving page says when no serving layer in view lists a model. */
 export const NO_SERVED_MODELS =
-  'No models yet — none running, downloaded or being pulled.';
+  'No model is running, downloaded or being pulled.';
 
 export type ServedModelsTableProps = {
   rows: ServedModelRow[];
@@ -1119,7 +1441,7 @@ export function ServedModelsTable({
   renderGroupDetail,
   emptyGroups,
 }: ServedModelsTableProps) {
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const { modelDetail: modelDetailRoute } = useCustomizePaths();
 
   const hrefFor = useCallback(
     (consumer: ServedModelConsumer) =>
@@ -1131,16 +1453,38 @@ export function ServedModelsTable({
     [modelDetailRoute],
   );
 
+  // The search narrows the rows *before* they are grouped, so a backend with
+  // no match drops out instead of showing an empty card; a backend that
+  // serves nothing yet has nothing to match and drops out too. Offered only
+  // once the page holds more than a screenful, and kept while a search is in
+  // force so it can still be cleared.
+  const [query, setQuery] = useState('');
+  const trimmed = query.trim();
+  const isSearchable = rows.length > SERVED_MODELS_SEARCH_MIN || trimmed !== '';
+  const matching = useMemo(
+    () =>
+      trimmed === ''
+        ? rows
+        : rows.filter(row => matchesServedModel(trimmed, row)),
+    [rows, trimmed],
+  );
+
   const groups = useMemo(
     () =>
-      [...groupServedModelRows(rows), ...(emptyGroups ?? [])].sort(
-        compareGroups,
-      ),
-    [rows, emptyGroups],
+      [
+        ...groupServedModelRows(matching),
+        ...(trimmed === '' ? (emptyGroups ?? []) : []),
+      ].sort(compareGroups),
+    [matching, trimmed, emptyGroups],
   );
-  const installations = new Set(groups.map(group => group.installation)).size;
+  // From every group, not the matching ones: the header naming the
+  // installation must not come and go as the search narrows.
+  const installations = new Set([
+    ...rows.map(row => row.installation),
+    ...(emptyGroups ?? []).map(group => group.installation),
+  ]).size;
 
-  if (groups.length === 0) {
+  if (rows.length === 0 && (emptyGroups ?? []).length === 0) {
     return (
       <Text variant="body-medium" color="secondary">
         {NO_SERVED_MODELS}
@@ -1150,6 +1494,17 @@ export function ServedModelsTable({
 
   return (
     <Flex direction="column" gap="3">
+      {isSearchable && (
+        <SearchField
+          aria-label="Search models"
+          placeholder="Search models by name…"
+          value={query}
+          onChange={setQuery}
+        />
+      )}
+      {groups.length === 0 && (
+        <CatalogNoMatch plural="models" search={trimmed} />
+      )}
       {groups.map(group => (
         <ServedModelsGroupCard
           key={group.key}
@@ -1164,6 +1519,7 @@ export function ServedModelsTable({
                 group={group}
                 hrefFor={hrefFor}
                 renderActions={renderActions}
+                query={trimmed}
               />
               {renderGroupDetail?.(group)}
             </Flex>

@@ -1,6 +1,6 @@
 import {
   Agent,
-  AgentTemplateInterface,
+  AgentInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   describeToolScope,
@@ -8,16 +8,13 @@ import {
   mcpBindingId,
   shortPin,
   skillLabel,
-  toAgentManifestYaml,
 } from './helpers';
-
-type AgentInterface = AgentTemplateInterface;
 
 function makeAgent(overrides: Partial<AgentInterface> = {}): Agent {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: { name: 'pr-reviewer', namespace: 'agent-platform' },
       ...overrides,
     } as AgentInterface,
@@ -126,137 +123,5 @@ describe('shortPin', () => {
 
   it('leaves anything else alone', () => {
     expect(shortPin('v-42')).toBe('v-42');
-  });
-});
-
-describe('toAgentManifestYaml', () => {
-  it('renders the resource as YAML, status included', () => {
-    const yaml = toAgentManifestYaml(
-      makeAgent({
-        spec: { modelConfig: { name: 'opus' } },
-        status: {
-          observedGeneration: 1,
-          harnesses: [
-            {
-              harness: 'kagent',
-              desiredRevision: 'rev-1',
-              latestSuccessfulRevision: 'rev-1',
-              conditions: [
-                {
-                  type: 'Ready',
-                  status: 'True',
-                  reason: 'RevisionReady',
-                  message: 'Revision rev-1 is ready',
-                  lastTransitionTime: '2026-07-31T10:00:00Z',
-                },
-              ],
-            },
-          ],
-        },
-      } as Partial<AgentInterface>),
-    );
-
-    expect(yaml).toContain('kind: AgentTemplate');
-    expect(yaml).toContain('apiVersion: kagent.dev/v1alpha3');
-    expect(yaml).toContain('name: pr-reviewer');
-    expect(yaml).toContain('name: opus');
-    // The point of this view is to see what the page does not surface.
-    expect(yaml).toContain('observedGeneration: 1');
-    expect(yaml).toContain('harness: kagent');
-  });
-
-  // The view exists to be compared against `kubectl get -o yaml`, so it prints the
-  // same key order.
-  it('orders keys apiVersion, kind, metadata, spec, status', () => {
-    const yaml = toAgentManifestYaml(
-      makeAgent({
-        spec: { modelConfig: { name: 'opus' } },
-        status: { observedGeneration: 1, harnesses: [] },
-      } as Partial<AgentInterface>),
-    );
-
-    const topLevelKeys = yaml
-      .split('\n')
-      .filter(line => /^\S/.test(line))
-      .map(line => line.split(':')[0]);
-
-    expect(topLevelKeys).toEqual([
-      'apiVersion',
-      'kind',
-      'metadata',
-      'spec',
-      'status',
-    ]);
-  });
-
-  // Server-side-apply bookkeeping is the bulk of a reconciled template and
-  // pushes the spec off the screen; kubectl hides it too.
-  it('drops managedFields', () => {
-    const yaml = toAgentManifestYaml(
-      makeAgent({
-        metadata: {
-          name: 'pr-reviewer',
-          namespace: 'agent-platform',
-          managedFields: [
-            {
-              manager: 'helm-controller',
-              operation: 'Apply',
-              apiVersion: 'kagent.dev/v1alpha3',
-            },
-          ],
-        },
-      } as Partial<AgentInterface>),
-    );
-
-    expect(yaml).not.toContain('managedFields');
-    expect(yaml).not.toContain('helm-controller');
-    expect(yaml).toContain('name: pr-reviewer');
-  });
-
-  it('drops the last-applied-configuration annotation but keeps the others', () => {
-    const yaml = toAgentManifestYaml(
-      makeAgent({
-        metadata: {
-          name: 'pr-reviewer',
-          namespace: 'agent-platform',
-          annotations: {
-            'kubectl.kubernetes.io/last-applied-configuration':
-              '{"apiVersion":"kagent.dev/v1alpha3","kind":"AgentTemplate"}',
-            'ui.giantswarm.io/display-name': 'PR reviewer',
-          },
-        },
-      } as Partial<AgentInterface>),
-    );
-
-    expect(yaml).not.toContain('last-applied-configuration');
-    expect(yaml).toContain('ui.giantswarm.io/display-name: PR reviewer');
-  });
-
-  it('omits the annotations key entirely when only the dropped one was set', () => {
-    const yaml = toAgentManifestYaml(
-      makeAgent({
-        metadata: {
-          name: 'pr-reviewer',
-          namespace: 'agent-platform',
-          annotations: {
-            'kubectl.kubernetes.io/last-applied-configuration': '{}',
-          },
-        },
-      } as Partial<AgentInterface>),
-    );
-
-    expect(yaml).not.toContain('annotations');
-  });
-
-  // Long prompts and controller messages are the reason to open this view.
-  it('does not fold long strings', () => {
-    const longPrompt = 'word '.repeat(60).trim();
-    const yaml = toAgentManifestYaml(
-      makeAgent({
-        spec: { systemPrompt: longPrompt },
-      } as Partial<AgentInterface>),
-    );
-
-    expect(yaml).toContain(longPrompt);
   });
 });

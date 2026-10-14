@@ -3,8 +3,10 @@ import { act, renderHook } from '@testing-library/react';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { crds } from '@giantswarm/k8s-types';
-import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  ModelConfigInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useDeleteModelConfig } from './useDeleteModelConfig';
 
 // The reads and writes are mocked; the provenance/ownership helpers and the
@@ -34,7 +36,7 @@ function makeModelConfig({
 } = {}): ModelConfig {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name: 'qwen3', namespace: NAMESPACE, labels },
       spec: {
@@ -43,17 +45,20 @@ function makeModelConfig({
         apiKeySecret,
         apiKeySecretKey: 'OPENAI_API_KEY',
       },
-    } as crds.kagent.v1alpha3.ModelConfig,
+    } as ModelConfigInterface,
     CLUSTER,
   );
 }
 
 function makeAgentJson(modelConfig: string) {
   return {
-    apiVersion: 'kagent.dev/v1alpha3',
-    kind: 'AgentTemplate',
+    apiVersion: 'api.kagent.dev/v1alpha3',
+    kind: 'Agent',
     metadata: { name: `agent-on-${modelConfig}`, namespace: NAMESPACE },
-    spec: { modelConfig: { name: modelConfig } },
+    spec: {
+      harnessRef: { name: 'kagent' },
+      template: { modelConfig: { name: modelConfig } },
+    },
   };
 }
 
@@ -120,7 +125,7 @@ describe('useDeleteModelConfig', () => {
     expect(mockUseSelfSubjectAccessReview).toHaveBeenCalledWith(
       CLUSTER,
       {
-        group: 'kagent.dev',
+        group: 'api.kagent.dev',
         resource: 'modelconfigs',
         namespace: NAMESPACE,
         name: 'qwen3',

@@ -9,6 +9,5 @@ chosen now says so and focuses the picker instead of doing nothing. The list has
 its own "Your sessions" heading and drops the intro line above the page, session
 titles stay on one line in a wider column, and with one installation pinned (or
 only one running kagent) the Installation column is left out. A session whose
-state was not read says "Not loaded" rather than showing a dash, a search with
-no match names the term, and the migration notice no longer mentions kagent
-internals.
+state was not read says "Not loaded" rather than showing a dash, and a search
+with no match names the term.

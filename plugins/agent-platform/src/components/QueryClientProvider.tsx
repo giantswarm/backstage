@@ -47,14 +47,14 @@ export const AGENT_PLATFORM_PERSISTER_KEY = 'agent-platform-react-query-cache';
  *
  * `PersistQueryClientProvider` compares it with the `buster` stored in the
  * blob on restore and discards the whole blob when they differ, so a release
- * that changes the CR schema the readers understand — kagent 0.10's
- * `v1alpha2 Agent` to API v2's `v1alpha3 AgentTemplate` — starts from an empty
+ * that changes the CR schema the readers understand — `kagent.dev/v1alpha3
+ * AgentTemplate` to `api.kagent.dev/v1alpha3 Agent` — starts from an empty
  * cache instead of rehydrating rows written by the previous portal. The query
  * keys carry group, version and plural too, which keeps an old entry from ever
  * being *read* as the new shape; the buster is what stops it being kept and
  * rewritten for the rest of its `maxAge`. Bump it with the next schema change.
  */
-export const AGENT_PLATFORM_CACHE_BUSTER = 'kagent.dev/v1alpha3';
+export const AGENT_PLATFORM_CACHE_BUSTER = 'api.kagent.dev/v1alpha3';
 
 /**
  * Query keys whose data belongs to one *user* rather than to the fleet, and which

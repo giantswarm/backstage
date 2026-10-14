@@ -105,7 +105,7 @@ const models = {
   ],
 };
 
-test('a served model whose predictor pod waits reads Pending · Unschedulable with the scheduler’s text', async ({
+test('a served model whose predictor pod waits reads Pending · Unschedulable, the scheduler’s text in its hint', async ({
   admin,
 }) => {
   await installPersistedQueryDrop(admin);
@@ -130,14 +130,14 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable wi
     ).toHaveText('· Unschedulable');
     await expect(
       row.getByText(SCHEDULER, { exact: true }),
-      'the scheduler’s text is under the label, not only on hover',
-    ).toBeVisible();
+      'the scheduler’s paragraph stays out of the status cell',
+    ).toHaveCount(0);
+    const hint = 'About the state of qwen3-4b-instruct';
+    await row.getByRole('button', { name: hint, exact: true }).click();
     await expect(
-      row
-        .getByText('Pending', { exact: true })
-        .locator('xpath=ancestor::*[@title][1]'),
-      'and on hover',
-    ).toHaveAttribute('title', SCHEDULER);
+      admin.getByRole('dialog', { name: hint, exact: true }),
+      'a press on the status hint says it in full, on a touch screen too',
+    ).toContainText(SCHEDULER);
     expect(
       staged.callsOf('list_models').length,
       'the inventory came over muster',

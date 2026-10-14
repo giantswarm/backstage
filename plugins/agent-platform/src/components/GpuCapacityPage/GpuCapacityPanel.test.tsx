@@ -1,5 +1,12 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  mockViewport,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { GpuNode } from '../../lib/serving';
 import {
   columnsForNodes,
@@ -10,6 +17,7 @@ import {
   MODEL_IMAGE_TARGET_DESCRIPTION,
   NO_CACHE_ON_NODE_HINT,
   NOT_SERVING_TARGET_DESCRIPTION,
+  phoneCapacityColumns,
 } from './GpuCapacityPanel';
 
 const withPlugin: GpuNode = {
@@ -64,6 +72,26 @@ describe('GpuCapacityPanel', () => {
     expect(screen.getByText('0')).toBeInTheDocument();
   });
 
+  it('shows 300 nodes a page at a time (list scale)', async () => {
+    const nodes = Array.from({ length: 300 }, (_, i) => ({
+      ...withPlugin,
+      id: `inst-1/gpu-node-${i}`,
+      name: `gpu-node-${String(i).padStart(3, '0')}`,
+    }));
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={nodes}
+        installations={['inst-1']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText('gpu-node-000')).toBeInTheDocument();
+    expect(screen.queryByText('gpu-node-020')).not.toBeInTheDocument();
+    expect(screen.getByText('20 nodes shown, 280 more')).toBeInTheDocument();
+  });
+
   it('says allocatable, requested and free are unknown without a device plugin', async () => {
     await renderInTestApp(
       <GpuCapacityPanel
@@ -114,7 +142,7 @@ describe('GpuCapacityPanel', () => {
     );
 
     expect(
-      screen.getByText('GPU capacity is unavailable for some installations'),
+      screen.getByText('GPU capacity is unavailable for some environments'),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -123,6 +151,68 @@ describe('GpuCapacityPanel', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText('No GPU nodes found on inst-1.'),
+    ).toBeInTheDocument();
+  });
+
+  it('groups three unavailable installations by reason, with no disclosure', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={['inst-1', 'inst-2', 'inst-3']}
+        unavailable={{
+          'inst-1': 'forbidden',
+          'inst-2': 'error',
+          'inst-3': 'forbidden',
+        }}
+        isLoading={false}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'inst-1, inst-3: you do not have permission to list nodes there; inst-2: the nodes could not be read',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/more/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /environments/ })).toBeNull();
+  });
+
+  it('caps 300 unavailable installations per reason, the full list behind a disclosure', async () => {
+    const installations = Array.from(
+      { length: 300 },
+      (_, index) => `inst-${index + 1}`,
+    );
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={['ok-1', 'ok-2', 'ok-3', 'ok-4', 'ok-5', 'ok-6']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'No GPU nodes found on ok-1, ok-2, ok-3, ok-4, ok-5 and 1 more.',
+      ),
+    ).toBeInTheDocument();
+
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={installations}
+        unavailable={Object.fromEntries(
+          installations.map(installation => [installation, 'error' as const]),
+        )}
+        isLoading={false}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'inst-1, inst-2, inst-3, inst-4, inst-5 and 295 more: the nodes could not be read',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'All 300 environments' }),
     ).toBeInTheDocument();
   });
 
@@ -143,6 +233,9 @@ describe('GpuCapacityPanel', () => {
   });
 
   it('shows no empty table when every installation is unavailable', async () => {
+    // One pinned environment, or every one in view, failed: the alert is all
+    // the panel knows, so it neither says "some" nor claims there are no
+    // nodes.
     await renderInTestApp(
       <GpuCapacityPanel
         nodes={[]}
@@ -152,7 +245,11 @@ describe('GpuCapacityPanel', () => {
       />,
     );
 
-    expect(screen.getByText('No GPU nodes found.')).toBeInTheDocument();
+    expect(screen.getByText('GPU capacity is unavailable')).toBeInTheDocument();
+    expect(
+      screen.getByText(/inst-1: the nodes could not be read/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/No GPU nodes found/)).toBeNull();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
@@ -324,7 +421,7 @@ describe('GpuCapacityPanel · backend host', () => {
       screen.getByText(/A backend host has no GPU figures/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/gpu-feature-discovery node labels/),
+      screen.queryByText(/gpu-feature-discovery labels/),
     ).not.toBeInTheDocument();
   });
 
@@ -396,7 +493,7 @@ describe('GpuCapacityPanel · backend host', () => {
       expect(dash).toHaveAttribute(
         'title',
         expect.stringContaining(
-          "The host a serving backend runs on, not a cluster node: the backend's API does not expose the accelerator",
+          "This is the host a serving backend runs on, not a cluster node. The backend's API does not expose the accelerator",
         ),
       );
     }
@@ -407,7 +504,7 @@ describe('GpuCapacityPanel · backend host', () => {
     ).toBeInTheDocument();
     // Both sentences of the intro, since both kinds of node are listed.
     expect(
-      screen.getByText(/gpu-feature-discovery node labels/),
+      screen.getByText(/gpu-feature-discovery labels/),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/A backend host has no GPU figures/),
@@ -514,6 +611,20 @@ const sparkPinnedOut: GpuNode = {
 const rowOf = (name: string) =>
   screen.getByText(name).closest('[role="row"]') as HTMLElement;
 
+/**
+ * Hovers a node's status hint and returns its tooltip. The pointer moves over
+ * the page first: react-aria opens a tooltip on hover only once it has seen
+ * a pointer move, and a hover's own move lands after its enter.
+ */
+async function hintTooltip(node: string) {
+  const user = userEvent.setup();
+  await user.hover(document.body);
+  await user.hover(
+    screen.getByRole('button', { name: `About the state of ${node}` }),
+  );
+  return screen.findByRole('tooltip');
+}
+
 describe('GpuCapacityPanel · serving targets', () => {
   it('marks a node pinned out by the cache claim as a target for model-image presets', async () => {
     await renderInTestApp(
@@ -527,13 +638,12 @@ describe('GpuCapacityPanel · serving targets', () => {
 
     const marker = screen.getByText(MODEL_IMAGE_TARGET_DESCRIPTION);
     expect(rowOf('spark-e119')).toContainElement(marker);
-    expect(marker).toHaveAttribute(
-      'title',
+    expect(await hintTooltip('spark-e119')).toHaveTextContent(
       'Serving target for model-image presets; Hugging Face presets: cache claim hf-cache is pinned to spark-8723',
     );
   });
 
-  it('marks a node the serving layer will not place a model on, with its reason on hover', async () => {
+  it('marks a node the serving layer will not place a model on, with its reason in a hint', async () => {
     await renderInTestApp(
       <GpuCapacityPanel
         nodes={[sparkTarget, sparkPinnedOut]}
@@ -545,8 +655,13 @@ describe('GpuCapacityPanel · serving targets', () => {
 
     const marker = screen.getByText(NOT_SERVING_TARGET_DESCRIPTION);
     expect(rowOf('spark-e119')).toContainElement(marker);
-    expect(marker).toHaveAttribute(
-      'title',
+    // The cell keeps to its few words; the reason is the hint's.
+    expect(
+      within(rowOf('spark-e119')).queryByText(
+        'Not a serving target: cache claim hf-cache is pinned to spark-8723',
+      ),
+    ).toBeNull();
+    expect(await hintTooltip('spark-e119')).toHaveTextContent(
       'Not a serving target: cache claim hf-cache is pinned to spark-8723',
     );
     // The reason sits in the budget tooltip too, next to the budget's source.
@@ -565,11 +680,14 @@ describe('GpuCapacityPanel · serving targets', () => {
     expect(
       within(rowOf('spark-8723')).queryByText(NOT_SERVING_TARGET_DESCRIPTION),
     ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'About the state of spark-8723' }),
+    ).toBeNull();
     expect(screen.getByText('20 models')).toBeInTheDocument();
     expect(screen.queryByText(NO_CACHE_ON_NODE_HINT)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /A node marked not a serving target is one the serving layer will not place a model on/,
+        /A node is not a serving target when it is outside the serving layer's node selector/,
       ),
     ).toBeInTheDocument();
   });
@@ -584,8 +702,7 @@ describe('GpuCapacityPanel · serving targets', () => {
       />,
     );
 
-    expect(screen.getByText(NOT_SERVING_TARGET_DESCRIPTION)).toHaveAttribute(
-      'title',
+    expect(await hintTooltip('spark-e119')).toHaveTextContent(
       'Not a serving target: the serving layer gave no reason',
     );
   });
@@ -616,7 +733,7 @@ describe('GpuCapacityPanel · serving targets', () => {
     expect(hint).toHaveAttribute(
       'title',
       expect.stringContaining(
-        'Another node of this installation holds the model cache',
+        'Another node of this environment holds the model cache',
       ),
     );
     expect(
@@ -724,5 +841,120 @@ describe('describeNode / lacksInstallationCache', () => {
       lacksInstallationCache({ ...unjudged, eligible: true }, [holder]),
     ).toBe(false);
     expect(lacksInstallationCache(ollamaHost, [holder])).toBe(false);
+  });
+});
+
+// T22 B15: up to ten columns squashed in 343px, and a node's ineligibility
+// reason only on hover; T104: the reason is a hint a press opens.
+describe('GpuCapacityPanel at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const ineligible: GpuNode = {
+    ...withPlugin,
+    id: 'inst-1/cpu-pool-node',
+    name: 'cpu-pool-node',
+    eligible: false,
+    eligibilityReason: 'outside the serving node selector',
+  };
+  const NODES = [withPlugin, labelsOnly, ineligible];
+
+  const renderPanel = () =>
+    renderInTestApp(
+      <GpuCapacityPanel
+        nodes={NODES}
+        installations={['inst-1', 'inst-2']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+  const nodeRow = (name: string) =>
+    screen.getByText(name).closest('[role="row"]') as HTMLElement;
+
+  it('keeps the node and the free GPUs, the rest said under the node', async () => {
+    layout = mockPhoneLayout();
+    await renderPanel();
+
+    expect(headers()).toEqual(['Node', 'Free']);
+    const node = nodeRow('gpu-node-1');
+    expect(within(node).getByText('inst-1')).toBeVisible();
+    expect(
+      within(node).getByText('NVIDIA-GB10 · 120 GiB · 1 GPU · 1 requested'),
+    ).toBeVisible();
+    // The total rides under the free count.
+    expect(within(node).getByText('0')).toBeVisible();
+    expect(within(node).getByText('of 1')).toBeVisible();
+    // Why a figure is unknown, in words.
+    expect(
+      within(nodeRow('lab-node')).getByText(
+        /^Free GPUs unknown: The node advertises no accelerator resource/,
+      ),
+    ).toBeVisible();
+  });
+
+  it('keeps a node that is not a serving target to its few words, the reason in its hint', async () => {
+    layout = mockPhoneLayout();
+    await renderPanel();
+
+    const row = nodeRow('cpu-pool-node');
+    expect(within(row).getByText(NOT_SERVING_TARGET_DESCRIPTION)).toBeVisible();
+    expect(
+      within(row).queryByText(
+        `${NOT_SERVING_TARGET_DESCRIPTION}: outside the serving node selector`,
+      ),
+    ).toBeNull();
+    expect(
+      within(row).getByRole('button', {
+        name: 'About the state of cpu-pool-node',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/the info icon beside it says which\./),
+    ).toBeVisible();
+  });
+
+  it('keeps the hint on a touch screen of any width', async () => {
+    layout = mockViewport({ width: 1024, touch: true });
+    await renderPanel();
+
+    expect(headers()).toContain('GPUs');
+    expect(
+      screen.getByRole('button', { name: 'About the state of cpu-pool-node' }),
+    ).toBeVisible();
+  });
+
+  it('keeps every column, and the reason in its hint, on a desktop with a mouse', async () => {
+    layout = mockDesktopLayout();
+    await renderPanel();
+
+    expect(headers()).toEqual([
+      'Node',
+      'Environment',
+      'GPU',
+      'Memory',
+      'GPUs',
+      'Allocatable',
+      'Requested',
+      'Free',
+    ]);
+    expect(await hintTooltip('cpu-pool-node')).toHaveTextContent(
+      `${NOT_SERVING_TARGET_DESCRIPTION}: outside the serving node selector`,
+    );
+    expect(screen.queryByText('of 1')).toBeNull();
+  });
+
+  it('keeps the budget instead of GPU columns on a fleet of backend hosts', () => {
+    expect(
+      phoneCapacityColumns({ gpu: true, budget: true, cache: true }),
+    ).toEqual(['name', 'free']);
+    expect(
+      phoneCapacityColumns({ gpu: false, budget: true, cache: false }),
+    ).toEqual(['name', 'budget']);
+    expect(
+      phoneCapacityColumns({ gpu: false, budget: false, cache: true }),
+    ).toEqual(['name']);
   });
 });

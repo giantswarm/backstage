@@ -3,12 +3,10 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   Agent,
-  AgentTemplateInterface,
+  AgentInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { agentsRouteRef } from '../../routes';
 import { AgentActionsMenu, type AgentManagerGate } from './AgentActionsMenu';
-
-type AgentInterface = AgentTemplateInterface;
 
 // The menu renders in the shared plugin header, outside the plugin's
 // QueryClientProvider, so it calls no react-query hook itself: whether the write
@@ -19,20 +17,19 @@ type AgentInterface = AgentTemplateInterface;
 function makeAgent(): Agent {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: {
         name: 'pr-reviewer',
         namespace: 'agent-platform',
         managedFields: [{ manager: 'helm-controller', operation: 'Apply' }],
       },
-      spec: { modelConfig: { name: 'opus-4-7' } },
+      spec: { template: { modelConfig: { name: 'opus-4-7' } } },
     } as AgentInterface,
     'gazelle',
   );
 }
 
-const onEdit = jest.fn();
 const onUpdateSkills = jest.fn();
 const onDelete = jest.fn();
 
@@ -40,6 +37,7 @@ const AVAILABLE: AgentManagerGate = {
   presence: 'available',
   isUnavailable: false,
   isGitOpsOwned: false,
+  canCommit: false,
   isVerdictPending: false,
 };
 
@@ -48,7 +46,6 @@ const renderMenu = (agentManager: AgentManagerGate = AVAILABLE) =>
     <AgentActionsMenu
       agent={makeAgent()}
       agentManager={agentManager}
-      onEdit={onEdit}
       onUpdateSkills={onUpdateSkills}
       onDelete={onDelete}
     />,
@@ -60,7 +57,6 @@ async function openMenu() {
 }
 
 beforeEach(() => {
-  onEdit.mockReset();
   onUpdateSkills.mockReset();
   onDelete.mockReset();
 });
@@ -92,19 +88,20 @@ describe('AgentActionsMenu', () => {
     await waitFor(() => {
       expect(screen.getByText('Agent manifest')).toBeInTheDocument();
     });
-    expect(screen.getByText('pr-reviewer.yaml')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Copy manifest' }),
+    ).toBeInTheDocument();
   });
 
-  it('offers Edit, Update skills and Delete when the installation has agent-manager, and asks the page to open them', async () => {
+  it('offers Update all skills to latest and Delete when the installation has agent-manager, and asks the page to open them', async () => {
     await renderMenu();
     await openMenu();
 
-    await userEvent.click(screen.getByRole('menuitem', { name: /Edit agent/ }));
-    expect(onEdit).toHaveBeenCalledTimes(1);
-
-    await openMenu();
+    expect(
+      screen.queryByRole('menuitem', { name: /Edit agent/ }),
+    ).not.toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole('menuitem', { name: /Update skills/ }),
+      screen.getByRole('menuitem', { name: 'Update all skills to latest…' }),
     );
     expect(onUpdateSkills).toHaveBeenCalledTimes(1);
 
@@ -120,6 +117,7 @@ describe('AgentActionsMenu', () => {
       presence: 'missing',
       isUnavailable: false,
       isGitOpsOwned: false,
+      canCommit: false,
       isVerdictPending: false,
     });
     await openMenu();
@@ -131,7 +129,7 @@ describe('AgentActionsMenu', () => {
       screen.queryByRole('menuitem', { name: /Edit agent/ }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('menuitem', { name: /Update skills/ }),
+      screen.queryByRole('menuitem', { name: 'Update all skills to latest…' }),
     ).not.toBeInTheDocument();
     // The read-only escape hatch, and nothing else: a menu lists things to do,
     // so what cannot be offered is left out rather than explained in place.
@@ -154,6 +152,22 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
+  it('offers Update all skills to latest and Delete for an agent applied from git when agent-manager can commit', async () => {
+    // All three go through a pull request in the GitOps repository then.
+    await renderMenu({ ...AVAILABLE, isGitOpsOwned: true, canCommit: true });
+    await openMenu();
+
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Update all skills to latest…' }),
+    );
+    expect(onUpdateSkills).toHaveBeenCalledTimes(1);
+    await openMenu();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /Delete agent/ }),
+    );
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
   it("withholds the actions while agent-manager's verdict is still in flight", async () => {
     // Offering them for a muster round-trip and then taking them away is the
     // one window where a GitOps-owned agent could still be written to.
@@ -171,6 +185,7 @@ describe('AgentActionsMenu', () => {
       presence: 'unknown',
       isUnavailable: true,
       isGitOpsOwned: false,
+      canCommit: false,
       isVerdictPending: false,
     });
     await openMenu();
@@ -187,6 +202,7 @@ describe('AgentActionsMenu', () => {
       presence: 'unknown',
       isUnavailable: false,
       isGitOpsOwned: false,
+      canCommit: false,
       isVerdictPending: false,
     });
     await openMenu();

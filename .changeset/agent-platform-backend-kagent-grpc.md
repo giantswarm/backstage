@@ -19,7 +19,7 @@ chart). `agentPlatform.kagent.installations.<name>.apiBaseUrl` is now the
 default is `https://agentgateway.<baseDomain>`, the connectivity chart's
 controller route hostname. The kagent 0.10 REST door
 (`/api/sessions`, JSON-RPC A2A) is no longer spoken, and conversations from
-before an installation's migration are not available — the Sessions tab says so.
+before an installation's migration are not available.
 
 - **Backend.** A Connect client generated from the line's protos
   (`plugins/agent-platform-backend/src/kagent/gen`, pinned by commit) over
@@ -38,6 +38,5 @@ before an installation's migration are not available — the Sessions tab says s
   extension's typed request and reply. `KagentSession` gains `agentTemplate`,
   `state`, `contextId` and `failure`.
 - **Frontend.** A **Stop** control in the composer while a turn streams; the
-  create carries an idempotency key per submission; the Sessions tab and an
-  agent's Recent sessions tell the person that earlier conversations are gone.
-  Session names are capped at 200 characters, the controller's limit.
+  create carries an idempotency key per submission. Session names are capped at
+  200 characters, the controller's limit.

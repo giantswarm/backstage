@@ -1,26 +1,22 @@
-import { crds } from '@giantswarm/k8s-types';
 import {
   Agent,
-  AgentHarnessCondition,
-  AgentHarnessStatus,
-  AgentTemplateInterface,
-  HARNESS_LABEL,
+  AgentCondition,
+  AgentInterface,
+  AgentStatus,
+  Harness,
   ModelConfig,
+  ModelConfigInterface,
   RemoteMCPServer,
+  RemoteMCPServerInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServedModel } from '../../lib/serving';
-import type { AgentRow } from './helpers';
 import {
   getAgentsRefetchInterval,
   resolveModelConfig,
   resolveModelLabel,
   sortAgentRows,
-  sortAgentsBy,
   toAgentRow,
 } from './helpers';
-
-type AgentInterface = AgentTemplateInterface;
-type ModelConfigInterface = crds.kagent.v1alpha3.ModelConfig;
 
 function makeAgent(
   partial: {
@@ -29,13 +25,13 @@ function makeAgent(
     displayName?: string;
     description?: string;
     modelConfig?: string;
+    /** The Harness `spec.harnessRef` names; `null` leaves the ref out. */
+    harness?: string | null;
     skills?: number;
     /** Bindings to same-namespace RemoteMCPServers, by name. */
     servers?: string[];
-    /** The Harness entries the controller wrote; none = no status at all. */
-    harnesses?: AgentHarnessStatus[];
-    /** The admission label; defaults to the platform Harness. */
-    label?: string | null;
+    /** The status the controller wrote; none = no status at all. */
+    status?: Omit<AgentStatus, 'observedGeneration'>;
     generation?: number;
     observedGeneration?: number;
     creationTimestamp?: string;
@@ -48,47 +44,49 @@ function makeAgent(
     displayName,
     description,
     modelConfig,
+    harness = 'kagent',
     skills = 0,
     servers = [],
-    harnesses,
-    label = 'kagent',
+    status,
     generation = 1,
     observedGeneration = 1,
     creationTimestamp,
   } = partial;
 
   const json = {
-    apiVersion: 'kagent.dev/v1alpha3',
-    kind: 'AgentTemplate',
+    apiVersion: 'api.kagent.dev/v1alpha3',
+    kind: 'Agent',
     metadata: {
       name,
       namespace,
       generation,
       creationTimestamp,
-      labels: label ? { [HARNESS_LABEL]: label } : undefined,
       annotations: displayName
         ? { 'ui.giantswarm.io/display-name': displayName }
         : undefined,
     },
-    status: harnesses ? { harnesses, observedGeneration } : undefined,
+    status: status ? { ...status, observedGeneration } : undefined,
     spec: {
-      description,
-      modelConfig: modelConfig ? { name: modelConfig } : undefined,
-      tools: servers.map(server => ({
-        mcp: { server: { kind: 'RemoteMCPServer', name: server } },
-      })),
-      skills:
-        skills > 0
-          ? Array.from({ length: skills }, (_, i) => ({
-              name: `skill-${i}`,
-              source: {
-                git: {
-                  url: 'https://github.com/giantswarm/skills',
-                  commit: 'a'.repeat(40),
+      ...(harness !== null && { harnessRef: { name: harness } }),
+      template: {
+        description,
+        modelConfig: modelConfig ? { name: modelConfig } : undefined,
+        tools: servers.map(server => ({
+          mcp: { server: { kind: 'RemoteMCPServer', name: server } },
+        })),
+        skills:
+          skills > 0
+            ? Array.from({ length: skills }, (_, i) => ({
+                name: `skill-${i}`,
+                source: {
+                  git: {
+                    url: 'https://github.com/giantswarm/skills',
+                    commit: 'a'.repeat(40),
+                  },
                 },
-              },
-            }))
-          : undefined,
+              }))
+            : undefined,
+      },
     },
   } as AgentInterface;
 
@@ -112,7 +110,7 @@ function makeModelConfig(
   } = partial;
 
   const json = {
-    apiVersion: 'kagent.dev/v1alpha3',
+    apiVersion: 'api.kagent.dev/v1alpha3',
     kind: 'ModelConfig',
     metadata: {
       name,
@@ -136,7 +134,7 @@ function makeCarrier(
 ): RemoteMCPServer {
   return new RemoteMCPServer(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'RemoteMCPServer',
       metadata: { name, namespace },
       spec: {
@@ -146,7 +144,7 @@ function makeCarrier(
           ? [{ name: 'X-Muster-Toolset', value: toolset }]
           : undefined,
       },
-    } as crds.kagent.v1alpha3.RemoteMCPServer,
+    } as RemoteMCPServerInterface,
     cluster,
   );
 }
@@ -158,7 +156,7 @@ function condition(
   message = '',
   ageMs = 0,
   now = Date.parse('2026-07-31T12:00:00Z'),
-): AgentHarnessCondition {
+): AgentCondition {
   return {
     type,
     status,
@@ -168,22 +166,21 @@ function condition(
   };
 }
 
-function harness(
-  conditions: AgentHarnessCondition[],
-  name = 'kagent',
-  extra: Partial<AgentHarnessStatus> = {},
-): AgentHarnessStatus {
+/** The status the controller writes, `desiredRevision` defaulting to a compiled-and-current one. */
+function reported(
+  conditions: AgentCondition[],
+  extra: Omit<AgentStatus, 'conditions' | 'observedGeneration'> = {},
+): Omit<AgentStatus, 'observedGeneration'> {
   return {
-    harness: name,
     desiredRevision: 'rev-1',
     latestSuccessfulRevision: 'rev-1',
     ...extra,
-    conditions: conditions as AgentHarnessStatus['conditions'],
+    conditions,
   };
 }
 
-const readyHarness = (ageMs = 0) =>
-  harness([
+const readyStatus = (ageMs = 0) =>
+  reported([
     condition('Accepted', 'True', 'Admitted', '', ageMs),
     condition(
       'Ready',
@@ -269,31 +266,77 @@ describe('toAgentRow', () => {
       // fields: only `modelName` matches what the gateway calls the model
       // (`gen_ai_response_model`), so only it can price a session.
       modelName: 'claude-sonnet-4-6',
+      harness: 'kagent',
       skillCount: 3,
+      skillIds: Array.from(
+        { length: 3 },
+        () => 'https://github.com/giantswarm/skills#',
+      ),
+      skillPins: { 'https://github.com/giantswarm/skills#': 'a'.repeat(40) },
+      modelConfigId: 'installation-1/sre-team/sonnet-4-6',
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
       readinessMessage: undefined,
     });
   });
 
+  it('identifies git skills as the catalog does and leaves the others out', () => {
+    const agent = makeAgent({ name: 'triager' });
+    agent.jsonData.spec!.template!.skills = [
+      {
+        name: 'triage',
+        source: {
+          path: 'skills/triage',
+          git: { url: 'https://github.com/giantswarm/skills', commit: 'abc' },
+        },
+      },
+      {
+        name: 'packaged',
+        source: { oci: 'ghcr.io/giantswarm/skill@sha256:abc' },
+      },
+    ];
+
+    const row = toAgentRow(agent, []);
+    expect(row.skillIds).toEqual([
+      'https://github.com/giantswarm/skills#skills/triage',
+    ]);
+    // The pin under the same id, so a skill's page can tell who is behind.
+    expect(row.skillPins).toEqual({
+      'https://github.com/giantswarm/skills#skills/triage': 'abc',
+    });
+    expect(row.modelConfigId).toBeUndefined();
+  });
+
+  it('identifies a git skill by its canonical repository URL', () => {
+    const agent = makeAgent({ name: 'triager' });
+    agent.jsonData.spec!.template!.skills = [
+      {
+        name: 'triage',
+        source: {
+          path: './skills/triage/',
+          git: {
+            url: 'https://github.com/GiantSwarm/skills.git',
+            commit: 'abc',
+          },
+        },
+      },
+    ];
+
+    expect(toAgentRow(agent, []).skillIds).toEqual([
+      'https://github.com/giantswarm/skills#skills/triage',
+    ]);
+  });
+
   it('carries readiness and the explanation through', () => {
     const agent = makeAgent({
       name: 'triager',
-      harnesses: [
-        harness(
-          [
-            condition('Accepted', 'True', 'Admitted'),
-            condition(
-              'Ready',
-              'False',
-              'Compiling',
-              'Compiling revision rev-2',
-            ),
-          ],
-          'kagent',
-          { desiredRevision: 'rev-2' },
-        ),
-      ],
+      status: reported(
+        [
+          condition('Accepted', 'True', 'Admitted'),
+          condition('Ready', 'False', 'Compiling', 'Compiling revision rev-2'),
+        ],
+        { desiredRevision: 'rev-2' },
+      ),
     });
 
     const row = toAgentRow(agent, []);
@@ -301,24 +344,77 @@ describe('toAgentRow', () => {
     expect(row.readinessMessage).toBe('Compiling revision rev-2');
   });
 
-  it('reports a template no Harness admits as not admitted, with the reason', () => {
+  it('reports an agent its Harness rejects as failed, with the reason', () => {
     const row = toAgentRow(
-      makeAgent({ name: 'orphan', harnesses: [], label: null }),
+      makeAgent({
+        name: 'rejected',
+        status: reported([
+          condition(
+            'Accepted',
+            'False',
+            'Rejected',
+            'Harness "kagent" runs no Claude templates',
+          ),
+        ]),
+      }),
       [],
     );
 
-    expect(row.readiness).toBe('notAdmitted');
-    expect(row.readinessMessage).toContain(`no ${HARNESS_LABEL} label`);
+    expect(row.readiness).toBe('failed');
+    expect(row.readinessMessage).toBe(
+      'Harness "kagent" runs no Claude templates',
+    );
+  });
+
+  it('carries the Harness the agent runs on', () => {
+    expect(toAgentRow(makeAgent({ harness: 'claude-go' }), []).harness).toBe(
+      'claude-go',
+    );
+    expect(
+      toAgentRow(makeAgent({ harness: null }), []).harness,
+    ).toBeUndefined();
+  });
+
+  it('carries the title of the Harness it runs on, once that is read', () => {
+    const harness = (name: string, namespace: string, displayName?: string) =>
+      new Harness(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'Harness',
+          metadata: {
+            name,
+            namespace,
+            ...(displayName && {
+              annotations: { 'ui.giantswarm.io/display-name': displayName },
+            }),
+          },
+          spec: { claude: {}, workload: { image: 'registry.example/h' } },
+        } as never,
+        'inst-1',
+      );
+    const agent = makeAgent({ harness: 'claude-go' });
+    const namespace = agent.getNamespace();
+
+    expect(
+      toAgentRow(agent, [], undefined, undefined, [
+        harness('claude-go', 'elsewhere', 'Not this one'),
+        harness('claude-go', namespace!),
+      ]).harnessTitle,
+    ).toBe('Claude Code');
+    expect(
+      toAgentRow(agent, [], undefined, undefined, [
+        harness('claude-go', namespace!, 'Go coder Harness'),
+      ]).harnessTitle,
+    ).toBe('Go coder Harness');
+    expect(toAgentRow(agent, []).harnessTitle).toBeUndefined();
   });
 
   it('carries the Harness warnings', () => {
     const row = toAgentRow(
       makeAgent({
-        harnesses: [
-          harness([condition('Ready', 'True', 'RevisionReady')], 'kagent', {
-            warnings: ['memory tools downgraded'],
-          }),
-        ],
+        status: reported([condition('Ready', 'True', 'RevisionReady')], {
+          warnings: ['memory tools downgraded'],
+        }),
       }),
       [],
     );
@@ -407,17 +503,15 @@ describe('getAgentsRefetchInterval', () => {
   }
 
   const readyAgent = (name: string, ageMs = 0) =>
-    makeAgent({ name, harnesses: [readyHarness(ageMs)] });
+    makeAgent({ name, status: readyStatus(ageMs) });
 
   const notReadyAgent = (name: string, ageMs = 0) =>
     makeAgent({
       name,
-      harnesses: [
-        harness([
-          condition('Accepted', 'True', 'Admitted', '', ageMs),
-          condition('Ready', 'False', 'Compiling', '', ageMs),
-        ]),
-      ],
+      status: reported([
+        condition('Accepted', 'True', 'Admitted', '', ageMs),
+        condition('Ready', 'False', 'Compiling', '', ageMs),
+      ]),
     });
 
   it('uses the baseline interval when every agent is ready', () => {
@@ -461,17 +555,16 @@ describe('getAgentsRefetchInterval', () => {
     expect(getAgentsRefetchInterval(query([stuck]))).toBe(BASELINE);
   });
 
-  // Not admitted never resolves on its own either; once its creation is past
-  // the window it stops costing the installation the fast tier.
-  it('backs off to the baseline for a template no Harness admits', () => {
+  // An agent the controller never reported on does not resolve on its own
+  // either; once its creation is past the window it stops costing the
+  // installation the fast tier.
+  it('backs off to the baseline for an agent the controller never reported on', () => {
     const orphan = makeAgent({
       name: 'orphan',
-      harnesses: [],
-      label: null,
       creationTimestamp: new Date(NOW - 10 * 60_000).toISOString(),
     });
 
-    expect(orphan.getReadiness()).toBe('notAdmitted');
+    expect(orphan.getReadiness()).toBe('pending');
     expect(getAgentsRefetchInterval(query([orphan]))).toBe(BASELINE);
   });
 
@@ -492,12 +585,10 @@ describe('getAgentsRefetchInterval', () => {
       name: 'stuck',
       generation: 2,
       observedGeneration: 1,
-      harnesses: [
-        harness([
-          condition('Accepted', 'True', 'Admitted', '', 10 * 60_000),
-          condition('Ready', 'False', 'Compiling', '', 10 * 60_000),
-        ]),
-      ],
+      status: reported([
+        condition('Accepted', 'True', 'Admitted', '', 10 * 60_000),
+        condition('Ready', 'False', 'Compiling', '', 10 * 60_000),
+      ]),
     });
 
     expect(edited.getReadiness()).toBe('pending');
@@ -509,98 +600,6 @@ describe('getAgentsRefetchInterval', () => {
     const converging = notReadyAgent('converging', 5_000);
 
     expect(getAgentsRefetchInterval(query([stuck, converging]))).toBe(FAST);
-  });
-});
-
-describe('sortAgentsBy', () => {
-  const row = (name: string, overrides: Partial<AgentRow> = {}): AgentRow => ({
-    ...toAgentRow(makeAgent({ name, displayName: name }), []),
-    ...overrides,
-  });
-
-  const names = (rows: AgentRow[]) => rows.map(r => r.name);
-
-  it('orders the status column by severity, worst first', () => {
-    const rows = [
-      row('ready-one', { readiness: 'ready' }),
-      row('pending-one', { readiness: 'pending' }),
-      row('rejected-one', { readiness: 'failed' }),
-      row('orphan-one', { readiness: 'notAdmitted' }),
-      row('down-one', { readiness: 'notReady' }),
-    ];
-
-    expect(
-      names(
-        sortAgentsBy(rows, { column: 'readiness', direction: 'ascending' }),
-      ),
-    ).toEqual([
-      'orphan-one',
-      'rejected-one',
-      'down-one',
-      'pending-one',
-      'ready-one',
-    ]);
-  });
-
-  it('reverses the status order when descending', () => {
-    const rows = [
-      row('rejected-one', { readiness: 'failed' }),
-      row('ready-one', { readiness: 'ready' }),
-    ];
-
-    expect(
-      names(
-        sortAgentsBy(rows, { column: 'readiness', direction: 'descending' }),
-      ),
-    ).toEqual(['ready-one', 'rejected-one']);
-  });
-
-  it('breaks status ties by name so equal rows keep a stable order', () => {
-    const rows = [
-      row('zeta', { readiness: 'ready' }),
-      row('alpha', { readiness: 'ready' }),
-      row('mid', { readiness: 'ready' }),
-    ];
-
-    expect(
-      names(
-        sortAgentsBy(rows, { column: 'readiness', direction: 'ascending' }),
-      ),
-    ).toEqual(['alpha', 'mid', 'zeta']);
-  });
-
-  it('sorts skills numerically, not as strings', () => {
-    const rows = [
-      row('ten', { skillCount: 10 }),
-      row('two', { skillCount: 2 }),
-      row('nine', { skillCount: 9 }),
-    ];
-
-    expect(
-      names(sortAgentsBy(rows, { column: 'skills', direction: 'ascending' })),
-    ).toEqual(['two', 'nine', 'ten']);
-  });
-
-  // The initial sort, which must reproduce the ordering the list had before it
-  // became sortable (installation, then name).
-  it('groups by installation and then name, matching the previous default', () => {
-    const rows = [
-      row('beta', { installation: 'inst-b' }),
-      row('zeta', { installation: 'inst-a' }),
-      row('alpha', { installation: 'inst-a' }),
-    ];
-
-    const sorted = sortAgentsBy(rows, {
-      column: 'installation',
-      direction: 'ascending',
-    });
-
-    expect(sorted.map(r => `${r.installation}:${r.name}`)).toEqual([
-      'inst-a:alpha',
-      'inst-a:zeta',
-      'inst-b:beta',
-    ]);
-    expect(names(sorted)).toEqual(names(sortAgentRows(rows)));
   });
 });
 

@@ -1,25 +1,18 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Alert,
-  Box,
-  Button,
-  ButtonLink,
-  Card,
-  CardBody,
-  Flex,
-  Text,
-} from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { dump } from 'js-yaml';
-import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  usePhoneLayout,
+  useProvidePageHeaderActions,
+  WizardStepHeading,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { useHarnessChoices } from '../../hooks/useHarnessChoices';
 import {
   useCreateAgent,
   type CreateAgentFailure,
@@ -30,192 +23,39 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { useValidateAgent } from '../../hooks/useValidateAgent';
 import {
-  AGENT_MANAGER_SERVER,
   helmInstallCommand,
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
 import { harnessTitle } from '../../lib/harnesses';
+import { parseEgressText } from '../../lib/egress';
 import { shortCommit } from '../../lib/skills';
 import {
   buildCatalogue,
   declaredToolset,
-  selectorLabel,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
-import {
-  agentDetailRouteRef,
-  newAgentRouteRef,
-  newAgentToolsRouteRef,
-} from '../../routes';
+import { agentDetailRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
+import { HarnessLimits } from '../HarnessLimits';
+import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
-
-const useStyles = makeStyles(theme => ({
-  column: {
-    maxWidth: 960,
-  },
-  stepLabel: {
-    marginBottom: theme.spacing(0.5),
-  },
-  pageTitle: {
-    marginBottom: theme.spacing(1),
-  },
-  intro: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(3),
-  },
-  summary: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(4),
-    padding: theme.spacing(2, 0),
-    borderTop: `1px solid ${theme.palette.divider}`,
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    marginBottom: theme.spacing(4),
-  },
-  code: {
-    fontFamily: 'monospace',
-  },
-  section: {
-    marginBottom: theme.spacing(4),
-  },
-  sectionTitle: {
-    marginBottom: theme.spacing(0.5),
-  },
-  sectionDescription: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(2),
-  },
-  files: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
-  },
-  violations: {
-    margin: 0,
-    paddingLeft: theme.spacing(2.5),
-  },
-  details: {
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius,
-    padding: theme.spacing(1.5),
-    marginTop: theme.spacing(2),
-  },
-  summaryLine: {
-    cursor: 'pointer',
-    fontWeight: 600,
-  },
-  detailsBody: {
-    marginTop: theme.spacing(1.5),
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1.5),
-  },
-}));
-
-// lineWidth: -1 keeps prompts and URLs unfolded; noRefs avoids YAML anchors.
-const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
-
-/** The one-line Tools summary: the loud labels, or the selectors by their labels. */
-function toolsetSummaryLabel(
-  shape: 'none' | 'full' | 'composed',
-  declared: string[],
-): string {
-  if (shape === 'none') {
-    return 'No tools';
-  }
-  if (shape === 'full') {
-    return 'Full gateway access';
-  }
-  return declared.map(selectorLabel).join(', ');
-}
-
-function SummaryItem({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Flex direction="column" gap="1">
-      <Text variant="body-x-small" color="secondary">
-        {label}
-      </Text>
-      {children}
-    </Flex>
-  );
-}
-
-function SectionTitle({
-  title,
-  description,
-}: {
-  title: string;
-  description: React.ReactNode;
-}) {
-  const classes = useStyles();
-  return (
-    <>
-      <Text
-        as="h3"
-        variant="title-small"
-        weight="bold"
-        className={classes.sectionTitle}
-      >
-        {title}
-      </Text>
-      <Text as="p" color="secondary" className={classes.sectionDescription}>
-        {description}
-      </Text>
-    </>
-  );
-}
-
-/**
- * agent-manager's refusal for the whole configuration: every schema violation
- * and precondition failure of the dry run, verbatim.
- */
-function Violations({ errors }: { errors: string[] }) {
-  const classes = useStyles();
-  return (
-    <Alert
-      status="danger"
-      title="agent-manager refuses this configuration"
-      description={
-        <ul className={classes.violations} aria-label="Violations">
-          {errors.map(error => (
-            <li key={error}>{error}</li>
-          ))}
-        </ul>
-      }
-    />
-  );
-}
-
-/**
- * The checks agent-manager's dry run could not make. Informational: the dry
- * run is still valid, so they never block Deploy.
- */
-function Notes({ notes }: { notes: string[] }) {
-  const classes = useStyles();
-  return (
-    <Alert
-      status="info"
-      title="agent-manager could not check everything"
-      description={
-        <ul className={classes.violations} aria-label="Notes">
-          {notes.map(note => (
-            <li key={note}>{note}</li>
-          ))}
-        </ul>
-      }
-    />
-  );
-}
+import { EditAgentReview } from './EditAgentReview';
+import {
+  ConnectAgentManager,
+  Notes,
+  PlainRow,
+  SectionTitle,
+  SummaryItem,
+  toolsetSummaryLabel,
+  UnderlyingModelItem,
+  useReviewStyles,
+  Violations,
+  YAML_OPTS,
+} from './reviewParts';
 
 /** The headline for a refused write, by agent-manager's code. */
 function refusalTitle(code: CreateAgentFailure['code']): string {
@@ -225,100 +65,22 @@ function refusalTitle(code: CreateAgentFailure['code']): string {
   if (code === 'conflict') {
     return 'Refused';
   }
-  return 'Deploy failed';
+  return 'Could not create the agent';
 }
 
-/** The person's muster session is not connected to agent-manager yet. */
-function ConnectAgentManager({
-  installation,
-  message,
-}: {
-  installation: string;
-  message: string;
-}) {
-  return (
-    <Alert
-      status="warning"
-      title="Connect to agent-manager"
-      description={
-        <Flex direction="column" gap="2">
-          <Text variant="body-small">
-            Agents are created through agent-manager, reached through muster as
-            you. Your muster session on {installation} is not connected to it
-            yet: {message}
-          </Text>
-          <ServerSignIn
-            serverName={AGENT_MANAGER_SERVER}
-            installation={installation}
-          />
-        </Flex>
-      }
-    />
-  );
-}
-
-/** What `mode: commit` answered: the pull request, or the connect step. */
-function CommitOutcome({ result }: { result: CommitAgentResult }) {
-  if (result.pullRequestUrl) {
-    return (
-      <Alert
-        status="success"
-        title="Pull request opened"
-        description={
-          <ButtonLink
-            href={result.pullRequestUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="secondary"
-            size="small"
-          >
-            Open the pull request ↗
-          </ButtonLink>
-        }
-      />
-    );
-  }
-  if (result.status === 'auth_required') {
-    return (
-      <Alert
-        status="warning"
-        title="Connect the repository first"
-        description={
-          <Flex direction="column" gap="2">
-            <Text variant="body-small">
-              {result.message ??
-                'agent-manager has no grant to open pull requests as you yet.'}
-            </Text>
-            {result.authUrl && (
-              <ButtonLink
-                href={result.authUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                variant="secondary"
-                size="small"
-              >
-                Connect ↗
-              </ButtonLink>
-            )}
-          </Flex>
-        }
-      />
-    );
-  }
-  return (
-    <Alert
-      status="info"
-      title="Commit requested"
-      description={result.message ?? 'agent-manager accepted the request.'}
-    />
-  );
-}
-
+/**
+ * The wizard's last step: "Check and create" for a new agent, "Check and
+ * save" for an edited one (`EditAgentReview`).
+ */
 export function NewAgentReviewPage() {
-  const classes = useStyles();
+  const { edit } = useNewAgentForm();
+  return edit ? <EditAgentReview edit={edit} /> : <CreateAgentReview />;
+}
+
+function CreateAgentReview() {
+  const classes = useReviewStyles();
   const navigate = useNavigate();
-  const newAgentLink = useRouteRef(newAgentRouteRef);
-  const toolsLink = useRouteRef(newAgentToolsRouteRef);
+  const { details: newAgentLink, tools: toolsLink } = useAgentWizardLinks();
   const agentDetailLink = useRouteRef(agentDetailRouteRef);
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
   // Only to number the steps: with no skill repositories configured the skills
@@ -378,6 +140,15 @@ export function NewAgentReviewPage() {
   const namespace = spec.namespace;
 
   const { info } = useAgentManagerInfo(state.installation);
+  const { choices, platformChoice } = useHarnessChoices(
+    state.installation,
+    state.modelConfigNamespace,
+  );
+  // As listed now, so the limits match what the picker step shows.
+  const runningHarness = state.harness
+    ? (choices.find(choice => choice.name === state.harness?.name) ??
+      state.harness)
+    : platformChoice;
   const validation = useValidateAgent(
     state.installation,
     isComplete && isToolsetValid ? spec : undefined,
@@ -414,7 +185,7 @@ export function NewAgentReviewPage() {
     });
     if (target) {
       // The detail page shows the template converging on the platform Harness
-      // (get_agent_status until ready or failed) for the agent it was handed.
+      // (get_agent_status until ready) for the agent it was handed.
       navigate(target, {
         state: {
           [AGENT_CREATED_STATE_KEY]: {
@@ -445,32 +216,35 @@ export function NewAgentReviewPage() {
     }
   }, [creation, spec]);
 
-  const deployLabel = creation.isDeploying ? 'Deploying…' : 'Deploy agent';
+  const createLabel = creation.isDeploying ? 'Creating…' : 'Create agent';
+  const proposeLabel = creation.isCommitting
+    ? 'Proposing…'
+    : 'Propose as pull request instead';
+  // At phone width the alternative leaves the footer for the page (C11):
+  // beside Cancel, Back and Create it wrapped the footer to three rows, with
+  // the primary button ending up bottom-left.
+  const isPhone = usePhoneLayout();
+  const proposeInFooter = canCommit && !isPhone;
 
-  // "Back" goes to the immediately preceding step, which is always the Tools
-  // step.
+  // "Back" (in the frame's footer) goes to the immediately preceding step,
+  // which is always the Tools step.
   const backLink = toolsLink;
-  const stepNumber = hasRepositories ? 4 : 3;
+  const onBack = useCallback(() => {
+    navigate(backLink ? backLink() : '..');
+  }, [backLink, navigate]);
 
-  // Memoized so the header actions slot only updates when the handlers/labels
+  // Memoized so the frame's footer slot only updates when the handlers/labels
   // actually change (see useProvidePageHeaderActions).
   const actions = useMemo(
     () => (
-      <Flex gap="2">
-        <Button
-          variant="tertiary"
-          isDisabled={isBusy}
-          onPress={() => navigate(backLink ? backLink() : '..')}
-        >
-          Back to edit
-        </Button>
-        {canCommit && (
+      <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
+        {proposeInFooter && (
           <Button
-            variant="secondary"
+            variant="tertiary"
             isDisabled={isBusy || !canWrite}
             onPress={onCommit}
           >
-            {creation.isCommitting ? 'Committing…' : 'Commit'}
+            {proposeLabel}
           </Button>
         )}
         <Button
@@ -478,20 +252,18 @@ export function NewAgentReviewPage() {
           isDisabled={isBusy || !canWrite}
           onPress={onDeploy}
         >
-          {deployLabel}
+          {createLabel}
         </Button>
       </Flex>
     ),
     [
       isBusy,
       canWrite,
-      canCommit,
-      backLink,
-      navigate,
+      proposeInFooter,
       onCommit,
       onDeploy,
-      deployLabel,
-      creation.isCommitting,
+      createLabel,
+      proposeLabel,
     ],
   );
 
@@ -515,204 +287,285 @@ export function NewAgentReviewPage() {
   // The Harness the person picked, else the platform Harness agent-manager
   // composes when the request names none.
   const harnessName = state.harness?.name ?? info?.harness?.name;
+  const egressOrigins = parseEgressText(state.egressText);
   const valuesYaml = dryRun ? dump(dryRun.manifests.values, YAML_OPTS) : '';
 
   return (
-    <Content>
-      <div className={classes.column}>
-        <Text
-          as="p"
-          variant="body-small"
-          color="secondary"
-          className={classes.stepLabel}
-        >
-          Step {stepNumber} of {stepNumber}: Review & deploy
-        </Text>
-        <Text
-          as="h2"
-          variant="title-large"
-          weight="bold"
-          className={classes.pageTitle}
-        >
-          Create an agent: review and deploy
-        </Text>
-        <Text as="p" color="secondary" className={classes.intro}>
-          agent-manager composes your configuration into a release of the{' '}
-          <span className={classes.code}>agent</span> chart
-          {chart ? (
-            <>
-              {' '}
-              (<span className={classes.code}>{chart.semver}</span>)
-            </>
-          ) : null}
-          : a Flux <span className={classes.code}>HelmRelease</span> and the
-          shared <span className={classes.code}>OCIRepository</span> that
-          sources the chart. Deploying applies them to{' '}
-          <strong>{state.installation}</strong> as you, and the agent runs on
-          {state.harness ? ' the Harness' : ' the platform Harness'}
-          {harnessName ? (
-            <>
-              {' '}
-              <span className={classes.code}>{harnessName}</span>
-            </>
-          ) : null}
-          . What you see below is agent-manager's dry run of exactly that.
-        </Text>
+    <AgentWizardFrame
+      step="review"
+      onBack={onBack}
+      isProposed={commitResult?.commit !== undefined}
+    >
+      <Flex direction="column" gap="5">
+        <WizardStepHeading title="Check and create">
+          The agent is ready to chat with about a minute after you create it.
+        </WizardStepHeading>
 
-        <div className={classes.summary}>
-          <SummaryItem label="Release">
-            <span className={classes.code}>{spec.name}</span>
-          </SummaryItem>
-          <SummaryItem label="Installation">
-            <span className={classes.code}>{state.installation}</span>
-          </SummaryItem>
-          <SummaryItem label="Namespace">
-            <span className={classes.code}>{namespace}</span>
-          </SummaryItem>
-          <SummaryItem label="Chart">
-            {chart ? (
-              <Text variant="body-small">
-                <span className={classes.code}>
-                  {chart.ociUrl}:{chart.semver}
-                </span>
-                {chart.latestVersion ? (
-                  <Text variant="body-x-small" color="secondary">
-                    latest {chart.latestVersion}
-                  </Text>
-                ) : null}
-              </Text>
-            ) : (
-              <Text variant="body-small" color="secondary">
-                Reported by agent-manager
-              </Text>
-            )}
-          </SummaryItem>
-          <SummaryItem label="Runtime (Harness)">
-            {harnessName ? (
-              <span className={classes.code}>{harnessName}</span>
-            ) : (
-              <Text variant="body-small" color="secondary">
-                The platform Harness
-              </Text>
-            )}
-            <Text variant="body-x-small" color="secondary">
-              {state.harness ? harnessTitle(state.harness) : 'Platform default'}
-            </Text>
-          </SummaryItem>
-          <SummaryItem label="Tools">
-            <Text variant="body-small">
-              {toolsetSummaryLabel(shape, declared)}
-            </Text>
-            <Text variant="body-x-small" color="secondary">
-              <span className={classes.code}>{declared.join(', ')}</span>
-            </Text>
-          </SummaryItem>
-          {/* Named here, not just buried in the values YAML — skills are chosen
-              on their own step, so this is the only compact confirmation of
-              what that step produced: each skill at the commit it is pinned to. */}
-          {hasRepositories && (
-            <SummaryItem label="Skills">
-              {state.selectedSkills.length === 0 ? (
-                <Text variant="body-small" color="secondary">
-                  None
-                </Text>
-              ) : (
-                <Text variant="body-small">
-                  {state.selectedSkills.map((skill, index) => (
-                    <span key={`${skill.repoUrl}#${skill.path}`}>
-                      {index > 0 ? ', ' : ''}
-                      {skill.name}{' '}
-                      <span className={classes.code}>
-                        @{shortCommit(skill.commit)}
-                      </span>
-                    </span>
-                  ))}
-                </Text>
-              )}
-            </SummaryItem>
+        {/* The plain summary first: what the person chose, in their words. */}
+        <dl className={classes.plain} aria-label="Summary">
+          <PlainRow label="Name">{state.name}</PlainRow>
+          {state.description.trim() && (
+            <PlainRow label="What it's for">{state.description}</PlainRow>
           )}
-        </div>
+          <PlainRow label="Model">
+            {state.modelDisplayName ?? state.modelConfigName}
+          </PlainRow>
+          <PlainRow label="Runtime">
+            {state.harness
+              ? harnessTitle(state.harness)
+              : 'Standard (platform default)'}
+          </PlainRow>
+          {runningHarness?.runtime === 'claude' && (
+            <PlainRow label="Limits">
+              <HarnessLimits
+                limits={runningHarness.limits}
+                harnessName={runningHarness.name}
+                showWhenUnset
+                showTitle={false}
+              />
+            </PlainRow>
+          )}
+          {hasRepositories && (
+            <PlainRow label="Skills">
+              {state.selectedSkills.length === 0
+                ? 'None'
+                : state.selectedSkills.map(skill => skill.name).join(', ')}
+            </PlainRow>
+          )}
+          <PlainRow label="Tools">
+            {toolsetSummaryLabel(shape, declared)}
+          </PlainRow>
+        </dl>
 
-        <div className={classes.section}>
-          <SectionTitle
-            title="Tools"
-            description="The toolset this agent declares, and what it resolves to for you right now. Resolution happens per person: someone with access to more servers sees more through the same agent, never less than the toolset allows."
+        {shape === 'full' && (
+          <Alert
+            status="warning"
+            title="Full gateway access"
+            description="This agent can discover and call every tool the gateway exposes to whoever invokes it, platform tools included."
           />
-          <Flex direction="column" gap="3">
-            {shape === 'full' && (
-              <Alert
-                status="warning"
-                title="Full gateway access"
-                description="This agent can discover and call every tool the gateway exposes to whoever invokes it — platform administration included."
-              />
-            )}
-            {shape === 'none' && (
-              <Alert
-                status="info"
-                title="No tools"
-                description="A chat-only agent: the release renders no gateway entry."
-              />
-            )}
-            {unsignedServers.length > 0 && (
-              <Alert
-                status="info"
-                title="Selected without a sign-in"
-                description={`${unsignedServers.join(
-                  ', ',
-                )} — part of the toolset, resolving for the people who have access to them. The list below is incomplete for you until you sign in to them.`}
-              />
-            )}
-            <ToolsetResolutionList resolution={resolution} servers={servers} />
+        )}
+
+        {/* What decides whether Create is offered, in sight: the check is
+            agent-manager's dry run of exactly what gets applied. */}
+        {validation.isLoading && !dryRun && (
+          <Text color="secondary">Checking the configuration…</Text>
+        )}
+        {validation.failure?.kind === 'not-connected' && (
+          <ConnectAgentManager
+            installation={state.installation!}
+            message={validation.failure.message}
+          />
+        )}
+        {validation.failure?.kind === 'refused' && (
+          <Alert
+            status="danger"
+            title="agent-manager refused the dry run"
+            description={validation.failure.message}
+          />
+        )}
+        {validation.failure?.kind === 'error' && (
+          <Alert
+            status="danger"
+            title="Could not reach agent-manager"
+            description={validation.failure.message}
+          />
+        )}
+        {violations.length > 0 && <Violations errors={violations} />}
+        {notes.length > 0 && <Notes notes={notes} />}
+
+        {creation.failure?.kind === 'not-connected' && (
+          <ConnectAgentManager
+            installation={state.installation!}
+            message={creation.failure.message}
+          />
+        )}
+        {creation.failure?.kind === 'refused' && (
+          <Alert
+            status="danger"
+            title={refusalTitle(creation.failure.code)}
+            description={creation.failure.message}
+          />
+        )}
+        {creation.failure?.kind === 'error' && (
+          <Alert
+            status="danger"
+            title="Could not create the agent"
+            description={creation.failure.message}
+          />
+        )}
+        {commitResult && <CommitOutcome result={commitResult} />}
+
+        {canCommit && isPhone && (
+          <Flex direction="column" align="start" gap="1">
+            <Text variant="body-small" color="secondary">
+              Rather have the change reviewed before it is applied?
+            </Text>
+            <Button
+              variant="secondary"
+              isDisabled={isBusy || !canWrite}
+              onPress={onCommit}
+            >
+              {proposeLabel}
+            </Button>
           </Flex>
-        </div>
+        )}
 
-        <div className={classes.section}>
-          <SectionTitle
-            title="Resources to apply"
-            description={
-              <>
-                agent-manager's dry run (
-                <span className={classes.code}>validate_agent</span>): the Flux{' '}
-                <span className={classes.code}>OCIRepository</span> that sources
-                the chart and the{' '}
-                <span className={classes.code}>HelmRelease</span> that installs
-                the agent, with its values inlined and every skill pinned to a
-                commit. Applied to{' '}
-                <span className={classes.code}>{state.installation}</span>{' '}
-                exactly as shown.
-              </>
-            }
-          />
-          <Flex direction="column" gap="3">
-            {validation.isLoading && !dryRun && (
-              <Text color="secondary">
-                Asking agent-manager for the dry run…
-              </Text>
-            )}
-            {validation.failure?.kind === 'not-connected' && (
-              <ConnectAgentManager
-                installation={state.installation!}
-                message={validation.failure.message}
+        {/* Everything Kubernetes-shaped, collapsed: the release, where it
+            lands, what the toolset resolves to and agent-manager's dry run. */}
+        <details className={classes.technical}>
+          <summary className={classes.technicalSummary}>
+            Technical details
+          </summary>
+          <div className={classes.detailsBody}>
+            <Text as="p" variant="body-small" color="secondary">
+              agent-manager composes your configuration into a release of the{' '}
+              <span className={classes.code}>agent</span> chart
+              {chart ? (
+                <>
+                  {' '}
+                  (<span className={classes.code}>{chart.semver}</span>)
+                </>
+              ) : null}
+              : a Flux <span className={classes.code}>HelmRelease</span> and the
+              shared <span className={classes.code}>OCIRepository</span> that
+              sources the chart. Creating applies them to{' '}
+              <strong>{state.installation}</strong> as you, and the agent runs
+              on
+              {state.harness ? ' the Harness' : ' the platform Harness'}
+              {harnessName ? (
+                <>
+                  {' '}
+                  <span className={classes.code}>{harnessName}</span>
+                </>
+              ) : null}
+              . Below is agent-manager's dry run of it.
+            </Text>
+
+            <div className={classes.summary}>
+              <SummaryItem label="Technical name">
+                <span className={classes.code}>{spec.name}</span>
+              </SummaryItem>
+              <SummaryItem label="Environment">
+                <span className={classes.code}>{state.installation}</span>
+              </SummaryItem>
+              <SummaryItem label="Namespace">
+                <span className={classes.code}>{namespace}</span>
+              </SummaryItem>
+              <SummaryItem label="Model">
+                <span className={classes.code}>{spec.modelConfig}</span>
+              </SummaryItem>
+              <UnderlyingModelItem
+                installation={state.installation}
+                modelConfigName={state.modelConfigName}
+                namespace={state.modelConfigNamespace}
               />
-            )}
-            {validation.failure?.kind === 'refused' && (
-              <Alert
-                status="danger"
-                title="agent-manager refused the dry run"
-                description={validation.failure.message}
+              <SummaryItem label="Chart">
+                {chart ? (
+                  <Text variant="body-small">
+                    <span className={classes.code}>
+                      {chart.ociUrl}:{chart.semver}
+                    </span>
+                    {chart.latestVersion ? (
+                      <Text variant="body-x-small" color="secondary">
+                        latest {chart.latestVersion}
+                      </Text>
+                    ) : null}
+                  </Text>
+                ) : (
+                  <Text variant="body-small" color="secondary">
+                    Reported by agent-manager
+                  </Text>
+                )}
+              </SummaryItem>
+              <SummaryItem label="Harness">
+                {harnessName ? (
+                  <span className={classes.code}>{harnessName}</span>
+                ) : (
+                  <Text variant="body-small" color="secondary">
+                    The platform Harness
+                  </Text>
+                )}
+              </SummaryItem>
+              <SummaryItem label="Toolset">
+                <Text variant="body-small">
+                  <span className={classes.code}>{declared.join(', ')}</span>
+                </Text>
+              </SummaryItem>
+              {egressOrigins.length > 0 && (
+                <SummaryItem label="Extra egress">
+                  <Text variant="body-small">
+                    <span className={classes.code}>
+                      {egressOrigins.join(', ')}
+                    </span>
+                  </Text>
+                </SummaryItem>
+              )}
+              {/* Each skill at the commit it is pinned to: the plain summary
+                  names them, this is what is written. */}
+              {hasRepositories && state.selectedSkills.length > 0 && (
+                <SummaryItem label="Skill pins">
+                  <Text variant="body-small">
+                    {state.selectedSkills.map((skill, index) => (
+                      <span key={`${skill.repoUrl}#${skill.path}`}>
+                        {index > 0 ? ', ' : ''}
+                        {skill.name}{' '}
+                        <span className={classes.code}>
+                          @{shortCommit(skill.commit)}
+                        </span>
+                      </span>
+                    ))}
+                  </Text>
+                </SummaryItem>
+              )}
+            </div>
+
+            <div className={classes.section}>
+              <SectionTitle
+                title="What the tools resolve to"
+                description="This is the toolset the agent declares and what it resolves to for you right now. Resolution happens per person: someone with access to more connectors sees more through the same agent, never less than the toolset allows."
               />
-            )}
-            {validation.failure?.kind === 'error' && (
-              <Alert
-                status="danger"
-                title="Could not reach agent-manager"
-                description={validation.failure.message}
-              />
-            )}
-            {violations.length > 0 && <Violations errors={violations} />}
-            {notes.length > 0 && <Notes notes={notes} />}
+              <Flex direction="column" gap="3">
+                {shape === 'none' && (
+                  <Alert
+                    status="info"
+                    title="No tools"
+                    description="A chat-only agent: the release renders no gateway entry."
+                  />
+                )}
+                {unsignedServers.length > 0 && (
+                  <Alert
+                    status="info"
+                    title="Selected without a sign-in"
+                    description={`${unsignedServers.join(
+                      ', ',
+                    )} — part of the toolset, resolving for the people who have access to them. The list below is incomplete for you until you sign in to them.`}
+                  />
+                )}
+                <ToolsetResolutionList
+                  resolution={resolution}
+                  servers={servers}
+                />
+              </Flex>
+            </div>
+
             {dryRun && (
-              <>
+              <div className={classes.section}>
+                <SectionTitle
+                  title="Resources to apply"
+                  description={
+                    <>
+                      agent-manager's dry run (
+                      <span className={classes.code}>validate_agent</span>): the
+                      Flux <span className={classes.code}>OCIRepository</span>{' '}
+                      that sources the chart and the{' '}
+                      <span className={classes.code}>HelmRelease</span> that
+                      installs the agent, with its values inlined and every
+                      skill pinned to a commit. Applied to{' '}
+                      <span className={classes.code}>{state.installation}</span>{' '}
+                      exactly as shown.
+                    </>
+                  }
+                />
                 <div className={classes.files}>
                   <CodeBlock
                     filename={`${spec.name}.yaml`}
@@ -730,113 +583,32 @@ export function NewAgentReviewPage() {
                   <span className={classes.code}>{dryRun.schemaVersion}</span> (
                   {dryRun.schemaSource}).
                 </Text>
-              </>
-            )}
-          </Flex>
-        </div>
-
-        <div className={classes.section}>
-          <SectionTitle
-            title="Deploy"
-            description={
-              <>
-                Applies the resources to{' '}
-                <span className={classes.code}>{state.installation}</span>{' '}
-                through agent-manager, as you — the release names you as its
-                author and your own cluster access decides. The agent's page
-                then shows it becoming ready on its Harness.
-              </>
-            }
-          />
-
-          <Card>
-            <CardBody>
-              <Flex justify="between" align="center" gap="4">
-                <Flex direction="column" gap="1">
-                  <Text weight="bold">Deploy to {state.installation}</Text>
-                  <Text variant="body-small" color="secondary">
-                    Creates the HelmRelease (and the shared OCIRepository when
-                    the namespace has none yet) live on the installation. Flux
-                    reconciles the agent from there.
-                  </Text>
-                </Flex>
-                <Flex gap="2">
-                  {canCommit && (
-                    <Button
-                      variant="secondary"
-                      isDisabled={isBusy || !canWrite}
-                      onPress={onCommit}
-                    >
-                      {creation.isCommitting ? 'Committing…' : 'Commit'}
-                    </Button>
-                  )}
-                  <Button
-                    variant="primary"
-                    isDisabled={isBusy || !canWrite}
-                    onPress={onDeploy}
-                  >
-                    {deployLabel}
-                  </Button>
-                </Flex>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {creation.failure?.kind === 'not-connected' && (
-            <Box mt="3">
-              <ConnectAgentManager
-                installation={state.installation!}
-                message={creation.failure.message}
-              />
-            </Box>
-          )}
-          {creation.failure?.kind === 'refused' && (
-            <Box mt="3">
-              <Alert
-                status="danger"
-                title={refusalTitle(creation.failure.code)}
-                description={creation.failure.message}
-              />
-            </Box>
-          )}
-          {creation.failure?.kind === 'error' && (
-            <Box mt="3">
-              <Alert
-                status="danger"
-                title="Deploy failed"
-                description={creation.failure.message}
-              />
-            </Box>
-          )}
-          {commitResult && (
-            <Box mt="3">
-              <CommitOutcome result={commitResult} />
-            </Box>
-          )}
-
-          {dryRun && chart && (
-            <details className={classes.details}>
-              <summary className={classes.summaryLine}>
-                Install manually instead
-              </summary>
-              <div className={classes.detailsBody}>
-                <Text variant="body-small" color="secondary">
-                  Prefer to keep this in your own GitOps repo, or apply it
-                  yourself? Copy the resources above, or save the values
-                  agent-manager composed and run the command once against the
-                  cluster.
-                </Text>
-                <CodeBlock
-                  filename={`${spec.name}-values.yaml`}
-                  content={valuesYaml}
-                  language="yaml"
-                />
-                <CodeBlock content={helmInstallCommand(spec, chart)} />
               </div>
-            </details>
-          )}
-        </div>
-      </div>
-    </Content>
+            )}
+
+            {dryRun && chart && (
+              <details className={classes.details}>
+                <summary className={classes.summaryLine}>
+                  Install manually instead
+                </summary>
+                <div className={classes.detailsBody}>
+                  <Text variant="body-small" color="secondary">
+                    To keep it in your own GitOps repo or apply it yourself,
+                    copy the resources above, or save the composed values and
+                    run the command once against the cluster.
+                  </Text>
+                  <CodeBlock
+                    filename={`${spec.name}-values.yaml`}
+                    content={valuesYaml}
+                    language="yaml"
+                  />
+                  <CodeBlock content={helmInstallCommand(spec, chart)} />
+                </div>
+              </details>
+            )}
+          </div>
+        </details>
+      </Flex>
+    </AgentWizardFrame>
   );
 }

@@ -61,7 +61,7 @@ export function familyToolGroup(servers: MCPServer[]): ToolGroupKey {
 
 /**
  * Partition a muster instance's MCPServer CRs by tool group, in display order
- * (Agent Platform, Infrastructure, Registered servers), each group in the row
+ * (Agent Platform, Infrastructure, Registered connectors), each group in the row
  * shape the UI renders: servers sharing a `spec.family.name` collapse into one
  * family row (equivalent instances federated across management clusters,
  * shown once with per-cluster health), singular servers are a row each.
@@ -69,7 +69,7 @@ export function familyToolGroup(servers: MCPServer[]): ToolGroupKey {
  * The tier comes from the tool-group label the shipping chart stamps on the
  * CR ({@link MCPServer.getToolGroup}); nothing is inferred from names,
  * provenance or topology. An installation whose charts carry no labels yet
- * therefore lists everything under Registered servers -- one long list,
+ * therefore lists everything under Registered connectors -- one long list,
  * never an empty or broken page. Every group is always present, possibly with
  * no rows, so callers render a stable set of sections.
  *

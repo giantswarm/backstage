@@ -1,7 +1,5 @@
-import { crds } from '@giantswarm/k8s-types';
 import { KubeObject } from './KubeObject';
-
-type ModelConfigInterface = crds.kagent.v1alpha3.ModelConfig;
+import { KAGENT_API_GROUP, type ModelConfigInterface } from './kagentApi';
 
 /** A `status.conditions` entry as the kagent controller writes it. */
 export type ModelConfigCondition = NonNullable<
@@ -26,6 +24,13 @@ const READINESS_CONDITIONS = [
 ];
 
 /**
+ * The conditions in the order the controller evaluates them: whether the spec
+ * is valid, then whether what it references resolves.
+ */
+export const MODEL_CONFIG_CONDITION_ORDER: readonly string[] =
+  READINESS_CONDITIONS;
+
+/**
  * Readiness of a ModelConfig, derived from its status conditions.
  *
  * - `accepted` — both `Accepted` and `ResolvedRefs` are `True`: the runtime can
@@ -46,12 +51,27 @@ function findCondition(
 }
 
 /**
+ * Whether a ModelConfig's status describes an older spec: the controller
+ * recorded the generation it reconciled, and it is behind. Absent means
+ * "cannot tell", same reasoning as {@link isAgentStatusStale} in `Agent.ts`.
+ * Exported as a free function for callers holding raw list data.
+ */
+export function isModelConfigStatusStale(json: ModelConfigInterface): boolean {
+  const generation = json.metadata?.generation;
+  const observedGeneration = json.status?.observedGeneration;
+  return (
+    typeof generation === 'number' &&
+    typeof observedGeneration === 'number' &&
+    observedGeneration < generation
+  );
+}
+
+/**
  * Derive a ModelConfig's readiness from its raw status conditions. Exported as
  * a free function (not only a method) for callers holding raw list data.
  *
- * Staleness is only claimed when `status.observedGeneration` is present and
- * behind — absent means "cannot tell", same reasoning as
- * {@link isAgentStatusStale} in `Agent.ts`.
+ * A stale status ({@link isModelConfigStatusStale}) is `pending`: its
+ * conditions describe the previous spec.
  */
 export function deriveModelConfigReadiness(
   json: ModelConfigInterface,
@@ -63,13 +83,7 @@ export function deriveModelConfigReadiness(
     return 'pending';
   }
 
-  const { generation } = json.metadata ?? {};
-  const observedGeneration = json.status?.observedGeneration;
-  if (
-    typeof generation === 'number' &&
-    typeof observedGeneration === 'number' &&
-    observedGeneration < generation
-  ) {
+  if (isModelConfigStatusStale(json)) {
     return 'pending';
   }
 
@@ -89,7 +103,7 @@ export function deriveModelConfigReadiness(
  */
 export class ModelConfig extends KubeObject<ModelConfigInterface> {
   static readonly supportedVersions = ['v1alpha3'] as const;
-  static readonly group = 'kagent.dev';
+  static readonly group = KAGENT_API_GROUP;
   static readonly kind = 'ModelConfig' as const;
   static readonly plural = 'modelconfigs';
 
@@ -168,16 +182,30 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
     return findCondition(this.jsonData, type);
   }
 
+  /** The controller's conditions on the ModelConfig, in the order it wrote them. */
+  getConditions(): ModelConfigCondition[] {
+    return [...(this.jsonData.status?.conditions ?? [])];
+  }
+
+  /** Whether the conditions describe an older spec ({@link isModelConfigStatusStale}). */
+  isStale(): boolean {
+    return isModelConfigStatusStale(this.jsonData);
+  }
+
   /**
-   * The controller's explanation for a `notAccepted` readiness: the message of
-   * the first condition that is not `True` (e.g. which Secret could not be
-   * found). `undefined` when nothing is failing.
+   * The controller's explanation for a readiness short of `accepted`: the
+   * message of the first condition that is `False` (e.g. which Secret could
+   * not be found), since that is why it is `notAccepted`; otherwise of the
+   * first that is not `True` (still `Unknown`, why it is `pending`).
+   * `undefined` when nothing is failing.
    */
   getReadinessMessage(): string | undefined {
-    return (
-      READINESS_CONDITIONS.map(type => this.getCondition(type)).find(
-        condition => condition && condition.status !== 'True',
-      )?.message || undefined
+    const conditions = READINESS_CONDITIONS.map(type =>
+      this.getCondition(type),
     );
+    const failing =
+      conditions.find(condition => condition?.status === 'False') ??
+      conditions.find(condition => condition && condition.status !== 'True');
+    return failing?.message || undefined;
   }
 }

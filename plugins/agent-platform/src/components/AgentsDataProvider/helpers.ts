@@ -2,9 +2,10 @@ import type { Query } from '@tanstack/react-query';
 import {
   Agent,
   AgentReadiness,
-  AgentTemplateInterface,
+  AgentInterface,
   deriveAgentReadiness,
   getAgentStatusChangedAt,
+  Harness,
   isAgentTransitional,
   KubeObjectInterface,
   ModelConfig,
@@ -14,12 +15,14 @@ import {
   type ClientServingState,
   type ClientServingSummary,
 } from '../../lib/serving';
+import { canonicalSkillId } from '../../lib/skills';
 import {
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
   type DeclaredToolset,
   type ToolsetCarrier,
 } from '../../lib/toolset';
+import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -61,7 +64,7 @@ const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
  * a *permanently* broken agent on the same terms — see
  * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists.
  */
-function isAgentConverging(json: AgentTemplateInterface, now: number): boolean {
+function isAgentConverging(json: AgentInterface, now: number): boolean {
   if (!isAgentTransitional(deriveAgentReadiness(json))) {
     return false;
   }
@@ -84,7 +87,7 @@ function isAgentConverging(json: AgentTemplateInterface, now: number): boolean {
 export function getAgentRefetchInterval(
   query: Query<KubeObjectInterface>,
 ): number {
-  const json = query.state.data as AgentTemplateInterface | undefined;
+  const json = query.state.data as AgentInterface | undefined;
   if (!json) {
     return BASELINE_REFETCH_INTERVAL_MS;
   }
@@ -127,9 +130,9 @@ export function getAgentsRefetchInterval(
 
   const now = Date.now();
 
-  // This query lists AgentTemplates, so its items are template JSON — narrow
-  // to read the harness statuses the shared derivation expects.
-  const isConverging = (items as AgentTemplateInterface[]).some(json =>
+  // This query lists Agents, so its items are Agent JSON — narrow to read
+  // the conditions the shared derivation expects.
+  const isConverging = (items as AgentInterface[]).some(json =>
     isAgentConverging(json, now),
   );
 
@@ -173,18 +176,40 @@ export type AgentRow = {
    * this; a table column wants the other.
    */
   modelName?: string;
+  /** `spec.harnessRef.name`; `undefined` for an inline Harness. */
+  harness?: string;
+  /** {@link harnessTitle} of that Harness, once it has been read. */
+  harnessTitle?: string;
   skillCount: number;
-  /** Readiness derived from the template's Harness entries. */
+  /**
+   * The git-sourced skills the agent mounts, each as its
+   * {@link canonicalSkillId} (`<repo URL>#<path>`), so a discovered skill can
+   * be matched to the agents using it whatever form either URL is written
+   * in. OCI and bucket skills have no catalog identity and are left out.
+   */
+  skillIds?: string[];
+  /**
+   * The commit each git skill in {@link skillIds} is pinned to, keyed by the
+   * same canonical id — what a skill's page compares with the catalog's head
+   * to tell which agents run an older version of it. Absent with `skillIds`.
+   */
+  skillPins?: Record<string, string>;
+  /**
+   * The referenced ModelConfig as `<installation>/<namespace>/<name>`, the id
+   * a model row carries. `undefined` when the agent references no model.
+   */
+  modelConfigId?: string;
+  /** Readiness derived from the Agent's conditions. */
   readiness: AgentReadiness;
   /**
-   * Detail explaining a non-ready readiness (the Harness's reconcile error, the
-   * unresolved reference, or why no Harness admits the template), for the
+   * Detail explaining a non-ready readiness (the Harness's reconcile error or
+   * the unresolved reference), for the
    * status's info icon. `undefined` when there is nothing to explain.
    */
   readinessMessage?: string;
   /**
-   * Compile downgrades the admitting Harnesses report — features they could not
-   * honour. Independent of readiness: a ready agent can carry them.
+   * Compile downgrades the Harness reports — features it could not honour.
+   * Independent of readiness: a ready agent can carry them.
    */
   warnings?: string[];
   /**
@@ -268,25 +293,45 @@ function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
 }
 
 /**
- * Flatten an `AgentTemplate` into a plain {@link AgentRow}. With a
+ * Flatten an `Agent` into a plain {@link AgentRow}. With a
  * `resolveServing`, the row also carries the serving state of the model behind
  * the agent's ModelConfig; without one (no serving layer in view) it does not.
  * With `carriers` — the installation's `RemoteMCPServer`s — it carries the
- * toolset read off the agent's own carrier; without them it does not.
+ * toolset read off the agent's own carrier; without them it does not. With
+ * `harnesses`, the installation's Harnesses, it carries its Harness's title.
  */
 export function toAgentRow(
   agent: Agent,
   modelConfigs: ModelConfig[],
   resolveServing?: ResolveModelServing,
   carriers?: readonly ToolsetCarrier[],
+  harnesses?: readonly Harness[],
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
   const name = agent.getName();
+  const harnessName = agent.getHarnessName();
+  const harness = harnesses?.find(
+    candidate =>
+      candidate.getNamespace() === namespace &&
+      candidate.getName() === harnessName,
+  );
   const modelConfig = resolveModelConfig(agent, modelConfigs);
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
   const warnings = agent.getHarnessWarnings();
+  const modelConfigName = agent.getModelConfigName();
+  const gitSkills = agent
+    .getSkills()
+    .filter(skill => skill.source === 'git')
+    .map(skill => ({
+      id: canonicalSkillId({ repoUrl: skill.url, path: skill.path ?? '' }),
+      pin: skill.pin,
+    }));
+  const skillIds = gitSkills.map(skill => skill.id);
+  const skillPins = Object.fromEntries(
+    gitSkills.map(skill => [skill.id, skill.pin]),
+  );
 
   return {
     id: `${installation}/${namespace}/${name}`,
@@ -297,7 +342,13 @@ export function toAgentRow(
     description: agent.getDescription() ?? '',
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
+    harness: harnessName,
+    ...(harness && { harnessTitle: harnessTitle(harnessChoiceOf(harness)) }),
     skillCount: agent.getSkillCount(),
+    ...(skillIds.length > 0 ? { skillIds, skillPins } : {}),
+    ...(modelConfigName
+      ? { modelConfigId: `${installation}/${namespace}/${modelConfigName}` }
+      : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
     ...(warnings.length > 0 ? { warnings } : {}),
@@ -321,82 +372,5 @@ export function sortAgentRows(rows: AgentRow[], home?: string): AgentRow[] {
       rank(a.installation) - rank(b.installation) ||
       a.installation.localeCompare(b.installation) ||
       a.name.localeCompare(b.name),
-  );
-}
-
-/**
- * Severity order for the readiness column: ascending sorts worst-first, so one
- * click puts the agents that need attention at the top. Alphabetical order on
- * the label would be meaningless ("Failed" < "Not admitted" < "Not ready"
- * < "Pending" < "Ready" puts the never-resolving state second). Not admitted sorts first: it
- * never resolves on its own.
- */
-const READINESS_SEVERITY: Record<AgentReadiness, number> = {
-  notAdmitted: 0,
-  failed: 1,
-  notReady: 2,
-  pending: 3,
-  ready: 4,
-};
-
-/**
- * Client-side sort for the agents table, mirroring `sortSessionsBy`.
- *
- * Every column falls back to the display name as a tiebreaker so equal values
- * (one installation, or a whole table of ready agents) keep a stable, readable
- * order rather than the arbitrary one the fleet queries happened to resolve in.
- */
-export function sortAgentsBy(
-  rows: AgentRow[],
-  sort: { column: unknown; direction: 'ascending' | 'descending' },
-): AgentRow[] {
-  const column = String(sort.column);
-  const factor = sort.direction === 'ascending' ? 1 : -1;
-
-  return [...rows].sort((a, b) => {
-    if (column === 'readiness') {
-      const bySeverity =
-        READINESS_SEVERITY[a.readiness] - READINESS_SEVERITY[b.readiness];
-      return bySeverity !== 0
-        ? bySeverity * factor
-        : a.name.localeCompare(b.name);
-    }
-
-    if (column === 'skills') {
-      return a.skillCount === b.skillCount
-        ? a.name.localeCompare(b.name)
-        : (a.skillCount - b.skillCount) * factor;
-    }
-
-    // Keep the default view grouped by installation, then name — the ordering
-    // the list had before it was sortable.
-    if (column === 'installation') {
-      return (
-        a.installation.localeCompare(b.installation) * factor ||
-        a.name.localeCompare(b.name)
-      );
-    }
-
-    const aValue = String(a[column as keyof AgentRow] ?? '');
-    const bValue = String(b[column as keyof AgentRow] ?? '');
-    return (
-      aValue.localeCompare(bValue) * factor || a.name.localeCompare(b.name)
-    );
-  });
-}
-
-/**
- * Free-text search over what a reader looks an agent up by: its display and
- * technical name, what it is for, and the installation it runs on.
- */
-export function agentSearchFn(rows: AgentRow[], search: string): AgentRow[] {
-  const needle = search.trim().toLowerCase();
-  if (!needle) {
-    return rows;
-  }
-  return rows.filter(row =>
-    [row.name, row.technicalName, row.description, row.installation].some(
-      field => field.toLowerCase().includes(needle),
-    ),
   );
 }

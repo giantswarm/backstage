@@ -179,6 +179,12 @@ export interface McpUsage {
   range_hours: number;
   step_hours: number;
   buckets: McpUsageBucket[];
+  /**
+   * The start of the first bucket holding any sample: where muster's records
+   * start inside the window. Absent when no bucket has one, or when muster
+   * recorded calls in the week before the window.
+   */
+  data_start?: string;
   totals: {
     calls: number;
     errors: number;
@@ -229,7 +235,7 @@ export interface McpServerRuntime {
   name: string;
   /**
    * `spec.toolPrefix`: the segment muster puts in this server's exposed tool
-   * names, which is not its name. A server named `gazelle-mcp-marge` with
+   * names, which is not its name. A server named `mcp-marge` with
    * prefix `marge` exposes `x_marge_<tool>`.
    */
   toolPrefix?: string;
@@ -543,7 +549,11 @@ export interface MusterApi {
   /** The muster installations the proxy can target. */
   listInstallations(): Promise<MusterInstallationsResponse>;
   listWorkflows(): Promise<WorkflowListResponse>;
-  getWorkflow(name: string): Promise<WorkflowGetResponse>;
+  /** Full definition + raw YAML for one workflow (one installation). */
+  getWorkflow(
+    name: string,
+    installation?: string,
+  ): Promise<WorkflowGetResponse>;
   listExecutions(
     options?: ListExecutionsOptions,
   ): Promise<WorkflowExecutionListResponse>;
@@ -557,6 +567,11 @@ export interface MusterApi {
   getMcpUsage(options?: {
     installation?: string;
     hours?: number;
+    /**
+     * `month`: the UTC calendar month so far by the backend's clock, in
+     * daily steps, in place of `hours`.
+     */
+    window?: 'month';
   }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
@@ -586,6 +601,22 @@ export interface MusterApi {
     name: string,
     args: Record<string, unknown>,
     installation?: string,
+  ): Promise<unknown>;
+  /**
+   * {@link callTool} for a tool that reports progress while it works: each
+   * progress notification reaches `onProgress` as it arrives, and the call
+   * lasts as long as the tool keeps reporting. `signal` cancels it. An
+   * answer cut before its result arrived rejects with
+   * {@link MusterAnswerCutError}.
+   */
+  callToolWithProgress(
+    name: string,
+    args: Record<string, unknown>,
+    options: {
+      installation?: string;
+      onProgress: (progress: MusterToolProgress) => void;
+      signal?: AbortSignal;
+    },
   ): Promise<unknown>;
   /**
    * Ensure a per-user token for the target installation's muster `authProvider`
@@ -635,4 +666,20 @@ export interface MusterAuthCredentials {
  */
 export interface MusterAuthProvidersApi {
   getCredentials(authProvider: string): Promise<MusterAuthCredentials>;
+}
+
+/** One progress notification of a tool call. */
+export type MusterToolProgress = {
+  /** Higher than the one before it. */
+  progress: number;
+  total?: number;
+  message?: string;
+};
+
+/**
+ * A streamed tool answer ended before its result: the connection closed
+ * under it. Nothing is known about how far the tool got.
+ */
+export class MusterAnswerCutError extends Error {
+  readonly name = 'MusterAnswerCutError';
 }

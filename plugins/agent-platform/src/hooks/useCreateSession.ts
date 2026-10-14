@@ -1,14 +1,15 @@
 import { useCallback, useMemo, useRef } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useTrackedMutation,
   type PortalEventAttributes,
 } from '@giantswarm/backstage-plugin-analytics-react';
-import { kagentApiRef } from '../apis';
+import { AgentManagerClient } from '../apis/AgentManagerClient';
+import { AgentManagerNotConnectedError } from '../lib/agentManager';
 import type { AgentRow } from '../components/AgentsDataProvider';
-import { sessionsQueryKey } from '../lib/queryKeys';
+import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
+import { useMusterPluginApi } from './useMusterPluginApi';
 
 /** What the composer submits: an agent, and the prompt to open the session with. */
 export type NewSession = {
@@ -21,8 +22,8 @@ export type NewSession = {
  *
  * The key is minted **once per submission**, outside the mutation, so every
  * retry of that submission — the mutation's own, or the user pressing Start
- * again on the same prompt after a lost answer — carries the same one and the
- * controller answers the same instance instead of creating a second.
+ * again on the same prompt after a lost answer — carries the same one and
+ * agent-manager answers the same session instead of creating a second.
  */
 type NewSessionRequest = NewSession & { requestId: string };
 
@@ -30,14 +31,22 @@ type NewSessionRequest = NewSession & { requestId: string };
 export type SessionEntryPoint =
   PortalEventAttributes<'AgentPlatform.sessionStarted'>['entryPoint'];
 
+export type UseCreateSessionOptions = {
+  /** Passed to `deriveSessionTitle`; its default applies when absent. */
+  titleMaxLength?: number;
+};
+
 /**
- * Start a session with an agent: create its AgentInstance.
+ * Start a session with an agent: agent-manager's `start_session`, through
+ * muster as the person, without a message — it creates the Session only.
  *
- * **Creating the instance says nothing to the agent.** The prompt has to be
- * sent separately, as an A2A turn on the new instance. This hook does only the
- * create — the send happens on the session detail page, which the caller
- * navigates to with the prompt in hand. See "Starting a session" in
- * docs/agent-platform.md for why it is split that way rather than done here.
+ * It is the only way a session starts, on every entry point, so every surface
+ * passes the same checks. **Creating it says nothing to the agent.** The
+ * prompt is sent separately, as an A2A turn on the new session: the session
+ * detail page, which the caller navigates to with the prompt in hand, sends
+ * it streamed and with the human-in-the-loop extension requested, as every
+ * reply. See "Starting a session" in docs/agent-platform.md for why it is
+ * split that way rather than done here.
  *
  * The installation is not a parameter: an agent's identity *is*
  * installation/namespace/name, so picking the agent picks the installation, and
@@ -47,8 +56,11 @@ export type SessionEntryPoint =
  * the sessions list, the agent detail page and the session detail page —
  * produces the same one; `entryPoint` only says which one it was.
  */
-export function useCreateSession(entryPoint: SessionEntryPoint) {
-  const kagentApi = useApi(kagentApiRef);
+export function useCreateSession(
+  entryPoint: SessionEntryPoint,
+  { titleMaxLength }: UseCreateSessionOptions = {},
+) {
+  const musterApi = useMusterPluginApi();
   const queryClient = useQueryClient();
 
   const mutation = useTrackedMutation({
@@ -57,25 +69,48 @@ export function useCreateSession(entryPoint: SessionEntryPoint) {
       attributes: { entryPoint },
     }),
     mutationFn: async ({ agent, prompt, requestId }: NewSessionRequest) => {
-      const { sessionId } = await kagentApi.createSession(
+      if (!musterApi) {
+        // agent-manager is reached through muster only; a portal without the
+        // muster plugin has no way to start a session.
+        throw new AgentManagerNotConnectedError(
+          'agent-manager is reached through muster, and the muster plugin is not installed in this portal.',
+        );
+      }
+      // kagent never titles a session, so one started untitled stays that way
+      // in every list: a prompt with nothing to title it by starts nothing.
+      const sessionName = deriveSessionTitle(prompt, titleMaxLength);
+      if (!sessionName) {
+        throw new Error('A session starts with a prompt; this one is empty.');
+      }
+      const { sessionId } = await new AgentManagerClient(
+        musterApi,
         agent.installation,
-        // The agent's *technical* name, which names its AgentTemplate. `name` is
+      ).startSession({
+        // The agent's *technical* name, the `Agent` object's name. `name` is
         // the display annotation and would not match anything.
-        { namespace: agent.namespace, name: agent.technicalName },
-        deriveSessionTitle(prompt),
+        namespace: agent.namespace,
+        name: agent.technicalName,
         requestId,
-      );
-
-      // Not awaited with a refetch, unlike the rename: the caller navigates away
-      // from the list immediately, so forcing it to re-read now would spend a
-      // fleet-wide query on a screen nobody is looking at. Marking it stale is
-      // enough — coming back to the list refetches it.
-      queryClient.invalidateQueries({
-        queryKey: sessionsQueryKey(agent.installation),
-        refetchType: 'none',
+        sessionName,
       });
 
       return { sessionId };
+    },
+    onSuccess: (_result, { agent }) => {
+      // With the default `refetchType: 'active'`, so observers that stay
+      // mounted through the navigation — the shell rail's session history is
+      // the one that matters — re-read at once instead of waiting out their
+      // poll interval: a session started anywhere appears in the rail
+      // immediately. Deliberately not awaited (and not returned), so landing
+      // on the new conversation never waits on a fleet-wide list refetch.
+      queryClient.invalidateQueries({
+        queryKey: sessionsQueryKey(agent.installation),
+      });
+      // The rail joins the list with the derived states; without this the new
+      // row would sit ungrouped/unmarked until the states' next poll.
+      queryClient.invalidateQueries({
+        queryKey: sessionStatesQueryKey(agent.installation),
+      });
     },
   });
 
@@ -98,7 +133,7 @@ export function useCreateSession(entryPoint: SessionEntryPoint) {
           : { ...newSession, requestId: crypto.randomUUID() };
       lastRequest.current = request;
       const { sessionId } = await mutateAsync(request);
-      // Created: the next identical prompt is a new conversation, not a retry.
+      // Started: the next identical prompt is a new conversation, not a retry.
       lastRequest.current = undefined;
       return sessionId;
     },

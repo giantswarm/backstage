@@ -8,10 +8,8 @@ import {
 } from '@backstage/frontend-test-utils';
 import { musterApiRef } from '../../apis';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
-import {
-  MusterInstance,
-  MusterInstanceContext,
-} from '../MusterInstanceProvider';
+import { MusterInstanceContext } from '../MusterInstanceProvider';
+import { makeTestMusterInstance } from '../MusterInstanceProvider/testInstance';
 import {
   ConfirmActionDialog,
   LiveAction,
@@ -84,26 +82,6 @@ describe('serverLiveActions', () => {
   });
 });
 
-/** Minimal provider value, so the dialog's post-mutation refresh is observable. */
-function makeInstance(retry: () => void): MusterInstance {
-  return {
-    installations: ['gazelle'],
-    isLoadingInstallations: false,
-    installationInfos: [],
-    activeInstallation: 'gazelle',
-    scope: 'gazelle',
-    homeInstallation: 'gazelle',
-    isSingleInstallation: false,
-    activeInstallationInfo: undefined,
-    setActiveInstallation: jest.fn(),
-    mcpServers: [],
-    workflows: [],
-    isLoading: false,
-    retry,
-    refreshInventory: jest.fn(),
-  };
-}
-
 /** Two buttons standing in for the header's menu, one dialog. */
 function Harness({
   server,
@@ -161,7 +139,9 @@ async function renderDialog(
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, { callTool }]]}>
       <QueryClientProvider client={queryClient}>
-        <MusterInstanceContext.Provider value={makeInstance(retry)}>
+        <MusterInstanceContext.Provider
+          value={makeTestMusterInstance({ retry })}
+        >
           <Harness
             server={makeServer({ state: 'Connected' })}
             onDone={options.onDone}
@@ -190,12 +170,12 @@ describe('ConfirmActionDialog', () => {
       screen.getByRole('button', { name: 'open deactivate' }),
     );
     expect(
-      await screen.findByText(/muster will disconnect this server/),
+      await screen.findByText(/muster disconnects it/),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     expect(
-      await screen.findByText(/Done\. The server list has been refreshed/),
+      await screen.findByText(/Done\. The connection status may take/),
     ).toBeInTheDocument();
     expect(callTool).toHaveBeenCalledWith(
       'core_service_stop',
@@ -220,7 +200,7 @@ describe('ConfirmActionDialog', () => {
     await userEvent.click(
       await screen.findByRole('button', { name: 'Confirm' }),
     );
-    await screen.findByText(/Done\. The server list has been refreshed/);
+    await screen.findByText(/Done\. The connection status may take/);
     const closes = screen.getAllByRole('button', { name: 'Close' });
     await userEvent.click(closes[closes.length - 1]);
 
@@ -232,7 +212,7 @@ describe('ConfirmActionDialog', () => {
       await screen.findByRole('button', { name: 'Confirm' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/Done\. The server list has been refreshed/),
+      screen.queryByText(/Done\. The connection status may take/),
     ).not.toBeInTheDocument();
   });
 

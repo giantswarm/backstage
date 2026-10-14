@@ -11,7 +11,7 @@ import {
   normalizeTaskList,
 } from './kagentSessionDetail';
 import {
-  agentInstanceRuntimeLost,
+  sessionRuntimeLost,
   tasksAskUserPending,
   tasksFailed,
   tasksRuntimeLost,
@@ -26,7 +26,7 @@ describe('isRuntimeLostFailureText', () => {
     ['atenet, after its resume budget', ATENET],
     [
       'the A2A gateway, when the runtime cannot be dialled',
-      'failed to connect to AgentInstance runtime: rpc error: code = Unavailable',
+      'failed to connect to Session runtime: rpc error: code = Unavailable',
     ],
     [
       'the scheduler reporting the locality miss as capacity',
@@ -162,8 +162,8 @@ describe('readConversationRuntimeLoss', () => {
 });
 
 describe('readReportedRuntimeLoss', () => {
-  const session = normalizeSessionDetail(agentInstanceRuntimeLost, 'gazelle')
-    .detail!.session;
+  const session = normalizeSessionDetail(sessionRuntimeLost, 'gazelle').detail!
+    .session;
 
   it("reads kagent's mark off the instance, dropping its own prefix from the cause", () => {
     expect(readReportedRuntimeLoss(session)).toEqual({
@@ -189,8 +189,8 @@ describe('readReportedRuntimeLoss', () => {
 });
 
 describe('readRuntimeLoss', () => {
-  const reported = normalizeSessionDetail(agentInstanceRuntimeLost, 'gazelle')
-    .detail!.session;
+  const reported = normalizeSessionDetail(sessionRuntimeLost, 'gazelle').detail!
+    .session;
   const tasks = normalizeTaskList(tasksRuntimeLost).tasks;
 
   it("lets the instance's mark win and folds the conversation's attempts in", () => {

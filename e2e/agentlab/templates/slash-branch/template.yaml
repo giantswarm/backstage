@@ -1,0 +1,37 @@
+# A fixture of the agentlab suite (slash-branch.spec.ts): registered from a
+# branch whose name contains a slash, it proves the backend reads a template
+# and its skeleton from such a branch. It only fetches its skeleton into the
+# task's workspace and logs; nothing outside the task is touched.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: e2e-slash-branch
+  title: E2E slash-branch template
+  description: An agentlab suite fixture that fetches its skeleton and logs a message.
+spec:
+  owner: group:default/platform-admins
+  type: service
+  parameters:
+    - title: Details
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          title: Message
+  steps:
+    - id: fetch
+      name: Fetch the skeleton
+      action: fetch:plain
+      input:
+        url: ./skeleton
+    - id: log
+      name: Log the message
+      action: debug:log
+      input:
+        message: ${{ parameters.message }}
+        listWorkspace: true
+  output:
+    text:
+      - title: Message
+        content: ${{ parameters.message }}

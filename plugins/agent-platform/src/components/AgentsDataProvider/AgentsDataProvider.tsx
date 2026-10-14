@@ -6,9 +6,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import type { Query } from '@tanstack/react-query';
 import {
   Agent,
+  Harness,
   isNotFoundError,
+  type KubeObjectInterface,
   ModelConfig,
   RemoteMCPServer,
   useResources,
@@ -20,6 +23,7 @@ import {
   useInstallationScope,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
@@ -28,6 +32,7 @@ import {
   BASELINE_REFETCH_INTERVAL_MS,
   getAgentsRefetchInterval,
   ResolveModelServing,
+  TRANSITIONAL_REFETCH_INTERVAL_MS,
   sortAgentRows,
   toAgentRow,
 } from './helpers';
@@ -70,17 +75,28 @@ export type AgentsContextValue = {
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
 
 /**
- * Lists kagent `AgentTemplate`s across every installation in the section's
+ * Lists kagent `Agent`s across every installation in the section's
  * scope that runs kagent (all namespaces) and exposes them as plain rows. Model
  * references are resolved against the ModelConfigs queried by
  * {@link ModelConfigsProvider}, so this must be mounted inside one. Each row's
  * toolset is read off the agent's carrier `RemoteMCPServer`, listed alongside.
  */
+/**
+ * The Agents list's interval: {@link getAgentsRefetchInterval}, tightened to
+ * the transitional tier while the installation's list does not show an agent
+ * deployed from this tab yet.
+ */
+function agentsRefetchInterval(query: Query<KubeObjectInterface[]>): number {
+  return awaitsDeployedAgent(query)
+    ? TRANSITIONAL_REFETCH_INTERVAL_MS
+    : getAgentsRefetchInterval(query);
+}
+
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Only query installations whose inventory has the `kagent.dev` API group and
+  // Only query installations whose inventory has the `api.kagent.dev` API group and
   // whose access is healthy, home first (gs `useInstallationInventory`, one
   // `GET /apis` per installation shared by every tab), narrowed to the
   // section's scope: every one of them under "All installations", the pinned
@@ -124,6 +140,9 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const [carriersByInstallation, setCarriersByInstallation] = useState<
     Record<string, RemoteMCPServer[]>
   >({});
+  const [harnessesByInstallation, setHarnessesByInstallation] = useState<
+    Record<string, Harness[]>
+  >({});
 
   // Home first, literally: the home installation is queried alone, and the
   // others only once it has answered (rows, an empty list, or a failure), so
@@ -140,19 +159,29 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     ? scopedInstallations
     : scopedInstallations.filter(installation => installation === home);
 
-  // Single AgentTemplate version (v1alpha3), so skip API version discovery — it
+  // Single Agent version (v1alpha3), so skip API version discovery — it
   // adds round-trips per cluster for no benefit here. `clustersData` is the raw
   // per-cluster list result (present, and possibly empty, only for clusters that
   // responded successfully); `resources` are those hydrated into Agent instances.
   // The refetch interval is two-tier and evaluated per installation — see
   // `getAgentsRefetchInterval`. It keeps agent readiness fresh without polling
   // the whole fleet fast: only installations with an agent that is still
-  // converging get the short interval.
+  // converging, or one just deployed from this portal that the list does not
+  // show yet (`awaitsDeployedAgent`), get the short interval.
   const { resources, clustersData, isLoading, errors } = useResources(
     queriedInstallations,
     Agent,
     {},
-    { enableDiscovery: false, refetchInterval: getAgentsRefetchInterval },
+    { enableDiscovery: false, refetchInterval: agentsRefetchInterval },
+  );
+
+  // The Harnesses the agents name, for what the list calls each one. A failed
+  // read leaves the rows with the Harness name alone.
+  const harnesses = useResources(
+    queriedInstallations,
+    Harness,
+    {},
+    { enableDiscovery: false, refetchInterval: BASELINE_REFETCH_INTERVAL_MS },
   );
 
   // The toolset carriers: on API v2 an agent's `X-Muster-Toolset` header lives
@@ -221,7 +250,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   }, [clustersData, errors]);
 
   useEffect(() => {
-    // A 404 means the kagent.dev API group isn't installed on that cluster —
+    // A 404 means the api.kagent.dev API group isn't installed on that cluster —
     // kagent was uninstalled since the (hour-long) inventory answered. Treat it
     // as a successful empty read (zero agents), not a "couldn't read" failure:
     // the cluster is reachable and we can list it, there just are no Agents.
@@ -298,6 +327,37 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carriersSignature]);
 
+  const harnessesSignature = useMemo(
+    () =>
+      harnesses.clustersData
+        .map(
+          ({ cluster, data }) =>
+            `${cluster}:${data
+              .map(
+                item =>
+                  `${item.metadata?.namespace ?? ''}/${
+                    item.metadata?.name ?? ''
+                  }@${item.metadata?.resourceVersion ?? ''}`,
+              )
+              .join(',')}`,
+        )
+        .sort()
+        .join('|'),
+    [harnesses.clustersData],
+  );
+
+  useEffect(() => {
+    const next: Record<string, Harness[]> = {};
+    for (const { cluster } of harnesses.clustersData) {
+      next[cluster] = [];
+    }
+    for (const harness of harnesses.resources) {
+      next[harness.cluster]?.push(harness);
+    }
+    setHarnessesByInstallation(prev => ({ ...prev, ...next }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [harnessesSignature]);
+
   // Prune cached entries for installations that have durably left the scoped
   // set (session-expired, degraded, removed from config, or outside a pinned
   // scope). They are no longer queried, so they'd never produce a
@@ -326,6 +386,14 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
         ? prev
         : kept;
     });
+    setHarnessesByInstallation(prev => {
+      const kept = Object.fromEntries(
+        Object.entries(prev).filter(([cluster]) => scoped.has(cluster)),
+      );
+      return Object.keys(kept).length === Object.keys(prev).length
+        ? prev
+        : kept;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedInstallationsKey]);
 
@@ -340,6 +408,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             // Undefined until the installation's servers have answered once, so
             // a row is "unresolved" rather than wrongly "implicit full" until then.
             carriersByInstallation[cluster],
+            harnessesByInstallation[cluster],
           ),
         ),
       ),
@@ -403,6 +472,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   }, [
     agentsByInstallation,
     carriersByInstallation,
+    harnessesByInstallation,
     erroredInstallations,
     isLoading,
     isProbing,

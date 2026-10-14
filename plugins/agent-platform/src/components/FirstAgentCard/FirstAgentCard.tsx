@@ -1,6 +1,5 @@
-import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Button } from '@backstage/ui';
+import { ButtonLink } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -16,7 +15,6 @@ import { newAgentRouteRef } from '../../routes';
  * callers decide that, and say so instead.
  */
 export function FirstAgentCard() {
-  const navigate = useNavigate();
   const newAgentLink = useRouteRef(newAgentRouteRef);
 
   return (
@@ -28,14 +26,18 @@ export function FirstAgentCard() {
         // tab -- a separate extension -- can outlive. The card still explains
         // the empty screen; it just has nowhere to send the user, and a button
         // that goes nowhere is worse than none.
+        //
+        // A link to the create form rather than a button that navigates on
+        // press: the browser follows the href however the click arrives, and it
+        // opens in a new tab like any other link.
         newAgentLink ? (
-          <Button
+          <ButtonLink
             variant="primary"
             iconStart={<AddIcon />}
-            onPress={() => navigate(newAgentLink())}
+            href={newAgentLink()}
           >
             Create your first agent
-          </Button>
+          </ButtonLink>
         ) : undefined
       }
     />

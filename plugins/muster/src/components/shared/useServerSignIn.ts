@@ -54,8 +54,17 @@ export function authStatusQueryKey(installation?: string) {
  * surfaced verbatim, this note only confirms what the flipped affordance
  * already shows, so it is UI-authored.
  */
-const SIGNED_OUT_NOTE =
-  "Signed out — the server's tools are hidden until you sign in again.";
+export function signedOutNote(noun: SignInNoun = 'server'): string {
+  return `Signed out — the ${noun}'s tools are hidden until you sign in again.`;
+}
+
+/**
+ * What the sign-in copy calls the thing signed in to: main's "server" (the
+ * default, for the classic portal's surfaces such as Bot PRs' marge sign-in),
+ * "connector" in the agent platform's own sections (muster's Connectors tab,
+ * the agent wizard and detail pages).
+ */
+export type SignInNoun = 'server' | 'connector';
 
 /**
  * A sign-in this browser tab started and is still waiting on. Held in the
@@ -137,6 +146,12 @@ export interface ServerSignInState {
   signInTabOpened: boolean;
   /** Muster's message for a refused (or unrecognised) login attempt. */
   error?: string;
+  /**
+   * Why `auth://status` cannot be read, while a sign-in is outstanding. Also
+   * reported as `error` when no answer to a click outranks it; set apart so a
+   * status can tell a failed read from a failed sign-in.
+   */
+  statusUnreadable?: string;
   /** Muster's message for an outcome that isn't a failure (already connected). */
   note?: string;
   /**
@@ -168,6 +183,8 @@ export interface UseServerSignInOptions {
   timeoutMs?: number;
   /** Overridable for the same reason: how long the issued URL is offered. */
   authUrlLifetimeMs?: number;
+  /** What the hook's own notes call the server; main's "server" by default. */
+  noun?: SignInNoun;
 }
 
 /**
@@ -448,6 +465,7 @@ export function useServerSignIn(
         ? `Sign-out request failed: ${signOut.error.message}`
         : undefined) ??
       (pending ? statusUnreadable : undefined),
+    statusUnreadable: pending ? statusUnreadable : undefined,
     // 'connected' with the alert still up is a real combination (the two come
     // from different muster state), and silence there is indistinguishable from
     // the no-op click this feature fixes. Same for a completed sign-out: the
@@ -456,7 +474,9 @@ export function useServerSignIn(
       (signInResult?.status === 'connected'
         ? signInResult.message
         : undefined) ??
-      (signOutResult?.status === 'signed_out' ? SIGNED_OUT_NOTE : undefined),
+      (signOutResult?.status === 'signed_out'
+        ? signedOutNote(options.noun)
+        : undefined),
     isSsoManaged: Boolean(
       status?.token_forwarding_enabled || status?.token_exchange_enabled,
     ),

@@ -371,12 +371,13 @@ test.describe('serving: the served model’s step timeline', () => {
       await open(admin, SERVING);
 
       await admin.getByRole('button', { name: /Serve model/ }).click();
-      const dialog = admin.getByRole('dialog', { name: 'Serve model' });
-      await expect(dialog.getByTestId('serve-fit-verdict')).toContainText(
+      await expect(admin).toHaveURL(/\/agent-platform\/models\/serving\/serve/);
+      await expect(admin.getByTestId('serve-fit-verdict')).toContainText(
         'Fits — the node comes as g6.xlarge',
       );
-      await dialog.getByRole('button', { name: 'Serve' }).click();
-      await expect(dialog).toBeHidden();
+      await admin.getByRole('button', { name: 'Serve', exact: true }).click();
+      // Accepted: back on Running models, the served model's steps open.
+      await expect(admin).toHaveURL(/\/agent-platform\/models\/serving\/?$/);
 
       const panel = admin.getByTestId('served-model-lifecycle');
       await expect(
@@ -455,7 +456,7 @@ test.describe('serving: the served model’s step timeline', () => {
         'the inventory was read once per stage: the page polled at 10 s while the model was on its way',
       ).toEqual(['downloading', 'loading', 'ready']);
       // The verdict's check, then one pinned to each node of the lab's
-      // inventory for the dialog's Node field.
+      // inventory for Serve model's Nodes field.
       const [verdict, ...perNode] = staged.callsOf('check_fit');
       expect(verdict.arguments, 'the verdict judged the preset').toEqual({
         model: 'qwen3-4b-instruct',

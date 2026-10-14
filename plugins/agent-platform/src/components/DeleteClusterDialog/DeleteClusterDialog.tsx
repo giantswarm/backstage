@@ -13,10 +13,13 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useClusterWrite } from '../../hooks/useClusterManager';
+import { useOpenGeneration } from '../../hooks/useOpenGeneration';
 import {
   CLUSTER_MANAGER_SERVER,
+  isNothingLeft,
   type ClusterWriteResult,
   type DeleteClusterInput,
   type WriteMode,
@@ -25,6 +28,7 @@ import {
   judgeModes,
   modeBlocker,
   notConnectedOf,
+  nothingLeftOf,
   preferredMode,
   previewOf,
   type ModeVerdicts,
@@ -51,7 +55,9 @@ export type DeleteClusterDialogProps = {
  * the way out. **Delete** removes the cluster's release as the person and
  * offers **Finish removal**, the second call cluster-manager names once the
  * cluster is gone; **Commit** opens the removal pull request and, once it is
- * merged, offers the live step its answer names.
+ * merged, offers the live step its answer names. cluster-manager's
+ * `notFound.nothingLeft` answer, to a dry run or a call, reads as the removal
+ * complete.
  */
 export function DeleteClusterDialog({
   isOpen,
@@ -68,14 +74,19 @@ export function DeleteClusterDialog({
   const [removed, setRemoved] = useState<ClusterWriteResult>();
   const [committed, setCommitted] = useState<ClusterWriteResult>();
   const input: DeleteClusterInput = { organization, name };
+  const startAnswer = useOpenGeneration(isOpen);
 
   /** The dry runs, again after a refusal the person has dealt with. */
   const check = async () => {
     setVerdicts(undefined);
+    const isCurrent = startAnswer();
     const judged = await judgeModes(
       dryRunMode => write.remove(input, { mode: dryRunMode, dryRun: true }),
       commitOffered,
     );
+    if (!isCurrent()) {
+      return;
+    }
     write.reset();
     setVerdicts(judged);
     setMode(preferredMode(judged));
@@ -112,12 +123,6 @@ export function DeleteClusterDialog({
     }
   };
 
-  const close = (next: boolean) => {
-    if (!write.isBusy) {
-      onOpenChange(next);
-    }
-  };
-
   const checking = isOpen && !verdicts;
   const confirmed = typed === name;
   const started = Boolean(removed || committed);
@@ -125,16 +130,17 @@ export function DeleteClusterDialog({
     write.failure?.kind === 'not-connected'
       ? write.failure
       : notConnectedOf(verdicts);
-  const preview = previewOf(verdicts);
-  const refusedEverywhere = Boolean(verdicts) && !preview && !notConnected;
-  const secondPass = removed && !removed.partial && removed.nextStep;
+  const nothingLeft = nothingLeftOf(verdicts) || isNothingLeft(write.failure);
+  const preview = nothingLeft ? undefined : previewOf(verdicts);
+  const refusedEverywhere =
+    Boolean(verdicts) && !preview && !notConnected && !nothingLeft;
+  const secondPass =
+    removed && !removed.partial && removed.nextStep && !nothingLeft;
 
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={close}
-      isDismissable={!write.isBusy}
-      isKeyboardDismissDisabled={write.isBusy}
+      {...dialogDismissLock(write.isWriting, onOpenChange)}
       width="min(90vw, 720px)"
     >
       <DialogHeader>Delete cluster {name}?</DialogHeader>
@@ -235,13 +241,15 @@ export function DeleteClusterDialog({
             </>
           )}
 
-          {write.failure && write.failure.kind !== 'not-connected' && (
-            <Alert
-              status="danger"
-              title="cluster-manager refused"
-              description={write.failure.message}
-            />
-          )}
+          {write.failure &&
+            write.failure.kind !== 'not-connected' &&
+            !nothingLeft && (
+              <Alert
+                status="danger"
+                title="cluster-manager refused"
+                description={write.failure.message}
+              />
+            )}
           {notConnected && (
             <ConnectAgentManagerAlert
               installation={installation}
@@ -299,11 +307,23 @@ export function DeleteClusterDialog({
               }
             />
           )}
+          {nothingLeft && (
+            <Alert
+              status="success"
+              data-testid="delete-complete"
+              title={
+                started
+                  ? `${name} is removed: nothing of it is left`
+                  : `${name} is already removed: nothing of it is left`
+              }
+            />
+          )}
           {committed?.commit && (
             <ClusterManagerCommitOutcome
               commit={committed.commit}
               liveStep={
-                !removed && (
+                !removed &&
+                !nothingLeft && (
                   <Button
                     variant="secondary"
                     size="small"
@@ -322,12 +342,12 @@ export function DeleteClusterDialog({
         <Flex gap="2" justify="end">
           <Button
             variant="secondary"
-            onPress={() => close(false)}
-            isDisabled={write.isBusy}
+            onPress={() => onOpenChange(false)}
+            isDisabled={write.isWriting}
           >
-            {started ? 'Close' : 'Cancel'}
+            {started || nothingLeft ? 'Close' : 'Cancel'}
           </Button>
-          {!started && (
+          {!started && !nothingLeft && (
             <Button
               variant="primary"
               destructive

@@ -256,7 +256,7 @@ describe('ModelServingStatus', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Pull failed for qwen2.5:0.5b',
+          title: 'Could not pull qwen2.5:0.5b',
           description: 'registry unreachable',
           status: 'danger',
         }),

@@ -3,8 +3,10 @@ import {
   deriveSessionState,
   describeSessionState,
   isAgentWorking,
+  isAwaitingInput,
   readNewestTaskState,
   readTurnProgress,
+  SESSION_STATE_LABELS,
 } from './kagentSessionState';
 import { normalizeTaskList } from './kagentSessionDetail';
 
@@ -19,17 +21,31 @@ function stateFor(fixture: unknown) {
 describe('describeSessionState', () => {
   it.each([
     ['working', 'Working', true],
-    ['input-required', 'Waiting for input', true],
-    ['completed', 'Completed', false],
+    ['input-required', 'Waiting for you', true],
+    ['completed', 'Idle', false],
     ['failed', 'Failed', false],
-    ['canceled', 'Canceled', false],
+    ['canceled', 'Idle', false],
   ])('describes %s', (raw, label, isActive) => {
     expect(describeSessionState(raw)).toMatchObject({ raw, label, isActive });
   });
 
+  it.each([
+    ['submitted', 'Working'],
+    ['working', 'Working'],
+    ['input-required', 'Waiting for you'],
+    ['auth-required', 'Waiting for you'],
+    ['completed', 'Idle'],
+    ['canceled', 'Idle'],
+    ['failed', 'Failed'],
+    ['rejected', 'Failed'],
+  ])('names %s "%s", one of the four state words', (raw, label) => {
+    expect(describeSessionState(raw)?.label).toBe(label);
+    expect(Object.values(SESSION_STATE_LABELS)).toContain(label);
+  });
+
   it('is case-insensitive about the state name', () => {
     expect(describeSessionState('COMPLETED')).toMatchObject({
-      label: 'Completed',
+      label: 'Idle',
       // The raw value is kept verbatim, so the original casing survives.
       raw: 'COMPLETED',
     });
@@ -288,7 +304,7 @@ describe('describeSessionState normalisation', () => {
     expect(describeSessionState('Input-Required')).toMatchObject({
       raw: 'Input-Required',
       key: 'input-required',
-      label: 'Waiting for input',
+      label: 'Waiting for you',
     });
   });
 
@@ -297,5 +313,18 @@ describe('describeSessionState normalisation', () => {
       raw: 'Quantum-Superposition',
       key: 'quantum-superposition',
     });
+  });
+});
+
+describe('isAwaitingInput', () => {
+  it('is true for the states that wait on a person', () => {
+    expect(isAwaitingInput(describeSessionState('input-required'))).toBe(true);
+    expect(isAwaitingInput(describeSessionState('Auth-Required'))).toBe(true);
+  });
+
+  it('is false for every other state and for no state', () => {
+    expect(isAwaitingInput(describeSessionState('working'))).toBe(false);
+    expect(isAwaitingInput(describeSessionState('completed'))).toBe(false);
+    expect(isAwaitingInput(undefined)).toBe(false);
   });
 });

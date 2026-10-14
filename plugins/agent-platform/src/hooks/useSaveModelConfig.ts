@@ -69,7 +69,10 @@ export function useSaveModelConfig() {
     }: SaveModelConfigInput) => {
       const isEdit = Boolean(original);
       const namespace = original?.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
-      const plan = planKeySecret(values, isEdit);
+      const plan = planKeySecret(values, {
+        isEdit,
+        originalProvider: original?.getProvider(),
+      });
 
       if (plan.action === 'write') {
         // Create-or-replace, mirroring what `kubectl apply` would do. The

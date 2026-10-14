@@ -1,4 +1,10 @@
-import { expect, open, test } from './fixtures';
+import {
+  expect,
+  open,
+  openReadyAgent,
+  startSessionButton,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 import type { Page, Route } from '@playwright/test';
 
@@ -9,7 +15,7 @@ import type { Page, Route } from '@playwright/test';
  * overnight; the worker node holding its paused runtime had been reclaimed, and
  * every message failed after 60 s with `actor "ai-…" request timed out` and the
  * same retry. This spec drives the portal through that shape and the one kagent
- * moves to once it marks the instance (`Failure.reason: RUNTIME_LOST`).
+ * moves to once it marks the session (`Failure.reason: RUNTIME_LOST`).
  *
  * **kagent's answer is stubbed at the browser**; everything else is real. The
  * session is created through the portal's backend on the lab's kagent, and the
@@ -17,7 +23,7 @@ import type { Page, Route } from '@playwright/test';
  * of the *lost* session are answered by this test, in the shapes kagent
  * produces: the turn's event stream (the recorded failure, then the error), the
  * conversation (the failed turn with the runtime's words) and — for the second
- * half — the instance (the `RUNTIME_LOST` failure) and the list row. Losing a
+ * half — the session (the `RUNTIME_LOST` failure) and the list row. Losing a
  * runtime for real needs a worker node to go away, which the lab cannot stage
  * on demand; `agentlab`'s Substrate proofs cover that side.
  */
@@ -53,7 +59,7 @@ class LostRuntimeStubs {
   sessionId?: string;
   /** The person's message as sent, echoed into the stubbed conversation. */
   private userMessage?: { messageId: string; text: string };
-  /** Whether the instance and list reads carry kagent's mark. */
+  /** Whether the session and list reads carry kagent's mark. */
   reported = false;
 
   constructor(private readonly page: Page) {}
@@ -150,9 +156,9 @@ class LostRuntimeStubs {
       },
     );
 
-    // The instance, and the list it is a row of: kagent's mark, once armed.
-    const markInstance = (instance: Record<string, unknown>) => ({
-      ...instance,
+    // The session, and the list it is a row of: kagent's mark, once armed.
+    const markSession = (session: Record<string, unknown>) => ({
+      ...session,
       failure: {
         reason: 'RUNTIME_LOST',
         message: `runtime lost: ${ATENET}`,
@@ -175,14 +181,12 @@ class LostRuntimeStubs {
         }
         const body = (await response.json()) as Record<string, unknown>;
         if (this.isLostSession(url, '')) {
-          body.agentInstance = markInstance(
-            body.agentInstance as Record<string, unknown>,
-          );
-        } else if (Array.isArray(body.agentInstances)) {
-          body.agentInstances = body.agentInstances.map(instance =>
-            (instance as { id?: string }).id === this.sessionId
-              ? markInstance(instance as Record<string, unknown>)
-              : instance,
+          body.session = markSession(body.session as Record<string, unknown>);
+        } else if (Array.isArray(body.sessions)) {
+          body.sessions = body.sessions.map(session =>
+            (session as { id?: string }).id === this.sessionId
+              ? markSession(session as Record<string, unknown>)
+              : session,
           );
         }
         await route.fulfill({ response, json: body });
@@ -219,27 +223,12 @@ async function deleteCurrentSession(page: Page): Promise<void> {
 
 test('a session whose runtime is lost explains itself, is marked, and opens a new session with the message', async ({
   admin,
+  labAgent,
 }) => {
-  test.setTimeout(6 * 60_000);
+  test.setTimeout(10 * 60_000);
 
   // --- An agent to start from --------------------------------------------
-  await open(admin, '/agent-platform/agents');
-  const grid = admin.getByRole('grid', { name: 'Data table' });
-  await expect(grid).toBeVisible();
-  const agents = grid.getByRole('rowheader').getByRole('link');
-  await agents
-    .first()
-    .waitFor({ timeout: 30_000 })
-    .catch(() => undefined);
-  test.skip(
-    (await agents.count()) === 0,
-    'no agent on the installation — agent-lifecycle.spec.ts creates one; run it first, or create a fixture agent',
-  );
-  const agentName = (await agents.first().textContent())?.trim() ?? '';
-  await agents.first().click();
-  await expect(
-    admin.getByRole('button', { name: 'Start a session' }),
-  ).toBeVisible();
+  await openReadyAgent(admin, labAgent);
 
   const stubs = new LostRuntimeStubs(admin);
   await stubs.arm();
@@ -247,7 +236,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
   let failure: unknown;
   try {
     // --- The session, whose first message runs into the lost runtime ------
-    await admin.getByRole('button', { name: 'Start a session' }).click();
+    await startSessionButton(admin).click();
     const promptBox = admin.getByRole('textbox', { name: 'Prompt' });
     await expect(promptBox).toBeVisible();
     await promptBox.fill(prompt);
@@ -269,7 +258,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       "the person's message is on the timeline",
     ).toBeVisible();
     await expect(
-      admin.getByText('The agent’s runtime could not be reached'),
+      admin.getByText('Could not reach the agent’s runtime'),
       'the failed turn says whose failure it is',
     ).toBeVisible({ timeout: 60_000 });
     await expect(
@@ -283,7 +272,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       'the notice explains in the portal’s words',
     ).toBeVisible();
     await expect(
-      admin.getByText(/nothing is missing from the transcript/),
+      admin.getByText(/The transcript above is complete\./),
     ).toBeVisible();
     await expect(
       admin.getByText(/kagent reported:/),
@@ -298,7 +287,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       'the retry stays while the loss is only suspected',
     ).toBeVisible();
     const startNew = admin.getByRole('button', {
-      name: `Start a new session with ${agentName}`,
+      name: `Start a new session with ${labAgent.name}`,
     });
     await expect(startNew, 'the way out stands under the box').toBeEnabled();
     await snapshot(admin, 'runtime-lost-suspected');

@@ -1,11 +1,25 @@
 import { useMemo } from 'react';
 import { makeStyles, Paper, Theme } from '@material-ui/core';
-import { Cell, CellText, Skeleton, Table, Text, useTable } from '@backstage/ui';
+import { Cell, Skeleton, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
-import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  columnMax,
+  DataBar,
+  ShowMore,
+  usePhoneColumns,
+  usePhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
-import { formatCount, formatTokens, formatUsd } from '../../lib/formatNumbers';
+import {
+  formatCount,
+  formatMoney,
+  formatTokens,
+  formatUsd,
+  USD,
+  type Currency,
+} from '../../lib/formatNumbers';
 import { useMeasureColor } from '../../lib/measures';
+import { NameCell } from '../LlmUsage/NameCell';
 import { sortUsageRows } from './helpers';
 import type { ByAgentRow } from './helpers';
 
@@ -29,6 +43,13 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
+/**
+ * How many agents the table shows before *Show all N agents*. Below the
+ * shared page size: this is one person's agents, realistically tens, so the
+ * one click reveals the rest rather than paging through them.
+ */
+export const BY_AGENT_ROWS = 15;
+
 export type ByAgentTableProps = {
   rows: ByAgentRow[];
   emptyMessage: string;
@@ -47,6 +68,8 @@ export type ByAgentTableProps = {
    * describe a rate as having been applied.
    */
   hasRate?: boolean;
+  /** The installation's display currency, for the estimate; USD when none. */
+  currency?: Currency;
 };
 
 /**
@@ -73,9 +96,11 @@ export function ByAgentTable({
   installation,
   isRateLoading,
   hasRate = true,
+  currency = USD,
 }: ByAgentTableProps) {
   const classes = useStyles();
   const colorFor = useMeasureColor();
+  const isPhone = usePhoneLayout();
 
   // One maximum per column, and the cost column's is derived the same way its
   // cells are — from the row's tokens and the shared rate — so the longest bar
@@ -89,9 +114,11 @@ export function ByAgentTable({
       cost: columnMax(rows, row =>
         estimateCost(row.inputTokens, row.outputTokens, rates),
       ),
+      costUsd: columnMax(rows, row => row.costUsd),
     }),
     [rows, rates],
   );
+  const anyReported = rows.some(row => row.costUsd !== undefined);
 
   const columnConfig: ColumnConfig<ByAgentRow>[] = [
     {
@@ -99,7 +126,19 @@ export function ByAgentTable({
       label: 'Agent',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <CellText title={row.agentName} href={row.href} />,
+      // At phone width the Reported cost column is hidden; a runtime's own
+      // figure is named under the agent instead, so it stays on the row.
+      cell: row => (
+        <NameCell
+          title={row.agentName}
+          href={row.href}
+          description={
+            isPhone && row.costUsd !== undefined
+              ? `${formatUsd(row.costUsd)} reported by its runtime`
+              : undefined
+          }
+        />
+      ),
     },
     {
       id: 'sessions',
@@ -181,7 +220,7 @@ export function ByAgentTable({
                 isRateLoading ? (
                   <Skeleton width={52} height={16} rounded />
                 ) : (
-                  formatUsd(estimate)
+                  formatMoney(estimate, currency)
                 )
               }
               value={estimate}
@@ -192,7 +231,54 @@ export function ByAgentTable({
         );
       },
     },
+    // Only when some runtime reported one: a column of "Not reported" teaches
+    // the reader to ignore it, while absence says the truth — no runtime in
+    // this window prices its own work.
+    ...(anyReported
+      ? [
+          {
+            id: 'costUsd',
+            label: 'Reported cost',
+            isSortable: true,
+            cell: (row: ByAgentRow) => (
+              <Cell>
+                {row.costUsd === undefined ? (
+                  // Words, not an em dash: beside a priced estimate a dash
+                  // reads as "zero-ish", and the fact is "this runtime does
+                  // not report costs".
+                  <Text
+                    as="span"
+                    variant="body-small"
+                    color="secondary"
+                    title="Only some runtimes report a cost — the claude harness does, ADK does not."
+                  >
+                    Not reported
+                  </Text>
+                ) : (
+                  <DataBar
+                    // USD on purpose: it is what the runtime said, not a
+                    // figure we price or convert.
+                    label={formatUsd(row.costUsd)}
+                    value={row.costUsd}
+                    max={max.costUsd}
+                    color={colorFor('cost')}
+                  />
+                )}
+              </Cell>
+            ),
+          } satisfies ColumnConfig<ByAgentRow>,
+        ]
+      : []),
   ];
+
+  // At phone width the agent, its sessions and the estimate (T22 B11): six or
+  // seven columns in 343px clipped every figure. Turns and tokens are in the
+  // totals above and on the agent's own Usage tab, a link away.
+  const shownColumns = usePhoneColumns(columnConfig, [
+    'agentName',
+    'sessions',
+    'estCostUsd',
+  ]);
 
   const { tableProps } = useTable<ByAgentRow>({
     mode: 'complete',
@@ -211,20 +297,30 @@ export function ByAgentTable({
   return (
     <Paper variant="outlined" className={classes.card}>
       <div className={classes.title}>By agent</div>
-      {/* No `data` prop here: `tableProps` already carries the *sorted* rows,
-          and passing `data` after the spread overrides them with the unsorted
-          input — which silently breaks every column header while leaving the
-          sort indicator working. The section above renders a spinner while
-          loading, so this table only ever mounts with data. */}
-      <Table<ByAgentRow>
-        {...tableProps}
-        columnConfig={columnConfig}
-        emptyState={
-          <Text variant="body-medium" color="secondary">
-            {emptyMessage}
-          </Text>
-        }
-      />
+      {/* Sort-then-slice: `tableProps.data` is the *sorted* rows, and
+          `ShowMore` hands the table its first page of them. Passing the raw
+          `rows` instead would silently undo every column sort while the
+          header's indicator still moved. The section above renders a spinner
+          while loading, so this table only ever mounts with data. */}
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={BY_AGENT_ROWS}
+        noun="agent"
+        revealAll
+      >
+        {visible => (
+          <Table<ByAgentRow>
+            {...tableProps}
+            data={visible}
+            columnConfig={shownColumns}
+            emptyState={
+              <Text variant="body-medium" color="secondary">
+                {emptyMessage}
+              </Text>
+            }
+          />
+        )}
+      </ShowMore>
       {/* The note has to match what the column actually shows. It described a
           rate as applied even when every cell was an em dash — on an
           installation with no Mimir, or after a failed query, that is a claim
@@ -234,20 +330,19 @@ export function ByAgentTable({
           <>
             Cost is estimated: your token counts priced at{' '}
             {rateWindow ? `the last ${rateWindow} of ` : ''}
-            {installation ?? 'this installation'}&apos;s observed cost per token
+            {installation ?? 'this environment'}&apos;s observed cost per token
             — <strong>a blend across every model</strong>, not each agent&apos;s
-            own. The session detail page prices one session at its own
-            model&apos;s rate instead, so the two will differ. Not a billed
-            figure.
+            own. Session pages use each session&apos;s own model rate, so the
+            figures differ. It is not a billed figure.
           </>
         ) : (
           <>
-            No cost estimate: no rate could be derived from{' '}
-            {installation ?? 'this installation'}&apos;s gateway metrics, so
-            there is nothing to price your token counts at. The counts
-            themselves are unaffected.
+            No cost estimate: {installation ?? 'this environment'}&apos;s
+            gateway metrics yield no rate. Token counts are unaffected.
           </>
         )}
+        {anyReported &&
+          ' Reported cost comes from the agent’s runtime, in USD; not every runtime reports one.'}
       </div>
     </Paper>
   );

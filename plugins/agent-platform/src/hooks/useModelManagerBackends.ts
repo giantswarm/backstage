@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { modelManagerApiRef } from '../apis';
@@ -66,7 +67,7 @@ export function useRegisteredBackends(installations: string[]) {
   });
 
   const signature = queries
-    .map(query => `${query.dataUpdatedAt}:${query.isLoading ? 'l' : ''}`)
+    .map(query => `${query.dataUpdatedAt}:${isAwaitingData(query) ? 'l' : ''}`)
     .join('|');
 
   return useMemo(() => {
@@ -90,7 +91,7 @@ export function useRegisteredBackends(installations: string[]) {
           backend =>
             backend.installation === installation && backend.kind === kind,
         ),
-      isLoading: queries.some(query => query.isLoading),
+      isLoading: queries.some(query => isAwaitingData(query)),
     };
     // `installations` and `queries` are captured by the signature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,6 +127,8 @@ export type BackendWriteState = {
   /** `remove_backend` as the person. */
   remove: (kind: BackendKind, mode: WriteMode) => Promise<RemoveBackendResult>;
   isBusy: boolean;
+  /** A write that changes something is on its way; a dry run is not one. */
+  isWriting: boolean;
   failure: BackendWriteFailure | undefined;
   reset: () => void;
 };
@@ -145,7 +148,7 @@ export function useBackendWrite(
   const queryClient = useQueryClient();
   const [failure, setFailure] = useState<BackendWriteFailure>();
 
-  const { mutateAsync, isPending } = useTrackedMutation({
+  const { mutateAsync, isPending, variables } = useTrackedMutation({
     event: null,
     untrackedReason: 'Model configuration is not a tracked portal action yet.',
     mutationFn: ({
@@ -219,6 +222,8 @@ export function useBackendWrite(
     dryRunRemove,
     remove,
     isBusy: isPending,
+    // Only a write invalidates the reads; a dry run does not.
+    isWriting: isPending && Boolean(variables?.invalidate),
     failure,
     reset: useCallback(() => setFailure(undefined), []),
   };

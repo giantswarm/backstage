@@ -5,7 +5,7 @@ import {
   useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
-  deriveAutoUpgradeMode,
+  deriveAutoUpgradeSettings,
   deriveChartVersion,
   versionFromRevision,
 } from '../utils/getAutoUpgradeSettings';
@@ -52,7 +52,9 @@ export function useEditDeploymentData(
     return {
       chartRef: deriveChartRef(ociUrl),
       chartTag: deriveChartVersion(ociRef, currentVersion),
-      automaticUpgrades: deriveAutoUpgradeMode(ociRef, currentVersion),
+      autoUpgrades: ociRepository
+        ? deriveAutoUpgradeSettings(ociRef, currentVersion)
+        : undefined,
       isLoading: needsOciRepository ? isLoadingOci : false,
     };
   }, [ociRepository, isLoadingOci, needsOciRepository]);

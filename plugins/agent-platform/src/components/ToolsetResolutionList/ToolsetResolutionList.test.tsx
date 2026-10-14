@@ -92,21 +92,30 @@ describe('ToolsetResolutionList', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('introduces the platform tools as information, not as a warning', async () => {
+    await renderList(resolved([tool('core_service_list', { kind: 'core' })]));
+
+    const intro = screen
+      .getByText(/These are the Agent Platform's own tools/)
+      .closest('[data-status]');
+    expect(intro).toHaveAttribute('data-status', 'info');
+  });
+
   it('opens a large resolution as its counts, with every tool row collapsed away', async () => {
     await renderList(resolved(BIG));
 
     // The inventory, not the tools.
     expect(
-      screen.getByText('2 servers · 55 tools · 20 workflows'),
+      screen.getByText('2 connectors · 55 tools · 20 workflows'),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', {
-        name: 'Infrastructure — 1 server · 30 tools',
+        name: 'Infrastructure — 1 connector with 30 tools',
       }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', {
-        name: 'Registered servers — 1 server · 25 tools',
+        name: 'Registered connectors — 1 connector with 25 tools',
       }),
     ).toBeInTheDocument();
     expect(
@@ -123,7 +132,7 @@ describe('ToolsetResolutionList', () => {
 
     await user.click(
       screen.getByRole('button', {
-        name: 'Infrastructure — 1 server · 30 tools',
+        name: 'Infrastructure — 1 connector with 30 tools',
       }),
     );
     await user.click(
@@ -163,7 +172,7 @@ describe('ToolsetResolutionList', () => {
     expect(screen.queryByText('x_github_op_07')).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', {
-        name: 'Infrastructure — 1 server · 30 tools',
+        name: 'Infrastructure — 1 connector with 30 tools',
       }),
     ).toBeInTheDocument();
   });
@@ -178,7 +187,7 @@ describe('ToolsetResolutionList', () => {
     );
 
     expect(
-      await screen.findByText('Nothing matches "nothing-like-this".'),
+      await screen.findByText('No tools match “nothing-like-this”.'),
     ).toBeInTheDocument();
   });
 
@@ -247,23 +256,23 @@ describe('ToolsetResolutionList', () => {
     expect(
       screen.queryByRole('searchbox', { name: 'Search the resolved tools' }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText(/Nothing matches/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No tools match/)).not.toBeInTheDocument();
     expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
   });
 
   it('drops a group the resolution emptied rather than heading an empty panel', async () => {
     // `github` is a registered server with no tool in this resolution, so
-    // Registered servers holds nothing and must not become a disclosure with
+    // Registered connectors holds nothing and must not become a disclosure with
     // an empty summary.
     await renderList(resolved(serverTools('kubernetes', 30)));
 
     expect(
       screen.getByRole('button', {
-        name: 'Infrastructure — 1 server · 30 tools',
+        name: 'Infrastructure — 1 connector with 30 tools',
       }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: /^Registered servers/ }),
+      screen.queryByRole('button', { name: /^Registered connectors/ }),
     ).not.toBeInTheDocument();
   });
 
@@ -273,7 +282,7 @@ describe('ToolsetResolutionList', () => {
 
     await user.click(
       screen.getByRole('button', {
-        name: 'Infrastructure — 1 server · 45 tools',
+        name: 'Infrastructure — 1 connector with 45 tools',
       }),
     );
     await user.click(
@@ -342,7 +351,7 @@ describe('ToolsetResolutionList', () => {
     });
     expect(search).toHaveValue('');
     expect(
-      screen.getByText('2 servers · 55 tools · 20 workflows'),
+      screen.getByText('2 connectors · 55 tools · 20 workflows'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/match$/)).not.toBeInTheDocument();
   });
@@ -389,7 +398,7 @@ describe('ToolsetResolutionList', () => {
 
     expect(
       screen.getByText(
-        'The toolset names a preset this installation does not define',
+        'The toolset names a preset this environment does not define',
       ),
     ).toBeInTheDocument();
     expect(

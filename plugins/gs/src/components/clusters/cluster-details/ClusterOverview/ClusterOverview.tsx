@@ -7,6 +7,7 @@ import { ClusterAnnotationsCard } from './ClusterAnnotationsCard';
 import { ClusterGitOpsCard } from './ClusterGitOpsCard';
 import { GridItem } from '../../../UI';
 import { ClusterFluxStatusCard } from './ClusterFluxStatusCard';
+import { ClusterReleaseCard } from './ClusterReleaseCard';
 
 export const ClusterOverview = () => (
   <Grid container spacing={3} alignItems="stretch">
@@ -15,6 +16,9 @@ export const ClusterOverview = () => (
       <GridItem container spacing={3}>
         <GridItem xs={12}>
           <ClusterAboutCard />
+        </GridItem>
+        <GridItem xs={12}>
+          <ClusterReleaseCard />
         </GridItem>
         <GridItem xs={12}>
           <ClusterLabelsCard />

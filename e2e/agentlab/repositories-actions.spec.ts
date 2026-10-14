@@ -5,10 +5,8 @@ import { expect, open, test } from './fixtures';
 /**
  * The write side of the Repositories page (giantswarm/backstage#2399)
  * against the same lab as `repositories.spec.ts`: a muster serving
- * giantswarm-repo-manager, `page:repositories` and `api:repositories`
- * enabled, and -- for the last case -- `app.routes.bindings` mapping
- * `catalog.createComponent` to `repositories.create`. Skipped unless
- * AGENTLAB_REPO_MANAGER=1.
+ * giantswarm-repo-manager, and `page:repositories` and `api:repositories`
+ * enabled. Skipped unless AGENTLAB_REPO_MANAGER=1.
  *
  * The dry run runs against the lab's manager for real (it writes nothing),
  * as the form runs it -- on its own once the person pauses: a Go service
@@ -717,7 +715,7 @@ test.describe('repositories: actions', () => {
       const opened = result.getByTestId('pull-request-opened');
       await expect(opened).toContainText(`#4242 ${pullRequest.title}`);
       await expect(
-        opened.getByRole('link', { name: /Open the pull request/ }),
+        opened.getByRole('link', { name: /Review pull request/ }),
       ).toHaveAttribute('href', pullRequest.url);
 
       // The follow: the phases as the manager answered them, with the time
@@ -1180,7 +1178,7 @@ test.describe('repositories: actions', () => {
         'The ask posted to #team-bumblebee (team-bumblebee).',
       );
       await expect(
-        opened.getByRole('link', { name: /Open the pull request/ }),
+        opened.getByRole('link', { name: /Review pull request/ }),
       ).toHaveAttribute(
         'href',
         'https://github.com/giantswarm/github/pull/4244',
@@ -1198,20 +1196,5 @@ test.describe('repositories: actions', () => {
     } finally {
       await admin.unroute(isAlign, stub);
     }
-  });
-
-  test('the catalog’s Create… lands on Create repository', async ({
-    admin,
-  }) => {
-    await open(admin, '/catalog');
-    const create = admin
-      .getByRole('navigation', { name: 'sidebar nav' })
-      .getByRole('link', { name: 'Create...' });
-    await expect(create).toHaveAttribute('href', '/repositories/create');
-    await create.click();
-    await expect(admin).toHaveURL(/\/repositories\/create$/);
-    await expect(
-      admin.getByRole('heading', { name: 'Create repository' }),
-    ).toBeVisible();
   });
 });

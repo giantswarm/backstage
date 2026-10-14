@@ -21,7 +21,7 @@ import {
 } from '../karpenter';
 import { EnvelopeTable, type EnvelopeRow } from './EnvelopeTable';
 import { RunningSummary } from './RunningSummary';
-import { formatResourceName } from './resourceFormat';
+import { formatResourceName } from '../../../nodePools';
 
 /** Resources `RunningSummary` draws a meter for. */
 const METERED_RESOURCES = ['cpu', 'memory'] as const;

@@ -1,4 +1,4 @@
-import { semverCompareSort } from './tableHelpers';
+import { numberCompareSort, semverCompareSort } from './tableHelpers';
 
 describe('semverCompareSort', () => {
   it('should sort valid semver strings correctly', () => {
@@ -139,6 +139,35 @@ describe('semverCompareSort', () => {
       { version: '1.0.0' },
       { version: 'latest' },
       { version: undefined },
+    ]);
+  });
+});
+
+describe('numberCompareSort', () => {
+  it('sorts numbers ascending and items without a number last', () => {
+    const items = [{ cpu: 16 }, { cpu: undefined }, { cpu: 4 }, { cpu: 0 }];
+
+    const sortedItems = items.sort(numberCompareSort(item => item.cpu));
+
+    expect(sortedItems).toEqual([
+      { cpu: 0 },
+      { cpu: 4 },
+      { cpu: 16 },
+      { cpu: undefined },
+    ]);
+  });
+
+  it('sorts items without a number last when material-table sorts descending', () => {
+    const items = [{ cpu: 16 }, { cpu: undefined }, { cpu: 4 }, { cpu: 0 }];
+    const compare = numberCompareSort<{ cpu?: number }>(item => item.cpu);
+
+    const sortedItems = items.sort((a, b) => compare(b, a, 'row', 'desc'));
+
+    expect(sortedItems).toEqual([
+      { cpu: 16 },
+      { cpu: 4 },
+      { cpu: 0 },
+      { cpu: undefined },
     ]);
   });
 });

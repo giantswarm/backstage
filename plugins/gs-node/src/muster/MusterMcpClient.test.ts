@@ -236,6 +236,83 @@ describe('MusterMcpClient', () => {
     );
   });
 
+  it('answers structuredContent where the text block is prose', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: '1 workspaces' }],
+        structuredContent: { workspaces: [{ name: 'platform' }] },
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(
+      client.callTool('x_workspace-manager_list_workspaces', {}),
+    ).resolves.toEqual({ workspaces: [{ name: 'platform' }] });
+  });
+
+  it('answers structuredContent over a JSON text block', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: '{"from":"text"}' }],
+        structuredContent: { from: 'structuredContent' },
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toEqual({
+      from: 'structuredContent',
+    });
+  });
+
+  it('answers structuredContent over a text block that is a JSON scalar', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: '3' }],
+        structuredContent: { count: 3 },
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toEqual({
+      count: 3,
+    });
+  });
+
+  it('answers structuredContent where there is no text block', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue(
+        callToolEnvelope({ content: [], structuredContent: { count: 3 } }),
+      );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toEqual({
+      count: 3,
+    });
+  });
+
+  it('answers the parsed JSON text where there is no structuredContent', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue(
+        callToolEnvelope({ content: [{ type: 'text', text: '{"a":1}' }] }),
+      );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toEqual({ a: 1 });
+  });
+
+  it('answers the prose where there is no structuredContent', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue(
+        callToolEnvelope({ content: [{ type: 'text', text: 'done' }] }),
+      );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toBe('done');
+  });
+
   /**
    * auth://status lives on the aggregator's own MCP server, so it must be read
    * with a native resources/read. The `get_resource` meta-tool only aggregates

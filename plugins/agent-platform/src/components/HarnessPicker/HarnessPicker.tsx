@@ -1,17 +1,8 @@
-import { useId, useMemo } from 'react';
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
-import {
-  Harness,
-  useResources,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import {
-  DEFAULT_PLATFORM_HARNESS,
-  harnessChoicesOf,
-  harnessTitle,
-  type HarnessChoice,
-} from '../../lib/harnesses';
+import { useHarnessChoices } from '../../hooks/useHarnessChoices';
+import { harnessTitle, type HarnessChoice } from '../../lib/harnesses';
+import { HarnessLimits } from '../HarnessLimits';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import {
   SelectableCard,
@@ -21,8 +12,9 @@ import {
 } from '../SelectableCard';
 
 /**
- * The runtime an agent runs on: the Harnesses of the chosen model's namespace
- * that admit agents by the harness label, read with the person's own RBAC.
+ * The runtime an agent runs on: the Harnesses of the chosen model's namespace,
+ * read with the person's own RBAC. The agent names the one picked in
+ * `spec.harnessRef`.
  *
  * Several Harnesses are radio cards; a namespace holding one (the platform
  * Harness alone, since coding Harnesses are off by default) shows it as a
@@ -33,33 +25,63 @@ import {
  */
 export function HarnessPicker() {
   const classes = useSelectableCardStyles();
-  const idPrefix = useId();
-  const { state, selectHarness } = useNewAgentForm();
+  const { state, edit, selectHarness } = useNewAgentForm();
   const {
     installation,
     modelConfigNamespace: namespace,
     droppedHarness,
   } = state;
-  const { info } = useAgentManagerInfo(installation);
-  const platformHarness = info?.harness?.name || DEFAULT_PLATFORM_HARNESS;
-
-  const { resources, errors, isLoading } = useResources(
-    installation ? [installation] : [],
-    Harness,
-    installation && namespace ? { [installation]: { namespace } } : {},
-    {
-      enabled: Boolean(installation && namespace),
-      enableDiscovery: false,
-    },
-  );
-  const choices = useMemo(
-    () =>
-      namespace ? harnessChoicesOf(resources, namespace, platformHarness) : [],
-    [resources, namespace, platformHarness],
-  );
+  const { choices, platformHarness, platformChoice, errors, isLoading } =
+    useHarnessChoices(installation, namespace);
 
   if (!installation || !namespace) {
     return null;
+  }
+
+  const content = (choice: HarnessChoice) => {
+    return (
+      <>
+        <Text weight="bold">{harnessTitle(choice)}</Text>
+        {choice.name === platformHarness && (
+          <Text variant="body-small" color="secondary">
+            Platform default
+          </Text>
+        )}
+        <Text variant="body-x-small" color="secondary">
+          Harness <span className={classes.code}>{choice.name}</span>
+          {choice.imageName && (
+            <>
+              {' · '}
+              <span className={classes.code}>{choice.imageName}</span>
+            </>
+          )}
+        </Text>
+      </>
+    );
+  };
+
+  // An existing agent keeps the Harness it was created on (an update cannot
+  // move it): shown, not offered.
+  if (edit) {
+    const currentName = edit.agent.harness ?? platformHarness;
+    // Until (or unless) the namespace's Harnesses are read, it is known by
+    // its name alone.
+    const current = choices.find(choice => choice.name === currentName) ?? {
+      name: currentName,
+      displayName: currentName,
+    };
+    return (
+      <Flex direction="column" gap="2">
+        <FieldLabel
+          label="Runtime"
+          secondaryLabel="Harness"
+          description="Choose what runs the agent. It cannot be changed once the agent exists."
+        />
+        <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
+          <StaticCard>{content(current)}</StaticCard>
+        </SelectableCardGrid>
+      </Flex>
+    );
   }
 
   const hasChoice = choices.length > 1;
@@ -70,7 +92,7 @@ export function HarnessPicker() {
       <Alert
         status="info"
         title="Runtime reset to the platform default"
-        description={`The Harness ${droppedHarness} you picked doesn't serve this model's namespace, so the agent runs on the platform Harness${
+        description={`The Harness ${droppedHarness} does not serve this model's namespace, so the agent runs on the platform Harness${
           hasChoice ? '. Pick another runtime below to change that' : ''
         }.`}
       />
@@ -83,7 +105,7 @@ export function HarnessPicker() {
         <FieldLabel
           label="Runtime"
           secondaryLabel="Harness"
-          description="What runs the agent."
+          description="Choose what runs the agent."
         />
         {dropNotice}
         <Text color="secondary">Loading runtimes…</Text>
@@ -101,62 +123,18 @@ export function HarnessPicker() {
         {couldNotRead && (
           <Alert
             status="warning"
-            title="Couldn't read the runtimes"
-            description={`The Harnesses in ${namespace} on ${installation} couldn't be read, so the agent will run on the platform Harness. You may not have permission to list Harnesses there.`}
+            title="Could not read the runtimes"
+            description={`The Harnesses in ${namespace} on ${installation} could not be read — you may lack permission — so the agent runs on the platform Harness.`}
           />
         )}
       </Flex>
     );
   }
 
-  // agent-manager takes the label value, not the Harness, so the platform
-  // card is the first Harness admitting the platform value: picking it sends
-  // no `harness`, and any other card is sent as its own value.
-  const platformChoice = choices.find(
-    choice => choice.admits === platformHarness,
-  );
+  // Picking the platform Harness sends no `harness`; any other card is sent
+  // by its name.
   const selected = state.harness?.name ?? platformChoice?.name;
-  const sharingLabel = (choice: HarnessChoice) =>
-    choices
-      .filter(other => other.admits === choice.admits && other !== choice)
-      .map(other => other.name);
-  const sharedNoteId = (choice: HarnessChoice) =>
-    sharingLabel(choice).length > 0
-      ? `${idPrefix}-shared-${choice.name}`
-      : undefined;
-  const content = (choice: HarnessChoice) => {
-    const shared = sharingLabel(choice);
-    return (
-      <>
-        <Text weight="bold">{harnessTitle(choice)}</Text>
-        {choice.admits === platformHarness && (
-          <Text variant="body-small" color="secondary">
-            Platform default
-          </Text>
-        )}
-        <Text variant="body-x-small" color="secondary">
-          Harness <span className={classes.code}>{choice.name}</span>
-          {choice.imageName && (
-            <>
-              {' · '}
-              <span className={classes.code}>{choice.imageName}</span>
-            </>
-          )}
-        </Text>
-        {shared.length > 0 && (
-          <Text
-            id={sharedNoteId(choice)}
-            variant="body-x-small"
-            color="secondary"
-          >
-            Admits the same agents as {shared.join(', ')}: the agent runs on
-            both.
-          </Text>
-        )}
-      </>
-    );
-  };
-
+  const selectedChoice = choices.find(choice => choice.name === selected);
   return (
     <Flex direction="column" gap="2">
       <FieldLabel
@@ -164,15 +142,15 @@ export function HarnessPicker() {
         secondaryLabel="Harness"
         description={
           hasChoice
-            ? "What runs the agent. It can't be changed once the agent exists."
-            : `What runs the agent: the only Harness in ${namespace} on ${installation}.`
+            ? 'Choose what runs the agent. It cannot be changed once the agent exists.'
+            : `The only Harness in ${namespace} on ${installation} runs the agent.`
         }
       />
       {dropNotice}
       {errors.length > 0 && (
         <Alert
           status="warning"
-          title="Some runtimes couldn't be loaded; the list may be incomplete."
+          title="Could not read some runtimes, so the list may be incomplete."
         />
       )}
       {hasChoice ? (
@@ -187,9 +165,8 @@ export function HarnessPicker() {
               role="radio"
               selected={choice.name === selected}
               ariaLabel={`${harnessTitle(choice)}, Harness ${choice.name}${
-                choice.admits === platformHarness ? ', platform default' : ''
+                choice.name === platformHarness ? ', platform default' : ''
               }`}
-              describedById={sharedNoteId(choice)}
               onSelect={() =>
                 selectHarness(choice === platformChoice ? undefined : choice)
               }
@@ -202,6 +179,13 @@ export function HarnessPicker() {
         <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
           <StaticCard>{content(choices[0])}</StaticCard>
         </SelectableCardGrid>
+      )}
+      {selectedChoice?.runtime === 'claude' && (
+        <HarnessLimits
+          limits={selectedChoice.limits}
+          harnessName={selectedChoice.name}
+          showWhenUnset
+        />
       )}
     </Flex>
   );

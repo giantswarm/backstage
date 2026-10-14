@@ -10,12 +10,13 @@
  * the signed-in person through the installation's muster, where its tools
  * appear as `x_cluster-manager_<tool>`. The shapes here mirror `internal/tools`
  * and `internal/api/mcp.go` of giantswarm/cluster-manager — the portal composes
- * nothing of its own (bumblebee-plans#46, D2 and D7).
+ * nothing of its own.
  */
 
 import { toolErrorDetails } from '@giantswarm/backstage-plugin-muster';
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
-import { looksNotConnected } from './agentManager';
+import { looksNotConnected, type GitOpsCommit } from './agentManager';
 
 /** The MCPServer name muster registers cluster-manager under. */
 export const CLUSTER_MANAGER_SERVER = 'cluster-manager';
@@ -80,6 +81,14 @@ export type ClusterApiStatus = {
 };
 
 /**
+ * What the place a cluster-manager runs on is called: "installation" on the
+ * classic portal's pages (the Clusters page's Create / Delete cluster), as on
+ * main; "environment" in the agent platform's own sections (the GPU node-pool
+ * and agent writes).
+ */
+export type PlaceNoun = 'installation' | 'environment';
+
+/**
  * The line to show where the Cluster API is not served — the tool's own note,
  * or one naming the group when the tool reports the state without it.
  * `undefined` where it is served, or for a cluster-manager that predates the
@@ -87,13 +96,14 @@ export type ClusterApiStatus = {
  */
 export function clusterApiNote(
   status: ClusterApiStatus | undefined,
+  placeNoun: PlaceNoun = 'installation',
 ): string | undefined {
   if (!status || status.state === 'served' || status.state === '') {
     return undefined;
   }
   return (
     status.note ||
-    `the Cluster API (${status.group}) is not served on this installation`
+    `the Cluster API (${status.group}) is not served on this ${placeNoun}`
   );
 }
 
@@ -547,31 +557,8 @@ export type NodePoolWriteResult = {
   commit?: ClusterManagerCommit;
 };
 
-/** One file of a commit: shown on a dry run, never for a secret. */
-export type CommitFile = {
-  path: string;
-  action: string;
-  content?: string;
-};
-
-/**
- * A write in mode `commit`: the repository owning the organization, the
- * directory and files, and — not on a dry run — the pull request opened as
- * the person; `liveSteps` are what the merge alone does not do.
- */
-export type ClusterManagerCommit = {
-  repository: string;
-  base: string;
-  directory: string;
-  kustomization: string;
-  prune: boolean;
-  branch: string;
-  files: CommitFile[];
-  pullRequest?: string;
-  number?: number;
-  author?: string;
-  liveSteps?: string[];
-};
+/** A write in mode `commit`: the repository owning the organization. */
+export type ClusterManagerCommit = GitOpsCommit;
 
 /** `list_releases`: one Release CR of the installation. */
 export type ClusterRelease = {
@@ -861,7 +848,11 @@ function cacheClaimsOf(value: unknown): CacheClaimsRefusal | undefined {
 }
 
 /** The `refused` block among a tool error's further text blocks, if any. */
-export function parseRefusal(details: string[]): Refusal | undefined {
+/** The first object a further text block of a tool error carries under `key`. */
+function detailBlock(
+  details: string[],
+  key: string,
+): Record<string, unknown> | undefined {
   for (const detail of details) {
     let parsed: unknown;
     try {
@@ -869,23 +860,52 @@ export function parseRefusal(details: string[]): Refusal | undefined {
     } catch {
       continue;
     }
-    const refused = (parsed as { refused?: unknown } | null)?.refused;
-    if (refused && typeof refused === 'object') {
-      const block = refused as Record<string, unknown>;
-      const cacheZone = cacheZoneOf(block.cacheZone);
-      const cacheClaims = cacheClaimsOf(block.cacheClaims);
-      const cacheOn = cacheOnOf(block.cacheOn);
-      return {
-        nodes: strings(block.nodes),
-        models: strings(block.models),
-        hint: typeof block.hint === 'string' ? block.hint : '',
-        ...(cacheZone ? { cacheZone } : {}),
-        ...(cacheClaims ? { cacheClaims } : {}),
-        ...(cacheOn ? { cacheOn } : {}),
-      };
+    const block = (parsed as Record<string, unknown> | null)?.[key];
+    if (block && typeof block === 'object') {
+      return block as Record<string, unknown>;
     }
   }
   return undefined;
+}
+
+export function parseRefusal(details: string[]): Refusal | undefined {
+  const block = detailBlock(details, 'refused');
+  if (!block) {
+    return undefined;
+  }
+  const cacheZone = cacheZoneOf(block.cacheZone);
+  const cacheClaims = cacheClaimsOf(block.cacheClaims);
+  const cacheOn = cacheOnOf(block.cacheOn);
+  return {
+    nodes: strings(block.nodes),
+    models: strings(block.models),
+    hint: typeof block.hint === 'string' ? block.hint : '',
+    ...(cacheZone ? { cacheZone } : {}),
+    ...(cacheClaims ? { cacheClaims } : {}),
+    ...(cacheOn ? { cacheOn } : {}),
+  };
+}
+
+/**
+ * `delete_cluster`'s not-found answer: the cluster it looked for, and
+ * `nothingLeft` once nothing of it is left, the removal complete.
+ */
+export type NotFound = {
+  cluster: string;
+  namespace: string;
+  nothingLeft: boolean;
+};
+
+export function parseNotFound(details: string[]): NotFound | undefined {
+  const block = detailBlock(details, 'notFound');
+  if (!block) {
+    return undefined;
+  }
+  return {
+    cluster: optionalString(block.cluster) ?? '',
+    namespace: optionalString(block.namespace) ?? '',
+    nothingLeft: block.nothingLeft === true,
+  };
 }
 
 /**
@@ -978,10 +998,13 @@ export class ClusterManagerError extends Error {
   readonly name = 'ClusterManagerError';
   /** The structured refusal, when the answer carried one. */
   readonly refused?: Refusal;
+  /** The structured not-found answer, when the answer carried one. */
+  readonly notFound?: NotFound;
 
-  constructor(message: string, refused?: Refusal) {
+  constructor(message: string, refused?: Refusal, notFound?: NotFound) {
     super(message);
     this.refused = refused;
+    this.notFound = notFound;
   }
 }
 
@@ -1010,9 +1033,11 @@ export function classifyClusterManagerError(error: unknown): Error {
   if (looksNotConnected(message)) {
     return new ClusterManagerNotConnectedError(message);
   }
+  const details = toolErrorDetails(error);
   return new ClusterManagerError(
     message,
-    parseRefusal(toolErrorDetails(error)),
+    parseRefusal(details),
+    parseNotFound(details),
   );
 }
 
@@ -1021,6 +1046,8 @@ export type NodePoolWriteFailure = {
   message: string;
   /** The structured refusal (the nodes and models of a delete, the model cache of a create), when the answer carried one. */
   refused?: Refusal;
+  /** `delete_cluster`'s not-found answer, when the answer carried one. */
+  notFound?: NotFound;
 };
 
 export function classifyNodePoolWriteFailure(
@@ -1034,7 +1061,15 @@ export function classifyNodePoolWriteFailure(
     kind: 'refused',
     message,
     refused: error instanceof ClusterManagerError ? error.refused : undefined,
+    notFound: error instanceof ClusterManagerError ? error.notFound : undefined,
   };
+}
+
+/** Whether cluster-manager answered that nothing of the cluster is left: the removal is complete. */
+export function isNothingLeft(
+  failure: NodePoolWriteFailure | undefined,
+): boolean {
+  return failure?.notFound?.nothingLeft === true;
 }
 
 /** A manifest's file name in the review: `<kind>-<name>.yaml`. */
@@ -1217,7 +1252,7 @@ export function presetLabel(
 
 /** `4 vCPU / 12Gi, 1 GPU, 9.6 GiB of GPU memory` — what the preset's predictor asks for. */
 export function describePresetNeeds(fit: PresetSizeFit): string {
-  const gpus = `${fit.gpus} GPU${fit.gpus === 1 ? '' : 's'}`;
+  const gpus = countNoun(fit.gpus, 'GPU');
   return `${fit.cpu} vCPU / ${fit.memory}, ${gpus}, ${trimNumber(
     fit.gpuMemoryGiB,
   )} GiB of GPU memory`;

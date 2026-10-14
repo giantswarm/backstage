@@ -3,6 +3,9 @@ import {
   ClusterManagerNotConnectedError,
   cheapestPriced,
   classifyClusterManagerError,
+  classifyNodePoolWriteFailure,
+  clusterApiNote,
+  isNothingLeft,
   clusterManagerToolName,
   describeComponent,
   describePrice,
@@ -10,6 +13,7 @@ import {
   groupManifestsByRelease,
   isValidPoolName,
   manifestFilename,
+  parseNotFound,
   parseRefusal,
   poolNameOf,
   presetLabel,
@@ -21,7 +25,32 @@ import {
   mountedClaimOf,
   offersTool,
   type CacheClaim,
+  type ClusterApiStatus,
 } from './clusterManager';
+
+describe('clusterApiNote', () => {
+  const notServed: ClusterApiStatus = {
+    state: 'absent',
+    group: 'cluster.x-k8s.io',
+    version: 'v1beta1',
+  };
+
+  it('says "installation" by default, as the classic Clusters page does on main', () => {
+    expect(clusterApiNote(notServed)).toBe(
+      'the Cluster API (cluster.x-k8s.io) is not served on this installation',
+    );
+  });
+
+  it('says "environment" where the agent platform asks for it', () => {
+    expect(clusterApiNote(notServed, 'environment')).toBe(
+      'the Cluster API (cluster.x-k8s.io) is not served on this environment',
+    );
+  });
+
+  it('is undefined where the Cluster API is served', () => {
+    expect(clusterApiNote({ ...notServed, state: 'served' })).toBeUndefined();
+  });
+});
 
 describe('clusterManagerToolName', () => {
   it('prefixes every tool with the muster server prefix', () => {
@@ -46,6 +75,43 @@ describe('isValidPoolName', () => {
     expect(isValidPoolName('GPU-l4')).toBe(false);
     expect(isValidPoolName('-gpu00')).toBe(false);
     expect(isValidPoolName('gpu00-')).toBe(false);
+  });
+});
+
+describe('parseNotFound', () => {
+  it("reads delete_cluster's notFound block from the further text blocks", () => {
+    expect(
+      parseNotFound([
+        'not json',
+        '{"notFound":{"cluster":"dev01","namespace":"org-acme","nothingLeft":true}}',
+      ]),
+    ).toEqual({ cluster: 'dev01', namespace: 'org-acme', nothingLeft: true });
+  });
+  it('is undefined without a notFound block', () => {
+    expect(parseNotFound([])).toBeUndefined();
+    expect(parseNotFound(['{"refused":{"nodes":[]}}'])).toBeUndefined();
+  });
+});
+
+describe('classifyNodePoolWriteFailure', () => {
+  it("carries the notFound block of cluster-manager's answer", () => {
+    const failure = classifyNodePoolWriteFailure(
+      classifyClusterManagerError(
+        Object.assign(new Error('cluster org-acme/dev01 not found'), {
+          details: [
+            '{"notFound":{"cluster":"dev01","namespace":"org-acme","nothingLeft":true}}',
+          ],
+        }),
+      ),
+    );
+    expect(isNothingLeft(failure)).toBe(true);
+    expect(
+      isNothingLeft(
+        classifyNodePoolWriteFailure(
+          classifyClusterManagerError(new Error('cluster not found')),
+        ),
+      ),
+    ).toBe(false);
   });
 });
 

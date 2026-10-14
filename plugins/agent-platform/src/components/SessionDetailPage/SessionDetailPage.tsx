@@ -2,29 +2,32 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Link } from '@backstage/core-components';
 import {
-  Content,
-  EmptyState,
-  Link,
-  Progress,
-} from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Badge, Box, Button, Flex, Text } from '@backstage/ui';
-import {
-  makeStyles,
-  Tooltip,
-  useMediaQuery,
-  useTheme,
-} from '@material-ui/core';
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
+import { Alert, Badge, Button, Flex, Switch, Text } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import {
   DateComponent,
-  Stat,
+  EmptyStateCard,
+  LoadingIndicator,
+  SHELL_PAGE_PADDING_BOTTOM_VAR,
+  ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageTitleSkeleton,
+  StatusDot,
+  TOUCH_MEDIA,
   useProvidePageHeaderActions,
+  useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { isConflictError, isUnauthorizedError } from '../../apis';
@@ -42,12 +45,17 @@ import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
+import { usePinnedSessions } from '../../hooks/usePinnedSessions';
+import { useShowToolActivity } from '../../hooks/useShowToolActivity';
+import { useMusterServers } from '../../hooks/useMusterServers';
+import { connectorOfTool } from '../../lib/toolset';
 import { AvatarSize } from '../../lib/agentAvatar';
 import {
   AWAITING_INPUT_STATES,
+  describeSessionState,
   isRuntimeLostFailureText,
   RuntimeLoss,
-  SessionStateEntry,
+  SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   agentDetailRouteRef,
@@ -57,82 +65,135 @@ import {
 import { InstallationChip } from '../InstallationChip';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
-import { SessionSwitcherRail } from '../SessionSwitcherRail';
-import { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE } from '../SessionsTable';
+import {
+  RUNTIME_LOST_LABEL,
+  RUNTIME_LOST_TITLE,
+  STATE_IDLE_LABEL,
+} from '../SessionsTable';
+import { sessionStateDotVar } from '../../lib/stableClassNames';
+import {
+  createPolledPairing,
+  fresherStreamedCopy,
+  STALLED_STATE_LABEL,
+} from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
+  COLUMN_RESERVE_VAR,
+  DOCK_HEIGHT_VAR,
+  useDockedComposerLayout,
+} from './useDockedComposerLayout';
+import {
   SESSION_TITLE_FALLBACK,
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
-import {
-  formatTokens,
-  SessionTimeline,
-  StreamLossPhase,
-} from '../SessionTimeline';
+import { SessionTimeline, StreamLossPhase } from '../SessionTimeline';
+import { SessionCostPopover } from '../SessionCostPopover';
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
-import { formatUsd } from '../../lib/formatNumbers';
+import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { AgentAvatar } from '../AgentAvatar';
+import { SEND_KEY_CAPTIONS } from '../../lib/sendKey';
+import { SendKeyHint } from '../SendKeyHint';
+
+/** Long enough to read why the switch went back, like the other failure toasts. */
+const TOOL_ACTIVITY_TOAST_TIMEOUT_MS = 12000;
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
 
 const useStyles = makeStyles(theme => ({
-  // Rail beside content. `alignItems` must stay at its `stretch` default — a
-  // `flex-start` here would content-size the rail and stop it sticking past its
-  // own height, which is the bug that makes a sticky flex child look broken.
-  page: {
-    display: 'flex',
-    gap: theme.spacing(3),
-  },
-  main: {
-    flex: 1,
-    minWidth: 0,
+  // bui's Switch has one size, sized for forms. On the meta line it takes the
+  // line's text size and a proportionally smaller track (1.5 × 0.875rem
+  // rather than 2 × 1.143rem: two thumbs plus their margins wide, so bui's
+  // `translateX(100%)` still lands the thumb at the end). One unit when the
+  // line wraps at phone width.
+  toolActivitySwitch: {
+    gap: 'var(--bui-space-2)',
+    fontSize: 'var(--bui-font-size-2)',
+    lineHeight: 1.4,
+    color: 'var(--bui-fg-secondary)',
+    whiteSpace: 'nowrap',
+    // A 44px thumb target on touch without a taller line: the padding widens
+    // what the label catches, the negative margin gives the height back.
+    [TOUCH_MEDIA]: {
+      paddingBlock: 14,
+      marginBlock: -14,
+    },
+    '& .bui-SwitchIndicator': {
+      flexShrink: 0,
+      width: '1.5rem',
+      height: '0.875rem',
+      borderRadius: '0.875rem',
+      '&::before': {
+        width: '0.625rem',
+        height: '0.625rem',
+        margin: '0.125rem',
+      },
+    },
   },
   // One readable column, like any chat surface: full-bleed prose is hard to
   // scan, and the conversation is what this page is for.
+  //
+  // At least the view's height less the chrome around it (measured, see
+  // `useDockedComposerLayout`), so the docked composer sits at the bottom of
+  // the view from the first message on — the T36 wizard-bar rule — and new
+  // messages fill the room above it rather than pushing it down. Until the
+  // measurement lands the reserve is the whole view, i.e. no minimum at all.
   column: {
     width: '100%',
     maxWidth: 920,
     margin: '0 auto',
+    minHeight: `calc(100dvh - var(${COLUMN_RESERVE_VAR}, 100dvh))`,
+    // JSS puts the fallback first, so browsers without dvh keep vh.
+    fallbacks: {
+      minHeight: `calc(100vh - var(${COLUMN_RESERVE_VAR}, 100vh))`,
+    },
+    // A control in the conversation that the browser scrolls into view — a
+    // fold-out opened from the keyboard, a tab stop — lands clear of the dock
+    // (and of the shell's mobile bottom bar under it), however tall a question
+    // card has made the dock.
+    '& > :not($bottomDock) :is(button, a, input, textarea, [tabindex])': {
+      scrollMarginBottom: `calc(var(${DOCK_HEIGHT_VAR}, 0px) + var(--agent-shell-mobile-bar-height, 0px) + ${theme.spacing(2)}px)`,
+    },
   },
-  // The composer stays reachable however long the conversation gets. Only the
-  // composer docks: a pending confirmation panel can be tall, and pinning it
-  // would cover the very conversation it asks about. The gap is what keeps
-  // whatever shares the dock — a lost-runtime notice, a rejected send — off the
-  // composer's box; neither bui's Alert nor the composer's form has a margin.
+  // The chat bar: the composer, its caption, and whatever must be answered or
+  // read before the next message — a question card attached to the box, a
+  // lost-runtime notice, a rejected send — docked to the view's bottom edge
+  // like a chat app's input bar (T40). Sticky at the column's end rather than
+  // `fixed`: it keeps its own room in the flow, so at full scroll the last
+  // message sits above it, never under it, and "scroll to the newest" is just
+  // the document's end. `marginTop: auto` keeps it at the bottom of a column
+  // the conversation does not fill yet. Always docked, the card included: the
+  // card is compact and caps its own height (`PendingConfirmationPanel`), so
+  // the bar cannot outgrow a phone's view. The gap keeps whatever shares the
+  // dock off the composer's box; neither bui's Alert nor the composer's form
+  // has a margin.
   bottomDock: {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(2),
+    marginTop: 'auto',
     position: 'sticky',
-    bottom: 0,
+    // At phone width the agent shell draws a fixed bottom bar; the variable
+    // (agent-shell.css) is its height there and 0px everywhere else. Without
+    // the offset the bar covered the composer.
+    bottom: 'var(--agent-shell-mobile-bar-height, 0px)',
     zIndex: 1,
     backgroundColor: `var(--bui-bg-app, ${theme.palette.background.default})`,
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(2),
-    marginBottom: theme.spacing(-2),
-  },
-  // The same slot while a confirmation is open: the panel stacked above the
-  // composer, and nothing pinned. Kept as one element with `bottomDock` (the
-  // class changes, the element does not) so the composer inside survives the
-  // panel coming and going — see the `bottomControl` assembly.
-  bottomStack: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
-  },
-  stats: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(2, 5),
-    paddingTop: theme.spacing(1.5),
-    paddingBottom: theme.spacing(1.5),
-    borderTop: `1px solid ${theme.palette.divider}`,
-    borderBottom: `1px solid ${theme.palette.divider}`,
+    // Into the page's bottom padding, all of it: the bar's own padding is the
+    // room under the box. At the end of the scroll the sticky bar rests at its
+    // place in the flow, and a fixed -16px left ShellPage's 40px less that
+    // under it — the bar lifted 24px as the scroll reached the end (live round
+    // 2, R7). ShellPage publishes its padding; 16px where no ShellPage wraps
+    // the page, as before.
+    marginBottom: `calc(-1 * var(${SHELL_PAGE_PADDING_BOTTOM_VAR}, ${theme.spacing(
+      2,
+    )}px))`,
   },
   // A real <button>, stripped of its chrome, rather than a click handler on the
   // heading: the title is an editing affordance, and only a button is reachable
@@ -171,43 +232,51 @@ function BackToSessions({ children }: { children: ReactNode }) {
 }
 
 /**
- * The page's outer frame: the switcher rail, then the conversation column.
+ * The page's outer frame: the platform-standard page frame (`ShellPage`, the
+ * one All Sessions and Customize use) — breadcrumbs reading
+ * "Sessions / Session", the session's name as the h1 at the standard scale,
+ * and the badges beside it. The actions the page registers land in that
+ * header's slot.
  *
  * A separate component so every one of the page's exits gets it — loading,
- * not-found, unreadable, and the real thing. A session that has been deleted is
- * *precisely* when the switcher is wanted, and a rail that vanished on the error
- * states would strand the reader on a dead page with only the back link.
- *
- * The rail is not rendered below `sm`, rather than hidden with CSS, so a narrow
- * viewport does not pay for its two queries and their polling.
+ * not-found, unreadable, and the real thing.
  */
 function Shell({
-  installation,
-  sessionId,
-  currentSessionState,
+  title,
+  documentTitle,
+  badges,
+  meta,
   children,
 }: {
-  installation: string;
-  sessionId: string;
-  /** Only the loaded path knows this; the early returns leave it undefined. */
-  currentSessionState?: SessionStateEntry;
+  /** The shell header's h1; the exits leave it to the fallback "Session". */
+  title?: ReactNode;
+  /** The session's name for the document title, as the h1 is a button. */
+  documentTitle?: string;
+  /** The shell header's badge row: state, agent, installation. */
+  badges?: ReactNode;
+  /** Muted text at the end of that row: when the session started. */
+  meta?: ReactNode;
   children: ReactNode;
 }) {
-  const classes = useStyles();
-  const theme = useTheme();
-  const showRail = useMediaQuery(theme.breakpoints.up('sm'));
+  const sessionsRoute = useRouteRef(sessionsRouteRef);
 
   return (
-    <Content className={classes.page}>
-      {showRail && (
-        <SessionSwitcherRail
-          installation={installation}
-          currentSessionId={sessionId}
-          currentSessionState={currentSessionState}
-        />
-      )}
-      <div className={classes.main}>{children}</div>
-    </Content>
+    <ShellPage
+      // The exits (loading, not found, unreadable) have no name to show;
+      // "Session" keeps the frame honest about where the reader is.
+      title={title ?? 'Session'}
+      documentTitle={[documentTitle || 'Session', 'Sessions']}
+      // Singular "Session" last: this page is one conversation, and the
+      // linked "Sessions" ancestor is the way back to the list.
+      breadcrumbs={[
+        { label: 'Sessions', href: sessionsRoute?.() },
+        { label: 'Session' },
+      ]}
+      badges={badges}
+      meta={meta}
+    >
+      {children}
+    </ShellPage>
   );
 }
 
@@ -225,7 +294,7 @@ function describeStopFailure(error: Error | null): string | undefined {
     return undefined;
   }
   if (isUnauthorizedError(error)) {
-    return `${error.message}. Your sign-in expired while this page was open — reload the page and stop the turn again.`;
+    return `${error.message}. Your sign-in expired — reload the page and stop the turn again.`;
   }
   return error.message;
 }
@@ -243,14 +312,17 @@ function describeStopFailure(error: Error | null): string | undefined {
  * document for why the send lands here rather than there.
  *
  * What the prototype shows and this cannot, because kagent stores none of it:
- * cost, tokens-per-second, context-window usage, the owning team, the trigger that
- * started the session, a linked work item, produced results, and evaluation. Please
- * don't re-add them speculatively — there is no data behind them.
+ * tokens-per-second, the owning team, the trigger that started the session, a
+ * linked work item, produced results, and evaluation. Please don't re-add them
+ * speculatively — there is no data behind them. Cost (estimated + reported) and
+ * context-window usage live in the composer's `SessionCostPopover` chip, from
+ * the data that does exist.
  */
 export function SessionDetailPage() {
   const classes = useStyles();
   const { installation = '', sessionId = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
+  const touch = useTouchInput();
 
   // Before the reads, because it gates them: a delete is in flight from this very
   // page, and an interval landing between "kagent accepted the delete" and the
@@ -258,13 +330,24 @@ export function SessionDetailPage() {
   // just deleted it deliberately.
   const deletion = useDeleteSession(installation, sessionId);
   const { isUserScoped } = useKagentCapabilities(installation);
+  // Tool calls name their connector as Customize does (UX review M2), from
+  // the installation's MCPServer CRs.
+  const { servers: musterServers } = useMusterServers(installation);
+  const connectorOf = useCallback(
+    (toolName: string) => connectorOfTool(toolName, musterServers),
+    [musterServers],
+  );
+
+  // The prompt this session was started with, if the user arrived here by
+  // starting it. Read once and cleared, so returning to the session later cannot
+  // re-send it. See `useNewSessionHandoff`.
+  const handoff = useNewSessionHandoff();
 
   const {
     detail,
     timeline,
     state,
     currentTaskId,
-    stateChangedAt,
     isAgentWorking: agentIsWorking,
     turnProgress,
     pendingConfirmation,
@@ -276,6 +359,10 @@ export function SessionDetailPage() {
     error,
   } = useSessionDetail(installation, sessionId, {
     enabled: !deletion.isDeleting && !deletion.isDeleted,
+    // Arriving with a handoff means the session was created a moment ago, and
+    // its first reads can miss it for a beat: the page keeps loading through
+    // that instead of flashing an error (T86).
+    justCreated: Boolean(handoff),
   });
   const cancellation = useCancelTask(installation, sessionId);
 
@@ -294,11 +381,6 @@ export function SessionDetailPage() {
   // query has no client there. The capabilities probe is a cached `/me` read with an
   // hour's staleTime, so asking for it on this page is free.
   const rename = useRenameSession(installation, sessionId);
-
-  // The prompt this session was started with, if the user arrived here by
-  // starting it. Read once and cleared, so returning to the session later cannot
-  // re-send it. See `useNewSessionHandoff`.
-  const handoff = useNewSessionHandoff();
 
   // Undefined when no `Agent` CR matched the session's encoded `agent_id`, which
   // is what withholds the composer: without the agent's real namespace and name
@@ -418,13 +500,14 @@ export function SessionDetailPage() {
   // still being produced are appended after the stand-in, so the reply appears as
   // it is written rather than when the turn ends. The preview coexists with the
   // 10 s poll rather than replacing it: a streamed item whose `messageId` the poll
-  // has already delivered is dropped by recognition — exactly like the stand-in —
-  // and the whole preview is discarded once the send's awaited invalidation has
+  // has already delivered is dropped by recognition — exactly like the stand-in,
+  // except that what it knows beyond the polled copy carries over — and the whole
+  // preview is discarded once the send's awaited invalidation has
   // put the canonical history on screen (`useSendMessage` clears `stream` then).
   //
   // An answer to a confirmation streams the resumed turn the same way, through
   // the same reducer, so its preview merges through this one path. At most one
-  // of the two is in flight: the answer panel replaces the composer while a
+  // of the two is in flight: the question card disables the composer while a
   // question is open.
   const answerStream = confirmation.stream;
   const timelineWithLive = useMemo(() => {
@@ -466,9 +549,21 @@ export function SessionDetailPage() {
     }
 
     if (streamVisible) {
-      const polled = new Set(
-        timeline.items.map(item => item.messageId).filter(Boolean),
-      );
+      const pairWithPolled = createPolledPairing(timeline.items);
+      /**
+       * Whether the poll holds a copy of a streamed item — which then stays,
+       * advanced by whatever the stream has seen since that read. A part of a
+       * message the read had not reached yet has no copy, and is still the
+       * stream's to show.
+       */
+      const advance = (streamed: TimelineItem): boolean => {
+        const at = pairWithPolled(streamed);
+        if (at === undefined) {
+          return false;
+        }
+        items[at] = fresherStreamedCopy(items[at], streamed) ?? items[at];
+        return true;
+      };
       // How a turn ended carries a `messageId` only when kagent wrote a reason
       // for it — the exception for a failure, the rule for a cancel, which has no
       // reason to write. Recognition by id therefore cannot retire the streamed
@@ -479,7 +574,7 @@ export function SessionDetailPage() {
         item => item.kind === 'turn-failed' && item.taskIndex === taskIndex,
       );
       for (const item of stream.items) {
-        if (item.messageId && polled.has(item.messageId)) {
+        if (advance(item)) {
           continue;
         }
         if (item.kind === 'turn-failed' && polledEndedTurn) {
@@ -490,19 +585,18 @@ export function SessionDetailPage() {
       // Appended, never sorted: the reducer keeps the open run newer than every
       // completed item, so the end of the list is where it belongs.
       const live = stream.live;
-      if (
-        live &&
-        live.text.trim() &&
-        !(live.messageId && polled.has(live.messageId))
-      ) {
-        items.push({
+      if (live && live.text.trim()) {
+        const liveItem: TimelineItem = {
           kind: live.kind,
           id: 'stream:live',
           taskIndex,
           messageId: live.messageId,
           author: live.author,
           text: live.text.trim(),
-        });
+        };
+        if (!advance(liveItem)) {
+          items.push(liveItem);
+        }
       }
     }
 
@@ -527,6 +621,52 @@ export function SessionDetailPage() {
   // `openRename` is stable, so this element's identity only changes when one of them
   // actually does — which is what keeps the header slot from re-registering (and
   // re-rendering) on every poll.
+  // The header's pin: pins are what order the shell's rail and sessions
+  // list. Storage backed rather than react-query backed, so it works from the shared header.
+  const { isPinned, togglePin } = usePinnedSessions();
+  const rowId = row?.id;
+  const pinned = rowId ? isPinned(rowId) : false;
+  const pin = useMemo(
+    () =>
+      rowId
+        ? {
+            isPinned: pinned,
+            onToggle: () => {
+              // A failed write only loses the pin; the button keeps showing
+              // the stored state.
+              togglePin(rowId).catch(() => {});
+            },
+          }
+        : undefined,
+    [rowId, pinned, togglePin],
+  );
+
+  // Whether the conversation shows the agent's tool activity, kept per
+  // person through the StorageApi like the pin.
+  const toastApi = useApi(toastApiRef);
+  const {
+    showToolActivity,
+    isKnown: isToolActivityKnown,
+    setShowToolActivity,
+  } = useShowToolActivity();
+  const changeToolActivity = useCallback(
+    (show: boolean) => {
+      // A failed write puts the switch and the conversation back to the
+      // stored choice, so say why rather than let it snap back.
+      setShowToolActivity(show).catch((failure: Error) => {
+        toastApi.post({
+          title: show
+            ? 'Could not show tool activity'
+            : 'Could not hide tool activity',
+          description: failure.message,
+          status: 'danger',
+          timeout: TOOL_ACTIVITY_TOAST_TIMEOUT_MS,
+        });
+      });
+    },
+    [setShowToolActivity, toastApi],
+  );
+
   const actions = useMemo(
     () =>
       row ? (
@@ -536,9 +676,10 @@ export function SessionDetailPage() {
           onRename={openRename}
           isUserScoped={isUserScoped}
           runtimeLoss={runtimeLoss}
+          pin={pin}
         />
       ) : null,
-    [row, sessionTitle, deletion, openRename, isUserScoped, runtimeLoss],
+    [row, sessionTitle, deletion, openRename, isUserScoped, runtimeLoss, pin],
   );
   useProvidePageHeaderActions(actions);
 
@@ -591,8 +732,8 @@ export function SessionDetailPage() {
    *   the gateway cuts the request off well before a long turn ends (60 s on a
    *   stock route), so it goes false mid-turn while the agent works on;
    * - the in-flight answer, for the same gap on the turn an answer resumes —
-   *   but only once its stream has an event. Until then the answer panel is
-   *   still up saying "Sending…", and a "Working…" row under it would report
+   *   but only once its stream has an event. Until then the question card is
+   *   still up saying "Sending…", and a "Working…" row above it would report
    *   the same moment twice.
    *
    * A stalled turn overrides all three: a stream that has been open and silent
@@ -757,51 +898,83 @@ export function SessionDetailPage() {
   }, [cancelTurn, currentTaskId, state?.isActive]);
 
   /**
-   * What the rail should believe about *this* session.
+   * The session's state as this page shows it: the one source for the
+   * header's badge, the composer and the rail (T100 H4).
    *
-   * The rail's own source is a summary the backend caches for 15 s, so it is
-   * structurally behind this page — which polls the session's tasks directly and
-   * additionally knows about a send still in flight. Left to the summary, a
-   * message appended to a finished session would leave it filed under "Recently
-   * finished" while the agent is visibly working beside it.
+   * The polled state lags the page: a send is in flight before any poll has
+   * seen its task, so the poll still reads "no activity" or the previous
+   * turn's end while the body already says "Working…". `showWorking` is the
+   * signal that row uses, so while it holds the state is Working, and nothing
+   * on the page can contradict the body.
    *
-   * `showWorking` is the same signal the "Working…" indicator uses, so the rail
-   * and the page cannot disagree about whether the agent is busy. When nothing
-   * is in flight this still overrides, with the state and timestamp read from
-   * the same task — a fresher copy of what the summary would eventually say.
+   * A stalled turn is the other way round (R2-4): the poll still reads it as
+   * working, while the body says it has not reported progress and offers
+   * Stop. The state then says so too, as a warning, so the header never
+   * claims Working beside a stalled row.
    */
-  const currentSessionState = useMemo<SessionStateEntry | undefined>(() => {
+  const shownState = useMemo<SessionState | undefined>(() => {
     if (showWorking) {
-      return { sessionId, state: 'working', changedAt: Date.now() };
+      return describeSessionState('working');
     }
-    if (!state) {
+    if (isStalled && state?.isActive) {
+      return { ...state, label: STALLED_STATE_LABEL, tone: 'warning' };
+    }
+    return state;
+  }, [showWorking, isStalled, state]);
+
+  // The conversation column and the chat bar docked at its end, held as state
+  // through callback refs: both exist only on the loaded path (and the dock
+  // only while a composer is offered), and the layout hook re-measures when
+  // either comes or goes.
+  const [columnElement, setColumnElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
+  useDockedComposerLayout(columnElement, dockElement);
+
+  // A session opens at its newest turn, the way a desktop chat app does (live
+  // round 2, R8: a long session opened at its top). Once per session, when its
+  // conversation first renders — the column exists only then. Later scrolling
+  // is the reader's: "Show earlier activity" adds turns above without coming
+  // back here, and the follow above only moves a reader already at the end.
+  // Before paint, so the top never flashes; and once more a frame later, for
+  // layout that lands after the first (the dock's measured min-height).
+  const openedAtEndFor = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!columnElement || openedAtEndFor.current === sessionId) {
       return undefined;
     }
-    return {
-      sessionId,
-      state: state.raw,
-      ...(stateChangedAt === undefined ? {} : { changedAt: stateChangedAt }),
-    };
-  }, [showWorking, sessionId, state, stateChangedAt]);
+    openedAtEndFor.current = sessionId;
+    const el = document.scrollingElement ?? document.documentElement;
+    el.scrollTop = el.scrollHeight;
+    const frame = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [columnElement, sessionId]);
 
+  // The loaded page's header from the first paint, with skeletons where the
+  // read will fill in: the title and the badge row (T95).
   if (isLoading) {
     return (
-      <Shell installation={installation} sessionId={sessionId}>
-        <Progress aria-label="Loading session" />
+      <Shell
+        title={<ShellPageTitleSkeleton label="Loading session" />}
+        badges={<ShellPageBadgeSkeleton />}
+      >
+        <LoadingIndicator label="Reading the session…" />
       </Shell>
     );
   }
 
   if (isNotFound) {
     return (
-      <Shell installation={installation} sessionId={sessionId}>
-        <EmptyState
-          missing="data"
+      <Shell>
+        <EmptyStateCard
           title="Session not found"
-          description={`No session with this id exists on ${
-            installation || 'that installation'
-          }. It may have been deleted, or belong to another user — kagent only lets you read your own sessions.`}
-          action={<BackToSessions>Back to sessions</BackToSessions>}
+          description={`No session with this id on ${
+            installation || 'that environment'
+          }. It may have been deleted, or be someone else's — kagent shows only your own.`}
+          actions={<BackToSessions>Back to sessions</BackToSessions>}
         />
       </Shell>
     );
@@ -821,14 +994,14 @@ export function SessionDetailPage() {
   // over a session that has a full conversation. Absent is not empty.
   if (!detail || !row || !hasConversation) {
     return (
-      <Shell installation={installation} sessionId={sessionId}>
+      <Shell>
         <Flex direction="column" gap="3">
           <Alert
             status="danger"
             title="Could not load this session"
             description={
               error?.message ??
-              'kagent returned a response we could not read. The session may still exist.'
+              'kagent sent an unreadable response. The session may still exist.'
             }
           />
           <BackToSessions>Back to sessions</BackToSessions>
@@ -836,6 +1009,30 @@ export function SessionDetailPage() {
       </Shell>
     );
   }
+
+  /* Cost and context, per the prototype: one chip in the composer's own
+     controls, so it stays on screen with the docked box however long the
+     conversation gets. Estimated cost is labeled as one and names its basis;
+     reported cost appears only when the runtime reported any; context is a
+     share only when the model's context window is configured. The details
+     popover opens above the chip. */
+  const costChip = (
+    <SessionCostPopover
+      installation={row.installation}
+      model={row.agentModel}
+      tokens={timeline.tokens}
+      lastTurnTokens={timeline.lastTurnTokens}
+      taskCount={taskCount}
+      estimatedCostUsd={estimatedCostUsd}
+      costBasis={describeCostBasis({
+        tier: rateTier,
+        model: row.agentModel,
+        installation: row.installation,
+        window: rateWindow,
+        tokens: timeline.tokens.total,
+      })}
+    />
+  );
 
   /**
    * Why the composer is not offered, when it is not.
@@ -849,8 +1046,8 @@ export function SessionDetailPage() {
       'This session was shared read-only, so you cannot add to it.';
   } else if (!agent) {
     composerWithheldReason = row.agentName
-      ? `The agent “${row.agentName}” could not be found on ${installation}, so there is nowhere to send a message. It may have been deleted.`
-      : 'This session records no agent, so there is nowhere to send a message.';
+      ? `The agent “${row.agentName}” could not be found on ${installation}, so there is nowhere to send a message.`
+      : 'This session records no agent to send a message to.';
   } else if (
     state &&
     AWAITING_INPUT_STATES.has(state.key) &&
@@ -859,56 +1056,62 @@ export function SessionDetailPage() {
     // Withheld deliberately, and it is the opposite of "busy": the agent asked
     // something and nothing moves until it is answered. A plain message here does
     // not answer it — kagent opens a *new* task and leaves the question pending
-    // forever — so the composer is replaced by the answer panel below, which
-    // resumes the suspended task instead.
+    // forever — so the composer is disabled under the question card attached
+    // to it, which resumes the suspended task instead.
     //
     // This reason is only reached when the confirmation itself could not be read:
     // a shape we do not recognise, or a task with no id to resume. Answering then
     // would be guessing at what the agent asked.
     composerWithheldReason = pendingConfirmation
       ? undefined
-      : 'This session is waiting for input, but the request could not be read — use the kagent UI to reply.';
+      : 'The agent is waiting for you, but its request could not be read. Reply in the kagent UI.';
   }
 
   /**
-   * What sits below the conversation: nothing, an answer panel, or the composer.
+   * What sits below the conversation: a withheld-composer note, or the docked
+   * chat bar — the composer, with a question card attached while one waits.
    *
    * Assembled here rather than as a ternary chain in the JSX — there are three
    * outcomes and two of them are multi-element.
    */
   let bottomControl: ReactNode;
   if (composerWithheldReason) {
+    // The chip keeps the session's totals in reach even where there is no box
+    // to carry it — a read-only share still has a cost worth seeing.
     bottomControl = (
-      <Text variant="body-small" color="secondary">
-        {composerWithheldReason}
-      </Text>
+      <Flex align="center" justify="between" gap="2">
+        <Text variant="body-small" color="secondary">
+          {composerWithheldReason}
+        </Text>
+        {costChip}
+      </Flex>
     );
   } else {
-    // The composer — and, while the agent is waiting on an answer, the panel
-    // above it with the composer disabled. A plain message cannot answer a
+    // The composer — and, while the agent is waiting on an answer, the question
+    // card attached to it with the box disabled (T40: the chat bar is where the
+    // agent's question is answered, as in a chat app; the timeline keeps the
+    // record of what was asked and answered). A plain message cannot answer a
     // confirmation — it opens a new task and strands this one — so the composer
     // must not submit then. But removing it outright reads as the reply feature
     // being missing rather than blocked, so it stays in place saying why. kagent's
     // own UI makes the same call, leaving its box on screen with
     // `Awaiting approval…` in it.
     //
-    // One element, one composer, whether or not the panel is there: the panel is
-    // the first child or nothing, so the composer keeps its position and React
-    // keeps its instance. That is what lets the composer notice the panel going
-    // away and take the focus back (see `SessionComposer`); as two branches with
-    // different wrappers it remounted, and the focus fell to <body> after every
-    // answered question. The wrapper's class still differs — the panel can be
-    // tall, and pinning it would cover the very conversation it asks about — but
-    // a class is not an identity.
+    // One element, one composer, whether or not the card is there: the card is
+    // the composer's attachment or nothing, so the composer keeps its position
+    // and React keeps its instance. That is what lets the composer notice the
+    // card going away and take the focus back (see `SessionComposer`); as two
+    // branches with different wrappers it remounted, and the focus fell to
+    // <body> after every answered question. The dock stays docked throughout.
     //
-    // The panel goes as soon as the answer's stream has its first event: kagent
+    // The card goes as soon as the answer's stream has its first event: kagent
     // has taken the answer and the task is no longer waiting, whatever the poll
     // — up to 10 s behind — still says. Until the next poll the composer below
     // stands in with "working", which is what the stream says is happening.
     //
     // Not while kagent has reported the runtime lost: an answer would run into
     // the same lost runtime, so the question is left where it is and the way
-    // out takes the panel's place.
+    // out takes the card's place.
     const isConfirming =
       Boolean(pendingConfirmation && agent) &&
       !answerDispatched &&
@@ -918,7 +1121,11 @@ export function SessionDetailPage() {
     // as a row to create against; without one the notice says where else to go.
     const offersNewSession = Boolean(runtimeLoss && agentRow && !isConfirming);
     bottomControl = (
-      <div className={isConfirming ? classes.bottomStack : classes.bottomDock}>
+      <div
+        ref={setDockElement}
+        className={classes.bottomDock}
+        data-testid="session-dock"
+      >
         {runtimeLoss && (
           <RuntimeLostNotice
             loss={runtimeLoss}
@@ -931,7 +1138,7 @@ export function SessionDetailPage() {
           <Alert
             status="warning"
             title="This session is still working on the previous turn"
-            description="kagent takes one message per session at a time. Wait for that turn to finish, or cancel it and send your message again."
+            description="kagent takes one message per session at a time. Wait for the turn to finish, or stop it and send again."
             customActions={
               cancelConflictingTurn ? (
                 <Button
@@ -940,37 +1147,50 @@ export function SessionDetailPage() {
                   isPending={cancellation.isCancelling}
                   onPress={cancelConflictingTurn}
                 >
-                  Cancel the turn
+                  Stop the turn
                 </Button>
               ) : undefined
             }
           />
         )}
-        {isConfirming && (
-          <PendingConfirmationPanel
-            pending={pendingConfirmation!}
-            isAnswering={confirmation.isAnswering}
-            error={confirmation.error?.message}
-            restore={confirmation.failed}
-            isUserScoped={isUserScoped}
-            onAnswer={answer => {
-              // Errors surface through the hook's `error`, which the panel renders
-              // above the choices it hands back.
-              confirmation.answer(answer).catch(() => {});
-            }}
-          />
-        )}
         <SessionComposer
+          attachment={
+            isConfirming ? (
+              <PendingConfirmationPanel
+                pending={pendingConfirmation!}
+                agentName={row.agentName || undefined}
+                connectorOf={connectorOf}
+                isAnswering={confirmation.isAnswering}
+                error={confirmation.error?.message}
+                restore={confirmation.failed}
+                isUserScoped={isUserScoped}
+                onAnswer={answer => {
+                  // Errors surface through the hook's `error`, which the card
+                  // renders above the choices it hands back.
+                  confirmation.answer(answer).catch(() => {});
+                }}
+              />
+            ) : undefined
+          }
           // Waiting on an answer is the opposite of busy; the caption is the
           // reason below either way. A stalled turn still withholds Send —
           // kagent would refuse the message — but says so instead of promising
           // a reply.
           isAgentWorking={isConfirming ? false : showWorking || isStalled}
           isStalled={isStalled}
-          isFinished={Boolean(state && !state.isActive)}
+          isFinished={Boolean(shownState && !shownState.isActive)}
+          agentName={row.agentName || undefined}
+          // The prototype's waiting caption, naming who waits on what and
+          // pointing at the card attached just above the box. A plain message
+          // cannot answer it (it would open a new turn), which is why the box
+          // is disabled meanwhile.
           disabledReason={
             isConfirming
-              ? "Answer the agent's question above to carry on. A plain message would start a new turn instead of answering it."
+              ? `${row.agentName || 'The agent'} is waiting for your ${
+                  pendingConfirmation?.asks === 'input'
+                    ? 'answer above.'
+                    : 'decision above.'
+                }`
               : undefined
           }
           // A conflict has its own notice above; the composer must not also
@@ -986,6 +1206,7 @@ export function SessionDetailPage() {
           restore={send.failed ?? redraft}
           onStop={isConfirming ? undefined : stopTurn}
           isStopping={cancellation.isCancelling}
+          details={costChip}
           newSession={
             offersNewSession
               ? {
@@ -997,9 +1218,18 @@ export function SessionDetailPage() {
                   },
                   isStarting: creation.isCreating,
                   replacesSend: runtimeLoss!.reported,
-                  caption: runtimeLoss!.reported
-                    ? 'This session cannot continue. Your message starts a new session with the same agent. Enter starts it, Shift+Enter for a new line.'
-                    : 'Sending again retries the runtime. If it fails the same way, start a new session with the same agent — your message goes with it.',
+                  caption: runtimeLoss!.reported ? (
+                    <>
+                      This session cannot continue; your message starts a new
+                      one with the same agent.{' '}
+                      <SendKeyHint
+                        options={SEND_KEY_CAPTIONS.runtimeLost}
+                        touch={touch}
+                      />
+                    </>
+                  ) : (
+                    'Sending again retries the runtime. If it fails again, start a new session with the same agent — your message goes with it.'
+                  ),
                 }
               : undefined
           }
@@ -1039,13 +1269,152 @@ export function SessionDetailPage() {
         })
       : undefined;
 
+  /* The header's parts, placed by the frame: the `ShellPage` header's title,
+     badges and meta — the same scale and position every platform page uses. */
+
+  /* The underline on hover says "this does something"; it does not say what.
+     Everything else up here is inert text, so without a label the affordance is
+     only findable by clicking a heading on the off chance — which nobody does.
+
+     A real <button>, stripped of its chrome, rather than a click handler on
+     the heading: the title is an editing affordance, and only a button is
+     reachable by keyboard and announced as actionable. Everything visual is
+     inherited from `ShellPage`'s h1, so it still reads as the heading it
+     replaces.
+
+     A native `title` rather than a tooltip component, as `DateComponent`
+     does: bui's wraps react-aria's `TooltipTrigger`, which only wires up its
+     own focusable components (this trigger is a bare <button> so it can
+     inherit the heading's typography), and MUI's calls `findDOMNode` on its
+     child, which React 18.3 warns about. */
+  const titleButton = (
+    <button
+      type="button"
+      className={classes.titleButton}
+      onClick={openRename}
+      // The accessible name has to say what pressing this does, since the
+      // visible text is the session's name and says nothing about renaming.
+      // The title is the sighted equivalent of this.
+      aria-label={`Rename session "${sessionTitle}"`}
+      title="Rename session"
+    >
+      {/* Bare text, so the button inherits ShellPage's h1 typography — the
+          platform-standard title scale. */}
+      {sessionTitle}
+    </button>
+  );
+
+  /* The raw A2A state is kept as the label for anything we don't recognise, so
+     a future kagent state shows as itself. The runtime-lost mark is the same
+     one the list and the rail carry; only kagent's own word earns it. */
+  const stateBadges = (
+    <>
+      {/* The dot and word the sessions list and the rail draw (T98). */}
+      {shownState ? (
+        <StatusDot
+          tone={shownState.tone}
+          label={shownState.label}
+          colorVar={sessionStateDotVar(shownState.tone)}
+        />
+      ) : (
+        <StatusDot
+          tone="neutral"
+          label={STATE_IDLE_LABEL}
+          colorVar={sessionStateDotVar('neutral')}
+        />
+      )}
+      {runtimeLoss?.reported && (
+        <Badge size="small" title={RUNTIME_LOST_TITLE}>
+          {RUNTIME_LOST_LABEL}
+        </Badge>
+      )}
+    </>
+  );
+
+  const agentIdentity = (
+    <>
+      {row.agentName && (
+        <Flex align="center" gap="2">
+          <AgentAvatar
+            size="small"
+            purpose="decoration"
+            name={row.agentName}
+            src={avatarUrl ?? ''}
+          />
+          {/* core-components' `Link`, which routes client-side — a bui
+              link would reload the page. */}
+          {agentHref ? (
+            <Link to={agentHref}>
+              {/* bui `Text` sets its own colour, which would leave a
+                  link that doesn't look like one; `inherit` hands it back
+                  to the anchor. `as="span"`: Text renders a <p> by
+                  default. */}
+              <Text
+                as="span"
+                variant="body-medium"
+                style={{ color: 'inherit' }}
+              >
+                {row.agentName}
+              </Text>
+            </Link>
+          ) : (
+            <Text variant="body-medium">{row.agentName}</Text>
+          )}
+        </Flex>
+      )}
+      <Flex align="center" gap="1">
+        <Text variant="body-medium" color="secondary">
+          on
+        </Text>
+        <InstallationChip installation={row.installation} />
+      </Flex>
+    </>
+  );
+
+  /* Absolute, not relative: the list keeps the relative form, where scanning
+     for recency is the point. No last activity and no duration: kagent API v2
+     does not move `updated_at` on a turn, so both would only restate the start
+     (kagent-dev/kagent#2397). */
+  const startedMeta = (
+    <Text variant="body-small" color="secondary">
+      Started {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
+    </Text>
+  );
+
+  /* A view preference for the conversation below, so it sits on the line
+     that describes the session rather than among the actions on it (PO), at
+     the line's text size. Rendered here rather than through ShellPage's
+     `meta`, which wraps its content in text the switch's label cannot nest
+     in. Held until the stored choice is read, like the conversation, so it
+     never shows a state it is about to flip from. */
+  const toolActivitySwitch = isToolActivityKnown && (
+    <Switch
+      label="Show tool activity"
+      isSelected={showToolActivity}
+      onChange={changeToolActivity}
+      className={classes.toolActivitySwitch}
+    />
+  );
+
   return (
     <Shell
-      installation={installation}
-      sessionId={sessionId}
-      currentSessionState={currentSessionState}
+      title={titleButton}
+      documentTitle={row.title}
+      badges={
+        <>
+          {stateBadges}
+          {agentIdentity}
+          {startedMeta}
+          {toolActivitySwitch}
+        </>
+      }
     >
-      <Flex direction="column" gap="4" className={classes.column}>
+      <Flex
+        ref={setColumnElement}
+        direction="column"
+        gap="4"
+        className={classes.column}
+      >
         {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped
             keeping up, and the user needs to know which of the two it is. */}
@@ -1057,162 +1426,33 @@ export function SessionDetailPage() {
           />
         )}
 
-        <Flex direction="column" gap="2">
-          <BackToSessions>← Sessions</BackToSessions>
-          <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            {/* The underline on hover says "this does something"; it does not say
-                what. Everything else on this page is inert text, so without a label
-                the affordance is only findable by clicking a heading on the off
-                chance — which nobody does.
-
-                MUI's tooltip rather than bui's: bui wraps react-aria's
-                `TooltipTrigger`, which only wires up its own focusable components,
-                and this trigger is a bare <button> so it can inherit the heading's
-                typography. */}
-            <Tooltip title="Rename session">
-              <button
-                type="button"
-                className={classes.titleButton}
-                onClick={openRename}
-                // The accessible name has to say what pressing this does, since the
-                // visible text is the session's name and says nothing about
-                // renaming. The tooltip is the sighted equivalent of this.
-                aria-label={`Rename session "${sessionTitle}"`}
-              >
-                {/* `as="span"`: Text renders a <p> by default, which is not valid
-                    inside a button. */}
-                <Text as="span" variant="title-medium">
-                  {sessionTitle}
-                </Text>
-              </button>
-            </Tooltip>
-            {/* The raw A2A state is kept as the label for anything we don't
-                recognise, so a future kagent state shows as itself. */}
-            {state && <Badge size="small">{state.label}</Badge>}
-            {!state && <Badge size="small">no activity</Badge>}
-            {/* The same mark the list and the rail carry, so the session reads
-                the same on the way in as on the page. Only kagent's own word
-                earns it; the interim reading is the notice's. */}
-            {runtimeLoss?.reported && (
-              <Badge size="small" title={RUNTIME_LOST_TITLE}>
-                {RUNTIME_LOST_LABEL}
-              </Badge>
+        {/* Held until the stored "Show tool activity" choice is read, so a
+            person who hides the work never sees it appear and vanish. */}
+        {!isToolActivityKnown ? (
+          <LoadingIndicator label="Reading the session…" />
+        ) : (
+          <SessionTimeline
+            timeline={timelineWithLive}
+            agentName={row.agentName}
+            agentAvatarUrl={avatarUrl}
+            isAgentWorking={showWorking}
+            streamLost={streamLost}
+            stalledSince={stalledSince}
+            onCancelTurn={isStalled ? stopTurn : undefined}
+            isCancellingTurn={cancellation.isCancelling}
+            // A hand-off's opener was written by the portal, not the person
+            // (UX review M20). Known only from the router state of the arrival:
+            // kagent stores no such flag, so a later visit shows it plain.
+            firstMessageCaption={
+              handoff?.prepared ? 'Prepared by the portal' : undefined
+            }
+            connectorOf={connectorOf}
+            showToolActivity={showToolActivity}
+            isAwaitingPerson={Boolean(
+              state && AWAITING_INPUT_STATES.has(state.key),
             )}
-          </Flex>
-
-          <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            {row.agentName && (
-              <Flex align="center" gap="2">
-                <AgentAvatar
-                  size="small"
-                  purpose="decoration"
-                  name={row.agentName}
-                  src={avatarUrl ?? ''}
-                />
-                {/* core-components' `Link`, which routes client-side — a bui
-                    link would reload the page. */}
-                {agentHref ? (
-                  <Link to={agentHref}>
-                    {/* bui `Text` sets its own colour, which would leave a
-                        link that doesn't look like one; `inherit` hands it back
-                        to the anchor. `as="span"`: Text renders a <p> by
-                        default. */}
-                    <Text
-                      as="span"
-                      variant="body-medium"
-                      style={{ color: 'inherit' }}
-                    >
-                      {row.agentName}
-                    </Text>
-                  </Link>
-                ) : (
-                  <Text variant="body-medium">{row.agentName}</Text>
-                )}
-              </Flex>
-            )}
-            <Flex align="center" gap="1">
-              <Text variant="body-medium" color="secondary">
-                on
-              </Text>
-              <InstallationChip installation={row.installation} />
-            </Flex>
-          </Flex>
-
-          {/* Absolute, not relative: the list keeps the relative form, where
-              scanning for recency is the point. No last activity and no
-              duration: kagent API v2 does not move `updated_at` on a turn, so
-              both would only restate the start (kagent-dev/kagent#2397). */}
-          <Text variant="body-small" color="secondary">
-            Started{' '}
-            {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
-          </Text>
-        </Flex>
-
-        <Box className={classes.stats}>
-          <Stat
-            label="Turns"
-            value={String(taskCount)}
-            hint="One per message sent to the agent. A turn counts once however many model and tool calls the answer took."
           />
-          {/* Labelled "billed", because the raw number is startling: every model
-              call re-sends the whole context, so a 4-turn session with a large tool
-              catalogue reached 1.4M prompt tokens across 14 calls. That is genuine
-              cumulative usage — kagent's own UI sums it the same way — but without
-              the label it reads as a bug.
-              There is deliberately no combined total: input and output are priced
-              differently, so the sum is not a number anyone acts on. */}
-          <Stat
-            label="Input tokens (billed)"
-            value={formatTokens(timeline.tokens.prompt)}
-            hint="Every token sent to a model in this session, summed over each call, delegated agents' included."
-          />
-          <Stat
-            label="Output tokens"
-            value={formatTokens(timeline.tokens.completion)}
-            hint="Every token a model generated in this session, delegated agents' included."
-          />
-          {/* Estimated, not billed, and the hint has to say *how*: the
-              gateway prices whole model calls and its metrics carry no session
-              label, so a session's cost can only ever be its tokens times an
-              observed rate. Which rate that is decides whether the figure is
-              worth anything, so `describeCostBasis` names the tier rather than
-              leaving the reader to assume the best case. Reads "—" rather than
-              "$0.00" when there is no rate to apply — zero spend and unpriced
-              spend are different facts. */}
-          <Stat
-            label="Est. cost"
-            value={formatUsd(estimatedCostUsd)}
-            hint={describeCostBasis({
-              tier: rateTier,
-              model: row.agentModel,
-              installation: row.installation,
-              window: rateWindow,
-              tokens: timeline.tokens.total,
-            })}
-          />
-          {/* Beside the estimate, never in place of it: a figure only some
-              runtimes report (the claude Harness does, ADK does not), summed
-              over the turns that reported one. Absent means not reported, so
-              a session with none shows no stat rather than "$0.00". */}
-          {timeline.tokens.costUsd !== undefined && (
-            <Stat
-              label="Reported cost"
-              value={formatUsd(timeline.tokens.costUsd)}
-              hint="Reported by the agent's runtime for each turn and summed here. A turn that reported no cost, a canceled one say, is not in it."
-            />
-          )}
-        </Box>
-
-        <SessionTimeline
-          timeline={timelineWithLive}
-          agentName={row.agentName}
-          agentAvatarUrl={avatarUrl}
-          isAgentWorking={showWorking}
-          streamLost={streamLost}
-          stalledSince={stalledSince}
-          onCancelTurn={isStalled ? stopTurn : undefined}
-          isCancellingTurn={cancellation.isCancelling}
-        />
+        )}
 
         {bottomControl}
       </Flex>

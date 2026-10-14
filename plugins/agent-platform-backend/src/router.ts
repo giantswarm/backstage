@@ -24,8 +24,10 @@ import {
   KagentInstallationConfig,
   MESSAGE_TEXT_MAX_LENGTH,
   readKagentInstallationsFromConfig,
-  REQUEST_ID_MAX_LENGTH,
+  REQUEST_ID_HEADER,
   SESSION_NAME_MAX_LENGTH,
+  SESSION_SHARE_MAX_TTL_SECONDS,
+  type SessionSharePermissionInput,
 } from './KagentClient';
 import { probeKagentGrpc } from './kagent/reachability';
 import { SessionStateReader } from './sessionStates';
@@ -61,7 +63,7 @@ export interface RouterOptions {
  * probe (`probeKagentGrpc`) makes one unauthenticated `SystemService/GetVersion`
  * call there; behind agentgateway's JWT policy that answers `Unauthenticated`,
  * which is a perfectly good proof that the route exists from where the portal
- * runs. It carries no token and no user data, and never reads an instance.
+ * runs. It carries no token and no user data, and never reads a session.
  */
 export function kagentProbeUrl(installation: KagentInstallationConfig): string {
   return installation.apiBaseUrl;
@@ -100,11 +102,7 @@ function readRequiredString(
   return trimmed;
 }
 
-/**
- * A session title, bounded. Shared by the create and rename routes so the two
- * cannot drift apart — a title accepted by one and refused by the other would be
- * a create the user could not undo by renaming.
- */
+/** A session title, bounded as the controller bounds it. */
 function readSessionName(body: Record<string, unknown>): string {
   const name = readRequiredString(body, 'name');
   if (name.length > SESSION_NAME_MAX_LENGTH) {
@@ -116,26 +114,42 @@ function readSessionName(body: Record<string, unknown>): string {
 }
 
 /**
- * The idempotency key of a create, when the caller supplied one.
+ * The body the share-create route takes: the permission (defaulting to
+ * read-only, the only grant anyone should hand out unthinkingly) and an
+ * optional lifetime in whole seconds.
  *
- * The browser generates one per submission and reuses it on a retry, so a
- * create whose answer was lost does not make a second instance: the controller
- * keys idempotency on `(creator, request_id)`. A caller that sends none gets a
- * fresh one, which makes *its* retry a second create — the honest behaviour
- * for a caller that did not ask for idempotency, and what keeps the body an
- * addition rather than a new requirement.
+ * `ttlSeconds` left out is forwarded as an unset TTL, which the controller
+ * fills with its own maximum share lifetime — so "no TTL" is never "forever"
+ * unless the controller itself is configured that way.
  */
-function readRequestId(body: Record<string, unknown>): string {
-  if (body.requestId === undefined) {
-    return randomUUID();
+function readShareBody(req: express.Request): {
+  permission: SessionSharePermissionInput;
+  ttlSeconds?: number;
+} {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+
+  const permission = body.permission ?? 'read-only';
+  if (permission !== 'read-only' && permission !== 'read-write') {
+    throw new InputError("permission must be 'read-only' or 'read-write'");
   }
-  const requestId = readRequiredString(body, 'requestId');
-  if (requestId.length > REQUEST_ID_MAX_LENGTH) {
-    throw new InputError(
-      `requestId must be at most ${REQUEST_ID_MAX_LENGTH} characters`,
-    );
+
+  let ttlSeconds: number | undefined;
+  if (body.ttlSeconds !== undefined) {
+    const value = body.ttlSeconds;
+    if (
+      typeof value !== 'number' ||
+      !Number.isInteger(value) ||
+      value <= 0 ||
+      value > SESSION_SHARE_MAX_TTL_SECONDS
+    ) {
+      throw new InputError(
+        `ttlSeconds must be a positive integer of at most ${SESSION_SHARE_MAX_TTL_SECONDS}`,
+      );
+    }
+    ttlSeconds = value;
   }
-  return requestId;
+
+  return { permission, ttlSeconds };
 }
 
 /**
@@ -713,53 +727,23 @@ export async function createRouter(
     res.json(result);
   });
 
+  /**
+   * The caller's sessions on one installation.
+   *
+   * Each read carries a fresh request id toward the controller route, logged
+   * with a failure and answered in {@link REQUEST_ID_HEADER} — on an error too,
+   * which is the point: the Sessions page names it beside an installation it
+   * could not read, so the failure can be found in the gateway's logs.
+   */
   router.get('/kagent/sessions', async (req, res) => {
+    const requestId = randomUUID();
+    res.setHeader(REQUEST_ID_HEADER, requestId);
     const { client } = resolveInstallation(req);
     const result = await client.listSessions({
       userToken: readUserToken(req, { required: true }),
+      requestId,
     });
     res.json(result);
-  });
-
-  /**
-   * Start a session for one agent: create its AgentInstance.
-   *
-   * The agent's namespace and name are the AgentTemplate's, as the caller read
-   * them from the resource; the platform Harness is picked in the client from
-   * the template's own status. `name` is required because the controller does
-   * not auto-title — an instance created without one has no title at all; the
-   * frontend derives it from the first prompt (see "Starting a session" in
-   * docs/agent-platform.md). `requestId` is the browser's idempotency key; see
-   * {@link readRequestId}.
-   *
-   * The token is **required**, for the same reason the other writes require it:
-   * the controller decides whose instance this is from the identity the gateway
-   * derived from the token alone.
-   *
-   * Nothing expected reaches a 5xx. A malformed body is a 400, a template no
-   * Harness admits or a `request_id` reused with other parameters is a 409 —
-   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
-   */
-  router.post('/kagent/sessions', async (req, res) => {
-    const { client } = resolveInstallation(req);
-
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const agentNamespace = readRequiredString(body, 'agentNamespace');
-    const agentName = readRequiredString(body, 'agentName');
-    const name = readSessionName(body);
-    const requestId = readRequestId(body);
-
-    const result = await client.createSession(
-      { namespace: agentNamespace, name: agentName },
-      name,
-      requestId,
-      { userToken: readUserToken(req, { required: true }) },
-    );
-
-    // 201 for a create. The body is the controller's `CreateAgentInstanceResponse`
-    // as JSON: the frontend needs the generated instance id out of it, and this
-    // proxy stays transport.
-    res.status(201).json(result);
   });
 
   /**
@@ -780,19 +764,21 @@ export async function createRouter(
   });
 
   /**
-   * Delete one session. kagent soft-deletes it, scoped to the forwarded token's
-   * user id — the same scoping the reads rely on.
+   * Delete one session (`SessionService/DeleteSession`), scoped to the caller
+   * like the reads. kagent tears the session's runtime down and marks it
+   * deleted; the record and its tasks stay in kagent's database, but no read
+   * returns it again (it answers 404).
    *
    * The token is **required**, and it is the whole authorization story for this
    * route: kagent decides who the caller is from it, and a controller running in
    * `unsecure` mode would otherwise delete the shared default user's session on
    * behalf of nobody in particular.
    *
-   * Nothing expected reaches a 5xx here. kagent answers 200 even when the session
-   * does not exist or belongs to somebody else (its statement matches no rows), and
-   * `KagentClient` maps an unreachable installation to a 404 — so this route should
-   * never hit `MiddlewareFactory.error()`'s `>= 500` branch, which forwards to
-   * Sentry.
+   * Nothing expected reaches a 5xx here. A session the controller does not find
+   * for this caller — never existed, somebody else's, already deleted — is a
+   * gRPC `NotFound`, which `KagentClient` maps to a 404, as it does an
+   * unreachable installation — so this route should never hit
+   * `MiddlewareFactory.error()`'s `>= 500` branch, which forwards to Sentry.
    */
   router.delete('/kagent/sessions/:sessionId', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -801,8 +787,8 @@ export async function createRouter(
     });
 
     // Pass an empty upstream success through as one, rather than as `res.json()`'s
-    // empty body with a JSON content-type. Only reachable if a future kagent
-    // answers 204 to the delete; today it returns its envelope with a 200.
+    // empty body with a JSON content-type. Not reached today: the controller
+    // answers the session as it moves to deleting, passed through as `{session}`.
     if (result === undefined) {
       res.status(204).end();
       return;
@@ -819,14 +805,15 @@ export async function createRouter(
    * `unsecure` mode this would otherwise rename the shared default user's
    * session on behalf of nobody in particular.
    *
-   * The name is all this takes. On a kagent too old to rename properly the
-   * client reads the session back and echoes its own agent and source into the
-   * upsert — deliberately not something the caller supplies, since those fields
-   * are overwritten by that write and a stale value from a browser would blank a
-   * column nobody asked to touch.
+   * The name is all this takes: it goes to `SessionService/UpdateSessionName`,
+   * which changes the name and nothing else. It is trimmed and bounded here
+   * ({@link readSessionName}) and validated again
+   * by the controller (200 characters, no control characters, no surrounding
+   * whitespace).
    *
    * A rejected name is the caller's mistake and answers 400, not a 5xx —
-   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
+   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry. So does a
+   * session the controller does not find for this caller: 404.
    */
   router.put('/kagent/sessions/:sessionId', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -847,6 +834,76 @@ export async function createRouter(
     res.json(result);
   });
 
+  /**
+   * The shares that exist for one session — the dialog's "active shares" list.
+   *
+   * The controller scopes this to the caller like every other session read, so
+   * the list is the owner's own. Shares carry no token (the controller stores
+   * only a hash), but when a share expires and who holds one is still the
+   * owner's business — hence `no-store`, like the other per-user reads.
+   */
+  router.get('/kagent/sessions/:sessionId/shares', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const result = await client.listSessionShares(readSessionId(req), {
+      userToken: readUserToken(req, { required: true }),
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  });
+
+  /**
+   * Mint a share for one session: a token that grants A2A access to it —
+   * read-only (get, list, subscribe) or read-write (also send and cancel) —
+   * until the share expires or is revoked.
+   *
+   * The token is **in this answer and nowhere else**: the controller stores a
+   * hash, so a token that is not copied now is gone, and `no-store` keeps the
+   * only copy out of every cache between here and the dialog.
+   *
+   * The token is **required**, as on every other write: the controller decides
+   * whose session this is — and therefore who may share it — from the identity
+   * the gateway derived.
+   *
+   * Nothing expected reaches a 5xx: a malformed body is a 400, somebody else's
+   * or a deleted session a 404 — `MiddlewareFactory.error()` forwards anything
+   * `>= 500` to Sentry.
+   */
+  router.post('/kagent/sessions/:sessionId/shares', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const share = readShareBody(req);
+
+    const result = await client.createSessionShare(readSessionId(req), share, {
+      userToken: readUserToken(req, { required: true }),
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    // 201 for a create. The body is the controller's `CreateSessionShareResponse`
+    // as JSON — `{share, token}` — and the token in it is the entire point.
+    res.status(201).json(result);
+  });
+
+  /**
+   * Revoke one share: the token stops granting access as soon as the
+   * controller answers.
+   *
+   * The controller authorizes the revoke by the share id and the caller alone;
+   * the session id in the path is the resource's address for the frontend's
+   * benefit and is not forwarded. Share ids are opaque and pass through
+   * undecorated, like session and task ids.
+   */
+  router.delete(
+    '/kagent/sessions/:sessionId/shares/:shareId',
+    async (req, res) => {
+      const { client } = resolveInstallation(req);
+      const rawShareId = req.params.shareId;
+      const result = await client.revokeSessionShare(
+        typeof rawShareId === 'string' ? rawShareId : '',
+        { userToken: readUserToken(req, { required: true }) },
+      );
+      res.json(result);
+    },
+  );
+
   /** The session's A2A tasks — the conversation, its state and token usage. */
   router.get('/kagent/sessions/:sessionId/tasks', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -860,7 +917,7 @@ export async function createRouter(
    * Stop the turn a session is running: cancel its task server-side.
    *
    * The Stop control in the composer. Cancelling is `A2AService/CancelTask` on
-   * the instance, which ends the run at the harness (or quiesces the actor when
+   * the session, which ends the run at the harness (or quiesces the actor when
    * the runtime cannot) and records the task canceled — so a stopped turn stays
    * stopped when the tab is closed, unlike cutting the stream, which the turn
    * survives. Answers the task as the controller left it: `canceled`, or the
@@ -868,7 +925,7 @@ export async function createRouter(
    * error and nothing to undo.
    *
    * Task ids are opaque like session ids and pass through undecorated. The
-   * token is **required**: the controller decides whose instance this is from
+   * token is **required**: the controller decides whose session this is from
    * the identity the gateway derived.
    */
   router.post(
@@ -888,14 +945,13 @@ export async function createRouter(
   /**
    * Send a message to the session's agent — one turn of the conversation.
    *
-   * Session-shaped because the session *is* the conversation: the AgentInstance
-   * binds the agent, and the A2A call names the instance in its metadata. The
-   * agent's namespace and name stay in the body for the contract's sake (the
-   * browser knows them from the resource) but nothing downstream needs them. The
-   * A2A request is built in the client, so the frontend never has to know A2A.
+   * Session-shaped because the session *is* the conversation. The agent's
+   * namespace and name in the body are the A2A route (the gateway's `tenant`),
+   * and the session id is the message's context; the A2A request is built in
+   * the client, so the frontend never has to know A2A.
    *
    * Nothing expected here reaches a 5xx, which `MiddlewareFactory.error()` would
-   * forward to Sentry: a malformed body is a 400, an unknown instance a 404, a
+   * forward to Sentry: a malformed body is a 400, an unknown session a 404, a
    * second message during a turn a 409, and a turn that outruns its timeout a
    * **202** — it is still running, and the conversation poll will show it land.
    */
@@ -1032,21 +1088,34 @@ export async function createRouter(
    * answers 202, after which only the conversation poll can tell what became of
    * the turn — and if the turn never lands, the page has nothing to show. Over a
    * stream the events arrive as they happen and a cut stream is visible as such.
+   *
+   * A resumed turn that says nothing within the wait for its first event — the
+   * approved tool runs before the agent speaks — is still running: a 202, as on
+   * the unary answer route, and the page follows the poll. Only here: on the
+   * messages stream a silent start stays an error, which the frontend checks
+   * against the history.
    */
   router.post('/kagent/sessions/:sessionId/answer/stream', async (req, res) => {
     const { client } = resolveInstallation(req);
     const { agent, answer } = readAnswerBody(req);
     const userToken = readUserToken(req, { required: true });
 
-    await relayEventStream(res, logger, signal =>
-      client.streamAnswer(
-        readSessionId(req),
-        agent,
-        answer,
-        { userToken },
-        signal,
-      ),
-    );
+    try {
+      await relayEventStream(res, logger, signal =>
+        client.streamAnswer(
+          readSessionId(req),
+          agent,
+          answer,
+          { userToken },
+          signal,
+        ),
+      );
+    } catch (error) {
+      if (!isTurnPendingError(error)) {
+        throw error;
+      }
+      res.status(202).json({ status: 'pending' });
+    }
   });
 
   // The one served-model call the browser cannot make itself: a try of a

@@ -8,6 +8,7 @@ import {
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
+import type { KagentRequestErrorFields } from '../lib/readFailure';
 import {
   KagentInstallation,
   parseKagentInstallations,
@@ -25,7 +26,6 @@ import {
   SessionStatesResponse,
   SessionUsageResponse,
   normalizeTaskList,
-  parseCreatedSessionId,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { createSseDataDecoder, readStreamFrame } from '../lib/kagentStreamTurn';
 import {
@@ -33,6 +33,7 @@ import {
   KAGENT_AUTH_HEADER,
   KagentApi,
   KagentIdentity,
+  REQUEST_ID_HEADER,
 } from './types';
 
 export const kagentApiRef = createApiRef<KagentApi>({
@@ -269,7 +270,7 @@ export class KagentApiClient implements KagentApi {
   }
 
   /**
-   * Derived state for this installation's sessions, for the switcher rail.
+   * Derived state for this installation's sessions, for the session lists.
    *
    * The backend does the work: a session's state lives in its tasks, and reading
    * every session's conversation in the browser to learn one string each is not
@@ -359,51 +360,6 @@ export class KagentApiClient implements KagentApi {
           : 'kagent reported an error while deleting the session, without saying what.',
       );
     }
-  }
-
-  async createSession(
-    installation: string,
-    agent: { namespace: string; name: string },
-    name: string,
-    requestId: string,
-  ): Promise<{ sessionId: string }> {
-    const { url, headers } = await this.prepare(
-      '/kagent/sessions',
-      installation,
-    );
-    const response = await this.fetchApi.fetch(url, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agentNamespace: agent.namespace,
-        agentName: agent.name,
-        name,
-        requestId,
-      }),
-    });
-
-    // `badRequestIsMissing: false` for the same reason as the rename: this route
-    // answers 400 for a rejected title, which is nothing like "kagent is absent
-    // from this installation".
-    await this.throwIfNotOk(response, { badRequestIsMissing: false });
-
-    // The one write whose body is **required**. The others tolerate an empty
-    // response because nothing in it is needed; here the generated instance id
-    // is the entire point, and without it there is nowhere to navigate — so an
-    // unreadable body has to fail rather than resolve into a broken link.
-    const body = await response.json().catch(() => undefined);
-    const sessionId = parseCreatedSessionId(body);
-    if (!sessionId) {
-      throw upstreamError(
-        isErrorEnvelope(body) &&
-          typeof body.message === 'string' &&
-          body.message
-          ? body.message
-          : 'kagent accepted the new session but did not say which one it created, so it cannot be opened. It may still have been created — check the list.',
-      );
-    }
-
-    return { sessionId };
   }
 
   async cancelTask(
@@ -599,6 +555,14 @@ export class KagentApiClient implements KagentApi {
       await this.throwIfNotOk(response, { badRequestIsMissing: false });
     }
 
+    if (response.status === 202) {
+      // The answer route's "still running", as on the unary routes: the
+      // resumed turn outlived the wait for its first event. Resolved like a
+      // stream that ended without one, so the caller follows the turn through
+      // the poll.
+      return;
+    }
+
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.includes('text/event-stream') || !response.body) {
       // A 200 that is not a stream is something between us and the backend
@@ -764,11 +728,17 @@ export class KagentApiClient implements KagentApi {
     required: boolean,
   ): Promise<string | undefined> {
     if (required) {
-      return getInstallationOidcToken(
-        this.kubernetesApi,
-        this.kubernetesAuthProvidersApi,
-        installation,
-      );
+      try {
+        return await getInstallationOidcToken(
+          this.kubernetesApi,
+          this.kubernetesAuthProvidersApi,
+          installation,
+        );
+      } catch (error) {
+        // The request never left the browser: say so, rather than let the
+        // failure read like one of the backend's.
+        throw Object.assign(error as Error, { reason: 'token' });
+      }
     }
     try {
       return await getInstallationOidcToken(
@@ -809,10 +779,19 @@ export class KagentApiClient implements KagentApi {
     const { badRequestIsMissing = true } = options;
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      const { message: bodyMessage, reason } =
+        (errorData as { error?: { message?: string; reason?: string } })
+          ?.error ?? {};
       const message =
-        (errorData as { error?: { message?: string } })?.error?.message ??
-        `kagent request failed with status ${response.status}`;
-      const error = new Error(message);
+        bodyMessage ?? `kagent request failed with status ${response.status}`;
+      // What `describeReadFailure` turns into the page's words: the status,
+      // the backend's failure reason and the request id it sent toward kagent.
+      const fields: KagentRequestErrorFields = {
+        status: response.status,
+        reason,
+        requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+      };
+      const error = Object.assign(new Error(message), fields);
       // A 400 from this proxy means the backend has no kagent endpoint
       // configured for the requested installation (its `resolveInstallation`
       // raises InputError for a name outside the allowlist). That allowlist is

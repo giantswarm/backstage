@@ -2,14 +2,20 @@ import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  type Query,
+} from '@tanstack/react-query';
 import {
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
 import type { AgentSpec } from '../lib/agentManager';
+import { awaitsDeployedAgent } from '../lib/pendingAgentCreations';
 import { useCreateAgent } from './useCreateAgent';
+import { committedTo } from '../lib/__fixtures__/gitOpsCommit';
 
 const callTool = jest.fn();
 const musterApi = { callTool } as unknown as MusterApi;
@@ -68,6 +74,7 @@ function expectAgentCreated(mode: 'deploy' | 'commit') {
 }
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   jest.mocked(analyticsApi.captureEvent).mockClear();
   callTool.mockReset();
 });
@@ -101,9 +108,58 @@ describe('useCreateAgent', () => {
     // The installation's kagent lists are dropped so the roster re-reads.
     await waitFor(() =>
       expect(invalidateQueries).toHaveBeenCalledWith({
-        queryKey: ['cluster', 'gazelle', 'list', 'kagent.dev'],
+        queryKey: ['cluster', 'gazelle', 'list', 'api.kagent.dev'],
       }),
     );
+  });
+
+  it('puts the Agents list on the transitional tier until it lists the deployed agent', async () => {
+    callTool.mockResolvedValue({
+      agent: { name: 'pr-reviewer', namespace: 'kagent' },
+      manifests: { ociRepository: '', helmRelease: '', values: {} },
+      created: { ociRepository: true, helmRelease: true },
+      requestedBy: 'admin@lab.local',
+    });
+    const { result } = renderWith();
+    const agentsList = (installation: string, items: unknown[]) =>
+      ({
+        queryKey: ['cluster', installation, 'list', 'api.kagent.dev'],
+        state: { data: items },
+      }) as unknown as Query<any, any, any, any>;
+
+    // Before the deploy nothing is awaited.
+    expect(awaitsDeployedAgent(agentsList('gazelle', []))).toBe(false);
+
+    await act(async () => {
+      await result.current.deploy(spec);
+    });
+
+    // The list refetched before Flux rendered the Agent: still awaited, on
+    // this installation only.
+    expect(awaitsDeployedAgent(agentsList('gazelle', []))).toBe(true);
+    expect(awaitsDeployedAgent(agentsList('glean', []))).toBe(false);
+    // Listed: settled, and the list falls back to its own tiers.
+    const listed = agentsList('gazelle', [
+      { metadata: { namespace: 'kagent', name: 'pr-reviewer' } },
+    ]);
+    expect(awaitsDeployedAgent(listed)).toBe(false);
+    expect(awaitsDeployedAgent(agentsList('gazelle', []))).toBe(false);
+  });
+
+  it('awaits nothing after a failed deploy', async () => {
+    callTool.mockRejectedValue(new Error('conflict: already exists'));
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.deploy(spec).catch(() => undefined);
+    });
+
+    expect(
+      awaitsDeployedAgent({
+        queryKey: ['cluster', 'gazelle', 'list', 'api.kagent.dev'],
+        state: { data: [] },
+      } as unknown as Query<any, any, any, any>),
+    ).toBe(false);
   });
 
   it("surfaces the apiserver's Forbidden for a viewer in agent-manager's words", async () => {
@@ -164,9 +220,9 @@ describe('useCreateAgent', () => {
   });
 
   it('commits with mode: commit and returns the pull request', async () => {
-    callTool.mockResolvedValue({
-      pullRequestUrl: 'https://github.com/org/gitops/pull/7',
-    });
+    callTool.mockResolvedValue(
+      committedTo('https://github.com/org/gitops/pull/7'),
+    );
     const { result } = renderWith();
 
     let outcome;
@@ -179,9 +235,9 @@ describe('useCreateAgent', () => {
       { ...spec, mode: 'commit' },
       'gazelle',
     );
-    expect(outcome).toEqual({
-      pullRequestUrl: 'https://github.com/org/gitops/pull/7',
-    });
+    expect(outcome).toEqual(
+      committedTo('https://github.com/org/gitops/pull/7'),
+    );
     expectAgentCreated('commit');
   });
 

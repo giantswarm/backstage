@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import {
   Alert,
   Button,
@@ -10,15 +10,20 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import {
+  dialogDismissLock,
+  useOnDialogOpen,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
 
 /**
  * Longest name this dialog will submit.
  *
- * Not a kagent limit — its `session.name` column is unbounded `TEXT` — but ours,
- * matching the conversation titles in the ai-chat plugin. The backend enforces
- * the same bound, because a `maxLength` on an input is a courtesy and not a
- * guard.
+ * kagent's own limit: the controller caps a Session name at 200 characters
+ * (`UpdateSessionNameRequest.name`, `max_len: 200`) and refuses control
+ * characters and surrounding whitespace. Bounded here so the field says so up
+ * front instead of a rejected rename, and enforced again by the backend, because
+ * a `maxLength` on an input is a courtesy and not a guard.
  *
  * Must match SESSION_NAME_MAX_LENGTH in plugins/agent-platform-backend.
  */
@@ -74,13 +79,7 @@ export function SessionRenameDialog({
   // dialog whenever the session is renamed elsewhere — kagent's own UI, another
   // tab, another device. Depending on it here would replace whatever the user
   // has typed, mid-sentence and with no indication anything happened.
-  const wasOpen = useRef(isOpen);
-  useEffect(() => {
-    if (isOpen && !wasOpen.current) {
-      setValue(title);
-    }
-    wasOpen.current = isOpen;
-  }, [isOpen, title]);
+  useOnDialogOpen(isOpen, () => setValue(title));
 
   const trimmed = value.trim();
   const isValid =
@@ -96,19 +95,10 @@ export function SessionRenameDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      // Gated here rather than only through `isDismissable` /
-      // `isKeyboardDismissDisabled`, which reach the outside click and Escape but
-      // not `DialogHeader`'s own close button — bui renders that unconditionally,
-      // and it routes through this callback. Without the gate, closing mid-flight
-      // leaves the mutation running with nowhere to report a failure, and the user
-      // looking at the old title believing the rename worked.
-      onOpenChange={next => {
-        if (!isRenaming) {
-          onOpenChange(next);
-        }
-      }}
-      isDismissable={!isRenaming}
-      isKeyboardDismissDisabled={isRenaming}
+      // While the rename is in flight, closing would leave the mutation
+      // running with nowhere to report a failure, and the user looking at the
+      // old title believing the rename worked.
+      {...dialogDismissLock(isRenaming, onOpenChange)}
       width="min(90vw, 520px)"
     >
       <form onSubmit={handleSubmit} style={DIALOG_FORM_STYLE}>
@@ -131,8 +121,8 @@ export function SessionRenameDialog({
             />
             {isUserScoped === false && (
               <Text variant="body-medium">
-                This kagent deployment does not scope sessions to individual
-                users, so this session may have been started by somebody else.
+                This kagent does not scope sessions to users, so someone else
+                may have started this session.
               </Text>
             )}
             {error ? <Alert status="danger" description={error} /> : null}

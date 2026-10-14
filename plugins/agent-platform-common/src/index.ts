@@ -9,16 +9,23 @@
  * part and metadata readers live here too, even though only the frontend rendered
  * them until the usage summary needed the same arithmetic server-side.
  */
+export * from './agentShellFlag';
+export * from './portals';
+export * from './metaAgents';
+export * from './usageWindow';
+export * from './formatDay';
+export * from './formatNumbers';
 export * from './kagent/kagentSchema';
 export * from './kagent/kagentTaskSchema';
 export * from './kagent/kagentA2aV1';
-export * from './kagent/kagentAgentInstance';
+export * from './kagent/kagentSessionRecord';
 export * from './kagent/kagentMetadata';
 export * from './kagent/kagentParts';
 export * from './kagent/kagentAttachments';
 export * from './kagent/kagentSessions';
 export * from './kagent/kagentSessionDetail';
 export * from './kagent/kagentSessionState';
+export * from './kagent/kagentMessageLimits';
 export * from './kagent/kagentRuntimeLost';
 export * from './kagent/kagentSessionStates';
 export * from './kagent/kagentSessionUsage';

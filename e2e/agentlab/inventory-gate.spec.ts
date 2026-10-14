@@ -16,21 +16,22 @@ import { lab } from './lab';
  * only the negative runs: the gate is absent and the Servers view renders.
  */
 
-const serversPath = '/agent-platform/mcp-servers';
+const serversPath = '/agent-platform/connectors';
 /** The sentence the gate opens with for a 401 (`inventoryFailureCopy`). */
 const rejectedToken = /rejected the portal's token/;
 
-test('with a token the API server accepts, the muster Servers view renders without the inventory gate', async ({
+test('with a token the API server accepts, Customize · Connectors renders without the inventory gate', async ({
   admin,
 }) => {
   test.skip(
     !!process.env.AGENTLAB_INVENTORY_REFUSED,
     'the lab portal requests no audience the apiserver accepts, every probe is refused',
   );
-  await open(admin, serversPath);
+  // The kubernetes family is listed on the Infrastructure sub-tab.
+  await open(admin, '/customize/connectors/infrastructure');
   await expect(
-    admin.getByRole('link', { name: /^muster/ }),
-    'the Servers view renders its CRD-backed table',
+    admin.getByRole('row', { name: /^kubernetes( |$)/ }),
+    'Customize · Connectors renders its CRD-backed table',
   ).toBeVisible();
   await expect(admin.getByText(rejectedToken)).toHaveCount(0);
 });

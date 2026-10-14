@@ -81,7 +81,9 @@ export interface Config {
        */
       title?: string;
       /**
-       * Card message. Default: `Sign in using Dex`.
+       * Card message. Default: `Sign in using Dex`. The Agent Platform's
+       * sign-in page shows only a message other than the default, as the
+       * default just repeats its button.
        * @visibility frontend
        */
       message?: string;
@@ -110,7 +112,9 @@ export interface Config {
        */
       title?: string;
       /**
-       * Card message. Default: `Sign in through another identity provider`.
+       * Card message. Default: `Sign in through another identity
+       * provider`. The Agent Platform's sign-in page shows only a message
+       * other than the default, as the default just repeats its button.
        * @visibility frontend
        */
       message?: string;
@@ -202,7 +206,8 @@ export interface Config {
      * they already authorized at their login -- never a "Login Required"
      * dialog. Signing out of GitHub in the settings revokes the grant in
      * muster for every session. Unset keeps the upstream GitHub auth
-     * provider (`auth.providers.github`).
+     * provider (`auth.providers.github`); a portal with neither does not
+     * offer the GitHub Actions and Pull Requests tabs.
      */
     github?: {
       /**
@@ -296,6 +301,17 @@ export interface Config {
          * require it on every installation.
          */
         mimirEnabled?: boolean;
+        /**
+         * The currency the Agent Platform shows costs in for this
+         * installation. The gateway prices calls in USD, so `usdRate` is the
+         * amount of `code` one USD buys. A code other than USD without a
+         * `usdRate` shows USD. Defaults to USD.
+         */
+        currency?: {
+          /** ISO 4217 code, e.g. EUR. */
+          code: string;
+          usdRate?: number;
+        };
         apiVersionOverrides?: {
           [pluralKind: string]: string;
         };

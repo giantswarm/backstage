@@ -1,10 +1,14 @@
+import { MusterAnswerCutError } from '@giantswarm/backstage-plugin-muster';
 import {
   classifyMargeError,
   dependencyOf,
   looksUnknownTeam,
   MargeAnswerLostError,
   MargeNotConnectedError,
+  MargeRateLimitError,
   margeToolName,
+  rateLimitOf,
+  rateLimitResetOf,
   rowsOf,
   statusIntentOf,
   teamOfGroupRef,
@@ -199,6 +203,13 @@ describe('classifyMargeError', () => {
     );
   });
 
+  it('reads an answer cut before its result as one that never arrived', () => {
+    const cut = new MusterAnswerCutError(
+      'the answer to x_marge_sweep ended before its result arrived',
+    );
+    expect(classifyMargeError(cut)).toBeInstanceOf(MargeAnswerLostError);
+  });
+
   it('passes any other refusal on verbatim', () => {
     const error = classifyMargeError(new Error('no team file for "bumblebee"'));
     expect(error).not.toBeInstanceOf(MargeNotConnectedError);
@@ -257,5 +268,59 @@ describe('looksUnknownTeam', () => {
     undefined,
   ])('reads %s as something else', error => {
     expect(looksUnknownTeam(error)).toBe(false);
+  });
+});
+
+describe('rateLimitOf', () => {
+  it('reads the reset off both refusals marge words', () => {
+    const spent = rateLimitOf(
+      'GitHub rate limit reached for this token; it resets at 2026-10-13T12:04:50Z',
+    );
+    expect(spent).toBeInstanceOf(MargeRateLimitError);
+    expect(spent?.resetAt?.toISOString()).toBe('2026-10-13T12:04:50.000Z');
+
+    const short = rateLimitOf(
+      'processing PRs: GitHub rate limit too low for this run: 2 requests left of the 7 it needs at the least; it resets at 2026-10-13T12:04:50Z',
+    );
+    expect(short?.resetAt?.toISOString()).toBe('2026-10-13T12:04:50.000Z');
+  });
+
+  it('leaves every other failure alone', () => {
+    expect(rateLimitOf('no team file for "x"')).toBeUndefined();
+    expect(
+      rateLimitOf(
+        'getting authenticated user: GET https://api.github.com/user: 403 API rate limit exceeded for user ID 1.',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('is what classifyMargeError makes of a refusal', () => {
+    expect(
+      classifyMargeError(
+        new Error(
+          'GitHub rate limit reached for this token; it resets at 2026-10-13T12:04:50Z',
+        ),
+      ),
+    ).toBeInstanceOf(MargeRateLimitError);
+  });
+});
+
+describe('rateLimitResetOf', () => {
+  it('takes the latest time any refusal or stopped run names', () => {
+    const early = new MargeRateLimitError(
+      'x',
+      new Date('2026-10-13T12:00:00Z'),
+    );
+    const result = {
+      summary: {} as MargeResult['summary'],
+      rate_limit: { reset_at: '2026-10-13T12:30:00Z' },
+    };
+    expect(
+      rateLimitResetOf(
+        [early, new Error('other'), null],
+        [result],
+      )?.toISOString(),
+    ).toBe('2026-10-13T12:30:00.000Z');
+    expect(rateLimitResetOf([new Error('other')], [undefined])).toBeUndefined();
   });
 });

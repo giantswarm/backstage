@@ -26,6 +26,11 @@ import {
   type ToolSummary,
   type ToolsetPreset,
 } from '@giantswarm/backstage-plugin-muster';
+import {
+  countNoun,
+  INITIAL_ROWS,
+  SEARCH_MIN,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** The request header the Generic chart renders a toolset into. */
 export const TOOLSET_HEADER = 'X-Muster-Toolset';
@@ -39,7 +44,10 @@ export const TOOLSET_HEADER = 'X-Muster-Toolset';
  */
 export const MUSTER_MCP_SERVER_NAME = 'muster';
 
-/** Inline selectors are capped; beyond this, the platform admin defines a preset. */
+/**
+ * Inline selectors are capped platform-wide (muster, the agent chart and
+ * agent-manager each refuse more); this mirrors that cap, it does not set it.
+ */
 export const MAX_INLINE_SELECTORS = 32;
 
 export const SELECTOR_KINDS = ['preset', 'server', 'workflow', 'tool'] as const;
@@ -60,7 +68,7 @@ export const BUILT_IN_PRESETS: ToolsetPreset[] = [
   {
     name: 'read-only',
     description:
-      "Every tool whose server marks it read-only, and every workflow whose steps only use such tools. Evaluated live, so it follows the servers' own annotations.",
+      "Includes every tool whose connector marks it read-only and every workflow whose steps only use such tools. It is evaluated live, so it follows the connectors' own annotations.",
     built_in: true,
   },
   {
@@ -72,7 +80,7 @@ export const BUILT_IN_PRESETS: ToolsetPreset[] = [
   {
     name: 'full',
     description:
-      "Everything the gateway exposes to whoever invokes the agent, including the platform administration tools. Today's unbounded behaviour, made explicit.",
+      "Includes everything the gateway exposes to whoever invokes the agent, platform tools included. This makes today's unbounded behaviour explicit.",
     built_in: true,
   },
 ];
@@ -120,15 +128,20 @@ export function selectorProblem(raw: string): string | undefined {
 /**
  * Everything wrong with a whole toolset, for the step to block Continue on.
  * Empty when the toolset is acceptable. An empty list is not reported here:
- * the step reads "nothing chosen yet" as its own state.
+ * the step reads "nothing chosen yet" as its own state. `describeCap` words
+ * the cap problem where the catalogue can say what to reduce.
  */
-export function toolsetProblems(selectors: string[]): string[] {
+export function toolsetProblems(
+  selectors: string[],
+  describeCap?: (selectors: string[]) => string,
+): string[] {
   const problems = selectors
     .map(selectorProblem)
     .filter((problem): problem is string => problem !== undefined);
   if (selectors.length > MAX_INLINE_SELECTORS) {
     problems.push(
-      `${selectors.length} selectors is more than the ${MAX_INLINE_SELECTORS} a toolset may list inline. Define a preset for this selection and reference it instead.`,
+      describeCap?.(selectors) ??
+        `This toolset needs ${selectors.length} selectors but may list at most ${MAX_INLINE_SELECTORS}, so choose fewer connectors or tools.`,
     );
   }
   return problems;
@@ -358,6 +371,18 @@ export function gatewayBindings(
 }
 
 /**
+ * Whether the agent binds the gateway at all: what `toolsetOfAgent` reads as
+ * anything but `no-gateway`. Known from the agent alone, before its carrier is
+ * read.
+ */
+export function bindsGateway(
+  agent: Pick<Agent, 'getName' | 'getMcpBindings'>,
+  gatewayName: string = MUSTER_MCP_SERVER_NAME,
+): boolean {
+  return gatewayBindings(agent, gatewayName).length > 0;
+}
+
+/**
  * The toolset an agent declares: its gateway bindings, joined with the
  * `RemoteMCPServer`s of its namespace to read the `X-Muster-Toolset` header
  * off the carrier each binding names. `carriers` undefined means the servers
@@ -397,6 +422,24 @@ export function toolsetOfAgent(
   return unresolved !== undefined
     ? { state: 'unresolved', carrier: unresolved }
     : { state: 'implicit-full', carrier: bindings[0].server.name };
+}
+
+/**
+ * Whether a declared toolset gives the agent tools, which is when its page
+ * has a Tools tab: it binds the gateway and does not declare `preset:none`.
+ * An `unresolved` toolset counts: while its carrier is read, the tab stays
+ * rather than flicker, and an unreadable or missing carrier is explained on
+ * the tab.
+ */
+export function toolsetHasTools(toolset: DeclaredToolset): boolean {
+  switch (toolset.state) {
+    case 'no-gateway':
+      return false;
+    case 'declared':
+      return toolsetShape(toolset.selectors) !== 'none';
+    default:
+      return true;
+  }
 }
 
 /**
@@ -495,6 +538,49 @@ export function serverOfTool(
     }
   }
   return best ? surfaceName(best) : undefined;
+}
+
+/**
+ * The connector an `x_*` tool name belongs to, by its longest matching
+ * prefix, with the tool's own part: `x_agentlab-mcp-kubernetes_get_pods` →
+ * `{ connector: 'kubernetes', tool: 'get_pods' }` for a server of the
+ * kubernetes family. The connector is named as Customize names it (the family
+ * for a family member). `undefined` for a name no server's prefix matches.
+ */
+export function connectorOfTool(
+  name: string,
+  servers: ServerInfo[],
+): { connector: string; tool: string } | undefined {
+  let best: ServerInfo | undefined;
+  for (const server of servers) {
+    const prefix = server.toolNamePrefix;
+    if (
+      prefix &&
+      name.startsWith(`${prefix}_`) &&
+      (!best || prefix.length > best.toolNamePrefix.length)
+    ) {
+      best = server;
+    }
+  }
+  return best
+    ? {
+        connector: surfaceName(best),
+        tool: name.slice(best.toolNamePrefix.length + 1),
+      }
+    : undefined;
+}
+
+/**
+ * A muster server as Customize names it — the family for a family member —
+ * from its CR name or its tool-name segment (`agentlab-mcp-kubernetes` →
+ * `kubernetes`); the name itself when no server matches.
+ */
+export function connectorName(server: string, servers: ServerInfo[]): string {
+  const match = servers.find(
+    candidate =>
+      candidate.name === server || candidate.toolNamePrefix === `x_${server}`,
+  );
+  return match ? surfaceName(match) : server;
 }
 
 export function isCoreTool(tool: Pick<ToolSummary, 'name' | 'kind'>): boolean {
@@ -607,7 +693,7 @@ export function hasEntries(group: CatalogueGroup): boolean {
  * installation has is listed — as an empty, sign-in-gated bucket when the
  * caller's session cannot see its tools — so an author can pick a whole server
  * they cannot browse themselves. Tools muster attributes to a server no CR
- * describes still appear (under Registered servers) so nothing is hidden.
+ * describes still appear (under Registered connectors) so nothing is hidden.
  * Empty groups are dropped.
  */
 export function buildCatalogue(
@@ -794,12 +880,11 @@ export function serverSelector(name: string): string {
   return `server:${name}`;
 }
 
-/**
- * How many rows a list on the Tools step (and a section of the resolved list)
- * shows before asking for a click: a gateway lists hundreds of tools, and a
- * page that renders every one of them at once is the page nobody scrolls.
- */
-export const INITIAL_ROWS = 20;
+// The list-scale constants and `countNoun` live in ui-react beside `ShowMore`
+// (muster uses them too); re-exported here for this plugin's existing imports.
+// Lists behind disclosures use the higher `AUTO_EXPAND_MAX` (20) instead of
+// `SEARCH_MIN`.
+export { countNoun, INITIAL_ROWS, SEARCH_MIN };
 
 /**
  * Below this many workflows there is nothing to group — one short list reads
@@ -940,13 +1025,4 @@ export function catalogueInventory(
     inventory.workflows += group.workflows.length;
   }
   return inventory;
-}
-
-/** `1 tool` / `3 tools`. */
-export function countNoun(
-  count: number,
-  noun: string,
-  plural = `${noun}s`,
-): string {
-  return `${count} ${count === 1 ? noun : plural}`;
 }

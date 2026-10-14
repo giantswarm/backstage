@@ -6,7 +6,8 @@ import { CodeBlock } from '../CodeBlock';
 
 /**
  * cluster-manager's rendered manifests as the review shows them: each as YAML
- * with Copy and Download, for the person who applies it another way.
+ * with Download beside the code block's own copy control, for the person who
+ * applies it another way.
  */
 export function ManifestList({ manifests }: { manifests: Manifest[] }) {
   return (
@@ -18,13 +19,6 @@ export function ManifestList({ manifests }: { manifests: Manifest[] }) {
           <Flex key={filename} direction="column" gap="1">
             <CodeBlock filename={filename} content={content} language="yaml" />
             <Flex gap="2">
-              <Button
-                size="small"
-                variant="tertiary"
-                onPress={() => navigator.clipboard?.writeText(content)}
-              >
-                Copy
-              </Button>
               <Button
                 size="small"
                 variant="tertiary"

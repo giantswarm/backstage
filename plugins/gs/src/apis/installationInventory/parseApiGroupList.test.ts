@@ -23,7 +23,7 @@ describe('parseApiGroupList', () => {
       parseApiGroupList(
         apiGroupList([
           'apps',
-          'kagent.dev',
+          'api.kagent.dev',
           'serving.kserve.io',
           'helm.toolkit.fluxcd.io',
         ]),
@@ -46,7 +46,7 @@ describe('parseApiGroupList', () => {
   it('skips malformed group entries instead of failing the whole list', () => {
     expect(
       parseApiGroupList({
-        groups: [null, 42, {}, { name: 7 }, { name: 'kagent.dev' }],
+        groups: [null, 42, {}, { name: 7 }, { name: 'api.kagent.dev' }],
       }),
     ).toEqual({ kagent: true, muster: false, kserve: false, capi: false });
   });
@@ -54,9 +54,9 @@ describe('parseApiGroupList', () => {
   it.each([
     ['an empty object', {}],
     ['null', null],
-    ['an array', ['kagent.dev']],
-    ['a string', 'kagent.dev'],
-    ['groups that is not an array', { groups: { name: 'kagent.dev' } }],
+    ['an array', ['api.kagent.dev']],
+    ['a string', 'api.kagent.dev'],
+    ['groups that is not an array', { groups: { name: 'api.kagent.dev' } }],
   ])('throws on %s: not an API group list', (_label, body) => {
     // A proxy error page or a sign-in form must not read as "no components",
     // which would silently empty every tab for that installation.
@@ -83,7 +83,7 @@ describe('isPlatformComponents', () => {
     ['a partial record', { kagent: true, kserve: false }],
     ['non-boolean flags', { kagent: 'yes', muster: 0, kserve: 1, capi: null }],
     ['the previous KServe probe shape', { hasInferenceServices: true }],
-    ['a list of group names', ['kagent.dev']],
+    ['a list of group names', ['api.kagent.dev']],
     ['undefined', undefined],
     ['null', null],
   ])(

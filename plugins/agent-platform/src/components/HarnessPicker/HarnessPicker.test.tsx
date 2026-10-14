@@ -2,7 +2,10 @@ import { useEffect } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Harness } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Harness,
+  type ClaudeHarnessLimits,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { HarnessPicker } from './HarnessPicker';
@@ -27,12 +30,12 @@ function harness(
   {
     namespace = 'kagent',
     displayName = undefined as string | undefined,
-    admits = name,
+    limits = undefined as ClaudeHarnessLimits | undefined,
   } = {},
 ): Harness {
   return new Harness(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'Harness',
       metadata: {
         name,
@@ -42,12 +45,7 @@ function harness(
         }),
       },
       spec: {
-        allowedAgentTemplates: {
-          selector: {
-            matchLabels: { 'agent-platform.giantswarm.io/harness': admits },
-          },
-        },
-        [runtime]: {},
+        [runtime]: limits ? { limits } : {},
         workload: { image: `registry.example/${name}-harness@sha256:0123` },
       },
     } as never,
@@ -64,7 +62,7 @@ function Probe() {
     selectModelConfig('opus', 'kagent');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  formHarness = state.harness?.admits;
+  formHarness = state.harness?.name;
   return (
     <button type="button" onClick={() => selectModelConfig('sonnet', 'demo')}>
       Pick a model in demo
@@ -106,9 +104,7 @@ describe('HarnessPicker', () => {
     expect(card).toHaveTextContent('Platform default');
     expect(card).toHaveTextContent('Harness kagent');
     expect(
-      screen.getByText(
-        'What runs the agent: the only Harness in kagent on gazelle.',
-      ),
+      screen.getByText('The only Harness in kagent on gazelle runs the agent.'),
     ).toBeInTheDocument();
   });
 
@@ -125,7 +121,7 @@ describe('HarnessPicker', () => {
     );
     await render();
 
-    expect(screen.getByText("Couldn't read the runtimes")).toBeInTheDocument();
+    expect(screen.getByText('Could not read the runtimes')).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
   });
 
@@ -164,7 +160,7 @@ describe('HarnessPicker', () => {
 
     expect(formHarness).toBeUndefined();
     expect(screen.getByRole('status')).toHaveTextContent(
-      "The Harness claude you picked doesn't serve this model's namespace",
+      "The Harness claude does not serve this model's namespace",
     );
   });
 
@@ -209,48 +205,24 @@ describe('HarnessPicker', () => {
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
   });
 
-  it('selects only the clicked card when two Harnesses admit the same value', async () => {
+  it('selects only the clicked card when two Harnesses share a runtime', async () => {
     mockUseResources.mockReturnValue(
       listing([
         harness('kagent', 'kagent'),
-        harness('claude-go', 'claude', { admits: 'claude' }),
-        harness('claude-rust', 'claude', { admits: 'claude' }),
+        harness('claude-go', 'claude'),
+        harness('claude-rust', 'claude'),
       ]),
     );
     const user = userEvent.setup();
     await render();
 
     await user.click(screen.getByRole('radio', { name: /Harness claude-go/ }));
-    expect(formHarness).toBe('claude');
+    expect(formHarness).toBe('claude-go');
     expect(
       screen.getByRole('radio', { name: /Harness claude-go/ }),
     ).toHaveAttribute('aria-checked', 'true');
     expect(
       screen.getByRole('radio', { name: /Harness claude-rust/ }),
-    ).toHaveAttribute('aria-checked', 'false');
-    expect(
-      screen.getByRole('radio', { name: /Harness claude-go/ }),
-    ).toHaveAccessibleDescription(
-      'Admits the same agents as claude-rust: the agent runs on both.',
-    );
-  });
-
-  it('treats a second Harness admitting the platform value as its own pick', async () => {
-    mockUseResources.mockReturnValue(
-      listing([
-        harness('kagent', 'kagent'),
-        harness('kagent-canary', 'kagent', { admits: 'kagent' }),
-      ]),
-    );
-    const user = userEvent.setup();
-    await render();
-
-    const canary = screen.getByRole('radio', { name: /Harness kagent-canary/ });
-    await user.click(canary);
-    expect(formHarness).toBe('kagent');
-    expect(canary).toHaveAttribute('aria-checked', 'true');
-    expect(
-      screen.getByRole('radio', { name: /Harness kagent,/ }),
     ).toHaveAttribute('aria-checked', 'false');
   });
 
@@ -265,9 +237,56 @@ describe('HarnessPicker', () => {
 
     expect(
       screen.getByText(
-        "Some runtimes couldn't be loaded; the list may be incomplete.",
+        'Could not read some runtimes, so the list may be incomplete.',
       ),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('radio')).toHaveLength(2);
+  });
+
+  it('shows the limits of a Claude Code platform Harness, read-only', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'claude', {
+          limits: { budgetUSD: '1.50', maxTurns: 20 },
+        }),
+      ]),
+    );
+    await render();
+
+    const limits = screen.getByRole('group', { name: 'Limits' });
+    expect(limits).toHaveTextContent('Budget per turn$1.50');
+    expect(limits).toHaveTextContent('Max steps per turn20');
+    expect(limits).toHaveTextContent(
+      'Set on Harness kagent, shared by every agent on it.',
+    );
+    expect(limits.querySelector('input, button')).toBeNull();
+  });
+
+  it('follows the pick: the limits of the Claude Code Harness chosen, none for a declarative one', async () => {
+    const user = userEvent.setup();
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('claude', 'claude', { limits: { maxTurns: 8 } }),
+      ]),
+    );
+    await render();
+
+    expect(screen.queryByRole('group', { name: 'Limits' })).toBeNull();
+
+    await user.click(screen.getByRole('radio', { name: /Harness claude/ }));
+
+    expect(screen.getByRole('group', { name: 'Limits' })).toHaveTextContent(
+      'Max steps per turn8',
+    );
+  });
+
+  it('says a Claude Code Harness sets no limits', async () => {
+    mockUseResources.mockReturnValue(listing([harness('kagent', 'claude')]));
+    await render();
+
+    expect(screen.getByRole('group', { name: 'Limits' })).toHaveTextContent(
+      'No limits set on Harness kagent.',
+    );
   });
 });

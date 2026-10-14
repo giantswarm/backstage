@@ -1,14 +1,14 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Content,
-  EmptyState,
-  Link,
-  Progress,
-} from '@backstage/core-components';
+import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  EmptyStateCard,
+  LoadingIndicator,
+  WizardFrame,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-import { mcpServersRouteRef } from '../../routes';
+import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
 import { useMusterInstance } from '../MusterInstanceProvider';
@@ -48,10 +48,15 @@ export function withEditParam(path: string, name: string | undefined): string {
  *   installation it was opened on, so the edit ends and the user is sent back
  *   to the server list, rather than an update silently targeting another
  *   installation.
+ *
+ * Its own states (reading, not found, blocked) render in the shell's wizard
+ * frame with the shell's empty-state card, named like the edit frame they
+ * stand in for, so the title does not shift when the wizard takes over.
  */
 export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const serversLink = useRouteRef(mcpServersRouteRef);
+  const customizeRoute = useRouteRef(customizeExternalRouteRef);
   const [searchParams] = useSearchParams();
   const editName = searchParams.get(EDIT_PARAM) ?? undefined;
   const { activeInstallation, mcpServers, isLoading, isLoadingInstallations } =
@@ -123,49 +128,58 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  const backToServers = serversLink ? (
-    <Link to={serversLink()}>Back to MCP servers</Link>
+  const connectorsHref = customizeRoute
+    ? `${customizeRoute()}/connectors`
+    : serversLink?.();
+  const backToServers = connectorsHref ? (
+    <Link to={connectorsHref}>Back to connectors</Link>
   ) : undefined;
 
+  let body: ReactNode;
   if (editName && !server && !isLoading && !isLoadingInstallations) {
-    return (
-      <Content>
-        <EmptyState
-          missing="data"
-          title="Server not found"
-          description={`There is no MCP server "${editName}" on ${
-            activeInstallation ?? 'this installation'
-          }.`}
-          action={backToServers}
-        />
-      </Content>
+    body = (
+      <EmptyStateCard
+        title="Connector not found"
+        description={`There is no connector "${editName}" on ${
+          activeInstallation ?? 'this environment'
+        }.`}
+        actions={backToServers}
+      />
     );
-  }
-  if (gitOpsManaged) {
-    return (
-      <Content>
-        <EmptyState
-          missing="info"
-          title="This server is managed in Git"
-          description={`"${editName}" is applied from a GitOps repository, so changes are made there, not in the portal. Its Edit/Remove on the server list links to its source.`}
-          action={backToServers}
-        />
-      </Content>
+  } else if (gitOpsManaged) {
+    body = (
+      <EmptyStateCard
+        title="This connector is managed in Git"
+        description={`"${editName}" is applied from a GitOps repository, so changes are made there, not in the portal. Its Edit/Remove on the connector list links to its source.`}
+        actions={backToServers}
+      />
     );
-  }
-  if (blocker) {
-    return (
-      <Content>
-        <EmptyState
-          missing="info"
-          title="This server cannot be edited in the wizard"
-          description={blocker}
-          action={backToServers}
-        />
-      </Content>
+  } else if (blocker) {
+    body = (
+      <EmptyStateCard
+        title="This connector cannot be edited in the wizard"
+        description={blocker}
+        actions={backToServers}
+      />
     );
+  } else {
+    // Seeding (or resetting) takes one render; the steps must not render in
+    // between, or their guards would redirect on a half-seeded form.
+    body = <LoadingIndicator label="Reading the connector…" />;
   }
-  // Seeding (or resetting) takes one render; the steps must not render in
-  // between, or their guards would redirect on a half-seeded form.
-  return <Progress aria-label="Loading the server" />;
+
+  return (
+    <WizardFrame
+      title={editName ? 'Edit connector' : 'Add connector'}
+      documentTitle={editName ? [`Edit ${editName}`, 'Connectors'] : undefined}
+      context={
+        editName
+          ? `Customize / Connectors / ${editName}`
+          : 'Customize / Connectors'
+      }
+      closeHref={connectorsHref ?? '/'}
+    >
+      {body}
+    </WizardFrame>
+  );
 }

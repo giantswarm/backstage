@@ -4,9 +4,22 @@ import {
   createSubRouteRef,
 } from '@backstage/frontend-plugin-api';
 
+/**
+ * The plans: Hive's Plans tab (`/hive/plans`), so a plan review
+ * (`pullRouteRef`) opens inside Hive.
+ */
 export const rootRouteRef = createRouteRef();
 
-/** The product magazine page (`/product`). */
+/** The Hive section (`/hive`) and its tabs. */
+export const hiveRouteRef = createRouteRef();
+export const hiveNowRouteRef = createRouteRef();
+export const hiveHistoryRouteRef = createRouteRef();
+export const hiveKnowledgeRouteRef = createRouteRef();
+
+/** The old Plans page (`/plans`), now a redirect into Hive. */
+export const legacyPlansRouteRef = createRouteRef();
+
+/** The old product magazine page (`/product`), now a redirect into Hive. */
 export const magazineRouteRef = createRouteRef();
 
 export const pullRouteRef = createSubRouteRef({

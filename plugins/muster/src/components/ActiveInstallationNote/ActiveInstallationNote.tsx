@@ -45,12 +45,11 @@ export function describeActiveInstallation({
     return undefined;
   }
   if (scope === ALL_INSTALLATIONS) {
-    const home =
-      activeInstallation === homeInstallation ? ' (the home installation)' : '';
-    return `One muster at a time: showing ${activeInstallation}${home}. Pin an installation in the page header to see another.`;
+    const home = activeInstallation === homeInstallation ? ' (home)' : '';
+    return `This shows one muster at a time, currently ${activeInstallation}${home}. Pin another environment in the page header.`;
   }
   if (scope !== activeInstallation) {
-    return `No muster is known on ${scope}; showing ${activeInstallation} instead.`;
+    return `There is no muster on ${scope}, so this shows ${activeInstallation}.`;
   }
   return undefined;
 }

@@ -110,6 +110,65 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for the customize page', () => {
+    expect(getTelemetryPageViewPayload('/customize')).toEqual({
+      page: 'Customize',
+      path: '/customize',
+    });
+  });
+
+  it.each(['agents', 'skills', 'connectors', 'models', 'workflows'])(
+    'reports the %s Customize tab as its view',
+    tab => {
+      expect(getTelemetryPageViewPayload(`/customize/${tab}`)).toEqual({
+        page: 'Customize',
+        view: tab,
+        path: `/customize/${tab}`,
+      });
+    },
+  );
+
+  it.each(['infrastructure', 'internal'])(
+    'reports the Connectors tab’s %s sub-tab as its subview',
+    sub => {
+      expect(
+        getTelemetryPageViewPayload(`/customize/connectors/${sub}`),
+      ).toEqual({
+        page: 'Customize',
+        view: 'connectors',
+        subview: sub,
+        path: `/customize/connectors/${sub}`,
+      });
+    },
+  );
+
+  it('reports the retired Families path without a subview, as it redirects', () => {
+    expect(
+      getTelemetryPageViewPayload('/customize/connectors/families'),
+    ).toEqual({
+      page: 'Customize',
+      view: 'connectors',
+      path: '/customize/connectors/families',
+    });
+  });
+
+  it('reports no subview for a path below a sub-tab, which redirects', () => {
+    expect(
+      getTelemetryPageViewPayload('/customize/connectors/infrastructure/x'),
+    ).toEqual({
+      page: 'Customize',
+      view: 'connectors',
+      path: '/customize/connectors/infrastructure/x',
+    });
+  });
+
+  it('reports an unknown Customize tab without a view', () => {
+    expect(getTelemetryPageViewPayload('/customize/whatever')).toEqual({
+      page: 'Customize',
+      path: '/customize/whatever',
+    });
+  });
+
   it('should return correct payload for installations index page', () => {
     const result = getTelemetryPageViewPayload('/installations');
     expect(result).toEqual({
@@ -228,35 +287,50 @@ describe('getTelemetryPageViewPayload', () => {
   });
 
   it.each([
-    ['/agent-platform/mcp-servers', { page: 'MCP Servers' }],
+    ['/agent-platform/connectors', { page: 'Connectors' }],
     [
-      '/agent-platform/mcp-servers/new',
-      { page: 'MCP server registration', view: 'server' },
+      '/agent-platform/connectors/new',
+      { page: 'Connector registration', view: 'server' },
     ],
     [
-      '/agent-platform/mcp-servers/new/auth',
-      { page: 'MCP server registration', view: 'auth' },
+      '/agent-platform/connectors/new/auth',
+      { page: 'Connector registration', view: 'auth' },
     ],
     [
-      '/agent-platform/mcp-servers/kubernetes',
-      { page: 'MCP server', view: 'tools' },
+      '/agent-platform/connectors/kubernetes',
+      { page: 'Connector', view: 'tools' },
     ],
     [
-      '/agent-platform/mcp-servers/kubernetes/details',
-      { page: 'MCP server', view: 'details' },
+      '/agent-platform/connectors/kubernetes/details',
+      { page: 'Connector', view: 'details' },
     ],
     [
-      '/agent-platform/mcp-servers/kubernetes/instances',
-      { page: 'MCP server', view: 'instances' },
+      '/agent-platform/connectors/kubernetes/instances',
+      { page: 'Connector', view: 'instances' },
     ],
+    [
+      '/agent-platform/connectors/kubernetes/used-by',
+      { page: 'Connector', view: 'used-by' },
+    ],
+    [
+      '/agent-platform/connectors/kubernetes/settings',
+      { page: 'Connector', view: 'settings' },
+    ],
+    [
+      '/agent-platform/connectors/kubernetes/tools/x_kubernetes_get_pods',
+      { page: 'Connector tool' },
+    ],
+    // A connector named like a wizard step is not one: only `new` is.
+    [
+      '/agent-platform/connectors/newsroom',
+      { page: 'Connector', view: 'tools' },
+    ],
+    // The tab's old address only redirects now; every path under it reports
+    // as the target page.
+    ['/agent-platform/mcp-servers', { page: 'Connectors', view: 'redirect' }],
     [
       '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
-      { page: 'MCP tool' },
-    ],
-    // A server named like a wizard step is not one: only `new` is.
-    [
-      '/agent-platform/mcp-servers/newsroom',
-      { page: 'MCP server', view: 'tools' },
+      { page: 'Connectors', view: 'redirect' },
     ],
     ['/agent-platform/workflows', { page: 'Workflows' }],
     [
@@ -320,6 +394,8 @@ describe('getTelemetryPageViewPayload', () => {
     it.each([
       ['/agent-platform/models/serving', 'serving'],
       ['/agent-platform/models/capacity', 'capacity'],
+      ['/agent-platform/models/cache', 'cache'],
+      ['/agent-platform/models/hosting', 'hosting'],
       ['/agent-platform/models/new', 'new'],
       // The paths an older release's links still carry, before the redirect to
       // the tab root lands.
@@ -334,11 +410,49 @@ describe('getTelemetryPageViewPayload', () => {
       });
     });
 
-    it('names one model without naming it in page or view', () => {
+    it.each([
+      ['/agent-platform/models/serving/serve', 'Serve model'],
+      ['/agent-platform/models/serving/import', 'Import model'],
+      ['/agent-platform/models/serving/pull', 'Pull model'],
+      ['/agent-platform/models/serving/add-backend', 'Add model backend'],
+      ['/agent-platform/models/capacity/add-pool', 'Add GPU node pool'],
+    ])('counts the hosting flow %s as its own page', (pathname, page) => {
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page,
+        path: pathname,
+      });
+    });
+
+    it.each([
+      '/customize/models/gazelle/agent-platform/gpt-4o',
+      '/customize/models/gazelle/agent-platform/gpt-4o/',
+    ])('names one model without naming it in page or view: %s', pathname => {
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Model detail',
+        path: pathname,
+      });
+    });
+
+    // The old path only redirects; the page it lands on reports Model detail.
+    it("counts a model's former path apart, so an old link is one Model detail", () => {
       const pathname = '/agent-platform/models/gazelle/agent-platform/gpt-4o';
 
       expect(getTelemetryPageViewPayload(pathname)).toEqual({
-        page: 'Model detail',
+        page: 'Model detail redirect',
+        path: pathname,
+      });
+    });
+
+    // Editing is the Connect-a-model flow at `models/edit/<installation>/
+    // <namespace>/<name>`: one page, the model in neither dimension — not a
+    // `view: 'edit'` of the tab, nor a detail page of a model named by its
+    // last three segments.
+    it('counts the model edit flow as one page, not one per model', () => {
+      const pathname =
+        '/agent-platform/models/edit/gazelle/agent-platform/gpt-4o';
+
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Model edit',
         path: pathname,
       });
     });
@@ -357,7 +471,7 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
-  it.each(['tools', 'skills', 'sessions'])(
+  it.each(['tools', 'skills', 'sessions', 'usage'])(
     "should name the agent detail page's %s tab without naming the agent",
     tab => {
       const pathname = `/agent-platform/agents/gazelle/agent-platform/pr-reviewer/${tab}`;
@@ -384,6 +498,25 @@ describe('getTelemetryPageViewPayload', () => {
       page: 'Agent edit',
       path: pathname,
     });
+  });
+
+  // Editing is the create wizard at `agents/edit/<installation>/<namespace>/<name>`:
+  // one page, the step as its `view`, the agent in neither dimension.
+  it('counts the agent edit wizard as one page, its step as the view', () => {
+    const base =
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer';
+
+    expect(getTelemetryPageViewPayload(base)).toEqual({
+      page: 'Agent edit',
+      path: base,
+    });
+    for (const step of ['skills', 'tools', 'review']) {
+      expect(getTelemetryPageViewPayload(`${base}/${step}`)).toEqual({
+        page: 'Agent edit',
+        view: step,
+        path: `${base}/${step}`,
+      });
+    }
   });
 
   // The create flow sits under `agents/` too and is not an agent detail view:
@@ -492,6 +625,16 @@ describe('getTelemetryPageViewPayload', () => {
       '/create',
       '/create/default/template/my-template',
       '/settings',
+      '/customize',
+      '/customize/agents',
+      '/customize/skills',
+      '/customize/connectors',
+      '/customize/connectors/infrastructure',
+      '/customize/connectors/families',
+      '/customize/connectors/internal',
+      '/customize/models',
+      '/customize/models/gazelle/agent-platform/gpt-4o',
+      '/customize/workflows',
       '/installations',
       '/clusters',
       '/clusters/installation/org-demo/demo-cluster',
@@ -501,12 +644,15 @@ describe('getTelemetryPageViewPayload', () => {
       '/flux/tree',
       '/ai-chat',
       '/ai-chat/history',
+      '/agent-platform/connectors',
+      '/agent-platform/connectors/new',
+      '/agent-platform/connectors/new/verify',
+      '/agent-platform/connectors/kubernetes',
+      '/agent-platform/connectors/kubernetes/details',
+      '/agent-platform/connectors/kubernetes/used-by',
+      '/agent-platform/connectors/kubernetes/settings',
+      '/agent-platform/connectors/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/mcp-servers',
-      '/agent-platform/mcp-servers/new',
-      '/agent-platform/mcp-servers/new/verify',
-      '/agent-platform/mcp-servers/kubernetes',
-      '/agent-platform/mcp-servers/kubernetes/details',
-      '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/workflows',
       '/agent-platform/workflows/my-workflow',
       '/agent-platform/workflows/my-workflow/run',
@@ -518,12 +664,28 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/tools',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/skills',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/sessions',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/usage',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit',
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer',
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer/skills',
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer/tools',
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer/review',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
+      '/agent-platform/skills',
+      '/agent-platform/skills/new',
+      '/agent-platform/skills/edit/giantswarm/agent-skills/ticket-triage',
+      '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
+      '/agent-platform/skills/giantswarm/agent-skills/ticket-triage/instructions',
+      '/agent-platform/skills/giantswarm/agent-skills/ticket-triage/used-by',
+      '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage',
+      '/agent-platform/profile',
       '/agent-platform/usage',
       '/agent-platform/usage/overview',
+      '/agents',
+      '/agents/new',
       '/agent-platform/usage/cost',
+      '/agent-platform/usage/connectors',
       '/agent-platform/usage/conversations',
       '/agent-platform/usage/mcp',
       // Pre-existing gaps in this list, closed while adding the one above.
@@ -531,13 +693,29 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/models/serving',
       '/agent-platform/models/new',
       '/agent-platform/models/gazelle/agent-platform/gpt-4o',
+      '/agent-platform/models/edit/gazelle/agent-platform/gpt-4o',
       '/agent-platform/models/capacity',
+      '/agent-platform/models/cache',
+      '/agent-platform/models/hosting',
+      '/agent-platform/models/serving/serve',
+      '/agent-platform/models/serving/import',
+      '/agent-platform/models/serving/pull',
+      '/agent-platform/models/serving/add-backend',
+      '/agent-platform/models/capacity/add-pool',
       '/plans',
       '/bot-prs',
       '/plans/pr/22',
       '/roadmap',
       '/roadmap/items/PVTI_abc123',
       '/product',
+      '/hive',
+      '/hive/now',
+      '/hive/history',
+      '/hive/roadmap',
+      '/hive/roadmap/items/PVTI_x',
+      '/hive/plans',
+      '/hive/plans/pr/22',
+      '/hive/knowledge',
       '/metrics',
       '/search',
     ];
@@ -561,6 +739,7 @@ describe('Usage sub-tabs', () => {
   it.each([
     ['overview', '/agent-platform/usage/overview'],
     ['cost', '/agent-platform/usage/cost'],
+    ['connectors', '/agent-platform/usage/connectors'],
     ['conversations', '/agent-platform/usage/conversations'],
     ['mcp', '/agent-platform/usage/mcp'],
   ])('reports the %s view under page Usage', (view, path) => {
@@ -578,5 +757,79 @@ describe('Usage sub-tabs', () => {
     expect(
       getTelemetryPageViewPayload('/agent-platform/usage/cost'),
     ).not.toMatchObject({ page: 'Agents' });
+  });
+});
+
+describe('Profile', () => {
+  it('reports the shell profile page as its own page, not an Agents view', () => {
+    expect(getTelemetryPageViewPayload('/agent-platform/profile')).toEqual({
+      page: 'Profile',
+      path: '/agent-platform/profile',
+    });
+  });
+});
+
+describe('Skill detail', () => {
+  it('reports one page name, with no view, whatever the skill', () => {
+    expect(
+      getTelemetryPageViewPayload(
+        '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
+      ),
+    ).toEqual({
+      page: 'Skill detail',
+      path: '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
+    });
+    expect(getTelemetryPageViewPayload('/agent-platform/skills').page).toBe(
+      'Skill detail',
+    );
+  });
+
+  it.each(['instructions', 'used-by'])(
+    'reports the %s tab as the view, for GitHub and other git skills',
+    tab => {
+      expect(
+        getTelemetryPageViewPayload(
+          `/agent-platform/skills/giantswarm/agent-skills/ticket-triage/${tab}`,
+        ),
+      ).toEqual({
+        page: 'Skill detail',
+        view: tab,
+        path: `/agent-platform/skills/giantswarm/agent-skills/ticket-triage/${tab}`,
+      });
+      expect(
+        getTelemetryPageViewPayload(
+          `/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage/${tab}`,
+        ),
+      ).toMatchObject({ page: 'Skill detail', view: tab });
+    },
+  );
+
+  it('reports a skill outside github.com as a skill page, with no view', () => {
+    expect(
+      getTelemetryPageViewPayload(
+        '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage',
+      ),
+    ).toEqual({
+      page: 'Skill detail',
+      path: '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage',
+    });
+  });
+
+  it('reports the add-skill form as its own page, not a skill', () => {
+    expect(getTelemetryPageViewPayload('/agent-platform/skills/new')).toEqual({
+      page: 'Add skill',
+      path: '/agent-platform/skills/new',
+    });
+  });
+
+  it('reports editing a skill as its own page, whatever the skill', () => {
+    expect(
+      getTelemetryPageViewPayload(
+        '/agent-platform/skills/edit/giantswarm/agent-skills/ticket-triage',
+      ),
+    ).toEqual({
+      page: 'Edit skill',
+      path: '/agent-platform/skills/edit/giantswarm/agent-skills/ticket-triage',
+    });
   });
 });

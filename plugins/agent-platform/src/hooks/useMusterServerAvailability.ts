@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import type { McpServerRuntime } from '@giantswarm/backstage-plugin-muster';
 
 import { musterServersQueryKey } from '../lib/queryKeys';
@@ -16,7 +17,7 @@ export type MusterServerPresence = 'available' | 'missing' | 'unknown';
  * The segment muster puts in a server's exposed names, which is what a caller
  * addresses it by: `family.name ?? toolPrefix ?? name` (registry.go). The CR
  * name differs from it whenever the server is declared with a `toolPrefix` --
- * `gazelle-mcp-marge` exposes `x_marge_<tool>` -- so the name alone is not the
+ * `mcp-marge` exposes `x_marge_<tool>` -- so the name alone is not the
  * thing to match.
  */
 function exposedNameOf(server: McpServerRuntime): string {
@@ -75,7 +76,7 @@ export function useMusterServerAvailability(
     .map((installation, index) => {
       const query = queries[index];
       const presence = presenceIn(query.data?.mcpServers, serverName);
-      return `${installation}:${presence}:${query.isLoading ? 'l' : ''}`;
+      return `${installation}:${presence}:${isAwaitingData(query) ? 'l' : ''}`;
     })
     .join('|');
 

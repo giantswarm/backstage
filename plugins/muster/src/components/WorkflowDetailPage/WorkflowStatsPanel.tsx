@@ -9,7 +9,10 @@ import {
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { StackedBarChart } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  StackedBarChart,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type { WorkflowStatsPerDay } from '../../apis';
 import { formatDuration } from '../../lib/formatDuration';
@@ -146,6 +149,11 @@ const useStyles = makeStyles((theme: Theme) => ({
 export interface WorkflowStatsPanelProps {
   name: string;
   installation?: string;
+  /**
+   * muster's own per-status totals. When given, the completed/failed
+   * breakdown counts every recorded run instead of the stats sample.
+   */
+  totals?: { completed: number; failed: number };
 }
 
 /**
@@ -162,16 +170,18 @@ export interface WorkflowStatsPanelProps {
 export function WorkflowStatsPanel({
   name,
   installation,
+  totals,
 }: WorkflowStatsPanelProps) {
   const classes = useStyles();
   const theme = useTheme();
   const musterApi = useApi(musterApiRef);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'workflow-stats', installation, name],
     queryFn: () => musterApi.getWorkflowStats(name, installation),
     enabled: name !== '',
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -209,6 +219,8 @@ export function WorkflowStatsPanel({
       ? `, over the most recent ${data.sampled.toLocaleString()} runs`
       : '';
 
+  const completed = totals?.completed ?? data.completed;
+  const failed = totals?.failed ?? data.failed;
   const completedColor = theme.palette.success.main;
   const failedColor = theme.palette.error.main;
 
@@ -218,23 +230,23 @@ export function WorkflowStatsPanel({
         <Stat
           label="Runs"
           value={data.runs.toLocaleString()}
-          hint="Every run muster has a record of for this workflow, the ones still in progress included."
+          hint="Counts every recorded run, including those in progress."
         />
         <Stat
           label="Success rate"
           value={successRate}
           tone={successTone}
-          hint={`Completed runs as a share of finished ones${sampleScope}. Runs still in progress are left out. Amber below 95%.`}
+          hint={`Shows the completed share of finished runs${sampleScope}. Amber below 95%.`}
         />
         <Stat
           label="Avg duration"
           value={avg}
-          hint={`The mean duration of the finished runs, failed ones included${sampleScope}.`}
+          hint={`Shows the mean of finished runs, failed ones included${sampleScope}.`}
         />
         <Stat
           label="Max duration"
           value={max}
-          hint={`The longest finished run, failed ones included${sampleScope}.`}
+          hint={`Shows the longest finished run, failed ones included${sampleScope}.`}
         />
       </Box>
 
@@ -245,7 +257,7 @@ export function WorkflowStatsPanel({
             style={{ backgroundColor: completedColor }}
           />
           <span className={classes.outcomeValue}>
-            {data.completed.toLocaleString()}
+            {completed.toLocaleString()}
           </span>
           completed
         </span>
@@ -255,7 +267,7 @@ export function WorkflowStatsPanel({
             style={{ backgroundColor: failedColor }}
           />
           <span className={classes.outcomeValue}>
-            {data.failed.toLocaleString()}
+            {failed.toLocaleString()}
           </span>
           failed
         </span>

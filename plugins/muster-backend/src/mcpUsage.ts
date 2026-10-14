@@ -42,6 +42,15 @@ export interface McpUsageResponse {
   range_hours: number;
   step_hours: number;
   buckets: McpUsageBucket[];
+  /**
+   * The start of the first bucket the chart fills from a sample, ISO
+   * timestamp — where muster's records start inside the window. Absent when
+   * none does, or when muster recorded calls in the
+   * {@link DATA_START_LOOKBACK_SECONDS} before the window: the window's first
+   * days were then quiet, not unrecorded. A bucket seeded with zeros has no
+   * sample; a series that existed and counted nothing does.
+   */
+  data_start?: string;
   totals: {
     calls: number;
     errors: number;
@@ -107,6 +116,64 @@ export function pickPrometheusServer(
   return prometheusLike.find(name => name.startsWith(installation.name));
 }
 
+const HOUR_SECONDS = 3600;
+const DAY_SECONDS = 24 * HOUR_SECONDS;
+
+/**
+ * How far before the window the outcome query also reads, to tell a window
+ * muster's records do not reach from one whose first days had no calls.
+ *
+ * A series exists only from its label set's first call since muster started,
+ * so a restart followed by a quiet spell leaves none. A week matches the
+ * gateway views' lookback (`DATA_START_LOOKBACK` in the agent-platform
+ * plugin), so the Usage tabs mean the same thing by "recorded only since".
+ */
+export const DATA_START_LOOKBACK_SECONDS = 7 * DAY_SECONDS;
+
+const OUTCOMES = ['ok', 'error', 'error_result'] as const;
+type Outcome = (typeof OUTCOMES)[number];
+
+function isOutcome(value: string | undefined): value is Outcome {
+  return OUTCOMES.some(outcome => outcome === value);
+}
+
+/** What `/usage` covers: the last `n` hours, or the UTC month so far. */
+export type McpUsageRange = number | 'month';
+
+/**
+ * The window a range covers, aligned to whole steps so bucket edges are
+ * stable across reloads. Hourly up to two days, daily beyond and for the
+ * month. A daily window ends at the next UTC midnight, today included.
+ */
+export function usageWindow(
+  range: McpUsageRange,
+  nowSeconds: number,
+): { startSeconds: number; endSeconds: number; stepSeconds: number } {
+  if (range === 'month') {
+    const now = new Date(nowSeconds * 1000);
+    const endSeconds =
+      Math.floor(nowSeconds / DAY_SECONDS) * DAY_SECONDS + DAY_SECONDS;
+    const startSeconds =
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) / 1000;
+    return { startSeconds, endSeconds, stepSeconds: DAY_SECONDS };
+  }
+  if (range > 48) {
+    const endSeconds =
+      Math.floor(nowSeconds / DAY_SECONDS) * DAY_SECONDS + DAY_SECONDS;
+    return {
+      startSeconds: endSeconds - range * HOUR_SECONDS,
+      endSeconds,
+      stepSeconds: DAY_SECONDS,
+    };
+  }
+  const endSeconds = Math.ceil(nowSeconds / HOUR_SECONDS) * HOUR_SECONDS;
+  return {
+    startSeconds: endSeconds - range * HOUR_SECONDS,
+    endSeconds,
+    stepSeconds: HOUR_SECONDS,
+  };
+}
+
 /** Sum of every finite sample across all series (a range-query rollup). */
 function sumPoints(series: PromSeries[]): number {
   let total = 0;
@@ -118,6 +185,23 @@ function sumPoints(series: PromSeries[]): number {
     }
   }
   return total;
+}
+
+/**
+ * The series with only the samples inside the window `(start, end]`: a sample
+ * at T covers `(T - step, T]`, so one at `start` belongs to the step before.
+ */
+function withinWindow(
+  series: PromSeries[],
+  startSeconds: number,
+  endSeconds: number,
+): PromSeries[] {
+  return series.map(s => ({
+    ...s,
+    points: s.points.filter(
+      point => point.ts > startSeconds && point.ts <= endSeconds,
+    ),
+  }));
 }
 
 function parseLe(le: string | undefined): number | undefined {
@@ -225,12 +309,34 @@ function unavailable(hours: number, reason: string): McpUsageResponse {
   };
 }
 
+/**
+ * The prometheus tool's prose, which {@link parsePromToolText} reads. A tool
+ * that answers structured data instead fails here, naming the tool, rather
+ * than parsing to no series and reading as zero calls.
+ */
+function promToolText(tool: string, answer: unknown): string {
+  if (typeof answer !== 'string') {
+    throw new Error(
+      `${tool} answered structured data, not the text the usage query parses`,
+    );
+  }
+  return answer;
+}
+
 export async function getMcpUsage(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
   callOptions: { authToken?: string },
-  hours: number,
+  range: McpUsageRange,
 ): Promise<McpUsageResponse> {
+  const { startSeconds, endSeconds, stepSeconds } = usageWindow(
+    range,
+    Math.floor(Date.now() / 1000),
+  );
+  const hours = (endSeconds - startSeconds) / HOUR_SECONDS;
+  const stepHours = stepSeconds / HOUR_SECONDS;
+  const step = `${stepHours}h`;
+
   const listed = (await client.callTool(
     'core_mcpserver_list',
     {},
@@ -246,35 +352,26 @@ export async function getMcpUsage(
     );
   }
 
-  // Bucket size: hourly up to two days, daily beyond.
-  const stepHours = hours <= 48 ? 1 : 24;
-  const stepSeconds = stepHours * 3600;
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  // Align the window to whole steps so bucket edges are stable across reloads.
-  const endSeconds = Math.ceil(nowSeconds / stepSeconds) * stepSeconds;
-  const startSeconds = endSeconds - hours * 3600;
-  const step = `${stepHours}h`;
-
   const runQuery = async (
     tool: typeof QUERY_TOOL | typeof RANGE_TOOL,
     args: Record<string, unknown>,
   ): Promise<PromSeries[]> => {
     // Family naming first (the GS deployment shape), plain prefix fallback.
     try {
-      const text = (await client.callTool(
+      const text = await client.callTool(
         `${FAMILY_PREFIX}${tool}`,
         { ...args, management_cluster: promServer },
         callOptions,
-      )) as string;
-      return parsePromToolText(String(text));
+      );
+      return parsePromToolText(promToolText(tool, text));
     } catch (familyError) {
       try {
-        const text = (await client.callTool(
+        const text = await client.callTool(
           `x_${promServer}_${tool}`,
           args,
           callOptions,
-        )) as string;
-        return parsePromToolText(String(text));
+        );
+        return parsePromToolText(promToolText(tool, text));
       } catch {
         throw familyError;
       }
@@ -288,34 +385,50 @@ export async function getMcpUsage(
   // read from the store-gateway path — which is exactly what degrades when a
   // store-gateway has a bad day (observed on an internal installation: [1h]
   // fine, [12h]+ returning 500 while the equivalent range query kept working).
-  const rangeQuery = (query: string): Promise<PromSeries[]> =>
+  // The first evaluation is one step after the window's start: the one at the
+  // start itself covers the step before the window.
+  const rangeQueryFrom = (
+    query: string,
+    fromSeconds: number,
+  ): Promise<PromSeries[]> =>
     runQuery(RANGE_TOOL, {
       query,
       // RFC3339, not Unix seconds: mcp-prometheus documents both but its
       // deployed versions only parse RFC3339.
-      start: new Date(startSeconds * 1000).toISOString(),
+      start: new Date((fromSeconds + stepSeconds) * 1000).toISOString(),
       end: new Date(endSeconds * 1000).toISOString(),
       step,
     });
+  const rangeQuery = (query: string): Promise<PromSeries[]> =>
+    rangeQueryFrom(query, startSeconds).then(series =>
+      withinWindow(series, startSeconds, endSeconds),
+    );
+  const lookbackStart = startSeconds - DATA_START_LOOKBACK_SECONDS;
   // The secondary rollups degrade to empty on failure instead of taking the
   // whole view down.
   const optional = (promise: Promise<PromSeries[]>): Promise<PromSeries[]> =>
     promise.catch(() => []);
 
-  let byOutcomeOverTime: PromSeries[];
+  let byOutcomeWithLookback: PromSeries[];
   let byToolOutcome: PromSeries[];
   let byServerOutcome: PromSeries[];
   let latencyBuckets: PromSeries[];
   let latencyBucketsByTool: PromSeries[];
   try {
     [
-      byOutcomeOverTime,
+      byOutcomeWithLookback,
       byToolOutcome,
       byServerOutcome,
       latencyBuckets,
       latencyBucketsByTool,
     ] = await Promise.all([
-      rangeQuery(`sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`),
+      // Read from a week before the window: the extra points say whether
+      // muster recorded anything there (`data_start`), and are dropped before
+      // anything is counted.
+      rangeQueryFrom(
+        `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`,
+        lookbackStart,
+      ),
       optional(
         rangeQuery(
           `sum by (tool, outcome) (increase(${METRIC_CALLS}[${step}]))`,
@@ -342,6 +455,22 @@ export async function getMcpUsage(
     );
   }
 
+  const byOutcomeOverTime = withinWindow(
+    byOutcomeWithLookback,
+    startSeconds,
+    endSeconds,
+  );
+  const recordedBeforeWindow = byOutcomeWithLookback.some(
+    series =>
+      isOutcome(series.labels.outcome) &&
+      series.points.some(
+        point =>
+          point.ts > lookbackStart &&
+          point.ts <= startSeconds &&
+          Number.isFinite(point.value),
+      ),
+  );
+
   // Time buckets: seed every step in the window so the chart reads as a full
   // range, then fill from the range-query samples. A sample at timestamp T
   // covers (T - step, T]; label the bucket by its start for display.
@@ -358,15 +487,21 @@ export async function getMcpUsage(
       error_result: 0,
     });
   }
+  // The first step the chart fills from a sample, by the chart's own
+  // definition of one, so the note and the bars cannot disagree.
+  let firstSampled: number | undefined;
   for (const series of byOutcomeOverTime) {
     const outcome = series.labels.outcome;
-    if (outcome !== 'ok' && outcome !== 'error' && outcome !== 'error_result') {
+    if (!isOutcome(outcome)) {
       continue;
     }
     for (const point of series.points) {
       const bucket = buckets.get(point.ts);
       if (bucket && Number.isFinite(point.value)) {
         bucket[outcome] += point.value;
+        if (firstSampled === undefined || point.ts < firstSampled) {
+          firstSampled = point.ts;
+        }
       }
     }
   }
@@ -431,6 +566,10 @@ export async function getMcpUsage(
     range_hours: hours,
     step_hours: stepHours,
     buckets: [...buckets.values()],
+    ...(firstSampled !== undefined &&
+      !recordedBeforeWindow && {
+        data_start: new Date((firstSampled - stepSeconds) * 1000).toISOString(),
+      }),
     totals: {
       calls: totalCalls,
       errors: totalErrors,

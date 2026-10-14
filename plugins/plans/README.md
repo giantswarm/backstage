@@ -1,7 +1,7 @@
 # @giantswarm/backstage-plugin-plans
 
 Frontend plugin (`pluginId: plans`) that renders team planning documents from
-GitHub plan repositories (e.g. `giantswarm/bumblebee-plans`) inside the dev
+GitHub plan repositories (e.g. `<owner>/<plans-repo>`) inside the dev
 portal.
 
 ## Features
@@ -39,7 +39,7 @@ app:
     - api:plans
 plans:
   repositories:
-    - giantswarm/bumblebee-plans
+    - <owner>/<plans-repo>
 ```
 
 ### Magazine

@@ -40,12 +40,6 @@ type EntityCheckboxesPickerProps<
   initialSelectedOptions?: string[];
   filtersForAvailableValues?: Array<keyof T>;
   optionsOrder?: string[];
-  /**
-   * Orders the options when the set is open-ended and a fixed `optionsOrder`
-   * cannot name them up front — a list of versions, say. Takes precedence over
-   * `optionsOrder` when both are given.
-   */
-  compareOptions?: (a: string, b: string) => number;
   renderOption?: (option: string) => ReactNode;
 };
 
@@ -61,7 +55,6 @@ export function EntityCheckboxesPicker<
     initialSelectedOptions = [],
     filtersForAvailableValues = ['kind'],
     optionsOrder,
-    compareOptions,
     renderOption,
   } = props;
 
@@ -108,15 +101,12 @@ export function EntityCheckboxesPicker<
     }
   }, [queryParameters]);
 
-  const availableOptions = Object.keys(availableValues ?? {}).sort(
-    compareOptions ??
-      ((a, b) => {
-        const aIndex = optionsOrder?.indexOf(a) ?? -1;
-        const bIndex = optionsOrder?.indexOf(b) ?? -1;
+  const availableOptions = Object.keys(availableValues ?? {}).sort((a, b) => {
+    const aIndex = optionsOrder?.indexOf(a) ?? -1;
+    const bIndex = optionsOrder?.indexOf(b) ?? -1;
 
-        return aIndex - bIndex;
-      }),
-  );
+    return aIndex - bIndex;
+  });
   const shouldAddFilter = selectedOptions.length && availableOptions.length;
 
   useEffect(() => {

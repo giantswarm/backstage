@@ -11,9 +11,15 @@ import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
   createUnifiedTheme,
   palettes,
+  UnifiedThemeOptions,
   UnifiedThemeProvider,
 } from '@backstage/theme';
 import type { Config } from '@backstage/config';
+import { useAgentShellAttribute } from '../agentShell/AgentShellThemeRoot';
+import {
+  AGENT_SHELL_FONT_FAMILY,
+  agentShellLightColors,
+} from '../agentShell/theme';
 
 type Variant = 'light' | 'dark';
 
@@ -22,8 +28,13 @@ const CONFIG_KEY: Record<Variant, string> = {
   dark: 'app.branding.theme.dark',
 };
 
-export function buildPalette(configApi: Config, variant: Variant) {
-  const base = palettes[variant] as typeof palettes.dark;
+type BrandedPalette = typeof palettes.dark & { text?: { primary?: string } };
+
+export function buildPalette(
+  configApi: Config,
+  variant: Variant,
+): BrandedPalette {
+  const base = palettes[variant] as BrandedPalette;
   const root = configApi.getOptionalConfig(CONFIG_KEY[variant]);
   if (!root) {
     return base;
@@ -51,7 +62,7 @@ export function buildPalette(configApi: Config, variant: Variant) {
       background: { ...base.background, default: background },
     }),
     ...(text && {
-      text: { ...(base as { text?: object }).text, primary: text },
+      text: { ...base.text, primary: text },
     }),
     navigation: {
       ...base.navigation,
@@ -60,6 +71,61 @@ export function buildPalette(configApi: Config, variant: Variant) {
       ...(navColor && { color: navColor }),
       ...(navSelectedColor && { selectedColor: navSelectedColor }),
     },
+  };
+}
+
+function withAgentShellColors(palette: BrandedPalette) {
+  const colors = agentShellLightColors;
+  return {
+    ...palette,
+    primary: { ...palette.primary, main: colors.primary },
+    text: {
+      ...palette.text,
+      primary: colors.text,
+      secondary: colors.textSecondary,
+    },
+    background: {
+      ...palette.background,
+      default: colors.background,
+      paper: colors.surface,
+    },
+    divider: colors.divider,
+    border: colors.border,
+    textSubtle: colors.textSecondary,
+    link: colors.link,
+    linkHover: colors.linkHover,
+    status: {
+      ...palette.status,
+      ok: colors.success,
+      warning: colors.warning,
+      error: colors.error,
+      running: colors.running,
+    },
+    warningBackground: colors.warningBackground,
+    warningText: colors.warningText,
+    infoBackground: colors.infoBackground,
+    infoText: colors.infoText,
+  };
+}
+
+export function buildThemeOptions(
+  configApi: Config,
+  variant: Variant,
+  agentShell: boolean,
+): UnifiedThemeOptions {
+  if (!agentShell) {
+    return { palette: buildPalette(configApi, variant) };
+  }
+  // The agent shell is light-only: while `data-agent-shell` is set, both
+  // providers build the light agent-shell palette, so a dark theme preference
+  // renders light on agent routes. UnifiedThemeProvider derives the body's
+  // `data-theme-mode` attribute from the palette, which is all bui (and
+  // agent-shell.css, scoped to body[data-theme-mode='light']) keys dark
+  // styles off, so this keeps those light too. Classic routes drop the mark
+  // and return to the user's choice.
+  return {
+    palette: withAgentShellColors(buildPalette(configApi, 'light')),
+    fontFamily: AGENT_SHELL_FONT_FAMILY,
   };
 }
 
@@ -95,9 +161,14 @@ function CustomThemeProvider({
   children: ReactNode;
 }) {
   const configApi = useApi(configApiRef);
+  // The theme providers render above the router, so they follow the
+  // `data-agent-shell` document mark that AgentShellThemeRoot keys off the
+  // location, rather than reading the flag (which would restyle classic pages
+  // for flag users).
+  const agentShell = useAgentShellAttribute();
   const theme = useMemo(
-    () => createUnifiedTheme({ palette: buildPalette(configApi, variant) }),
-    [configApi, variant],
+    () => createUnifiedTheme(buildThemeOptions(configApi, variant, agentShell)),
+    [configApi, variant, agentShell],
   );
   const cssOverrides = getCssVariableOverrides(configApi, variant);
   return (

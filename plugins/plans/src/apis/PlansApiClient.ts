@@ -196,9 +196,14 @@ export class PlansApiClient implements PlansApi {
       const errorData = (await response.json().catch(() => ({}))) as {
         error?: { name?: string; message?: string; authUrl?: string };
       };
+      // No error body of the backend's: the gateway answered for it, as it
+      // does while a backend pod stops. Transient, so retried, never final.
+      const fromGateway = !errorData?.error && response.status >= 502;
       const message =
         errorData?.error?.message ??
-        `Plans request failed with status ${response.status}`;
+        (fromGateway
+          ? `The portal backend did not answer (status ${response.status}); it may be restarting.`
+          : `Plans request failed with status ${response.status}`);
       if (errorData?.error?.name === 'MusterServerNotConnectedError') {
         throw new MusterServerNotConnectedError(
           message,
@@ -210,7 +215,9 @@ export class PlansApiClient implements PlansApi {
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';
       if (response.status === 429) error.name = 'TooManyRequestsError';
-      if (response.status === 503) error.name = 'ServiceUnavailableError';
+      if (response.status === 503 && !fromGateway) {
+        error.name = 'ServiceUnavailableError';
+      }
       throw error;
     }
     return response.json() as Promise<T>;

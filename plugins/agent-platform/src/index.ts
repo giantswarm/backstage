@@ -1,2 +1,44 @@
 export { agentPlatformPlugin as default } from './plugin';
 export { agentPlatformPlugin } from './plugin';
+export { AgentPlatformProviders } from './components/AgentPlatformProviders';
+export { RecentSessions } from './components/RecentSessions';
+export type { RecentSessionsProps } from './components/RecentSessions';
+export { NeedsInputToasts } from './components/NeedsInputToasts';
+export { AgentPlatformHome } from './components/AgentPlatformHome';
+export { StartNewSession } from './components/StartNewSession';
+export type {
+  StartNewSessionLayout,
+  StartNewSessionProps,
+} from './components/StartNewSession';
+export { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
+export { usePinnedSessions } from './hooks/usePinnedSessions';
+export type { PinnedSession } from './hooks/usePinnedSessions';
+export { useFavoriteAgents } from './hooks/useFavoriteAgents';
+export type { FavoriteAgent } from './hooks/useFavoriteAgents';
+export { CommandPalette } from './components/CommandPalette';
+export type { CommandPaletteProps } from './components/CommandPalette';
+export { ServingLayerGate } from './components/ServingLayerGate';
+export type { AgentPlatformHomeProps } from './components/AgentPlatformHome';
+export {
+  CustomizeDataProvider,
+  useCustomizeData,
+} from './components/CustomizeDataProvider';
+export type {
+  CustomizeCounts,
+  CustomizeDataValue,
+} from './components/CustomizeDataProvider';
+export { CustomizeAgentsPanel } from './components/CustomizeAgentsPanel';
+export type { CustomizeAgentsPanelProps } from './components/CustomizeAgentsPanel';
+export {
+  CustomizeSkillsPanel,
+  useCanAddSkill,
+} from './components/CustomizeSkillsPanel';
+export type { CustomizeSkillsPanelProps } from './components/CustomizeSkillsPanel';
+export { CustomizeModelsPanel } from './components/CustomizeModelsPanel';
+export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
+export { CustomizeModelPage } from './components/CustomizeModelPage';
+export { WorkflowCreateAssist } from './components/WorkflowCreateAssist';
+export type { WorkflowCreateAssistProps } from './components/WorkflowCreateAssist';
+export { EnvironmentSelect } from './components/EnvironmentSelect';
+export type { EnvironmentSelectProps } from './components/EnvironmentSelect';
+export { useMetaAgent } from './hooks/useMetaAgent';

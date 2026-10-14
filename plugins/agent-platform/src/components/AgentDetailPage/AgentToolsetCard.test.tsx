@@ -58,16 +58,19 @@ type ToolEntry = {
 function makeAgent(tools: ToolEntry[]) {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: { name: 'pr-reviewer', namespace: 'kagent' },
       spec: {
-        modelConfig: { name: 'opus' },
-        tools: tools.map(tool => ({
-          mcp: {
-            server: { kind: 'RemoteMCPServer', name: tool.mcpServer.name },
-          },
-        })),
+        harnessRef: { name: 'kagent' },
+        template: {
+          modelConfig: { name: 'opus' },
+          tools: tools.map(tool => ({
+            mcp: {
+              server: { kind: 'RemoteMCPServer', name: tool.mcpServer.name },
+            },
+          })),
+        },
       },
     } as never,
     'gazelle',
@@ -82,7 +85,7 @@ const GATEWAY = { name: 'pr-reviewer' };
 function carrier(toolset?: string) {
   return new RemoteMCPServer(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'RemoteMCPServer',
       metadata: { name: 'pr-reviewer', namespace: 'kagent' },
       spec: {
@@ -273,7 +276,7 @@ describe('AgentToolsetCard', () => {
 
     expect(screen.getByText('Toolset not readable')).toBeInTheDocument();
     expect(
-      screen.getByText(/RemoteMCPServers of namespace kagent on gazelle/),
+      screen.getByText(/RemoteMCPServers in kagent on gazelle/),
     ).toBeInTheDocument();
   });
 
@@ -284,12 +287,14 @@ describe('AgentToolsetCard', () => {
 
     expect(screen.getByText('Gateway server missing')).toBeInTheDocument();
     expect(
-      screen.getByText(/no server of that name exists in namespace kagent/),
+      screen.getByText(/which does not exist in kagent/),
     ).toBeInTheDocument();
     expect(screen.queryByText('Toolset not readable')).not.toBeInTheDocument();
   });
 
-  it('says No tools at once for a chat-only agent, without waiting for the read', async () => {
+  // The page shows the card for an agent with tools only (`toolsetHasTools`);
+  // for one without, it draws nothing rather than a second "No tools".
+  it('draws nothing for an agent without a gateway entry, without waiting for the read', async () => {
     await renderCard(
       makeAgent([{ mcpServer: { name: 'grafana' } }]),
       undefined,
@@ -300,11 +305,7 @@ describe('AgentToolsetCard', () => {
       },
     );
 
-    // No gateway binding: decided by the agent alone, so the carrier read has
-    // no bearing on it. The indicator is pinned by its bar and not by its
-    // label — `Progress` renders the testid hidden from the first paint, while
-    // the label is held back 250ms and would be absent either way.
-    expect(screen.getByText('No tools')).toBeInTheDocument();
+    expect(screen.queryByText('Toolset')).not.toBeInTheDocument();
     expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
   });
 
@@ -313,28 +314,16 @@ describe('AgentToolsetCard', () => {
     await renderCard(makeAgent([{ mcpServer: GATEWAY }]), api);
 
     expect(screen.getByText('Implicit full access')).toBeInTheDocument();
-    expect(screen.getByText(/declares no toolset/)).toBeInTheDocument();
+    expect(screen.getByText(/No toolset declared/)).toBeInTheDocument();
     // Nothing to resolve.
     expect(filterTools).not.toHaveBeenCalled();
   });
 
-  it('labels an agent with no gateway entry as No tools', async () => {
-    const { api } = makeApi(resolvedAnswer());
-    await renderCard(makeAgent([{ mcpServer: { name: 'grafana' } }]), api);
-
-    expect(screen.getByText('No tools')).toBeInTheDocument();
-    expect(
-      screen.getByText(/what a toolset of preset:none renders to/),
-    ).toBeInTheDocument();
-  });
-
-  it('labels the none preset as No tools without asking muster', async () => {
+  it('draws nothing for the none preset, without asking muster', async () => {
     const { api, filterTools } = makeApi(resolvedAnswer());
     await renderCard(withToolset('preset:none'), api);
 
-    // The chip and the alert both say so; the chip keeps the selector.
-    expect(screen.getAllByText('No tools')).toHaveLength(2);
-    expect(screen.getByTitle('preset:none')).toHaveTextContent('No tools');
+    expect(screen.queryByText('Toolset')).not.toBeInTheDocument();
     expect(filterTools).not.toHaveBeenCalled();
   });
 
@@ -343,9 +332,7 @@ describe('AgentToolsetCard', () => {
     await renderCard(withToolset('preset:full'), api);
 
     expect(screen.getByText('Full gateway access')).toBeInTheDocument();
-    expect(
-      screen.getByText(/platform administration included/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/platform tools included/)).toBeInTheDocument();
   });
 
   it('shows the declared selectors and what they resolve to for the viewer, per group', async () => {
@@ -372,7 +359,7 @@ describe('AgentToolsetCard', () => {
     // counts; a resolution this short opens itself.
     expect(
       screen.getByRole('button', {
-        name: 'Infrastructure — 1 server · 1 tool',
+        name: 'Infrastructure — 1 connector with 1 tool',
       }),
     ).toBeInTheDocument();
     expect(
@@ -414,7 +401,7 @@ describe('AgentToolsetCard', () => {
     await renderCard(withToolset('preset:read-only,server:pro'), api);
 
     expect(
-      await screen.findByText("Sign in to see these servers' tools"),
+      await screen.findByText("Sign in to see these connectors' tools"),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
   });
@@ -429,7 +416,7 @@ describe('AgentToolsetCard', () => {
 
     expect(
       await screen.findByText(
-        'The toolset names a preset this installation does not define',
+        'The toolset names a preset this environment does not define',
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/unknown preset "legacy"/)).toBeInTheDocument();
@@ -446,7 +433,7 @@ describe('AgentToolsetCard', () => {
 
     expect(
       await screen.findByText(
-        "This installation's muster does not evaluate toolsets yet",
+        "This environment's muster does not evaluate toolsets yet",
       ),
     ).toBeInTheDocument();
   });

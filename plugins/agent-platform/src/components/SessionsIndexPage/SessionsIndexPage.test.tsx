@@ -1,21 +1,13 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { useState, type ReactNode } from 'react';
 
 import { agentsRouteRef, sessionsRouteRef } from '../../routes';
-import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionsContextValue } from '../SessionsDataProvider';
 import { SessionsIndexPage } from './SessionsIndexPage';
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
-}));
-
-const mockUseAgents = jest.fn<AgentsContextValue, []>();
-jest.mock('../AgentsDataProvider', () => ({
-  ...jest.requireActual('../AgentsDataProvider'),
-  useAgents: () => mockUseAgents(),
 }));
 
 const mockUseSessions = jest.fn<SessionsContextValue, []>();
@@ -73,41 +65,6 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   InstallationInventoryGate: () => null,
 }));
 
-const mockCreateSession = jest.fn();
-const mockUseCreateSession = jest.fn();
-jest.mock('../../hooks/useCreateSession', () => ({
-  useCreateSession: () => mockUseCreateSession(),
-}));
-
-const mockNavigate = jest.fn();
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useNavigate: () => mockNavigate,
-}));
-
-function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
-  return {
-    id: 'gazelle/kagent/sre-agent',
-    installation: 'gazelle',
-    namespace: 'kagent',
-    name: 'SRE Agent',
-    technicalName: 'sre-agent',
-    description: 'Investigates incidents',
-    skillCount: 3,
-    readiness: 'ready',
-    ...overrides,
-  };
-}
-
-const sre = agentRow();
-// A second ready agent, so the picker offers a real choice: with one agent it is
-// preselected and disabled, which would make "the chosen agent" meaningless here.
-const issues = agentRow({
-  id: 'gazelle/kagent/issue-tracker',
-  name: 'Issue Tracker',
-  technicalName: 'issue-tracker',
-});
-
 // One session, for the tests that are about the page with a list on it. An empty
 // `rows` is the first-run state now, which renders a different screen.
 const session = {
@@ -128,19 +85,9 @@ const loadedSessions: SessionsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  readFailures: {},
   notUserScopedInstallations: [],
   notReachableInstallations: [],
-};
-
-const loadedAgents: AgentsContextValue = {
-  rows: [sre, issues],
-  scope: 'all',
-  installations: ['gazelle'],
-
-  isLoading: false,
-  isLoadingMore: false,
-  hasInstallations: true,
-  unreachableInstallations: [],
 };
 
 // Re-renders the page from *inside* the test app: RTL's `rerender` replaces the
@@ -176,155 +123,63 @@ async function render() {
   });
 }
 
-const prompt = () => screen.getByRole('textbox', { name: 'Prompt' });
-
 beforeEach(() => {
   window.localStorage.clear();
-  mockNavigate.mockReset();
-  mockCreateSession.mockReset();
-  mockCreateSession.mockResolvedValue('new-session-id');
-  mockUseCreateSession.mockReturnValue({
-    createSession: mockCreateSession,
-    isCreating: false,
-    error: null,
-    reset: jest.fn(),
-  });
   mockUseSessions.mockReturnValue({ ...loadedSessions, rows: [session] });
-  mockUseAgents.mockReturnValue(loadedAgents);
 });
 
 describe('SessionsIndexPage', () => {
-  it('offers the composer inline, above the list', async () => {
-    // Inline rather than behind a button: this list is the spec's "Mine" scope,
-    // where creating is the job of the view rather than a secondary action.
-    await render();
-
-    expect(screen.getByText('Start a new session')).toBeInTheDocument();
-    expect(prompt()).toBeInTheDocument();
-  });
-
-  it('gives the list a heading of its own, separate from the composer', async () => {
+  it('titles itself and offers a new session', async () => {
     await render();
 
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Your sessions' }),
+      screen.getByRole('heading', { level: 1, name: 'Sessions' }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('Find your conversations with agents.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'New session' })).toHaveAttribute(
+      'href',
+      '/',
+    );
+    expect(screen.getByTestId('sessions-table')).toBeInTheDocument();
   });
 
-  it('starts collapsed, growing on focus', async () => {
+  it('leaves starting a session to the start screen', async () => {
     await render();
 
-    expect(prompt()).toHaveAttribute('rows', '1');
-    expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
-
-    await userEvent.click(prompt());
-
-    expect(prompt()).toHaveAttribute('rows', '3');
+    expect(
+      screen.queryByRole('textbox', { name: 'Prompt' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
   });
 
-  describe('when there is no agent to start a session with', () => {
-    it('invites creating one rather than offering a box that refuses every Start', async () => {
-      // Nothing deployed and the fleet answered: the step before any session is
-      // creating an agent, so this is the Agents tab's invitation rather than a
-      // sentence about sessions.
-      mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [] });
-      await render();
+  it('shows activity rather than a blank page while the sessions are read', async () => {
+    mockUseSessions.mockReturnValue({ ...loadedSessions, isLoading: true });
+    await render();
 
-      expect(
-        screen.getByRole('heading', { name: 'No agents yet' }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole('button', { name: /Create your first agent/ }),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole('textbox', { name: 'Prompt' }),
-      ).not.toBeInTheDocument();
+    expect(screen.getByTestId('progress')).toBeInTheDocument();
+    expect(screen.queryByTestId('sessions-table')).not.toBeInTheDocument();
+  });
+
+  it('holds the read warning until the sessions are read', async () => {
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      isLoading: true,
+      unreachableInstallations: ['gazelle'],
     });
+    await renderRerenderable();
+    expect(screen.getByTestId('progress')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-    it('distinguishes unreadable agents from no agents', async () => {
-      // "None deployed" is a claim we cannot make when the read failed.
-      mockUseAgents.mockReturnValue({
-        ...loadedAgents,
-        rows: [],
-        unreachableInstallations: ['golem'],
-      });
-      await render();
-
-      expect(
-        screen.getByText(
-          'No agents could be read, so there is none to start a session with. See the warning below.',
-        ),
-      ).toBeInTheDocument();
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      unreachableInstallations: ['gazelle'],
     });
-
-    it('distinguishes deployed-but-not-ready from nothing deployed', async () => {
-      // Different places to look: "none deployed" means deploy one, "none ready"
-      // means go and read why on the Agents tab. Conflating them sends the user to
-      // the wrong screen.
-      mockUseAgents.mockReturnValue({
-        ...loadedAgents,
-        rows: [
-          agentRow({
-            readiness: 'notReady',
-            readinessMessage: '0/1 pods ready',
-          }),
-          agentRow({ id: 'gazelle/kagent/other', readiness: 'failed' }),
-        ],
-      });
-      await render();
-
-      expect(
-        screen.getByText(
-          'None of the 2 agents on the fleet are ready, so there is none to start a session with. The Agents tab says why.',
-        ),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole('textbox', { name: 'Prompt' }),
-      ).not.toBeInTheDocument();
-    });
-
-    it('reads naturally when the fleet holds exactly one unready agent', async () => {
-      mockUseAgents.mockReturnValue({
-        ...loadedAgents,
-        rows: [agentRow({ readiness: 'notReady' })],
-      });
-      await render();
-
-      expect(
-        screen.getByText(
-          'The only agent on the fleet is not ready, so there is none to start a session with. The Agents tab says why.',
-        ),
-      ).toBeInTheDocument();
-    });
-
-    it('offers the composer when at least one agent is ready', async () => {
-      // The other half of the same rule: one usable agent behind any number of
-      // unusable ones must not withhold the composer.
-      mockUseAgents.mockReturnValue({
-        ...loadedAgents,
-        rows: [agentRow({ readiness: 'notReady' }), issues],
-      });
-      await render();
-
-      expect(
-        screen.getByRole('textbox', { name: 'Prompt' }),
-      ).toBeInTheDocument();
-    });
-
-    it('shows nothing at all while the fleet is still being read', async () => {
-      // Neither a composer nor a "no agents" claim: both would be wrong.
-      mockUseAgents.mockReturnValue({
-        ...loadedAgents,
-        rows: [],
-        isLoading: true,
-      });
-      await render();
-
-      expect(
-        screen.queryByRole('textbox', { name: 'Prompt' }),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByText(/none to start a session with/)).toBeNull();
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'rerender' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
   });
 
   describe('with no session on the fleet yet', () => {
@@ -332,19 +187,41 @@ describe('SessionsIndexPage', () => {
       mockUseSessions.mockReturnValue(loadedSessions);
     });
 
-    it('makes the composer the invitation and shows no empty table', async () => {
+    it('says so, with where a session starts', async () => {
       await render();
 
       expect(
-        screen.getByRole('heading', { name: 'Start your first session' }),
+        screen.getByRole('heading', { level: 2, name: 'No sessions yet' }),
       ).toBeInTheDocument();
-      // Expanded from the start: there is no list below for it to make room for,
-      // so the Start button is there without having to click into the box first.
-      expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
+      expect(screen.getAllByRole('link', { name: 'New session' })).toHaveLength(
+        2,
+      );
       expect(screen.queryByTestId('sessions-table')).not.toBeInTheDocument();
+    });
+
+    it('leaves focus alone when the list was empty from the start', async () => {
+      await render();
+
       expect(
-        screen.queryByRole('searchbox', { name: 'Search sessions' }),
-      ).not.toBeInTheDocument();
+        screen.getByRole('heading', { level: 2, name: 'No sessions yet' }),
+      ).not.toHaveFocus();
+    });
+
+    it('takes focus when it replaces a list whose focus went with its last row', async () => {
+      mockUseSessions.mockReturnValue({ ...loadedSessions, rows: [session] });
+      await renderRerenderable();
+      expect(screen.getByTestId('sessions-table')).toBeInTheDocument();
+
+      // The row and its dialog are gone: focus fell back to the document.
+      mockUseSessions.mockReturnValue(loadedSessions);
+      (document.activeElement as HTMLElement | null)?.blur();
+      fireEvent.click(screen.getByRole('button', { name: 'rerender' }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole('heading', { level: 2, name: 'No sessions yet' }),
+        ).toHaveFocus(),
+      );
     });
 
     it('says nothing per installation under "All installations" either', async () => {
@@ -361,20 +238,9 @@ describe('SessionsIndexPage', () => {
       expect(screen.queryByText('no sessions here')).not.toBeInTheDocument();
     });
 
-    it('invites creating an agent when the fleet holds none', async () => {
-      mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [] });
-
-      await render();
-
-      expect(
-        screen.getByRole('heading', { name: 'No agents yet' }),
-      ).toBeInTheDocument();
-      expect(screen.queryByTestId('sessions-table')).not.toBeInTheDocument();
-    });
-
-    it('does not claim a first run when the sessions could not be read', async () => {
+    it('does not claim an empty history when the sessions could not be read', async () => {
       // An empty list because every read failed is not an empty history. The
-      // warning is the answer; the composer stays in its inline strip.
+      // warning is the answer.
       mockUseSessions.mockReturnValue({
         ...loadedSessions,
         unreachableInstallations: ['gazelle'],
@@ -383,15 +249,14 @@ describe('SessionsIndexPage', () => {
       await render();
 
       expect(
-        screen.queryByRole('heading', { name: 'Start your first session' }),
+        screen.queryByRole('heading', { name: 'No sessions yet' }),
       ).not.toBeInTheDocument();
-      expect(screen.getByText('Start a new session')).toBeInTheDocument();
       expect(
-        screen.getByText(/Couldn't read 1 installation/),
+        screen.getByText(/Could not read 1 environment/),
       ).toBeInTheDocument();
     });
 
-    it('does not claim a first run when no installation was ever queried', async () => {
+    it('does not claim an empty history when no installation was ever queried', async () => {
       // Every kagent endpoint in scope is unreachable from this portal, so
       // nothing was asked on the user's behalf -- an empty list says nothing.
       mockUseSessions.mockReturnValue({
@@ -403,12 +268,11 @@ describe('SessionsIndexPage', () => {
       await render();
 
       expect(
-        screen.queryByRole('heading', { name: 'Start your first session' }),
+        screen.queryByRole('heading', { name: 'No sessions yet' }),
       ).not.toBeInTheDocument();
-      expect(screen.getByText('Start a new session')).toBeInTheDocument();
     });
 
-    it('still claims a first run when one installation answered and others are unreachable', async () => {
+    it('still claims an empty history when one installation answered and others are unreachable', async () => {
       // The one that answered is enough to know the user has no sessions; the
       // quiet note below names the rest.
       mockUseSessions.mockReturnValue({
@@ -420,161 +284,28 @@ describe('SessionsIndexPage', () => {
       await render();
 
       expect(
-        screen.getByRole('heading', { name: 'Start your first session' }),
+        screen.getByRole('heading', { name: 'No sessions yet' }),
       ).toBeInTheDocument();
-    });
-
-    it('shows activity rather than a blank tab while the agents are still resolving', async () => {
-      // The sessions settled empty but the agent fan-out has not: the composer
-      // is withheld, and the blurb and table are gated off, so without a
-      // progress indicator the content area would render nothing at all.
-      mockUseAgents.mockReturnValue({ ...loadedAgents, isLoading: true });
-
-      await render();
-
-      expect(screen.getByTestId('progress')).toBeInTheDocument();
     });
   });
 
-  describe('the composer container', () => {
-    beforeEach(() => {
-      mockUseSessions.mockReturnValue(loadedSessions);
+  it('names why an installation could not be read and the request id to trace it', async () => {
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      unreachableInstallations: ['gazelle'],
+      readFailures: {
+        gazelle: { reason: 'authentication failed', requestId: 'req-7' },
+      },
     });
 
-    it('is withheld until the list settles, so it never has to move', async () => {
-      // `isLoading` stays true until every installation answers, so on an empty
-      // fleet the composer would otherwise render inline for the whole fan-out
-      // and then jump into the first-run card -- a different root element type,
-      // which remounts it and discards whatever was typed.
-      mockUseSessions.mockReturnValue({ ...loadedSessions, isLoading: true });
+    await render();
 
-      await render();
-
-      expect(
-        screen.queryByRole('textbox', { name: 'Prompt' }),
-      ).not.toBeInTheDocument();
-      expect(screen.getByTestId('progress')).toBeInTheDocument();
-    });
-
-    it('does not move when a session arrives later, keeping a typed prompt', async () => {
-      await renderRerenderable();
-
-      expect(
-        screen.getByRole('heading', { name: 'Start your first session' }),
-      ).toBeInTheDocument();
-      await userEvent.type(prompt(), 'why is the ingress failing?');
-
-      // A background refetch, or a session started in another tab. The latch
-      // keeps the container put; without it the root element type would change
-      // and take the half-typed prompt with it.
-      mockUseSessions.mockReturnValue({ ...loadedSessions, rows: [session] });
-      await userEvent.click(screen.getByRole('button', { name: 'rerender' }));
-
-      expect(screen.getByTestId('sessions-table')).toBeInTheDocument();
-      expect(prompt()).toHaveValue('why is the ingress failing?');
-    });
-  });
-
-  describe('starting one', () => {
-    async function start(text = 'why is the ingress failing?') {
-      const rendered = await render();
-      await userEvent.click(prompt());
-      await userEvent.click(screen.getByRole('button', { name: /Agent/ }));
-      await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
-      await userEvent.type(prompt(), text);
-      await userEvent.click(screen.getByRole('button', { name: 'Start' }));
-      return rendered;
-    }
-
-    it('creates the session with the chosen agent and the prompt', async () => {
-      await start();
-
-      await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith({
-          agent: sre,
-          prompt: 'why is the ingress failing?',
-        });
-      });
-    });
-
-    it('navigates to the new session, carrying the prompt for the detail page to send', async () => {
-      await start();
-
-      await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith(
-          '/agent-platform/sessions/gazelle/new-session-id',
-          {
-            state: {
-              newSession: {
-                text: 'why is the ingress failing?',
-                agentNamespace: 'kagent',
-                // The technical name, which is what addresses the A2A endpoint.
-                agentName: 'sre-agent',
-              },
-            },
-          },
-        );
-      });
-    });
-
-    it('remembers the agent, so the next session defaults to it', async () => {
-      // Unmounted before the second render: `renderInTestApp` would otherwise
-      // leave the first page mounted, and the picker found below would be its
-      // own — still showing the agent from component state rather than from
-      // storage, which is the thing under test.
-      const { unmount } = await start();
-
-      await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalled();
-      });
-      unmount();
-
-      await render();
-      // The inline composer starts collapsed, so the picker only exists once the
-      // prompt has focus.
-      await userEvent.click(prompt());
-
-      expect(screen.getByRole('button', { name: /Agent/ })).toHaveTextContent(
-        'SRE Agent',
-      );
-    });
-
-    it('stays put when the create fails, keeping the prompt', async () => {
-      mockCreateSession.mockRejectedValue(new Error('kagent said no'));
-      mockUseCreateSession.mockReturnValue({
-        createSession: mockCreateSession,
-        isCreating: false,
-        error: new Error('kagent said no'),
-        reset: jest.fn(),
-      });
-      await start();
-
-      await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalled();
-      });
-      expect(mockNavigate).not.toHaveBeenCalled();
-      expect(screen.getByText('Session not started')).toBeInTheDocument();
-      expect(prompt()).toHaveValue('why is the ingress failing?');
-    });
-
-    it('does not remember an agent whose session was never created', async () => {
-      mockCreateSession.mockRejectedValue(new Error('kagent said no'));
-      const { unmount } = await start();
-
-      await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalled();
-      });
-      unmount();
-
-      await render();
-      // The inline composer starts collapsed, so the picker only exists once the
-      // prompt has focus.
-      await userEvent.click(prompt());
-
-      expect(screen.getByRole('button', { name: /Agent/ })).toHaveTextContent(
-        'Select an agent',
-      );
-    });
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/gazelle \(authentication failed, request id req-7\)/),
+    ).toBeInTheDocument();
   });
 
   it('names installations the portal cannot reach in a quiet note, not a warning', async () => {
@@ -589,7 +320,7 @@ describe('SessionsIndexPage', () => {
       screen.getByText('golem, wombat: not reachable from this portal'),
     ).toBeInTheDocument();
     // Never queried, so not a read failure: the warning card stays away.
-    expect(screen.queryByText(/Couldn't read/)).toBeNull();
+    expect(screen.queryByText(/Could not read/)).toBeNull();
   });
 
   it('still explains an unconfigured instance', async () => {
@@ -599,7 +330,7 @@ describe('SessionsIndexPage', () => {
     });
     await render();
 
-    expect(screen.getByText('No installations configured')).toBeInTheDocument();
+    expect(screen.getByText('No environments configured')).toBeInTheDocument();
   });
 });
 
@@ -708,7 +439,7 @@ describe('SessionsIndexPage with one installation to list from', () => {
         unreachableInstallations: ['golem'],
       },
     ],
-  ])('drops the Installation column when it is %s', async (_, overrides) => {
+  ])('drops the Environment column when it is %s', async (_, overrides) => {
     mockUseSessions.mockReturnValue({
       ...loadedSessions,
       rows: [gazelleSession],

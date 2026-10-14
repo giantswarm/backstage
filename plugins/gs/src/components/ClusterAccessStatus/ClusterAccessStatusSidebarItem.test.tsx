@@ -13,7 +13,7 @@ import {
   mutedInstallationsApiRef,
   MutedInstallationsStore,
 } from '../../apis/mutedInstallations';
-import { gsAuthApiRef } from '../../apis/auth/types';
+import { gsAuthProvidersApiRef } from '../../apis/auth/types';
 import {
   ClusterAccessStatusSidebarItem,
   summarize,
@@ -41,14 +41,21 @@ function fakeStatusApi(
   } as unknown as ClusterAccessStatusApi;
 }
 
+const noMainAuthProvider = () => {
+  throw new Error('No main auth provider configured');
+};
+
 async function renderSidebar({
   entries = [],
   muted = [],
+  getMainAuthApi = () => ({ signIn: jest.fn().mockResolvedValue(undefined) }),
 }: {
   entries?: ClusterAccessStatusEntry[];
   muted?: string[];
+  getMainAuthApi?: () => unknown;
 }) {
   const mutedStore = MutedInstallationsStore.create();
+  const errorApi = { post: jest.fn(), error$: jest.fn() };
   muted.forEach(name => mutedStore.setMuted(name, true));
 
   await renderInTestApp(
@@ -56,8 +63,8 @@ async function renderSidebar({
       apis={[
         [clusterAccessStatusApiRef, fakeStatusApi(entries)],
         [mutedInstallationsApiRef, mutedStore],
-        [gsAuthApiRef, { signIn: jest.fn() } as any],
-        [errorApiRef, { post: jest.fn(), error$: jest.fn() } as any],
+        [gsAuthProvidersApiRef, { getMainAuthApi } as any],
+        [errorApiRef, errorApi as any],
       ]}
     >
       <ClusterAccessStatusSidebarItem />
@@ -65,7 +72,7 @@ async function renderSidebar({
   );
 
   fireEvent.click(screen.getByRole('button', { name: /cluster access/i }));
-  return { mutedStore };
+  return { mutedStore, errorApi };
 }
 
 describe('summarize', () => {
@@ -151,5 +158,39 @@ describe('ClusterAccessStatusSidebarItem', () => {
 
     expect(screen.getByText(/2 off/)).toBeInTheDocument();
     expect(screen.queryByText(/All 0 healthy/)).not.toBeInTheDocument();
+  });
+
+  it('renders without a main auth provider', async () => {
+    // A guest portal (`gs.authProvider` unset) has no main auth API; resolving
+    // it at render took the whole sidebar down.
+    await renderSidebar({
+      entries: [entry('alpha', 'healthy')],
+      getMainAuthApi: noMainAuthProvider,
+    });
+
+    expect(screen.getByText('alpha')).toBeInTheDocument();
+  });
+
+  it('signs in again through the main auth API', async () => {
+    const signIn = jest.fn().mockResolvedValue(undefined);
+    await renderSidebar({
+      entries: [entry('alpha', 'session-expired')],
+      getMainAuthApi: () => ({ signIn }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
+
+    await waitFor(() => expect(signIn).toHaveBeenCalled());
+  });
+
+  it('reports a failed sign-in instead of throwing', async () => {
+    const { errorApi } = await renderSidebar({
+      entries: [entry('alpha', 'session-expired')],
+      getMainAuthApi: noMainAuthProvider,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
+
+    await waitFor(() => expect(errorApi.post).toHaveBeenCalled());
   });
 });

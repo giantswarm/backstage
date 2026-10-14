@@ -8,7 +8,10 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
-import { MAX_REVISION_WAIT_MS } from '../../hooks/useAgentStatus';
+import {
+  FAILED_STATUS_POLL_INTERVAL_MS,
+  MAX_REVISION_WAIT_MS,
+} from '../../hooks/useAgentStatus';
 import { AgentCreationProgress } from './AgentCreationProgress';
 
 let mockLocationState: unknown;
@@ -38,7 +41,7 @@ function status(verdict: string, extra: Record<string, unknown> = {}) {
     name: 'pr-reviewer',
     namespace: 'kagent',
     verdict,
-    summary: `The template is ${verdict}.`,
+    summary: `Agent is ${verdict}.`,
     ...extra,
   };
 }
@@ -88,7 +91,7 @@ describe('AgentCreationProgress', () => {
     mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
     callTool.mockResolvedValueOnce(status('progressing')).mockResolvedValue(
       status('ready', {
-        template: { exists: true, harnesses: [{ harness: 'kagent' }] },
+        agent: { exists: true, harness: 'kagent' },
       }),
     );
 
@@ -119,7 +122,7 @@ describe('AgentCreationProgress', () => {
   }, 10_000);
 
   // The defect this guards: agent-manager writes the HelmRelease and returns,
-  // helm-controller re-renders the template seconds later, so the first status
+  // helm-controller re-renders the Agent seconds later, so the first status
   // read after saving an agent that was already `ready` answers `ready` — for
   // the revision before the write. Reported as success, that is a green alert
   // for something the Harness has not compiled.
@@ -132,21 +135,21 @@ describe('AgentCreationProgress', () => {
 
     /** The pre-write revision: settled, and at the generation of the baseline. */
     const beforeTheWrite = status('ready', {
-      template: {
+      agent: {
         exists: true,
         generation: 4,
         observedGeneration: 4,
-        harnesses: [{ harness: 'kagent' }],
+        harness: 'kagent',
       },
     });
 
     /** The write's own revision, compiled by the Harness. */
     const afterTheWrite = status('ready', {
-      template: {
+      agent: {
         exists: true,
         generation: 5,
         observedGeneration: 5,
-        harnesses: [{ harness: 'kagent' }],
+        harness: 'kagent',
       },
     });
 
@@ -165,11 +168,9 @@ describe('AgentCreationProgress', () => {
       await waitFor(() => expect(callTool).toHaveBeenCalled());
       expect(screen.queryByText('Ready')).not.toBeInTheDocument();
       // And the pre-write revision's own summary is not put under it: "The
-      // template is ready." below "Saving…" is the message this exists to
+      // Agent is ready." below "Saving…" is the message this exists to
       // withhold until the write has actually landed.
-      expect(
-        screen.queryByText('The template is ready.'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Agent is ready.')).not.toBeInTheDocument();
       expect(
         screen.getByText(/waiting for its Harness to compile/),
       ).toBeInTheDocument();
@@ -202,10 +203,10 @@ describe('AgentCreationProgress', () => {
       mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
       callTool.mockResolvedValue(
         status('ready', {
-          template: {
+          agent: {
             exists: true,
             generation: 5,
-            harnesses: [{ harness: 'kagent' }],
+            harness: 'kagent',
           },
         }),
       );
@@ -254,7 +255,7 @@ describe('AgentCreationProgress', () => {
       mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
       callTool.mockResolvedValue(
         status('ready', {
-          template: { exists: true, harnesses: [{ harness: 'kagent' }] },
+          agent: { exists: true, harness: 'kagent' },
         }),
       );
 
@@ -264,7 +265,7 @@ describe('AgentCreationProgress', () => {
     });
   });
 
-  it("shows agent-manager's reason when the template fails", async () => {
+  it("shows agent-manager's reason when the agent fails", async () => {
     mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
     callTool.mockResolvedValue({
       ...status('failed'),
@@ -280,5 +281,102 @@ describe('AgentCreationProgress', () => {
     expect(
       screen.getByText(/Harness kagent rejected the template/),
     ).toBeInTheDocument();
+  });
+
+  // Right after a create kagent can report the agent's own tool server as an
+  // unresolved reference for a few seconds; that `failed` is not final.
+  describe('a failed verdict', () => {
+    const FAILED_TITLE = 'The agent did not become ready';
+    const READY = status('ready', {
+      agent: { exists: true, harness: 'kagent' },
+    });
+
+    /** When each `get_agent_status` read was made, on the fake clock. */
+    let readAt: number[];
+
+    /** Answers the reads in turn, the last one for good. */
+    function answer(...answers: Array<object | Error>) {
+      callTool.mockImplementation(async () => {
+        readAt.push(Date.now());
+        const next = answers[Math.min(readAt.length, answers.length) - 1];
+        if (next instanceof Error) {
+          throw next;
+        }
+        return next;
+      });
+    }
+
+    /**
+     * Moves the fake clock on, settling each read before the next timer, so a
+     * read lands at the moment its timer fires. A read due at the very end has
+     * not rendered yet, hence the extra millisecond where one is checked.
+     */
+    async function wait(ms: number) {
+      await act(() => jest.advanceTimersByTimeAsync(ms));
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      readAt = [];
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('is re-read every 5 s until it turns ready', async () => {
+      answer(status('failed'), READY);
+
+      await render();
+      await wait(0);
+      expect(screen.getByText(FAILED_TITLE)).toBeInTheDocument();
+
+      await wait(FAILED_STATUS_POLL_INTERVAL_MS + 1);
+      expect(readAt).toEqual([
+        readAt[0],
+        readAt[0] + FAILED_STATUS_POLL_INTERVAL_MS,
+      ]);
+      expect(screen.getByText('Ready')).toBeInTheDocument();
+      expect(screen.queryByText(FAILED_TITLE)).not.toBeInTheDocument();
+    });
+
+    it('is no longer read once it has turned ready', async () => {
+      answer(status('failed'), READY);
+
+      await render();
+      await wait(10 * FAILED_STATUS_POLL_INTERVAL_MS);
+
+      expect(readAt).toHaveLength(2);
+    });
+
+    // A read error is handled as it always was: shown, and the poll stops.
+    it('shows a read error after it as any read error, and stops', async () => {
+      answer(status('failed'), new Error('muster: session expired'), READY);
+
+      await render();
+      await wait(10 * FAILED_STATUS_POLL_INTERVAL_MS);
+
+      expect(readAt).toHaveLength(2);
+      expect(
+        screen.getByText(/could not read the agent's readiness/),
+      ).toBeInTheDocument();
+    });
+
+    // The agent was deleted while the alert was up: not "not there yet".
+    it('stops at a not_found after it, without going back to waiting', async () => {
+      answer(
+        status('failed'),
+        new Error('not_found: agent kagent/pr-reviewer not found'),
+        READY,
+      );
+
+      await render();
+      await wait(10 * FAILED_STATUS_POLL_INTERVAL_MS);
+
+      expect(readAt).toHaveLength(2);
+      expect(screen.queryByText('Deploying…')).not.toBeInTheDocument();
+      expect(screen.getByText(FAILED_TITLE)).toBeInTheDocument();
+    });
   });
 });

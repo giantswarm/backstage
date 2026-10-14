@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { gitHubApiRef } from '../../apis/github';
 import { fetchContent } from './utils/fetchContent';
@@ -31,7 +32,8 @@ export function useHelmChartValuesYaml(
   const {
     data: valuesYaml,
     error: valuesYamlError,
-    isLoading: isLoadingValuesYaml,
+    isPending,
+    fetchStatus,
   } = useQuery({
     queryKey: ['values-yaml', valuesYamlUrl],
     queryFn: async () => {
@@ -49,6 +51,7 @@ export function useHelmChartValuesYaml(
     },
     enabled: Boolean(valuesYamlUrl),
   });
+  const isLoadingValuesYaml = isAwaitingData({ isPending, fetchStatus });
 
   const isLoading = isLoadingTagManifest || isLoadingValuesYaml;
   const error = tagManifestError || valuesYamlError;

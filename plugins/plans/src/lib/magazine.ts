@@ -110,6 +110,17 @@ export interface Group {
   entries: Entry[];
 }
 
+/**
+ * `magazine/meta.json`: the board and the team the magazine follows. An
+ * item's `team` is set only when it belongs to another team, so an item
+ * without one is this team's.
+ */
+export interface Meta {
+  version: number;
+  generatedAt: string;
+  sources: { board: number; team: string };
+}
+
 export type HistoryWindow = 'days' | 'weeks' | 'months';
 
 export interface History {
@@ -140,23 +151,21 @@ export const CLASS_ORDER: MagazineClass[] = [
   'chore',
 ];
 
-export const HISTORY_WINDOWS: { id: HistoryWindow; label: string }[] = [
-  { id: 'days', label: '3 days' },
-  { id: 'weeks', label: '3 weeks' },
-  { id: 'months', label: '3 months' },
-];
+/**
+ * The history Hive shows: the last 15 work days, epic by epic with the
+ * issues that moved them. Three days is too short for an epic to move,
+ * three months folds the stories into areas.
+ */
+export const HIVE_HISTORY_WINDOW: HistoryWindow = 'weeks';
 
 /** Cards a lane shows before "show all n". */
 export const LANE_PREVIEW = 4;
 
 /** The data file of a magazine view on the data ref. */
-export function magazineFile(view: 'now' | HistoryWindow): string {
-  return view === 'now' ? 'magazine/now.json' : `magazine/history-${view}.json`;
-}
-
-/** `?window=` to a history window; anything else is the 3-day window. */
-export function historyWindowFromParam(value: string | null): HistoryWindow {
-  return value === 'weeks' || value === 'months' ? value : 'days';
+export function magazineFile(view: 'now' | 'meta' | HistoryWindow): string {
+  return view === 'now' || view === 'meta'
+    ? `magazine/${view}.json`
+    : `magazine/history-${view}.json`;
 }
 
 /** Lanes in priority order (customer, top-epic, setup, chore). */

@@ -84,7 +84,7 @@ describe('PlansApiClient', () => {
   });
 
   it('lists repositories', async () => {
-    const payload = { repositories: ['giantswarm/bumblebee-plans'] };
+    const payload = { repositories: ['giantswarm/meadow-plans'] };
     fetchMock.mockResolvedValue(jsonResponse(payload));
 
     await expect(client.listRepos()).resolves.toEqual(payload);
@@ -112,10 +112,10 @@ describe('PlansApiClient', () => {
   it('passes the repo parameter URL-encoded', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ pulls: [] }));
 
-    await client.listPulls('giantswarm/bumblebee-plans');
+    await client.listPulls('giantswarm/meadow-plans');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE_URL}/pulls?repo=giantswarm%2Fbumblebee-plans`,
+      `${BASE_URL}/pulls?repo=giantswarm%2Fmeadow-plans`,
       AUTHED,
     );
   });
@@ -242,17 +242,54 @@ describe('PlansApiClient', () => {
     });
   });
 
-  it('falls back to a generic message on a non-JSON error body', async () => {
-    fetchMock.mockResolvedValue({
+  /** The gateway's own answer: plain text, never the backend's JSON error. */
+  function gatewayResponse(status: number) {
+    return {
       ok: false,
-      status: 502,
+      status,
       json: async () => {
         throw new Error('not json');
       },
-    } as unknown as Response);
+    } as unknown as Response;
+  }
+
+  it('falls back to a generic message on a non-JSON error body', async () => {
+    fetchMock.mockResolvedValue(gatewayResponse(400));
 
     await expect(client.listPulls()).rejects.toThrow(
-      'Plans request failed with status 502',
+      'Plans request failed with status 400',
     );
+  });
+
+  it.each([502, 503, 504])(
+    "reads the gateway's %i as a backend that did not answer, and leaves it retryable",
+    async status => {
+      fetchMock.mockResolvedValue(gatewayResponse(status));
+
+      const error = await client
+        .getContent('magazine/history-weeks.json')
+        .catch(e => e);
+
+      expect(error.message).toBe(
+        `The portal backend did not answer (status ${status}); it may be restarting.`,
+      );
+      expect(error.name).toBe('Error');
+    },
+  );
+
+  it("keeps the backend's own 503 final", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        {
+          error: { name: 'ServiceUnavailableError', message: 'not configured' },
+        },
+        503,
+      ),
+    );
+
+    await expect(client.listPulls()).rejects.toMatchObject({
+      name: 'ServiceUnavailableError',
+      message: 'not configured',
+    });
   });
 });

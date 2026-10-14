@@ -6,8 +6,19 @@ import {
   type ReactNode,
 } from 'react';
 
+import type {
+  AgentManagerAgent,
+  AgentSkillEntry,
+  WriteMode,
+} from '../../lib/agentManager';
+import {
+  changedFields,
+  editStateOfForm,
+  skillEntryKey,
+} from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
 import { systemMessageProblem } from '../../lib/systemMessage';
+import { egressProblem, parseEgressText } from '../../lib/egress';
 import type { HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
@@ -24,6 +35,11 @@ export type NewAgentFormState = {
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
   /**
+   * The picked model's display name, for the plain summaries (the review
+   * step's Model row). Undefined falls back to the ModelConfig's name.
+   */
+  modelDisplayName: string | undefined;
+  /**
    * The Harness the agent runs on, when the person picked one other than the
    * platform Harness. Undefined is the platform Harness: `harness` is then
    * left out of the request and agent-manager composes its own.
@@ -36,10 +52,21 @@ export type NewAgentFormState = {
   droppedHarness: string | undefined;
   systemMessage: string;
   /**
+   * Extra HTTP(S) origins the agent may reach, one per line as typed
+   * (`Agent.spec.egress`). Empty means none beyond what its revision compiles.
+   */
+  egressText: string;
+  /**
    * Skills the user picked, in selection order, each with the commit the
    * skills step showed — the pin agent-manager writes. Optional — may be empty.
    */
   selectedSkills: DiscoveredSkill[];
+  /**
+   * Editing only: the agent's skills no configured repository lists (another
+   * repository, an OCI digest), kept exactly as pinned until removed. Always
+   * empty when creating.
+   */
+  keptSkills: AgentSkillEntry[];
   /**
    * The agent's toolset as selected: inline selectors (`preset:`, `server:`,
    * `workflow:`, `tool:`), in selection order. Starts empty on purpose —
@@ -48,20 +75,58 @@ export type NewAgentFormState = {
    * (`declaredToolset`), so `preset:none` itself never sits in this list.
    */
   toolset: string[];
+  /**
+   * The Tools step's *Nothing outside the chat*: the toolset is empty and the
+   * step's selection below is turned off until another access level is
+   * picked. Declared like any empty selection (`preset:none`); while editing,
+   * it also counts as a change for an agent that declares no toolset.
+   */
+  toolsChatOnly?: boolean;
+  /**
+   * The preset the Tools step compacts the toolset against (B1, R2-1): the
+   * one the toolset was built on, kept once a change wrote it out, so undoing
+   * that change collapses back to it. Held here rather than in the step, so a
+   * step round trip keeps it as long as the draft (R2 re-review N2). Not part
+   * of the agent: nothing saves it.
+   */
+  toolsetBase?: string;
+};
+
+/**
+ * The wizard in edit mode: the agent it changes, as agent-manager read it when
+ * the wizard opened (the baseline the review compares against), and how a save
+ * lands. The technical name, installation, namespace and Harness are fixed.
+ */
+export type AgentWizardEdit = {
+  agent: AgentManagerAgent;
+  installation: string;
+  /** `apply` saves live; `commit` (an agent applied from git) opens a PR. */
+  writeMode: WriteMode;
+  /** The agent's page: where Close leads and a saved change lands. */
+  detailHref: string | undefined;
 };
 
 export type NewAgentFormContextValue = {
   state: NewAgentFormState;
+  /** Set when the wizard edits an existing agent rather than creating one. */
+  edit: AgentWizardEdit | undefined;
   setName: (name: string) => void;
   setSlug: (slug: string) => void;
   setDescription: (description: string) => void;
   setInstallation: (installation: string | undefined) => void;
-  selectModelConfig: (name: string, namespace: string) => void;
+  selectModelConfig: (
+    name: string,
+    namespace: string,
+    displayName?: string,
+  ) => void;
   /** Undefined picks the platform Harness. */
   selectHarness: (harness: HarnessChoice | undefined) => void;
   setSystemMessage: (systemMessage: string) => void;
+  setEgressText: (egressText: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
   toggleSkill: (skill: DiscoveredSkill) => void;
+  /** Editing only: drops one of the kept skills (see `keptSkills`). */
+  removeKeptSkill: (skill: AgentSkillEntry) => void;
   /**
    * Adds the selector if absent, removes it if present. `preset:full` replaces
    * the whole selection and adding anything else drops it; `preset:none` clears
@@ -74,6 +139,14 @@ export type NewAgentFormContextValue = {
    */
   setToolset: (selectors: string[]) => void;
   /**
+   * *Nothing outside the chat*: clears the toolset and turns the step's
+   * selection off (`toolsChatOnly`). Any other toolset change turns it on
+   * again.
+   */
+  setToolsChatOnly: () => void;
+  /** Sets or clears {@link NewAgentFormState.toolsetBase}. */
+  setToolsetBase: (base: string | undefined) => void;
+  /**
    * True when the toolset can be applied: none of the selectors malformed and
    * no more than the inline cap. The empty selection is valid — it is no tools.
    * What the Tools step's Continue and the review page's deploy gate on.
@@ -82,6 +155,13 @@ export type NewAgentFormContextValue = {
   /** Why the toolset cannot be applied, empty when it can. */
   toolsetProblems: string[];
   reset: () => void;
+  /**
+   * Whether leaving now would lose the person's work, so the wizard's Close
+   * and Cancel ask first. Editing: any change the review would save.
+   * Creating: anything typed or chosen beyond the start — the environment
+   * and model are left out, since the form picks those itself.
+   */
+  isDirty: boolean;
   /** True when the form has no validation errors. */
   isComplete: boolean;
   /**
@@ -89,7 +169,18 @@ export type NewAgentFormContextValue = {
    * valid. Drives the submit-time feedback.
    */
   validationErrors: string[];
+  /**
+   * The same problems by the field each belongs to, for the per-field
+   * feedback: the field shows its own message once a Continue is blocked.
+   */
+  fieldErrors: NewAgentFieldErrors;
 };
+
+/** The step-1 fields a validation problem can belong to. */
+export type NewAgentField =
+  'name' | 'systemMessage' | 'installation' | 'model' | 'slug' | 'egress';
+
+export type NewAgentFieldErrors = Partial<Record<NewAgentField, string>>;
 
 const initialState: NewAgentFormState = {
   name: '',
@@ -98,16 +189,22 @@ const initialState: NewAgentFormState = {
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
+  modelDisplayName: undefined,
   harness: undefined,
   droppedHarness: undefined,
   // Empty means "use the chart default": the spec sent to agent-manager omits
   // it (agentSpecOf), and agent-manager keeps the chart's default prompt.
   systemMessage: '',
+  egressText: '',
   selectedSkills: [],
+  keptSkills: [],
   toolset: [],
+  // A new agent starts at the Tools step's *Nothing outside the chat* (T81):
+  // nothing the author did not consciously add.
+  toolsChatOnly: true,
 };
 
-// RFC1123 DNS label: the slug becomes the AgentTemplate name and the
+// RFC1123 DNS label: the slug becomes the Agent name and the
 // HelmRelease name, so it must be a valid k8s object name
 // (lowercase alphanumerics and hyphens, no leading/trailing hyphen, ≤63 chars).
 const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
@@ -116,45 +213,86 @@ function isValidSlug(slug: string): boolean {
   return slug.length <= 63 && DNS_LABEL_PATTERN.test(slug);
 }
 
+/** A new agent's form holds work of the person's own (see `isDirty`). */
+function hasCreateInput(state: NewAgentFormState): boolean {
+  return (
+    [
+      state.name,
+      state.slug,
+      state.description,
+      state.systemMessage,
+      state.egressText,
+    ].some(text => text.trim() !== '') ||
+    state.harness !== undefined ||
+    state.selectedSkills.length > 0 ||
+    state.toolset.length > 0 ||
+    state.toolsChatOnly !== initialState.toolsChatOnly
+  );
+}
+
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
 );
 
-export function NewAgentFormProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<NewAgentFormState>(initialState);
-  // The slug auto-derives from the name until the user edits it by hand.
-  const [slugEdited, setSlugEdited] = useState(false);
+/**
+ * The wizard's state, shared by its steps. Creating starts empty; editing
+ * (`edit` with `initialState`, see `EditAgentPage`) starts from the agent and
+ * keeps its technical name fixed — renaming never re-derives it.
+ */
+export function NewAgentFormProvider({
+  children,
+  edit,
+  initialState: seed = initialState,
+}: {
+  children: ReactNode;
+  edit?: AgentWizardEdit;
+  initialState?: NewAgentFormState;
+}) {
+  const [state, setState] = useState<NewAgentFormState>(seed);
+  // The slug auto-derives from the name until the user edits it by hand — and
+  // never while editing: an existing agent's technical name cannot change.
+  const [slugEdited, setSlugEdited] = useState(Boolean(edit));
 
   const value = useMemo<NewAgentFormContextValue>(() => {
     // An empty system prompt is valid: the chart ships a default
     // agent.systemMessage, so an empty field means "use the chart default"
     // (agentSpecOf omits it). Only its length is checked.
-    const validationErrors: string[] = [];
-    const promptProblem = systemMessageProblem(state.systemMessage);
-    if (promptProblem) {
-      validationErrors.push(promptProblem);
-    }
+    const fieldErrors: NewAgentFieldErrors = {};
+    fieldErrors.systemMessage = systemMessageProblem(state.systemMessage);
+    fieldErrors.egress = egressProblem(parseEgressText(state.egressText));
     if (!state.name.trim()) {
-      validationErrors.push('Name is required');
+      fieldErrors.name = 'Name is required';
     }
     if (state.slug.trim()) {
       // The slug is emitted verbatim as a k8s object name — reject anything that
       // isn't a valid DNS-1123 label so the deploy can't fail late at apply time.
       if (!isValidSlug(state.slug)) {
-        validationErrors.push(
-          'Slug must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-agent',
-        );
+        fieldErrors.slug =
+          'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-agent';
       }
     } else if (state.name.trim()) {
       // Only flag a missing slug once there's a name (it derives from the name).
-      validationErrors.push('Slug is required');
+      fieldErrors.slug = 'Technical name is required';
     }
     if (!state.installation) {
-      validationErrors.push('Select an installation');
+      fieldErrors.installation = 'Select an environment';
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
-      validationErrors.push('Select a model');
+      fieldErrors.model = 'Select a model';
     }
+    // The list keeps its historical order (the summary's, and the tests').
+    const validationErrors = (
+      [
+        'systemMessage',
+        'egress',
+        'name',
+        'slug',
+        'installation',
+        'model',
+      ] as const
+    )
+      .map(field => fieldErrors[field])
+      .filter((error): error is string => Boolean(error));
     const isComplete = validationErrors.length === 0;
 
     // Kept apart from `isComplete`: the step-1 fields decide whether the later
@@ -164,8 +302,13 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
     const problems = toolsetProblems(state.toolset);
     const isToolsetValid = problems.length === 0;
 
+    const isDirty = edit
+      ? changedFields(edit.agent, editStateOfForm(edit.agent, state)).length > 0
+      : hasCreateInput(state);
+
     return {
       state,
+      edit,
       setName: name =>
         setState(prev => ({
           ...prev,
@@ -187,20 +330,22 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
           installation,
           modelConfigName: undefined,
           modelConfigNamespace: undefined,
+          modelDisplayName: undefined,
           harness: undefined,
           droppedHarness: prev.harness?.name ?? prev.droppedHarness,
         })),
-      // The ModelConfig's namespace is the agent's, and a Harness admits only
-      // templates of its own namespace, so a model in another namespace drops
+      // The ModelConfig's namespace is the agent's, and an Agent names a
+      // Harness of its own namespace, so a model in another namespace drops
       // the Harness pick.
-      selectModelConfig: (name, namespace) =>
+      selectModelConfig: (name, namespace, displayName) =>
         setState(prev =>
           prev.modelConfigNamespace === namespace
-            ? { ...prev, modelConfigName: name }
+            ? { ...prev, modelConfigName: name, modelDisplayName: displayName }
             : {
                 ...prev,
                 modelConfigName: name,
                 modelConfigNamespace: namespace,
+                modelDisplayName: displayName,
                 harness: undefined,
                 droppedHarness: prev.harness?.name ?? prev.droppedHarness,
               },
@@ -209,13 +354,25 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
         setState(prev => ({ ...prev, harness, droppedHarness: undefined })),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
+      setEgressText: egressText => setState(prev => ({ ...prev, egressText })),
       toggleToolsetSelector: selector =>
         setState(prev => ({
           ...prev,
           toolset: toggleSelector(prev.toolset, selector),
+          toolsChatOnly: false,
         })),
       setToolset: selectors =>
-        setState(prev => ({ ...prev, toolset: normalizeSelection(selectors) })),
+        setState(prev => ({
+          ...prev,
+          toolset: normalizeSelection(selectors),
+          toolsChatOnly: false,
+        })),
+      setToolsChatOnly: () =>
+        setState(prev => ({ ...prev, toolset: [], toolsChatOnly: true })),
+      setToolsetBase: toolsetBase =>
+        setState(prev =>
+          prev.toolsetBase === toolsetBase ? prev : { ...prev, toolsetBase },
+        ),
       isToolsetValid,
       toolsetProblems: problems,
       toggleSkill: skill =>
@@ -229,14 +386,23 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
               : [...prev.selectedSkills, skill],
           };
         }),
+      removeKeptSkill: skill =>
+        setState(prev => ({
+          ...prev,
+          keptSkills: prev.keptSkills.filter(
+            kept => skillEntryKey(kept) !== skillEntryKey(skill),
+          ),
+        })),
       reset: () => {
-        setSlugEdited(false);
-        setState(initialState);
+        setSlugEdited(Boolean(edit));
+        setState(seed);
       },
+      isDirty,
       isComplete,
       validationErrors,
+      fieldErrors,
     };
-  }, [state, slugEdited]);
+  }, [state, slugEdited, edit, seed]);
 
   return (
     <NewAgentFormContext.Provider value={value}>

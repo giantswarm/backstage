@@ -24,6 +24,7 @@ export const AGENT_MANAGER_TOOLS = {
   updateAgent: 'update_agent',
   deleteAgent: 'delete_agent',
   listModelConfigs: 'list_model_configs',
+  startSession: 'start_session',
 } as const;
 
 export type AgentManagerTool =
@@ -56,9 +57,9 @@ export type AgentSkillEntry =
  * omitted field keeps the chart's default. There is no per-skill credential.
  */
 export type AgentSpec = {
-  /** The ModelConfig's namespace: where the release and the template land. */
+  /** The ModelConfig's namespace: where the release and the Agent land. */
   namespace: string;
-  /** DNS-1123 technical name: the HelmRelease and AgentTemplate name. */
+  /** DNS-1123 technical name: the HelmRelease and Agent object name. */
   name: string;
   displayName: string;
   description?: string;
@@ -66,8 +67,9 @@ export type AgentSpec = {
   /** Name of an existing ModelConfig in `namespace`. */
   modelConfig: string;
   /**
-   * The harness label value of a Harness in `namespace` (chart
-   * `agent.harness`). Omitted, the platform Harness. Fixed at create.
+   * The name of a Harness in `namespace` the agent runs on (chart
+   * `agent.harness`, the Agent's `spec.harnessRef.name`). Omitted, the
+   * platform Harness. Fixed at create.
    */
   harness?: string;
   /** Avatar URL (chart `agent.iconUrl`, rendered as an annotation). */
@@ -75,6 +77,11 @@ export type AgentSpec = {
   skills?: AgentSkillEntry[];
   /** The toolset selectors exactly as the Tools step composed them. */
   toolset: string[];
+  /**
+   * HTTP(S) origins the agent may reach besides what its revision compiles
+   * (`Agent.spec.egress`), such as `https://github.com:443`.
+   */
+  egress?: string[];
 };
 
 export type AgentManagerChart = {
@@ -103,6 +110,7 @@ export type AgentManagerInfo = {
   /** `caller` when every write runs as the signed-in person. */
   identity: string;
   apiVersions: {
+    agent: string;
     agentTemplate: string;
     harness: string;
     remoteMcpServer: string;
@@ -148,9 +156,16 @@ export type ValidateAgentResult = {
 
 export type AgentStatusVerdict = 'ready' | 'progressing' | 'failed' | 'unknown';
 
-/** One admitting Harness's report on the template (`status.harnesses[]`). */
-export type HarnessStatus = {
-  harness: string;
+/**
+ * The Agent object's own status as agent-manager reads it: the Harness it
+ * names (`spec.harnessRef.name`) and the controller's verdict on it.
+ */
+export type AgentObjectStatus = {
+  /** False while the HelmRelease has not rendered the Agent yet. */
+  exists: boolean;
+  generation?: number;
+  observedGeneration?: number;
+  harness?: string;
   ready: boolean | null;
   accepted: boolean | null;
   resolvedRefs: boolean | null;
@@ -166,12 +181,7 @@ export type AgentStatus = {
   namespace: string;
   verdict: AgentStatusVerdict;
   summary: string;
-  template?: {
-    exists: boolean;
-    generation?: number;
-    observedGeneration?: number;
-    harnesses: HarnessStatus[];
-  };
+  agent?: AgentObjectStatus;
   helmRelease?: {
     exists: boolean;
     ready: boolean | null;
@@ -192,21 +202,81 @@ export type CreateAgentResult = {
 };
 
 /**
- * `create_agent` with `mode: commit` (giantswarm/agent-manager#24): the
- * manifests land as a pull request in the owning GitOps repository, or the
- * person has to connect the repository first. Named here so the button and its
- * result handling exist; the flag that turns them on is agent-manager's.
+ * `start_session`'s input: the Agent by namespace and technical name and the
+ * idempotency key of the submission. Without `message` agent-manager only
+ * creates the session, and the caller sends the first message itself; with
+ * one, agent-manager sends it as the first turn. `workspaceGrant` starts the
+ * session in a workspace; absent, it is the plain session.
  */
-export type CommitAgentResult = {
-  pullRequestUrl?: string;
-  status?: 'auth_required' | string;
-  authUrl?: string;
+export type StartSessionRequest = {
+  namespace: string;
+  name: string;
   message?: string;
+  requestId: string;
+  sessionName?: string;
+  workspaceGrant?: string;
 };
 
 /**
- * The verdict a create is done at: the template is ready on the platform
- * Harness, or it failed. `progressing` and `unknown` keep polling.
+ * `start_session`'s answer: the new session (proto3 JSON of kagent's
+ * `Session`), the first event of its first turn when a message was sent (A2A's
+ * `StreamResponse`), and the workspace when it was started with a grant.
+ */
+export type StartSessionResult = {
+  session: { id?: string; contextId?: string; name?: string };
+  turn?: unknown;
+  workspace?: string;
+};
+
+/**
+ * How agent-manager writes: `apply` live as the person, `commit` as a pull
+ * request in the GitOps repository that owns the release.
+ */
+export type WriteMode = 'apply' | 'commit';
+
+/** One file of a commit: its content shown on a dry run only. */
+export type CommitFile = {
+  path: string;
+  action: string;
+  content?: string;
+};
+
+/**
+ * A write in mode `commit` (giantswarm/agent-manager#24): the repository that
+ * owns the release, the directory and files, and — not on a dry run, and not
+ * when the repository already says so — the pull request opened as the person;
+ * `liveSteps` are what the merge alone does not do. agent-manager,
+ * cluster-manager and model-manager answer it in the same shape.
+ */
+export type GitOpsCommit = {
+  repository: string;
+  base: string;
+  directory: string;
+  /** The Flux Kustomization that lands the files; empty for a named target. */
+  kustomization?: string;
+  prune: boolean;
+  branch: string;
+  files: CommitFile[];
+  pullRequest?: string;
+  number?: number;
+  author?: string;
+  liveSteps?: string[];
+};
+
+/**
+ * What a write in mode `commit` answers: `commit`, the pull request. Without
+ * the person's GitHub authorization the write is refused with `auth_required`
+ * instead (an `AgentManagerError`), never answered here.
+ */
+export type CommitAgentResult = {
+  mode?: string;
+  dryRun?: boolean;
+  commit?: GitOpsCommit;
+};
+
+/**
+ * The verdict a create is done at: the Agent is ready on its Harness, or it
+ * failed. `progressing` and `unknown` keep polling.
  */
 export function isSettledVerdict(verdict: AgentStatusVerdict): boolean {
   return verdict === 'ready' || verdict === 'failed';
@@ -217,11 +287,11 @@ export function isSettledVerdict(verdict: AgentStatusVerdict): boolean {
  * that was already there.
  *
  * A verdict alone cannot say: agent-manager writes the **HelmRelease**, and
- * helm-controller re-renders the AgentTemplate a few seconds later, so the
+ * helm-controller re-renders the Agent a few seconds later, so the
  * first `get_agent_status` after an `update_agent` on an agent that was already
  * `ready` answers `ready` — for the revision before the write. Comparing
  * against the generation read immediately before the write is what tells them
- * apart: the template's generation has to have moved past it, and the
+ * apart: the Agent's generation has to have moved past it, and the
  * controller has to have caught up with the new one.
  *
  * `observedGeneration` is optional in the status (the same caveat the Agent
@@ -240,25 +310,29 @@ export function hasReachedWrittenRevision(
   if (fromGeneration === undefined) {
     return true;
   }
-  const generation = status?.template?.generation;
+  const generation = status?.agent?.generation;
   if (typeof generation !== 'number' || generation <= fromGeneration) {
     return false;
   }
-  const observed = status?.template?.observedGeneration;
+  const observed = status?.agent?.observedGeneration;
   return typeof observed !== 'number' || observed >= generation;
 }
 
 /**
  * agent-manager's error codes, as its MCP tools prefix them
  * (`<code>: <message>`). `forbidden` is the apiserver's refusal for the person
- * (a viewer's Deploy), `conflict` an existing name or a GitOps-owned or
- * suspended release, `invalid_request` a schema violation or an unpinnable
- * skill, `unsupported` an operation this installation does not offer.
+ * (a viewer's Deploy), `conflict` an existing name or a suspended release,
+ * `gitops_owned` a live write to a release applied from git,
+ * `auth_required` a write in mode `commit` without the person's GitHub
+ * authorization, `invalid_request` a schema violation or an unpinnable skill,
+ * `unsupported` an operation this installation does not offer.
  */
 export type AgentManagerErrorCode =
   | 'not_found'
   | 'invalid_request'
   | 'conflict'
+  | 'gitops_owned'
+  | 'auth_required'
   | 'forbidden'
   | 'unauthenticated'
   | 'unsupported'
@@ -269,6 +343,8 @@ const ERROR_CODES: readonly AgentManagerErrorCode[] = [
   'not_found',
   'invalid_request',
   'conflict',
+  'gitops_owned',
+  'auth_required',
   'forbidden',
   'unauthenticated',
   'unsupported',
@@ -284,6 +360,54 @@ export class AgentManagerError extends Error {
   ) {
     super(message);
   }
+}
+
+/**
+ * agent-manager's refusal to change a release applied from git through a pull
+ * request: it edits a release only in its own file, `<directory>/<name>.yaml`,
+ * and that file is not on the repository's base branch (`requireReleaseFile`
+ * in agent-manager's internal/agents/commit.go). It checks that one path and
+ * nothing else: the release may be defined anywhere else in the repository, or
+ * in its directory under another name.
+ */
+export type MissingReleaseFile = {
+  /** The HelmRelease, `namespace/name`. */
+  release: string;
+  /** agent-manager's directory, e.g. `management-clusters/gazelle/extras/agent-manager`. */
+  directory: string;
+  /** The repository, `owner/name`. */
+  repository: string;
+  /** The file agent-manager looked for and did not find. */
+  path: string;
+};
+
+// agent-manager reports this refusal only as a `conflict` in prose, so the
+// message is parsed; the test pins agent-manager's exact wording. A rewording
+// there turns this back into the raw conflict on confirm, nothing worse.
+const MISSING_RELEASE_FILE =
+  /HelmRelease (\S+) is not in agent-manager's directory (\S+) of (\S+) \(no (\S+) there\)/;
+
+/**
+ * Whether a refusal is agent-manager's missing-release-file conflict, and if so
+ * for which release, directory, repository and path. `undefined` for any other
+ * refusal, which keeps its own message.
+ */
+export function missingReleaseFile(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): MissingReleaseFile | undefined {
+  if (failure?.code !== 'conflict') {
+    return undefined;
+  }
+  const match = failure.message.match(MISSING_RELEASE_FILE);
+  if (!match) {
+    return undefined;
+  }
+  return {
+    release: match[1],
+    directory: match[2],
+    repository: match[3],
+    path: match[4],
+  };
 }
 
 /**
@@ -359,7 +483,7 @@ export function helmInstallCommand(
  * How agent-manager manages an agent: `helmrelease` — a HelmRelease it can
  * write live; `gitops` — the release is applied by a Flux Kustomization, its
  * desired state lives in git and a live write is refused; `none` — a bare
- * `AgentTemplate` with no release behind it, refused as well.
+ * `Agent` object with no release behind it, refused as well.
  */
 export type AgentManagedBy = 'helmrelease' | 'gitops' | 'none';
 
@@ -379,13 +503,13 @@ export type AgentHelmReleaseRef = {
 /**
  * `get_agent`: one agent as agent-manager reads it back — the fields the edit
  * form is pre-filled from, the skills as pinned (a git commit or an OCI
- * digest), the declared toolset, the per-Harness status and the HelmRelease
+ * digest), the declared toolset, the Agent object's status and the HelmRelease
  * values (the chart contract). Mirrors `Agent` in `internal/agents/types.go`.
  */
 export type AgentManagerAgent = {
   name: string;
   namespace: string;
-  /** False while the release has not rendered the template (yet). */
+  /** False while the release has not rendered the Agent object (yet). */
   exists: boolean;
   displayName?: string;
   description?: string;
@@ -398,7 +522,11 @@ export type AgentManagerAgent = {
   /** No toolset declared, muster bound: sees every tool the gateway exposes. */
   implicitFullAccess?: boolean;
   ready: boolean | null;
-  harnesses?: HarnessStatus[];
+  /** The Harness that runs the agent (`spec.harnessRef.name`). */
+  harness?: string;
+  /** The extra HTTP(S) origins the agent may reach (`spec.egress`). */
+  egress?: string[];
+  status?: AgentObjectStatus;
   managed: AgentManagedBy;
   helmRelease?: AgentHelmReleaseRef;
   /** The HelmRelease's inline values, when a release owns the agent. */
@@ -433,6 +561,8 @@ export type AgentUpdate = {
   iconUrl?: string;
   skills?: AgentSkillEntry[];
   toolset?: string[];
+  /** Replaces the whole list; an empty list clears it. */
+  egress?: string[];
   refreshSkills?: boolean;
 };
 
@@ -452,6 +582,13 @@ export type UpdateAgentResult = {
 };
 
 /**
+ * `update_agent` with `mode: commit` and `dryRun`: the merged values as
+ * `update_agent` reports them, plus the pull request it would open (whose
+ * files carry their full content on a dry run).
+ */
+export type UpdateAgentCommitDryRun = UpdateAgentResult & CommitAgentResult;
+
+/**
  * `delete_agent`: what went. The shared per-namespace `OCIRepository` of the
  * chart stays while another release references it (or the check could not be
  * made) — `ociRepositoryKept` is agent-manager's reason. Nothing renders it, or
@@ -462,7 +599,7 @@ export type DeleteAgentResult = {
   name: string;
   namespace: string;
   helmReleaseDeleted: boolean;
-  agentTemplateDeleted?: boolean;
+  agentDeleted?: boolean;
   remoteMcpServerDeleted?: boolean;
   ociRepositoryDeleted: boolean;
   ociRepositoryKept?: string;
