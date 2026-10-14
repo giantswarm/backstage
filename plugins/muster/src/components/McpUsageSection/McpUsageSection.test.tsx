@@ -8,6 +8,7 @@ import {
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import { formatDayWithYear } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { McpUsage, MusterApi, musterApiRef } from '../../apis';
 import {
   MusterInstance,
@@ -276,6 +277,82 @@ describe('McpUsageSection window', () => {
       installation: 'gazelle',
       hours: 168,
     });
+  });
+});
+
+describe('McpUsageSection data start', () => {
+  /** Seven daily buckets, 8 to 14 Oct 2026, with calls on the last three. */
+  function weekFrom(dataStart: string | undefined): McpUsage {
+    return {
+      available: true,
+      range_hours: 168,
+      step_hours: 24,
+      buckets: Array.from({ length: 7 }, (_, index) => ({
+        start: new Date(Date.UTC(2026, 9, 8 + index)).toISOString(),
+        ok: index >= 4 ? 3 : 0,
+        error: 0,
+        error_result: 0,
+      })),
+      ...(dataStart && { data_start: dataStart }),
+      totals: {
+        calls: 9,
+        errors: 0,
+        error_ratio: 0,
+        p95_seconds: 0.2,
+        distinct_tools: 1,
+      },
+      top_tools: [],
+      servers: [],
+    };
+  }
+
+  async function renderWith(usage: McpUsage) {
+    path = '/agent-platform/usage/connectors?window=7d';
+    const api = {
+      getMcpUsage: jest.fn().mockResolvedValue(usage),
+      filterTools: jest.fn().mockResolvedValue({ tools: [] }),
+      signIn: jest.fn(),
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const reachable = {
+      ...instance(),
+      activeInstallation: 'gazelle',
+      scope: 'gazelle',
+      activeInstallationInfo: instance().installationInfos[0],
+    };
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+          <QueryClientProvider client={queryClient}>
+            <MusterInstanceContext.Provider value={reachable}>
+              <McpUsageSection />
+            </MusterInstanceContext.Provider>
+          </QueryClientProvider>
+        </TestApiProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByText('Tool calls');
+  }
+
+  it('says since when calls were recorded when that is inside the window', async () => {
+    await renderWith(weekFrom('2026-10-12T00:00:00.000Z'));
+
+    expect(
+      screen.getByText(
+        `Tool calls have been recorded only since ${formatDayWithYear('2026-10-12')}, so these figures cover 3 of the 7 days.`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ['covers the whole window', '2026-10-08T00:00:00.000Z'],
+    ['has no data at all', undefined],
+  ])('says nothing when the data %s', async (_label, dataStart) => {
+    await renderWith(weekFrom(dataStart));
+
+    expect(screen.queryByText(/recorded only since/)).not.toBeInTheDocument();
   });
 });
 

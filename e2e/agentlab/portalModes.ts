@@ -40,6 +40,7 @@ export const SHELL_SPECS = [
   'session-state-column.spec.ts',
   'sessions-awaiting-data.spec.ts',
   'sessions-unreadable-reason.spec.ts',
+  'shell-sign-in.spec.ts',
   'telemetry.spec.ts',
   'usage-cost.spec.ts',
   'wizard-tools-layout.spec.ts',

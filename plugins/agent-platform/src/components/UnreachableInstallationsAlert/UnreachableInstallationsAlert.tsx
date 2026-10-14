@@ -23,12 +23,20 @@ const useStyles = makeStyles({
   },
 });
 
+/** The guess at why, when the reads do not say: per one environment or several. */
+const MAY_BE_UNREACHABLE = {
+  one: 'The environment may be unreachable, or your account may lack permission there.',
+  several:
+    'The environments may be unreachable, or your account may lack permission there.',
+};
+
 export type UnreachableInstallationsAlertProps = {
   /** Installations whose kagent resources couldn't be read. */
   installations: string[];
   /**
-   * The resource being listed, used in the explanation (e.g. "ModelConfigs",
-   * "Agents"). Defaults to a generic "kagent resources".
+   * The resource being listed, lower case, as it reads mid-sentence after
+   * "The" (e.g. "agents", "served models"). Defaults to a generic "kagent
+   * resources".
    */
   resourceName?: string;
   /**
@@ -47,14 +55,16 @@ export type UnreachableInstallationsAlertProps = {
 };
 
 /**
- * Warning card listing installations that were skipped because their kagent
- * resources couldn't be read (unreachable, or the user lacks permission).
+ * Warning card naming the installations whose resources could not be read
+ * (unreachable, or the user lacks permission); the list leaves them out.
  * Shared by the create flow (installation select) and the agents list so the two
  * surfaces report partial-fleet failures identically. Renders nothing when the
  * list is empty.
  *
  * Up to {@link NAMED_IN_SENTENCE} installations are named one by one, with
- * their reason and request id. Past that the sentence groups them by reason
+ * their reason and request id; one reads as one ("The sessions could not be
+ * read on gremlin (timed out)."), since under a pinned scope it is the whole
+ * view. Past that the sentence groups them by reason
  * and names the first few of each (`a, b, c, d, e and 40 more (timed out)`),
  * and every installation — with its request id — sits behind a disclosure: a
  * private fleet of 50 is otherwise a wall of text.
@@ -88,23 +98,13 @@ export function UnreachableInstallationsAlert({
       <ClosableWarning
         title={title}
         onClose={onClose}
-        description={
-          failures
-            ? `Skipped because their ${resourceName} could not be read: ${installations
-                .map(installation =>
-                  describe(installation, failures[installation]),
-                )
-                .join('; ')}.`
-            : `Skipped because their ${resourceName} could not be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${installations.join(
-                ', ',
-              )}.`
-        }
+        description={describeFew(installations, resourceName, failures)}
       />
     );
   }
 
   const sentence = failures
-    ? `Skipped because their ${resourceName} could not be read: ${groupNames(
+    ? `The ${resourceName} could not be read on these environments: ${groupNames(
         installations,
         installation => installation,
         installation => failures[installation]?.reason ?? '',
@@ -113,9 +113,9 @@ export function UnreachableInstallationsAlert({
           group ? `${joinNames(names)} (${group})` : joinNames(names),
         )
         .join('; ')}.`
-    : `Skipped because their ${resourceName} could not be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${joinNames(
+    : `The ${resourceName} on ${joinNames(
         installations,
-      )}.`;
+      )} could not be read. ${MAY_BE_UNREACHABLE.several}`;
 
   return (
     <ClosableWarning
@@ -139,6 +139,45 @@ export function UnreachableInstallationsAlert({
       }
     />
   );
+}
+
+/** `a`, `a and b`, `a, b and c`: up to {@link NAMED_IN_SENTENCE} names. */
+function listNames(names: string[]): string {
+  return names.length < 2
+    ? names.join('')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * The sentence for up to {@link NAMED_IN_SENTENCE} environments, each named:
+ * one environment reads as one, so a single pinned environment is not told
+ * about "their" reads or what was "skipped". A failure's reason and request
+ * id follow its environment; past one, the entries are a semicolon list,
+ * because a reason holds commas.
+ */
+function describeFew(
+  installations: string[],
+  resourceName: string,
+  failures: Record<string, ReadFailure> | undefined,
+): string {
+  if (installations.length === 1) {
+    const [installation] = installations;
+    if (!failures) {
+      return `The ${resourceName} on ${installation} could not be read. ${MAY_BE_UNREACHABLE.one}`;
+    }
+    return `The ${resourceName} could not be read on ${describe(
+      installation,
+      failures[installation],
+    )}.`;
+  }
+  if (!failures) {
+    return `The ${resourceName} on ${listNames(
+      installations,
+    )} could not be read. ${MAY_BE_UNREACHABLE.several}`;
+  }
+  return `The ${resourceName} could not be read on these environments: ${installations
+    .map(installation => describe(installation, failures[installation]))
+    .join('; ')}.`;
 }
 
 /** The warning card with its close button, announced as an alert. */

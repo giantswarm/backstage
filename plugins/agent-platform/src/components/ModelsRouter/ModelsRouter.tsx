@@ -8,6 +8,10 @@ import {
 } from 'react-router-dom';
 import { Flex } from '@backstage/ui';
 import {
+  ALL_INSTALLATIONS,
+  useInstallationScope,
+} from '@giantswarm/backstage-plugin-gs';
+import {
   ShellPage,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -25,6 +29,11 @@ import { EditModelPage } from '../EditModelPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
 import { ModelCachePage } from '../ModelCachePage';
+import { EnvironmentSelect } from '../EnvironmentSelect';
+import {
+  InstallationScopeNote,
+  useUnknownScopePin,
+} from '../InstallationScopeNote';
 import {
   AddGpuNodePoolRoute,
   AddModelBackendRoute,
@@ -42,6 +51,8 @@ import {
 } from '../ShellCustomizeRedirect';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { isLegacyServeLink } from '../../lib/modelManagerServe';
+import { nothingCouldBeRead } from '../../lib/soleInstallation';
 
 /**
  * The ModelConfigs list, its create flow and one model used to live under a
@@ -111,6 +122,12 @@ function shellHostingTabs(clusterManager: boolean) {
  * One Model hosting tab: its headline figures — only those about what the
  * tab lists (`ModelHostingKpis`'s scope), so the row does not repeat on every
  * tab — above the view.
+ *
+ * Under a pinned environment the portal does not know (a stale deep link)
+ * the views read nothing, and their empty states ("No serving layer", "No
+ * GPU inventory") would say something else about the same state: the scope
+ * note stands alone instead, and the header's Environment control is the
+ * way out.
  */
 const HostingView = ({
   kpis,
@@ -118,12 +135,18 @@ const HostingView = ({
 }: {
   kpis: ModelHostingKpisScope | undefined;
   children: ReactNode;
-}) => (
-  <Flex direction="column" gap="5">
-    {kpis && <ModelHostingKpis scope={kpis} />}
-    {children}
-  </Flex>
-);
+}) => {
+  const unknownPin = useUnknownScopePin();
+  if (unknownPin) {
+    return <InstallationScopeNote />;
+  }
+  return (
+    <Flex direction="column" gap="5">
+      {kpis && <ModelHostingKpis scope={kpis} />}
+      {children}
+    </Flex>
+  );
+};
 
 /**
  * Model hosting: the serving layer's views under the platform-standard page
@@ -135,20 +158,48 @@ const HostingView = ({
  * actions a view registers (`ModelHostingActions`: Serve model, Add GPU node
  * pool…) land in this header's slot, top right.
  *
- * The tabs and figures show where a serving layer exists; a deep link on a
- * portal without one keeps the frame and lets the view's own empty state
- * speak.
+ * The figures show where a serving layer is in view. The tabs show where one
+ * is in view or an environment is pinned: picking one in the header that
+ * runs no serving layer changes the view's content, not the frame, so the
+ * other tabs stay one click away. Only "All installations" on a portal
+ * without a serving layer drops the strip; a deep link there keeps the frame
+ * and lets the view's own empty state speak. The Model cache tab is offered
+ * where cluster-manager runs, and kept while it is the open view, so a
+ * switch of environment never leaves a view without its tab.
+ *
+ * The views read the section's installation scope, the one Customize's
+ * Environment control sets, so the same control leads this header, before
+ * the view's actions; `EnvironmentSelect` hides itself with one
+ * installation. No `component`: the views read KServe, model-manager and
+ * cluster-manager, and no one platform component stands for them. With
+ * `kserve`, an environment that runs kagent and model-manager but not KServe
+ * would read "no KServe here" over the models it serves.
+ *
+ * An older release's pool link (`?serve=1&installation=…`) names the serve
+ * *target* in `installation`, and the Running models view forwards it at
+ * once. The control is left out for it: its URL sync would adopt the target
+ * as the section's scope for every tab.
  */
 const ShellModelHosting = () => {
   const basePath = useSplatBasePath();
-  const { search } = useLocation();
+  const { pathname, search } = useLocation();
+  const { scope } = useInstallationScope();
   const serving = useServing();
   const servingLayer = hasServingLayer(serving);
   const clusterManager = useClusterManagerAvailability(
     serving.reachableInstallations ?? [],
   );
+  const onCache = pathname.replace(/\/$/, '') === `${basePath}/cache`;
   const offersCache =
-    clusterManager.available.length > 0 || clusterManager.isLoading;
+    clusterManager.available.length > 0 || clusterManager.isLoading || onCache;
+  const showTabs = servingLayer || scope !== ALL_INSTALLATIONS;
+  // Every environment in view failed to read its served models: a "Models
+  // running: 0" tile would claim what the warning below says was not seen.
+  const servedModelsUnread = nothingCouldBeRead({
+    installations: serving.installations ?? [],
+    unreadable: serving.unreachableInstallations ?? [],
+  });
+  const legacyServeLink = isLegacyServeLink(new URLSearchParams(search));
 
   return (
     <ShellPage
@@ -159,13 +210,19 @@ const ShellModelHosting = () => {
         { label: 'Model hosting' },
       ]}
       description="Run models on your own GPUs, so data stays in your clusters."
-      tabs={servingLayer ? shellHostingTabs(offersCache) : undefined}
+      actions={legacyServeLink ? undefined : <EnvironmentSelect />}
+      tabs={showTabs ? shellHostingTabs(offersCache) : undefined}
+      // As Usage's tabs: a switch keeps `?installation=`, so each view's
+      // address names the environment it shows.
+      tabsSearch={search}
     >
       <Routes>
         <Route
           path="serving"
           element={
-            <HostingView kpis={servingLayer ? 'all' : undefined}>
+            <HostingView
+              kpis={servingLayer && !servedModelsUnread ? 'all' : undefined}
+            >
               <ServingPage />
             </HostingView>
           }

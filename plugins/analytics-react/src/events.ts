@@ -59,6 +59,11 @@ export const portalEvents = defineEvents({
       "An agent was added to, or removed from, the person's favorites.",
     attributes: { change: ['added', 'removed'] },
   },
+  'AgentPlatform.toolActivityChanged': {
+    description:
+      "The session page's tool activity was shown or hidden, a choice kept for the person's later sessions.",
+    attributes: { change: ['shown', 'hidden'] },
+  },
   'AgentPlatform.skillProposed': {
     description:
       'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',

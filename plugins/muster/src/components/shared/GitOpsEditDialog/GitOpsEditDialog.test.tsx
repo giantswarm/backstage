@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/test-utils';
-import { MCPServer } from '../../../lib/k8s';
+import { MCPServer, MusterWorkflow } from '../../../lib/k8s';
 import { GitOpsEditDialog } from './GitOpsEditDialog';
 
 const mockUseGitOpsSource = jest.fn();
@@ -41,7 +42,7 @@ const KUSTOMIZE_LABELS = {
 
 async function openDialog(server: MCPServer) {
   await renderInTestApp(
-    <GitOpsEditDialog server={server} isOpen onOpenChange={jest.fn()} />,
+    <GitOpsEditDialog resource={server} isOpen onOpenChange={jest.fn()} />,
   );
   return screen.findByRole('dialog');
 }
@@ -107,6 +108,9 @@ describe('GitOpsEditDialog', () => {
     expect(dialog).toHaveTextContent(
       'change the values entry that renders github',
     );
+    expect(dialog).toHaveTextContent(
+      'Do not edit or add a kind: MCPServer document: the chart would render the connector again.',
+    );
     // The rendered manifest is not what they edit, so it is not offered.
     expect(screen.queryByText('Current manifest')).not.toBeInTheDocument();
     expect(
@@ -138,6 +142,72 @@ describe('GitOpsEditDialog', () => {
       'Open a pull request (merge request on GitLab).',
     );
     expect(screen.getByText('Current manifest')).toBeInTheDocument();
+  });
+
+  it('names a workflow by its own kind', async () => {
+    mockUseGitOpsSource.mockReturnValue({
+      inGit: true,
+      isLoading: false,
+      url: SOURCE_URL,
+      errors: [],
+      kustomization: KUSTOMIZATION,
+    });
+    const workflow = new MusterWorkflow(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'Workflow',
+        metadata: {
+          name: 'deploy',
+          namespace: 'agent-platform',
+          labels: KUSTOMIZE_LABELS,
+        },
+        spec: { steps: [] },
+      } as never,
+      'gazelle',
+    );
+
+    await renderInTestApp(
+      <GitOpsEditDialog resource={workflow} isOpen onOpenChange={jest.fn()} />,
+    );
+    const dialog = await screen.findByRole('dialog');
+
+    expect(dialog).toHaveTextContent('Edit or remove deploy');
+    expect(dialog).toHaveTextContent(
+      'find the YAML document that declares kind: Workflow with name: deploy in namespace agent-platform',
+    );
+    expect(mockUseGitOpsSource).toHaveBeenCalledWith(workflow, 'gazelle');
+  });
+
+  it('looks nothing up until it is first opened', async () => {
+    mockUseGitOpsSource.mockReturnValue({
+      inGit: false,
+      isLoading: false,
+      errors: [],
+    });
+    const server = makeServer(KUSTOMIZE_LABELS);
+    function Harness() {
+      const [isOpen, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Edit in Git…
+          </button>
+          <GitOpsEditDialog
+            resource={server}
+            isOpen={isOpen}
+            onOpenChange={setOpen}
+          />
+        </>
+      );
+    }
+    await renderInTestApp(<Harness />);
+
+    expect(mockUseGitOpsSource).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit in Git…' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(mockUseGitOpsSource).toHaveBeenCalledWith(server, 'gazelle');
   });
 
   it('says "merge request" for a GitLab source it cannot link to', async () => {

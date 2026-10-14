@@ -15,6 +15,7 @@ import {
 import {
   ActivityHeatmap,
   ActivityHeatmapUnavailable,
+  DataStartNote,
   LlmUsageState,
   ReliabilityStrip,
   SessionKpiTiles,
@@ -208,6 +209,7 @@ export function UsageOverviewPage() {
 
         {view.state === 'ready' && usage && (
           <>
+            <DataStartNote usage={usage} />
             <UsageKpiTiles
               usage={usage}
               currency={currency}

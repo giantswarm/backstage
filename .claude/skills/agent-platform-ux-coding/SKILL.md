@@ -143,6 +143,11 @@ them and never invent a palette.
 - Technical detail is a fold-out in place, never a page-wide toggle, switch or
   stored "technical mode". Pages use a "Technical details" bui `Accordion`
   styled by `useSimpleAccordionStyles`, mounted only while open.
+- The one page-wide switch is the session page's "Show tool activity" (PO,
+  S9): it hides the agent's work, it does not change how detail reads. It is
+  small, at the end of the header's meta line after "Started …", on by
+  default and stored per person (`useShowToolActivity`). Off still shows
+  anything that waits on the person.
 - Forms put technical knobs with sensible defaults under `MoreOptions`. When
   validation blocks on a field inside it, open it in the same handler as
   `useFieldValidation`'s `reveal()`.
@@ -321,6 +326,8 @@ is a defect; one with it is not a finding. The kept list:
 - The scope selectors (Usage 7 | 30 | 90, palette type chips) are direct
   selections.
 - Confirm-delete and row-menu actions are dialogs.
+- The session page's "Show tool activity" switch is the one page-wide view
+  switch.
 - Labels and column headers are noun phrases.
 - Delete is for owned things and Remove for infrastructure.
 - A read failure inside a finishable form is a warning.

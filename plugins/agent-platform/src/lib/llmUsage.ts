@@ -5,6 +5,7 @@ import type {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { deriveTokenRates, type TokenRates } from './costEstimate';
 import { WINDOW_DAYS } from './llmUsageQueries';
+import { usageDataStart, type UsageDataStart } from './usageWindow';
 
 /**
  * Reducers turning Mimir's answers into the rows the LLM usage views render.
@@ -157,7 +158,8 @@ export type LlmUsageTotals = {
   cacheReadSharePct: number | undefined;
   /**
    * The spend over the window before this one, when it was asked for:
-   * `undefined` when nothing was priced then.
+   * `undefined` when nothing was priced then, or when the data does not reach
+   * back to that window's start.
    */
   previousCostUsd?: number | undefined;
 };
@@ -182,6 +184,13 @@ export type LlmUsage = {
   reliability: LlmReliability;
   unpricedModels: UnpricedModelRow[];
   rates: TokenRates;
+  /**
+   * Where the gateway's records start, when that is after the window's first
+   * day and it recorded nothing in the week before the window either: every
+   * figure then covers fewer days than the window names. `undefined`
+   * otherwise, and when there are no records at all.
+   */
+  dataStart?: UsageDataStart;
 };
 
 /**
@@ -698,6 +707,52 @@ function fillDays(
   return rows;
 }
 
+/**
+ * The first window day any daily series holds a sample for, as `YYYY-MM-DD` —
+ * where the gateway's records start inside the window. `undefined` when
+ * nothing in the window has a sample.
+ *
+ * Read off the daily range answers the charts already have, so knowing it
+ * costs no query. A point counts whatever its value: a zero is a day the
+ * series existed and nothing happened, which is data; no point at all is a
+ * day the gateway recorded nothing. Labelled by the day it covers, as in
+ * {@link reduceDaily}.
+ *
+ * The range stops at yesterday, so when it holds no point but the window's
+ * totals hold a sample, the records start today. Those totals rather than
+ * today's own queries: the page waits for them, so the answer is there from
+ * the first render instead of popping in, or never if a partial query fails.
+ */
+export function firstSampledDay(
+  daily: (MimirMatrixSample[] | null | undefined)[],
+  fallback: {
+    today: string;
+    windowTotals: (MimirMetricSample[] | undefined)[];
+  },
+): string | undefined {
+  let first: number | undefined;
+  for (const samples of daily) {
+    for (const sample of samples ?? []) {
+      for (const [at, raw] of sample.values ?? []) {
+        if (
+          sampleValue(raw) !== undefined &&
+          Number.isFinite(at) &&
+          (first === undefined || at < first)
+        ) {
+          first = at;
+        }
+      }
+    }
+  }
+  if (first !== undefined) {
+    return new Date(first * 1000 - DAY_MS).toISOString().slice(0, 10);
+  }
+  const hasTotals = fallback.windowTotals.some(samples =>
+    (samples ?? []).some(sample => instantValue(sample) !== undefined),
+  );
+  return hasTotals ? fallback.today : undefined;
+}
+
 /** Assemble everything the two Mimir views read. */
 export function buildLlmUsage(options: {
   cost: MimirMetricSample[] | undefined;
@@ -735,6 +790,19 @@ export function buildLlmUsage(options: {
    * comparison was not asked for, which leaves `previousCostUsd` out.
    */
   previousCost?: MimirMetricSample[];
+  /**
+   * Whether the gateway recorded anything just before this window, from
+   * `dataBeforeWindow`; `undefined` when that is unknown. Only `false` lets
+   * {@link LlmUsage.dataStart} be set: a window whose first days merely had
+   * no calls is not one the data fails to reach.
+   */
+  dataBeforeWindow?: boolean;
+  /**
+   * The same before the previous window, from `dataBeforePreviousWindow`.
+   * Only `true` keeps `previousCostUsd`: a window only partly recorded is no
+   * baseline for a change, and an unchecked one is no better.
+   */
+  dataBeforePreviousWindow?: boolean;
 }): LlmUsage {
   const { cost, tokens, calls } = options;
 
@@ -813,7 +881,10 @@ export function buildLlmUsage(options: {
       avgTokensPerCall: ratePerCall(totalTokens, totalCalls),
       cacheReadSharePct: cacheReadShare(tokenTypes),
       ...(options.previousCost && {
-        previousCostUsd: optionalSum(sumBy(options.previousCost, () => 'all')),
+        previousCostUsd:
+          options.dataBeforePreviousWindow === true
+            ? optionalSum(sumBy(options.previousCost, () => 'all'))
+            : undefined,
       }),
     },
     tokenTypes,
@@ -831,6 +902,16 @@ export function buildLlmUsage(options: {
     }),
     unpricedModels: reduceUnpricedModels(options.unpricedLookups),
     rates: deriveTokenRates(costByType, tokensByType),
+    dataStart:
+      options.dataBeforeWindow === false
+        ? usageDataStart(
+            options.days,
+            firstSampledDay(
+              [options.costPerDay, options.tokensPerDay, options.callsPerDay],
+              { today: options.today, windowTotals: [cost, tokens, calls] },
+            ),
+          )
+        : undefined,
   };
 }
 

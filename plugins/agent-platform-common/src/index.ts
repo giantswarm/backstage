@@ -13,6 +13,7 @@ export * from './agentShellFlag';
 export * from './portals';
 export * from './metaAgents';
 export * from './usageWindow';
+export * from './formatDay';
 export * from './formatNumbers';
 export * from './kagent/kagentSchema';
 export * from './kagent/kagentTaskSchema';

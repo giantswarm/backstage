@@ -56,6 +56,9 @@ export function CostKpiTiles({
       : `${delta >= 0 ? '▲' : '▼'} ${formatPercent(Math.abs(delta))} vs previous ${windowDays} days`;
 
   const windowNote = `the last ${windowDays} days`;
+  // Said in the hint because the change is hidden, not zero, when the data
+  // does not reach back to the previous window (`dataBeforePreviousWindow`).
+  const deltaNote = `The change against the previous ${windowDays} days shows only when the data covers all of them.`;
 
   return (
     <StatGrid>
@@ -64,8 +67,8 @@ export function CostKpiTiles({
         label={converted ? 'Est. spend' : 'Spend'}
         hint={
           converted
-            ? `Shows what the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate. It is an estimate, not an invoice.`
-            : `Sums the gateway's price for every model call over ${windowNote}. Models missing from its catalogue add nothing.`
+            ? `Shows what the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate. It is an estimate, not an invoice. ${deltaNote}`
+            : `Sums the gateway's price for every model call over ${windowNote}. Models missing from its catalogue add nothing. ${deltaNote}`
         }
         value={formatMoney(totals.costUsd, currency)}
         beside={deltaLabel && <StatDelta>{deltaLabel}</StatDelta>}
