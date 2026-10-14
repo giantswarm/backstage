@@ -2,6 +2,7 @@ import {
   encodeKagentAgentId,
   KagentSession,
   readReportedRuntimeLoss,
+  SessionStateEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
 
@@ -172,6 +173,79 @@ function timestampValue(value: string | undefined): number | undefined {
 }
 
 /**
+ * When a session was last active, epoch ms: the later of its start and the
+ * moment its state last moved — a message sent, a reply finished, a question
+ * asked. kagent does not move a session's `updatedAt` on a turn
+ * (kagent-dev/kagent#2397), so the derived state's `changedAt` is the only
+ * record of activity after the start. Undefined when neither is known.
+ */
+export function lastActiveAt(
+  row: SessionRow,
+  state?: SessionStateEntry,
+): number | undefined {
+  const times = [timestampValue(row.createdAt), state?.changedAt].filter(
+    (time): time is number => time !== undefined && !Number.isNaN(time),
+  );
+  return times.length > 0 ? Math.max(...times) : undefined;
+}
+
+/**
+ * The start of the reader's local calendar day `daysBack` days before `now`,
+ * epoch ms. The session lists' day groups (the rail's Today / Previous 7 days,
+ * the Sessions page's Today / Yesterday) and the palette's "Today" all cut on
+ * it, so a session never sits under Today in one place and not another.
+ */
+export function localDayStart(now: Date, daysBack: number = 0): number {
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - daysBack,
+  ).getTime();
+}
+
+/**
+ * The first of `buckets` whose window holds `activeAt` (epoch ms), each
+ * bucket reaching back to the local day start `daysBack` days ago; `fallback`
+ * past the last one, and for an unknown time. A time later than `now` (clock
+ * skew) lands in the first bucket.
+ */
+export function dayBucket<G extends string>(
+  activeAt: number | undefined,
+  now: Date,
+  buckets: ReadonlyArray<{ id: G; daysBack: number }>,
+  fallback: G,
+): G {
+  if (activeAt === undefined || Number.isNaN(activeAt)) {
+    return fallback;
+  }
+  const bucket = buckets.find(
+    ({ daysBack }) => activeAt >= localDayStart(now, daysBack),
+  );
+  return bucket?.id ?? fallback;
+}
+
+/**
+ * The one recency order of the session lists (T100 M1): most recently active
+ * first (see {@link lastActiveAt}), a session with no known time last, the
+ * title breaking ties. The rail and the Sessions page both sort with this, so
+ * the same two sessions never read in opposite orders.
+ */
+export function byLastActive<T extends Pick<SessionRow, 'title'>>(
+  activeAtOf: (row: T) => number | undefined,
+): (a: T, b: T) => number {
+  return (a, b) => {
+    const aTime = activeAtOf(a);
+    const bTime = activeAtOf(b);
+    if (aTime !== bTime) {
+      if (aTime === undefined) return 1;
+      if (bTime === undefined) return -1;
+      return bTime - aTime;
+    }
+    return a.title.localeCompare(b.title);
+  };
+}
+
+/**
  * Default ordering: the home installation's sessions first, then everyone
  * else's; within that, newest first, then title. Without a `home` it is
  * newest first alone. By start rather than by `updatedAt`, which kagent API v2
@@ -197,38 +271,6 @@ export function sortSessionRows(
       return bTime - aTime;
     }
     return a.title.localeCompare(b.title);
-  });
-}
-
-/**
- * Sort rows for the table, by column id and direction.
- *
- * Timestamp columns compare parsed times so string ordering can't mislead, and
- * rows with an unknown timestamp always sort last — in *both* directions, since
- * "unknown" is not "oldest".
- */
-export function sortSessionsBy<T extends SessionRow>(
-  rows: T[],
-  sort: { column: unknown; direction: 'ascending' | 'descending' },
-): T[] {
-  const column = String(sort.column);
-  const factor = sort.direction === 'ascending' ? 1 : -1;
-
-  return [...rows].sort((a, b) => {
-    if (column === 'createdAt') {
-      const aTime = timestampValue(a[column]);
-      const bTime = timestampValue(b[column]);
-      if (aTime === bTime) {
-        return a.title.localeCompare(b.title);
-      }
-      if (aTime === undefined) return 1;
-      if (bTime === undefined) return -1;
-      return (aTime - bTime) * factor;
-    }
-
-    const aValue = String(a[column as keyof T] ?? '');
-    const bValue = String(b[column as keyof T] ?? '');
-    return aValue.localeCompare(bValue) * factor;
   });
 }
 

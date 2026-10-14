@@ -1,0 +1,162 @@
+import { Flex, Text } from '@backstage/ui';
+import {
+  Agent,
+  AgentFailure,
+  isGitOpsManaged,
+  ModelConfig,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { GitOpsCard } from '@giantswarm/backstage-plugin-flux-react';
+import {
+  CopyButton,
+  type Fact,
+  FactList,
+  InfoCard,
+  MONO,
+  Mono,
+  usePhoneLayout,
+  useTouchInput,
+} from '@giantswarm/backstage-plugin-ui-react';
+
+import type { ClientServingSummary } from '../../lib/serving';
+import { AgentConfigurationCard } from './AgentConfigurationCard';
+import { AgentStatusCard } from './AgentStatusCard';
+import { shortPin, skillLabel } from './helpers';
+
+/**
+ * A commit, short where a pointer can hover for the whole of it, whole where
+ * none can: a phone or a touch screen never shows a `title`, and these are
+ * the ids someone retypes into `kubectl` or `git`.
+ */
+function Pin({ value }: { value: string }) {
+  const isPhone = usePhoneLayout();
+  const isTouch = useTouchInput();
+  if (isPhone || isTouch) {
+    return <span style={MONO}>{value}</span>;
+  }
+  return (
+    <span style={MONO} title={value}>
+      {shortPin(value)}
+    </span>
+  );
+}
+
+/**
+ * The resource behind the agent, in the terms of the people who run the
+ * platform: what it is called in the cluster, the Harness it runs on, the
+ * revision it runs, where its instructions are read from and which version of
+ * each skill it is pinned to.
+ */
+function ResourceFacts({ agent }: { agent: Agent }) {
+  const namespace = agent.getNamespace();
+  const name = agent.getName();
+  const harness = agent.getHarnessName();
+  const revision = agent.getLatestSuccessfulRevision();
+  const source = agent.getSystemMessageSource();
+  const skills = agent.getSkills();
+
+  const facts: Fact[] = [
+    {
+      label: 'Agent',
+      value: <Mono>{namespace ? `${namespace}/${name}` : name}</Mono>,
+    },
+  ];
+  if (harness) {
+    facts.push({ label: 'Harness', value: <Mono>{harness}</Mono> });
+  }
+  if (revision) {
+    facts.push({
+      label: 'Revision',
+      value: (
+        <Text variant="body-small">
+          <Pin value={revision} />
+        </Text>
+      ),
+    });
+  }
+  if (source) {
+    facts.push({
+      label: 'Instructions from',
+      value: <Mono>{`ConfigMap ${source.name}, key ${source.key}`}</Mono>,
+    });
+  }
+  if (skills.length > 0) {
+    facts.push({
+      label: 'Skill versions',
+      value: (
+        <Flex direction="column" gap="1">
+          {skills.map((skill, index) => (
+            <Text
+              key={`${skill.url}#${skill.path ?? ''}#${index}`}
+              variant="body-small"
+            >
+              {skillLabel(skill)} at <Pin value={skill.pin} />
+            </Text>
+          ))}
+        </Flex>
+      ),
+    });
+  }
+
+  const instructions = agent.getSystemMessage();
+
+  return (
+    <InfoCard
+      title="Resource"
+      headerActions={
+        instructions ? (
+          <CopyButton
+            text={instructions}
+            label="Copy system prompt"
+            size="compact"
+          />
+        ) : undefined
+      }
+    >
+      <FactList facts={facts} labelWidth={160} maxWidth={null} />
+    </InfoCard>
+  );
+}
+
+/**
+ * The agent as a Kubernetes resource, inside the overview's "Technical
+ * details" fold-out: where it came from (GitOps, the HelmRelease), how its template is
+ * configured, and what the controllers make of it — the cards this page used
+ * to lead with.
+ */
+export function AgentTechnicalDetails({
+  agent,
+  installation,
+  modelConfig,
+  modelServing,
+  failure,
+  toolsHref,
+}: {
+  agent: Agent;
+  installation: string;
+  modelConfig: ModelConfig | undefined;
+  modelServing: ClientServingSummary | undefined;
+  failure: AgentFailure | undefined;
+  toolsHref?: string;
+}) {
+  return (
+    <Flex direction="column" gap="4">
+      {/* A cheap pre-check only: whether the agent is *actually* applied from
+          Git is the card's own decision — see AgentOverviewTab. */}
+      {isGitOpsManaged(agent) && (
+        <GitOpsCard resource={agent} installationName={installation} />
+      )}
+      <ResourceFacts agent={agent} />
+      {/* Stacked rather than side by side: this sits in the main column,
+          beside the facts, where there is no width to divide. */}
+      <AgentConfigurationCard
+        agent={agent}
+        installation={installation}
+        modelConfig={modelConfig}
+        modelServing={modelServing}
+        failure={failure}
+        toolsHref={toolsHref}
+      />
+      <AgentStatusCard agent={agent} />
+    </Flex>
+  );
+}

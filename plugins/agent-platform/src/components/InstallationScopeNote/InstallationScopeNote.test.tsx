@@ -1,6 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, renderHook, screen } from '@testing-library/react';
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
-import { InstallationScopeNote } from './InstallationScopeNote';
+import {
+  InstallationScopeNote,
+  useUnknownScopePin,
+} from './InstallationScopeNote';
 
 let mockScope = 'all';
 let mockEntries: InstallationInventoryEntry[] = [];
@@ -12,6 +15,9 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     kserve: 'KServe',
     capi: 'Cluster API',
   },
+  installationsWithoutComponent: jest.requireActual(
+    '@giantswarm/backstage-plugin-gs',
+  ).installationsWithoutComponent,
   useInstallationScope: () => ({ scope: mockScope, isLoading: false }),
   useInstallationInventory: () => ({ entries: mockEntries }),
 }));
@@ -72,7 +78,33 @@ describe('InstallationScopeNote', () => {
     mockScope = 'nowhere';
     render(<InstallationScopeNote component="kagent" />);
     expect(
-      screen.getByText(/knows no installation named “nowhere”/),
+      screen.getByText(/knows no environment named “nowhere”/),
     ).toBeInTheDocument();
+  });
+
+  it('without a component, names only an installation the portal does not know', () => {
+    mockScope = 'wombat';
+    expect(render(<InstallationScopeNote />).container).toBeEmptyDOMElement();
+
+    mockScope = 'nowhere';
+    render(<InstallationScopeNote />);
+    expect(
+      screen.getByText(/knows no environment named “nowhere”/),
+    ).toBeInTheDocument();
+  });
+
+  it('names an unknown pinned installation, and nothing else', () => {
+    mockScope = 'nowhere';
+    expect(renderHook(() => useUnknownScopePin()).result.current).toBe(
+      'nowhere',
+    );
+    mockScope = 'wombat';
+    expect(renderHook(() => useUnknownScopePin()).result.current).toBe(
+      undefined,
+    );
+    mockScope = 'all';
+    expect(renderHook(() => useUnknownScopePin()).result.current).toBe(
+      undefined,
+    );
   });
 });

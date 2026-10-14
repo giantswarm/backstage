@@ -1,29 +1,33 @@
-import {
-  Box,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-  makeStyles,
-  useTheme,
-  Theme,
-} from '@material-ui/core';
+import { Paper, makeStyles, useTheme, Theme } from '@material-ui/core';
 import { Progress } from '@backstage/core-components';
+import { Box, Cell, Table, Text, useTable } from '@backstage/ui';
+import type { ColumnConfig } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import {
+  formatCount,
+  formatSeconds,
+  formatDayWithYear,
+  parseUsageWindowParam,
+  usageDataStart,
+  USAGE_WINDOW_PARAM,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   categoricalColors,
   columnMax,
   DataBar,
   SectionHeader,
+  ShowMore,
   StackedBarChart,
   isAwaitingData,
+  usePhoneColumns,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
+import { connectorNames } from '../../lib/connectorName';
+import type { MCPServer } from '../../lib/k8s';
 import type { McpUsage } from '../../apis';
 import {
   isUnreachableSession,
@@ -35,23 +39,31 @@ import { MusterProviders } from '../MusterProviders';
 import { SessionGate, Stat } from '../shared';
 
 /**
- * The window, fixed at 30 days to match the personal section above it.
+ * The window: the Usage screen's own time-range control (`?window=7d`, the
+ * 7 | 30 | 90 days every view of the screen reads), never a control of this
+ * section's. muster's `/usage` takes any span up to 90 days, so the figures
+ * follow the selection like the gateway views beside them (QA round 1: the
+ * control showed here and changed nothing).
  *
- * There used to be a 24h/7d/30d switcher here, and it had to go when this moved
- * onto the shared Usage page. Three reasons. The kagent route backing the
- * section above takes no window parameter, so a control on this one alone would
- * make the page's stated window false for whichever section a reader just
- * switched. The two stop being comparable, which is the whole reason they share
- * a page. And the bucket size changes with the window (`formatBucketTick`
- * switches to hours below 24h), so a 24h selection put an hourly-bucketed chart
- * directly under a daily one — same idiom, different meaning per bar.
- *
- * What was lost is the 24h zoom, whose real question ("is muster dispatching
- * right now") the per-server health on the Servers view answers. Bringing a control back
- * means one *page-level* control driving both sections, once the kagent route
- * accepts a window.
+ * There used to be a 24h/7d/30d switcher on the section itself, and it went
+ * when this moved onto the shared Usage page: a control on one section would
+ * make the page's stated window false for the others, and a 24h selection put
+ * an hourly-bucketed chart (`formatBucketTick`) under daily ones. The page's
+ * windows are whole days, so the buckets stay daily.
  */
-const WINDOW_HOURS = 30 * 24;
+function useWindowHours(): number {
+  const [searchParams] = useSearchParams();
+  return parseUsageWindowParam(searchParams.get(USAGE_WINDOW_PARAM)) * 24;
+}
+
+/**
+ * How many connectors the table shows before *Show all N connectors*.
+ *
+ * The backend sends every connector with a call in the window — no top-N, as
+ * it does for tools — so a large gateway's list is unbounded. Realistically
+ * tens, so one click reveals the rest rather than paging through them.
+ */
+export const CONNECTOR_ROWS = 15;
 
 const useStyles = makeStyles((theme: Theme) => ({
   column: {
@@ -91,8 +103,20 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(3),
   },
   tableCard: {
+    padding: theme.spacing(2),
     borderRadius: theme.shape.borderRadius * 2,
-    overflow: 'hidden',
+    // Scrolls inside the card if a row still does not fit, rather than being
+    // clipped by it (T22 C19); the radius clips the same either way.
+    overflowX: 'auto',
+    overflowY: 'hidden',
+  },
+  /** The figures a phone's table has no column for, under the name. */
+  phoneFacts: {
+    display: 'block',
+    marginTop: 2,
+    fontSize: 12,
+    color: theme.palette.text.secondary,
+    fontVariantNumeric: 'tabular-nums',
   },
   toolName: {
     // The body font, matching the personal section's tables directly above on
@@ -120,30 +144,12 @@ const useStyles = makeStyles((theme: Theme) => ({
   note: {
     display: 'block',
     marginTop: theme.spacing(2),
-    color: theme.palette.text.secondary,
+  },
+  dataStart: {
+    display: 'block',
+    marginBottom: theme.spacing(2),
   },
 }));
-
-/**
- * Thousands grouping fixed to `en-US`, whatever the browser's locale, to match
- * the agent-platform figures this section sits beside on the Usage page
- * (`formatCount` in that plugin's `lib/formatNumbers.ts`).
- */
-const grouped = new Intl.NumberFormat('en-US');
-
-function formatCount(value: number): string {
-  return grouped.format(Math.round(value));
-}
-
-function formatSeconds(value: number | null): string {
-  if (value === null) {
-    return '—';
-  }
-  if (value < 1) {
-    return `${Math.round(value * 1000)} ms`;
-  }
-  return `${value.toFixed(value < 10 ? 1 : 0)} s`;
-}
 
 /** Axis tick for a bucket start: hour of day for hourly, date for daily. */
 function formatBucketTick(start: string, stepHours: number): string {
@@ -174,16 +180,83 @@ function formatBucketTooltip(start: string, stepHours: number): string {
   });
 }
 
-function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
+/**
+ * At phone width, a row's errors and p95 in words under its name: the table
+ * keeps the name and Calls there (T22 C19), and a hidden column's value still
+ * has to be on the row.
+ */
+function PhoneFacts({
+  errors,
+  p95Seconds,
+  className,
+  errorClassName,
+}: {
+  errors: number;
+  p95Seconds?: number | null;
+  className: string;
+  errorClassName: string;
+}) {
+  return (
+    <span className={className}>
+      <span className={errors > 0 ? errorClassName : undefined}>
+        {formatCount(errors)} {errors === 1 ? 'error' : 'errors'}
+      </span>
+      {p95Seconds !== undefined && <> · p95 {formatSeconds(p95Seconds)}</>}
+    </span>
+  );
+}
+
+/** Name and Calls at phone width; every column elsewhere. */
+const PHONE_COLUMNS = ['name', 'calls'];
+
+/**
+ * One of the section's ranked tables: a bui `Table` like the other usage
+ * tables on the page, in the order the route sends (busiest first), unsorted
+ * and unpaged — the connectors are revealed by `ShowMore` around it.
+ */
+function UsageTable<T extends { id: string }>({
+  rows,
+  columns,
+}: {
+  rows: T[];
+  columns: ColumnConfig<T>[];
+}) {
+  const shown = usePhoneColumns(columns, PHONE_COLUMNS);
+  const { tableProps } = useTable<T>({
+    mode: 'complete',
+    data: rows,
+    paginationOptions: { type: 'none' },
+  });
+  return <Table<T> {...tableProps} data={rows} columnConfig={shown} />;
+}
+
+function UsageBody({
+  data,
+  hours,
+  servers = [],
+}: {
+  data: McpUsage;
+  hours: number;
+  /** The installation's MCPServer CRs, to name each connector as Customize does. */
+  servers?: MCPServer[];
+}) {
   const classes = useStyles();
   const theme = useTheme();
+  const isPhone = usePhoneLayout();
+  const names = connectorNames(
+    [
+      ...(data.servers ?? []).map(entry => entry.server),
+      ...(data.source?.server ? [data.source.server] : []),
+    ],
+    servers,
+  );
 
   if (!data.available) {
     return (
-      <Typography variant="body2" color="textSecondary">
-        Usage metrics are not available for this installation:{' '}
+      <Text as="p" variant="body-medium" color="secondary">
+        Usage metrics are not available for this environment:{' '}
         {data.reason ?? 'unknown reason'}
-      </Typography>
+      </Text>
     );
   }
 
@@ -199,8 +272,21 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
   const errorResultColor = theme.palette.warning.main;
   const errorColor = theme.palette.error.main;
   // One fixed window now, so the label is derived rather than looked up.
-  const rangeLabel = `${Math.round(hours / 24)}d`;
-  const windowNote = `over the last ${Math.round(hours / 24)} days`;
+  const windowDays = Math.round(hours / 24);
+  const rangeLabel = `${windowDays}d`;
+  const windowNote = `over the last ${windowDays} days`;
+  // Where muster's records start, when that is after the window does and it
+  // recorded nothing in the week before: the figures then cover fewer days
+  // than the window names. Worded as what was recorded, because a restart
+  // followed by a quiet spell looks the same. Daily buckets only, which is all
+  // the Usage screen asks for.
+  const dataStart =
+    data.step_hours >= 24
+      ? usageDataStart(
+          data.buckets.map(bucket => bucket.start.slice(0, 10)),
+          data.data_start?.slice(0, 10),
+        )
+      : undefined;
 
   /**
    * The data bars' hues, one per measure.
@@ -237,44 +323,184 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
     serverErrors: columnMax(data.servers, row => row.errors),
   };
 
+  type ToolRow = McpUsage['top_tools'][number] & { id: string };
+  type ServerRow = NonNullable<McpUsage['servers']>[number] & { id: string };
+  const toolRows: ToolRow[] = data.top_tools.map(row => ({
+    ...row,
+    id: row.tool,
+  }));
+  const serverRows: ServerRow[] = (data.servers ?? []).map(row => ({
+    ...row,
+    id: row.server,
+  }));
+
+  const errorsCell = (errors: number, maxErrors: number | undefined) => (
+    <Cell>
+      <span
+        className={`${classes.numeric} ${errors > 0 ? classes.errorValue : ''}`}
+      >
+        <DataBar
+          label={formatCount(errors)}
+          value={errors}
+          max={maxErrors ?? errors}
+          color={barColors.errors}
+        />
+      </span>
+    </Cell>
+  );
+
+  // At phone width each table keeps the name and Calls; Errors and p95 move
+  // under the name, as words (`PhoneFacts`).
+  const toolColumns: ColumnConfig<ToolRow>[] = [
+    {
+      id: 'name',
+      label: 'Top tools',
+      isRowHeader: true,
+      cell: row => (
+        <Cell>
+          <span className={classes.toolName}>
+            {row.tool}
+            {isPhone && (
+              <PhoneFacts
+                errors={row.errors}
+                p95Seconds={row.p95_seconds}
+                className={classes.phoneFacts}
+                errorClassName={classes.errorValue}
+              />
+            )}
+          </span>
+        </Cell>
+      ),
+    },
+    {
+      id: 'calls',
+      label: 'Calls',
+      cell: row => (
+        <Cell>
+          <span className={classes.numeric}>
+            <DataBar
+              label={formatCount(row.calls)}
+              value={row.calls}
+              max={max.toolCalls}
+              color={barColors.calls}
+            />
+          </span>
+        </Cell>
+      ),
+    },
+    {
+      id: 'errors',
+      label: 'Errors',
+      cell: row => errorsCell(row.errors, max.toolErrors),
+    },
+    {
+      id: 'p95',
+      label: 'p95',
+      cell: row => (
+        <Cell>
+          <span className={classes.numeric}>
+            <DataBar
+              label={formatSeconds(row.p95_seconds)}
+              value={row.p95_seconds ?? undefined}
+              max={max.toolP95}
+              color={barColors.latency}
+            />
+          </span>
+        </Cell>
+      ),
+    },
+  ];
+  const serverColumns: ColumnConfig<ServerRow>[] = [
+    {
+      id: 'name',
+      label: 'Connector',
+      isRowHeader: true,
+      cell: row => (
+        <Cell>
+          <span className={classes.toolName}>
+            {names.get(row.server) ?? row.server}
+            {isPhone && (
+              <PhoneFacts
+                errors={row.errors}
+                className={classes.phoneFacts}
+                errorClassName={classes.errorValue}
+              />
+            )}
+          </span>
+        </Cell>
+      ),
+    },
+    {
+      id: 'calls',
+      label: 'Calls',
+      cell: row => (
+        <Cell>
+          <span className={classes.numeric}>
+            <DataBar
+              label={formatCount(row.calls)}
+              value={row.calls}
+              max={max.serverCalls}
+              color={barColors.calls}
+            />
+          </span>
+        </Cell>
+      ),
+    },
+    {
+      id: 'errors',
+      label: 'Errors',
+      cell: row => errorsCell(row.errors, max.serverErrors),
+    },
+  ];
+
   return (
     <>
+      {dataStart && (
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          className={classes.dataStart}
+        >
+          Tool calls have been recorded only since{' '}
+          {formatDayWithYear(dataStart.day)}, so these figures cover{' '}
+          {dataStart.coveredDays} of the {windowDays} days.
+        </Text>
+      )}
       <Box className={classes.statRow}>
         <Stat
           label="Tool calls"
           value={formatCount(totals.calls)}
-          hint={`Calls muster dispatched to its servers ${windowNote}, from every client, not only yours.`}
+          hint={`Counts calls dispatched to connectors ${windowNote}, from every client.`}
         />
         <Stat
           label="Error ratio"
           value={errorPct !== null ? `${errorPct}%` : '—'}
           tone={errorTone}
-          hint="Calls that could not be dispatched or came back as an error result, as a share of all of them. Amber above 5%."
+          hint="Shows the share of calls that failed to dispatch or returned an error. Amber above 5%."
         />
         <Stat
           label="p95 latency"
           value={formatSeconds(totals.p95_seconds)}
-          hint={`How long a server took to answer, at the 95th percentile of every call ${windowNote}. Estimated from muster's latency histogram, so read it as a range rather than an exact figure.`}
+          hint={`Shows the 95th-percentile connector response time ${windowNote}. It is estimated from a histogram, so read it as a range.`}
         />
         <Stat
           label="Distinct tools"
           value={totals.distinct_tools}
-          hint={`Tools called at least once ${windowNote}.`}
+          hint={`Counts the tools called at least once ${windowNote}.`}
         />
       </Box>
 
       {totals.calls === 0 ? (
-        <Typography variant="body2" color="textSecondary">
-          No tool calls were dispatched to MCP servers in the last {rangeLabel}.
-          If usage on this installation is expected, its muster release may not
-          export downstream dispatch metrics yet.
-        </Typography>
+        <Text as="p" variant="body-medium" color="secondary">
+          No tool calls were dispatched to connectors in the last {rangeLabel}.
+          If usage is expected, this environment's muster may not export
+          dispatch metrics yet.
+        </Text>
       ) : (
         <>
           <Paper variant="outlined" className={classes.chartCard}>
-            <Typography component="div" className={classes.chartTitle}>
-              Tool calls by outcome
-            </Typography>
+            <div className={classes.chartTitle}>Tool calls by outcome</div>
             <StackedBarChart
               data={data.buckets}
               xAxisKey="start"
@@ -303,105 +529,37 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
 
           <Box className={classes.tables}>
             <Paper variant="outlined" className={classes.tableCard}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Top tools</TableCell>
-                    <TableCell>Calls</TableCell>
-                    <TableCell>Errors</TableCell>
-                    <TableCell>p95</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.top_tools.map(row => (
-                    <TableRow key={row.tool}>
-                      <TableCell className={classes.toolName}>
-                        {row.tool}
-                      </TableCell>
-                      <TableCell className={classes.numeric}>
-                        <DataBar
-                          label={formatCount(row.calls)}
-                          value={row.calls}
-                          max={max.toolCalls}
-                          color={barColors.calls}
-                        />
-                      </TableCell>
-                      <TableCell
-                        className={`${classes.numeric} ${
-                          row.errors > 0 ? classes.errorValue : ''
-                        }`}
-                      >
-                        <DataBar
-                          label={formatCount(row.errors)}
-                          value={row.errors}
-                          max={max.toolErrors}
-                          color={barColors.errors}
-                        />
-                      </TableCell>
-                      <TableCell className={classes.numeric}>
-                        <DataBar
-                          label={formatSeconds(row.p95_seconds)}
-                          value={row.p95_seconds ?? undefined}
-                          max={max.toolP95}
-                          color={barColors.latency}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <UsageTable rows={toolRows} columns={toolColumns} />
             </Paper>
 
-            <Paper variant="outlined" className={classes.tableCard}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>MCP server</TableCell>
-                    <TableCell>Calls</TableCell>
-                    <TableCell>Errors</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.servers.map(row => (
-                    <TableRow key={row.server}>
-                      <TableCell className={classes.toolName}>
-                        {row.server}
-                      </TableCell>
-                      <TableCell className={classes.numeric}>
-                        <DataBar
-                          label={formatCount(row.calls)}
-                          value={row.calls}
-                          max={max.serverCalls}
-                          color={barColors.calls}
-                        />
-                      </TableCell>
-                      <TableCell
-                        className={`${classes.numeric} ${
-                          row.errors > 0 ? classes.errorValue : ''
-                        }`}
-                      >
-                        <DataBar
-                          label={formatCount(row.errors)}
-                          value={row.errors}
-                          max={max.serverErrors}
-                          color={barColors.errors}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Paper>
+            {/* Sorted by calls on the server; the slice keeps the busiest. */}
+            <ShowMore
+              items={serverRows}
+              initial={CONNECTOR_ROWS}
+              noun="connector"
+              revealAll
+            >
+              {visible => (
+                <Paper variant="outlined" className={classes.tableCard}>
+                  <UsageTable rows={visible} columns={serverColumns} />
+                </Paper>
+              )}
+            </ShowMore>
           </Box>
         </>
       )}
 
       {data.source && (
-        <Typography variant="caption" className={classes.note}>
+        <Text
+          as="p"
+          variant="body-x-small"
+          color="secondary"
+          className={classes.note}
+        >
           Counted at muster's dispatch layer, so meta-tool wrapping (call_tool)
-          is attributed to the resolved tool and server. Queried via{' '}
-          {data.source.server}.
-        </Typography>
+          is attributed to the resolved tool and connector. Queried through the{' '}
+          {names.get(data.source.server) ?? data.source.server} connector.
+        </Text>
       )}
     </>
   );
@@ -431,19 +589,20 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
 function McpUsageBody() {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
-  const { activeInstallation } = useMusterInstance();
+  const { activeInstallation, mcpServers } = useMusterInstance();
   // The usage route reads muster's own metrics through the live session; an
   // installation whose muster the backend cannot reach gets the note instead
   // of a request that can only fail.
   const session = useMusterSession();
   const unreachable = isUnreachableSession(session);
+  const hours = useWindowHours();
 
   const { data, error, isPending, fetchStatus } = useQuery({
-    queryKey: ['muster', 'mcp-usage', activeInstallation, WINDOW_HOURS],
+    queryKey: ['muster', 'mcp-usage', activeInstallation, hours],
     queryFn: () =>
       musterApi.getMcpUsage({
         installation: activeInstallation,
-        hours: WINDOW_HOURS,
+        hours,
       }),
     enabled: Boolean(activeInstallation) && !unreachable,
   });
@@ -455,19 +614,19 @@ function McpUsageBody() {
       <SessionGate
         session={session}
         installation={activeInstallation}
-        context="Usage metrics are read through a live muster session."
+        context="Usage metrics need a muster session."
       />
     );
   } else if (!activeInstallation || isLoading) {
     body = <Progress />;
   } else if (error) {
     body = (
-      <Typography variant="body2" color="textSecondary">
+      <Text as="p" variant="body-medium" color="secondary">
         Usage unavailable: {(error as Error).message}
-      </Typography>
+      </Text>
     );
   } else if (data) {
-    body = <UsageBody data={data} hours={WINDOW_HOURS} />;
+    body = <UsageBody data={data} hours={hours} servers={mcpServers} />;
   }
 
   return (
@@ -484,8 +643,10 @@ function McpUsageBody() {
       <SectionHeader
         as="h3"
         variant="title-x-small"
-        title="MCP tool calls on this installation"
-        description="Every tool call dispatched to the MCP servers behind this installation's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
+        title="Connector tool calls on this environment"
+        description={`This covers every caller's tool calls, not only yours, over the last ${Math.round(
+          hours / 24,
+        )} days.`}
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this

@@ -16,7 +16,8 @@ import {
 /**
  * Serve on a GPU pool through model-manager as the signed-in person
  * (giantswarm/backstage#2415, part 1; the reads on the same hop since
- * giantswarm/backstage#2294): the dialog lists the presets model-manager
+ * giantswarm/backstage#2294): Serve model — a page of its own
+ * (`/agent-platform/models/serving/serve`) — lists the presets model-manager
  * publishes for the cluster, shows `check_fit`'s verdict before the button,
  * serves with one `load_model` over muster, and the object that comes back is
  * the `LLMInferenceService` model-manager composed — nothing is composed in
@@ -24,7 +25,7 @@ import {
  *
  * **model-manager's answers are stubbed at the browser**; everything else is
  * real (the sign-in, muster's `call` route, the page). The lab has no KServe
- * and no GPU pool, so the tool calls the Serving page and the dialog make over
+ * and no GPU pool, so the tool calls the Serving view and Serve model make over
  * muster — `list_backends`, `list_presets`, `list_models`, `check_fit`,
  * `load_model` — are answered here in the shapes model-manager 0.24.0
  * produces for a kserve backend a GPU pool registered. Nothing is written; the
@@ -92,6 +93,21 @@ const servedModels = {
 };
 
 const SERVING = '/agent-platform/models/serving';
+const SERVE = `${SERVING}/serve`;
+
+/** Serve model's page: its URL and its h1. */
+async function expectServePage(page: Page): Promise<void> {
+  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/serve/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Serve model' }),
+  ).toBeVisible();
+}
+
+/** Cancel is a link in the page's footer, back to Running models. */
+async function cancelServe(page: Page): Promise<void> {
+  await page.getByRole('link', { name: 'Cancel' }).click();
+  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/?$/);
+}
 
 /** The stubbed model-manager: the reads and the two serve tools; every other call goes through. */
 async function stageModelManager(
@@ -103,7 +119,7 @@ async function stageModelManager(
     list_backends: { backends: [KSERVE_POOL_BACKEND] },
     list_presets: { presets: L4_POOL_PRESETS },
     // The pool launches its nodes on demand: none to pick from yet, so the
-    // lab's own nodes stay out of the staged pool's Serve dialog.
+    // lab's own nodes stay out of the staged pool's Serve model page.
     list_nodes: { nodes: [] },
     list_models: () => (served ? servedModels : { models: [] }),
     check_fit: poolFitAnswer,
@@ -133,14 +149,13 @@ test.describe('serving: through model-manager as the person', () => {
       await open(admin, SERVING);
 
       await admin.getByRole('button', { name: /Serve model/ }).click();
-      const dialog = admin.getByRole('dialog', { name: 'Serve model' });
-      await expect(dialog).toBeVisible();
+      await expectServePage(admin);
 
       await expect(
-        dialog.getByRole('button', { name: /Preset/ }),
+        admin.getByRole('button', { name: /Preset/ }),
         'the first preset model-manager publishes is chosen',
       ).toHaveText(/Qwen3 4B Instruct/);
-      const verdict = dialog.getByTestId('serve-fit-verdict');
+      const verdict = admin.getByTestId('serve-fit-verdict');
       await expect(
         verdict,
         'check_fit’s verdict stands before the button',
@@ -162,9 +177,10 @@ test.describe('serving: through model-manager as the person', () => {
         },
       ]);
 
-      await dialog.getByRole('button', { name: 'Serve' }).click();
+      await admin.getByRole('button', { name: 'Serve', exact: true }).click();
 
-      await expect(dialog).toBeHidden();
+      // Accepted: a toast, and Running models with the served model's steps open.
+      await expect(admin).toHaveURL(/\/agent-platform\/models\/serving\/?$/);
       expect(
         staged.callsOf('load_model'),
         'one load_model, the preset by name, nothing composed in the browser',
@@ -182,6 +198,10 @@ test.describe('serving: through model-manager as the person', () => {
         admin.getByText(/scheduling: waiting for the predictor pod/),
         'and the first step of the timeline',
       ).toBeVisible();
+      await expect(
+        admin.getByTestId('served-model-lifecycle'),
+        'the served model’s steps open on Running models',
+      ).toBeVisible({ timeout: 30_000 });
 
       const row = admin.getByRole('row', { name: /qwen3-4b-instruct/ });
       await expect(
@@ -203,29 +223,29 @@ test.describe('serving: through model-manager as the person', () => {
       await open(admin, SERVING);
 
       await admin.getByRole('button', { name: /Serve model/ }).click();
-      const dialog = admin.getByRole('dialog', { name: 'Serve model' });
-      await expect(dialog.getByTestId('serve-fit-verdict')).toContainText(
+      await expectServePage(admin);
+      await expect(admin.getByTestId('serve-fit-verdict')).toContainText(
         'Fits',
       );
 
-      await dialog.getByRole('button', { name: /Preset/ }).click();
+      await admin.getByRole('button', { name: /Preset/ }).click();
       await admin.getByRole('option', { name: 'Qwen3 8B FP8' }).click();
 
-      await expect(dialog.getByTestId('serve-fit-verdict')).toContainText(
+      await expect(admin.getByTestId('serve-fit-verdict')).toContainText(
         `Cannot be served on this pool: ${NO_SIZE}`,
       );
       await expect(
-        dialog.getByRole('button', { name: 'Serve' }),
+        admin.getByRole('button', { name: 'Serve', exact: true }),
       ).toBeDisabled();
       expect(staged.callsOf('load_model')).toHaveLength(0);
 
-      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await cancelServe(admin);
     } finally {
       await staged.unstage();
     }
   });
 
-  test('the pool panel’s link opens the dialog on that pool, installation and pool preselected', async ({
+  test('the pool panel’s link opens Serve model on that pool, installation and pool preselected', async ({
     admin,
   }) => {
     const staged = await stageModelManager(admin);
@@ -233,23 +253,38 @@ test.describe('serving: through model-manager as the person', () => {
       await dropPersistedQueriesOnNextLoad(admin);
       await open(
         admin,
-        `${SERVING}?serve=1&installation=${lab.installation}&cluster=lab&pool=gpu-l4`,
+        `${SERVE}?installation=${lab.installation}&cluster=lab&pool=gpu-l4`,
       );
 
-      const dialog = admin.getByRole('dialog', { name: 'Serve model' });
-      await expect(dialog).toBeVisible();
-      await expect(dialog.getByTestId('serve-target')).toHaveText(
+      await expectServePage(admin);
+      await expect(admin.getByTestId('serve-target')).toHaveText(
         `On GPU pool gpu-l4 of cluster lab (${lab.installation})`,
       );
-      await expect(dialog.getByTestId('serve-fit-verdict')).toContainText(
+      await expect(admin.getByTestId('serve-fit-verdict')).toContainText(
         'Fits — the node comes as g6.xlarge',
       );
-      expect(
-        new URL(admin.url()).searchParams.get('serve'),
-        'the route is read once and stripped',
-      ).toBeNull();
 
-      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await cancelServe(admin);
+
+      // Deliberate legacy coverage: an older release's pool link opened the
+      // Serve dialog in place with `?serve=1&…` on the Serving view. The view
+      // now redirects it to Serve model's page, the seed intact.
+      await test.step('the legacy ?serve=1 link redirects to Serve model', async () => {
+        await open(
+          admin,
+          `${SERVING}?serve=1&installation=${lab.installation}&cluster=lab&pool=gpu-l4`,
+        );
+        await expectServePage(admin);
+        const url = new URL(admin.url());
+        expect(url.searchParams.has('serve'), 'serve=1 is gone').toBe(false);
+        expect(
+          url.searchParams.get('pool'),
+          'the seed travels with the redirect',
+        ).toBe('gpu-l4');
+        await expect(admin.getByTestId('serve-target')).toHaveText(
+          `On GPU pool gpu-l4 of cluster lab (${lab.installation})`,
+        );
+      });
     } finally {
       await staged.unstage();
     }

@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -11,6 +11,7 @@ import {
 } from '@backstage/ui';
 import {
   ALERT_MESSAGE_STYLE,
+  ConfirmDialog,
   dialogDismissLock,
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -62,7 +63,10 @@ export type DefinitionEditorDialogProps = {
  *
  * The dialog cannot be dismissed while either call is in flight, so a stray
  * click cannot orphan a write; the editor is seeded on open only, so a polled
- * resource does not overwrite what the user is typing.
+ * resource does not overwrite what the user is typing. With unsaved edits the
+ * footer's dismiss says "Discard changes", and Escape, a click outside or the
+ * header's close ask first ("Discard changes" / "Keep editing", the wizard
+ * frame's idiom).
  */
 export function DefinitionEditorDialog({
   open,
@@ -81,6 +85,12 @@ export function DefinitionEditorDialog({
   const musterApi = useApi(musterApiRef);
   const refresh = useMusterMutationRefresh(installation);
   const [value, setValue] = useState('');
+  // What the editor held when it opened or last saved: edits past it are
+  // unsaved, and closing would lose them.
+  const [baseline, setBaseline] = useState('');
+  const submitted = useRef('');
+  const [isDiscardOpen, setDiscardOpen] = useState(false);
+  const isDirty = value !== baseline;
   const [error, setError] = useState<string | undefined>();
   const [parseFailed, setParseFailed] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
@@ -103,6 +113,7 @@ export function DefinitionEditorDialog({
       // muster writes the CR synchronously, so refetching now shows the
       // change instead of waiting for the next 30s poll.
       refresh();
+      setBaseline(submitted.current);
       setMessage(savedMessage);
     },
     onError,
@@ -115,7 +126,10 @@ export function DefinitionEditorDialog({
   }
 
   useOnDialogOpen(open, () => {
-    setValue(seed());
+    const seeded = seed();
+    setValue(seeded);
+    setBaseline(seeded);
+    setDiscardOpen(false);
     setError(undefined);
     setParseFailed(false);
     setMessage(undefined);
@@ -137,6 +151,7 @@ export function DefinitionEditorDialog({
     setError(undefined);
     setParseFailed(false);
     setMessage(undefined);
+    submitted.current = value;
     mutation.mutate(def);
   };
 
@@ -145,7 +160,11 @@ export function DefinitionEditorDialog({
       isOpen={open}
       {...dialogDismissLock(Boolean(busy), next => {
         if (!next) {
-          onClose();
+          if (isDirty) {
+            setDiscardOpen(true);
+          } else {
+            onClose();
+          }
         }
       })}
       width="min(90vw, 860px)"
@@ -173,7 +192,7 @@ export function DefinitionEditorDialog({
           isDisabled={Boolean(busy)}
           onPress={onClose}
         >
-          Close
+          {isDirty ? 'Discard changes' : 'Close'}
         </Button>
         <Button
           variant="secondary"
@@ -192,6 +211,19 @@ export function DefinitionEditorDialog({
           Save
         </Button>
       </DialogFooter>
+      <ConfirmDialog
+        isOpen={isDiscardOpen}
+        onOpenChange={setDiscardOpen}
+        title="Discard your changes?"
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        onConfirm={() => {
+          setDiscardOpen(false);
+          onClose();
+        }}
+      >
+        <Text variant="body-medium">What you entered will not be saved.</Text>
+      </ConfirmDialog>
     </Dialog>
   );
 }

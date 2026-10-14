@@ -560,7 +560,7 @@ describe('CreateRepositoryPage', () => {
       '#4242 feat(repositories): declare shiny-service for team-bumblebee',
     );
     expect(
-      within(opened).getByRole('link', { name: /Open the pull request/ }),
+      within(opened).getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/github/pull/4242');
     // The form is done: no second Create, the fields frozen.
     expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();

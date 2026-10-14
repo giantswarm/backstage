@@ -300,7 +300,8 @@ on real databases) and `plugins/scaffolder-backend-module-gs/src/module.test.ts`
 ## End-to-end tests in a browser, against agentlab
 
 `e2e/agentlab/` is a Playwright suite that drives the portal the way a person
-does — the Dex sign-in popup, the Agent Platform tabs, the MCP servers page,
+does — the Dex sign-in popup, the Agent Platform tabs, the Connectors (MCP
+servers) page,
 the New agent wizard, a chat turn — against a running
 [agentlab](https://github.com/giantswarm/agentlab), the local kind cluster
 that runs the whole agent platform with this Backstage in it. It is the

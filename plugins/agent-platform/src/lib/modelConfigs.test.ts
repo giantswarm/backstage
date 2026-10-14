@@ -9,6 +9,8 @@ import {
   buildModelConfigPatch,
   INITIAL_MODEL_CONFIG_FORM,
   keySecretName,
+  modelConfigFieldErrors,
+  modelConfigFormChanged,
   modelConfigFormValues,
   modelConfigOwner,
   ModelConfigFormValues,
@@ -47,6 +49,7 @@ function values(
 ): ModelConfigFormValues {
   return {
     ...INITIAL_MODEL_CONFIG_FORM,
+    displayName: 'Qwen 3',
     name: 'qwen3',
     model: 'qwen3-8-27b',
     apiKey: 'sk-test',
@@ -61,7 +64,7 @@ describe('validateModelConfigForm', () => {
 
   it('requires a DNS-label name', () => {
     expect(validateModelConfigForm(values({ name: '' }))).toContainEqual(
-      expect.stringContaining('Name is required'),
+      expect.stringContaining('Technical name is required'),
     );
     expect(validateModelConfigForm(values({ name: 'Qwen_3' }))).toContainEqual(
       expect.stringContaining('lowercase'),
@@ -96,45 +99,35 @@ describe('validateModelConfigForm', () => {
     ).toContainEqual(expect.stringContaining('http://'));
   });
 
-  it('requires a key on create unless the endpoint is keyless', () => {
-    expect(validateModelConfigForm(values({ apiKey: '' }))).toContainEqual(
-      expect.stringContaining('API key is required'),
-    );
+  it('never requires the API key: empty means the endpoint needs none', () => {
+    expect(validateModelConfigForm(values({ apiKey: '' }))).toEqual([]);
     expect(
-      validateModelConfigForm(values({ apiKey: '', keyless: true })),
-    ).toEqual([]);
-  });
-
-  it('accepts an empty key on edit while the provider is unchanged', () => {
-    expect(
-      validateModelConfigForm(values({ apiKey: '' }), {
+      validateModelConfigForm(values({ provider: 'Anthropic', apiKey: '' }), {
         isEdit: true,
-        originalProvider: 'OpenAI',
       }),
     ).toEqual([]);
   });
 
-  it('requires a new key when the provider changes on edit', () => {
-    // The existing Secret holds the old provider's canonical key, which the
-    // portal cannot read back — so it cannot be carried over.
-    const errors = validateModelConfigForm(
-      values({ provider: 'Anthropic', apiKey: '' }),
-      { isEdit: true, originalProvider: 'OpenAI' },
-    );
-    expect(errors).toContainEqual(expect.stringContaining('new API key'));
-
+  it('requires the display name on create only', () => {
+    // The technical name is filled in from it on create; an existing model
+    // made with kubectl may have none and stays saveable as it is.
     expect(
-      validateModelConfigForm(
-        values({ provider: 'Anthropic', apiKey: 'sk-ant' }),
-        { isEdit: true, originalProvider: 'OpenAI' },
-      ),
-    ).toEqual([]);
+      modelConfigFieldErrors(values({ displayName: ' ' })).displayName,
+    ).toBe('Name is required');
+    expect(
+      modelConfigFieldErrors(values({ displayName: '' }), { isEdit: true }),
+    ).toEqual({});
   });
 });
 
 describe('planKeySecret', () => {
+  const edit = (originalProvider = 'OpenAI') => ({
+    isEdit: true,
+    originalProvider,
+  });
+
   it('writes the canonical key on create', () => {
-    expect(planKeySecret(values(), false)).toEqual({
+    expect(planKeySecret(values())).toEqual({
       action: 'write',
       name: 'kagent-qwen3',
       key: 'OPENAI_API_KEY',
@@ -142,33 +135,39 @@ describe('planKeySecret', () => {
     });
   });
 
-  it('writes a placeholder for keyless endpoints', () => {
-    // The Secret must still exist: the kagent controller injects its key as an
-    // env var and the ADK runtime requires that env var at startup.
-    expect(planKeySecret(values({ apiKey: '', keyless: true }), false)).toEqual(
-      {
-        action: 'write',
-        name: 'kagent-qwen3',
-        key: 'OPENAI_API_KEY',
-        value: PLACEHOLDER_API_KEY,
-      },
-    );
+  it('writes a placeholder when no key is entered on create', () => {
+    // An empty key means the endpoint needs none. The Secret must still
+    // exist: the kagent controller injects its key as an env var and the ADK
+    // runtime requires that env var at startup.
+    expect(planKeySecret(values({ apiKey: '' }))).toEqual({
+      action: 'write',
+      name: 'kagent-qwen3',
+      key: 'OPENAI_API_KEY',
+      value: PLACEHOLDER_API_KEY,
+    });
+    // Whitespace is no key either; around a real one it is trimmed.
+    expect(planKeySecret(values({ apiKey: '  \n' }))).toMatchObject({
+      value: PLACEHOLDER_API_KEY,
+    });
+    expect(planKeySecret(values({ apiKey: ' sk-test\n' }))).toMatchObject({
+      value: 'sk-test',
+    });
   });
 
   it('involves no secret for Ollama', () => {
-    expect(
-      planKeySecret(values({ provider: 'Ollama', apiKey: '' }), false),
-    ).toEqual({ action: 'none' });
+    expect(planKeySecret(values({ provider: 'Ollama', apiKey: '' }))).toEqual({
+      action: 'none',
+    });
   });
 
   it('keeps the existing secret on edit when nothing new was entered', () => {
-    expect(planKeySecret(values({ apiKey: '' }), true)).toEqual({
+    expect(planKeySecret(values({ apiKey: '' }), edit())).toEqual({
       action: 'keep',
     });
   });
 
   it('replaces the secret on edit when a new key was entered', () => {
-    expect(planKeySecret(values({ apiKey: 'sk-new' }), true)).toEqual({
+    expect(planKeySecret(values({ apiKey: 'sk-new' }), edit())).toEqual({
       action: 'write',
       name: 'kagent-qwen3',
       key: 'OPENAI_API_KEY',
@@ -176,9 +175,29 @@ describe('planKeySecret', () => {
     });
   });
 
+  it('writes a placeholder when the provider changes on edit with no key entered', () => {
+    // The stored Secret holds the old provider's canonical key, which the new
+    // provider's runtime does not read and the portal cannot carry over — so
+    // an empty field means the new endpoint needs none.
+    expect(
+      planKeySecret(values({ provider: 'Anthropic', apiKey: '' }), edit()),
+    ).toEqual({
+      action: 'write',
+      name: 'kagent-qwen3',
+      key: 'ANTHROPIC_API_KEY',
+      value: PLACEHOLDER_API_KEY,
+    });
+    expect(
+      planKeySecret(
+        values({ provider: 'Anthropic', apiKey: 'sk-ant' }),
+        edit(),
+      ),
+    ).toMatchObject({ value: 'sk-ant' });
+  });
+
   it('maps each provider to its canonical env-var key', () => {
     const keyFor = (provider: ModelConfigFormValues['provider']) => {
-      const plan = planKeySecret(values({ provider }), false);
+      const plan = planKeySecret(values({ provider }));
       return plan.action === 'write' ? plan.key : undefined;
     };
     expect(keyFor('OpenAI')).toBe('OPENAI_API_KEY');
@@ -189,7 +208,7 @@ describe('planKeySecret', () => {
 
 describe('buildKeySecretManifest', () => {
   it('creates an Opaque secret with the one canonical key, marked as ours', () => {
-    const plan = planKeySecret(values(), false);
+    const plan = planKeySecret(values());
     expect(plan.action).toBe('write');
     expect(
       buildKeySecretManifest(
@@ -214,7 +233,10 @@ describe('buildKeySecretPatch', () => {
   it('clears previous keys before setting the new one', () => {
     // A provider switch must not leave the old provider's canonical key next
     // to the new one; `data: null` wipes the slate in one merge patch.
-    const plan = planKeySecret(values({ provider: 'Anthropic' }), true);
+    const plan = planKeySecret(values({ provider: 'Anthropic' }), {
+      isEdit: true,
+      originalProvider: 'OpenAI',
+    });
     expect(plan.action).toBe('write');
     expect(
       buildKeySecretPatch(plan as Extract<typeof plan, { action: 'write' }>),
@@ -234,7 +256,7 @@ describe('buildModelConfigManifest', () => {
     });
     const manifest = buildModelConfigManifest(
       form,
-      planKeySecret(form, false),
+      planKeySecret(form),
       'kagent',
     );
 
@@ -258,16 +280,18 @@ describe('buildModelConfigManifest', () => {
     });
   });
 
-  it('omits what is not set: no annotation, endpoint block, secret or tls', () => {
+  it('omits what is not set: no annotation, endpoint block or tls', () => {
+    // No key entered: the spec is the same as with one — it references the
+    // Secret, which holds the placeholder.
     const form = values({
       provider: 'Gemini',
+      displayName: '',
       apiKey: '',
-      keyless: true,
       endpoint: '',
     });
     const manifest = buildModelConfigManifest(
       form,
-      planKeySecret(form, false),
+      planKeySecret(form),
       'kagent',
     ) as { metadata: Record<string, unknown>; spec: Record<string, unknown> };
 
@@ -283,11 +307,7 @@ describe('buildModelConfigManifest', () => {
   it('puts the endpoint in the provider-specific block', () => {
     const spec = (form: ModelConfigFormValues) =>
       (
-        buildModelConfigManifest(
-          form,
-          planKeySecret(form, false),
-          'kagent',
-        ) as {
+        buildModelConfigManifest(form, planKeySecret(form), 'kagent') as {
           spec: Record<string, unknown>;
         }
       ).spec;
@@ -305,10 +325,13 @@ describe('buildModelConfigManifest', () => {
 
 describe('buildModelConfigPatch', () => {
   it('nulls the other providers’ blocks but writes only the managed field of the current one', () => {
-    const form = values({ endpoint: 'https://new.example.test/v1' });
+    const form = values({
+      displayName: '',
+      endpoint: 'https://new.example.test/v1',
+    });
     const patch = buildModelConfigPatch(
       form,
-      planKeySecret(form, true),
+      planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
       makeModelConfig(),
     );
 
@@ -343,7 +366,7 @@ describe('buildModelConfigPatch', () => {
     const form = values({ apiKey: '' });
     const patch = buildModelConfigPatch(
       form,
-      planKeySecret(form, true),
+      planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
       original,
     ) as { spec: Record<string, unknown> };
 
@@ -358,7 +381,7 @@ describe('buildModelConfigPatch', () => {
     });
     const patch = buildModelConfigPatch(
       form,
-      planKeySecret(form, true),
+      planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
       makeModelConfig(),
     ) as { spec: Record<string, unknown> };
 
@@ -375,7 +398,7 @@ describe('buildModelConfigPatch', () => {
     const form = values({ endpoint: '' });
     const patch = buildModelConfigPatch(
       form,
-      planKeySecret(form, true),
+      planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
       makeModelConfig(),
     ) as { spec: Record<string, unknown> };
 
@@ -409,7 +432,6 @@ describe('modelConfigFormValues', () => {
       endpoint: 'https://vllm.example.test/v1',
       insecureSkipTlsVerify: true,
       apiKey: '',
-      keyless: false,
     });
   });
 
@@ -421,6 +443,29 @@ describe('modelConfigFormValues', () => {
         }),
       ),
     ).toBeUndefined();
+  });
+});
+
+describe('modelConfigFormChanged', () => {
+  it('sees a changed field or an entered key, nothing else', () => {
+    const initial = values({ apiKey: '' });
+    expect(modelConfigFormChanged({ ...initial }, initial)).toBe(false);
+    // Whitespace around a value is not a change.
+    expect(
+      modelConfigFormChanged({ ...initial, model: ' qwen3-8-27b ' }, initial),
+    ).toBe(false);
+    expect(
+      modelConfigFormChanged({ ...initial, model: 'qwen3-32b' }, initial),
+    ).toBe(true);
+    expect(
+      modelConfigFormChanged(
+        { ...initial, insecureSkipTlsVerify: true },
+        initial,
+      ),
+    ).toBe(true);
+    expect(modelConfigFormChanged({ ...initial, apiKey: 'sk' }, initial)).toBe(
+      true,
+    );
   });
 });
 

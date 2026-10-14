@@ -1,4 +1,4 @@
-import { useLlmUsage } from './useLlmUsage';
+import { useLlmUsage, type LlmUsageOptions } from './useLlmUsage';
 import { useUsageInstallation } from './useUsageInstallation';
 import { hasAnyLlmUsage, type LlmUsage } from '../lib/llmUsage';
 
@@ -44,8 +44,15 @@ export type LlmUsageViewModel = {
  * The installation comes from `useUsageInstallation`, which only ever resolves
  * out of the *reachable* candidates — so an unreachable installation can never
  * be the one being read, and `notReachable` is only carried for the copy.
+ *
+ * `options` pass straight through to `useLlmUsage`: the window the screen's
+ * time-range control chose, and whether to also read the previous window's
+ * spend. Views reading different windows do not share query results, but they
+ * share this ladder, which is what must not fork.
  */
-export function useLlmUsageView(): LlmUsageViewModel {
+export function useLlmUsageView(
+  options: LlmUsageOptions = {},
+): LlmUsageViewModel {
   const {
     installation,
     candidates,
@@ -55,7 +62,10 @@ export function useLlmUsageView(): LlmUsageViewModel {
     hasInstallations,
   } = useUsageInstallation();
 
-  const { usage, isLoading, isError, isAvailable } = useLlmUsage(installation);
+  const { usage, isLoading, isError, isAvailable } = useLlmUsage(
+    installation,
+    options,
+  );
 
   const state = ((): LlmUsageState => {
     if (!isResolving && !hasInstallations) {

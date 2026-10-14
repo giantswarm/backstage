@@ -1,24 +1,29 @@
-import { ReactNode, useMemo, useState } from 'react';
 import {
-  Alert,
-  Button,
-  Flex,
-  Text,
-  ToggleButton,
-  ToggleButtonGroup,
-} from '@backstage/ui';
+  ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { CircularProgress, makeStyles } from '@material-ui/core';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
-import { SessionTimeline as Timeline } from '../../lib/kagentTimeline';
-import { TimelineEntry } from './TimelineEntry';
 import {
-  ActivityDetail,
+  SessionTimeline as Timeline,
+  TimelineItem,
+} from '../../lib/kagentTimeline';
+import { countNoun, INITIAL_ROWS } from '../../lib/toolset';
+import { TimelineEntry, type ConnectorOf } from './TimelineEntry';
+import { WorkSummary } from './WorkSummary';
+import {
   authorLabel,
   groupIntoTurns,
-  hasExpandableDetail,
-  isActivityItem,
+  isConversationSegment,
   isUserItem,
+  openApprovalId,
+  segmentTurn,
 } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -112,6 +117,26 @@ const STREAM_LOST_LABELS: Record<StreamLossPhase, string> = {
     'The live stream was lost. Still working; the reply appears when the turn finishes.',
 };
 
+/**
+ * How many of the newest turns the timeline renders, and how many each *Show
+ * earlier activity* press adds above them (T39). The backend reads up to 1000
+ * tasks, and a long agentic session reaches hundreds of turns; the reader is
+ * almost always here for the end of it. Paged rather than revealed all at
+ * once, so going back a little never mounts the whole history.
+ */
+export const RECENT_TURNS = INITIAL_ROWS;
+
+/** A rendered turn, by its position in the session's turns. */
+function findTurn(
+  container: HTMLElement | null,
+  index: number,
+): HTMLElement | null {
+  return (
+    container?.querySelector<HTMLElement>(`[data-turn-index="${index}"]`) ??
+    null
+  );
+}
+
 /** `HH:MM` in the reader's locale — the resolution a stall is worth stating at. */
 function formatClockTime(epochMs: number): string {
   return new Date(epochMs).toLocaleTimeString(undefined, {
@@ -183,6 +208,24 @@ export type SessionTimelineProps = {
   onCancelTurn?: () => void;
   /** A cancel has been asked for and the server has not answered yet. */
   isCancellingTurn?: boolean;
+  /**
+   * A caption for the session's first user message, when the portal wrote it
+   * rather than the person (a meta-agent hand-off, UX review M20).
+   */
+  firstMessageCaption?: string;
+  /** Names a tool call's connector in the plain register (UX review M2). */
+  connectorOf?: ConnectorOf;
+  /**
+   * Whether the agent's tool activity is shown. Off leaves the conversation
+   * and whatever waits on the person (see `isConversationSegment`); the
+   * "Working…" row stays, so a turn in progress still says so.
+   */
+  showToolActivity?: boolean;
+  /**
+   * The session waits on the person (an input-required state), so its open
+   * approval stays in sight with tool activity hidden.
+   */
+  isAwaitingPerson?: boolean;
 };
 
 /**
@@ -203,31 +246,51 @@ export function SessionTimeline({
   stalledSince,
   onCancelTurn,
   isCancellingTurn = false,
+  firstMessageCaption,
+  connectorOf,
+  showToolActivity = true,
+  isAwaitingPerson = false,
 }: SessionTimelineProps) {
   const classes = useStyles();
-  // Collapsed by default: the agent's working is why this screen is worth opening,
-  // but a wall of expanded tool payloads is unreadable.
-  const [detail, setDetail] = useState<ActivityDetail>('collapsed');
 
   const turns = useMemo(() => groupIntoTurns(timeline.items), [timeline.items]);
 
-  // Offered whenever *anything* can expand — not just when there is agent
-  // activity. An approval is excluded from `hidden` (it records the user's own
-  // decision, so hiding it would erase their action) but it still expands and
-  // collapses, so a session whose only collapsible entry is an approval must still
-  // get the control. Keying this on activity alone left such sessions with a
-  // collapsed panel and no way to open them all.
-  const hasExpandable = useMemo(
-    () => timeline.items.some(hasExpandableDetail),
-    [timeline.items],
-  );
+  // The window counts from the newest turn, so a turn arriving while the agent
+  // works joins it at the bottom and the oldest shown one leaves at the top —
+  // the DOM stays bounded however long the session runs.
+  const [windowSize, setWindowSize] = useState(RECENT_TURNS);
+  const firstShown = Math.max(0, turns.length - windowSize);
+  const listRef = useRef<HTMLDivElement>(null);
+  // The turn that was first on screen when earlier ones were asked for, and
+  // where it sat in the viewport: the reveal inserts above it, and the reader
+  // keeps their place instead of being thrown to the oldest revealed turn.
+  const scrollAnchor = useRef<{ index: number; top: number } | null>(null);
 
-  // Whether `hidden` would actually remove anything, which decides if that option
-  // is worth offering.
-  const hasActivity = useMemo(
-    () => timeline.items.some(isActivityItem),
-    [timeline.items],
-  );
+  const showEarlier = useCallback(() => {
+    // The first turn on screen, which is not always `firstShown`: with tool
+    // activity hidden a turn of nothing but work renders nothing.
+    const anchor =
+      listRef.current?.querySelector<HTMLElement>('[data-turn-index]');
+    scrollAnchor.current = anchor
+      ? {
+          index: Number(anchor.dataset.turnIndex),
+          top: anchor.getBoundingClientRect().top,
+        }
+      : null;
+    setWindowSize(size => size + RECENT_TURNS);
+  }, []);
+
+  useLayoutEffect(() => {
+    const anchor = scrollAnchor.current;
+    scrollAnchor.current = null;
+    if (!anchor) return;
+    const element = findTurn(listRef.current, anchor.index);
+    if (!element) return;
+    // The page scrolls the document (SessionDetailPage), and measuring after
+    // layout folds in whatever the browser's own scroll anchoring already did.
+    const shift = element.getBoundingClientRect().top - anchor.top;
+    if (shift !== 0) window.scrollBy(0, shift);
+  }, [windowSize]);
 
   // Rendered in both branches below. An unreadable session produces *no* items
   // and a non-zero `skippedMessages`, so keeping this inside the populated branch
@@ -237,10 +300,10 @@ export function SessionTimeline({
   const skippedAlert = timeline.skippedMessages > 0 && (
     <Alert
       status="warning"
-      title="Some messages could not be read"
+      title="Could not read some messages"
       description={`${timeline.skippedMessages} ${
         timeline.skippedMessages === 1 ? 'message' : 'messages'
-      } in this session did not match the shape we expect from kagent and are not shown.`}
+      } in this session could not be read and are not shown.`}
     />
   );
 
@@ -265,7 +328,7 @@ export function SessionTimeline({
             isPending={isCancellingTurn}
             onPress={onCancelTurn}
           >
-            Cancel the turn
+            Stop the turn
           </Button>
         )}
       </div>
@@ -301,108 +364,140 @@ export function SessionTimeline({
     );
   }
 
-  return (
-    <Flex direction="column" gap="3">
-      <Flex
-        align="center"
-        justify="between"
-        gap="2"
-        style={{ flexWrap: 'wrap' }}
-      >
-        <Text variant="title-small">Timeline</Text>
-        {hasExpandable && (
-          <Flex align="center" gap="2">
-            <Text variant="body-small" color="secondary">
-              Details
-            </Text>
-            <ToggleButtonGroup
-              selectionMode="single"
-              disallowEmptySelection
-              selectedKeys={[detail]}
-              onSelectionChange={keys => {
-                const next = [...keys][0];
-                if (
-                  next === 'hidden' ||
-                  next === 'collapsed' ||
-                  next === 'expanded'
-                ) {
-                  setDetail(next);
-                }
-              }}
-            >
-              {/* Only offered when it would remove something. `hidden` drops the
-                  agent's working, and approvals are not part of that — so a session
-                  whose only collapsible entry is an approval gets expand/collapse
-                  but nothing to hide. */}
-              {hasActivity && <ToggleButton id="hidden">Hidden</ToggleButton>}
-              <ToggleButton id="collapsed">Collapsed</ToggleButton>
-              <ToggleButton id="expanded">Expanded</ToggleButton>
-            </ToggleButtonGroup>
-          </Flex>
-        )}
-      </Flex>
+  /*
+   * No page-wide plain ⇄ technical switch: technical detail is a fold-out in
+   * place (PO, 2026-10-10). A row outside a work summary reads plainly and
+   * opens onto its exact call; a row inside one is technical, because opening
+   * the summary was already the decision to see how the work was done.
+   */
+  const openApproval = showToolActivity
+    ? undefined
+    : openApprovalId(timeline.items, isAwaitingPerson);
+  const firstUserMessageId = firstMessageCaption
+    ? timeline.items.find(item => item.kind === 'user-message')?.id
+    : undefined;
+  const renderEntry = (item: TimelineItem, technical = false) => (
+    <TimelineEntry
+      key={item.id}
+      item={item}
+      isAgentWorking={isAgentWorking}
+      technical={technical}
+      caption={item.id === firstUserMessageId ? firstMessageCaption : undefined}
+      connectorOf={connectorOf}
+    />
+  );
 
+  return (
+    <Flex ref={listRef} direction="column" gap="3">
       {skippedAlert}
 
-      {turns.map((turn, turnIndex) => {
-        const visible =
-          detail === 'hidden'
-            ? turn.items.filter(item => !isActivityItem(item))
-            : turn.items;
-        if (visible.length === 0) {
+      {/* Nothing at all for a session within the window: a short session is
+          read whole, with no paging chrome over it. */}
+      {firstShown > 0 && (
+        <Flex align="center" gap="2" data-testid="timeline-earlier-activity">
+          <Button variant="tertiary" size="small" onPress={showEarlier}>
+            Show earlier activity
+          </Button>
+          <Text variant="body-x-small" color="secondary">
+            {countNoun(firstShown, 'earlier turn')} not shown
+          </Text>
+        </Flex>
+      )}
+
+      {turns.slice(firstShown).map((turn, offset) => {
+        // The position in the whole session, not in the window: keys, the
+        // newest-turn test and the scroll anchor all have to survive the
+        // window moving.
+        const turnIndex = firstShown + offset;
+        const isLastTurn = turnIndex === turns.length - 1;
+        const allSegments = segmentTurn(turn.items);
+        const segments = showToolActivity
+          ? allSegments
+          : allSegments.filter(segment =>
+              isConversationSegment(segment, openApproval),
+            );
+        // A turn of nothing but work (resumed by a decision with no words,
+        // say) leaves no marker standing over nothing. Its number stays
+        // taken, so the turns around it keep theirs.
+        if (segments.length === 0) {
           return null;
         }
-
         // The agent's side of the turn opens with its name and face, once —
         // everything until the next user bubble is then implicitly the agent's.
         const entries: ReactNode[] = [];
         let needsHeader = true;
-        for (const item of visible) {
-          if (isUserItem(item)) {
+        segments.forEach((segment, segmentIndex) => {
+          const first =
+            segment.kind === 'item' ? segment.item : segment.items[0];
+          if (isUserItem(first)) {
             needsHeader = true;
           } else if (needsHeader) {
             entries.push(
               <AgentHeader
-                key={`author:${item.id}`}
-                name={authorLabel(item, agentName) ?? 'Agent'}
+                key={`author:${first.id}`}
+                name={authorLabel(first, agentName) ?? 'Agent'}
                 avatarUrl={agentAvatarUrl}
               />,
             );
             needsHeader = false;
           }
+          if (segment.kind === 'item') {
+            entries.push(renderEntry(segment.item));
+            return;
+          }
+          // Live while the agent works and this is where its work lands: the
+          // newest run of the newest turn, or a run with a call still out.
+          const isLive =
+            isAgentWorking &&
+            ((isLastTurn && segmentIndex === segments.length - 1) ||
+              segment.items.some(
+                item =>
+                  (item.kind === 'tool-call' || item.kind === 'agent-call') &&
+                  item.isPending,
+              ));
           entries.push(
-            <TimelineEntry
-              // Keyed on the detail setting as well as the item: an entry's
-              // expanded state is only read on mount, so the global control
-              // takes effect by remounting the entries. An attachment has no
-              // expanded state, and remounting it would decode its image again.
-              key={
-                item.kind === 'attachment' ? item.id : `${item.id}:${detail}`
-              }
-              item={item}
-              defaultExpanded={detail === 'expanded'}
+            <WorkSummary
+              key={`work:${segment.id}`}
+              id={segment.id}
+              items={segment.items}
+              isLive={isLive}
               isAgentWorking={isAgentWorking}
-            />,
+            >
+              {segment.items.map(item => renderEntry(item, true))}
+            </WorkSummary>,
           );
-        }
+        });
 
         return (
           // Keyed on the position in `turns`, not on `taskIndex`: `groupIntoTurns`
           // deliberately emits two turns with the same index if a task index ever
           // repeats non-contiguously, and a duplicate key would let React
           // reconcile one turn's entries under the other's timestamp.
-          <Flex key={turnIndex} direction="column" gap="3">
+          <Flex
+            key={turnIndex}
+            direction="column"
+            gap="3"
+            data-turn-index={turnIndex}
+          >
             {/* Absolute, not relative: every turn of a session usually falls on
                 the same day, so the relative form printed "1 day ago" three times
                 and hid the progression entirely. An exact time shows how the
-                session actually unfolded. */}
+                session actually unfolded. Labelled with the turn's number: the
+                first marker sits right under the header's "Started …", where a
+                bare second time read as an unexplained timestamp (QA). */}
             <div className={classes.turnMarker}>
               <Text
                 variant="body-small"
                 color="secondary"
                 className={classes.turnTime}
               >
-                {turn.at ? <DateComponent value={turn.at} /> : '—'}
+                Turn {turnIndex + 1}
+                {turn.at && (
+                  <>
+                    {' · '}
+                    <DateComponent value={turn.at} />
+                  </>
+                )}
               </Text>
               <span className={classes.rule} />
             </div>

@@ -1,15 +1,21 @@
 import type { Page, Route } from '@playwright/test';
 
-import { expect, open, test, type LabAgent } from './fixtures';
+import {
+  expect,
+  expectWizardStep,
+  open,
+  test,
+  type LabAgent,
+} from './fixtures';
 
 /**
- * The Edit agent page's two write modes on the worker's own agent: an agent
- * written live keeps Save, one applied from git dry-runs in mode commit and
- * offers Commit — a pull request in the repository that owns it — in place of
- * Save, locked once the pull request is open. The agent detail page's three
- * ways to it — the actions menu, the Skills tab's Add skills and the failure
- * blocker — offer it for an agent applied from git only when agent-manager can
- * commit.
+ * The Edit agent wizard's two write modes on the worker's own agent: an agent
+ * written live keeps Save changes, one applied from git dry-runs in mode
+ * commit and offers Propose changes as pull request — in the repository that
+ * owns it — in place of Save, locked once the pull request is open. The agent detail page's three
+ * ways to it — the header's Edit, Overview's Add skills and
+ * the failure blocker — offer it for an agent applied from git only when
+ * agent-manager can commit.
  *
  * The lab's agent-manager writes live only: it reports no commit capability,
  * and no Flux Kustomization applies the fixture agent from git. The commit
@@ -25,25 +31,46 @@ const PULL_REQUEST = 'https://github.com/giantswarm/agents/pull/4242';
 
 type ToolCall = { name?: string; arguments?: Record<string, unknown> };
 
+/** The Edit agent wizard of the agent: `/agent-platform/agents/edit/<inst>/<ns>/<name>`. */
 function editPathOf(agent: LabAgent): string {
-  return `${agent.detailPath}/edit`;
+  return agent.detailPath.replace(
+    '/agent-platform/agents/',
+    '/agent-platform/agents/edit/',
+  );
 }
 
-/** The footer card's write button: the header carries its twin. */
+/** The Review step's write button: the header carries its twin. */
 function writeButton(page: Page, name: RegExp) {
   return page.getByRole('button', { name }).last();
 }
 
+/**
+ * Changes what the agent is for on the wizard's Details step and walks to
+ * Review: the change listed under What changes, and agent-manager's dry run of
+ * exactly it — its composed values carry the new description.
+ */
 async function changeDescription(page: Page) {
-  const description = page.getByRole('textbox', { name: 'Description' });
+  await expectWizardStep(page, 'Details');
+  const description = page.getByRole('textbox', { name: 'What is it for?' });
   await expect(
     description,
     'the form is pre-filled from get_agent',
-  ).toBeVisible({ timeout: 60_000 });
+  ).not.toBeEmpty({ timeout: 60_000 });
   await description.fill(DESCRIPTION);
+  for (const step of ['Details', 'Skills', 'Tools']) {
+    await expectWizardStep(page, step);
+    await page.getByRole('button', { name: 'Continue' }).first().click();
+  }
+  await expectWizardStep(page, 'Review');
   await expect(
-    page.getByRole('list', { name: 'Changed fields' }).getByText('Description'),
+    page
+      .getByRole('list', { name: 'Changed fields' })
+      .getByText("What it's for"),
   ).toBeVisible();
+  await page
+    .locator('summary')
+    .filter({ hasText: 'Technical details' })
+    .click();
   await expect(
     page.getByText(`description: ${DESCRIPTION}`).first(),
     "agent-manager's dry run composes the changed values",
@@ -126,15 +153,19 @@ async function stageGitOpsAgent(
   return writes;
 }
 
-test('agent edit: an agent written live keeps Save and offers no Commit', async ({
+test('agent edit: an agent written live keeps Save changes and offers no pull request', async ({
   admin,
   labAgent,
 }) => {
   await open(admin, editPathOf(labAgent));
   await changeDescription(admin);
 
-  await expect(writeButton(admin, /^Save/)).toBeEnabled({ timeout: 60_000 });
-  await expect(admin.getByRole('button', { name: /^Commit/ })).toHaveCount(0);
+  await expect(writeButton(admin, /^Save changes$/)).toBeEnabled({
+    timeout: 60_000,
+  });
+  await expect(admin.getByRole('button', { name: /pull request/ })).toHaveCount(
+    0,
+  );
 });
 
 test('agent edit: an agent applied from git dry-runs in mode commit and opens one pull request', async ({
@@ -146,15 +177,18 @@ test('agent edit: an agent applied from git dry-runs in mode commit and opens on
   await changeDescription(admin);
 
   await expect(admin.getByRole('button', { name: /^Save/ })).toHaveCount(0);
-  const commit = writeButton(admin, /^Commit/);
+  const commit = writeButton(admin, /^Propose changes as pull request$/);
   await expect(commit).toBeEnabled({ timeout: 60_000 });
   await commit.click();
 
   await expect(
-    admin.getByRole('link', { name: /Open the pull request/ }),
+    admin.getByRole('link', { name: /Review pull request/ }),
   ).toHaveAttribute('href', PULL_REQUEST);
-  const committed = writeButton(admin, /^Committed/);
-  await expect(committed, 'Commit is locked for this change').toBeDisabled();
+  const committed = writeButton(admin, /^Proposed$/);
+  await expect(
+    committed,
+    'the proposal is locked for this change',
+  ).toBeDisabled();
   // A second click on the locked button opens no second pull request.
   await committed.click({ force: true });
   expect(writes).toHaveLength(1);
@@ -163,9 +197,10 @@ test('agent edit: an agent applied from git dry-runs in mode commit and opens on
     description: DESCRIPTION,
     mode: 'commit',
   });
-  await expect(admin, 'nothing changed live: the page stays').toHaveURL(
-    new RegExp(`${editPathOf(labAgent)}$`),
-  );
+  await expect(
+    admin,
+    'nothing changed live: the wizard stays on its Review step',
+  ).toHaveURL(new RegExp(`${editPathOf(labAgent)}/review$`));
 });
 
 /**
@@ -228,7 +263,7 @@ async function expectCommitModeEditPage(page: Page, agent: LabAgent) {
   await expect(page).toHaveURL(new RegExp(`${editPathOf(agent)}$`));
   await changeDescription(page);
   await expect(
-    writeButton(page, /^Commit/),
+    writeButton(page, /^Propose changes as pull request$/),
     'the edit page opened in commit mode',
   ).toBeEnabled({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /^Save/ })).toHaveCount(0);
@@ -246,31 +281,47 @@ test('agent edit: every entry point opens the commit-mode Edit page for an agent
 
   // The failure blocker.
   await open(admin, labAgent.detailPath);
-  await expect(admin.getByText("Sessions can't start")).toBeVisible({
+  await expect(admin.getByText('Sessions cannot start')).toBeVisible({
     timeout: 60_000,
   });
   await expect(
-    admin.getByText(/so a fix opens a pull request there/),
+    admin.getByText(
+      /It is deployed from GitOps, so a fix opens a pull request there\./,
+    ),
   ).toBeVisible();
   await blockerEdit(admin).click();
   await expectCommitModeEditPage(admin, labAgent);
 
-  // The actions menu.
+  // The header's Edit.
+  await open(admin, labAgent.detailPath);
+  await admin
+    .getByRole('main')
+    .getByRole('button', { name: 'Edit', exact: true })
+    .click();
+  await expectCommitModeEditPage(admin, labAgent);
+
+  // The actions menu: Update all skills to latest, which commits too (T70).
+  // Edit is the header's button alone; the menu does not list it a second
+  // time (T98).
   await open(admin, labAgent.detailPath);
   await admin.getByRole('button', { name: 'Agent actions' }).click();
   await expect(
-    admin.getByRole('menuitem', { name: /Update skills/ }),
-    'Update skills has no commit mode',
-  ).toHaveCount(0);
-  await admin.getByRole('menuitem', { name: /Edit agent/ }).click();
-  await expectCommitModeEditPage(admin, labAgent);
+    admin.getByRole('menuitem', { name: /Update all skills to latest/ }),
+  ).toBeVisible();
+  await expect(admin.getByRole('menuitem', { name: /Edit agent/ })).toHaveCount(
+    0,
+  );
+  await admin.keyboard.press('Escape');
 
-  // The Skills tab's Add skills: the lab agent has none.
-  await open(admin, `${labAgent.detailPath}/skills`);
+  // Overview's Skills section offers Add skills: the lab agent has none.
+  await open(admin, labAgent.detailPath);
+  const skills = admin.getByRole('region', { name: 'Skills' });
   await expect(
-    admin.getByText(/so adding skills opens a pull request there/),
+    skills.getByText(
+      'It is deployed from GitOps, so adding skills opens a pull request there.',
+    ),
   ).toBeVisible({ timeout: 60_000 });
-  await admin.getByRole('button', { name: 'Add skills' }).click();
+  await skills.getByRole('button', { name: 'Add skills' }).click();
   await expectCommitModeEditPage(admin, labAgent);
 });
 
@@ -282,10 +333,13 @@ test('agent edit: an agent applied from git offers no Edit without the commit ca
   await stageFailedAgent(admin, labAgent);
 
   await open(admin, labAgent.detailPath);
-  await expect(admin.getByText(/so it is fixed there/)).toBeVisible({
-    timeout: 60_000,
-  });
+  await expect(
+    admin.getByText(/It is deployed from GitOps, so fix it there\./),
+  ).toBeVisible({ timeout: 60_000 });
   await expect(blockerEdit(admin)).toHaveCount(0);
+  await expect(
+    admin.getByRole('main').getByRole('button', { name: 'Edit', exact: true }),
+  ).toHaveCount(0);
 
   await admin.getByRole('button', { name: 'Agent actions' }).click();
   await expect(
@@ -294,13 +348,16 @@ test('agent edit: an agent applied from git offers no Edit without the commit ca
   await expect(admin.getByRole('menuitem', { name: /Edit agent/ })).toHaveCount(
     0,
   );
+  await expect(
+    admin.getByRole('menuitem', { name: /Update all skills to latest/ }),
+  ).toHaveCount(0);
   await admin.keyboard.press('Escape');
 
-  await open(admin, `${labAgent.detailPath}/skills`);
-  await expect(admin.getByText(/so its skills are added there/)).toBeVisible({
-    timeout: 60_000,
-  });
-  await expect(admin.getByRole('button', { name: 'Add skills' })).toHaveCount(
+  const skills = admin.getByRole('region', { name: 'Skills' });
+  await expect(
+    skills.getByText('It is deployed from GitOps, so add skills there.'),
+  ).toBeVisible();
+  await expect(skills.getByRole('button', { name: 'Add skills' })).toHaveCount(
     0,
   );
 });

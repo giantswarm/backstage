@@ -4,6 +4,11 @@ import userEvent from '@testing-library/user-event';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import { PendingConfirmationPanel } from './PendingConfirmationPanel';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 const onAnswer = jest.fn();
 
@@ -98,12 +103,18 @@ describe('PendingConfirmationPanel', () => {
       });
     });
 
-    it('does not repeat the question the timeline already shows', async () => {
-      // One question renders directly above this panel as prose in the
-      // conversation; printing it again put the same paragraph on screen twice.
-      renderPanel(singleChoice);
+    it('prints the question it asks, since it stays docked while the conversation scrolls', async () => {
+      // T40: the card is the live surface in the chat bar, and the timeline's
+      // copy (the record) is often scrolled out of view.
+      renderPanel(singleChoice, { agentName: 'Issue tracker' });
 
-      expect(screen.queryByText('What is the actual goal?')).toBeNull();
+      expect(screen.getByText('What is the actual goal?')).toBeInTheDocument();
+      expect(screen.getByText('Issue tracker asks')).toBeInTheDocument();
+      // One question: no pager.
+      expect(screen.queryByText(/Question 1 of/)).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Next question' }),
+      ).toBeNull();
     });
   });
 
@@ -154,54 +165,233 @@ describe('PendingConfirmationPanel', () => {
       ],
     };
 
-    it('names each question, since the pairing is not otherwise recoverable', () => {
+    const nextButton = () => screen.getByRole('button', { name: 'Next' });
+
+    it('pages through them one at a time: "Question 1 of N"', async () => {
+      // A docked card has half a phone screen; a stack of choice lists would
+      // push the message box off it.
       renderPanel(two);
 
+      expect(screen.getByText('Question 1 of 2')).toBeInTheDocument();
       expect(screen.getByText('First?')).toBeInTheDocument();
+      expect(screen.queryByText('Second?')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Previous question' }),
+      ).toBeDisabled();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Next question' }),
+      );
+
+      expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
       expect(screen.getByText('Second?')).toBeInTheDocument();
+      expect(screen.queryByText('First?')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Next question' }),
+      ).toBeDisabled();
     });
 
-    it('will not send until every question is answered', async () => {
+    it('moves on only once the page’s question has an answer, and sends from the last', async () => {
+      renderPanel(two);
+
+      // No Send before the last page: the answers go together.
+      expect(screen.queryByRole('button', { name: 'Send answer' })).toBeNull();
+      expect(nextButton()).toBeDisabled();
+
+      await userEvent.click(screen.getByLabelText('a'));
+      await userEvent.click(nextButton());
+
+      expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    it('will not send until every question is answered, and says which is missing', async () => {
       // kagent treats a short entry as "not answered" rather than an error, so a
       // partial set would resume the task with a question silently dropped.
       renderPanel(two);
 
-      await userEvent.click(screen.getByLabelText('a'));
-      expect(sendButton()).toBeDisabled();
-
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Next question' }),
+      );
       await userEvent.click(screen.getByLabelText('d'));
+
+      // Pressable: the missing answer is on another page, so pressing Send is
+      // how the user finds out which.
+      expect(screen.queryByText(/still needs an answer/)).toBeNull();
+      await userEvent.click(sendButton());
+
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(
+        screen.getByText('Question 1 still needs an answer.'),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Previous question' }),
+      );
+      await userEvent.click(screen.getByLabelText('a'));
+      await userEvent.click(nextButton());
+
       expect(sendButton()).toBeEnabled();
     });
 
-    it('keeps the answers positional', async () => {
+    it('does not complain about a question on arriving at it, only after a blocked send', async () => {
+      // Live round 2 (R6): "Question 2 still needs an answer." showed as soon as
+      // question 2 opened. The T31 rule: no error before the first blocked attempt.
+      renderPanel(two);
+
+      await userEvent.click(screen.getByLabelText('a'));
+      await userEvent.click(nextButton());
+
+      expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
+      expect(screen.queryByText(/still needs an answer/)).toBeNull();
+      // The question in view is the unanswered one: a disabled Send says enough.
+      expect(sendButton()).toBeDisabled();
+
+      // Enter from the unanswered page is a blocked attempt.
+      await userEvent.click(screen.getByRole('textbox', { name: 'Answer' }));
+      await userEvent.keyboard('{Enter}');
+
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(
+        screen.getByText('Question 2 still needs an answer.'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps each page’s answer while paging, and sends them positionally', async () => {
       renderPanel(two);
 
       await userEvent.click(screen.getByLabelText('b'));
+      await userEvent.click(nextButton());
       await userEvent.click(screen.getByLabelText('c'));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Previous question' }),
+      );
+      expect(screen.getByLabelText('b')).toBeChecked();
+      await userEvent.click(nextButton());
       await userEvent.click(sendButton());
 
       expect(onAnswer).toHaveBeenCalledWith(
         expect.objectContaining({ answers: [['b'], ['c']] }),
       );
     });
+
+    it('moves to the next question on Enter, and sends on Enter from the last', async () => {
+      renderPanel(two);
+
+      screen.getByLabelText('a').focus();
+      await userEvent.keyboard(' ');
+      await userEvent.keyboard('{Enter}');
+
+      expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
+      // The focus followed the page: the new question's first choice.
+      expect(screen.getByLabelText('c')).toHaveFocus();
+      expect(onAnswer).not.toHaveBeenCalled();
+
+      await userEvent.keyboard(' ');
+      await userEvent.keyboard('{Enter}');
+
+      expect(onAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({ answers: [['a'], ['c']] }),
+      );
+    });
+
+    it('starts again at the first page when a follow-up replaces the questions', async () => {
+      const { rerender } = renderPanel(two);
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Next question' }),
+      );
+
+      rerender(
+        <PendingConfirmationPanel
+          pending={{
+            ...two,
+            questions: [
+              { question: 'Third?', choices: ['e'], multiple: false },
+              { question: 'Fourth?', choices: ['f'], multiple: false },
+            ],
+          }}
+          isAnswering={false}
+          onAnswer={onAnswer}
+        />,
+      );
+
+      expect(screen.getByText('Question 1 of 2')).toBeInTheDocument();
+      expect(screen.getByText('Third?')).toBeInTheDocument();
+    });
   });
 
   describe('an approval', () => {
-    it('names the tool and asks for a yes rather than an answer', () => {
-      renderPanel(approval);
+    it('renders the permission card: who asks, for what, Allow and Decline', () => {
+      renderPanel(approval, { agentName: 'Support Triage' });
 
+      // The tool's name as words — the exact identifier stays in the
+      // timeline's technical view.
       expect(
-        screen.getByText('The agent is asking permission to run delete_file.'),
+        screen.getByText('Support Triage wants to run “Delete file”'),
+      ).toBeInTheDocument();
+      // The prototype's reassurance, under the title — and no resting caption
+      // beside the buttons repeating what a decision does.
+      expect(
+        screen.getByText('Nothing is sent until you allow it.'),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Approve' }),
+        screen.queryByText(/resumes the agent where it stopped/),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Allow' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Decline' }),
       ).toBeInTheDocument();
     });
 
-    it('approves with no answers attached', async () => {
+    it('carries the "changes things" accent — the reason the card interrupts', () => {
       renderPanel(approval);
 
-      await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      expect(screen.getByText('Changes things')).toBeInTheDocument();
+    });
+
+    it('says who is asking even when no agent name is known', () => {
+      renderPanel(approval);
+
+      expect(
+        screen.getByText('The agent wants to run “Delete file”'),
+      ).toBeInTheDocument();
+    });
+
+    it('names the connector the proposed call would go through, as Customize does', () => {
+      renderPanel(
+        { ...approval, toolName: 'x_files_delete_file', via: 'Muster' },
+        {
+          connectorOf: name =>
+            name.startsWith('x_files_')
+              ? { connector: 'files', tool: name.slice('x_files_'.length) }
+              : undefined,
+        },
+      );
+
+      expect(
+        screen.getByText('The agent wants to run “Delete file” on files'),
+      ).toBeInTheDocument();
+    });
+
+    it('never names the gateway as the connector', () => {
+      renderPanel({ ...approval, via: 'Muster' });
+
+      expect(
+        screen.getByText('The agent wants to run “Delete file”'),
+      ).toBeInTheDocument();
+    });
+
+    it('shows the exact arguments Allow would run', () => {
+      renderPanel({ ...approval, args: { path: '/tmp/x', recursive: true } });
+
+      expect(screen.getByText(/"path": "\/tmp\/x"/)).toBeInTheDocument();
+      expect(screen.getByText(/"recursive": true/)).toBeInTheDocument();
+    });
+
+    it('allows with no answers attached', async () => {
+      renderPanel(approval);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Allow' }));
 
       expect(onAnswer).toHaveBeenCalledWith({
         taskId: 'task-1',
@@ -211,10 +401,27 @@ describe('PendingConfirmationPanel', () => {
   });
 
   describe('declining', () => {
+    it.each([
+      ['a single-choice question', singleChoice],
+      ['a multi-select question', multiChoice],
+      ['a free-text question', freeText],
+    ])('is not offered on %s, which cannot be rejected', (_, pending) => {
+      // Live round 2 (R1): the backend refuses a rejected ask_user ("A question
+      // cannot be rejected; answer it, or leave the session waiting"), so Decline
+      // on a question always failed. Answering is the only way through.
+      renderPanel(pending);
+
+      expect(screen.queryByRole('button', { name: 'Decline' })).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Confirm decline' }),
+      ).toBeNull();
+      expect(sendButton()).toBeInTheDocument();
+    });
+
     it('asks for a reason before it takes the refusal', async () => {
       // Two steps on purpose: a refusal resumes the agent as surely as an answer
       // does, and the reason is the only thing that reaches it.
-      renderPanel(singleChoice);
+      renderPanel(approval);
 
       await userEvent.click(declineButton());
 
@@ -225,7 +432,7 @@ describe('PendingConfirmationPanel', () => {
     });
 
     it('sends a refusal carrying the reason', async () => {
-      renderPanel(singleChoice);
+      renderPanel(approval);
 
       await userEvent.click(declineButton());
       await userEvent.type(
@@ -245,7 +452,7 @@ describe('PendingConfirmationPanel', () => {
     });
 
     it('allows a refusal with no reason at all', async () => {
-      renderPanel(singleChoice);
+      renderPanel(approval);
 
       await userEvent.click(declineButton());
       await userEvent.click(
@@ -521,7 +728,7 @@ describe('PendingConfirmationPanel', () => {
     // made pressing it do nothing, with only the caption to explain — and an
     // over-long *answer* outranks the reason there, so that explanation can be
     // hidden exactly when it is needed.
-    renderPanel(freeText);
+    renderPanel(approval);
 
     await userEvent.click(declineButton());
     await userEvent.click(screen.getByRole('textbox', { name: /Reason/ }));
@@ -622,12 +829,10 @@ describe('PendingConfirmationPanel', () => {
     });
 
     it('confirms the decline on Enter in the reason box, never an approval', async () => {
-      // The box only exists because Decline was pressed; with an option already
-      // picked, a form submit from here would send the opposite of what the user
-      // is in the middle of.
-      renderPanel(singleChoice);
+      // The box only exists because Decline was pressed; a form submit from here
+      // would Allow the call — the opposite of what the user is in the middle of.
+      renderPanel(approval);
 
-      await userEvent.click(screen.getByRole('radio', { name: 'A sculpture' }));
       await userEvent.click(declineButton());
       await userEvent.type(
         screen.getByRole('textbox', { name: /Reason/ }),
@@ -668,7 +873,7 @@ describe('PendingConfirmationPanel', () => {
     });
 
     it('is not taken by an approval, whose only controls decide a tool call', () => {
-      // A stray Enter on a focused Approve would grant a side-effecting call.
+      // A stray Enter on a focused Allow would grant a side-effecting call.
       renderPanel(approval);
 
       expect(document.body).toHaveFocus();
@@ -707,7 +912,90 @@ describe('PendingConfirmationPanel', () => {
     renderPanel(singleChoice, { isUserScoped: false });
 
     expect(
-      screen.getByText(/may have been put to somebody else/),
+      screen.getByText(/may be\s+meant for someone else/),
     ).toBeInTheDocument();
+  });
+});
+
+describe('PendingConfirmationPanel on a phone (T22 B2, B21)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const injectedCss = () =>
+    Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent ?? '')
+      .join('\n');
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  /** The declarations of `element`'s class whose name contains `name`, under the phone query. */
+  const phoneRule = (element: Element, name: string) => {
+    const className = [...element.classList].find(each => each.includes(name))!;
+    return new RegExp(
+      `@media \\(max-width: 599\\.95px\\) \\{\\s*\\.${escape(
+        className,
+      )} \\{([^}]*)\\}`,
+    ).exec(injectedCss())?.[1];
+  };
+
+  it('breaks the line on Enter with touch input, and sends from the button', async () => {
+    layout = mockPhoneLayout();
+    renderPanel(freeText);
+
+    const box = screen.getByRole('textbox', { name: 'Answer' });
+    await userEvent.type(box, 'line one{Enter}line two');
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect(box).toHaveValue('line one\nline two');
+    expect(box).toHaveAttribute('enterkeyhint', 'enter');
+    expect(
+      screen.getByText(
+        'Answering resumes the agent where it stopped. Tap Send answer to send it.',
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(sendButton());
+    expect(onAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({ answers: [['line one\nline two']] }),
+    );
+  });
+
+  it('names Next, not Enter, between paged questions on touch', () => {
+    layout = mockPhoneLayout();
+    renderPanel({
+      ...freeText,
+      questions: [
+        { question: 'Which cluster?', multiple: false },
+        { question: 'Which namespace?', multiple: false },
+      ],
+    });
+
+    expect(screen.getByText('Tap Next to go on.')).toBeInTheDocument();
+  });
+
+  it('keeps the keyboard captions on a desktop', () => {
+    layout = mockDesktopLayout();
+    renderPanel(freeText);
+
+    // The keys are key caps; the words read as the caption does.
+    expect(
+      screen.getByText(/^Answering resumes the agent where it stopped/)
+        .textContent,
+    ).toBe(
+      'Answering resumes the agent where it stopped. Enter sends, Shift+Enter for a new line.',
+    );
+    expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveAttribute(
+      'enterkeyhint',
+      'send',
+    );
+  });
+
+  it('gives the card one scroller at phone width: arguments flow in its body', () => {
+    layout = mockPhoneLayout();
+    renderPanel({ ...approval, args: { path: '/etc/hosts' } });
+
+    const card = screen.getByTestId('hitl-card');
+    expect(phoneRule(card, 'card')).toMatch(
+      /max-height: min\(50dvh, calc\(100dvh - var\(--agent-shell-mobile-bar-height, 0px\) - 200px\)\);/,
+    );
+    const args = card.querySelector('pre')!;
+    expect(phoneRule(args, 'proposedArgs')).toMatch(/max-height: none;/);
   });
 });

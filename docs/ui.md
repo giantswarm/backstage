@@ -195,8 +195,7 @@ repo is therefore hand-rolled, using one of three strategies.
    maxHeight: `calc(100dvh - ${PLUGIN_CONTENT_VIEWPORT_OFFSET}px)`,
    ```
 
-   `plugins/ai-chat/.../RecentConversations`,
-   `plugins/agent-platform/.../SessionSwitcherRail`.
+   `plugins/ai-chat/.../RecentConversations`.
 
 3. **Measured offset.** `window.innerHeight - node.getBoundingClientRect().top`,
    re-measured on resize and via a `ResizeObserver`. The only one that survives a

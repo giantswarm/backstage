@@ -134,11 +134,11 @@ const stepOf = (panel: ReturnType<typeof within>, id: string) =>
 
 describe('serveFirstModelHref', () => {
   it('names installation, cluster and pool, and the preset where the pool carries an intent', () => {
-    expect(serveFirstModelHref('/serving', OPENED)).toBe(
-      '/serving?serve=1&installation=inst-1&cluster=wc1&pool=gpu-l4',
+    expect(serveFirstModelHref('/serving/serve', OPENED)).toBe(
+      '/serving/serve?installation=inst-1&cluster=wc1&pool=gpu-l4',
     );
-    expect(serveFirstModelHref('/serving', OPENED, 'qwen3-8b-fp8')).toBe(
-      '/serving?serve=1&installation=inst-1&cluster=wc1&pool=gpu-l4&preset=qwen3-8b-fp8',
+    expect(serveFirstModelHref('/serving/serve', OPENED, 'qwen3-8b-fp8')).toBe(
+      '/serving/serve?installation=inst-1&cluster=wc1&pool=gpu-l4&model=qwen3-8b-fp8',
     );
   });
 });
@@ -182,7 +182,7 @@ describe('PoolLifecyclePanel with a serve intent', () => {
     expect(stepOf(nested, 'ready')).toHaveAttribute('data-state', 'pending');
   });
 
-  it('a refused fit reads as the dialog words it, with Serve another model as the way out', async () => {
+  it('a refused fit reads as Serve model words it, with Serve another model as the way out', async () => {
     const panel = await renderPanel(
       READY_ROW,
       serveState({
@@ -205,9 +205,9 @@ describe('PoolLifecyclePanel with a serve intent', () => {
     const link = within(serve).getByRole('link', {
       name: 'Serve another model',
     });
-    expect(link.getAttribute('href')).toContain('serve=1');
+    expect(link.getAttribute('href')).toContain('/serving/serve?');
     expect(link.getAttribute('href')).toContain('pool=gpu-l4');
-    expect(link.getAttribute('href')).not.toContain('preset=');
+    expect(link.getAttribute('href')).not.toContain('model=');
     expect(
       panel.queryByRole('button', { name: TRY_SERVING_AGAIN }),
     ).not.toBeInTheDocument();
@@ -230,12 +230,12 @@ describe('PoolLifecyclePanel with a serve intent', () => {
     expect(serve).toHaveTextContent(
       'model-manager refused: backend_error: down',
     );
-    // The dialog on the pool, the preset preselected: the person never picks it twice.
+    // Serve model on the pool, the preset preselected: the person never picks it twice.
     expect(
       within(serve)
-        .getByRole('link', { name: 'Serve Qwen3 8B FP8 in the dialog' })
+        .getByRole('link', { name: 'Serve Qwen3 8B FP8 manually' })
         .getAttribute('href'),
-    ).toContain('pool=gpu-l4&preset=qwen3-8b-fp8');
+    ).toContain('pool=gpu-l4&model=qwen3-8b-fp8');
     await user.click(panel.getByRole('button', { name: TRY_SERVING_AGAIN }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });

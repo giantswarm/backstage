@@ -10,6 +10,7 @@ import {
   SessionUsageResponse,
   UsageAgentEntry,
   UsageDayEntry,
+  UsageRemainder,
   UsageServerEntry,
   UsageTally,
   UsageToolEntry,
@@ -33,7 +34,9 @@ export const DEFAULT_WINDOW_DAYS = 30;
 /**
  * How many of a user's sessions may be evaluated in one pass.
  *
- * Three times a measured real account (21 sessions).
+ * Three times a measured real account (21 sessions) over the default 30-day
+ * window. It does not scale with `windowDays`: a wider window holds more
+ * sessions, so raise this with it, within what `budgetMs` can read.
  * Unlike the session-states pass, the window here *is* the reported scope, so
  * this cap is the only thing that can make the page under-report — which is why
  * it is generous and why exceeding it is surfaced as `skipped` rather than
@@ -42,13 +45,18 @@ export const DEFAULT_WINDOW_DAYS = 30;
 export const DEFAULT_MAX_SESSIONS = 60;
 
 /**
- * How stale a session may be and still be worth a task read.
+ * How stale a session may be and still be worth a task read, for a window.
  *
  * The window plus a day of slack for clock skew and the UTC day boundary. Safe
  * because the controller bumps an instance's `updated_at` on every turn, so an
  * instance with no activity in 31 days can hold no turn inside a 30-day window.
+ *
+ * Derived from the configured window rather than fixed: a fixed 31 days would
+ * silently drop every session idle for longer once `windowDays` is raised.
  */
-export const DEFAULT_MAX_AGE_MS = (DEFAULT_WINDOW_DAYS + 1) * DAY_MS;
+export function defaultMaxAgeMs(windowDays: number): number {
+  return (windowDays + 1) * DAY_MS;
+}
 
 /**
  * Task reads in flight at once.
@@ -96,16 +104,29 @@ export type SessionUsageOptions = {
   cacheTtlMs?: number;
 };
 
-/** Descending by count, then by name, so the answer is not Map order. */
+/**
+ * The top entries by count, and what the cap left out.
+ *
+ * Descending by count, then by name, so the answer is not Map order. The
+ * remainder travels with the list so the UI can say "and 14 more, 230 calls"
+ * rather than dropping the long tail silently.
+ */
 function topBy<T>(
   counts: Map<string | null, number>,
   make: (key: string | null, calls: number) => T,
   limit = USAGE_TOP_N,
-): T[] {
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || (a[0] ?? '').localeCompare(b[0] ?? ''))
-    .slice(0, limit)
-    .map(([key, calls]) => make(key, calls));
+): { top: T[]; other: UsageRemainder } {
+  const ranked = [...counts.entries()].sort(
+    (a, b) => b[1] - a[1] || (a[0] ?? '').localeCompare(b[0] ?? ''),
+  );
+  const rest = ranked.slice(limit);
+  return {
+    top: ranked.slice(0, limit).map(([key, calls]) => make(key, calls)),
+    other: {
+      count: rest.length,
+      calls: rest.reduce((sum, [, calls]) => sum + calls, 0),
+    },
+  };
 }
 
 /**
@@ -149,7 +170,11 @@ export class SessionUsageReader {
     // `0` would reach through and silently disable the route.
     this.windowDays = atLeast(1, options.windowDays, DEFAULT_WINDOW_DAYS);
     this.maxSessions = atLeast(1, options.maxSessions, DEFAULT_MAX_SESSIONS);
-    this.maxAgeMs = atLeast(1, options.maxAgeMs, DEFAULT_MAX_AGE_MS);
+    this.maxAgeMs = atLeast(
+      1,
+      options.maxAgeMs,
+      defaultMaxAgeMs(this.windowDays),
+    );
     this.concurrency = atLeast(1, options.concurrency, DEFAULT_CONCURRENCY);
     this.taskTimeoutMs = atLeast(
       MIN_READ_SLICE_MS,
@@ -194,6 +219,9 @@ export class SessionUsageReader {
     let undatedTurns = 0;
     let unparseableMessages = 0;
     const days = new Map<string, UsageTally>();
+    // Sessions by the UTC day of their newest turn in the window: a narrower
+    // window's session count is a trailing sum of these (see UsageDayEntry).
+    const lastActive = new Map<string, number>();
     const tools = new Map<string | null, number>();
     const servers = new Map<string | null, number>();
     const agents = new Map<string | null, UsageTally & { sessions: number }>();
@@ -226,10 +254,17 @@ export class SessionUsageReader {
           undatedTurns += usage.undatedTurns;
           unparseableMessages += usage.unparseableMessages;
 
+          let newestDay: string | undefined;
           for (const [day, tally] of usage.days) {
             const existing = days.get(day) ?? emptyTally();
             addTally(existing, tally);
             days.set(day, existing);
+            if (tally.turns > 0 && (!newestDay || day > newestDay)) {
+              newestDay = day;
+            }
+          }
+          if (newestDay) {
+            lastActive.set(newestDay, (lastActive.get(newestDay) ?? 0) + 1);
           }
           for (const [tool, calls] of usage.tools) {
             tools.set(tool, (tools.get(tool) ?? 0) + calls);
@@ -267,21 +302,26 @@ export class SessionUsageReader {
       );
     }
 
+    const rankedTools = topBy<UsageToolEntry>(tools, (tool, calls) => ({
+      tool: tool ?? 'unknown tool',
+      calls,
+    }));
+    const rankedServers = topBy<UsageServerEntry>(servers, (server, calls) => ({
+      server,
+      calls,
+    }));
+
     return {
       evaluatedAt: endMs,
       windowStart: startMs,
       windowDays: this.windowDays,
       totals: { ...totals, sessions: sessionsWithActivity },
-      daily: this.denseDaily(days, startMs, endMs),
+      daily: this.denseDaily(days, lastActive, startMs, endMs),
       byAgent: this.rankAgents(agents),
-      topTools: topBy<UsageToolEntry>(tools, (tool, calls) => ({
-        tool: tool ?? 'unknown tool',
-        calls,
-      })),
-      topMcpServers: topBy<UsageServerEntry>(servers, (server, calls) => ({
-        server,
-        calls,
-      })),
+      topTools: rankedTools.top,
+      otherTools: rankedTools.other,
+      topMcpServers: rankedServers.top,
+      otherMcpServers: rankedServers.other,
       undatedTurns,
       unreadable,
       // The cap and the budget cutoff. Deliberately not the activity-window
@@ -302,6 +342,7 @@ export class SessionUsageReader {
    */
   private denseDaily(
     days: Map<string, UsageTally>,
+    lastActive: Map<string, number>,
     startMs: number,
     endMs: number,
   ): UsageDayEntry[] {
@@ -319,6 +360,8 @@ export class SessionUsageReader {
         inputTokens: tally?.inputTokens ?? 0,
         outputTokens: tally?.outputTokens ?? 0,
         turns: tally?.turns ?? 0,
+        toolCalls: tally?.toolCalls ?? 0,
+        lastActiveSessions: lastActive.get(day) ?? 0,
       });
     }
     return daily;

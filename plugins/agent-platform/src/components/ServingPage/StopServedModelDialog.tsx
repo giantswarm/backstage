@@ -68,15 +68,14 @@ export function StopServedModelDialog({
         {via === 'model-manager'
           ? `model-manager deletes the LLMInferenceService ${model.name} in ${where}`
           : `The LLMInferenceService ${model.name} in ${where} is deleted`}{' '}
-        and KServe removes its workload, freeing the GPU. The downloaded weights
-        stay in the model cache on the node, so serving it again skips the
-        download.
+        and KServe removes its workload, freeing the GPU. The weights stay
+        cached on the node, so serving it again skips the download.
       </Text>
       {via === 'model-manager' && managedModelConfig && (
         <Text variant="body-medium">
           The model config {managedModelConfig.namespace}/
-          {managedModelConfig.name} model-manager created for it is removed as
-          well, so no agent keeps pointing at a model that is gone.
+          {managedModelConfig.name} model-manager created for it is removed too,
+          so no agent points at a gone model.
         </Text>
       )}
       {consumersKept.length > 0 && (

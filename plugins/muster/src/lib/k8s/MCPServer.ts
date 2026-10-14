@@ -49,19 +49,19 @@ export const TOOL_GROUPS: Readonly<Record<ToolGroupKey, ToolGroupInfo>> = {
     key: 'agent-platform',
     title: 'Agent Platform',
     description:
-      "The platform's own management surface: the managers for agents, models and clusters, and muster's core tools. Writes act as the caller.",
+      "The platform's own management surface: the managers for agents, models and clusters, and the platform tools. Writes act as the caller.",
   },
   infrastructure: {
     key: 'infrastructure',
     title: 'Infrastructure',
     description:
-      'Servers for the infrastructure the platform runs on -- the management clusters this installation federates, as families with one instance per cluster.',
+      'Connectors for the infrastructure the platform runs on, each with one instance per management cluster this installation federates.',
   },
   registered: {
     key: 'registered',
-    title: 'Registered servers',
+    title: 'Registered connectors',
     description:
-      'Everything this installation or its users registered -- integrations and shared services, through GitOps or the Register server flow.',
+      'Everything this installation or its users registered: integrations and shared services, through GitOps or Add connector.',
   },
 };
 
@@ -80,7 +80,7 @@ const DECLARED_TOOL_GROUPS: readonly ToolGroup[] = [
 /**
  * Narrow a label value to a declared tool group. Anything else -- absent,
  * empty, a typo in a chart's values -- reads as undefined, so a mislabelled
- * server lands in *Registered servers* instead of breaking the page.
+ * server lands in *Registered connectors* instead of breaking the page.
  */
 export function parseToolGroup(
   value: string | undefined,
@@ -172,12 +172,42 @@ export interface MCPServerSigV4 {
   roleArn?: string;
 }
 
+/**
+ * A Kubernetes Secret holding an out-of-band registered OAuth client's
+ * credentials (`spec.auth.authorizationServer.clientCredentialsSecretRef`) —
+ * how a GitHub-style authorization server without dynamic client registration
+ * is reached without a plaintext credential in the CR.
+ */
+export interface MCPServerClientCredentialsSecretRef {
+  name: string;
+  namespace?: string;
+  clientIdKey?: string;
+  clientSecretKey?: string;
+}
+
+/**
+ * The authorization-server pin for `auth.type: oauth` — only needed for
+ * backends without RFC 9728/8414 discovery. `authorizationEndpoint` and
+ * `tokenEndpoint` are set together (the CRD's CEL rule); `grantScope` decides
+ * whether a person's grant lives per login session (the default) or is reused
+ * across their sessions.
+ */
+export interface MCPServerAuthorizationServer {
+  issuer: string;
+  scopes?: string;
+  authorizationEndpoint?: string;
+  tokenEndpoint?: string;
+  expectedIssuer?: string;
+  clientCredentialsSecretRef?: MCPServerClientCredentialsSecretRef;
+  grantScope?: 'session' | 'subject';
+}
+
 export interface MCPServerAuth {
   type?: 'oauth' | 'none' | 'sigv4';
   forwardToken?: boolean;
   requiredAudiences?: string[];
   tokenExchange?: MCPServerTokenExchange;
-  authorizationServer?: { issuer: string; scopes?: string };
+  authorizationServer?: MCPServerAuthorizationServer;
   localMint?: { enabled?: boolean; audience?: string };
   /** Required when `type` is `sigv4`, and rejected otherwise. */
   sigv4?: MCPServerSigV4;
@@ -459,56 +489,4 @@ export function worstSeverity(
   b: MCPServerSeverity,
 ): MCPServerSeverity {
   return SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b;
-}
-
-/**
- * Fraction of aggregated servers that must be unhealthy before the Servers
- * view's healthy count flips to amber.
- *
- * muster federates ~26 management clusters, so at least one remote backend is
- * almost always degraded (DNS failures on a few remote installations across
- * trials).
- * Colouring the count amber on `healthy != total` would make it near-permanently
- * amber and therefore useless as a signal. Warn only when a
- * meaningful fraction is unhealthy so the colour means "act on this".
- *
- * ponytail: fixed 10% threshold (5/55 stays green, 6/55 warns). The orthogonal
- * scope question -- count the selected installation's own servers vs the full
- * federated fan-out -- is a deferred PM decision (iteration-2 ADR open
- * question #4), so the count still covers every aggregated server.
- */
-export const SERVERS_HEALTH_WARNING_FRACTION = 0.1;
-
-export interface ServersHealthSummary {
-  healthy: number;
-  /** The servers the health is measured over: every one not deactivated. */
-  total: number;
-  /** Servers left out of `total` because they are deactivated on purpose. */
-  deactivated: number;
-  tone: 'ok' | 'warning';
-}
-
-/**
- * Counts how many aggregated servers are healthy (severity `ok`, which includes
- * `Auth Required`) and decides the Servers view's count tone via
- * {@link SERVERS_HEALTH_WARNING_FRACTION}. Deactivated servers
- * (`spec.suspended`) read `Disconnected` by design, so they are counted apart
- * rather than as unhealthy.
- */
-export function serversHealthSummary(
-  servers: Pick<MCPServer, 'getState' | 'getSuspended'>[],
-): ServersHealthSummary {
-  const active = servers.filter(s => !s.getSuspended());
-  const total = active.length;
-  const healthy = active.filter(
-    s => mcpServerStateSeverity(s.getState()) === 'ok',
-  ).length;
-  const unhealthyFraction = total === 0 ? 0 : (total - healthy) / total;
-  return {
-    healthy,
-    total,
-    deactivated: servers.length - total,
-    tone:
-      unhealthyFraction > SERVERS_HEALTH_WARNING_FRACTION ? 'warning' : 'ok',
-  };
 }

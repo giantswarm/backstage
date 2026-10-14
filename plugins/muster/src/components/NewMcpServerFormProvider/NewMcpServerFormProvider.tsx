@@ -19,13 +19,15 @@ import {
   emptyFormState,
   formStateFromServer,
   hasUserInput,
+  mcpServerAuthProblems,
+  mcpServerDetailsProblems,
+  mcpServerFieldErrors,
   mergeOntoExisting,
   sigv4Advisories,
-  validateMcpServerAuth,
-  validateMcpServerDetails,
   type FieldAvailability,
   type McpServerAuthMode,
   type McpServerDefinition,
+  type McpServerFieldErrors,
   type McpServerMetaEntry,
   type McpServerTransport,
   type NewMcpServerFormState,
@@ -42,6 +44,13 @@ export type NewMcpServerFormContextValue = {
   setAuthMode: (authMode: McpServerAuthMode) => void;
   setIssuer: (issuer: string) => void;
   setScopes: (scopes: string) => void;
+  setAuthorizationEndpoint: (authorizationEndpoint: string) => void;
+  setTokenEndpoint: (tokenEndpoint: string) => void;
+  setClientSecretName: (clientSecretName: string) => void;
+  setClientSecretNamespace: (clientSecretNamespace: string) => void;
+  setClientIdKey: (clientIdKey: string) => void;
+  setClientSecretKey: (clientSecretKey: string) => void;
+  setGrantScope: (grantScope: NewMcpServerFormState['grantScope']) => void;
   setRequiredAudiences: (requiredAudiences: string[]) => void;
   setSigv4Region: (region: string) => void;
   setSigv4Service: (service: string) => void;
@@ -104,6 +113,11 @@ export type NewMcpServerFormContextValue = {
    */
   detailsErrors: string[];
   /**
+   * Every problem by the field that shows it (each field's first), for the
+   * per-field feedback of the shell's connector wizard.
+   */
+  fieldErrors: McpServerFieldErrors;
+  /**
    * Which auth fields this state may set, with an explanation for the ones it
    * may not — the CRD's auth mutual exclusions as disabled states.
    */
@@ -138,20 +152,32 @@ type EditBase = {
 type Draft = { state: NewMcpServerFormState; slugEdited: boolean };
 
 /**
- * Shared form state for the MCP server registration wizard (details → auth →
- * review & register → verify), modelled on agent creation's
+ * Shared form state for the connector registration wizard (connect →
+ * sign-in → test), modelled on agent creation's
  * `NewAgentFormProvider`: the steps are sub-routes, so the state and every
  * derived verdict live here rather than in a step.
  *
  * Composition and validation are pure functions in `lib/mcpServerDefinition` —
  * this only holds state and re-derives from it.
+ *
+ * `initialAuthMode` is the sign-in answer a new registration starts from (the
+ * connector wizard leads with Company login). An edit always starts from the registered server's own mode.
  */
 export function NewMcpServerFormProvider({
   children,
+  initialAuthMode = emptyFormState.authMode,
 }: {
   children: ReactNode;
+  initialAuthMode?: McpServerAuthMode;
 }) {
-  const [state, setState] = useState<NewMcpServerFormState>(emptyFormState);
+  // What an untouched new registration holds — the empty form with the
+  // provider's starting sign-in answer. Fixed for the provider's lifetime.
+  const [initialState] = useState<NewMcpServerFormState>(() =>
+    initialAuthMode === emptyFormState.authMode
+      ? emptyFormState
+      : { ...emptyFormState, authMode: initialAuthMode },
+  );
+  const [state, setState] = useState<NewMcpServerFormState>(initialState);
   // The technical name auto-derives from the display name until the user edits
   // it by hand (same rule as agent creation).
   const [slugEdited, setSlugEdited] = useState(false);
@@ -180,25 +206,32 @@ export function NewMcpServerFormProvider({
     setBase({ definition: saved, form: current.state });
   }, []);
 
-  const startEdit = useCallback((server: MCPServer) => {
-    const current = latest.current;
-    // Only a registration in progress is a draft; an edit replaced by another
-    // edit has nothing to come back to.
-    if (!current.registeredName && hasUserInput(current.state)) {
-      draft.current = {
-        state: current.state,
-        slugEdited: current.slugEdited,
-      };
-    }
-    const form = formStateFromServer(server);
-    setSlugEdited(true);
-    setRegisteredName(server.getName());
-    setRegisteredInstallation(server.cluster);
-    setLastSave(undefined);
-    setLastSaveAt(undefined);
-    setBase({ definition: toMcpServerDefinition(server), form });
-    setState(form);
-  }, []);
+  const startEdit = useCallback(
+    (server: MCPServer) => {
+      const current = latest.current;
+      // Only a registration in progress is a draft; an edit replaced by another
+      // edit has nothing to come back to.
+      if (
+        !current.registeredName &&
+        hasUserInput(current.state, initialState)
+      ) {
+        draft.current = {
+          state: current.state,
+          slugEdited: current.slugEdited,
+        };
+      }
+      const form = formStateFromServer(server);
+      setSlugEdited(true);
+      setRegisteredName(server.getName());
+      setRegisteredInstallation(server.cluster);
+      setLastSave(undefined);
+      setLastSaveAt(undefined);
+      setBase({ definition: toMcpServerDefinition(server), form });
+      setState(form);
+    },
+    // initialState is fixed for the provider's lifetime, so this stays stable.
+    [initialState],
+  );
 
   const reset = useCallback(() => {
     const restored = draft.current;
@@ -209,21 +242,20 @@ export function NewMcpServerFormProvider({
     setLastSave(undefined);
     setLastSaveAt(undefined);
     setBase(undefined);
-    setState(restored?.state ?? emptyFormState);
-  }, []);
+    setState(restored?.state ?? initialState);
+  }, [initialState]);
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
     // The display name only derives the technical name, which an edit locks —
     // so the Details step hides it then, and it must not block the edit.
-    const detailsErrors = validateMcpServerDetails(
+    const detailsProblems = mcpServerDetailsProblems(
       registeredName && !state.name.trim()
         ? { ...state, name: registeredName }
         : state,
     );
-    const validationErrors = [
-      ...detailsErrors,
-      ...validateMcpServerAuth(state),
-    ];
+    const problems = [...detailsProblems, ...mcpServerAuthProblems(state)];
+    const detailsErrors = detailsProblems.map(problem => problem.message);
+    const validationErrors = problems.map(problem => problem.message);
 
     return {
       state,
@@ -263,6 +295,19 @@ export function NewMcpServerFormProvider({
         }),
       setIssuer: issuer => setState(prev => ({ ...prev, issuer })),
       setScopes: scopes => setState(prev => ({ ...prev, scopes })),
+      setAuthorizationEndpoint: authorizationEndpoint =>
+        setState(prev => ({ ...prev, authorizationEndpoint })),
+      setTokenEndpoint: tokenEndpoint =>
+        setState(prev => ({ ...prev, tokenEndpoint })),
+      setClientSecretName: clientSecretName =>
+        setState(prev => ({ ...prev, clientSecretName })),
+      setClientSecretNamespace: clientSecretNamespace =>
+        setState(prev => ({ ...prev, clientSecretNamespace })),
+      setClientIdKey: clientIdKey =>
+        setState(prev => ({ ...prev, clientIdKey })),
+      setClientSecretKey: clientSecretKey =>
+        setState(prev => ({ ...prev, clientSecretKey })),
+      setGrantScope: grantScope => setState(prev => ({ ...prev, grantScope })),
       setRequiredAudiences: requiredAudiences =>
         setState(prev => ({ ...prev, requiredAudiences })),
       setSigv4Region: sigv4Region =>
@@ -282,6 +327,7 @@ export function NewMcpServerFormProvider({
       isComplete: validationErrors.length === 0,
       validationErrors,
       detailsErrors,
+      fieldErrors: mcpServerFieldErrors(problems),
       authFields: authFieldAvailability(state),
       authAdvisories: sigv4Advisories(state),
       definition: base

@@ -2,6 +2,7 @@ import {
   completeDexLogin,
   expect,
   open,
+  portalChrome,
   test,
   watchPageErrors,
 } from './fixtures';
@@ -63,9 +64,7 @@ test('a wrong password is refused by Dex and the portal stays signed out', async
   await expect(dex.locator('input[name="password"]')).toBeVisible();
   await dex.close();
   await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible();
-  await expect(
-    page.getByRole('navigation', { name: 'sidebar nav' }),
-  ).not.toBeAttached();
+  await expect(portalChrome(page)).not.toBeAttached();
   await context.close();
 });
 
@@ -90,8 +89,6 @@ test('the fixture password completes a login that a wrong one refused', async ({
   await expect(dex.getByText(/invalid/i)).toBeVisible();
 
   await completeDexLogin(dex, lab.users.dev);
-  await expect(
-    page.getByRole('navigation', { name: 'sidebar nav' }),
-  ).toBeAttached({ timeout: 60_000 });
+  await expect(portalChrome(page)).toBeAttached({ timeout: 60_000 });
   await context.close();
 });

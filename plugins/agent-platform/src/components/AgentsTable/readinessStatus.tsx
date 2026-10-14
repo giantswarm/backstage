@@ -2,21 +2,14 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import ErrorIcon from '@material-ui/icons/Error';
 import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
-import { Cell, Flex } from '@backstage/ui';
-import {
-  InfoHint,
-  StatusLabel,
-  type StatusLabelIntent,
-} from '@giantswarm/backstage-plugin-ui-react';
+import type { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
-import type { AgentRow } from '../AgentsDataProvider';
 
 /**
  * How each readiness state presents. `Failed` is the word the Harness rows and
- * agent-manager's `get_agent_status` use for the same verdict; the icon and
- * colour handling lives in `StatusLabel`.
+ * agent-manager's `get_agent_status` use for the same verdict.
  *
- * Icons are passed explicitly rather than relying on `StatusLabel`'s per-intent
+ * Icons are named explicitly rather than relying on `StatusLabel`'s per-intent
  * defaults: `pending` reads far better as an hourglass than as the neutral
  * default circle, and naming the others keeps the whole set visible in one
  * place.
@@ -41,53 +34,3 @@ export const READINESS_PRESENTATION: Record<
   failed: { label: 'Failed', intent: 'negative', icon: ErrorIcon },
   pending: { label: 'Pending', intent: 'neutral', icon: HourglassEmptyIcon },
 };
-
-/**
- * Explanation behind the readiness cell's info icon: the controller's own
- * reason for the state, plus any Harness warnings. The warnings are independent
- * of readiness, so a ready agent can still have some.
- */
-function getReadinessHint(row: AgentRow): string | undefined {
-  const lines = [
-    row.readinessMessage,
-    ...(row.warnings ?? []).map(warning => `Harness warning: ${warning}`),
-  ].filter(Boolean);
-
-  return lines.length > 0 ? lines.join('\n') : undefined;
-}
-
-/** The info icon's name: "Why X failed", "Why X is not ready". */
-function readinessHintLabel(name: string, readiness: AgentReadiness): string {
-  return readiness === 'failed'
-    ? `Why ${name} failed`
-    : `Why ${name} is ${READINESS_PRESENTATION[readiness].label.toLowerCase()}`;
-}
-
-/**
- * The readiness label and, when there is something to explain, an info icon
- * whose tooltip says why.
- */
-export function AgentReadinessCell({ row }: { row: AgentRow }) {
-  const { label, intent, icon } = READINESS_PRESENTATION[row.readiness];
-  const hint = getReadinessHint(row);
-
-  return (
-    <Cell>
-      <Flex align="center" gap="1">
-        <StatusLabel label={label} intent={intent} icon={icon} />
-        {hint && (
-          <InfoHint
-            size="medium"
-            label={
-              row.readinessMessage
-                ? readinessHintLabel(row.name, row.readiness)
-                : `Harness warnings for ${row.name}`
-            }
-          >
-            {hint}
-          </InfoHint>
-        )}
-      </Flex>
-    </Cell>
-  );
-}

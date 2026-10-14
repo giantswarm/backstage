@@ -5,6 +5,7 @@ import type {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { deriveTokenRates, type TokenRates } from './costEstimate';
 import { WINDOW_DAYS } from './llmUsageQueries';
+import { usageDataStart, type UsageDataStart } from './usageWindow';
 
 /**
  * Reducers turning Mimir's answers into the rows the LLM usage views render.
@@ -78,6 +79,21 @@ export type LlmModelRow = {
   sharePct: number | undefined;
 };
 
+/** One agent's traffic on one model: the finest split the gateway reports. */
+export type LlmAgentModelRow = {
+  id: string;
+  /** The raw `agent_namespace` label: the agent's organization. */
+  namespace: string;
+  /** The raw `agent` label. */
+  agent: string;
+  /** The raw `gen_ai_response_model` label, empty when the gateway had none. */
+  model: string;
+  tokens: number;
+  calls: number;
+  /** As {@link LlmAgentRow.costUsd}: `undefined` when nothing was priced. */
+  costUsd: number | undefined;
+};
+
 export type UnpricedModelRow = {
   id: string;
   requestModel: string;
@@ -108,6 +124,9 @@ export type LlmDailySeries = {
   series: string[];
 };
 
+/** The one series key of {@link LlmUsage.callsPerDay}. */
+export const CALLS_SERIES = 'calls';
+
 export type LlmReliability = {
   totalRequests: number;
   errorRequests: number;
@@ -137,6 +156,12 @@ export type LlmUsageTotals = {
   avgTokensPerCall: number | undefined;
   /** Cache reads over all cache-eligible input tokens, as a percentage. */
   cacheReadSharePct: number | undefined;
+  /**
+   * The spend over the window before this one, when it was asked for:
+   * `undefined` when nothing was priced then, or when the data does not reach
+   * back to that window's start.
+   */
+  previousCostUsd?: number | undefined;
 };
 
 export type LlmUsage = {
@@ -145,11 +170,27 @@ export type LlmUsage = {
   tokenTypes: TokenTypeTotals;
   byAgent: LlmAgentRow[];
   byModel: LlmModelRow[];
+  /** Every agent and model pair, for a breakdown of one agent or one model. */
+  byAgentModel: LlmAgentModelRow[];
   costPerDay: LlmDailySeries;
   tokensPerDay: LlmDailySeries;
+  /**
+   * Model calls per day — one series, keyed {@link CALLS_SERIES} — for the
+   * Overview's activity heatmap. Absent unless the view asked for it
+   * (`dailyCalls`); `null` when its query failed, so the heatmap can say so
+   * rather than draw a calendar of empty days under a non-zero call total.
+   */
+  callsPerDay?: LlmDailySeries | null;
   reliability: LlmReliability;
   unpricedModels: UnpricedModelRow[];
   rates: TokenRates;
+  /**
+   * Where the gateway's records start, when that is after the window's first
+   * day and it recorded nothing in the week before the window either: every
+   * figure then covers fewer days than the window names. `undefined`
+   * otherwise, and when there are no records at all.
+   */
+  dataStart?: UsageDataStart;
 };
 
 /**
@@ -443,6 +484,53 @@ export function reduceByModel(options: {
   );
 }
 
+/** `agent_namespace|agent|gen_ai_response_model`. */
+function agentModelKey(labels: Record<string, string>): string {
+  return `${agentKey(labels)}|${modelKey(labels)}`;
+}
+
+/**
+ * Roll the three vectors up by agent **and** model, unjoined: the raw labels,
+ * for a page about one agent (its models) or one model (its agents) to filter.
+ * Sorted by spend, then tokens.
+ */
+export function reduceByAgentModel(options: {
+  cost: MimirMetricSample[] | undefined;
+  tokens: MimirMetricSample[] | undefined;
+  calls: MimirMetricSample[] | undefined;
+}): LlmAgentModelRow[] {
+  const costByPair = sumBy(options.cost, agentModelKey);
+  const tokensByPair = sumBy(options.tokens, agentModelKey);
+  const callsByPair = sumBy(options.calls, agentModelKey);
+
+  const keys = new Set([
+    ...costByPair.keys(),
+    ...tokensByPair.keys(),
+    ...callsByPair.keys(),
+  ]);
+
+  const rows: LlmAgentModelRow[] = [];
+  for (const key of keys) {
+    const [namespace = '', agent = '', model = ''] = key.split('|');
+    rows.push({
+      id: key,
+      namespace,
+      agent,
+      model,
+      tokens: tokensByPair.get(key) ?? 0,
+      calls: callsByPair.get(key) ?? 0,
+      costUsd: optionalTotal(costByPair, key),
+    });
+  }
+
+  return rows.sort(
+    (a, b) =>
+      (b.costUsd ?? 0) - (a.costUsd ?? 0) ||
+      b.tokens - a.tokens ||
+      a.id.localeCompare(b.id),
+  );
+}
+
 export function reduceUnpricedModels(
   samples: MimirMetricSample[] | undefined,
 ): UnpricedModelRow[] {
@@ -619,6 +707,52 @@ function fillDays(
   return rows;
 }
 
+/**
+ * The first window day any daily series holds a sample for, as `YYYY-MM-DD` —
+ * where the gateway's records start inside the window. `undefined` when
+ * nothing in the window has a sample.
+ *
+ * Read off the daily range answers the charts already have, so knowing it
+ * costs no query. A point counts whatever its value: a zero is a day the
+ * series existed and nothing happened, which is data; no point at all is a
+ * day the gateway recorded nothing. Labelled by the day it covers, as in
+ * {@link reduceDaily}.
+ *
+ * The range stops at yesterday, so when it holds no point but the window's
+ * totals hold a sample, the records start today. Those totals rather than
+ * today's own queries: the page waits for them, so the answer is there from
+ * the first render instead of popping in, or never if a partial query fails.
+ */
+export function firstSampledDay(
+  daily: (MimirMatrixSample[] | null | undefined)[],
+  fallback: {
+    today: string;
+    windowTotals: (MimirMetricSample[] | undefined)[];
+  },
+): string | undefined {
+  let first: number | undefined;
+  for (const samples of daily) {
+    for (const sample of samples ?? []) {
+      for (const [at, raw] of sample.values ?? []) {
+        if (
+          sampleValue(raw) !== undefined &&
+          Number.isFinite(at) &&
+          (first === undefined || at < first)
+        ) {
+          first = at;
+        }
+      }
+    }
+  }
+  if (first !== undefined) {
+    return new Date(first * 1000 - DAY_MS).toISOString().slice(0, 10);
+  }
+  const hasTotals = fallback.windowTotals.some(samples =>
+    (samples ?? []).some(sample => instantValue(sample) !== undefined),
+  );
+  return hasTotals ? fallback.today : undefined;
+}
+
 /** Assemble everything the two Mimir views read. */
 export function buildLlmUsage(options: {
   cost: MimirMetricSample[] | undefined;
@@ -642,6 +776,33 @@ export function buildLlmUsage(options: {
   today: string;
   costToday: MimirMetricSample[] | undefined;
   tokensToday: MimirMetricSample[] | undefined;
+  /**
+   * Model calls per day, from `callsPerDay`, when the view asked for them:
+   * `null` when that query failed, absent when it was not asked for.
+   */
+  callsPerDay?: MimirMatrixSample[] | null;
+  /** Today's partial call count, for the last row of {@link callsPerDay}. */
+  callsToday?: MimirMetricSample[];
+  /** The window the vectors cover. Defaults to {@link WINDOW_DAYS}. */
+  windowDays?: number;
+  /**
+   * The spend over the window before, from `previousCost`. Absent when the
+   * comparison was not asked for, which leaves `previousCostUsd` out.
+   */
+  previousCost?: MimirMetricSample[];
+  /**
+   * Whether the gateway recorded anything just before this window, from
+   * `dataBeforeWindow`; `undefined` when that is unknown. Only `false` lets
+   * {@link LlmUsage.dataStart} be set: a window whose first days merely had
+   * no calls is not one the data fails to reach.
+   */
+  dataBeforeWindow?: boolean;
+  /**
+   * The same before the previous window, from `dataBeforePreviousWindow`.
+   * Only `true` keeps `previousCostUsd`: a window only partly recorded is no
+   * baseline for a change, and an unchecked one is no better.
+   */
+  dataBeforePreviousWindow?: boolean;
 }): LlmUsage {
   const { cost, tokens, calls } = options;
 
@@ -688,9 +849,25 @@ export function buildLlmUsage(options: {
     }),
     { day: options.today, samples: options.tokensToday, label: typeLabel },
   );
+  const callsLabel = () => CALLS_SERIES;
+  const callsPerDay =
+    options.callsPerDay === null
+      ? null
+      : options.callsPerDay &&
+        applyTodayPartial(
+          reduceDaily(options.callsPerDay, {
+            label: callsLabel,
+            days: options.days,
+          }),
+          {
+            day: options.today,
+            samples: options.callsToday,
+            label: callsLabel,
+          },
+        );
 
   return {
-    windowDays: WINDOW_DAYS,
+    windowDays: options.windowDays ?? WINDOW_DAYS,
     totals: {
       costUsd: totalCost,
       tokens: totalTokens,
@@ -703,12 +880,20 @@ export function buildLlmUsage(options: {
       usdPerMillion: perMillion(totalCost, totalTokens),
       avgTokensPerCall: ratePerCall(totalTokens, totalCalls),
       cacheReadSharePct: cacheReadShare(tokenTypes),
+      ...(options.previousCost && {
+        previousCostUsd:
+          options.dataBeforePreviousWindow === true
+            ? optionalSum(sumBy(options.previousCost, () => 'all'))
+            : undefined,
+      }),
     },
     tokenTypes,
     byAgent,
     byModel,
+    byAgentModel: reduceByAgentModel({ cost, tokens, calls }),
     costPerDay,
     tokensPerDay,
+    ...(callsPerDay !== undefined && { callsPerDay }),
     reliability: reduceReliability({
       requestsByStatus: options.requestsByStatus,
       p50: options.p50,
@@ -717,6 +902,16 @@ export function buildLlmUsage(options: {
     }),
     unpricedModels: reduceUnpricedModels(options.unpricedLookups),
     rates: deriveTokenRates(costByType, tokensByType),
+    dataStart:
+      options.dataBeforeWindow === false
+        ? usageDataStart(
+            options.days,
+            firstSampledDay(
+              [options.costPerDay, options.tokensPerDay, options.callsPerDay],
+              { today: options.today, windowTotals: [cost, tokens, calls] },
+            ),
+          )
+        : undefined,
   };
 }
 

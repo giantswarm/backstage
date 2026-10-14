@@ -1,10 +1,10 @@
 import { ReactNode, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Content, EmptyState } from '@backstage/core-components';
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Link } from '@backstage/ui';
 import {
-  Breadcrumbs,
+  EmptyStateCard,
   LoadingIndicator,
+  ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
 import {
@@ -12,17 +12,25 @@ import {
   serverPrefixInfos,
   shortToolName,
 } from '../../lib/toolGrouping';
-import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
   SessionGate,
   ToolMarkers,
   useServerPageLinks,
   useToolDescription,
+  useConnectorGroupPaths,
 } from '../shared';
 import { ToolDetailPanel } from '../ToolDetail';
-import { useServersListHref } from '../ServerPage';
-import { useServerTools } from '../ServerPage/useServerPageData';
+import {
+  useServersListHref,
+  useServerTools,
+} from '../ServerPage/useServerPageData';
+
+/** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
+const TOOL_NAME_STYLE = {
+  fontFamily: 'monospace',
+  overflowWrap: 'anywhere',
+} as const;
 
 /**
  * One tool's page, beneath the server offering it: its short and full name,
@@ -33,6 +41,7 @@ import { useServerTools } from '../ServerPage/useServerPageData';
  */
 export function ToolPage() {
   const { server: key = '', tool = '' } = useParams();
+  const paths = useConnectorGroupPaths();
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const session = useMusterSession();
@@ -69,29 +78,15 @@ export function ToolPage() {
   });
   const annotations = described.data?.annotations ?? listed?.annotations;
 
-  const trail = (
-    <Breadcrumbs
-      items={[
-        { label: 'MCP Servers', href: listHref },
-        { label: serverKey, href: links.server(serverKey, activeInstallation) },
-        {
-          label: 'Tools',
-          href: links.server(serverKey, activeInstallation),
-        },
-        { label: shortName },
-      ]}
-    />
-  );
-
+  const toolsHref = links.server(serverKey, activeInstallation);
   let body: ReactNode;
   if (isLoadingInstallations || isLoading) {
-    body = <LoadingIndicator label="Reading the installation's MCP servers…" />;
+    body = <LoadingIndicator label="Reading the environment's connectors…" />;
   } else if (!activeInstallation) {
     body = (
-      <EmptyState
-        missing="data"
-        title="No muster installation"
-        description="None of the installations this portal knows runs muster, so there are no aggregated tools to show."
+      <EmptyStateCard
+        title="No muster environment"
+        description="None of this portal's environments runs muster."
       />
     );
   } else if (row && !session.authenticated) {
@@ -99,16 +94,16 @@ export function ToolPage() {
       <SessionGate
         session={session}
         installation={activeInstallation}
-        context="A tool is described and run through the muster session."
+        context="Tools need a muster session."
       />
     );
   } else if (row && serverTools.isLoading) {
-    body = <LoadingIndicator label="Reading the server's tools…" />;
+    body = <LoadingIndicator label="Reading the connector's tools…" />;
   } else if (row && serverTools.error) {
     body = (
       <Alert
         status="danger"
-        title="Could not read the server's tools"
+        title="Could not read the connector's tools"
         description={serverTools.error.message}
       />
     );
@@ -117,20 +112,17 @@ export function ToolPage() {
       ? links.server(serverKey, activeInstallation)
       : listHref;
     body = (
-      <EmptyState
-        missing="data"
+      <EmptyStateCard
         title={`No tool “${tool}” on ${activeInstallation}`}
         description={
           row
-            ? `${serverKey} on ${activeInstallation} does not offer a tool named “${tool}”. It may have been removed, or run on another installation — pick it in the page header.`
-            : `The installation ${activeInstallation} has no MCP server or server family named “${key}”. It may run on another installation — pick it in the page header.`
+            ? 'It may have been removed, or run on another environment — pick it in the page header.'
+            : `There is no connector “${key}” on ${activeInstallation}. It may run on another environment — pick it in the page header.`
         }
-        action={
+        actions={
           serverHref ? (
             <Link href={serverHref}>
-              {row
-                ? `Back to the tools of ${serverKey}`
-                : 'Back to the MCP servers'}
+              {row ? `Back to the tools of ${serverKey}` : 'Back to connectors'}
             </Link>
           ) : undefined
         }
@@ -149,25 +141,33 @@ export function ToolPage() {
     );
   }
 
+  const exposedAs = (
+    <>
+      Exposed by muster as: <span style={TOOL_NAME_STYLE}>{tool}</span>
+    </>
+  );
+
+  // The platform's page frame like the connector's own page: its phone
+  // gutters, an h1 that wraps, and the trail under Customize.
   return (
-    <Content>
-      <ActiveInstallationNote />
-      <Flex direction="column" gap="4" style={{ maxWidth: 1024 }}>
-        <Flex direction="column" gap="2">
-          {trail}
-          <Text as="h2" variant="title-medium">
-            {shortName}
-          </Text>
-          <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            <Text variant="body-small" color="secondary">
-              Exposed by muster as:{' '}
-              <span style={{ fontFamily: 'monospace' }}>{tool}</span>
-            </Text>
-            <ToolMarkers annotations={annotations} />
-          </Flex>
-        </Flex>
-        {body}
-      </Flex>
-    </Content>
+    <ShellPage
+      title={shortName}
+      breadcrumbs={[
+        { label: 'Customize', href: paths.customize },
+        {
+          label: 'Connectors',
+          // The sub-tab that lists the tool's connector.
+          href: paths.customize ? paths.listOf(key, row) : listHref,
+        },
+        // No "Tools" crumb: Tools is the connector page's index, so it
+        // would repeat the connector's own link.
+        { label: serverKey, href: toolsHref },
+        { label: shortName },
+      ]}
+      badges={<ToolMarkers annotations={annotations} />}
+      meta={exposedAs}
+    >
+      {body}
+    </ShellPage>
   );
 }

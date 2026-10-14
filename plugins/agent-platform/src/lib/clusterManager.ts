@@ -14,6 +14,7 @@
  */
 
 import { toolErrorDetails } from '@giantswarm/backstage-plugin-muster';
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
 import { looksNotConnected, type GitOpsCommit } from './agentManager';
 
@@ -80,6 +81,14 @@ export type ClusterApiStatus = {
 };
 
 /**
+ * What the place a cluster-manager runs on is called: "installation" on the
+ * classic portal's pages (the Clusters page's Create / Delete cluster), as on
+ * main; "environment" in the agent platform's own sections (the GPU node-pool
+ * and agent writes).
+ */
+export type PlaceNoun = 'installation' | 'environment';
+
+/**
  * The line to show where the Cluster API is not served — the tool's own note,
  * or one naming the group when the tool reports the state without it.
  * `undefined` where it is served, or for a cluster-manager that predates the
@@ -87,13 +96,14 @@ export type ClusterApiStatus = {
  */
 export function clusterApiNote(
   status: ClusterApiStatus | undefined,
+  placeNoun: PlaceNoun = 'installation',
 ): string | undefined {
   if (!status || status.state === 'served' || status.state === '') {
     return undefined;
   }
   return (
     status.note ||
-    `the Cluster API (${status.group}) is not served on this installation`
+    `the Cluster API (${status.group}) is not served on this ${placeNoun}`
   );
 }
 
@@ -1242,7 +1252,7 @@ export function presetLabel(
 
 /** `4 vCPU / 12Gi, 1 GPU, 9.6 GiB of GPU memory` — what the preset's predictor asks for. */
 export function describePresetNeeds(fit: PresetSizeFit): string {
-  const gpus = `${fit.gpus} GPU${fit.gpus === 1 ? '' : 's'}`;
+  const gpus = countNoun(fit.gpus, 'GPU');
   return `${fit.cpu} vCPU / ${fit.memory}, ${gpus}, ${trimNumber(
     fit.gpuMemoryGiB,
   )} GiB of GPU memory`;

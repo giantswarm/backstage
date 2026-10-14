@@ -1,10 +1,16 @@
-import { Fragment, useMemo } from 'react';
-import { Text } from '@backstage/ui';
+import { Fragment, useMemo, useState } from 'react';
+import { Flex, SearchField, Text } from '@backstage/ui';
 import {
   Agent,
   RemoteMCPServer,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  CatalogNoMatch,
+  INITIAL_ROWS,
+  matchesQuery,
+  ShowMore,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   declaredToolset,
@@ -19,6 +25,26 @@ import {
   SelectableCardGrid,
   useSelectableCardStyles,
 } from '../SelectableCard';
+
+/**
+ * How many source agents the step shows before *Show more*: a few rows of
+ * cards, so the catalogue below stays within reach.
+ */
+const INITIAL_SOURCES = 12;
+
+/**
+ * How many source agents before the step offers a search: past a page or so,
+ * the agent to copy from is found by name, not by scanning cards.
+ */
+const SOURCES_SEARCH_MIN = INITIAL_ROWS;
+
+/** Whether a source is the agent a search names: its display name, name or namespace. */
+function matchesSource(query: string, source: AgentToolsetSource): boolean {
+  return matchesQuery(
+    query,
+    `${source.displayName} ${source.namespace} ${source.name}`,
+  );
+}
 
 export type AgentToolsetSource = {
   name: string;
@@ -59,6 +85,9 @@ export function agentToolsetSources(
  * the follow-up). Reads the installation's Agents and RemoteMCPServers
  * the way the agents list does; only agents with a declared toolset are
  * offered, since an agent with implicit full access has nothing to copy.
+ *
+ * On a fleet that is hundreds of agents, so the cards come a page at a time,
+ * with a search by name or namespace once there are more than a page or so.
  */
 export function CopyFromAgent({
   installation,
@@ -94,56 +123,91 @@ export function CopyFromAgent({
   // Compared as declared, so an agent without tools matches the empty selection.
   const currentKey = declaredToolset(current).join(',');
 
+  const [query, setQuery] = useState('');
+  const trimmed = query.trim();
+  // Kept while a search is in force, so it can still be cleared.
+  const isSearchable = sources.length > SOURCES_SEARCH_MIN || trimmed !== '';
+  const matching = useMemo(
+    () =>
+      trimmed === ''
+        ? sources
+        : sources.filter(source => matchesSource(trimmed, source)),
+    [sources, trimmed],
+  );
+
   if ((isLoading || isLoadingCarriers) && sources.length === 0) {
-    return <Text color="secondary">Reading the installation's agents…</Text>;
+    return <Text color="secondary">Reading the environment's agents…</Text>;
   }
   if (sources.length === 0) {
     return (
       <Text color="secondary">
-        No agent on {installation ?? 'this installation'} declares a toolset
-        yet.
+        No agent on {installation ?? 'this environment'} declares a toolset yet.
       </Text>
     );
   }
 
   return (
-    <SelectableCardGrid
-      role="radiogroup"
-      ariaLabel="Existing agents' toolsets"
-      minWidth={240}
-    >
-      {sources.map(source => (
-        <SelectableCard
-          key={`${source.namespace}/${source.name}`}
-          role="radio"
-          selected={source.selectors.join(',') === currentKey}
-          ariaLabel={`Copy the toolset of ${source.displayName}`}
-          onSelect={() => onCopy(source.selectors)}
+    <Flex direction="column" gap="3">
+      {isSearchable && (
+        <SearchField
+          aria-label="Search agents"
+          placeholder="Search agents by name or namespace…"
+          value={query}
+          onChange={setQuery}
+        />
+      )}
+      {matching.length === 0 ? (
+        <CatalogNoMatch plural="agents" search={trimmed} />
+      ) : (
+        // Keyed on the search, so a new one starts over at the first page.
+        <ShowMore
+          key={trimmed}
+          items={matching}
+          initial={INITIAL_SOURCES}
+          noun="agent"
         >
-          <Text weight="bold">{source.displayName}</Text>
-          <Text variant="body-x-small" color="secondary">
-            <span className={classes.code}>
-              {source.namespace}/{source.name}
-            </span>
-          </Text>
-          <Text
-            variant="body-small"
-            color="secondary"
-            title={source.selectors.join(', ')}
-          >
-            {source.selectors.map((selector, index) => (
-              <Fragment key={selector}>
-                {index > 0 && ', '}
-                {labelOfPresetSelector(selector) === undefined ? (
-                  <span className={classes.code}>{selector}</span>
-                ) : (
-                  selectorLabel(selector)
-                )}
-              </Fragment>
-            ))}
-          </Text>
-        </SelectableCard>
-      ))}
-    </SelectableCardGrid>
+          {visible => (
+            <SelectableCardGrid
+              role="radiogroup"
+              ariaLabel="Existing agents' toolsets"
+              minWidth={240}
+            >
+              {visible.map(source => (
+                <SelectableCard
+                  key={`${source.namespace}/${source.name}`}
+                  role="radio"
+                  selected={source.selectors.join(',') === currentKey}
+                  ariaLabel={`Copy the toolset of ${source.displayName}`}
+                  onSelect={() => onCopy(source.selectors)}
+                >
+                  <Text weight="bold">{source.displayName}</Text>
+                  <Text variant="body-x-small" color="secondary">
+                    <span className={classes.code}>
+                      {source.namespace}/{source.name}
+                    </span>
+                  </Text>
+                  <Text
+                    variant="body-small"
+                    color="secondary"
+                    title={source.selectors.join(', ')}
+                  >
+                    {source.selectors.map((selector, index) => (
+                      <Fragment key={selector}>
+                        {index > 0 && ', '}
+                        {labelOfPresetSelector(selector) === undefined ? (
+                          <span className={classes.code}>{selector}</span>
+                        ) : (
+                          selectorLabel(selector)
+                        )}
+                      </Fragment>
+                    ))}
+                  </Text>
+                </SelectableCard>
+              ))}
+            </SelectableCardGrid>
+          )}
+        </ShowMore>
+      )}
+    </Flex>
   );
 }

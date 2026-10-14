@@ -1,8 +1,10 @@
 import { useCallback, useMemo } from 'react';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../apis';
 import { useToolCatalogue } from '../shared';
 import { MCPServer } from '../../lib/k8s';
+import { mcpServersRouteRef } from '../../routes';
 import { ServerPageRow, selectRepresentative } from '../../lib/serverGrouping';
 import {
   serverPrefixInfos,
@@ -84,4 +86,15 @@ export function representativeServer(
     return selectRepresentative(row.servers, installation);
   }
   return undefined;
+}
+
+/** The servers list, on the same installation. */
+export function useServersListHref(installation: string | undefined) {
+  const serversRoute = useRouteRef(mcpServersRouteRef);
+  if (!serversRoute) {
+    return undefined;
+  }
+  return installation
+    ? `${serversRoute()}?installation=${encodeURIComponent(installation)}`
+    : serversRoute();
 }

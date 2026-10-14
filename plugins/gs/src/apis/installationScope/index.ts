@@ -13,6 +13,7 @@ export {
 export {
   applyInstallationScope,
   describeInstallationScopeOption,
+  installationsWithoutComponent,
   isPlatformInstallation,
   PLATFORM_COMPONENT_LABELS,
   PLATFORM_SCOPE_COMPONENTS,

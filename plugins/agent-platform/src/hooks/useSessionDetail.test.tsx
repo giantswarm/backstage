@@ -1,7 +1,11 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  IsRestoringProvider,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
 import {
@@ -59,7 +63,10 @@ function workingTask() {
   };
 }
 
-function renderHookWith(options?: { enabled?: boolean }) {
+function renderHookWith(options?: {
+  enabled?: boolean;
+  justCreated?: boolean;
+}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -367,6 +374,44 @@ describe('useSessionDetail', () => {
   });
 });
 
+describe('useSessionDetail — a session created a moment ago', () => {
+  it('keeps loading through a first read that misses the new session', async () => {
+    // The client retries no 404; inside the settle window this one is retried,
+    // and the page never sees "not found" for a session that exists.
+    getSessionDetail
+      .mockRejectedValueOnce(notFoundError())
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue(SESSION);
+    listSessionTasks
+      .mockRejectedValueOnce(new Error('kagent is not ready'))
+      .mockResolvedValue([]);
+
+    const { result } = renderHookWith({ justCreated: true });
+
+    expect(result.current.isLoading).toBe(true);
+    await waitFor(() => expect(result.current.detail).toBeDefined(), {
+      timeout: 3000,
+    });
+    expect(result.current.isNotFound).toBe(false);
+    expect(result.current.error).toBeUndefined();
+    expect(result.current.hasConversation).toBe(true);
+    // A missing read, an empty 200 — the same lag — and then the session.
+    expect(getSessionDetail).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not retry a session that was not just created', async () => {
+    getSessionDetail
+      .mockRejectedValueOnce(notFoundError())
+      .mockResolvedValue(SESSION);
+    listSessionTasks.mockResolvedValue([]);
+
+    const { result } = renderHookWith();
+
+    await waitFor(() => expect(result.current.isNotFound).toBe(true));
+    expect(getSessionDetail).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('useSessionDetail — the runtime kagent cannot bring back', () => {
   const ATENET =
     'actor "ai-01a09e86-0da0-764b-87b1-ac52875d1e74" request timed out';
@@ -440,5 +485,44 @@ describe('useSessionDetail — the runtime kagent cannot bring back', () => {
 
     await waitFor(() => expect(result.current.hasConversation).toBe(true));
     expect(result.current.runtimeLoss).toBeUndefined();
+  });
+});
+
+describe('useSessionDetail — while the persisted cache restores', () => {
+  /** The hook under a provider still restoring, with `seed` already in memory. */
+  function renderRestoring(seed: { detail?: unknown; tasks?: unknown[] }) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    if (seed.detail !== undefined) {
+      queryClient.setQueryData(sessionQueryKey('gazelle', 'abc'), seed.detail);
+    }
+    if (seed.tasks !== undefined) {
+      queryClient.setQueryData(
+        sessionTasksQueryKey('gazelle', 'abc'),
+        seed.tasks,
+      );
+    }
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+        <QueryClientProvider client={queryClient}>
+          <IsRestoringProvider value>{children}</IsRestoringProvider>
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+    return renderHook(() => useSessionDetail('gazelle', 'abc'), { wrapper });
+  }
+
+  it('shows a session both reads already hold, instead of loading (T95)', () => {
+    const { result } = renderRestoring({ detail: SESSION, tasks: [] });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.detail).toBeDefined();
+  });
+
+  it('keeps loading while a read has nothing yet (T86)', () => {
+    const { result } = renderRestoring({ detail: SESSION });
+
+    expect(result.current.isLoading).toBe(true);
   });
 });

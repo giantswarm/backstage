@@ -23,14 +23,17 @@ function makeApi(): Pick<MusterApi, 'describeTool' | 'callTool'> {
   };
 }
 
-async function renderPanel(api: Pick<MusterApi, 'describeTool' | 'callTool'>) {
+async function renderPanel(
+  api: Pick<MusterApi, 'describeTool' | 'callTool'>,
+  note?: string,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
-        <ToolDetailPanel name="core_echo" />
+        <ToolDetailPanel name="core_echo" note={note} />
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -69,5 +72,12 @@ describe('ToolDetailPanel', () => {
       ),
     );
     expect(await screen.findByText('Result')).toBeInTheDocument();
+  });
+
+  it('shows a note beside the Execute button when given one', async () => {
+    await renderPanel(makeApi(), 'Nothing is changed.');
+
+    await screen.findByText('Echoes a message back.');
+    expect(screen.getByText('Nothing is changed.')).toBeInTheDocument();
   });
 });

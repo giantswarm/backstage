@@ -26,7 +26,6 @@ import {
   SessionStatesResponse,
   SessionUsageResponse,
   normalizeTaskList,
-  parseCreatedSessionId,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { createSseDataDecoder, readStreamFrame } from '../lib/kagentStreamTurn';
 import {
@@ -271,7 +270,7 @@ export class KagentApiClient implements KagentApi {
   }
 
   /**
-   * Derived state for this installation's sessions, for the switcher rail.
+   * Derived state for this installation's sessions, for the session lists.
    *
    * The backend does the work: a session's state lives in its tasks, and reading
    * every session's conversation in the browser to learn one string each is not
@@ -361,51 +360,6 @@ export class KagentApiClient implements KagentApi {
           : 'kagent reported an error while deleting the session, without saying what.',
       );
     }
-  }
-
-  async createSession(
-    installation: string,
-    agent: { namespace: string; name: string },
-    name: string,
-    requestId: string,
-  ): Promise<{ sessionId: string }> {
-    const { url, headers } = await this.prepare(
-      '/kagent/sessions',
-      installation,
-    );
-    const response = await this.fetchApi.fetch(url, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agentNamespace: agent.namespace,
-        agentName: agent.name,
-        name,
-        requestId,
-      }),
-    });
-
-    // `badRequestIsMissing: false` for the same reason as the rename: this route
-    // answers 400 for a rejected title, which is nothing like "kagent is absent
-    // from this installation".
-    await this.throwIfNotOk(response, { badRequestIsMissing: false });
-
-    // The one write whose body is **required**. The others tolerate an empty
-    // response because nothing in it is needed; here the generated instance id
-    // is the entire point, and without it there is nowhere to navigate — so an
-    // unreadable body has to fail rather than resolve into a broken link.
-    const body = await response.json().catch(() => undefined);
-    const sessionId = parseCreatedSessionId(body);
-    if (!sessionId) {
-      throw upstreamError(
-        isErrorEnvelope(body) &&
-          typeof body.message === 'string' &&
-          body.message
-          ? body.message
-          : 'kagent accepted the new session but did not say which one it created, so it cannot be opened. It may still have been created — check the list.',
-      );
-    }
-
-    return { sessionId };
   }
 
   async cancelTask(
@@ -599,6 +553,14 @@ export class KagentApiClient implements KagentApi {
       // agent. Mapped to the same names as every other write, so callers
       // classify them identically.
       await this.throwIfNotOk(response, { badRequestIsMissing: false });
+    }
+
+    if (response.status === 202) {
+      // The answer route's "still running", as on the unary routes: the
+      // resumed turn outlived the wait for its first event. Resolved like a
+      // stream that ended without one, so the caller follows the turn through
+      // the poll.
+      return;
     }
 
     const contentType = response.headers.get('content-type') ?? '';

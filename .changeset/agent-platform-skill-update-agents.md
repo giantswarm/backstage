@@ -1,0 +1,5 @@
+---
+'@giantswarm/backstage-plugin-agent-platform': minor
+---
+
+Skill detail: **Update agents** moves the agents that pin a skill at an older commit than the catalog's head to the newest one. The secondary header action appears only while some agent is behind. It opens a dialog listing those agents with their old → new commits, all selected by default; the person can update all of them or only some. Each selected agent runs Agent detail's "Update skills" (`update_agent` with `refreshSkills`, reported as `AgentPlatform.agentUpdated` with `change: skillsRefreshed`). An agent applied from git gets a pull request in its GitOps repository where agent-manager can commit, and the dialog says so. An agent the person cannot update (no agent-manager, a muster session to connect, no pull-request capability, or no permission to update its HelmRelease) is listed disabled with the reason. The dialog says that the refresh re-pins every git skill of an agent, and after confirming it shows each agent's outcome, linking any pull request it opened. The Used by tab marks the agents on an older version and, with none behind, says "All agents use the newest version".

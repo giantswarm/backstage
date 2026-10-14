@@ -134,7 +134,7 @@ describe('partitionServers', () => {
     ).toEqual(['beta', 'alpha']);
   });
 
-  it('lists everything under Registered servers when no CR carries the label (fallback)', () => {
+  it('lists everything under Registered connectors when no CR carries the label (fallback)', () => {
     // An installation whose charts have not rolled the label yet: the page
     // degrades to one long list, never to an empty or broken one.
     const [agentPlatform, infrastructure, registered] = partitionServers([

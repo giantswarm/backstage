@@ -67,6 +67,8 @@
   "app.pluginOverrides[].match",
   "app.pluginOverrides[].match.packageName",
   "app.pluginOverrides[].match.pluginId",
+  "app.portals.agentPlatform",
+  "app.portals.platformPortal",
   "app.releaseVersion",
   "app.rootRedirect",
   "app.routes.bindings.*",

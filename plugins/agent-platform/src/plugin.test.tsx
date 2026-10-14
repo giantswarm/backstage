@@ -1,0 +1,293 @@
+import {
+  createFrontendPlugin,
+  FeatureFlagState,
+  SubPageBlueprint,
+} from '@backstage/frontend-plugin-api';
+import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
+import { screen, waitFor } from '@testing-library/react';
+import { useMemo } from 'react';
+import { Route, Routes } from 'react-router-dom';
+import {
+  ShellPage,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
+
+import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { agentPlatformPlugin } from './plugin';
+
+function RegistersHeaderAction() {
+  const actions = useMemo(() => <button>Header action</button>, []);
+  useProvidePageHeaderActions(actions);
+  return <div>Models content</div>;
+}
+
+/** A view framing itself, as every view in the shell does. */
+function ModelsView() {
+  return (
+    <ShellPage title="Models">
+      <RegistersHeaderAction />
+    </ShellPage>
+  );
+}
+
+function stubSubPage(name: string, title: string) {
+  return SubPageBlueprint.make({
+    name,
+    params: {
+      path: name,
+      title,
+      loader: async () => <div>{title} content</div>,
+    },
+  });
+}
+
+/** The sessions list titles itself with a `ShellPage`; one session is still loading. */
+const sessionsSubPage = SubPageBlueprint.make({
+  name: 'sessions',
+  params: {
+    path: 'sessions',
+    title: 'Sessions',
+    loader: async () => (
+      <Routes>
+        <Route
+          index
+          element={
+            <ShellPage title="Sessions">
+              <div>Sessions content</div>
+            </ShellPage>
+          }
+        />
+        <Route path="*" element={<div>Sessions content</div>} />
+      </Routes>
+    ),
+  },
+});
+
+const musterLikePlugin = createFrontendPlugin({
+  pluginId: 'muster',
+  extensions: [
+    SubPageBlueprint.make({
+      name: 'mcp-servers',
+      attachTo: { id: 'page:agent-platform', input: 'pages' },
+      params: {
+        path: 'mcp-servers',
+        title: 'MCP Servers',
+        loader: async () => <div>MCP Servers content</div>,
+      },
+    }),
+  ],
+});
+
+function renderPage(
+  agentShell: FeatureFlagState,
+  path: string,
+  extensions: Array<string | Record<string, boolean>> = [],
+) {
+  return renderTestApp({
+    features: [
+      musterLikePlugin,
+      createFrontendPlugin({
+        pluginId: 'agent-platform',
+        extensions: [
+          agentPlatformPlugin.getExtension('page:agent-platform'),
+          stubSubPage('usage', 'Usage'),
+          stubSubPage('agents', 'Agents'),
+          sessionsSubPage,
+          SubPageBlueprint.make({
+            name: 'models',
+            params: {
+              path: 'models',
+              title: 'Models',
+              loader: async () => <ModelsView />,
+            },
+          }),
+        ],
+      }),
+    ],
+    // No `page:agent-platform` entry: the page is enabled by default, and the
+    // shell flag alone decides whether it is mounted.
+    config: { app: { extensions } },
+    initialRouteEntries: [path],
+    apis: [
+      mockApis.featureFlags({
+        initialStates: { [AGENT_SHELL_FLAG]: agentShell },
+      }),
+    ],
+  });
+}
+
+describe('the Agent Platform page', () => {
+  describe('while the agent shell flag is off', () => {
+    it('is not mounted: no route, no header, no tabs, whatever app.extensions lists', async () => {
+      renderPage(FeatureFlagState.None, '/agent-platform/agents', [
+        'page:agent-platform',
+      ]);
+
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(screen.queryByText('Agents content')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: 'Agent Platform' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    });
+
+    it('routes no bare path either', async () => {
+      renderPage(FeatureFlagState.None, '/agent-platform');
+
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(screen.queryByText('Sessions content')).not.toBeInTheDocument();
+    });
+
+    it('does not route another plugin’s sub-page', async () => {
+      renderPage(FeatureFlagState.None, '/agent-platform/mcp-servers');
+
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(screen.queryByText('MCP Servers content')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('inside the agent shell', () => {
+    it('is mounted by default, with no app.extensions entry', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/agents');
+
+      expect(await screen.findByText('Agents content')).toBeInTheDocument();
+    });
+
+    it('stays off where app.extensions disables it', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/agents', [
+        { 'page:agent-platform': false },
+      ]);
+
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(screen.queryByText('Agents content')).not.toBeInTheDocument();
+    });
+
+    it('reads the flag when the page is built and drops the header and tab strip', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/agents');
+
+      expect(await screen.findByText('Agents content')).toBeInTheDocument();
+      // No header of the section's own either: each view frames itself.
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    });
+
+    it('leaves the sessions list to title itself', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/sessions');
+
+      expect(await screen.findByText('Sessions content')).toBeInTheDocument();
+      expect(
+        screen.getAllByRole('heading', { level: 1 }).map(h => h.textContent),
+      ).toEqual(['Sessions']);
+      expect(
+        screen.queryByText("Every conversation you've had with an agent."),
+      ).not.toBeInTheDocument();
+    });
+
+    it('puts no list header over a session that is still loading', async () => {
+      // The section's "Sessions" header used to stand in until the session's
+      // own frame claimed the header: a different page for a moment (T95).
+      renderPage(
+        FeatureFlagState.Active,
+        '/agent-platform/sessions/gazelle/abc',
+      );
+
+      expect(await screen.findByText('Sessions content')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      expect(screen.queryByRole('link', { name: 'New session' })).toBeNull();
+    });
+
+    it('routes to another plugin’s sub-page', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/mcp-servers');
+
+      expect(
+        await screen.findByText('MCP Servers content'),
+      ).toBeInTheDocument();
+    });
+
+    it('lands a bare path on the first tab in row order', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform');
+
+      expect(await screen.findByText('Sessions content')).toBeInTheDocument();
+    });
+
+    it('renders the actions a sub-page registers in its header', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/models');
+
+      expect(await screen.findByText('Models content')).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'Models' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole('button', { name: 'Header action' }),
+      ).toHaveLength(1);
+    });
+
+    it('names the sub-page in the document title', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/agents');
+
+      await waitFor(() =>
+        expect(document.title).toBe('Agents · Agent Platform'),
+      );
+    });
+  });
+});
+
+describe('the Agent Platform pages outside the section', () => {
+  // The pages' own loaders, stubbed: what is under test is whether the app
+  // routes them at all.
+  const skillsPage = agentPlatformPlugin
+    .getExtension('page:agent-platform/skills')
+    .override({
+      params: {
+        path: '/agent-platform/skills',
+        noHeader: true,
+        loader: async () => <div>Skills content</div>,
+      },
+    });
+  const profilePage = agentPlatformPlugin
+    .getExtension('page:agent-platform/profile')
+    .override({
+      params: {
+        path: '/agent-platform/profile',
+        noHeader: true,
+        loader: async () => <div>Profile content</div>,
+      },
+    });
+
+  function renderPages(agentShell: FeatureFlagState, path: string) {
+    return renderTestApp({
+      features: [
+        createFrontendPlugin({
+          pluginId: 'agent-platform',
+          extensions: [skillsPage, profilePage],
+        }),
+      ],
+      initialRouteEntries: [path],
+      apis: [
+        mockApis.featureFlags({
+          initialStates: { [AGENT_SHELL_FLAG]: agentShell },
+        }),
+      ],
+    });
+  }
+
+  it.each([
+    ['/agent-platform/skills', 'Skills content'],
+    ['/agent-platform/profile', 'Profile content'],
+  ])('routes %s in the shell', async (path, content) => {
+    renderPages(FeatureFlagState.Active, path);
+
+    expect(await screen.findByText(content)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['/agent-platform/skills', 'Skills content'],
+    ['/agent-platform/profile', 'Profile content'],
+  ])('does not route %s without the shell', async (path, content) => {
+    renderPages(FeatureFlagState.None, path);
+
+    expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+    expect(screen.queryByText(content)).not.toBeInTheDocument();
+  });
+});

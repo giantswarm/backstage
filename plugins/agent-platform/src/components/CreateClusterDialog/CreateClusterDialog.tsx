@@ -314,7 +314,7 @@ export function CreateClusterDialog({
                 {releases.error && (
                   <Alert
                     status="warning"
-                    title="Releases could not be read"
+                    title="Could not read the releases"
                     description={releases.error.message}
                   />
                 )}

@@ -2,6 +2,12 @@ import { readNestedTokenUsage } from '@giantswarm/backstage-plugin-agent-platfor
 import { TimelineItem } from '../../lib/kagentTimeline';
 
 /**
+ * The state badge's word for a turn the poll still reads as working but that
+ * has stopped reporting progress: what the stalled row and the composer say.
+ */
+export const STALLED_STATE_LABEL = 'Not responding';
+
+/**
  * Pairs streamed items with the polled items they are copies of.
  *
  * Recognition is by `messageId`, and pairing by **position within the

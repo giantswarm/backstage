@@ -61,6 +61,8 @@ describe('judgeModes', () => {
     expect(dryRun).toHaveBeenCalledTimes(1);
     expect(dryRun).toHaveBeenCalledWith('apply');
     expect(modeBlocker(verdicts.commit)).toBe(COMMIT_NOT_OFFERED);
+    // The cluster dialogs render on the classic Clusters page: main's noun.
+    expect(COMMIT_NOT_OFFERED).toMatch(/^This installation's cluster-manager/);
     expect(preferredMode(verdicts)).toBe('apply');
   });
 

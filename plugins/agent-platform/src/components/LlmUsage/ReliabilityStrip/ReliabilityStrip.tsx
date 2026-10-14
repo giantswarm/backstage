@@ -1,7 +1,6 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Stat, type Tone } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmReliability } from '../../../lib/llmUsage';
-import { WINDOW_DAYS } from '../../../lib/llmUsageQueries';
 import {
   formatCount,
   formatPercent,
@@ -30,11 +29,16 @@ const useStyles = makeStyles((theme: Theme) => ({
  * Both an error rate and a 429 count, because they call for different actions:
  * a general error rate points at the provider or the gateway, while 429s are a
  * quota to raise or a concurrency to lower.
+ *
+ * `windowDays` is the window the figures were queried over (the selected time
+ * range), which every hint names.
  */
 export function ReliabilityStrip({
   reliability,
+  windowDays,
 }: {
   reliability: LlmReliability;
+  windowDays: number;
 }) {
   const classes = useStyles();
 
@@ -52,7 +56,7 @@ export function ReliabilityStrip({
   }
 
   const duration = (quantile: string) =>
-    `The ${quantile} model call over the last ${WINDOW_DAYS} days, measured whole — first byte of the request to last byte of the response. A long answer therefore reads as a slow one.`;
+    `Shows the ${quantile} model call duration over the last ${windowDays} days, from first request byte to last response byte, so a long answer reads as slow.`;
 
   return (
     <div className={classes.strip}>
@@ -69,19 +73,19 @@ export function ReliabilityStrip({
       <Stat
         label="Tokens per second"
         value={formatTokensPerSecond(reliability.outputTokensPerSecond)}
-        hint={`The median streamed call's generation speed: the middle value of the gateway's seconds-per-output-token measurements over the last ${WINDOW_DAYS} days, inverted. Those measurements are bucketed coarsely, so read it as a rough rate. Calls answered in one piece are not measured, and idle time is not counted.`}
+        hint={`Shows the median output speed of streamed calls over the last ${windowDays} days, from the gateway's coarse seconds-per-token buckets, so it is a rough rate. Unstreamed calls and idle time are not counted.`}
       />
       <Stat
         label="Error rate"
         value={formatPercent(reliability.errorRatePct)}
         tone={errorTone()}
-        hint={`Requests on the gateway's LLM listener answered with anything but a 2xx or 3xx, as a share of all of them, over the last ${WINDOW_DAYS} days.`}
+        hint={`Shows the share of LLM requests answered with anything but 2xx or 3xx over the last ${windowDays} days.`}
       />
       <Stat
-        label="Rate limited (429)"
+        label="Rate limited"
         value={formatCount(reliability.rateLimited)}
         tone={reliability.rateLimited > 0 ? 'warning' : undefined}
-        hint={`Requests answered with 429 over the last ${WINDOW_DAYS} days, by the provider or by the gateway's own rate limit — a quota to raise or a concurrency to lower, counted separately from the error rate it is part of.`}
+        hint={`Counts requests answered 429 over the last ${windowDays} days by the provider or the gateway's rate limit, a sign to raise the quota or lower the concurrency. They also count in the error rate.`}
       />
     </div>
   );

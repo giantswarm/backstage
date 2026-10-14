@@ -547,118 +547,6 @@ describe('KagentApiClient', () => {
     });
   });
 
-  describe('createSession', () => {
-    const created = { error: false, data: { id: 'new-session-id' } };
-
-    it('POSTs the agent and title as JSON, with the installation and the token', async () => {
-      fetchMock.mockResolvedValue(jsonResponse(created, 201));
-
-      const result = await buildClient().createSession(
-        'gazelle',
-        { namespace: 'kagent', name: 'sre-agent' },
-        'Why is the ingress failing?',
-        'submission-1',
-      );
-
-      expect(result).toEqual({ sessionId: 'new-session-id' });
-
-      const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(
-        'http://backend/api/agent-platform/kagent/sessions?installation=gazelle',
-      );
-      expect(init.method).toBe('POST');
-      // Without this the backend's `express.json()` never parses the body, and
-      // the route rejects a perfectly good request as malformed.
-      expect(init.headers['Content-Type']).toBe('application/json');
-      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
-      expect(JSON.parse(init.body)).toEqual({
-        agentNamespace: 'kagent',
-        agentName: 'sre-agent',
-        name: 'Why is the ingress failing?',
-        // The idempotency key travels with the create, so the backend can hand
-        // it to the controller and a retried submission yields one instance.
-        requestId: 'submission-1',
-      });
-    });
-
-    it('does not label a rejected request as a missing kagent', async () => {
-      // Same guard as the rename: `throwIfNotOk` renames a 400 to `NotFoundError`
-      // for the reads, where it means "this installation has no kagent" and is
-      // meant to be silent. Here a 400 is a refused title, which the composer has
-      // to show.
-      fetchMock.mockResolvedValue(
-        jsonResponse({ error: { message: 'name must not be empty' } }, 400),
-      );
-
-      await expect(
-        buildClient().createSession(
-          'gazelle',
-          { namespace: 'kagent', name: 'sre-agent' },
-          ' ',
-          'submission-1',
-        ),
-      ).rejects.toMatchObject({
-        name: 'Error',
-        message: 'name must not be empty',
-      });
-    });
-
-    it('fails rather than resolve when kagent does not say which session it created', async () => {
-      // The one write whose body is required: without an id there is nowhere to
-      // navigate, so resolving would hand the caller a broken link.
-      fetchMock.mockResolvedValue(jsonResponse({ error: false }, 201));
-
-      await expect(
-        buildClient().createSession(
-          'gazelle',
-          { namespace: 'kagent', name: 'sre-agent' },
-          'Title',
-          'submission-1',
-        ),
-      ).rejects.toMatchObject({
-        name: 'UpstreamError',
-        message: expect.stringContaining('did not say which one it created'),
-      });
-    });
-
-    it('fails on an in-band error reported with a 2xx, preferring kagent’s message', async () => {
-      fetchMock.mockResolvedValue(
-        jsonResponse({ error: true, message: 'agent not found' }, 200),
-      );
-
-      await expect(
-        buildClient().createSession(
-          'gazelle',
-          { namespace: 'kagent', name: 'gone' },
-          'Title',
-          'submission-1',
-        ),
-      ).rejects.toMatchObject({
-        name: 'UpstreamError',
-        message: 'agent not found',
-      });
-    });
-
-    it('fails on an unreadable body rather than treating it as a sign-in page', async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        status: 201,
-        json: async () => {
-          throw new Error('not JSON');
-        },
-      } as unknown as Response);
-
-      await expect(
-        buildClient().createSession(
-          'gazelle',
-          { namespace: 'kagent', name: 'sre-agent' },
-          'Title',
-          'submission-1',
-        ),
-      ).rejects.toMatchObject({ name: 'UpstreamError' });
-    });
-  });
-
   describe('renameSession', () => {
     it('PUTs the new name as JSON, with the installation and the token', async () => {
       fetchMock.mockResolvedValue(jsonResponse({ error: false }));
@@ -1090,6 +978,26 @@ describe('KagentApiClient', () => {
           () => {},
         ),
       ).rejects.toMatchObject({ name: 'StreamTransportError' });
+    });
+
+    it('resolves a 202 with no events, as the unary answer does', async () => {
+      // The backend's "still running": accepted, nothing to relay. Not a
+      // stream that failed to open — a transport failure here would send the
+      // caller to verify, and report the answer as failed when the check
+      // cannot see it yet.
+      fetchMock.mockResolvedValue(jsonResponse({ status: 'pending' }, 202));
+      const events: unknown[] = [];
+
+      await expect(
+        buildClient().streamAnswer(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          answer,
+          event => events.push(event),
+        ),
+      ).resolves.toBeUndefined();
+      expect(events).toEqual([]);
     });
   });
 

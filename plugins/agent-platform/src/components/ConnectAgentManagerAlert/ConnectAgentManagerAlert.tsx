@@ -34,7 +34,11 @@ export function ConnectAgentManagerAlert({
             muster session on {installation} is not connected to it yet:{' '}
             {message}
           </Text>
-          <ServerSignIn serverName={server} installation={installation} />
+          <ServerSignIn
+            noun="connector"
+            serverName={server}
+            installation={installation}
+          />
         </Flex>
       }
     />

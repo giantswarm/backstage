@@ -48,14 +48,41 @@ export const agentDetailRouteRef = createSubRouteRef({
   parent: agentsRouteRef,
 });
 
-// Editing one agent (`/agent-platform/agents/<installation>/<namespace>/<name>/edit`):
-// the form pre-filled from agent-manager's reading of the agent, its dry run
-// as the review, `update_agent` as the Save. Four segments, so it is clear of
-// the three-segment detail path and of the create flow.
+// Editing one agent (`/agent-platform/agents/edit/<installation>/<namespace>/<name>`,
+// then `/skills`, `/tools`, `/review`): the create wizard prefilled from
+// agent-manager's reading of the agent, its last step a dry run of the change
+// and Save changes. A static first segment, like the skill pages'
+// `/skills/edit/…`, so the wizard's steps sit under it without ever reading
+// as the detail page's tabs. The former `…/<name>/edit` redirects here.
 export const agentEditRouteRef = createSubRouteRef({
-  path: '/:installation/:namespace/:name/edit',
+  path: '/edit/:installation/:namespace/:name',
   parent: agentsRouteRef,
 });
+
+// The skill pages (`/agent-platform/skills`): one discovered skill's detail
+// page per `/agent-platform/skills/<owner>/<repo>[/<skill dir>]` (the trailing
+// segments are a splat, since a skill directory may be nested — hrefs come from
+// `skillDetailPath` in lib/skills.ts rather than route-ref params), the bare
+// path redirecting to the shell's Customize → Skills tab. A page of its own
+// beside `page:agent-platform`, like muster's `/agent-platform/mcp-servers`
+// redirect page: the Customize screen that lists skills belongs to the app, so
+// the detail page cannot hang under it.
+export const skillsRouteRef = createRouteRef();
+
+// Adding a skill (`/agent-platform/skills/new`): the form that proposes a
+// skill to one of the configured repositories as a pull request. One static
+// segment, so it can never be mistaken for a skill's `<owner>/<repo>` detail
+// path (two or more segments).
+export const newSkillRouteRef = createSubRouteRef({
+  path: '/new',
+  parent: skillsRouteRef,
+});
+
+// The shell's minimal "Profile and settings" page (`/agent-platform/profile`):
+// who is signed in, the installations the portal talks to, and Sign out. A
+// page of its own beside `page:agent-platform`, like the skill pages: it is
+// linked from the shell rail's profile menu, not a tab of the section.
+export const profileRouteRef = createRouteRef();
 
 // The "Sessions" tab (`/agent-platform/sessions`).
 export const sessionsRouteRef = createRouteRef();
@@ -72,7 +99,7 @@ export const sessionDetailRouteRef = createSubRouteRef({
 });
 
 // The "Usage" tab (`/agent-platform/usage`), the last of the row: Sessions ·
-// Agents · Models · MCP Servers · Workflows · Usage, as the page orders its
+// Agents · Models · Connectors · Workflows · Usage, as the page orders its
 // tabs (`AGENT_PLATFORM_TAB_ORDER`, lib/tabOrder.ts).
 //
 // Like the Models tab, this one carries a **second-level tab row**, one
@@ -86,9 +113,9 @@ export const usageRouteRef = createRouteRef();
 // cost figures understate. Overview's unpriced-models warning links here.
 //
 // The only view with a route ref: the other three (`overview`, `conversations`,
-// `mcp`) are plain routes inside `UsageRouter`, because nothing links to them
-// from outside it. Add one when something does — the tab strip builds its own
-// hrefs from the splat base path either way.
+// `technical`) are plain routes inside `UsageRouter`, because nothing links to
+// them from outside it. Add one when something does — the tab strip builds its
+// own hrefs from the splat base path either way.
 export const usageCostRouteRef = createSubRouteRef({
   path: '/cost',
   parent: usageRouteRef,
@@ -106,13 +133,17 @@ export const newModelRouteRef = createSubRouteRef({
   parent: modelsRouteRef,
 });
 
-// One model (`/agent-platform/models/<installation>/<namespace>/<name>`), as an
-// editable form (read-only when a tool owns the CR). Three segments for the same
-// reason as `agentDetailRouteRef`: all three are part of the identity, and the
-// segment count keeps it clear of the one-segment `/new`, `/serving` and
-// `/capacity`.
-export const modelDetailRouteRef = createSubRouteRef({
-  path: '/:installation/:namespace/:name',
+// One model's page is not a route of this plugin: it lives beside the
+// Customize screen's Models tab, at `<customize>/models/<installation>/<namespace>/<name>`
+// (`useCustomizePaths`, through `customizeExternalRouteRef` below). The
+// three-segment path under this tab redirects there.
+
+// Editing one model (`/agent-platform/models/edit/<installation>/<namespace>/<name>`):
+// the Connect-a-model flow prefilled from the CR, its primary Save changes. A
+// static first segment like `agentEditRouteRef`, and four segments, so it is
+// never read as a model's three-segment detail path.
+export const modelEditRouteRef = createSubRouteRef({
+  path: '/edit/:installation/:namespace/:name',
   parent: modelsRouteRef,
 });
 
@@ -130,8 +161,62 @@ export const gpuCapacityRouteRef = createSubRouteRef({
   parent: modelsRouteRef,
 });
 
+// The "Model cache" view (`/agent-platform/models/cache`): the cache claims
+// cluster-manager lists, where a kept claim is removed.
+export const modelCacheRouteRef = createSubRouteRef({
+  path: '/cache',
+  parent: modelsRouteRef,
+});
+
+// Model hosting's create flows, each a page of its own under the view it
+// adds to (the app's one create pattern, `WizardFrame`, instead of a dialog
+// over the list). Two segments, so none is ever read as a model's
+// three-segment detail path. Cancel returns to the view the flow was opened
+// from; the outcome lands on the view that shows it.
+//
+// Serve model (`…/serving/serve`): takes its seed from the query —
+// `installation`, `backend`, `cluster`, `pool`, `preset` or `model` — so a
+// pool's "Serve your first model" and a download's "Serve…" deep-link it.
+export const serveModelRouteRef = createSubRouteRef({
+  path: '/serving/serve',
+  parent: modelsRouteRef,
+});
+
+// Import from Hugging Face (`…/serving/import`).
+export const importModelRouteRef = createSubRouteRef({
+  path: '/serving/import',
+  parent: modelsRouteRef,
+});
+
+// Pull model (`…/serving/pull`).
+export const pullModelRouteRef = createSubRouteRef({
+  path: '/serving/pull',
+  parent: modelsRouteRef,
+});
+
+// Add model backend (`…/serving/add-backend`).
+export const addModelBackendRouteRef = createSubRouteRef({
+  path: '/serving/add-backend',
+  parent: modelsRouteRef,
+});
+
+// Add GPU node pool (`…/capacity/add-pool`).
+export const addGpuNodePoolRouteRef = createSubRouteRef({
+  path: '/capacity/add-pool',
+  parent: modelsRouteRef,
+});
+
 /**
- * muster's MCP Servers tab (`/agent-platform/mcp-servers`): the servers table,
+ * The agent-platform shell's Customize page (`/customize`): its Models tab
+ * and one model's page beside it. A page of the app, which binds it in
+ * `bindRoutes` (no plugin can name it as a default target), as it binds
+ * muster's route of the same name. Unbound, model links render as plain text.
+ * Read through `useCustomizePaths` (hooks/useCustomizePaths.ts).
+ */
+export const customizeExternalRouteRef = createExternalRouteRef();
+
+/**
+ * muster's Connectors tab (`/agent-platform/connectors`): the connectors table,
  * with the muster session gate and a search over server and tool names.
  *
  * Resolves automatically when the muster plugin is enabled (it registers this
@@ -143,13 +228,22 @@ export const musterServersExternalRouteRef = createExternalRouteRef({
 
 /**
  * A tool's page beneath the MCP server offering it
- * (`/agent-platform/mcp-servers/<server>/tools/<tool>`), where the tool can be
+ * (`/agent-platform/connectors/<server>/tools/<tool>`), where the tool can be
  * inspected and run. `server` is the server page segment (the family name for
  * a family, `muster` for muster's own tools), `tool` the full muster name.
  */
 export const musterServerToolExternalRouteRef = createExternalRouteRef({
   params: ['server', 'tool'],
   defaultTarget: 'muster.mcpServerTool',
+});
+
+/**
+ * A workflow's page in muster's plugin (`/agent-platform/workflows/<name>`),
+ * read with `?installation=`. Unbound when the muster plugin is disabled.
+ */
+export const musterWorkflowDetailExternalRouteRef = createExternalRouteRef({
+  params: ['name'],
+  defaultTarget: 'muster.workflowDetail',
 });
 
 /**

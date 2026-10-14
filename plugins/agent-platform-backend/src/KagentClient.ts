@@ -2,6 +2,7 @@ import { LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { ConflictError, InputError } from '@backstage/errors';
 import { create, toJson, type JsonObject } from '@bufbuild/protobuf';
+import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   Code,
   ConnectError,
@@ -22,13 +23,17 @@ import {
   type Task,
 } from './kagent/gen/a2a_pb';
 import {
-  CreateSessionResponseSchema,
+  CreateSessionShareResponseSchema,
   DeleteSessionResponseSchema,
   GetSessionResponseSchema,
+  ListSessionSharesResponseSchema,
   ListSessionsResponseSchema,
+  RevokeSessionShareResponseSchema,
   SessionService,
+  SessionSharePermission,
   UpdateSessionNameResponseSchema,
   type Session,
+  type SessionShare,
 } from './kagent/gen/kagent/api/v1alpha1/sessions_pb';
 import { SystemService } from './kagent/gen/kagent/api/v1alpha1/system_pb';
 import {
@@ -110,27 +115,30 @@ export const DEFAULT_KAGENT_TURN_TIMEOUT_MS = 30_000;
 export const SESSION_NAME_MAX_LENGTH = 200;
 
 /**
- * Longest message this proxy will forward to an agent.
- *
- * Ours, not kagent's — nothing upstream validates the text. Generous on purpose,
- * because pasting logs or a manifest into a prompt is a normal thing to do; it
- * exists to keep an absurd payload from becoming an agent's whole context window.
- *
- * Counts UTF-16 code units (JavaScript's `String.length`), so a character
- * outside the BMP costs two. The router raises its JSON body limit to keep this
+ * Longest message this proxy will forward to an agent: the one bound the
+ * frontend's composers and hand-offs stop before too, shared through
+ * agent-platform-common. The router raises its JSON body limit to keep this
  * the bound a caller actually meets, rather than the body parser's.
- *
- * Must match MESSAGE_TEXT_MAX_LENGTH in plugins/agent-platform.
  */
-export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
+export { MESSAGE_TEXT_MAX_LENGTH };
 
 /**
- * Bounds of the controller's `request_id` (`CreateSessionRequest`,
- * `min_len: 1, max_len: 128`), which the browser supplies so a retried create
- * is idempotent. Checked here so a bad one is a 400 with our words rather than
- * an `InvalidArgument` with the controller's.
+ * Longest lifetime this proxy will request for a session share, in seconds.
+ *
+ * Ours, not the controller's: the `CreateSessionShareRequest.ttl` field is an
+ * unbounded Duration, and the controller may cap it with its own maximum share
+ * lifetime. A year is far beyond any TTL the dialog offers; the bound exists so
+ * a hand-made request cannot ask for a share that effectively never expires
+ * while claiming a TTL.
  */
-export const REQUEST_ID_MAX_LENGTH = 128;
+export const SESSION_SHARE_MAX_TTL_SECONDS = 365 * 24 * 60 * 60;
+
+/**
+ * How a share grants access, as the routes take it. Maps onto the controller's
+ * `SessionSharePermission`: read-only is A2A get/list/subscribe, read-write
+ * adds send and cancel.
+ */
+export type SessionSharePermissionInput = 'read-only' | 'read-write';
 
 /** An Agent as the A2A gateway routes by: the `tenant` of every A2A request. */
 export type AgentRef = { namespace: string; name: string };
@@ -158,6 +166,8 @@ const PAGE_SIZE = 100;
  */
 const MAX_TASK_PAGES = 10;
 const MAX_SESSION_PAGES = 20;
+// A session has a handful of shares at most; the bound only guards the loop.
+const MAX_SHARE_PAGES = 5;
 
 /**
  * The header a request id travels in toward the controller route, and back to
@@ -399,54 +409,6 @@ export class KagentClient {
       ListSessionsResponseSchema,
       create(ListSessionsResponseSchema, { sessions }),
     );
-  }
-
-  /**
-   * `SessionService/CreateSession` — start a conversation with one Agent. The
-   * Agent names the Harness it runs on, so nothing is picked here.
-   *
-   * An Agent whose Harness has not compiled a ready revision cannot start a
-   * session: the controller answers `FailedPrecondition`, which is a 409
-   * naming the agent — a stale list or a platform state, not a fault.
-   *
-   * `requestId` is the browser's, one per submission and reused on a retry:
-   * the controller keys idempotency on `(creator, request_id)` and answers the
-   * existing session for a repeat with the same parameters, `AlreadyExists`
-   * (409) for a repeat with different ones.
-   */
-  async createSession(
-    agent: { namespace: string; name: string },
-    name: string,
-    requestId: string,
-    options: KagentRequestOptions,
-  ): Promise<unknown> {
-    const agentRef = `${agent.namespace}/${agent.name}`;
-
-    const response = await this.call(
-      () =>
-        this.sessionService.createSession(
-          {
-            agent: { namespace: agent.namespace, name: agent.name },
-            requestId,
-            name,
-          },
-          this.callOptions(options),
-        ),
-      {
-        endpoint: 'session create',
-        missingResource: `Installation '${this.installation.name}' cannot start a session: kagent does not know the agent '${agentRef}'.`,
-        invalidArgument: reason =>
-          new InputError(
-            `kagent on installation '${this.installation.name}' did not accept the new session: ${reason}`,
-          ),
-        failedPrecondition: reason =>
-          new ConflictError(
-            `The agent '${agentRef}' on installation '${this.installation.name}' cannot start a session yet: ${reason}`,
-          ),
-      },
-    );
-    this.remember(response.session);
-    return toJson(CreateSessionResponseSchema, response);
   }
 
   /**
@@ -894,6 +856,123 @@ export class KagentClient {
   }
 
   /**
+   * `SessionService/CreateSessionShare` — mint a share for one session.
+   *
+   * The answer carries the share's metadata and, **only on this answer**, the
+   * token that grants the access: the controller stores a hash of it, so
+   * nothing can read the token back later. Passed through as `{share, token}`
+   * for the dialog to show exactly once.
+   *
+   * `ttlSeconds` becomes the share's lifetime, counted from its creation. Left
+   * unset, the controller applies its own maximum share lifetime — or, where
+   * none is configured, the share lasts until it is revoked or the session
+   * deleted.
+   *
+   * The caller must own the session: the controller scopes the create exactly
+   * as it scopes the reads, so sharing somebody else's session answers
+   * `NotFound` like reading it would.
+   */
+  async createSessionShare(
+    sessionId: string,
+    share: { permission: SessionSharePermissionInput; ttlSeconds?: number },
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const response = await this.call(
+      () =>
+        this.sessionService.createSessionShare(
+          {
+            sessionId,
+            permission:
+              share.permission === 'read-write'
+                ? SessionSharePermission.READ_WRITE
+                : SessionSharePermission.READ_ONLY,
+            ...(share.ttlSeconds !== undefined && {
+              ttl: { seconds: BigInt(share.ttlSeconds) },
+            }),
+          },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'session share create',
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        invalidArgument: reason =>
+          new InputError(
+            `kagent on installation '${this.installation.name}' did not accept the share: ${reason}`,
+          ),
+      },
+    );
+    return toJson(CreateSessionShareResponseSchema, response);
+  }
+
+  /**
+   * `SessionService/ListSessionShares` — the shares that exist for one
+   * session, walked to the end of the listing, as `{shares: […]}`.
+   *
+   * No token is ever in here: the controller keeps only a hash, so a listed
+   * share can be revoked but never re-copied.
+   */
+  async listSessionShares(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const context: ErrorContext = {
+      endpoint: 'session share list',
+      missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+      invalidArgument: () =>
+        new InputError('The session id is not a Session id.'),
+    };
+    const shares: SessionShare[] = [];
+    let pageToken = '';
+    for (let page = 0; page < MAX_SHARE_PAGES; page += 1) {
+      // A per-iteration copy: the RPC closure must not capture the variable
+      // the loop rewrites.
+      const token = pageToken;
+      const response = await this.call(
+        () =>
+          this.sessionService.listSessionShares(
+            { sessionId, page: { limit: PAGE_SIZE, pageToken: token } },
+            this.callOptions(options),
+          ),
+        context,
+      );
+      shares.push(...response.shares);
+      pageToken = response.page?.nextPageToken ?? '';
+      if (!pageToken) {
+        break;
+      }
+    }
+    return toJson(
+      ListSessionSharesResponseSchema,
+      create(ListSessionSharesResponseSchema, { shares }),
+    );
+  }
+
+  /**
+   * `SessionService/RevokeSessionShare` — end one share now. The token stops
+   * granting access as soon as the controller answers; the answer itself is
+   * empty, passed through as `{}`.
+   */
+  async revokeSessionShare(
+    shareId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const response = await this.call(
+      () =>
+        this.sessionService.revokeSessionShare(
+          { shareId },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'session share revoke',
+        missingResource: `That share does not exist on installation '${this.installation.name}'. It may already have been revoked.`,
+        invalidArgument: () =>
+          new InputError('The share id is not a share id.'),
+      },
+    );
+    return toJson(RevokeSessionShareResponseSchema, response);
+  }
+
+  /**
    * `SystemService/GetCurrentUser` — the claims the controller resolved for the
    * call, as a plain object: `{sub: <the email agentgateway set>}` on the line
    * as pinned, the token's full claims once the controller re-derives the
@@ -1102,7 +1181,26 @@ export class KagentClient {
 
   /**
    * Where a call on `sessionId` goes when the caller names the Agent: the
-   * session's A2A context is its id (the controller keeps the two equal).
+   * session's A2A context is its id.
+   *
+   * **Why the session id is the right `contextId` (T62).** On the controller this
+   * client targets, a Session's `context_id` is not a separate value that has to
+   * be read back: the proto documents it as "Output only. A2A conversation ID,
+   * equal to this session's ID", and the controller's own schema enforces it —
+   * its `session` table carries `CHECK (context_id = id)` (seen on kagent
+   * controller 1.5.0 in agentlab, where every stored session satisfies it). The
+   * gateway resolves the session from `tenant` + `message.contextId` and refuses
+   * a context id that names another session, so a mismatch fails loudly with an
+   * error; it never opens or misroutes to a second context. klaus-gateway relies
+   * on the same equality and refuses a created Session that breaks it.
+   *
+   * The recorded fixtures `sessions.kagent-a8353a0.json` /
+   * `tasks.kagent-4a91c273.json` show `contextId != id`: those were recorded
+   * (2026-09) on earlier controller builds that predate the equality, and are
+   * kept for their shapes, not as a version this client supports. Should a future controller
+   * decouple the two again, read `session.contextId` off the Session (as
+   * agentlab's driver does) instead of reusing the id here and in
+   * {@link target}.
    */
   private targetOf(sessionId: string, agent: AgentRef): Target {
     this.agents.set(sessionId, agent);
@@ -1111,8 +1209,9 @@ export class KagentClient {
 
   /**
    * Where a call on `sessionId` goes when the caller names no Agent: the one
-   * remembered from a list, a create or a read of the session, else read off
-   * the Session now.
+   * remembered from a list or a read of the session, else read off
+   * the Session now. The context is the session id, as in {@link targetOf} —
+   * see there for why that is correct rather than a shortcut.
    */
   private async target(
     sessionId: string,

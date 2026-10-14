@@ -23,11 +23,12 @@ import LightIcon from '@material-ui/icons/WbSunny';
 import {
   configApiRef,
   discoveryApiRef,
+  errorApiRef,
   fetchApiRef,
   githubAuthApiRef,
   identityApiRef,
   oauthRequestApiRef,
-  useApi,
+  storageApiRef,
 } from '@backstage/core-plugin-api';
 import {
   ScmAuth,
@@ -57,7 +58,7 @@ import {
 import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 import { GSPageLayout } from './GSPageLayout';
-import { signInProviders } from './signInProviders';
+import { ScopedStorageApi } from './scopedStorageApi';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -134,6 +135,34 @@ export const appOverrides = createFrontendModule({
                   },
                 }),
               ],
+            }),
+        }),
+    }),
+    /**
+     * StorageApi scoped by bucket: the agent platform's own bucket (pinned
+     * sessions, favorite agents, dismissed hints) is kept per user in the
+     * backend database via `@backstage/plugin-user-settings-backend`, so it
+     * roams across browsers and devices; every other bucket (the classic
+     * portal's starred entities, home visits, …) stays in WebStorage
+     * (localStorage) exactly as the upstream default. See `ScopedStorageApi`.
+     */
+    ApiBlueprint.make({
+      name: 'storage',
+      params: defineParams =>
+        defineParams({
+          api: storageApiRef,
+          deps: {
+            discoveryApi: discoveryApiRef,
+            errorApi: errorApiRef,
+            fetchApi: fetchApiRef,
+            identityApi: identityApiRef,
+          },
+          factory: ({ discoveryApi, errorApi, fetchApi, identityApi }) =>
+            ScopedStorageApi.create({
+              discoveryApi,
+              errorApi,
+              fetchApi,
+              identityApi,
             }),
         }),
     }),
@@ -272,30 +301,9 @@ export const appOverrides = createFrontendModule({
     }),
     SignInPageBlueprint.make({
       params: {
-        loader: async () => {
-          const { SignInPage, ProxiedSignInPage } =
-            await import('@backstage/core-components');
-          const CustomSignInPage = (props: {
-            onSignInSuccess: (identityApi: any) => void;
-          }) => {
-            const configApi = useApi(configApiRef);
-            if (configApi.has('gs.authProvider')) {
-              const providers = signInProviders(configApi);
-              // One option signs in automatically (existing session, else
-              // an instant popup). Several show the chooser; an existing
-              // session with any of them is still picked up silently.
-              return (
-                <SignInPage
-                  {...props}
-                  auto={providers.length === 1}
-                  providers={providers}
-                />
-              );
-            }
-            return <ProxiedSignInPage {...props} provider="guest" />;
-          };
-          return CustomSignInPage;
-        },
+        // Shell-styled where the deployment serves the Agent Platform,
+        // upstream's classic page otherwise (see AppSignInPage).
+        loader: async () => (await import('./AppSignInPage')).AppSignInPage,
       },
     }),
   ],

@@ -24,6 +24,7 @@ export const AGENT_MANAGER_TOOLS = {
   updateAgent: 'update_agent',
   deleteAgent: 'delete_agent',
   listModelConfigs: 'list_model_configs',
+  startSession: 'start_session',
 } as const;
 
 export type AgentManagerTool =
@@ -201,6 +202,33 @@ export type CreateAgentResult = {
 };
 
 /**
+ * `start_session`'s input: the Agent by namespace and technical name and the
+ * idempotency key of the submission. Without `message` agent-manager only
+ * creates the session, and the caller sends the first message itself; with
+ * one, agent-manager sends it as the first turn. `workspaceGrant` starts the
+ * session in a workspace; absent, it is the plain session.
+ */
+export type StartSessionRequest = {
+  namespace: string;
+  name: string;
+  message?: string;
+  requestId: string;
+  sessionName?: string;
+  workspaceGrant?: string;
+};
+
+/**
+ * `start_session`'s answer: the new session (proto3 JSON of kagent's
+ * `Session`), the first event of its first turn when a message was sent (A2A's
+ * `StreamResponse`), and the workspace when it was started with a grant.
+ */
+export type StartSessionResult = {
+  session: { id?: string; contextId?: string; name?: string };
+  turn?: unknown;
+  workspace?: string;
+};
+
+/**
  * How agent-manager writes: `apply` live as the person, `commit` as a pull
  * request in the GitOps repository that owns the release.
  */
@@ -332,6 +360,54 @@ export class AgentManagerError extends Error {
   ) {
     super(message);
   }
+}
+
+/**
+ * agent-manager's refusal to change a release applied from git through a pull
+ * request: it edits a release only in its own file, `<directory>/<name>.yaml`,
+ * and that file is not on the repository's base branch (`requireReleaseFile`
+ * in agent-manager's internal/agents/commit.go). It checks that one path and
+ * nothing else: the release may be defined anywhere else in the repository, or
+ * in its directory under another name.
+ */
+export type MissingReleaseFile = {
+  /** The HelmRelease, `namespace/name`. */
+  release: string;
+  /** agent-manager's directory, e.g. `management-clusters/gazelle/extras/agent-manager`. */
+  directory: string;
+  /** The repository, `owner/name`. */
+  repository: string;
+  /** The file agent-manager looked for and did not find. */
+  path: string;
+};
+
+// agent-manager reports this refusal only as a `conflict` in prose, so the
+// message is parsed; the test pins agent-manager's exact wording. A rewording
+// there turns this back into the raw conflict on confirm, nothing worse.
+const MISSING_RELEASE_FILE =
+  /HelmRelease (\S+) is not in agent-manager's directory (\S+) of (\S+) \(no (\S+) there\)/;
+
+/**
+ * Whether a refusal is agent-manager's missing-release-file conflict, and if so
+ * for which release, directory, repository and path. `undefined` for any other
+ * refusal, which keeps its own message.
+ */
+export function missingReleaseFile(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): MissingReleaseFile | undefined {
+  if (failure?.code !== 'conflict') {
+    return undefined;
+  }
+  const match = failure.message.match(MISSING_RELEASE_FILE);
+  if (!match) {
+    return undefined;
+  }
+  return {
+    release: match[1],
+    directory: match[2],
+    repository: match[3],
+    path: match[4],
+  };
 }
 
 /**
@@ -504,6 +580,13 @@ export type UpdateAgentResult = {
   /** The authenticated caller the write ran as. */
   requestedBy?: string;
 };
+
+/**
+ * `update_agent` with `mode: commit` and `dryRun`: the merged values as
+ * `update_agent` reports them, plus the pull request it would open (whose
+ * files carry their full content on a dry run).
+ */
+export type UpdateAgentCommitDryRun = UpdateAgentResult & CommitAgentResult;
 
 /**
  * `delete_agent`: what went. The shared per-namespace `OCIRepository` of the

@@ -1,21 +1,39 @@
 import { useMemo } from 'react';
-import { Cell, CellText, Table, Text, useTable } from '@backstage/ui';
+import { Cell, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
-import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  columnMax,
+  DataBar,
+  ShowMore,
+  usePhoneColumns,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
 import {
   formatCount,
+  formatMoney,
   formatTokens,
-  formatUsd,
+  isConvertedCurrency,
+  USD,
+  type Currency,
 } from '../../../lib/formatNumbers';
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
+import { NameCell } from '../NameCell';
 import { useMeasureColor } from '../../../lib/measures';
+
+/**
+ * How many models the table shows before *Show all N models*. The models in
+ * use are realistically tens, so one click reveals the rest rather than
+ * paging through them.
+ */
+export const BY_MODEL_ROWS = 15;
 
 export type LlmByModelTableProps = {
   rows: LlmModelRow[];
   emptyMessage: string;
   note?: string;
+  /** The installation's display currency; USD when it has none. */
+  currency?: Currency;
 };
 
 /**
@@ -36,11 +54,16 @@ export type LlmByModelTableProps = {
  * maximum, each on its own hue, keyed by measure so "Tokens" is the same
  * colour here as in the By agent table. The bars compare rows **down** a
  * column and mean nothing across columns.
+ *
+ * The table sorts first and `ShowMore` slices the sorted rows, so the first
+ * {@link BY_MODEL_ROWS} are always the top of whatever column is sorted, and
+ * three models render with no reveal control at all.
  */
 export function LlmByModelTable({
   rows,
   emptyMessage,
   note,
+  currency = USD,
 }: LlmByModelTableProps) {
   const colorFor = useMeasureColor();
 
@@ -62,7 +85,8 @@ export function LlmByModelTable({
       label: 'Model',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <CellText title={row.model} />,
+      // Two lines at phone width: a model id cut to one line read as "a…".
+      cell: row => <NameCell title={row.model} />,
     },
     {
       id: 'calls',
@@ -96,12 +120,12 @@ export function LlmByModelTable({
     },
     {
       id: 'costUsd',
-      label: 'Cost',
+      label: 'Spend',
       isSortable: true,
       cell: row => (
         <Cell>
           <DataBar
-            label={formatUsd(row.costUsd)}
+            label={formatMoney(row.costUsd, currency)}
             value={row.costUsd}
             max={max.cost}
             color={colorFor('cost')}
@@ -111,12 +135,12 @@ export function LlmByModelTable({
     },
     {
       id: 'usdPerMillion',
-      label: '$/1M tokens',
+      label: isConvertedCurrency(currency) ? 'Cost/1M tokens' : '$/1M tokens',
       isSortable: true,
       cell: row => (
         <Cell>
           <DataBar
-            label={formatUsd(row.usdPerMillion)}
+            label={formatMoney(row.usdPerMillion, currency)}
             value={row.usdPerMillion}
             max={max.ratio}
             color={colorFor('ratio')}
@@ -144,26 +168,50 @@ export function LlmByModelTable({
       ),
     },
   ];
+  // At phone width the model, what it cost and its context creep (T22 B10):
+  // six columns in 343px clipped every figure. The volume is in the tab's
+  // KPI tiles and the cost-per-day chart; the blended rate is cost ÷ tokens.
+  const shownColumns = usePhoneColumns(columnConfig, [
+    'model',
+    'costUsd',
+    'avgTokensPerCall',
+  ]);
 
   const { tableProps } = useTable<LlmModelRow>({
     mode: 'complete',
     data: rows,
     sortFn: (data, sort) => sortUsageRows(data, sort, 'model'),
     initialSort: { column: 'costUsd', direction: 'descending' },
+    // Off for the reason AgentsTable documents: `useCompletePagination` does
+    // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
 
   return (
     <UsageCard title="By model" note={note} wide>
-      <Table<LlmModelRow>
-        {...tableProps}
-        columnConfig={columnConfig}
-        emptyState={
-          <Text variant="body-medium" color="secondary">
-            {emptyMessage}
-          </Text>
-        }
-      />
+      {/* Sort-then-slice: `tableProps.data` is the *sorted* rows, and
+          `ShowMore` hands the table its first page of them. Passing the raw
+          `rows` instead would silently undo every column sort while the
+          header's indicator still moved. */}
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={BY_MODEL_ROWS}
+        noun="model"
+        revealAll
+      >
+        {visible => (
+          <Table<LlmModelRow>
+            {...tableProps}
+            data={visible}
+            columnConfig={shownColumns}
+            emptyState={
+              <Text variant="body-medium" color="secondary">
+                {emptyMessage}
+              </Text>
+            }
+          />
+        )}
+      </ShowMore>
     </UsageCard>
   );
 }

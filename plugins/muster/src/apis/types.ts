@@ -179,6 +179,12 @@ export interface McpUsage {
   range_hours: number;
   step_hours: number;
   buckets: McpUsageBucket[];
+  /**
+   * The start of the first bucket holding any sample: where muster's records
+   * start inside the window. Absent when no bucket has one, or when muster
+   * recorded calls in the week before the window.
+   */
+  data_start?: string;
   totals: {
     calls: number;
     errors: number;
@@ -543,7 +549,11 @@ export interface MusterApi {
   /** The muster installations the proxy can target. */
   listInstallations(): Promise<MusterInstallationsResponse>;
   listWorkflows(): Promise<WorkflowListResponse>;
-  getWorkflow(name: string): Promise<WorkflowGetResponse>;
+  /** Full definition + raw YAML for one workflow (one installation). */
+  getWorkflow(
+    name: string,
+    installation?: string,
+  ): Promise<WorkflowGetResponse>;
   listExecutions(
     options?: ListExecutionsOptions,
   ): Promise<WorkflowExecutionListResponse>;
@@ -557,6 +567,11 @@ export interface MusterApi {
   getMcpUsage(options?: {
     installation?: string;
     hours?: number;
+    /**
+     * `month`: the UTC calendar month so far by the backend's clock, in
+     * daily steps, in place of `hours`.
+     */
+    window?: 'month';
   }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;

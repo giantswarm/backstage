@@ -46,6 +46,7 @@
     "@backstage/plugin-search-backend-node": "backstage:^",
     "@backstage/plugin-signals-backend": "backstage:^",
     "@backstage/plugin-techdocs-backend": "backstage:^",
+    "@backstage/plugin-user-settings-backend": "backstage:^",
     "@giantswarm/backstage-plugin-agent-platform-backend": "workspace:^",
     "@giantswarm/backstage-plugin-ai-chat-backend": "^0.17.2",
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.15.0",

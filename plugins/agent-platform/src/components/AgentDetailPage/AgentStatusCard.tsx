@@ -112,8 +112,8 @@ export function AgentStatusCard({ agent }: { agent: Agent }) {
       headingLevel={isReady ? 5 : 4}
       emptyContent={
         <Text variant="body-small" color="secondary">
-          The controller has not reported on this agent yet. A newly created
-          agent shows this until kagent reconciles it for the first time.
+          The controller has not reported on this agent yet — normal until
+          kagent first reconciles a new agent.
         </Text>
       }
     />

@@ -10,14 +10,11 @@ import {
   RemoteMCPServerInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServedModel } from '../../lib/serving';
-import type { AgentRow } from './helpers';
 import {
-  agentSearchFn,
   getAgentsRefetchInterval,
   resolveModelConfig,
   resolveModelLabel,
   sortAgentRows,
-  sortAgentsBy,
   toAgentRow,
 } from './helpers';
 
@@ -271,10 +268,63 @@ describe('toAgentRow', () => {
       modelName: 'claude-sonnet-4-6',
       harness: 'kagent',
       skillCount: 3,
+      skillIds: Array.from(
+        { length: 3 },
+        () => 'https://github.com/giantswarm/skills#',
+      ),
+      skillPins: { 'https://github.com/giantswarm/skills#': 'a'.repeat(40) },
+      modelConfigId: 'installation-1/sre-team/sonnet-4-6',
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
       readinessMessage: undefined,
     });
+  });
+
+  it('identifies git skills as the catalog does and leaves the others out', () => {
+    const agent = makeAgent({ name: 'triager' });
+    agent.jsonData.spec!.template!.skills = [
+      {
+        name: 'triage',
+        source: {
+          path: 'skills/triage',
+          git: { url: 'https://github.com/giantswarm/skills', commit: 'abc' },
+        },
+      },
+      {
+        name: 'packaged',
+        source: { oci: 'ghcr.io/giantswarm/skill@sha256:abc' },
+      },
+    ];
+
+    const row = toAgentRow(agent, []);
+    expect(row.skillIds).toEqual([
+      'https://github.com/giantswarm/skills#skills/triage',
+    ]);
+    // The pin under the same id, so a skill's page can tell who is behind.
+    expect(row.skillPins).toEqual({
+      'https://github.com/giantswarm/skills#skills/triage': 'abc',
+    });
+    expect(row.modelConfigId).toBeUndefined();
+  });
+
+  it('identifies a git skill by its canonical repository URL', () => {
+    const agent = makeAgent({ name: 'triager' });
+    agent.jsonData.spec!.template!.skills = [
+      {
+        name: 'triage',
+        source: {
+          path: './skills/triage/',
+          git: {
+            url: 'https://github.com/GiantSwarm/skills.git',
+            commit: 'abc',
+          },
+        },
+      },
+    ];
+
+    expect(toAgentRow(agent, []).skillIds).toEqual([
+      'https://github.com/giantswarm/skills#skills/triage',
+    ]);
   });
 
   it('carries readiness and the explanation through', () => {
@@ -553,103 +603,6 @@ describe('getAgentsRefetchInterval', () => {
   });
 });
 
-describe('sortAgentsBy', () => {
-  const row = (name: string, overrides: Partial<AgentRow> = {}): AgentRow => ({
-    ...toAgentRow(makeAgent({ name, displayName: name }), []),
-    ...overrides,
-  });
-
-  it('sorts by Harness as the column shows it, title before name', () => {
-    const sorted = sortAgentsBy(
-      [
-        row('a', { harness: 'kagent', harnessTitle: 'Declarative (Go ADK)' }),
-        row('b', { harness: 'claude-go', harnessTitle: 'Claude Code' }),
-        row('c', { harness: 'aaa-unread' }),
-      ],
-      { column: 'harness', direction: 'ascending' },
-    );
-    expect(sorted.map(r => r.name)).toEqual(['c', 'b', 'a']);
-  });
-
-  const names = (rows: AgentRow[]) => rows.map(r => r.name);
-
-  it('orders the status column by severity, worst first', () => {
-    const rows = [
-      row('ready-one', { readiness: 'ready' }),
-      row('pending-one', { readiness: 'pending' }),
-      row('rejected-one', { readiness: 'failed' }),
-      row('down-one', { readiness: 'notReady' }),
-    ];
-
-    expect(
-      names(
-        sortAgentsBy(rows, { column: 'readiness', direction: 'ascending' }),
-      ),
-    ).toEqual(['rejected-one', 'down-one', 'pending-one', 'ready-one']);
-  });
-
-  it('reverses the status order when descending', () => {
-    const rows = [
-      row('rejected-one', { readiness: 'failed' }),
-      row('ready-one', { readiness: 'ready' }),
-    ];
-
-    expect(
-      names(
-        sortAgentsBy(rows, { column: 'readiness', direction: 'descending' }),
-      ),
-    ).toEqual(['ready-one', 'rejected-one']);
-  });
-
-  it('breaks status ties by name so equal rows keep a stable order', () => {
-    const rows = [
-      row('zeta', { readiness: 'ready' }),
-      row('alpha', { readiness: 'ready' }),
-      row('mid', { readiness: 'ready' }),
-    ];
-
-    expect(
-      names(
-        sortAgentsBy(rows, { column: 'readiness', direction: 'ascending' }),
-      ),
-    ).toEqual(['alpha', 'mid', 'zeta']);
-  });
-
-  it('sorts skills numerically, not as strings', () => {
-    const rows = [
-      row('ten', { skillCount: 10 }),
-      row('two', { skillCount: 2 }),
-      row('nine', { skillCount: 9 }),
-    ];
-
-    expect(
-      names(sortAgentsBy(rows, { column: 'skills', direction: 'ascending' })),
-    ).toEqual(['two', 'nine', 'ten']);
-  });
-
-  // The initial sort, which must reproduce the ordering the list had before it
-  // became sortable (installation, then name).
-  it('groups by installation and then name, matching the previous default', () => {
-    const rows = [
-      row('beta', { installation: 'inst-b' }),
-      row('zeta', { installation: 'inst-a' }),
-      row('alpha', { installation: 'inst-a' }),
-    ];
-
-    const sorted = sortAgentsBy(rows, {
-      column: 'installation',
-      direction: 'ascending',
-    });
-
-    expect(sorted.map(r => `${r.installation}:${r.name}`)).toEqual([
-      'inst-a:alpha',
-      'inst-a:zeta',
-      'inst-b:beta',
-    ]);
-    expect(names(sorted)).toEqual(names(sortAgentRows(rows)));
-  });
-});
-
 describe('sortAgentRows', () => {
   it('orders by installation then display name', () => {
     const rows = [
@@ -779,35 +732,5 @@ describe('toAgentRow model fields', () => {
 
     expect(row.model).toBe('somewhere-else');
     expect(row.modelName).toBeUndefined();
-  });
-});
-
-describe('agentSearchFn', () => {
-  const rows = [
-    toAgentRow(makeAgent({ name: 'coder', harness: 'claude-go' }), []),
-    toAgentRow(makeAgent({ name: 'triager' }), []),
-    toAgentRow(makeAgent({ name: 'inline', harness: null }), []),
-  ];
-
-  it('finds an agent by its Harness', () => {
-    expect(agentSearchFn(rows, 'CLAUDE-go').map(row => row.name)).toEqual([
-      'coder',
-    ]);
-  });
-
-  it('finds an agent by its Harness title', () => {
-    const titled = [
-      { ...rows[0], harnessTitle: 'Claude Code' },
-      ...rows.slice(1),
-    ];
-    expect(agentSearchFn(titled, 'claude code').map(row => row.name)).toEqual([
-      'coder',
-    ]);
-  });
-
-  it('still matches an agent without a Harness reference by name', () => {
-    expect(agentSearchFn(rows, 'inline').map(row => row.name)).toEqual([
-      'inline',
-    ]);
   });
 });

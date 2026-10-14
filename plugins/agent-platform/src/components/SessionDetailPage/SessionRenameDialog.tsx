@@ -19,10 +19,11 @@ import { DIALOG_FORM_STYLE } from '../dialogForm';
 /**
  * Longest name this dialog will submit.
  *
- * Not a kagent limit — its `session.name` column is unbounded `TEXT` — but ours,
- * matching the conversation titles in the ai-chat plugin. The backend enforces
- * the same bound, because a `maxLength` on an input is a courtesy and not a
- * guard.
+ * kagent's own limit: the controller caps a Session name at 200 characters
+ * (`UpdateSessionNameRequest.name`, `max_len: 200`) and refuses control
+ * characters and surrounding whitespace. Bounded here so the field says so up
+ * front instead of a rejected rename, and enforced again by the backend, because
+ * a `maxLength` on an input is a courtesy and not a guard.
  *
  * Must match SESSION_NAME_MAX_LENGTH in plugins/agent-platform-backend.
  */
@@ -120,8 +121,8 @@ export function SessionRenameDialog({
             />
             {isUserScoped === false && (
               <Text variant="body-medium">
-                This kagent deployment does not scope sessions to individual
-                users, so this session may have been started by somebody else.
+                This kagent does not scope sessions to users, so someone else
+                may have started this session.
               </Text>
             )}
             {error ? <Alert status="danger" description={error} /> : null}

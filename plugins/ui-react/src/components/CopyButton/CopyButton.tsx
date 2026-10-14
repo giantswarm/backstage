@@ -26,6 +26,11 @@ export type CopyButtonProps = {
   /** Accessible name and tooltip before copying. */
   label?: string;
   /**
+   * Tooltip before copying when it should say more than `label` — the copied
+   * text itself, say, where the page does not show it.
+   */
+  tooltip?: string;
+  /**
    * `compact` (24px) sits next to text-sized content: a card header, a code
    * block. `small` is bui's small ButtonIcon (32px).
    */
@@ -40,6 +45,7 @@ export type CopyButtonProps = {
 export const CopyButton = ({
   text,
   label = 'Copy',
+  tooltip,
   size = 'small',
   className,
 }: CopyButtonProps) => {
@@ -60,7 +66,7 @@ export const CopyButton = ({
         icon={copied ? <CheckIcon /> : <FileCopyOutlinedIcon />}
         onPress={handleCopy}
       />
-      <Tooltip>{copied ? 'Copied' : label}</Tooltip>
+      <Tooltip>{copied ? 'Copied' : (tooltip ?? label)}</Tooltip>
     </TooltipTrigger>
   );
 };

@@ -56,10 +56,9 @@ All routes are under `/api/agent-platform` and require `?installation=<name>`.
 | ------------------------------------------------ | -------- | ------------------------------ | ------------------------------------------------------------------ |
 | `GET /health`                                    | —        | —                              | `{ status, configured }` — how many installations resolved         |
 | `GET /kagent/installations`                      | —        | `GetVersion` (unauthenticated) | Installations kagent is configured for, with reachability          |
-| `GET /kagent/session-states`                     | required | `ListSessions`, `ListTasks`    | Derived state per session for the switcher rail                    |
+| `GET /kagent/session-states`                     | required | `ListSessions`, `ListTasks`    | Derived state per session for the session lists and the shell rail |
 | `GET /kagent/session-usage`                      | required | `ListSessions`, `ListTasks`    | The caller's token/turn/tool usage for the Usage tab               |
 | `GET /kagent/sessions`                           | required | `ListSessions`                 | The caller's sessions, proto3 JSON (`{sessions: […]}`)             |
-| `POST /kagent/sessions`                          | required | `CreateSession`                | Start a session: `{agentNamespace, agentName, name, requestId?}`   |
 | `GET /kagent/sessions/:id`                       | required | `GetSession`                   | One session (`{session}`)                                          |
 | `PUT /kagent/sessions/:id`                       | required | `UpdateSessionName`            | Rename (`{name}`, ≤ 200 characters)                                |
 | `DELETE /kagent/sessions/:id`                    | required | `DeleteSession`                | Delete                                                             |
@@ -83,15 +82,11 @@ still reads the 0.10 envelope. The split is **backend = transport, frontend =
 schema**, so a wire change on the line is a common-package change and never a
 backend release.
 
-### Creating a session is idempotent
+### Sessions are not created here
 
-`POST /kagent/sessions` takes the browser's `requestId` (1–128 characters) and
-hands it to the controller as `request_id`, which keys creates on
-`(creator, request_id)`: a repeat with the same Agent answers the existing
-session, a repeat with other parameters `AlreadyExists` (409). A body without
-one gets a fresh key, so the field is an addition rather than a new requirement.
-The Agent names the Harness it runs on, so nothing is picked here; an Agent
-whose Harness has no ready revision yet is a 409 naming the agent.
+A session starts through agent-manager's `start_session`, which the frontend
+calls through muster as the signed-in person; this backend has no create route.
+It reads, sends to, renames and deletes sessions that already exist.
 
 ### Answering a confirmation
 

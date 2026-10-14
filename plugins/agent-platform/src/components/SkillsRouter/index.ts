@@ -1,0 +1,1 @@
+export { SkillsRouter } from './SkillsRouter';

@@ -59,6 +59,15 @@ export const SIGNED_IN_CONFIG_PATHS: readonly string[] = [
   'aiChat.contextWindow',
   // The repositories the agent create flow discovers skills from.
   'agentPlatform.skills.repositories',
+  // Which agent serves each meta-agent role (G13): plain agent names, read by
+  // `useMetaAgent` to light features up only where the role resolves.
+  'agentPlatform.metaAgents',
+  // Whether the home shows the Slack integration banner: a plain boolean.
+  'agentPlatform.integrations.slack',
+  // Where the Slack banner's "How it works" points: a public docs URL.
+  'agentPlatform.integrations.slackDocsUrl',
+  // Context-window sizes per model pattern, for the chat's context indicator.
+  'agentPlatform.models.contextWindows',
   // Link templates for the Flux sources' Git hosts.
   'flux.gitRepositoryPatterns',
 ];

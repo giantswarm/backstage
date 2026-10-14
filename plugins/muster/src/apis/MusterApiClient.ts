@@ -144,9 +144,13 @@ export class MusterApiClient implements MusterApi {
     return this.get<WorkflowListResponse>('/workflows');
   }
 
-  async getWorkflow(name: string): Promise<WorkflowGetResponse> {
+  async getWorkflow(
+    name: string,
+    installation?: string,
+  ): Promise<WorkflowGetResponse> {
     return this.get<WorkflowGetResponse>(
       `/workflows/${encodeURIComponent(name)}`,
+      installation,
     );
   }
 
@@ -194,11 +198,14 @@ export class MusterApiClient implements MusterApi {
   }
 
   async getMcpUsage(
-    options: { installation?: string; hours?: number } = {},
+    options: { installation?: string; hours?: number; window?: 'month' } = {},
   ): Promise<McpUsage> {
     const searchParams = new URLSearchParams();
     if (options.hours !== undefined) {
       searchParams.set('hours', String(options.hours));
+    }
+    if (options.window !== undefined) {
+      searchParams.set('window', options.window);
     }
     const query = searchParams.toString();
     return this.get<McpUsage>(

@@ -16,10 +16,15 @@ export type ManifestDialogProps = {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   title: ReactNode;
-  /** The manifest, already serialized as YAML. */
-  manifest: string;
+  /**
+   * The manifest, already serialized as YAML. Left out where there is none
+   * worth showing: the dialog then offers no editor and no copy.
+   */
+  manifest?: string;
   /** Shown above the manifest, e.g. where it comes from. */
   description?: ReactNode;
+  /** Richer content above the manifest than a description, e.g. steps. */
+  children?: ReactNode;
   /** The editor's label, which is also its accessible name. */
   label?: string;
 };
@@ -37,6 +42,7 @@ export function ManifestDialog({
   title,
   manifest,
   description,
+  children,
   label = 'Manifest',
 }: ManifestDialogProps) {
   const { copied, copy, reset } = useCopyWithFeedback();
@@ -58,19 +64,24 @@ export function ManifestDialog({
               {description}
             </Text>
           )}
-          <YamlEditorFormField
-            label={label}
-            value={manifest}
-            readOnly
-            height={360}
-            maxHeight={360}
-          />
+          {children}
+          {manifest !== undefined && (
+            <YamlEditorFormField
+              label={label}
+              value={manifest}
+              readOnly
+              height={360}
+              maxHeight={360}
+            />
+          )}
         </Flex>
       </DialogBody>
       <DialogFooter>
-        <Button variant="secondary" onPress={() => copy(manifest)}>
-          {copied ? 'Copied' : 'Copy manifest'}
-        </Button>
+        {manifest !== undefined && (
+          <Button variant="secondary" onPress={() => copy(manifest)}>
+            {copied ? 'Copied' : 'Copy manifest'}
+          </Button>
+        )}
         <Button variant="primary" onPress={() => onOpenChange(false)}>
           Close
         </Button>

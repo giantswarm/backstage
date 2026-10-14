@@ -15,6 +15,9 @@ import {
   type CommitAgentResult,
   type CreateAgentResult,
   type DeleteAgentResult,
+  type UpdateAgentCommitDryRun,
+  type StartSessionRequest,
+  type StartSessionResult,
   type UpdateAgentResult,
   type ValidateAgentResult,
 } from '../lib/agentManager';
@@ -158,6 +161,23 @@ export class AgentManagerClient {
   }
 
   /**
+   * The dry run of `commitUpdateAgent`: the merged values and the pull request
+   * it would open, nothing opened. Unlike `validateUpdate` it reads the
+   * repository's base branch as the person, so it refuses up front what the
+   * commit would, such as a release whose file is not in agent-manager's
+   * directory.
+   */
+  dryRunCommitUpdateAgent(
+    update: AgentUpdate,
+  ): Promise<UpdateAgentCommitDryRun> {
+    return this.call<UpdateAgentCommitDryRun>(AGENT_MANAGER_TOOLS.updateAgent, {
+      ...update,
+      mode: 'commit',
+      dryRun: true,
+    });
+  }
+
+  /**
    * Deletes the agent's HelmRelease (helm-controller uninstalls the Agent
    * and the agent's RemoteMCPServer with it) and the shared OCIRepository only
    * when nothing else references it. Never with `force`: a GitOps-owned or
@@ -184,5 +204,39 @@ export class AgentManagerClient {
       name,
       mode: 'commit',
     });
+  }
+
+  /**
+   * Starts a session with an agent, as the person: one `start_session`, the
+   * only way a session starts, so every surface passes the same checks (a
+   * workspace grant's among them). Without `message` it only creates the
+   * session. `requestId` makes a retry answer the session the first attempt
+   * created.
+   */
+  async startSession(
+    request: StartSessionRequest,
+  ): Promise<StartSessionResult & { sessionId: string }> {
+    const result = await this.call<StartSessionResult>(
+      AGENT_MANAGER_TOOLS.startSession,
+      {
+        namespace: request.namespace,
+        name: request.name,
+        ...(request.message ? { message: request.message } : {}),
+        requestId: request.requestId,
+        ...(request.sessionName ? { sessionName: request.sessionName } : {}),
+        ...(request.workspaceGrant
+          ? { workspaceGrant: request.workspaceGrant }
+          : {}),
+      },
+    );
+    // The id is where the person is taken next: an answer without one has
+    // nowhere to go, so it fails rather than resolving into a broken link.
+    const sessionId = result?.session?.id;
+    if (typeof sessionId !== 'string' || !sessionId) {
+      throw new Error(
+        "agent-manager's start_session answered without a session id.",
+      );
+    }
+    return { ...result, sessionId };
   }
 }

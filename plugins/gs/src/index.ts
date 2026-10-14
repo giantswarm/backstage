@@ -24,6 +24,7 @@ export {
 export {
   useInstallations,
   type InstallationConfig,
+  type InstallationCurrency,
   type UseInstallationsResult,
 } from './apis/installations';
 export { SignedInConfigLoader } from './components/SignedInConfigLoader';
@@ -79,6 +80,7 @@ export {
   useInstallationScopeUrlSync,
   applyInstallationScope,
   describeInstallationScopeOption,
+  installationsWithoutComponent,
   isPlatformInstallation,
   selectPlatformInstallations,
   setInstallationScope,

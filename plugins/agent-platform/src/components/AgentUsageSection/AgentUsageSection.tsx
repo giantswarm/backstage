@@ -6,8 +6,12 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { agentDetailRouteRef } from '../../routes';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
+import { useMusterServers } from '../../hooks/useMusterServers';
+import { connectorName } from '../../lib/toolset';
 import { useTokenRates } from '../../hooks/useTokenRates';
+import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { describeCostBasis } from '../../lib/costBasis';
+import { useCurrency } from '../../lib/formatNumbers';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useAgents } from '../AgentsDataProvider';
@@ -18,11 +22,13 @@ import { ByAgentTable } from './ByAgentTable';
 import { CoverageNote } from './CoverageNote';
 import { TokensPerDayCard } from './TokensPerDayCard';
 import { TopCallsTable } from './TopCallsTable';
-import { TotalsStrip } from './TotalsStrip';
+import { TotalsStrip, type StripTotals } from './TotalsStrip';
 import {
   couldNotTell,
   fillMissingDays,
   hasAnyUsage,
+  narrowDaily,
+  sumDaily,
   toByAgentRows,
 } from './helpers';
 
@@ -45,20 +51,19 @@ const PERSONAL_COPY = {
   title: 'Your sessions',
   description: (days: number, installation: string) => (
     <>
-      Your own agent sessions on <strong>{installation}</strong> over the last{' '}
-      {days} days, derived from kagent's stored conversations — including
-      sessions you started from Slack. The Overview and Cost tabs cover every
-      user's model calls; these are yours.
+      Your agent sessions on <strong>{installation}</strong> over the last{' '}
+      {days} days, from kagent's stored conversations — Slack included. Overview
+      and Cost cover every user's model calls.
     </>
   ),
   descriptionWithoutInstallation: (days: number) =>
-    `Your own agent sessions over the last ${days} days, derived from kagent's stored conversations — including sessions you started from Slack. The Overview and Cost tabs cover every user's model calls; these are yours.`,
+    `Your agent sessions over the last ${days} days, from kagent's stored conversations — Slack included. Overview and Cost cover every user's model calls.`,
   topTools: 'Your top tools',
-  topServers: 'Your top MCP servers',
+  topServers: 'Your top connectors',
   empty: (days: number, installation: string) =>
     `You have no agent sessions on ${installation} in the last ${days} days.`,
   unreadable: (installation: string) =>
-    `None of your sessions on ${installation} could be read, so there is nothing to total yet.`,
+    `None of your sessions on ${installation} could be read.`,
 };
 
 const SHARED_COPY = {
@@ -66,17 +71,17 @@ const SHARED_COPY = {
   description: (days: number, installation: string) => (
     <>
       Every user's agent sessions on <strong>{installation}</strong> over the
-      last {days} days, derived from kagent's stored conversations.
+      last {days} days, from kagent's stored conversations.
     </>
   ),
   descriptionWithoutInstallation: (days: number) =>
-    `Agent sessions over the last ${days} days, derived from kagent's stored conversations.`,
+    `Agent sessions over the last ${days} days, from kagent's stored conversations.`,
   topTools: 'Top tools',
-  topServers: 'Top MCP servers',
+  topServers: 'Top connectors',
   empty: (days: number, installation: string) =>
     `There are no agent sessions on ${installation} in the last ${days} days.`,
   unreadable: (installation: string) =>
-    `No sessions on ${installation} could be read, so there is nothing to total yet.`,
+    `No sessions on ${installation} could be read.`,
 };
 
 /**
@@ -127,6 +132,9 @@ export function AgentUsageSection() {
   // wrong claim — see the branch for it below.)
   const { usage, isLoading, isError, isNotDeployed } =
     useSessionUsage(installation);
+  // kagent names a connector by muster's server segment; Customize by the
+  // family a server belongs to. Read the CRs to name it the same way here.
+  const { servers: musterServers } = useMusterServers(installation);
 
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
@@ -153,6 +161,10 @@ export function AgentUsageSection() {
   // stop describing one.
   const hasRate = rateTier === 'installation';
 
+  // The installation's display currency (O3): estimates convert; the
+  // runtime-reported figures stay USD, because they are what was reported.
+  const currency = useCurrency(installation);
+
   // Strictly `false`. `undefined` means the probe has not resolved, or kagent
   // reported no subject at all — which is reachable on a healthy deployment —
   // and treating either as "shared" would show a working installation a claim
@@ -166,9 +178,24 @@ export function AgentUsageSection() {
   // 0 days" — and made `fillMissingDays` short-circuit. `0` is not a value the
   // backend can mean: the reader floors it at 1.
   const windowDays = usage?.windowDays || FALLBACK_WINDOW_DAYS;
+
+  // The screen's time-window control, shared with the gateway views. The
+  // fan-out's own window is fixed (a backend caching contract), so a narrower
+  // selection is cut client-side from the daily buckets, and a wider one shows
+  // the backend's window with a note saying so — never silently either way.
+  const { days: selectedDays } = useUsageWindow();
+  const appliedDays = Math.min(selectedDays, windowDays);
+  const narrowed = useMemo(() => {
+    if (appliedDays >= windowDays) {
+      return undefined;
+    }
+    const cut = narrowDaily(usage?.daily ?? [], appliedDays);
+    return { daily: cut, totals: sumDaily(cut) };
+  }, [usage?.daily, appliedDays, windowDays]);
+
   const daily = useMemo(
-    () => fillMissingDays(usage?.daily ?? [], windowDays),
-    [usage?.daily, windowDays],
+    () => fillMissingDays(narrowed?.daily ?? usage?.daily ?? [], appliedDays),
+    [narrowed, usage?.daily, appliedDays],
   );
   const byAgentRows = useMemo(
     () =>
@@ -201,8 +228,8 @@ export function AgentUsageSection() {
       // response — only a section that has read one can name it truthfully.
       description={
         installation
-          ? copy.description(windowDays, installation)
-          : copy.descriptionWithoutInstallation(windowDays)
+          ? copy.description(appliedDays, installation)
+          : copy.descriptionWithoutInstallation(appliedDays)
       }
     />
   );
@@ -211,7 +238,7 @@ export function AgentUsageSection() {
   if (!isResolving && !hasInstallations) {
     body = (
       <Text variant="body-medium" color="secondary">
-        This portal knows no installations, so there is no usage to read.
+        This portal knows no environments, so there is no usage to read.
       </Text>
     );
   } else if (
@@ -241,7 +268,7 @@ export function AgentUsageSection() {
       <>
         <InstallationScopeNote component="kagent" />
         <Text variant="body-medium" color="secondary">
-          None of the installations this portal knows run kagent.
+          None of the environments this portal knows run kagent.
         </Text>
       </>
     );
@@ -287,19 +314,28 @@ export function AgentUsageSection() {
       </Text>
     );
   } else if (usage) {
+    // A narrowed window totals what the daily buckets carry — sessions and
+    // tool calls too, where the backend reports them per day; the strip
+    // renders a figure left undefined as unknown (see `TotalsStrip`). The
+    // zero total is a placeholder the strip never shows.
+    const stripTotals: StripTotals = narrowed
+      ? { totalTokens: 0, ...narrowed.totals }
+      : usage.totals;
     body = (
       <>
         <TotalsStrip
-          totals={usage.totals}
-          windowDays={windowDays}
+          totals={stripTotals}
+          windowDays={appliedDays}
+          narrowedFromDays={narrowed ? windowDays : undefined}
           rates={rates}
+          currency={currency}
           isRateLoading={isRateLoading}
           costBasis={describeCostBasis({
             tier: rateTier,
             model: undefined,
             installation: installation ?? '',
             window: rateWindow,
-            tokens: usage.totals.inputTokens + usage.totals.outputTokens,
+            tokens: stripTotals.inputTokens + stripTotals.outputTokens,
           })}
         />
         <div className={classes.row}>
@@ -316,6 +352,12 @@ export function AgentUsageSection() {
             variant="output"
           />
         </div>
+        {narrowed && (
+          <Text variant="body-small" color="secondary">
+            The by-agent table and the top tools and connectors below always
+            cover kagent's full {windowDays}-day window, not {appliedDays} days.
+          </Text>
+        )}
         <ByAgentTable
           rows={byAgentRows}
           rates={rates}
@@ -323,6 +365,7 @@ export function AgentUsageSection() {
           installation={installation}
           isRateLoading={isRateLoading}
           hasRate={hasRate}
+          currency={currency}
           emptyMessage="kagent recorded no agent for these sessions."
         />
         <div className={classes.row}>
@@ -334,21 +377,27 @@ export function AgentUsageSection() {
               name: entry.tool,
               calls: entry.calls,
             }))}
+            other={usage.otherTools}
             emptyMessage="No tool calls in this window."
           />
           <TopCallsTable
             title={copy.topServers}
-            nameLabel="MCP server"
+            nameLabel="Connector"
             rows={usage.topMcpServers.map((entry, position) => ({
               id: entry.server ?? `direct-${position}`,
               // `null` means the call resolved to no aggregated downstream
               // server. NOT "not through muster": muster's own core tools
               // (`filter_tools`, `describe_tool`) land here too, and real data
               // showed 44 such calls mislabelled as bypassing the thing they
-              // went through. The wire leaves the wording to us.
-              name: entry.server ?? 'No downstream server',
+              // went through. The wire leaves the wording to us: the Tools
+              // step calls muster's own tools "Platform tools".
+              name:
+                entry.server === null
+                  ? 'Platform tools'
+                  : connectorName(entry.server, musterServers),
               calls: entry.calls,
             }))}
+            other={usage.otherMcpServers}
             emptyMessage="No tool calls in this window."
           />
         </div>
@@ -362,15 +411,21 @@ export function AgentUsageSection() {
       {header}
       {isResolvedFromAll && installation && (
         <Text variant="body-small" color="secondary">
-          Showing {installation}. Usage is read one installation at a time — pin
-          another in the header to switch.
+          Showing {installation} — one environment at a time; switch in the
+          Environment control.
+        </Text>
+      )}
+      {usage && selectedDays > windowDays && (
+        <Text variant="body-small" color="secondary">
+          kagent computes session usage over its own {windowDays}-day window, so
+          the last {selectedDays} days show the same figures as {windowDays}.
         </Text>
       )}
       {isUserScoped === false && (
         <Alert
           status="warning"
           title="These numbers are not scoped to you"
-          description={`kagent on ${installation} is not configured to identify individual users, so this covers everyone's sessions on that installation, not only yours.`}
+          description={`kagent on ${installation} does not identify individual users, so this covers everyone's sessions there.`}
         />
       )}
       {body}

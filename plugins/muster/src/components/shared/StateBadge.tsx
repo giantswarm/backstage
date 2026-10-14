@@ -1,4 +1,4 @@
-import { Tooltip, useTheme, makeStyles, Theme } from '@material-ui/core';
+import { useTheme, makeStyles, Theme } from '@material-ui/core';
 import { Tone, toneColors } from './tones';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -27,7 +27,8 @@ export interface StateBadgeProps {
   tone: Tone;
   label: string;
   /**
-   * The sentence behind the label, shown as a tooltip -- for a server state
+   * The sentence behind the label, shown as a native `title` (as the shell's
+   * other hover hints are) -- for a server state
    * the muster `Ready` condition's message, which says what `Awaiting Session`
    * or a `Failed` token exchange means without leaving the row.
    */
@@ -43,18 +44,14 @@ export function StateBadge({ tone, label, title }: StateBadgeProps) {
   const classes = useStyles();
   const theme = useTheme();
   const colors = toneColors(theme, tone);
-  const badge = (
-    <span className={classes.badge} style={{ color: colors.text }}>
+  return (
+    <span
+      className={classes.badge}
+      style={{ color: colors.text }}
+      title={title || undefined}
+    >
       <span className={classes.dot} style={{ backgroundColor: colors.main }} />
       {label}
     </span>
-  );
-  if (!title) {
-    return badge;
-  }
-  return (
-    <Tooltip title={title} arrow>
-      {badge}
-    </Tooltip>
   );
 }

@@ -6,6 +6,7 @@ import {
   describeSessionState,
   findNewestStatefulTaskIndex,
   parsePart,
+  unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 /**
@@ -38,8 +39,16 @@ export type PendingConfirmation = {
    * answer. ADK wraps both in the same confirmation request.
    */
   asks: 'input' | 'approval';
-  /** The tool the agent proposed to run, for an `'approval'`. */
+  /**
+   * The tool the agent proposed to run, for an `'approval'`. Proxied calls are
+   * looked through: a call made through muster's `call_tool` names the inner
+   * tool here, with {@link via} keeping the fact that it was proxied.
+   */
   toolName?: string;
+  /** The proxy the proposed call would travel through, when it would. */
+  via?: string;
+  /** The proposed call's arguments, for an `'approval'` — what Allow would run. */
+  args?: unknown;
   /** The questions, for an `'input'`. Empty for an approval. */
   questions: AskUserQuestion[];
 };
@@ -190,10 +199,24 @@ export function readPendingConfirmation(
         return undefined;
       }
 
+      if (isQuestion) {
+        return { taskId, asks: 'input', toolName, questions };
+      }
+
+      // The proposed call, looked through muster's `call_tool` wrapper the same
+      // way the timeline looks through executed calls — so the approval card can
+      // say which tool would actually run and via which connector, and show the
+      // arguments Allow would send.
+      const effective = unwrapProxiedCall({
+        name: toolName,
+        args: proposedRecord?.args,
+      });
       return {
         taskId,
-        asks: isQuestion ? 'input' : 'approval',
-        toolName,
+        asks: 'approval',
+        toolName: effective.name ?? toolName,
+        ...(effective.via !== undefined && { via: effective.via }),
+        ...(effective.args !== undefined && { args: effective.args }),
         questions,
       };
     }

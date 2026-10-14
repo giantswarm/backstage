@@ -55,6 +55,115 @@ describe('normalizeSessionUsage', () => {
     expect(usage.topMcpServers).toEqual([{ server: 'kubernetes', calls: 84 }]);
   });
 
+  it("reads a day's tool calls and sessions, and leaves them out when absent", () => {
+    const usage = normalizeSessionUsage(
+      body({
+        daily: [
+          {
+            day: '2026-08-06',
+            inputTokens: 1_000,
+            outputTokens: 100,
+            turns: 3,
+            toolCalls: 7,
+            lastActiveSessions: 2,
+          },
+          { day: '2026-08-07', inputTokens: 0, outputTokens: 0, turns: 0 },
+          {
+            day: '2026-08-08',
+            inputTokens: 0,
+            outputTokens: 0,
+            turns: 0,
+            toolCalls: Number.NaN,
+            lastActiveSessions: -1,
+          },
+        ],
+      }),
+    );
+
+    expect(usage.daily[0]).toMatchObject({
+      toolCalls: 7,
+      lastActiveSessions: 2,
+    });
+    // A backend that predates the fields: not reported, not zero.
+    expect(usage.daily[1]).not.toHaveProperty('toolCalls');
+    expect(usage.daily[1]).not.toHaveProperty('lastActiveSessions');
+    expect(usage.daily[2]).not.toHaveProperty('toolCalls');
+    expect(usage.daily[2]).not.toHaveProperty('lastActiveSessions');
+  });
+
+  it('reads the reported cost on the totals and per agent', () => {
+    const usage = normalizeSessionUsage(
+      body({
+        totals: {
+          sessions: 1,
+          turns: 2,
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          toolCalls: 0,
+          costUsd: 1.25,
+        },
+        byAgent: [
+          {
+            agentId: 'kagent__NS__sre_agent',
+            sessions: 1,
+            turns: 2,
+            inputTokens: 10,
+            outputTokens: 5,
+            costUsd: 1.25,
+          },
+        ],
+      }),
+    );
+
+    expect(usage.totals.costUsd).toBeCloseTo(1.25);
+    expect(usage.byAgent[0].costUsd).toBeCloseTo(1.25);
+  });
+
+  it('keeps an absent reported cost absent, and drops an unusable one', () => {
+    // "No runtime reported a cost" must stay distinguishable from "$0", so
+    // the field is never coerced to zero the way the counts are.
+    expect(normalizeSessionUsage(body()).totals).not.toHaveProperty('costUsd');
+    expect(normalizeSessionUsage(body()).byAgent[0]).not.toHaveProperty(
+      'costUsd',
+    );
+
+    for (const costUsd of [-1, Number.NaN, 'free', null]) {
+      const usage = normalizeSessionUsage(
+        body({
+          totals: {
+            sessions: 1,
+            turns: 1,
+            inputTokens: 1,
+            outputTokens: 1,
+            totalTokens: 2,
+            toolCalls: 0,
+            costUsd,
+          },
+        }),
+      );
+      expect(usage.totals).not.toHaveProperty('costUsd');
+    }
+  });
+
+  it('keeps a reported zero as zero', () => {
+    const usage = normalizeSessionUsage(
+      body({
+        totals: {
+          sessions: 1,
+          turns: 1,
+          inputTokens: 1,
+          outputTokens: 1,
+          totalTokens: 2,
+          toolCalls: 0,
+          costUsd: 0,
+        },
+      }),
+    );
+
+    expect(usage.totals.costUsd).toBe(0);
+  });
+
   it('yields a zeroed summary for a body that is not an object', () => {
     // Rendered as "no usage in the window", which is the honest reading when
     // the backend answered and we could not understand it.
@@ -157,6 +266,32 @@ describe('normalizeSessionUsage', () => {
     expect(usage.totals.inputTokens).toBe(0);
     // The rest of the body still survives.
     expect(usage.daily).toHaveLength(2);
+  });
+
+  it('reads what the capped top lists left out', () => {
+    const usage = normalizeSessionUsage(
+      body({
+        otherTools: { count: 14, calls: 230 },
+        otherMcpServers: { count: 2, calls: 9 },
+      }),
+    );
+
+    expect(usage.otherTools).toEqual({ count: 14, calls: 230 });
+    expect(usage.otherMcpServers).toEqual({ count: 2, calls: 9 });
+  });
+
+  it('reads an absent or malformed remainder as nothing left out', () => {
+    // A backend that predates the field must not make the UI claim a
+    // remainder nobody counted.
+    expect(normalizeSessionUsage(body()).otherTools).toEqual({
+      count: 0,
+      calls: 0,
+    });
+    const usage = normalizeSessionUsage(
+      body({ otherTools: 'nope', otherMcpServers: { count: Number.NaN } }),
+    );
+    expect(usage.otherTools).toEqual({ count: 0, calls: 0 });
+    expect(usage.otherMcpServers).toEqual({ count: 0, calls: 0 });
   });
 
   it('carries a reported cost on the totals and each agent', () => {
