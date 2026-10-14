@@ -1,9 +1,16 @@
 import { ReactNode, useEffect, useId, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Progress } from '@backstage/core-components';
 import { ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
+import {
+  ALL_INSTALLATIONS,
+  InstallationInventoryGate,
+  selectInventoryFailure,
+  useInstallationInventory,
+} from '@giantswarm/backstage-plugin-gs';
 import {
   type CatalogFacet,
   CatalogFilterBar,
@@ -30,6 +37,8 @@ import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentsHelperBanner } from '../AgentsHelperBanner';
 import { type AgentRow, useAgents } from '../AgentsDataProvider';
+import { FirstAgentCard } from '../FirstAgentCard';
+import { KagentMissingCard, kagentMissingFrom } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
 import { SessionsDataProvider } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
@@ -55,6 +64,11 @@ const TWO_LINES = {
 } as const;
 
 const useStyles = makeStyles({
+  // Held at the bar's height whether or not it shows, so the list under it
+  // never moves when the last environment answers.
+  loadingMore: {
+    height: 4,
+  },
   // The prototype's agent list: one rounded, bordered surface, an avatar row
   // per agent — no column headers.
   list: {
@@ -436,8 +450,17 @@ function AgentGroup({
  * a `CustomizeDataProvider`.
  */
 export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
-  const { rows, isLoading, hasInstallations, unreachableInstallations } =
-    useAgents();
+  const classes = useStyles();
+  const {
+    rows,
+    scope,
+    installations,
+    isLoading,
+    isLoadingMore,
+    hasInstallations,
+    unreachableInstallations,
+  } = useAgents();
+  const inventory = useInstallationInventory();
   const buildAvatarUrl = useAgentAvatarUrl();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const isPhone = usePhoneLayout();
@@ -501,8 +524,27 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     />
   );
 
+  // The environments in scope, when each answered without kagent: nothing
+  // can be listed or created there, whatever else is still loading.
+  const kagentMissing = kagentMissingFrom(inventory.entries, scope);
+  // The environment this tab reads could not be asked whether it runs kagent;
+  // `InstallationInventoryGate` below says so, with the remedy.
+  const inventoryFailure = selectInventoryFailure(
+    inventory,
+    scope === ALL_INSTALLATIONS ? null : scope,
+  );
+
   let body;
-  if (isLoading) {
+  if (rows.length === 0 && kagentMissing) {
+    body = (
+      <KagentMissingCard
+        installations={kagentMissing}
+        canChooseAnother={inventory
+          .installationsWith('kagent')
+          .some(installation => !kagentMissing.includes(installation))}
+      />
+    );
+  } else if (isLoading) {
     body = <LoadingIndicator label="Reading your agents…" />;
   } else if (!hasInstallations) {
     body = (
@@ -512,13 +554,32 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       />
     );
   } else if (rows.length === 0) {
-    body =
-      unreachableInstallations.length > 0 ? null : (
+    // The fleet has settled with nothing: `isLoading` holds only while no
+    // row exists yet. Only a fleet that answered, holds no agent and has
+    // somewhere to deploy to (`installations`, the environments in scope that
+    // run kagent and are reachable) is invited to create one; anywhere else
+    // the invitation would dead-end in the create form.
+    if (unreachableInstallations.length > 0) {
+      // Nothing could be read, which is not nothing there: the read warning
+      // is the whole answer.
+      body = null;
+    } else if (installations.length > 0) {
+      body = <FirstAgentCard />;
+    } else if (inventoryFailure) {
+      // The environment could not be asked whether it runs kagent: the gate
+      // is the whole answer.
+      body = null;
+    } else {
+      // Environments in scope that run kagent exist only out of reach (their
+      // access is not healthy, or some are switched off), next to ones that
+      // answered without it.
+      body = (
         <EmptyStateCard
-          title="No agents yet"
-          description="Create an agent to start sessions with it."
+          title="No agents to list"
+          description="No environment this portal can reach runs kagent."
         />
       );
+    }
   } else if (visible.length === 0) {
     body = (
       <CatalogNoMatch
@@ -573,6 +634,9 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
           onClear={filters.clear}
         />
       )}
+      {/* The environment this tab reads could not be asked whether it runs
+          kagent: said once, with the remedy. Renders nothing otherwise. */}
+      <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
         resourceName="Agents"
@@ -586,7 +650,18 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
           <LastUsedAgents />
         </SessionsDataProvider>
       )}
-      {body}
+      {rows.length > 0 ? (
+        <Flex direction="column" gap="2">
+          {/* Rows are in, but more environments are still being read: a thin
+              bar rather than a skeleton, in a slot that is always there. */}
+          <div className={classes.loadingMore}>
+            {isLoadingMore && <Progress aria-label="Loading more agents" />}
+          </div>
+          {body}
+        </Flex>
+      ) : (
+        body
+      )}
     </Flex>
   );
 }
