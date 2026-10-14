@@ -114,7 +114,8 @@ test('delete asks first, names the workspace, and removes it', async ({
   await row.getByRole('button', { name: `Actions for ${doomed.name}` }).click();
   await admin.getByRole('menuitem', { name: 'Delete…' }).click();
 
-  const dialog = admin.getByRole('dialog');
+  // By name: the row menu's popover is a dialog too while it closes.
+  const dialog = admin.getByRole('dialog', { name: `Delete ${doomed.name}?` });
   await expect(dialog.getByText(`Delete ${doomed.name}?`)).toBeVisible();
   await expect(
     dialog.getByText('Its sync stops and no new Session can start on it.'),
