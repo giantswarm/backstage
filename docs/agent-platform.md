@@ -77,8 +77,12 @@ from the skill catalog the page reads anyway.
 ### Skills
 
 The catalog comes from the configured skill repositories, most-used skills
-first. The Instructions tab renders the SKILL.md body without raw HTML or
-remote images, and only when the portal can read the file.
+first. A skill's page is a single column. Its Overview says what the skill is
+for and where it lives; the latest commit links to the skill's folder at that
+commit on github.com. The Instructions tab renders the SKILL.md body without
+raw HTML or remote images, and only when the portal can read the file. The
+Used by tab lists the agents as the connector page does, and marks an agent
+that pins an older commit.
 
 - **Add skill** and **Edit** open a pull request against the skill's
   repository, authored as the person with their own GitHub account (connected
@@ -116,6 +120,15 @@ MCPServer, a family (`spec.family`, one row) and a single server alike:
 each person's own account, none, or AWS request signing) and registers the
 server. Connectors managed through GitOps point to their source instead of
 being editable.
+
+A connector's page ends with a Details tab: sign-in, health, calls this month
+and when it was added, then a Technical details fold-out with the GitOps
+source, the MCPServer and the HelmRelease or Kustomization that applies it,
+the configuration (type, URL, timeout, auto start, `spec.meta`), the auth
+chain from `spec.auth` and muster's health detail from the status. The
+fold-out opens on arrival while muster reports the connector failed. A family
+shows one instance's technical details; each instance's own are on its
+Instances tab. muster's own page has no Details tab.
 
 ### Models
 

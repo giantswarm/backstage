@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Text } from '@backstage/ui';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -23,6 +24,28 @@ export function describeSessionDeleteFailure(
     return error.message;
   }
   return `kagent could not delete this session: it suspends the runtime first, and this runtime was lost with its platform node. A kagent fix is coming; until then the session stays listed. Nothing else is affected. (${error.message})`;
+}
+
+/**
+ * How long a delete runs before the dialog says what it is waiting for. Right
+ * after a turn ends kagent refuses the delete until the turn has settled, and
+ * the backend retries it for up to about 16 s; an ordinary delete answers well
+ * within this.
+ */
+export const SESSION_DELETE_SETTLING_HINT_MS = 2_000;
+
+/** Whether `isBusy` has been true for `afterMs` without a break. */
+function useBusyFor(isBusy: boolean, afterMs: number): boolean {
+  const [isLong, setLong] = useState(false);
+  useEffect(() => {
+    setLong(false);
+    if (!isBusy) {
+      return undefined;
+    }
+    const timer = setTimeout(() => setLong(true), afterMs);
+    return () => clearTimeout(timer);
+  }, [isBusy, afterMs]);
+  return isBusy && isLong;
 }
 
 export type SessionDeleteDialogProps = {
@@ -71,6 +94,7 @@ export function SessionDeleteDialog({
   onConfirm,
   isUserScoped,
 }: SessionDeleteDialogProps) {
+  const isSettling = useBusyFor(isDeleting, SESSION_DELETE_SETTLING_HINT_MS);
   return (
     <ConfirmDialog
       isOpen={isOpen}
@@ -93,6 +117,14 @@ export function SessionDeleteDialog({
           This kagent does not scope sessions to users, so someone else may have
           started this session.
         </Text>
+      )}
+      {isSettling && (
+        <div role="status">
+          <Text variant="body-medium">
+            Waiting for the session's last turn to settle; the delete goes
+            through as soon as kagent allows it.
+          </Text>
+        </div>
       )}
     </ConfirmDialog>
   );

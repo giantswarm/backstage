@@ -197,6 +197,16 @@ export function StartNewSession({
       return null;
     }
 
+    // A ready agent whose installation is still being asked whether
+    // agent-manager can start a session as the person: nothing to say yet.
+    if (
+      agents.some(
+        agent => agent.readiness === 'ready' && agent.isSessionPending,
+      )
+    ) {
+      return null;
+    }
+
     // Distinct situations, and conflating them would tell the user to look in
     // the wrong place: nothing could be read (look at the warning), no
     // environment is configured, the environments that run kagent are
@@ -205,6 +215,18 @@ export function StartNewSession({
     // (look at the Agents tab, where the reason is). Each sentence but the
     // first and the last is the one Customize › Agents says. Standalone, the
     // Agents tab is a link rather than a neighbouring tab.
+    // One more: agents are ready, but their installations' agent-manager
+    // cannot start a session as the person; the reasons say why, and the
+    // Agents tab would not.
+    const blockers = [
+      ...new Set(
+        agents.flatMap(agent =>
+          agent.readiness === 'ready' && agent.sessionBlocker
+            ? [agent.sessionBlocker]
+            : [],
+        ),
+      ),
+    ];
     let reason: string;
     let pointer: 'warning' | 'agentsTab' | undefined;
     if (unreachableInstallations.length > 0 && agents.length === 0) {
@@ -217,6 +239,8 @@ export function StartNewSession({
       reason = describeKagentSwitchedOff(kagentSwitchedOff);
     } else if (agents.length === 0) {
       reason = 'No environment this portal can reach runs kagent.';
+    } else if (blockers.length > 0) {
+      reason = `Sessions cannot start from this portal. ${blockers.join(' ')}`;
     } else {
       reason =
         agents.length === 1

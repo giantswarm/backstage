@@ -2,6 +2,10 @@ import type { ReactNode } from 'react';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { ConnectorPageTarget } from '@giantswarm/backstage-plugin-muster';
 import type { AgentRow } from '../AgentsDataProvider';
 import { agentsRouteRef } from '../../routes';
@@ -116,6 +120,21 @@ describe('ConnectorUsedBy', () => {
     ).toBeInTheDocument();
   });
 
+  it("links each agent's name to its page, on the agent's installation", async () => {
+    await render();
+
+    expect(screen.getByRole('link', { name: 'Ops' })).toHaveAttribute(
+      'href',
+      '/agent-platform/agents/gazelle/team/ops',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Escalation Helper' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/agents/gazelle/team/escalation-helper',
+    );
+  });
+
   it('opens an agent from anywhere on its row', async () => {
     await render();
 
@@ -148,5 +167,23 @@ describe('ConnectorUsedBy', () => {
     await render();
 
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+  });
+});
+
+describe('ConnectorUsedBy at phone width', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('writes what an agent can do under its name, not beside it', async () => {
+    await render();
+
+    const ops = screen.getByRole('row', { name: /Ops/ });
+    expect(within(ops).getByText('All tools')).toHaveAttribute(
+      'slot',
+      'description',
+    );
   });
 });

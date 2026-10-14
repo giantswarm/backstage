@@ -158,6 +158,19 @@ function AgentPlatformHomeContent({
         : undefined,
     [agents, requestedAgentId],
   );
+  // The composer's pick, only while it can still be started: it reports a
+  // pick, never that the agent left the offer (its installation turned out
+  // not to start sessions as the person, or it stopped being ready).
+  const startingWith = useMemo(
+    () =>
+      selectedAgent &&
+      agents.some(
+        agent => agent.id === selectedAgent.id && isStartableAgent(agent),
+      )
+        ? selectedAgent
+        : undefined,
+    [agents, selectedAgent],
+  );
   const recent = useMemo(
     () => recentAgents(sessions, agents),
     [sessions, agents],
@@ -217,8 +230,8 @@ function AgentPlatformHomeContent({
               {greeting(new Date(), displayName)}
             </Text>
             <Text as="p" variant="body-medium" color="secondary">
-              {selectedAgent
-                ? `You're starting a session with ${selectedAgent.name}.`
+              {startingWith
+                ? `You're starting a session with ${startingWith.name}.`
                 : 'Choose an agent, then say what you need.'}
             </Text>
           </Flex>

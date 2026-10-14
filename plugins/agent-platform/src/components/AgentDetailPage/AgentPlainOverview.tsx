@@ -14,6 +14,7 @@ import {
   type Fact,
   SectionHeader,
   ShowMore,
+  TechnicalDetailsFoldOut,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -34,7 +35,6 @@ import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { skillsRouteRef } from '../../routes';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { ModelServingStatus } from '../ModelServingStatus';
-import { TechnicalDetailsFoldOut } from '../TechnicalDetailsFoldOut';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
 import {

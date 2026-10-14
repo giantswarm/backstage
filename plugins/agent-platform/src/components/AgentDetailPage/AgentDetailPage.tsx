@@ -62,6 +62,7 @@ import {
   sessionDetailRouteRef,
 } from '../../routes';
 import {
+  agentManagerSessionGate,
   AgentRow,
   getAgentRefetchInterval,
   ResolveModelServing,
@@ -73,6 +74,7 @@ import {
   type ReadinessPresentation,
 } from '../AgentsTable/readinessStatus';
 import { NewSessionDialog } from '../NewSessionDialog';
+import { isStartableAgent } from '../../lib/startableAgent';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { toneOfIntent } from '../../lib/customize';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
@@ -264,12 +266,25 @@ function AgentDetailPageContent() {
 
   // The row shape the sessions list uses, so this agent's name and avatar resolve
   // identically in both places — and, for the composer, the model's state.
+  // Read here, ahead of the row: sessions start through agent-manager as the
+  // person, like every write below, so the row carries whether one can, and
+  // the header button, the dialog's composer and its option all read that.
+  const availability = useAgentManagerAvailability(
+    installation ? [installation] : [],
+  );
   const agentRow = useMemo(
     () =>
       agent
-        ? toAgentRow(agent, modelConfig ? [modelConfig] : [], resolveServing)
+        ? {
+            ...toAgentRow(
+              agent,
+              modelConfig ? [modelConfig] : [],
+              resolveServing,
+            ),
+            ...agentManagerSessionGate(availability, installation),
+          }
         : undefined,
-    [agent, modelConfig, resolveServing],
+    [agent, modelConfig, resolveServing, availability, installation],
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
@@ -282,9 +297,6 @@ function AgentDetailPageContent() {
   // plugin header, outside this plugin's `QueryClientProvider`, so react-query
   // has no client there. The dialogs are rendered in the page body for the same
   // reason.
-  const availability = useAgentManagerAvailability(
-    installation ? [installation] : [],
-  );
   const presence = availability.presenceOf(installation);
   const isAgentManagerReachable =
     !availability.isUnavailable && presence === 'available';
@@ -566,7 +578,10 @@ function AgentDetailPageContent() {
       ) : null,
     [agent, agentManagerGate, openUpdateSkills, openDelete],
   );
-  const isReady = agentRow?.readiness === 'ready';
+  // An installation where agent-manager cannot start a session as the person
+  // withholds "Use this agent" too, and the note above the tabs says why.
+  const sessionBlocker = agentRow?.sessionBlocker;
+  const isReady = agentRow ? isStartableAgent(agentRow) : false;
   // The shell header's actions, per the prototype: Edit beside the primary
   // "Use this agent", the rest in the menu. The header is the one place it
   // reads so (PO decision); everywhere else starting from an agent is
@@ -742,6 +757,15 @@ function AgentDetailPageContent() {
         onEdit={canEditAgent ? openEdit : undefined}
         isGitOpsOwned={agentManagerGate.isGitOpsOwned}
       />
+
+      {sessionBlocker && (
+        <Alert
+          status="info"
+          icon
+          title="Sessions and changes are not available from this portal"
+          description={`Starting a session, editing, updating skills and deleting go through agent-manager as you. ${sessionBlocker}`}
+        />
+      )}
     </>
   );
 

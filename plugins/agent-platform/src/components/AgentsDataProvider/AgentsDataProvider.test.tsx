@@ -67,6 +67,17 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   }),
 }));
 
+// Which installations' agent-manager can start a session as the person;
+// the hook itself is covered in useMusterServerAvailability's tests.
+let mockAgentManagerPresence: Record<string, string> = {};
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerAvailability: () => ({
+    presenceOf: (name: string) => mockAgentManagerPresence[name] ?? 'available',
+    isLoading: false,
+    isUnavailable: false,
+  }),
+}));
+
 jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({ modelConfigsFor: () => [], isLoading: false }),
 }));
@@ -184,6 +195,7 @@ describe('AgentsDataProvider', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     mockUseResources.mockReset();
+    mockAgentManagerPresence = {};
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
       installations: ['alpha', 'beta', 'gaggle'],
@@ -250,6 +262,24 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.isLoading).toBe(false);
     // ...but the UI still signals more installations are in flight.
     expect(hook.current.isLoadingMore).toBe(true);
+  });
+
+  it('says on each row why no session can start where agent-manager is out of reach as the person', async () => {
+    mockAgentManagerPresence = { beta: 'sharedIdentity', gaggle: 'missing' };
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'], beta: ['b1'], gaggle: ['g1'] } }),
+    );
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(3));
+    const blockerOf = (name: string) =>
+      hook.current.rows.find(row => row.technicalName === name)?.sessionBlocker;
+    expect(blockerOf('a1')).toBeUndefined();
+    expect(blockerOf('b1')).toMatch(
+      /^Muster on beta has no per-user sign-in in this portal/,
+    );
+    expect(blockerOf('g1')).toBe('Muster on gaggle lists no agent-manager.');
   });
 
   it('refreshes an agent’s fields on an in-place edit (same name, new resourceVersion)', async () => {

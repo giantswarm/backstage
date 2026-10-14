@@ -467,21 +467,23 @@ describe('UsageScopeBar · the window limit on a phone', () => {
     expect(screen.queryByText(REASON)).toBeNull();
   });
 
-  it('bottom-aligns the time range with the Environment control, not with the reason', async () => {
-    // The Environment select carries its label above the field, so only the
-    // two controls share an end-aligned row; layout itself is not measured
-    // in jsdom, so this pins the grouping that gives it.
+  it('puts the time range, the Environment control and the reason straight into the header actions row', async () => {
+    // ShellPage's actions row spaces and aligns its items (bottom edges where
+    // it holds a labelled field, so the time range lines up with the select's
+    // field); layout itself is not measured in jsdom, so this pins that the
+    // controls are that row's own items rather than a row of their own.
     layout = mockPhoneLayout();
     renderTab('/agent-platform/usage/conversations');
 
     const timeRange = await screen.findByRole('radiogroup', {
       name: 'Time range',
     });
-    const controls = timeRange.parentElement!;
-    expect(controls).toHaveClass('bui-align-end');
-    expect(controls).toContainElement(screen.getByTestId('environment-select'));
-    expect(controls).not.toContainElement(screen.getByText(REASON));
-    expect(controls.parentElement).toHaveClass('bui-align-center');
+    const row = timeRange.parentElement!;
+    expect(row.parentElement).toContainElement(
+      screen.getByRole('heading', { level: 1 }),
+    );
+    expect(screen.getByTestId('environment-select').parentElement).toBe(row);
+    expect(screen.getByText(REASON).parentElement).toBe(row);
   });
 
   it('says nothing where no window is off', async () => {

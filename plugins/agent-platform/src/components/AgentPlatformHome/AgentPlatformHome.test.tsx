@@ -890,6 +890,33 @@ describe('AgentPlatformHome', () => {
       expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeDisabled();
     });
 
+    it('stops naming the picked agent once its installation cannot start a session', async () => {
+      await render({
+        url: `/?agent=${encodeURIComponent(research.id)}`,
+        rerenderable: true,
+      });
+      expect(
+        screen.getByText("You're starting a session with Research Agent."),
+      ).toBeInTheDocument();
+
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [
+          sre,
+          {
+            ...research,
+            sessionBlocker: 'Muster on golem lists no agent-manager.',
+          },
+          docs,
+        ],
+      });
+      act(() => rerenderHome());
+
+      expect(
+        screen.queryByText("You're starting a session with Research Agent."),
+      ).not.toBeInTheDocument();
+    });
+
     it('ends the picker with Manage agents, which opens the agents under Customize', async () => {
       await render({ manageAgentsHref: '/customize/agents' });
 

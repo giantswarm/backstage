@@ -12,6 +12,7 @@ import {
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
 import type { ServedModel } from '../../lib/serving';
 import {
+  agentManagerSessionGate,
   getAgentsRefetchInterval,
   resolveModelConfig,
   resolveModelLabel,
@@ -890,5 +891,53 @@ describe('selectAgentsInventoryFailure', () => {
         { unknownPin: 'old-lab', listsNothing: true },
       ),
     ).toBeUndefined();
+  });
+});
+
+describe('agentManagerSessionGate', () => {
+  const availability = (
+    presence: string,
+    { isLoading = false, isUnavailable = false } = {},
+  ) => ({
+    presenceOf: () => presence as never,
+    isLoading,
+    isUnavailable,
+  });
+
+  it('blocks where muster runs under its shared identity or lists no agent-manager', () => {
+    expect(
+      agentManagerSessionGate(availability('sharedIdentity'), 'golem')
+        .sessionBlocker,
+    ).toMatch(/^Muster on golem has no per-user sign-in in this portal/);
+    expect(agentManagerSessionGate(availability('missing'), 'golem')).toEqual({
+      sessionBlocker: 'Muster on golem lists no agent-manager.',
+    });
+  });
+
+  it('holds the agent back while the reads are in flight', () => {
+    expect(
+      agentManagerSessionGate(
+        availability('unknown', { isLoading: true }),
+        'golem',
+      ),
+    ).toEqual({ isSessionPending: true });
+  });
+
+  it('leaves a settled unknown to the start, which offers the sign-in', () => {
+    expect(agentManagerSessionGate(availability('unknown'), 'golem')).toEqual(
+      {},
+    );
+  });
+
+  it('leaves the agent offered where agent-manager is available, or without the muster plugin', () => {
+    expect(agentManagerSessionGate(availability('available'), 'golem')).toEqual(
+      {},
+    );
+    expect(
+      agentManagerSessionGate(
+        availability('unknown', { isUnavailable: true }),
+        'golem',
+      ),
+    ).toEqual({});
   });
 });

@@ -28,6 +28,8 @@ import {
   type ClientServingSummary,
 } from '../../lib/serving';
 import { canonicalSkillId } from '../../lib/skills';
+import { agentManagerBlocker } from '../../lib/agentManager';
+import type { AgentManagerAvailability } from '../../hooks/useAgentManager';
 import {
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
@@ -238,7 +240,46 @@ export type AgentRow = {
    * provider, or no serving layer is in view.
    */
   modelServing?: ClientServingSummary;
+  /**
+   * Why no session can start with the agent from this portal, whatever its
+   * readiness: sessions start through agent-manager as the person, and the
+   * installation's muster lists none or runs calls under its shared identity
+   * ({@link agentManagerSessionGate}). `undefined` when nothing stands in the
+   * way, or while that is still being read.
+   */
+  sessionBlocker?: string;
+  /**
+   * Whether that is still being read: the agent is not offered yet, so
+   * nothing is preselected or started that the answer then withdraws.
+   */
+  isSessionPending?: boolean;
 };
+
+/**
+ * Whether sessions can start on an installation through agent-manager, from
+ * its availability: a blocker with its reason, or pending while the reads are
+ * in flight. A settled `unknown` (the person's muster session there is not
+ * connected yet, or the read failed) blocks nothing: starting then offers
+ * the sign-in, as it always has. Nothing either on a portal without the
+ * muster plugin, where starting reports that itself.
+ */
+export function agentManagerSessionGate(
+  availability: Pick<
+    AgentManagerAvailability,
+    'presenceOf' | 'isLoading' | 'isUnavailable'
+  >,
+  installation: string,
+): Pick<AgentRow, 'sessionBlocker' | 'isSessionPending'> {
+  if (availability.isUnavailable) {
+    return {};
+  }
+  const presence = availability.presenceOf(installation);
+  if (presence === 'unknown') {
+    return availability.isLoading ? { isSessionPending: true } : {};
+  }
+  const sessionBlocker = agentManagerBlocker(presence, installation);
+  return sessionBlocker ? { sessionBlocker } : {};
+}
 
 /**
  * The ModelConfig an agent's `spec.modelConfig` references, among
