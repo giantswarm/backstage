@@ -117,6 +117,14 @@ each person's own account, none, or AWS request signing) and registers the
 server. Connectors managed through GitOps point to their source instead of
 being editable.
 
+A connector's page opens on its Tools tab, a list of the tools it offers that
+each link to the tool's own page,
+`/agent-platform/connectors/<connector>/tools/<tool>?installation=<name>`.
+That page shows the tool's markers and description, its input schema (folded),
+a form that runs the tool through muster, and the result across the page's
+full width. Addresses under the old `/agent-platform/mcp-servers/` prefix
+redirect to the same path under `/agent-platform/connectors/`.
+
 A connector's page ends with a Details tab: sign-in, health, calls this month
 and when it was added, then a Technical details fold-out with the GitOps
 source, the MCPServer and the HelmRelease or Kustomization that applies it,

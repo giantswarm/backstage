@@ -38,10 +38,10 @@ const TOOL_NAME_STYLE = {
 /** What the Try it section says beside its Run button for a tool. */
 export function tryItNote(
   effect: ToolEffect,
-  runsAsCaller: boolean,
+  asCaller: boolean,
 ): string | undefined {
   const parts = [
-    runsAsCaller ? 'Runs as you.' : undefined,
+    asCaller ? 'Runs as you.' : undefined,
     effect === 'reads' ? 'Nothing is changed.' : undefined,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' ') : undefined;
