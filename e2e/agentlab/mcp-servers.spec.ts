@@ -284,3 +284,34 @@ test("muster's own connector page lists its core tools, and one is tried in plac
     'the tool ran through the call proxy',
   ).toBeVisible({ timeout: 60_000 });
 });
+
+test("a connector's Technical details read its resource and auth chain from the CR", async ({
+  admin,
+}) => {
+  await open(admin, `/agent-platform/connectors/lab-oauth-fixture${scope}`);
+  await expect(
+    admin.getByRole('heading', { level: 1, name: 'lab-oauth-fixture' }),
+  ).toBeVisible();
+
+  // Read from the MCPServer itself, so no muster session is needed.
+  const foldOut = admin.getByRole('button', { name: 'Technical details' });
+  if ((await foldOut.getAttribute('aria-expanded')) !== 'true') {
+    await foldOut.click();
+  }
+  await expect(
+    admin.getByRole('heading', { name: 'Resource', exact: true }),
+  ).toBeVisible();
+  await expect(
+    admin.getByRole('heading', { name: 'Configuration', exact: true }),
+  ).toBeVisible();
+  await expect(
+    admin.getByText('Own account (OAuth sign-in)', { exact: true }),
+  ).toBeVisible();
+
+  // A family shows one instance and leaves the rest to its Instances tab.
+  await open(admin, `/agent-platform/connectors/${KUBERNETES_FAMILY}${scope}`);
+  await admin.getByRole('button', { name: 'Technical details' }).click();
+  await expect(
+    admin.getByText(/each instance's own configuration, health and/),
+  ).toBeVisible();
+});

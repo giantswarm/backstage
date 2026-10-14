@@ -21,6 +21,7 @@ import { useConnectorPageTarget } from './connectorPageTarget';
 
 jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
   useGitOpsSource: () => ({ isLoading: false }),
+  GitOpsCard: () => null,
 }));
 
 let mockServers: MCPServer[] = [];
@@ -680,5 +681,46 @@ describe('ConnectorPage at phone width', () => {
         screen.getByRole('complementary', { name: 'Connector details' }),
       ).getByText('https://jira.example.test/mcp'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('ConnectorPage technical details', () => {
+  const foldOut = () =>
+    screen.getByRole('button', { name: 'Technical details' });
+
+  it('folds the connector resource under the content, without what the facts say', async () => {
+    await renderAt(`${BASE}/jira`);
+
+    expect(foldOut()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('muster/jira')).toBeNull();
+
+    await userEvent.click(foldOut());
+    expect(screen.getByText('muster/jira')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Authentication' }),
+    ).toBeInTheDocument();
+    // The address stays the facts column's alone.
+    expect(screen.getAllByText('https://jira.example.test/mcp')).toHaveLength(
+      1,
+    );
+  });
+
+  it('opens on arrival while muster reports the connector failed', async () => {
+    mockServers = [
+      ...makeServers(),
+      makeServer({ name: 'linear', state: 'Failed' }),
+    ];
+    await renderAt(`${BASE}/linear`);
+
+    expect(foldOut()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('muster/linear')).toBeInTheDocument();
+  });
+
+  it("has none on muster's own page", async () => {
+    await renderAt(`${BASE}/muster`);
+
+    expect(
+      screen.queryByRole('button', { name: 'Technical details' }),
+    ).toBeNull();
   });
 });

@@ -117,6 +117,14 @@ each person's own account, none, or AWS request signing) and registers the
 server. Connectors managed through GitOps point to their source instead of
 being editable.
 
+A connector's page has a Technical details fold-out below its tabs: the GitOps
+source, the MCPServer and the HelmRelease or Kustomization that applies it,
+the configuration (type, timeout, auto start, `spec.meta`), the auth chain
+from `spec.auth` and muster's health detail from the status. It opens on
+arrival while muster reports the connector failed. A family shows one
+instance; each instance's own details are on its Instances tab. muster's own
+page has none.
+
 ### Models
 
 Models are kagent ModelConfigs. **Connect a model** supports OpenAI-compatible

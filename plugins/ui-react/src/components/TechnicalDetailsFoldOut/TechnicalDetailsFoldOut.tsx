@@ -1,7 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { Accordion, AccordionPanel, AccordionTrigger } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { useSimpleAccordionStyles } from '@giantswarm/backstage-plugin-ui-react';
+import { useSimpleAccordionStyles } from '../SimpleAccordion';
 
 const useStyles = makeStyles({
   // Outlined like the create flow's review step "Technical details".
@@ -31,7 +31,7 @@ export type TechnicalDetailsFoldOutProps = {
  * technical detail on a page, never a page-wide switch. Controlled, so the
  * cards inside (which read the HelmRelease, GitOps source and conditions)
  * mount only while open: bui's panel otherwise stays mounted, merely hidden.
- * Shared by the agent and model pages.
+ * Shared by the agent, model and connector pages.
  */
 export function TechnicalDetailsFoldOut({
   defaultExpanded,

@@ -105,7 +105,7 @@ function Note({ children }: { children: ReactNode }) {
 }
 
 /** Monospace for an identifier the reader may need to copy or compare. */
-function Mono({ children }: { children: ReactNode }) {
+export function Mono({ children }: { children: ReactNode }) {
   const classes = useStyles();
   return <span className={classes.mono}>{children}</span>;
 }
@@ -141,8 +141,17 @@ function activateHint(server: MCPServer): string {
     : ' Use “Activate” in the connector’s actions.';
 }
 
-/** CRD-sourced configuration (always available, no muster session needed). */
-export function ServerConfig({ server }: { server: MCPServer }) {
+/**
+ * CRD-sourced configuration (always available, no muster session needed).
+ * `omitUrl` leaves out the URL where the page already shows it.
+ */
+export function ServerConfig({
+  server,
+  omitUrl = false,
+}: {
+  server: MCPServer;
+  omitUrl?: boolean;
+}) {
   const facts: Fact[] = [];
 
   // The durable switch behind a `Disconnected` live state. Only added when
@@ -159,7 +168,7 @@ export function ServerConfig({ server }: { server: MCPServer }) {
   if (server.getManagementCluster()) {
     facts.push({ label: 'Target MC', value: server.getManagementCluster() });
   }
-  if (server.getUrl()) {
+  if (server.getUrl() && !omitUrl) {
     facts.push({ label: 'URL', value: <Mono>{server.getUrl()}</Mono> });
   }
   if (server.getTimeout() !== undefined) {
@@ -198,6 +207,20 @@ function authTypeLabel(auth: MCPServerAuth): string {
 }
 
 /**
+ * Whether `spec.auth` says more than "no authentication": anonymous with
+ * nothing else set reads as one line, which a page with a sign-in fact
+ * already says.
+ */
+export function hasAuthChain(server: MCPServer): boolean {
+  const auth = server.getAuth();
+  return Boolean(
+    auth &&
+    (serverAuthMode(server) !== 'anonymous' ||
+      Object.keys(withoutCrdDefaults(auth)).length > 0),
+  );
+}
+
+/**
  * The per-server auth/token chain recovered from `spec.auth`.
  *
  * The sign-in/sign-out affordance deliberately lives in the disclosures'
@@ -213,10 +236,7 @@ export function AuthChain({ server }: { server: MCPServer }) {
 
   // Anonymous with nothing else set reads as one line; any other key of
   // `spec.auth` is shown, since the wizard's edit gate reports it too.
-  if (
-    !auth ||
-    (mode === 'anonymous' && Object.keys(withoutCrdDefaults(auth)).length === 0)
-  ) {
+  if (!auth || !hasAuthChain(server)) {
     return <Note>{AUTH_MODE_LABELS.anonymous}</Note>;
   }
 

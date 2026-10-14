@@ -57,6 +57,7 @@ export * from './StatusHint';
 export * from './StatusLabel';
 export * from './SyncMark';
 export * from './StructuredMetadataList';
+export * from './TechnicalDetailsFoldOut';
 export * from './TextAreaField';
 export * from './WizardFrame';
 export * from './YamlEditor';

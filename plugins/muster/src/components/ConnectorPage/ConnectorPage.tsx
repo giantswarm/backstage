@@ -42,6 +42,7 @@ import {
   ShellPageFactsSkeleton,
   StatusDot,
   type StatusDotTone,
+  TechnicalDetailsFoldOut,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
@@ -103,6 +104,10 @@ import {
   ConnectorPageTargetProvider,
 } from './connectorPageTarget';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
+import {
+  ConnectorTechnicalDetails,
+  technicalDetailsOpenByDefault,
+} from './ConnectorTechnicalDetails';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
 /** How long a success toast stays, as on the platform's other deletes. */
@@ -610,6 +615,22 @@ function ConnectorPageContent({
         aside={
           facts.length > 0 ? (
             <FactsColumn facts={facts} aria-label="Connector details" />
+          ) : undefined
+        }
+        footer={
+          // On every tab, below it: the connector has no overview tab to
+          // carry it, as the agent's does. muster itself has no MCPServer.
+          representative ? (
+            <TechnicalDetailsFoldOut
+              defaultExpanded={technicalDetailsOpenByDefault(row)}
+              followDefaultExpanded
+            >
+              <ConnectorTechnicalDetails
+                server={representative}
+                isFamily={row.kind === 'family'}
+                installation={installation}
+              />
+            </TechnicalDetailsFoldOut>
           ) : undefined
         }
       >
