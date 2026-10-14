@@ -386,6 +386,36 @@ describe('ConnectorPage', () => {
     expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
   });
 
+  it('keeps the tools search across a visit to another tab', async () => {
+    await renderAt(`${BASE}/jira?installation=gazelle&q=search`);
+
+    const searchbox = () =>
+      screen.getByRole('searchbox', { name: 'Search tools' });
+    expect(
+      await screen.findByRole('button', { name: /search_issues/ }),
+    ).toBeInTheDocument();
+    expect(searchbox()).toHaveValue('search');
+    expect(screen.queryByRole('button', { name: /add_comment/ })).toBeNull();
+
+    // The address's search, back from Details.
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await screen.findByRole('region', { name: 'Connector details' });
+    await userEvent.click(screen.getByRole('tab', { name: /^Tools/ }));
+    expect(searchbox()).toHaveValue('search');
+    expect(screen.queryByRole('button', { name: /add_comment/ })).toBeNull();
+
+    // And one typed on the tab, which the address does not carry.
+    await userEvent.clear(searchbox());
+    await userEvent.type(searchbox(), 'comment');
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await userEvent.click(screen.getByRole('tab', { name: /^Tools/ }));
+    expect(searchbox()).toHaveValue('comment');
+    expect(
+      screen.getByRole('button', { name: /add_comment/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /search_issues/ })).toBeNull();
+  });
+
   it('lists a few tools without search or filter and tries one inline', async () => {
     const api = await renderAt(`${BASE}/jira`);
 

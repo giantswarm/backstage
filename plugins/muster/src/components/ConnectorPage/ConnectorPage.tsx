@@ -101,7 +101,7 @@ import {
   ConnectorPageTarget,
   ConnectorPageTargetProvider,
 } from './connectorPageTarget';
-import { ConnectorToolsTab } from './ConnectorToolsTab';
+import { ConnectorToolsTab, useToolSearchState } from './ConnectorToolsTab';
 import { ConnectorDetailsTab } from './ConnectorDetailsTab';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
@@ -265,6 +265,10 @@ function ConnectorPageContent({
   const representative = representativeInfo?.server;
   const singular = row.kind === 'server' ? row.server : undefined;
 
+  // Above the tabs, so a search on Tools survives a visit to another tab:
+  // the tab links carry only `?installation=`, and the page is keyed per
+  // connector, so another connector starts afresh.
+  const toolSearch = useToolSearchState();
   const tools = useServerTools(row, servers, installation, {
     enabled: authenticated,
   });
@@ -626,6 +630,7 @@ function ConnectorPageContent({
                   emptyExplanation={emptyExplanation}
                   sessionGate={sessionGate}
                   signInGate={signInGate}
+                  searchState={toolSearch}
                 />
               }
             />
