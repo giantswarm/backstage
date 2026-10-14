@@ -132,7 +132,16 @@ function AgentPlatformHomeContent({
 }: AgentPlatformHomeProps) {
   const classes = useStyles();
   const displayName = useDisplayName();
-  const { rows: agents, isLoading, unreachableInstallations } = useAgents();
+  const {
+    rows: agents,
+    isLoading,
+    unreachableInstallations,
+    kagentMissing,
+  } = useAgents();
+  // `StartNewSession` shows the kagent-missing card in place of the composer,
+  // even while other environments still load; it names the environment, so
+  // the scope note would say the same thing twice.
+  const isKagentMissing = agents.length === 0 && kagentMissing !== undefined;
   const { rows: sessions } = useSessions();
   const [selectedAgent, setSelectedAgent] = useState<AgentRow>();
   const navigate = useNavigate();
@@ -213,7 +222,7 @@ function AgentPlatformHomeContent({
                 : 'Choose an agent, then say what you need.'}
             </Text>
           </Flex>
-          {isLoading ? (
+          {isLoading && !isKagentMissing ? (
             <LoadingIndicator label="Reading your agents…" />
           ) : (
             <StartNewSession
@@ -249,7 +258,7 @@ function AgentPlatformHomeContent({
               read warning stand between the two only when they have something
               to say — they render nothing otherwise — and they belong under
               the composer, whose empty state points at "the warning below". */}
-          <InstallationScopeNote component="kagent" />
+          {!isKagentMissing && <InstallationScopeNote component="kagent" />}
           <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
           <UnreachableInstallationsAlert
             installations={unreachableInstallations}

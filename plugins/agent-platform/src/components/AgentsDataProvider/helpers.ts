@@ -11,6 +11,11 @@ import {
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  installationsWithoutComponent,
+  type InstallationInventoryEntry,
+  type InstallationScope,
+} from '@giantswarm/backstage-plugin-gs';
+import {
   summarizeClientServing,
   type ClientServingState,
   type ClientServingSummary,
@@ -373,4 +378,38 @@ export function sortAgentRows(rows: AgentRow[], home?: string): AgentRow[] {
       a.installation.localeCompare(b.installation) ||
       a.name.localeCompare(b.name),
   );
+}
+
+/**
+ * The environments in scope that answered without kagent, so no agent can be
+ * listed or created there -- `installationsWithoutComponent`, the rule every
+ * tab says "kagent is not installed on <environment>" by.
+ */
+export type KagentMissing = {
+  /** The environments in scope, each answered without kagent. */
+  installations: string[];
+  /** Another environment runs kagent, so the Environment select is a way out. */
+  canChooseAnother: boolean;
+};
+
+/**
+ * {@link KagentMissing} for the scope, or `undefined` when kagent is not known
+ * to be missing from it (see `installationsWithoutComponent`).
+ * `installationsWithKagent` is the inventory's `installationsWith('kagent')`.
+ */
+export function selectKagentMissing(
+  entries: InstallationInventoryEntry[],
+  scope: InstallationScope,
+  installationsWithKagent: string[],
+): KagentMissing | undefined {
+  const installations = installationsWithoutComponent(entries, scope, 'kagent');
+  if (!installations) {
+    return undefined;
+  }
+  return {
+    installations,
+    canChooseAnother: installationsWithKagent.some(
+      installation => !installations.includes(installation),
+    ),
+  };
 }

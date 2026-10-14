@@ -14,10 +14,6 @@ import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { agentsRouteRef, installationsExternalRouteRef } from '../../routes';
 import { CustomizeAgentsPanel } from './CustomizeAgentsPanel';
 
-let mockAgents: Partial<AgentsContextValue>;
-jest.mock('../AgentsDataProvider', () => ({
-  useAgents: () => mockAgents,
-}));
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
@@ -25,6 +21,30 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
 // which environment's failure the gate explains (the real selectors). The
 // gate itself, covered by its own tests in gs, renders a marker naming it.
 let mockInventoryEntries: InstallationInventoryEntry[] = [];
+function mockInstallationsWith(component: 'kagent') {
+  return mockInventoryEntries
+    .filter(
+      entry =>
+        !entry.muted &&
+        entry.probe === 'answered' &&
+        entry.components[component],
+    )
+    .map(entry => entry.installation);
+}
+let mockAgents: Partial<AgentsContextValue>;
+// `kagentMissing` follows the mocked inventory by the provider's own rule.
+jest.mock('../AgentsDataProvider', () => ({
+  useAgents: () => ({
+    kagentMissing: jest
+      .requireActual('../AgentsDataProvider/helpers')
+      .selectKagentMissing(
+        mockInventoryEntries,
+        mockAgents.scope ?? 'all',
+        mockInstallationsWith('kagent'),
+      ),
+    ...mockAgents,
+  }),
+}));
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   useInstallationInventory: () => ({
@@ -32,15 +52,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     home: mockInventoryEntries.find(entry => entry.home)?.installation,
     isLoading: false,
     isProbing: false,
-    installationsWith: (component: 'kagent') =>
-      mockInventoryEntries
-        .filter(
-          entry =>
-            !entry.muted &&
-            entry.probe === 'answered' &&
-            entry.components[component],
-        )
-        .map(entry => entry.installation),
+    installationsWith: mockInstallationsWith,
     refresh: () => {},
   }),
   InventoryFailureGate: ({

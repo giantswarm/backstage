@@ -82,6 +82,7 @@ const agents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  kagentMissing: undefined,
 };
 
 jest.mock('../AgentsDataProvider', () => ({

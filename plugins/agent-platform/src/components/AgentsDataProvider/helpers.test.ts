@@ -9,6 +9,7 @@ import {
   RemoteMCPServer,
   RemoteMCPServerInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
 import type { ServedModel } from '../../lib/serving';
 import {
   getAgentsRefetchInterval,
@@ -16,6 +17,7 @@ import {
   resolveModelLabel,
   sortAgentRows,
   toAgentRow,
+  selectKagentMissing,
 } from './helpers';
 
 function makeAgent(
@@ -732,5 +734,49 @@ describe('toAgentRow model fields', () => {
 
     expect(row.model).toBe('somewhere-else');
     expect(row.modelName).toBeUndefined();
+  });
+});
+
+describe('selectKagentMissing', () => {
+  const entry = (
+    installation: string,
+    kagent: boolean,
+  ): InstallationInventoryEntry => ({
+    installation,
+    home: false,
+    accessState: 'healthy',
+    muted: false,
+    probe: 'answered',
+    components: { kagent, muster: true, kserve: false, capi: true },
+  });
+
+  it('offers another environment when one outside the scope runs kagent', () => {
+    expect(
+      selectKagentMissing(
+        [entry('golem', true), entry('dingo', false)],
+        'dingo',
+        ['golem'],
+      ),
+    ).toEqual({ installations: ['dingo'], canChooseAnother: true });
+  });
+
+  it('offers none when no environment runs kagent', () => {
+    expect(
+      selectKagentMissing(
+        [entry('golem', false), entry('dingo', false)],
+        'all',
+        [],
+      ),
+    ).toEqual({ installations: ['golem', 'dingo'], canChooseAnother: false });
+  });
+
+  it('is undefined where the scope runs kagent', () => {
+    expect(
+      selectKagentMissing(
+        [entry('golem', true), entry('dingo', false)],
+        'golem',
+        ['golem'],
+      ),
+    ).toBeUndefined();
   });
 });

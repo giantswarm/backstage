@@ -3,7 +3,11 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
-import { agentsRouteRef, sessionsRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  installationsExternalRouteRef,
+  sessionsRouteRef,
+} from '../../routes';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import { StartNewSession, type StartNewSessionProps } from './StartNewSession';
 
@@ -48,6 +52,7 @@ const loadedAgents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  kagentMissing: undefined,
 };
 
 function render(props: StartNewSessionProps, { agentsBound = true } = {}) {
@@ -55,6 +60,7 @@ function render(props: StartNewSessionProps, { agentsBound = true } = {}) {
     mountedRoutes: {
       '/agent-platform/sessions': sessionsRouteRef,
       ...(agentsBound && { '/agent-platform/agents': agentsRouteRef }),
+      '/installations': installationsExternalRouteRef,
     },
   });
 }
@@ -137,6 +143,29 @@ describe('StartNewSession', () => {
 
     await render({ entryPoint: 'home', layout: 'standalone' });
 
+    expect(
+      screen.queryByRole('textbox', { name: 'Prompt' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says kagent is missing in place of the composer, even while the agents load', async () => {
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      scope: 'dingo',
+      installations: [],
+      isLoading: true,
+      kagentMissing: { installations: ['dingo'], canChooseAnother: true },
+    });
+
+    await render({ entryPoint: 'home', layout: 'standalone' });
+
+    expect(
+      screen.getByRole('heading', { name: 'kagent is not installed on dingo' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Go to Installations' }),
+    ).toHaveAttribute('href', '/installations');
     expect(
       screen.queryByRole('textbox', { name: 'Prompt' }),
     ).not.toBeInTheDocument();

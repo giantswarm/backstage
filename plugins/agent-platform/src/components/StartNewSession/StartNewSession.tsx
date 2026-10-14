@@ -13,6 +13,7 @@ import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { agentsRouteRef, sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
+import { KagentMissingCard } from '../KagentMissingCard';
 import {
   isStartableAgent,
   NewSessionComposer,
@@ -68,7 +69,8 @@ export type StartNewSessionProps = {
  *
  * Withheld with a reason when the fleet offers no agent at all. An inert prompt
  * box that refuses every Start would be worse than saying why. Renders nothing
- * while the agents are loading.
+ * while the agents are loading, unless kagent is already known to be missing
+ * from every environment in scope.
  *
  * Reads `useAgents`, so it renders under `AgentsDataProvider`.
  */
@@ -87,6 +89,7 @@ export function StartNewSession({
     isLoading: isLoadingAgents,
     isLoadingMore: isLoadingMoreAgents,
     unreachableInstallations,
+    kagentMissing,
   } = useAgents();
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
   const creation = useCreateSession(entryPoint, { titleMaxLength });
@@ -135,6 +138,13 @@ export function StartNewSession({
     [createSession, navigate, rememberAgent, sessionDetailRoute],
   );
 
+  // Every environment in scope answered without kagent: no agent can be
+  // started there, whatever else is still loading. Customize › Agents says it
+  // with the same card.
+  if (agents.length === 0 && kagentMissing) {
+    return <KagentMissingCard {...kagentMissing} />;
+  }
+
   if (isLoadingAgents) {
     return null;
   }
@@ -158,10 +168,11 @@ export function StartNewSession({
 
     // Three distinct situations, and conflating them would tell the user to look
     // in the wrong place: nothing could be read (look at the warning), nothing
-    // is deployed and there is nowhere to deploy to either (an installation
-    // scope that runs no kagent), or something is deployed but none of it is
-    // ready (look at the Agents tab, where the reason is). Standalone, the
-    // Agents tab is a link rather than a neighbouring tab.
+    // is deployed and no environment in reach runs kagent to deploy to (where
+    // it is not known missing: say, the one that runs it is switched off in
+    // Cluster access), or something is deployed but none of it is ready (look
+    // at the Agents tab, where the reason is). Standalone, the Agents tab is a
+    // link rather than a neighbouring tab.
     let reason: string;
     let pointer: 'warning' | 'agentsTab' | undefined;
     if (unreachableInstallations.length > 0 && agents.length === 0) {

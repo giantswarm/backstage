@@ -6,4 +6,4 @@ export {
   resolveModelConfig,
   toAgentRow,
 } from './helpers';
-export type { AgentRow, ResolveModelServing } from './helpers';
+export type { AgentRow, KagentMissing, ResolveModelServing } from './helpers';

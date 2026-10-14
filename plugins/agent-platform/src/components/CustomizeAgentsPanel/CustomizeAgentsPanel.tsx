@@ -8,7 +8,6 @@ import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
   ALL_INSTALLATIONS,
   classifyInventoryFailure,
-  installationsWithoutComponent,
   InventoryFailureGate,
   selectInventoryFailure,
   useInstallationInventory,
@@ -470,6 +469,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     isLoadingMore,
     hasInstallations,
     unreachableInstallations,
+    kagentMissing,
   } = useAgents();
   const inventory = useInstallationInventory();
   const buildAvatarUrl = useAgentAvatarUrl();
@@ -543,13 +543,6 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     !inventory.isLoading &&
     inventory.entries.length > 0 &&
     !inventory.entries.some(entry => entry.installation === pinned);
-  // The environments in scope, when each answered without kagent: nothing
-  // can be listed or created there, whatever else is still loading.
-  const kagentMissing = installationsWithoutComponent(
-    inventory.entries,
-    scope,
-    'kagent',
-  );
   const isEmpty = !isLoading && rows.length === 0;
   // The environment this tab reads could not be asked whether it runs kagent:
   // the pinned one, or the home one under "All environments" -- or, when
@@ -588,12 +581,9 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     );
   } else if (rows.length === 0 && kagentMissing) {
     body = (
-      <KagentMissingCard
-        installations={kagentMissing}
-        canChooseAnother={inventory
-          .installationsWith('kagent')
-          .some(installation => !kagentMissing.includes(installation))}
-      />
+      // Every environment in scope answered without kagent: nothing can be
+      // listed or created there, whatever else is still loading.
+      <KagentMissingCard {...kagentMissing} />
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading your agents…" />;

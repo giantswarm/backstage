@@ -31,7 +31,9 @@ import {
   AgentRow,
   BASELINE_REFETCH_INTERVAL_MS,
   getAgentsRefetchInterval,
+  type KagentMissing,
   ResolveModelServing,
+  selectKagentMissing,
   TRANSITIONAL_REFETCH_INTERVAL_MS,
   sortAgentRows,
   toAgentRow,
@@ -70,6 +72,13 @@ export type AgentsContextValue = {
    * an empty result is distinguishable from a partial/failed one.
    */
   unreachableInstallations: string[];
+  /**
+   * Every environment in scope answered without kagent: no agent can be
+   * listed or created there, whatever else is still loading. `undefined`
+   * otherwise -- including while one of them is still being asked, and under
+   * "All environments" while one switched off in Cluster access runs kagent.
+   */
+  kagentMissing: KagentMissing | undefined;
 };
 
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
@@ -113,6 +122,14 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     scope,
   );
   const isProbing = inventory.isLoading || inventory.isProbing;
+  const kagentMissing = selectKagentMissing(
+    inventory.entries,
+    scope,
+    inventory.installationsWith('kagent'),
+  );
+  const kagentMissingKey = kagentMissing
+    ? `${kagentMissing.installations.join(',')}|${kagentMissing.canChooseAnother}`
+    : '';
 
   // allInstallations/scopedInstallations are derived fresh each render; key
   // memos/effects on their contents rather than their (unstable) identity.
@@ -467,6 +484,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
         rows.length > 0 && (pendingInstallations.length > 0 || isProbing),
       hasInstallations,
       unreachableInstallations,
+      kagentMissing,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -483,6 +501,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     resolveServing,
     allInstallationsKey,
     scopedInstallationsKey,
+    kagentMissingKey,
   ]);
 
   return (
