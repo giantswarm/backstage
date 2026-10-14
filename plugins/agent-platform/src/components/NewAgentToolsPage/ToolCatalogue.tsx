@@ -1,7 +1,6 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
   EffectBadge,
-  isDestructive,
   ServerSignIn,
   toolEffect,
   ToolTable,
@@ -30,8 +29,8 @@ import { ShowMore } from '../ShowMore';
  * Every row says what the tool does — Reads or Changes things — as the
  * Connector Tools tab and the CreateAgentTools artboard do (T60): it is what
  * the catalogue's effect filter sorts by, and an unannotated tool counts as
- * changing things. The read-only marker would only repeat the badge, so of
- * the server's markers only *destructive* stays: the sharper warning.
+ * changing things. The server's own markers would only repeat the badge, so
+ * the row carries none.
  */
 function toolRowItem(
   tool: ToolSummary,
@@ -43,7 +42,7 @@ function toolRowItem(
   const title = isWorkflow ? workflowNameOf(tool.name) : tool.name;
   return toolTableItem(tool, {
     name: title,
-    annotations: isDestructive(tool) ? tool.annotations : undefined,
+    annotations: undefined,
     meta: <EffectBadge effect={toolEffect(tool)} />,
     ariaLabel: `${isWorkflow ? 'Workflow' : 'Tool'} ${title}`,
     mode: {

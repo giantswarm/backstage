@@ -121,6 +121,18 @@ each person's own account, none, or AWS request signing) and registers the
 server. Connectors managed through GitOps point to their source instead of
 being editable.
 
+A connector's page opens on its Tools tab, a list of the tools it offers that
+each link to the tool's own page,
+`/agent-platform/connectors/<connector>/tools/<tool>?installation=<name>`.
+That page shows what the tool does (Reads or Changes things), its description
+under "What it’s for", its input schema (folded),
+a form that runs the tool through muster, and the result, in one column with
+no facts beside it. The tool's address carries the tab's search and filter
+(`q`, `effect`), so the breadcrumb back keeps them; the browser's Back also
+restores how far the list was paged. Addresses under the old
+`/agent-platform/mcp-servers/` prefix redirect to the same path under
+`/agent-platform/connectors/`.
+
 A connector's page ends with a Details tab: sign-in, health, calls this month
 and when it was added, then a Technical details fold-out with the GitOps
 source, the MCPServer and the HelmRelease or Kustomization that applies it,
@@ -139,7 +151,9 @@ running models, GPU capacity and the model cache.
 
 ### Workflows
 
-Muster's workflows, read-only.
+Muster's workflows, read-only. A workflow's page splits into Overview, Usage
+(its run statistics) and Details tabs; its ⋮ menu shows the Workflow CR as
+YAML and, where Flux reconciles the workflow, where in Git to change it.
 
 ## Usage
 

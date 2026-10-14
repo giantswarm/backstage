@@ -32,7 +32,6 @@ import {
   ToolDetail,
   WorkflowExecution,
   WorkflowExecutionListResponse,
-  WorkflowGetResponse,
   WorkflowListResponse,
   McpUsage,
   WorkflowStats,
@@ -142,16 +141,6 @@ export class MusterApiClient implements MusterApi {
 
   async listWorkflows(): Promise<WorkflowListResponse> {
     return this.get<WorkflowListResponse>('/workflows');
-  }
-
-  async getWorkflow(
-    name: string,
-    installation?: string,
-  ): Promise<WorkflowGetResponse> {
-    return this.get<WorkflowGetResponse>(
-      `/workflows/${encodeURIComponent(name)}`,
-      installation,
-    );
   }
 
   async listExecutions(

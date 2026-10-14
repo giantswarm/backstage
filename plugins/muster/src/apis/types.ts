@@ -4,47 +4,6 @@
  * REST proxy.
  */
 
-export interface WorkflowArgDefinition {
-  type: string;
-  required?: boolean;
-  description?: string;
-  default?: unknown;
-}
-
-export interface WorkflowConditionExpectation {
-  success?: boolean;
-  json_path?: Record<string, unknown>;
-}
-
-export interface WorkflowCondition {
-  tool?: string;
-  args?: Record<string, unknown>;
-  from_step?: string;
-  expect?: WorkflowConditionExpectation;
-  expect_not?: WorkflowConditionExpectation;
-}
-
-export interface WorkflowStep {
-  id: string;
-  tool: string;
-  args?: Record<string, unknown>;
-  condition?: WorkflowCondition;
-  allow_failure?: boolean;
-  outputs?: Record<string, unknown>;
-  store?: boolean;
-  description?: string;
-}
-
-export interface Workflow {
-  name: string;
-  description?: string;
-  args?: Record<string, WorkflowArgDefinition>;
-  steps: WorkflowStep[];
-  available?: boolean;
-  createdAt?: string;
-  lastModified?: string;
-}
-
 export interface WorkflowListItem {
   name: string;
   description?: string;
@@ -53,11 +12,6 @@ export interface WorkflowListItem {
 
 export interface WorkflowListResponse {
   workflows: WorkflowListItem[] | null;
-}
-
-export interface WorkflowGetResponse {
-  workflow: Workflow;
-  yaml?: string;
 }
 
 /** Execution status reported by muster; steps additionally use `skipped`. */
@@ -549,11 +503,6 @@ export interface MusterApi {
   /** The muster installations the proxy can target. */
   listInstallations(): Promise<MusterInstallationsResponse>;
   listWorkflows(): Promise<WorkflowListResponse>;
-  /** Full definition + raw YAML for one workflow (one installation). */
-  getWorkflow(
-    name: string,
-    installation?: string,
-  ): Promise<WorkflowGetResponse>;
   listExecutions(
     options?: ListExecutionsOptions,
   ): Promise<WorkflowExecutionListResponse>;

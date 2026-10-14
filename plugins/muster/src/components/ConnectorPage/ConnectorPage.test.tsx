@@ -4,7 +4,10 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PageHeaderActionsProvider,
+  ShellScopeProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockPhoneLayout,
   type MockedLayout,
@@ -217,21 +220,24 @@ async function renderAt(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <QueryClientProvider client={queryClient}>
-      <PageHeaderActionsProvider>
-        <Routes>
-          {/* The connector wizard, where Edit leads. */}
-          <Route
-            path="/agent-platform/connectors/new"
-            element={<LocationProbe />}
-          />
-          <Route
-            path="/agent-platform/connectors/:server/*"
-            element={<ConnectorPage usedBy={usedBy} />}
-          />
-        </Routes>
-      </PageHeaderActionsProvider>
-    </QueryClientProvider>,
+    // The shell mounts the scope around its pages, as the app does.
+    <ShellScopeProvider>
+      <QueryClientProvider client={queryClient}>
+        <PageHeaderActionsProvider>
+          <Routes>
+            {/* The connector wizard, where Edit leads. */}
+            <Route
+              path="/agent-platform/connectors/new"
+              element={<LocationProbe />}
+            />
+            <Route
+              path="/agent-platform/connectors/:server/*"
+              element={<ConnectorPage usedBy={usedBy} />}
+            />
+          </Routes>
+        </PageHeaderActionsProvider>
+      </QueryClientProvider>
+    </ShellScopeProvider>,
     {
       initialRouteEntries: [path],
       apis: [[musterApiRef, api as never]],
@@ -392,17 +398,17 @@ describe('ConnectorPage', () => {
     const searchbox = () =>
       screen.getByRole('searchbox', { name: 'Search tools' });
     expect(
-      await screen.findByRole('button', { name: /search_issues/ }),
+      await screen.findByRole('link', { name: /search_issues/ }),
     ).toBeInTheDocument();
     expect(searchbox()).toHaveValue('search');
-    expect(screen.queryByRole('button', { name: /add_comment/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /add_comment/ })).toBeNull();
 
     // The address's search, back from Details.
     await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
     await screen.findByRole('region', { name: 'Connector details' });
     await userEvent.click(screen.getByRole('tab', { name: /^Tools/ }));
     expect(searchbox()).toHaveValue('search');
-    expect(screen.queryByRole('button', { name: /add_comment/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /add_comment/ })).toBeNull();
 
     // And one typed on the tab, which the address does not carry.
     await userEvent.clear(searchbox());
@@ -411,19 +417,22 @@ describe('ConnectorPage', () => {
     await userEvent.click(screen.getByRole('tab', { name: /^Tools/ }));
     expect(searchbox()).toHaveValue('comment');
     expect(
-      screen.getByRole('button', { name: /add_comment/ }),
+      screen.getByRole('link', { name: /add_comment/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /search_issues/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /search_issues/ })).toBeNull();
   });
 
-  it('lists a few tools without search or filter and tries one inline', async () => {
-    const api = await renderAt(`${BASE}/jira`);
+  it('lists a few tools without search or filter, each a link to its page', async () => {
+    await renderAt(`${BASE}/jira?installation=gazelle`);
 
     expect(
-      await screen.findByRole('button', { name: /search_issues/ }),
-    ).toBeInTheDocument();
+      await screen.findByRole('link', { name: /search_issues/ }),
+    ).toHaveAttribute(
+      'href',
+      `${BASE}/jira/tools/x_jira_search_issues?installation=gazelle`,
+    );
     expect(
-      screen.getByRole('button', { name: /add_comment/ }),
+      screen.getByRole('link', { name: /add_comment/ }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/get_pods/)).not.toBeInTheDocument();
     // Two tools are read, not searched (the filter is covered at scale in
@@ -432,32 +441,8 @@ describe('ConnectorPage', () => {
       screen.queryByRole('searchbox', { name: 'Search tools' }),
     ).toBeNull();
     expect(screen.queryByRole('radio', { name: /Reads/ })).toBeNull();
-
-    await userEvent.click(
-      screen.getByRole('button', { name: /search_issues/ }),
-    );
-    expect(await screen.findByText('Try it')).toBeInTheDocument();
-    expect(
-      await screen.findByText('Runs as you. Nothing is changed.'),
-    ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-    await waitFor(() =>
-      expect(api.callTool).toHaveBeenCalledWith(
-        'x_jira_search_issues',
-        {},
-        'gazelle',
-      ),
-    );
-  });
-
-  it('does not promise that a tool which changes things changes nothing', async () => {
-    await renderAt(`${BASE}/jira`);
-
-    await userEvent.click(
-      await screen.findByRole('button', { name: /add_comment/ }),
-    );
-    expect(await screen.findByText('Runs as you.')).toBeInTheDocument();
-    expect(screen.queryByText(/Nothing is changed/)).not.toBeInTheDocument();
+    // Trying a tool is its page's: nothing runs from the list.
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
   });
 
   it('shows the attached Used by tab with the connector as its target', async () => {
@@ -733,14 +718,16 @@ describe('ConnectorPage Details tab', () => {
     await renderAt(`${BASE}/jira/details`);
     await userEvent.click(foldOut());
 
-    // bui's body-small (12px) is lifted to body-medium's size on this tab.
+    // FactList sets its labels and values, Mono among them, in bui's
+    // body-medium (14px) inside the shell.
     for (const text of [
       '1 of 1 instance healthy',
       'muster/jira',
       'Auto start',
     ]) {
-      expect(getComputedStyle(screen.getByText(text)).fontSize).toBe(
-        'var(--bui-font-size-3)',
+      expect(screen.getByText(text)).toHaveAttribute(
+        'data-variant',
+        'body-medium',
       );
     }
   });

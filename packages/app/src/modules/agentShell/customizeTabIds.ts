@@ -5,6 +5,7 @@ export const CUSTOMIZE_TAB_IDS = [
   'connectors',
   'models',
   'workflows',
+  'workspaces',
 ] as const;
 
 export type CustomizeTabId = (typeof CUSTOMIZE_TAB_IDS)[number];

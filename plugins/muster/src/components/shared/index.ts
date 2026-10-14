@@ -53,7 +53,11 @@ export type { ServerSignInState, SignInNoun } from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';
-export type { ServerPageLinks, ServerPageTab } from './useServerPageLinks';
+export type {
+  ServerPageLinks,
+  ServerPageTab,
+  ToolsListView,
+} from './useServerPageLinks';
 export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
 export { familyHealthLabel } from './familyHealth';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';

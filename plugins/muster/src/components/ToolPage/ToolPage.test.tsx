@@ -33,6 +33,17 @@ jest.mock('../MusterInstanceProvider', () => ({
         } as never,
         'gazelle',
       ),
+      new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'jira', namespace: 'muster' },
+          // Each person signs in with their own account: calls run as them.
+          spec: { type: 'streamable-http', auth: { type: 'oauth' } },
+          status: { state: 'Connected' },
+        } as never,
+        'gazelle',
+      ),
     ],
     workflows: [],
     isLoading: false,
@@ -49,13 +60,18 @@ jest.mock('../MusterInstanceProvider', () => ({
 function makeApi() {
   return {
     filterTools: jest.fn(async () => ({
-      total: 1,
-      tools: [{ name: 'x_aws-root_list_buckets' }],
+      total: 3,
+      tools: [
+        { name: 'x_aws-root_list_buckets' },
+        { name: 'x_jira_search_issues' },
+        { name: 'x_jira_add_comment' },
+      ],
     })),
     describeTool: jest.fn(async (name: string) => ({
       name,
       description: 'List the buckets of the account.',
-      annotations: { readOnlyHint: true },
+      // Only adding a comment changes anything.
+      annotations: { readOnlyHint: !name.endsWith('add_comment') },
       inputSchema: {
         type: 'object',
         properties: { region: { type: 'string', description: 'AWS region' } },
@@ -111,16 +127,59 @@ describe('ToolPage', () => {
     expect(
       await screen.findByText('List the buckets of the account.'),
     ).toBeInTheDocument();
-    // Once, beside the title: the panel shows no markers of its own.
-    expect(screen.getAllByText('read-only')).toHaveLength(1);
+    // Once, beside the title, as the Tools list's row says it: the panel
+    // shows no badge of its own.
+    expect(screen.getAllByText('Reads')).toHaveLength(1);
     expect(screen.getByText('Input schema')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Execute' }));
-    expect(await screen.findByText('Result')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Try it' }),
+    ).toBeInTheDocument();
+    // Read-only and run with the portal's own credentials.
+    expect(screen.getByText('Nothing is changed.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
     expect(api.callTool).toHaveBeenCalledWith(
       'x_aws-root_list_buckets',
       {},
       'gazelle',
+    );
+  });
+
+  it('says a tool of a connector each person signs in to runs as them', async () => {
+    await renderAt(
+      `${BASE}/jira/tools/x_jira_search_issues?installation=gazelle`,
+    );
+    expect(
+      await screen.findByText('Runs as you. Nothing is changed.'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not promise that a tool which changes things changes nothing', async () => {
+    await renderAt(
+      `${BASE}/jira/tools/x_jira_add_comment?installation=gazelle`,
+    );
+    expect(await screen.findByText('Runs as you.')).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing is changed/)).not.toBeInTheDocument();
+    // The Tools list's word for it, never the server's "destructive".
+    expect(screen.getByText('Changes things')).toBeInTheDocument();
+    expect(screen.queryByText(/destructive/i)).not.toBeInTheDocument();
+  });
+
+  it('leads back to the Tools search and filter it was opened from', async () => {
+    await renderAt(
+      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle&q=list&effect=reads`,
+    );
+    expect(
+      within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
+        'link',
+        { name: 'aws-root' },
+      ),
+    ).toHaveAttribute(
+      'href',
+      `${BASE}/aws-root?installation=gazelle&q=list&effect=reads`,
     );
   });
 

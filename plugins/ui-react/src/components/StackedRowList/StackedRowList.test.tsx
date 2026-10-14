@@ -159,6 +159,37 @@ describe('StackedRowList', () => {
     expect(screen.getByText('Waiting for a GPU node.')).toBeInTheDocument();
   });
 
+  it('draws a description under the facts and above the details, outside the pressable layer', () => {
+    render(
+      <StackedRowList
+        aria-label="Tools"
+        rows={[
+          {
+            id: 'search',
+            title: 'search_issues',
+            href: '/tools/search_issues',
+            facts: ['Reads'],
+            description: 'Find tickets with a query.',
+            details: <button type="button">Sign in</button>,
+          },
+        ]}
+      />,
+    );
+
+    const row = screen.getByRole('listitem');
+    const description = within(row).getByText('Find tickets with a query.');
+    const button = within(row).getByRole('button', { name: 'Sign in' });
+    expect(
+      description.compareDocumentPosition(button) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Not inside the details' wrapper, which sits above the row's link.
+    expect(description.parentElement).not.toBe(button.parentElement);
+    expect(description.parentElement).toBe(
+      within(row).getByRole('link').parentElement?.parentElement,
+    );
+  });
+
   it('shows the empty state instead of an empty list', () => {
     render(
       <StackedRowList

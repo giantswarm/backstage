@@ -338,8 +338,29 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Workflow', view: 'overview' },
     ],
     [
+      '/agent-platform/workflows/my-workflow/usage',
+      { page: 'Workflow', view: 'usage' },
+    ],
+    [
+      '/agent-platform/workflows/my-workflow/details',
+      { page: 'Workflow', view: 'details' },
+    ],
+    [
+      '/agent-platform/workflows/my-workflow/usage/',
+      { page: 'Workflow', view: 'usage' },
+    ],
+    // An address the page no longer has only redirects to Overview.
+    [
       '/agent-platform/workflows/my-workflow/run',
-      { page: 'Workflow', view: 'run' },
+      { page: 'Workflow', view: 'redirect' },
+    ],
+    [
+      '/agent-platform/workflows/my-workflow/wp-login.php',
+      { page: 'Workflow', view: 'redirect' },
+    ],
+    [
+      '/agent-platform/workflows/my-workflow/usage/extra',
+      { page: 'Workflow', view: 'redirect' },
     ],
     // The old section's paths, one name and no view, not the Agents page.
     ['/agent-platform/muster', { page: 'Muster (removed)' }],
@@ -655,7 +676,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/mcp-servers',
       '/agent-platform/workflows',
       '/agent-platform/workflows/my-workflow',
-      '/agent-platform/workflows/my-workflow/run',
+      '/agent-platform/workflows/my-workflow/usage',
+      '/agent-platform/workflows/my-workflow/details',
       '/agent-platform',
       '/agent-platform/agents/new',
       '/agent-platform/agents/new/skills',

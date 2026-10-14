@@ -118,3 +118,4 @@ export { useConnectorPageTarget } from './components/ConnectorPage';
 export type { ConnectorPageTarget } from './components/ConnectorPage';
 export { useWorkflowPageTarget } from './components/WorkflowPage';
 export type { WorkflowPageTarget } from './components/WorkflowPage';
+export { WORKFLOW_PAGE_TABS } from './components/WorkflowPage';

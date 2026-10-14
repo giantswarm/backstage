@@ -804,16 +804,6 @@ export async function createRouter(
     res.json(result);
   });
 
-  router.get('/workflows/:name', async (req, res) => {
-    const { config: installation, client } = resolveInstallation(req);
-    const result = await client.callTool(
-      'core_workflow_get',
-      { name: req.params.name },
-      readCallOptions(req, installation),
-    );
-    res.json(result);
-  });
-
   /**
    * Derived run statistics for a workflow. muster exposes no stats tool, so
    * aggregate over a bounded sample of executions. ponytail: single page (cap

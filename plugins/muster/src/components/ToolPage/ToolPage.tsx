@@ -1,5 +1,5 @@
 import { ReactNode, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { Alert, Link } from '@backstage/ui';
 import {
   EmptyStateCard,
@@ -7,6 +7,7 @@ import {
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
+import { toolEffect, ToolEffect } from '../../lib/toolAnnotations';
 import {
   serverPageResolver,
   serverPrefixInfos,
@@ -14,17 +15,19 @@ import {
 } from '../../lib/toolGrouping';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
+  EffectBadge,
   SessionGate,
-  ToolMarkers,
   useServerPageLinks,
   useToolDescription,
   useConnectorGroupPaths,
 } from '../shared';
 import { ToolDetailPanel } from '../ToolDetail';
 import {
+  representativeServer,
   useServersListHref,
   useServerTools,
 } from '../ServerPage/useServerPageData';
+import { runsAsCaller } from '../ConnectorPage/connectorFacts';
 
 /** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
 const TOOL_NAME_STYLE = {
@@ -32,15 +35,34 @@ const TOOL_NAME_STYLE = {
   overflowWrap: 'anywhere',
 } as const;
 
+/** What the Try it section says beside its Run button for a tool. */
+export function tryItNote(
+  effect: ToolEffect,
+  asCaller: boolean,
+): string | undefined {
+  const parts = [
+    asCaller ? 'Runs as you.' : undefined,
+    effect === 'reads' ? 'Nothing is changed.' : undefined,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : undefined;
+}
+
 /**
  * One tool's page, beneath the server offering it: its short and full name,
- * markers, description and input schema, and the typed argument form that runs
+ * what it does, description and input schema, and the typed argument form that runs
  * it, on a page of its own beneath the server. A family's
  * grouped tool asks for the family's instance argument like any other
  * required parameter.
  */
 export function ToolPage() {
   const { server: key = '', tool = '' } = useParams();
+  // The Tools search and filter the tool was opened from: the way back
+  // keeps them.
+  const params = new URLSearchParams(useLocation().search);
+  const toolsView = {
+    q: params.get('q') ?? undefined,
+    effect: params.get('effect')?.split(',').filter(Boolean),
+  };
   const paths = useConnectorGroupPaths();
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
@@ -72,13 +94,20 @@ export function ToolPage() {
   const offered =
     Boolean(listed) ||
     (serverTools.truncated && pageOfTool(tool) === serverKey);
-  // The panel's request, so the markers beside the name cost nothing extra.
+  // The panel's request, so the badge beside the name costs nothing extra.
   const described = useToolDescription(tool, activeInstallation, {
     enabled: offered && session.authenticated,
   });
   const annotations = described.data?.annotations ?? listed?.annotations;
+  // What it does, as the Tools list's row says it; only once the tool is
+  // read, so an unread tool is not called one that changes things.
+  const known = Boolean(described.data ?? listed);
 
-  const toolsHref = links.server(serverKey, activeInstallation);
+  const toolsHref = links.server(serverKey, activeInstallation, toolsView);
+  const representative =
+    row && activeInstallation
+      ? representativeServer(row, activeInstallation)?.server
+      : undefined;
   let body: ReactNode;
   if (isLoadingInstallations || isLoading) {
     body = <LoadingIndicator label="Reading the environment's connectors…" />;
@@ -108,9 +137,7 @@ export function ToolPage() {
       />
     );
   } else if (!row || !offered) {
-    const serverHref = row
-      ? links.server(serverKey, activeInstallation)
-      : listHref;
+    const serverHref = row ? toolsHref : listHref;
     body = (
       <EmptyStateCard
         title={`No tool “${tool}” on ${activeInstallation}`}
@@ -136,7 +163,10 @@ export function ToolPage() {
         key={`${activeInstallation}/${tool}`}
         name={tool}
         installation={activeInstallation}
-        showMarkers={false}
+        note={tryItNote(
+          toolEffect({ annotations }),
+          representative ? runsAsCaller(representative) : false,
+        )}
       />
     );
   }
@@ -164,7 +194,9 @@ export function ToolPage() {
         { label: serverKey, href: toolsHref },
         { label: shortName },
       ]}
-      badges={<ToolMarkers annotations={annotations} />}
+      badges={
+        known ? <EffectBadge effect={toolEffect({ annotations })} /> : undefined
+      }
       meta={exposedAs}
     >
       {body}
