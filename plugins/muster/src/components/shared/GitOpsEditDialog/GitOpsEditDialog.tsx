@@ -1,4 +1,4 @@
-import { ReactNode, useMemo } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import { Flex, Skeleton, Text } from '@backstage/ui';
 import {
   GitOpsSource,
@@ -8,12 +8,13 @@ import {
   ExternalLink,
   ManifestDialog,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { MCPServer } from '../../../lib/k8s';
+import { MCPServer, MusterWorkflow } from '../../../lib/k8s';
 import {
   gitOpsManagerDescription,
   isChartRendered,
   qualifiedName,
   readProvenance,
+  resourceKind,
   toManifestYaml,
 } from '../../../lib/gitops';
 
@@ -65,33 +66,51 @@ function SourceStep({
   );
 }
 
-/**
- * How to change a GitOps-managed server in Git: GitOps-managed servers are
- * read-only in the app, since the reconciler would revert a live change. The
- * steps depend on what is in Git — the MCPServer manifest itself, or the
- * values of the HelmRelease that renders it. Render it for a managed server
- * only: it looks the server's GitOps source up. The shared `ManifestDialog`
- * with the steps above the manifest (none for a chart-rendered server, whose
- * rendered manifest is not what anyone edits).
- */
-export function GitOpsEditDialog({
-  server,
-  isOpen,
-  onOpenChange,
-}: {
-  server: MCPServer;
+export type GitOpsEditDialogProps = {
+  /** The GitOps-managed resource: a connector's MCPServer or a Workflow. */
+  resource: MCPServer | MusterWorkflow;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-}) {
-  const source = useGitOpsSource(server, server.cluster);
-  // Always mounted, so only serialised while it is shown.
+};
+
+/**
+ * How to change a GitOps-managed connector or workflow in Git: GitOps-managed
+ * resources are read-only in the app, since the reconciler would revert a live
+ * change. The steps depend on what is in Git — the resource's manifest itself,
+ * or the values of the HelmRelease that renders it. Render it for a managed
+ * resource only: it looks the resource's GitOps source up. The shared
+ * `ManifestDialog` with the steps above the manifest (none for a
+ * chart-rendered resource, whose rendered manifest is not what anyone edits).
+ * The connector and workflow pages open it from "Edit in Git…" in their menu.
+ *
+ * Mounted from its first opening on, so a page view that never opens it
+ * makes none of the source lookups (up to four Flux reads), and it stays
+ * mounted after that for its close animation.
+ */
+export function GitOpsEditDialog(props: GitOpsEditDialogProps) {
+  const [opened, setOpened] = useState(props.isOpen);
+  if (props.isOpen && !opened) {
+    setOpened(true);
+  }
+  return opened ? <GitOpsEditDialogContent {...props} /> : null;
+}
+
+function GitOpsEditDialogContent({
+  resource,
+  isOpen,
+  onOpenChange,
+}: GitOpsEditDialogProps) {
+  const source = useGitOpsSource(resource, resource.cluster);
+  // Kept mounted once opened, so only serialised while it is shown.
   const manifest = useMemo(
-    () => (isOpen ? toManifestYaml(server) : ''),
-    [isOpen, server],
+    () => (isOpen ? toManifestYaml(resource) : ''),
+    [isOpen, resource],
   );
-  const name = server.getName();
-  const namespace = server.getNamespace();
-  const provenance = readProvenance(server);
+  const name = resource.getName();
+  const namespace = resource.getNamespace();
+  const kind = resourceKind(resource);
+  const noun = resource instanceof MusterWorkflow ? 'workflow' : 'connector';
+  const provenance = readProvenance(resource);
   const manager = gitOpsManagerDescription(provenance);
   const chartRendered =
     Boolean(source.helmRelease) || isChartRendered(provenance);
@@ -129,8 +148,9 @@ export function GitOpsEditDialog({
         </li>
         <li>
           To edit, change the values entry that renders <code>{name}</code>. To
-          remove, delete that entry. Don&apos;t edit or add an MCPServer file:
-          the chart would render the server again.
+          remove, delete that entry. Do not edit or add a{' '}
+          <code>kind: {kind}</code> document: the chart would render the {noun}{' '}
+          again.
         </li>
         <li>Open a {changeRequest}. Once merged, Flux applies it.</li>
       </ol>
@@ -143,7 +163,7 @@ export function GitOpsEditDialog({
         </li>
         <li>
           Below that directory, find the YAML document that declares{' '}
-          <code>kind: MCPServer</code> with <code>name: {name}</code>
+          <code>kind: {kind}</code> with <code>name: {name}</code>
           {namespace ? (
             <>
               {' '}
