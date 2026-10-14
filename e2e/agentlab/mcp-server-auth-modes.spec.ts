@@ -25,9 +25,10 @@ test('Connectors: the table and the connector page name the fixture’s sign-in 
   ).toBeVisible();
 
   await row.getByRole('rowheader').click();
+  await admin.getByRole('tab', { name: 'Details', exact: true }).click();
   await expect(
     admin
-      .getByRole('complementary', { name: 'Connector details' })
+      .getByRole('region', { name: 'Connector details' })
       .getByText('Each person signs in with their own account', {
         exact: true,
       }),

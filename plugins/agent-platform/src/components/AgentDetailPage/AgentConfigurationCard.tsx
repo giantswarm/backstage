@@ -13,6 +13,7 @@ import {
 import {
   DateComponent,
   InfoCard,
+  MONO,
   NotAvailable,
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -23,7 +24,6 @@ import type { ClientServingSummary } from '../../lib/serving';
 import { bindsGateway, describeToolset } from '../../lib/toolset';
 import { deploymentDetailsExternalRouteRef } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
-import { MONO } from '../Mono';
 import { FailureMarker } from './FailureMarker';
 import {
   describeToolScope,

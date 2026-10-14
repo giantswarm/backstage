@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Flex, List, ListRow, Text } from '@backstage/ui';
+import { Alert, Flex, Link, List, ListRow, Text } from '@backstage/ui';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ConnectorPageTarget,
@@ -76,36 +76,44 @@ function UsedByList({ target }: { target: ConnectorPageTarget }) {
         <ShowMore items={using} initial={USED_BY_ROWS} noun="agent" revealAll>
           {shown => (
             <List aria-label="Agents using this connector">
-              {shown.map(({ row, access }) => (
-                <ListRow
-                  key={row.id}
-                  id={row.id}
-                  href={agentDetailRoute?.({
-                    installation: row.installation,
-                    namespace: row.namespace,
-                    name: row.technicalName,
-                  })}
-                  icon={
-                    <AgentAvatar
-                      size="small"
-                      purpose="decoration"
-                      name={row.name}
-                      src={
-                        buildAvatarUrl(row.installation, row.technicalName, {
-                          size: AVATAR_SIZE,
-                        }) ?? ''
-                      }
-                    />
-                  }
-                  customActions={
-                    <Text variant="body-small" color="secondary">
-                      {access}
-                    </Text>
-                  }
-                >
-                  {row.name}
-                </ListRow>
-              ))}
+              {shown.map(({ row, access }) => {
+                // The agent's page; its installation is in the path.
+                const href = agentDetailRoute?.({
+                  installation: row.installation,
+                  namespace: row.namespace,
+                  name: row.technicalName,
+                });
+                return (
+                  <ListRow
+                    key={row.id}
+                    id={row.id}
+                    href={href}
+                    textValue={row.name}
+                    icon={
+                      <AgentAvatar
+                        size="small"
+                        purpose="decoration"
+                        name={row.name}
+                        src={
+                          buildAvatarUrl(row.installation, row.technicalName, {
+                            size: AVATAR_SIZE,
+                          }) ?? ''
+                        }
+                      />
+                    }
+                    customActions={
+                      <Text variant="body-small" color="secondary">
+                        {access}
+                      </Text>
+                    }
+                  >
+                    {/* A real link on the name, as the shell's rows have: the
+                      row's own href navigates on a press but is no anchor to
+                      open in a new tab or read on hover. */}
+                    {href ? <Link href={href}>{row.name}</Link> : row.name}
+                  </ListRow>
+                );
+              })}
             </List>
           )}
         </ShowMore>
