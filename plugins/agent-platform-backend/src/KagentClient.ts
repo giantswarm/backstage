@@ -179,6 +179,36 @@ export const REQUEST_ID_HEADER = 'x-request-id';
 /** Longest upstream message carried into a failed-read log line. */
 const MAX_LOGGED_ERROR = 300;
 
+/**
+ * How long a session delete waits, between attempts, for the session's last
+ * turn to settle.
+ *
+ * Right after a turn ends the controller still runs the turn's runtime cleanup
+ * and refuses to begin the delete (`FailedPrecondition`, "not yet settled");
+ * a moment later the same delete goes through. The person pressed Delete once,
+ * so the backend retries that one refusal with a doubling backoff. The waits
+ * add up to about 16 s, which keeps the attempts and their own request
+ * timeouts inside the front door's 60 s; a session still unsettled after them
+ * answers the 409 with kagent's reason.
+ */
+export const DELETE_SETTLE_RETRY_DELAYS_MS: readonly number[] = [
+  250, 500, 1_000, 2_000, 4_000, 4_000, 4_000,
+];
+
+/** Whether a `FailedPrecondition` reason is the controller waiting for a turn to settle. */
+function isNotYetSettledReason(reason: string): boolean {
+  return reason.includes('not yet settled');
+}
+
+/** The controller's refusal to begin a Session operation while a turn settles. */
+function isNotYetSettled(error: unknown): boolean {
+  const connectError = ConnectError.from(error);
+  return (
+    connectError.code === Code.FailedPrecondition &&
+    isNotYetSettledReason(connectError.rawMessage)
+  );
+}
+
 /** Who a call is made as. */
 export interface KagentRequestOptions {
   /**
@@ -340,6 +370,8 @@ export class KagentClient {
     private readonly timeoutMs: number = DEFAULT_KAGENT_TIMEOUT_MS,
     /** Separate budget for {@link sendMessage}, which waits out a whole turn. */
     private readonly turnTimeoutMs: number = DEFAULT_KAGENT_TURN_TIMEOUT_MS,
+    /** Overridable for tests; see {@link DELETE_SETTLE_RETRY_DELAYS_MS}. */
+    private readonly deleteRetryDelaysMs: readonly number[] = DELETE_SETTLE_RETRY_DELAYS_MS,
   ) {
     this.transport = transport ?? createKagentTransport(installation);
   }
@@ -803,23 +835,45 @@ export class KagentClient {
   /**
    * `SessionService/DeleteSession` — scoped to the caller, like the reads. The
    * controller answers the session as it moves to `DELETING`, passed through
-   * as `{session}`.
+   * as `{session}`. A refusal because the last turn has not yet settled is
+   * retried; see {@link DELETE_SETTLE_RETRY_DELAYS_MS}.
    */
   async deleteSession(
     sessionId: string,
     options: KagentRequestOptions,
   ): Promise<unknown> {
     const response = await this.call(
-      () =>
-        this.sessionService.deleteSession(
-          { sessionId },
-          this.callOptions(options),
-        ),
+      async () => {
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            return await this.sessionService.deleteSession(
+              { sessionId },
+              this.callOptions(options),
+            );
+          } catch (error) {
+            const delayMs = this.deleteRetryDelaysMs[attempt];
+            if (delayMs === undefined || !isNotYetSettled(error)) {
+              throw error;
+            }
+            this.logger.debug(
+              `kagent session delete waits for the last turn to settle on installation '${this.installation.name}'`,
+              { attempt: attempt + 1, delayMs, requestId: options.requestId },
+            );
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+        }
+      },
       {
         endpoint: 'session delete',
         missingResource: `That session does not exist on installation '${this.installation.name}'.`,
         invalidArgument: () =>
           new InputError('The session id is not a Session id.'),
+        failedPrecondition: reason =>
+          new ConflictError(
+            isNotYetSettledReason(reason)
+              ? `The session on installation '${this.installation.name}' is still settling its last turn; try deleting it again in a moment. (${reason})`
+              : `The kagent API for installation '${this.installation.name}' reported a conflict: ${reason}`,
+          ),
       },
     );
     return toJson(DeleteSessionResponseSchema, response);
