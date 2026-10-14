@@ -295,7 +295,8 @@ export function CustomizeWorkspacesPanel({
       id: 'name',
       label: 'Workspace',
       isRowHeader: true,
-      defaultWidth: '2fr',
+      defaultWidth: '3fr',
+      minWidth: 200,
       cell: row => (
         <CellText
           title={row.name}
@@ -311,7 +312,7 @@ export function CustomizeWorkspacesPanel({
     {
       id: 'sources',
       label: 'Sources',
-      defaultWidth: '3fr',
+      defaultWidth: '2fr',
       cell: row => <CellText title={sourcesLabel(row.sources)} />,
     },
     {
@@ -326,6 +327,8 @@ export function CustomizeWorkspacesPanel({
       id: 'stored',
       label: 'Stored',
       defaultWidth: '1fr',
+      // Fits "1023.9 MiB of 100Gi ↑" without cutting it.
+      minWidth: 168,
       cell: row => <StoredCell row={row} />,
     },
     {
