@@ -309,10 +309,10 @@ describe('WorkspaceEditorPage', () => {
       source(0).getByRole('button', { name: 'mcp', pressed: true }),
     ).toBeInTheDocument();
     expect(
-      source(0).getByRole('button', { name: 'All of', pressed: true }),
+      source(0).getByRole('radio', { name: 'All of', checked: true }),
     ).toBeInTheDocument();
 
-    fireEvent.click(source(0).getByRole('button', { name: 'Any of' }));
+    fireEvent.click(source(0).getByRole('radio', { name: 'Any of' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(fake.callsOf('update_workspace')).toHaveLength(1));
     expect(fake.callsOf('update_workspace')[0]).toEqual({
