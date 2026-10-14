@@ -2,12 +2,11 @@ import { useLayoutEffect } from 'react';
 import { Progress } from '@backstage/core-components';
 import type { IdentityApi } from '@backstage/core-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
-import { makeStyles, useTheme } from '@material-ui/core/styles';
-import { GiantSwarmLogoFull } from '../../../assets/logo';
-import { useBranding } from '../../branding';
+import { makeStyles } from '@material-ui/core/styles';
 import { useAgentShellArea } from '../agentArea';
 import { setAgentShellMark } from '../AgentShellThemeRoot/useAgentShellAttribute';
 import { agentShellLightColors } from '../theme';
+import { SIGN_IN_LOGO_HEIGHT, SignInLogo } from './SignInLogo';
 import {
   type ShellSignInProvider,
   useProviderSignIn,
@@ -41,27 +40,15 @@ const useStyles = makeStyles({
   },
   title: {
     margin: 0,
+    // Holds the logo's row while the branding manifest loads, so the
+    // buttons do not move down when the logo arrives.
+    minHeight: SIGN_IN_LOGO_HEIGHT,
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'center',
   },
   fullWidth: {
     width: '100%',
-  },
-});
-
-const useLogoStyles = makeStyles({
-  logo: {
-    // The lockup is ~5.3:1: 40px high is ~210px wide, which fits the card
-    // down to a 320px phone. Never stretched, so only the height is set.
-    display: 'block',
-    width: 'auto',
-    height: 40,
-    maxWidth: '100%',
-  },
-  logoSvg: {
-    // The wordmark is `currentColor`, the ant keeps its brand colors. On a
-    // light surface the wordmark is Giant Swarm Blue, on a dark one white.
-    color: ({ dark }: { dark: boolean }) => (dark ? '#ffffff' : '#002645'),
   },
 });
 
@@ -84,44 +71,6 @@ function useShellDocumentMark() {
     setAgentShellMark(true);
     return () => setAgentShellMark(false);
   }, [ownedByThemeRoot]);
-}
-
-/**
- * The logo the sign-in card leads with: the full Giant Swarm lockup, or the
- * deployment's own home page logo (`home-logo-light|dark.*`, `home-logo.*`;
- * see docs/branding.md) — the card is a content surface, like the home page,
- * not the sidebar. The shell is light-only today, but both follow the theme
- * like `HomeLogo`, so a dark shell gets the white wordmark.
- */
-function SignInLogo() {
-  const theme = useTheme();
-  const dark = theme.palette.type === 'dark';
-  const classes = useLogoStyles({ dark });
-  const { hasAsset, getAssetUrl, isLoading } = useBranding();
-
-  // Nothing until the manifest is in, so a branded deployment never shows
-  // the Giant Swarm logo first.
-  if (isLoading) {
-    return null;
-  }
-
-  const variant = dark ? 'dark' : 'light';
-  const customAsset = [
-    `home-logo-${variant}.svg`,
-    `home-logo-${variant}.png`,
-    'home-logo.svg',
-    'home-logo.png',
-  ].find(name => hasAsset(name));
-
-  if (customAsset) {
-    return (
-      <img className={classes.logo} src={getAssetUrl(customAsset)} alt="Logo" />
-    );
-  }
-
-  return (
-    <GiantSwarmLogoFull className={`${classes.logo} ${classes.logoSvg}`} />
-  );
 }
 
 export interface ShellSignInPageProps {
@@ -157,9 +106,9 @@ export function ShellSignInPage({
     <main className={classes.page}>
       <section className={classes.card} aria-labelledby="shell-sign-in-title">
         <Flex direction="column" gap="6">
-          {/* The full logo is the title: its label, "Giant Swarm", is the
-              heading's name and the card's. The lockup carries the wordmark,
-              so no text sits beside it. */}
+          {/* The logo is the title: its name ("Giant Swarm", or the
+              portal's for a custom logo) is the heading's and the card's.
+              The logo carries the wordmark, so no text sits beside it. */}
           <h1 id="shell-sign-in-title" className={classes.title}>
             <SignInLogo />
           </h1>

@@ -8,18 +8,18 @@ Assets are placed into a directory on the backend's filesystem and served by the
 
 ## Supported assets
 
-| Filename                                       | Purpose                                                                          |
-| ---------------------------------------------- | -------------------------------------------------------------------------------- |
-| `logo-full.svg` or `logo-full.png`             | Wide logo shown in the expanded sidebar                                          |
-| `logo-icon.svg` or `logo-icon.png`             | Narrow icon shown in the collapsed sidebar                                       |
-| `home-logo.svg` or `home-logo.png`             | Large logo shown at the top of the home page and the Agent Platform sign-in page |
-| `home-logo-light.svg` or `home-logo-light.png` | Home page logo used when the light theme is active (falls back to `home-logo.*`) |
-| `home-logo-dark.svg` or `home-logo-dark.png`   | Home page logo used when the dark theme is active (falls back to `home-logo.*`)  |
-| `favicon.ico`                                  | Browser tab icon                                                                 |
-| `favicon-16x16.png`                            | 16×16 icon variant                                                               |
-| `favicon-32x32.png`                            | 32×32 icon variant                                                               |
-| `apple-touch-icon.png`                         | iOS home screen icon                                                             |
-| `safari-pinned-tab.svg`                        | Safari pinned tab mask icon                                                      |
+| Filename                                       | Purpose                                                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `logo-full.svg` or `logo-full.png`             | Wide logo shown in the expanded sidebar, and on the Agent Platform sign-in page when there is no `home-logo*` |
+| `logo-icon.svg` or `logo-icon.png`             | Narrow icon shown in the collapsed sidebar                                                                    |
+| `home-logo.svg` or `home-logo.png`             | Large logo shown at the top of the home page and the Agent Platform sign-in page                              |
+| `home-logo-light.svg` or `home-logo-light.png` | Home page and sign-in page logo used when the light theme is active (falls back to `home-logo.*`)             |
+| `home-logo-dark.svg` or `home-logo-dark.png`   | Home page and sign-in page logo used when the dark theme is active (falls back to `home-logo.*`)              |
+| `favicon.ico`                                  | Browser tab icon                                                                                              |
+| `favicon-16x16.png`                            | 16×16 icon variant                                                                                            |
+| `favicon-32x32.png`                            | 32×32 icon variant                                                                                            |
+| `apple-touch-icon.png`                         | iOS home screen icon                                                                                          |
+| `safari-pinned-tab.svg`                        | Safari pinned tab mask icon                                                                                   |
 
 All assets are optional. Only assets that are present in the directory will override their defaults.
 
@@ -121,6 +121,8 @@ Giant Swarm branding covers the app's visual identity:
 - **Logo** — the horizontal lockup from [`giantswarm/brand`](https://github.com/giantswarm/brand) (`logo/standard`), vendored as React components in `packages/app/src/assets/logo/`. `GiantSwarmLogoFull` keeps the ant's brand colors and renders the wordmark in `currentColor`, so one asset works on both the dark sidebar and light content surfaces. `GiantSwarmMark` is the ant on its own, for the collapsed sidebar rail. Both crop the same artwork (`GiantSwarmAntPaths`) using the same vertical framing, so the ant does not move when the sidebar expands — see the note on `ANT_VIEW_BOX` before re-cropping it. Per the styleguide the lockup must not be stretched, recolored, or given effects.
 - **Icon glyph** — `GiantSwarmIconPaths` is a separate single-color ant that renders in `currentColor`, used by `GiantSwarmIcon` for places where the ant is a UI icon rather than a logo: the auth provider list in settings and the app's icon bundle. `safari-pinned-tab.svg` is a single-color mask too, which Safari fills with the `color` set on its `<link>` tag (Giant Swarm Orange).
 - **Favicons and app icons** — the full-color ant on a full-bleed Giant Swarm Blue tile, cropped from the ant group's bounding box (`99.98, 95.29, 68.74 × 61.45` in the lockup's user space) and scaled to 92% of the tile width, below which the eye markings stop reading at 16px. Keep the tile square: `qlmanage` rasterises onto an opaque white background, so a rounded rect bakes white corners into the PNG. After regenerating, check the corner pixels are `#002645`.
+
+The Agent Platform sign-in page shows the lockup in the brand file's own colors (`GIANT_SWARM_WORDMARK_COLOR`, `#234A61`, for the wordmark) in every theme. The home page and the sidebar recolor the wordmark: `#002645` on the light home page, white on the dark home page and the sidebar.
 
 The sidebar wordmark is white, which assumes a dark sidebar. A deployment that sets a light `navigation.background` should supply its own `logo-full.svg`/`logo-icon.svg` rather than expect the Giant Swarm lockup to recolor itself.
 

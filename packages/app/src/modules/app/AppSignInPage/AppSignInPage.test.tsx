@@ -8,7 +8,7 @@ import {
 import { screen } from '@testing-library/react';
 import { AppSignInPage } from './AppSignInPage';
 
-jest.mock('../../branding', () => ({
+jest.mock('../../branding/useBranding', () => ({
   useBranding: () => ({
     isLoading: false,
     hasAsset: () => false,

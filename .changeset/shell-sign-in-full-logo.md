@@ -2,4 +2,4 @@
 'app': patch
 ---
 
-The Agent Platform sign-in page leads with the full Giant Swarm logo instead of the ant beside "Agent Platform". A deployment with its own home page logo (`home-logo-light.*` or `home-logo.*`) sees that logo there instead.
+The Agent Platform sign-in page leads with the full Giant Swarm logo, in the brand's own colors, instead of the ant beside "Agent Platform". A branded deployment sees its own logo there instead: its home page logo (`home-logo-light|dark.*`, `home-logo.*`), else its expanded sidebar logo (`logo-full.*`), named after the portal's `app.title`.

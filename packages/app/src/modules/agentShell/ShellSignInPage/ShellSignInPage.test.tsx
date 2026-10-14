@@ -9,7 +9,7 @@ import {
 } from './useProviderSignIn';
 
 const mockBrandingAssets: string[] = [];
-jest.mock('../../branding', () => ({
+jest.mock('../../branding/useBranding', () => ({
   useBranding: () => ({
     isLoading: false,
     hasAsset: (name: string) => mockBrandingAssets.includes(name),
@@ -77,7 +77,9 @@ function renderPage({
     <ShellSignInPage onSignInSuccess={onSignInSuccess} providers={options} />,
     {
       initialRouteEntries: [path],
-      config: { app: { portals: { agentPlatform: true } } },
+      config: {
+        app: { title: 'Acme Portal', portals: { agentPlatform: true } },
+      },
       apis: [analytics, [mainRef, main], [fallbackRef, fallback]],
     },
   );
@@ -109,18 +111,28 @@ describe('ShellSignInPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows a deployment’s own home page logo instead', async () => {
-    mockBrandingAssets.push('home-logo.svg', 'home-logo-light.png');
+  it('names the title and the card after the portal for a custom logo', async () => {
+    mockBrandingAssets.push('home-logo.svg');
+    renderPage();
+
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: 'Acme Portal',
+    });
+    expect(within(heading).getByRole('img')).toHaveAttribute(
+      'src',
+      '/api/branding/home-logo.svg?v=1',
+    );
+    expect(
+      screen.getByRole('region', { name: 'Acme Portal' }),
+    ).toBeInTheDocument();
+  });
+
+  it('holds the logo’s row, so the buttons do not move when it arrives', async () => {
     renderPage();
 
     const heading = await screen.findByRole('heading', { level: 1 });
-    expect(within(heading).getByRole('img')).toHaveAttribute(
-      'src',
-      '/api/branding/home-logo-light.png?v=1',
-    );
-    expect(
-      within(heading).queryByRole('img', { name: 'Giant Swarm' }),
-    ).not.toBeInTheDocument();
+    expect(heading).toHaveStyle({ minHeight: '40px' });
   });
 
   it('shows one card with a button and message per sign-in option', async () => {
