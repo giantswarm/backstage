@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/test-utils';
@@ -41,12 +42,7 @@ const KUSTOMIZE_LABELS = {
 
 async function openDialog(server: MCPServer) {
   await renderInTestApp(
-    <GitOpsEditDialog
-      resource={server}
-      noun="connector"
-      isOpen
-      onOpenChange={jest.fn()}
-    />,
+    <GitOpsEditDialog resource={server} isOpen onOpenChange={jest.fn()} />,
   );
   return screen.findByRole('dialog');
 }
@@ -171,12 +167,7 @@ describe('GitOpsEditDialog', () => {
     );
 
     await renderInTestApp(
-      <GitOpsEditDialog
-        resource={workflow}
-        noun="workflow"
-        isOpen
-        onOpenChange={jest.fn()}
-      />,
+      <GitOpsEditDialog resource={workflow} isOpen onOpenChange={jest.fn()} />,
     );
     const dialog = await screen.findByRole('dialog');
 
@@ -185,6 +176,38 @@ describe('GitOpsEditDialog', () => {
       'find the YAML document that declares kind: Workflow with name: deploy in namespace agent-platform',
     );
     expect(mockUseGitOpsSource).toHaveBeenCalledWith(workflow, 'gazelle');
+  });
+
+  it('looks nothing up until it is first opened', async () => {
+    mockUseGitOpsSource.mockReturnValue({
+      inGit: false,
+      isLoading: false,
+      errors: [],
+    });
+    const server = makeServer(KUSTOMIZE_LABELS);
+    function Harness() {
+      const [isOpen, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Edit in Git…
+          </button>
+          <GitOpsEditDialog
+            resource={server}
+            isOpen={isOpen}
+            onOpenChange={setOpen}
+          />
+        </>
+      );
+    }
+    await renderInTestApp(<Harness />);
+
+    expect(mockUseGitOpsSource).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit in Git…' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(mockUseGitOpsSource).toHaveBeenCalledWith(server, 'gazelle');
   });
 
   it('says "merge request" for a GitLab source it cannot link to', async () => {

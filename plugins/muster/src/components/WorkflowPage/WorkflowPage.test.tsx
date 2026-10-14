@@ -324,24 +324,29 @@ beforeEach(() => {
   });
 });
 
-/** DEPLOY as rendered by the agent-platform chart's HelmRelease. */
-function gitOpsDeploy(): MusterWorkflow {
+/** DEPLOY with the given provenance labels and annotations. */
+function deployWith(
+  labels: Record<string, string>,
+  annotations?: Record<string, string>,
+): MusterWorkflow {
   const json = DEPLOY.jsonData as unknown as {
     metadata: Record<string, unknown>;
   };
   return new MusterWorkflow(
     {
       ...DEPLOY.jsonData,
-      metadata: {
-        ...json.metadata,
-        labels: {
-          'helm.toolkit.fluxcd.io/name': 'agent-platform-workflows',
-          'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
-        },
-      },
+      metadata: { ...json.metadata, labels, annotations },
     } as never,
     'gazelle',
   );
+}
+
+/** DEPLOY as rendered by the agent-platform chart's HelmRelease. */
+function gitOpsDeploy(): MusterWorkflow {
+  return deployWith({
+    'helm.toolkit.fluxcd.io/name': 'agent-platform-workflows',
+    'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
+  });
 }
 
 describe('WorkflowPage', () => {
@@ -875,6 +880,24 @@ describe('WorkflowPage', () => {
   });
 
   it('has no menu for a workflow outside Git', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+
+    expect(
+      screen.queryByRole('button', { name: 'More actions' }),
+    ).not.toBeInTheDocument();
+    expect(mockUseGitOpsSource).not.toHaveBeenCalled();
+  });
+
+  it('has no menu for a workflow from a chart installed by hand, which Git does not hold', async () => {
+    mockWorkflows = [
+      deployWith(
+        { 'app.kubernetes.io/managed-by': 'Helm' },
+        {
+          'meta.helm.sh/release-name': 'workflows',
+          'meta.helm.sh/release-namespace': 'muster',
+        },
+      ),
+    ];
     await renderAt(`${BASE}/deploy?installation=gazelle`);
 
     expect(

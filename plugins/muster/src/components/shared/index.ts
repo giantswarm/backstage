@@ -65,5 +65,3 @@ export type {
 } from './DefinitionEditorDialog';
 export { TruncatedListNote } from './TruncatedListNote';
 export type { TruncatedListNoteProps } from './TruncatedListNote';
-export { GitOpsEditDialog } from './GitOpsEditDialog';
-export type { GitOpsEditDialogProps } from './GitOpsEditDialog';

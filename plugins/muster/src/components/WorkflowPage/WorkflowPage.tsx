@@ -2,19 +2,8 @@ import { ReactElement, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 
-import {
-  Alert,
-  Box,
-  ButtonIcon,
-  Flex,
-  Link,
-  Menu,
-  MenuItem,
-  MenuTrigger,
-  Text,
-} from '@backstage/ui';
+import { Alert, Box, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
-import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useQuery } from '@tanstack/react-query';
 import {
   BreadcrumbItem,
@@ -23,7 +12,7 @@ import {
   EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
-  MENU_WIDTH,
+  MoreActionsMenu,
   SectionHeader,
   ShellDocumentTitle,
   ShellPage,
@@ -34,7 +23,9 @@ import {
 import { musterApiRef } from '../../apis';
 import { MusterWorkflow } from '../../lib/k8s';
 import {
+  isFluxReconciled,
   isGitOpsManaged,
+  readProvenance,
   toManifestYaml,
   toWorkflowDefinition,
   toYaml,
@@ -51,10 +42,11 @@ import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
   DisclosureAccordion,
   EffectBadge,
-  GitOpsEditDialog,
   SessionGate,
   StateBadge,
 } from '../shared';
+// Imported directly: the shared barrel stays free of flux-react.
+import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
 import { WorkflowFlowCanvas } from './WorkflowFlowCanvas';
 import { WorkflowStatistics } from './WorkflowStatistics';
 import {
@@ -357,23 +349,12 @@ function WorkflowPageContent({
     { label: name },
   ];
 
-  // Where in Git to change it, as on a GitOps-managed connector's page. The
-  // menu holds nothing else, so a workflow outside Git has none.
+  // Where in Git to change it, as on a GitOps-managed connector's page. Only
+  // where Flux reconciles it: a chart installed by hand with `helm install`
+  // is not changed through Git. The menu holds nothing else, so any other
+  // workflow has none.
   const [gitOpsOpen, setGitOpsOpen] = useState(false);
-  const menu = gitOps ? (
-    <MenuTrigger>
-      <ButtonIcon
-        icon={<MoreVertIcon />}
-        aria-label="More actions"
-        variant="tertiary"
-      />
-      <Menu maxWidth={MENU_WIDTH}>
-        <MenuItem id="edit-in-git" onAction={() => setGitOpsOpen(true)}>
-          Edit in Git…
-        </MenuItem>
-      </Menu>
-    </MenuTrigger>
-  ) : undefined;
+  const inGit = isFluxReconciled(readProvenance(workflow));
 
   const facts = [
     {
@@ -409,7 +390,19 @@ function WorkflowPageContent({
         title={name}
         breadcrumbs={breadcrumbs}
         actions={editAction}
-        menu={menu}
+        menu={
+          inGit ? (
+            <MoreActionsMenu
+              items={[
+                {
+                  id: 'edit-in-git',
+                  label: 'Edit in Git…',
+                  onAction: () => setGitOpsOpen(true),
+                },
+              ]}
+            />
+          ) : undefined
+        }
         badges={
           <>
             {effect && <EffectBadge effect={effect} subject="workflow" />}
@@ -579,10 +572,9 @@ function WorkflowPageContent({
             </Flex>
           </DisclosureAccordion>
         </Flex>
-        {gitOps && (
+        {inGit && (
           <GitOpsEditDialog
             resource={workflow}
-            noun="workflow"
             isOpen={gitOpsOpen}
             onOpenChange={setGitOpsOpen}
           />

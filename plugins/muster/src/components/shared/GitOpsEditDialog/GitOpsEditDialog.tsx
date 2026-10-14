@@ -1,4 +1,4 @@
-import { ReactNode, useMemo } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import { Flex, Skeleton, Text } from '@backstage/ui';
 import {
   GitOpsSource,
@@ -8,12 +8,13 @@ import {
   ExternalLink,
   ManifestDialog,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { MCPServer, MusterWorkflow } from '../../../lib/k8s';
 import {
   gitOpsManagerDescription,
   isChartRendered,
   qualifiedName,
   readProvenance,
+  resourceKind,
   toManifestYaml,
 } from '../../../lib/gitops';
 
@@ -66,10 +67,8 @@ function SourceStep({
 }
 
 export type GitOpsEditDialogProps = {
-  /** The GitOps-managed muster resource: a connector's MCPServer or a Workflow. */
-  resource: KubeObject;
-  /** What the person calls it, for "the chart would render the <noun> again". */
-  noun: 'connector' | 'workflow';
+  /** The GitOps-managed resource: a connector's MCPServer or a Workflow. */
+  resource: MCPServer | MusterWorkflow;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
 };
@@ -83,22 +82,34 @@ export type GitOpsEditDialogProps = {
  * `ManifestDialog` with the steps above the manifest (none for a
  * chart-rendered resource, whose rendered manifest is not what anyone edits).
  * The connector and workflow pages open it from "Edit in Git…" in their menu.
+ *
+ * Mounted from its first opening on, so a page view that never opens it
+ * makes none of the source lookups (up to four Flux reads), and it stays
+ * mounted after that for its close animation.
  */
-export function GitOpsEditDialog({
+export function GitOpsEditDialog(props: GitOpsEditDialogProps) {
+  const [opened, setOpened] = useState(props.isOpen);
+  if (props.isOpen && !opened) {
+    setOpened(true);
+  }
+  return opened ? <GitOpsEditDialogContent {...props} /> : null;
+}
+
+function GitOpsEditDialogContent({
   resource,
-  noun,
   isOpen,
   onOpenChange,
 }: GitOpsEditDialogProps) {
   const source = useGitOpsSource(resource, resource.cluster);
-  // Always mounted, so only serialised while it is shown.
+  // Kept mounted once opened, so only serialised while it is shown.
   const manifest = useMemo(
     () => (isOpen ? toManifestYaml(resource) : ''),
     [isOpen, resource],
   );
   const name = resource.getName();
   const namespace = resource.getNamespace();
-  const kind = resource.getKind();
+  const kind = resourceKind(resource);
+  const noun = resource instanceof MusterWorkflow ? 'workflow' : 'connector';
   const provenance = readProvenance(resource);
   const manager = gitOpsManagerDescription(provenance);
   const chartRendered =
