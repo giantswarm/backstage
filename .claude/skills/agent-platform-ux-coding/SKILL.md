@@ -329,9 +329,9 @@ is a defect; one with it is not a finding. The kept list:
 - `AssistPanel`, the workflow full-screen layer and `DisabledAction` handle
   Escape themselves. The New session, palette and attachment dialogs close
   only from the header X, because they have nothing to cancel.
-- The workflow page has an "Advanced" fold-out; the connector wizard's
-  credentials group carries a third-level label; Home has a centred landing
-  frame without a page header; the session crumb reads "Session".
+- The connector wizard's credentials group carries a third-level label; Home
+  has a centred landing frame without a page header; the session crumb reads
+  "Session".
 - "Let X help" and "Create with X" differ because they are different actions.
 - `formatCompactAge` (the rail's "16m") and lifecycle's elapsed `ago` are
   deliberate formats.

@@ -338,6 +338,14 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Workflow', view: 'overview' },
     ],
     [
+      '/agent-platform/workflows/my-workflow/usage',
+      { page: 'Workflow', view: 'usage' },
+    ],
+    [
+      '/agent-platform/workflows/my-workflow/details',
+      { page: 'Workflow', view: 'details' },
+    ],
+    [
       '/agent-platform/workflows/my-workflow/run',
       { page: 'Workflow', view: 'run' },
     ],
@@ -655,6 +663,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/mcp-servers',
       '/agent-platform/workflows',
       '/agent-platform/workflows/my-workflow',
+      '/agent-platform/workflows/my-workflow/usage',
+      '/agent-platform/workflows/my-workflow/details',
       '/agent-platform/workflows/my-workflow/run',
       '/agent-platform',
       '/agent-platform/agents/new',
