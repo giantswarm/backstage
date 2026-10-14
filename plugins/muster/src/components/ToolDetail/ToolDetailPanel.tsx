@@ -211,16 +211,26 @@ export function ToolDetailPanel({
 
   return (
     <Flex direction="column" gap="5">
-      {data?.description && (
-        <Text
-          as="p"
-          variant="body-medium"
-          color="secondary"
-          style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
-        >
-          {data.description}
-        </Text>
-      )}
+      {/* Headed as the agent, skill and workflow pages head theirs. */}
+      <Section title="What it’s for">
+        {data?.description ? (
+          <Text
+            as="p"
+            variant="body-medium"
+            style={{
+              margin: 0,
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {data.description}
+          </Text>
+        ) : (
+          <Text as="p" variant="body-medium" color="secondary">
+            Its connector gives no description.
+          </Text>
+        )}
+      </Section>
 
       {data?.inputSchema && (
         // Technical detail, folded in place: the form below is the schema

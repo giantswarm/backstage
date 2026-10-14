@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
@@ -44,8 +44,11 @@ describe('ToolDetailPanel', () => {
     const api = makeApi();
     await renderPanel(api);
 
+    // Headed as the agent, skill and workflow pages head theirs.
     expect(
-      await screen.findByText('Echoes a message back.'),
+      within(
+        await screen.findByRole('region', { name: 'What it’s for' }),
+      ).getByText('Echoes a message back.'),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { level: 2, name: 'Try it' }),
@@ -56,6 +59,20 @@ describe('ToolDetailPanel', () => {
     ).toHaveAttribute('aria-expanded', 'false');
     expect(
       screen.getByRole('textbox', { name: /message/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when the connector gives the tool no description', async () => {
+    const api = makeApi();
+    api.describeTool = jest.fn(() =>
+      Promise.resolve({ ...detail, description: undefined }),
+    );
+    await renderPanel(api);
+
+    expect(
+      within(
+        await screen.findByRole('region', { name: 'What it’s for' }),
+      ).getByText('Its connector gives no description.'),
     ).toBeInTheDocument();
   });
 

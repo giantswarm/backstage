@@ -120,7 +120,8 @@ being editable.
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/agent-platform/connectors/<connector>/tools/<tool>?installation=<name>`.
-That page shows the tool's markers and description, its input schema (folded),
+That page shows what the tool does (Reads or Changes things), its description
+under "What it’s for", its input schema (folded),
 a form that runs the tool through muster, and the result, in one column with
 no facts beside it. The tool's address carries the tab's search and filter
 (`q`, `effect`), so the breadcrumb back keeps them; the browser's Back also
