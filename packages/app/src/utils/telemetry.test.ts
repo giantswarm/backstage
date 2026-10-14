@@ -680,6 +680,9 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/skills/giantswarm/agent-skills/ticket-triage/used-by',
       '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage',
       '/agent-platform/profile',
+      '/agent-platform/workspaces',
+      '/agent-platform/workspaces/new',
+      '/agent-platform/workspaces/gazelle/acme/platform-mcp/edit',
       '/agent-platform/usage',
       '/agent-platform/usage/overview',
       '/agents',
@@ -757,6 +760,22 @@ describe('Usage sub-tabs', () => {
     expect(
       getTelemetryPageViewPayload('/agent-platform/usage/cost'),
     ).not.toMatchObject({ page: 'Agents' });
+  });
+});
+
+describe('Workspace editor', () => {
+  it('reports create and edit without the workspace in the payload', () => {
+    expect(
+      getTelemetryPageViewPayload('/agent-platform/workspaces/new'),
+    ).toEqual({
+      page: 'Create workspace',
+      path: '/agent-platform/workspaces/new',
+    });
+    expect(
+      getTelemetryPageViewPayload(
+        '/agent-platform/workspaces/gazelle/acme/platform-mcp/edit',
+      ).page,
+    ).toBe('Edit workspace');
   });
 });
 
