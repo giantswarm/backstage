@@ -9,7 +9,11 @@ import {
 } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
@@ -92,6 +96,9 @@ import { useTokenRates } from '../../hooks/useTokenRates';
 import { AgentAvatar } from '../AgentAvatar';
 import { SEND_KEY_CAPTIONS } from '../../lib/sendKey';
 import { SendKeyHint } from '../SendKeyHint';
+
+/** Long enough to read why the switch went back, like the other failure toasts. */
+const TOOL_ACTIVITY_TOAST_TIMEOUT_MS = 12000;
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
@@ -606,17 +613,36 @@ export function SessionDetailPage() {
 
   // Whether the conversation shows the agent's tool activity, kept per
   // person. Storage backed like the pin, so it works from the shared header.
-  const { showToolActivity, setShowToolActivity } = useShowToolActivity();
+  // The switch waits for the stored choice like the conversation does, so it
+  // never shows a state it is about to flip from.
+  const toastApi = useApi(toastApiRef);
+  const {
+    showToolActivity,
+    isKnown: isToolActivityKnown,
+    setShowToolActivity,
+  } = useShowToolActivity();
   const toolActivity = useMemo(
-    () => ({
-      isShown: showToolActivity,
-      onChange: (show: boolean) => {
-        // A failed write only loses the choice for later visits; the switch
-        // goes back to the stored state.
-        setShowToolActivity(show).catch(() => {});
-      },
-    }),
-    [showToolActivity, setShowToolActivity],
+    () =>
+      isToolActivityKnown
+        ? {
+            isShown: showToolActivity,
+            onChange: (show: boolean) => {
+              // A failed write puts the switch and the conversation back to
+              // the stored choice, so say why rather than let it snap back.
+              setShowToolActivity(show).catch((failure: Error) => {
+                toastApi.post({
+                  title: show
+                    ? 'Could not show tool activity'
+                    : 'Could not hide tool activity',
+                  description: failure.message,
+                  status: 'danger',
+                  timeout: TOOL_ACTIVITY_TOAST_TIMEOUT_MS,
+                });
+              });
+            },
+          }
+        : undefined,
+    [isToolActivityKnown, showToolActivity, setShowToolActivity, toastApi],
   );
 
   const actions = useMemo(
@@ -1370,24 +1396,33 @@ export function SessionDetailPage() {
           />
         )}
 
-        <SessionTimeline
-          timeline={timelineWithLive}
-          agentName={row.agentName}
-          agentAvatarUrl={avatarUrl}
-          isAgentWorking={showWorking}
-          streamLost={streamLost}
-          stalledSince={stalledSince}
-          onCancelTurn={isStalled ? stopTurn : undefined}
-          isCancellingTurn={cancellation.isCancelling}
-          // A hand-off's opener was written by the portal, not the person
-          // (UX review M20). Known only from the router state of the arrival:
-          // kagent stores no such flag, so a later visit shows it plain.
-          firstMessageCaption={
-            handoff?.prepared ? 'Prepared by the portal' : undefined
-          }
-          connectorOf={connectorOf}
-          showToolActivity={showToolActivity}
-        />
+        {/* Held until the stored "Show tool activity" choice is read, so a
+            person who hides the work never sees it appear and vanish. */}
+        {!isToolActivityKnown ? (
+          <LoadingIndicator label="Reading the session…" />
+        ) : (
+          <SessionTimeline
+            timeline={timelineWithLive}
+            agentName={row.agentName}
+            agentAvatarUrl={avatarUrl}
+            isAgentWorking={showWorking}
+            streamLost={streamLost}
+            stalledSince={stalledSince}
+            onCancelTurn={isStalled ? stopTurn : undefined}
+            isCancellingTurn={cancellation.isCancelling}
+            // A hand-off's opener was written by the portal, not the person
+            // (UX review M20). Known only from the router state of the arrival:
+            // kagent stores no such flag, so a later visit shows it plain.
+            firstMessageCaption={
+              handoff?.prepared ? 'Prepared by the portal' : undefined
+            }
+            connectorOf={connectorOf}
+            showToolActivity={showToolActivity}
+            isAwaitingPerson={Boolean(
+              state && AWAITING_INPUT_STATES.has(state.key),
+            )}
+          />
+        )}
 
         {bottomControl}
       </Flex>

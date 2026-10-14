@@ -6,7 +6,10 @@ import {
   storageApiRef,
   StorageApi,
 } from '@backstage/core-plugin-api';
-import { useShowToolActivity } from './useShowToolActivity';
+import {
+  TOOL_ACTIVITY_READ_TIMEOUT_MS,
+  useShowToolActivity,
+} from './useShowToolActivity';
 
 const BUCKET = 'agent-platform';
 const KEY = 'showToolActivity';
@@ -49,6 +52,43 @@ function laggingStorage() {
     },
   } as unknown as StorageApi;
   return { storage: bucket, release };
+}
+
+/**
+ * A bucket that reads like `UserSettingsStorage`: "unknown" until its
+ * subscription delivers the value, which `deliver` does.
+ */
+function remoteStorage() {
+  // A hand-rolled observable: `useObservable` subscribes with a function,
+  // `readStored` with an observer.
+  type Next = (value: unknown) => void;
+  const subscribers = new Set<Next>();
+  const state: {
+    value: { presence: 'unknown' | 'present' | 'absent'; value?: unknown };
+    /** Whether a new subscription is answered with the value, as a read. */
+    answers: boolean;
+  } = { value: { presence: 'unknown' }, answers: true };
+  const bucket = {
+    forBucket: () => bucket,
+    snapshot: () => ({ key: KEY, presence: 'unknown' }),
+    observe$: () => ({
+      subscribe: (observer: Next | { next: Next }) => {
+        const next = typeof observer === 'function' ? observer : observer.next;
+        subscribers.add(next);
+        if (state.answers && state.value.presence !== 'unknown') {
+          next({ key: KEY, ...state.value });
+        }
+        return { unsubscribe: () => subscribers.delete(next) };
+      },
+    }),
+    set: jest.fn(),
+    remove: jest.fn(),
+  } as unknown as StorageApi;
+  const deliver = (next: typeof state.value) => {
+    state.value = next;
+    subscribers.forEach(subscriber => subscriber({ key: KEY, ...next }));
+  };
+  return { storage: bucket, deliver, state };
 }
 
 function stored(storage: StorageApi) {
@@ -126,6 +166,57 @@ describe('useShowToolActivity', () => {
 
     expect(stored(storage)).toBeUndefined();
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('is known at once from a store that answers synchronously', () => {
+    const { result } = renderWith(mockApis.storage());
+
+    expect(result.current.isKnown).toBe(true);
+  });
+
+  it('is not known until a remote store has answered', async () => {
+    const { storage, deliver } = remoteStorage();
+    const { result } = renderWith(storage);
+
+    expect(result.current.isKnown).toBe(false);
+
+    act(() => deliver({ presence: 'present', value: false }));
+
+    await waitFor(() => expect(result.current.isKnown).toBe(true));
+    expect(result.current.showToolActivity).toBe(false);
+  });
+
+  it('remembers the choice read for the next page in the same app load', async () => {
+    const { storage, deliver, state } = remoteStorage();
+    const first = renderWith(storage);
+    act(() => deliver({ presence: 'present', value: false }));
+    await waitFor(() => expect(first.result.current.isKnown).toBe(true));
+    first.unmount();
+
+    // The next page's read has not answered yet.
+    state.answers = false;
+    const { result } = renderWith(storage);
+
+    expect(result.current.isKnown).toBe(true);
+    expect(result.current.showToolActivity).toBe(false);
+  });
+
+  it('goes on with the default when the store never answers', () => {
+    jest.useFakeTimers();
+    try {
+      const { storage } = remoteStorage();
+      const { result } = renderWith(storage);
+      expect(result.current.isKnown).toBe(false);
+
+      act(() => {
+        jest.advanceTimersByTime(TOOL_ACTIVITY_READ_TIMEOUT_MS);
+      });
+
+      expect(result.current.isKnown).toBe(true);
+      expect(result.current.showToolActivity).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('shows the requested value while the write is in flight', async () => {

@@ -159,16 +159,44 @@ export function segmentTurn(items: TimelineItem[]): TimelineSegment[] {
 }
 
 /**
- * Whether a segment stays when the person hides tool activity: the
- * conversation, and anything the agent is waiting on them for.
+ * The approval the session is waiting on the person for, if any: the newest
+ * approval, unanswered, while the session awaits input. Only one can be open
+ * at a time, because kagent suspends until it is answered.
  *
- * Hidden are the work summaries, reasoning and permission requests already
- * decided — the how of the agent's work. A question stays answered or not:
- * it is something the agent said, and the reply under it would otherwise
- * answer nothing on screen. A request still awaiting its verdict always
- * stays, because the turn cannot go on without the person.
+ * An unanswered verdict alone does not say this. The parser leaves `verdict`
+ * undefined for a decision worded in a way it does not recognise, and an
+ * approval in a turn that later failed or was canceled never gets one.
  */
-export function isConversationSegment(segment: TimelineSegment): boolean {
+export function openApprovalId(
+  items: TimelineItem[],
+  isAwaitingPerson: boolean,
+): string | undefined {
+  if (!isAwaitingPerson) {
+    return undefined;
+  }
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === 'approval') {
+      return item.verdict === undefined ? item.id : undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Whether a segment stays when the person hides tool activity: the
+ * conversation, and the request the agent is waiting on them for.
+ *
+ * Hidden are the work summaries, reasoning and every other permission
+ * request — the how of the agent's work. A question stays answered or not:
+ * it is something the agent said, and the reply under it would otherwise
+ * answer nothing on screen. The open approval ({@link openApprovalId})
+ * always stays, because the turn cannot go on without the person.
+ */
+export function isConversationSegment(
+  segment: TimelineSegment,
+  openApproval?: string,
+): boolean {
   if (segment.kind === 'work') {
     return false;
   }
@@ -177,7 +205,7 @@ export function isConversationSegment(segment: TimelineSegment): boolean {
     return false;
   }
   if (item.kind === 'approval') {
-    return item.asks === 'input' || item.verdict === undefined;
+    return item.asks === 'input' || item.id === openApproval;
   }
   return true;
 }

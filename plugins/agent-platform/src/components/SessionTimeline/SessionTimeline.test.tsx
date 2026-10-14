@@ -770,22 +770,21 @@ describe('SessionTimeline — with tool activity hidden (S9)', () => {
     expect(screen.getByText('Approval requested')).toBeInTheDocument();
   });
 
-  it('keeps a request that waits on the person', async () => {
+  const unanswered = {
+    kind: 'approval',
+    id: 'a2',
+    taskIndex: 0,
+    asks: 'approval',
+    toolName: 'flux_suspend',
+  } as TimelineItem;
+
+  it('keeps the request the session waits on the person for', async () => {
     await renderInTestApp(
       <SessionTimeline
-        timeline={timelineOf([
-          turn[0],
-          turn[2],
-          {
-            kind: 'approval',
-            id: 'a2',
-            taskIndex: 0,
-            asks: 'approval',
-            toolName: 'flux_suspend',
-          },
-        ] as TimelineItem[])}
+        timeline={timelineOf([turn[0], turn[2], unanswered])}
         agentName="SRE"
         showToolActivity={false}
+        isAwaitingPerson
       />,
     );
 
@@ -794,6 +793,63 @@ describe('SessionTimeline — with tool activity hidden (S9)', () => {
     expect(
       screen.queryByTestId('timeline-work-summary'),
     ).not.toBeInTheDocument();
+  });
+
+  it('hides an unanswered request the session no longer waits on', async () => {
+    // A verdict in words the parser does not know, or a turn that failed or
+    // was canceled after the request, leaves no verdict; it waits on nobody.
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          unanswered,
+          { kind: 'agent-message', id: 'm2', taskIndex: 0, text: 'Done.' },
+        ] as TimelineItem[])}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.queryByText('Approval requested')).not.toBeInTheDocument();
+    expect(screen.getByText('Done.')).toBeInTheDocument();
+  });
+
+  it('keeps only the newest unanswered request while the person is asked', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          { ...unanswered, id: 'stale' } as TimelineItem,
+          { kind: 'user-message', id: 'u2', taskIndex: 1, text: 'Go on' },
+          { ...unanswered, id: 'open', taskIndex: 1 } as TimelineItem,
+        ] as TimelineItem[])}
+        agentName="SRE"
+        showToolActivity={false}
+        isAwaitingPerson
+      />,
+    );
+
+    expect(screen.getAllByText('Approval requested')).toHaveLength(1);
+    expect(screen.getAllByTestId('timeline-approval')).toHaveLength(1);
+  });
+
+  it('leaves no marker over a turn of nothing but work', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          { ...turn[2], id: 't2', taskIndex: 1 } as TimelineItem,
+          { kind: 'user-message', id: 'u3', taskIndex: 2, text: 'Thanks' },
+        ] as TimelineItem[])}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText(/^Turn 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Turn 2/)).not.toBeInTheDocument();
+    // The turns around it keep their numbers.
+    expect(screen.getByText(/^Turn 3/)).toBeInTheDocument();
   });
 
   it('keeps a question the person answered, so the reply answers something', async () => {

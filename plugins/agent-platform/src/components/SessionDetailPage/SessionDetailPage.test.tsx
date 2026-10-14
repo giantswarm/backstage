@@ -1,4 +1,9 @@
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  storageApiRef,
+  toastApiRef,
+  type StorageApi,
+} from '@backstage/frontend-plugin-api';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
@@ -249,8 +254,11 @@ const emptyTimeline = {
   skippedMessages: 0,
 };
 
-async function render() {
+async function render(
+  apis?: NonNullable<Parameters<typeof renderInTestApp>[1]>['apis'],
+) {
   return renderInTestApp(<SessionDetailPage />, {
+    apis,
     // `agentsRouteRef` is here for the link on the agent's name, which resolves
     // through `agentDetailRouteRef` — a SubRouteRef, which `mountedRoutes` does not
     // take, so its parent is what gets mounted.
@@ -2191,6 +2199,11 @@ describe('SessionDetailPage', () => {
   describe('the header', () => {
     const renderShell = render;
 
+    // The "Show tool activity" choice lives in the test app's localStorage,
+    // shared by every test here: one failing test must not leave it off for
+    // the rest.
+    afterEach(() => window.localStorage.clear());
+
     it('heads the page with the platform-standard frame', async () => {
       // The ShellPage idiom every platform page uses (All Sessions, Customize):
       // the session's name is the h1 at the standard scale, under a breadcrumb
@@ -2282,14 +2295,56 @@ describe('SessionDetailPage', () => {
         screen.queryByRole('button', { name: /Used 2 tools/ }),
       ).not.toBeInTheDocument();
       expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+    });
 
-      // Back on for the next test: the store is the test app's localStorage.
+    it('says why the switch went back when the choice could not be stored', async () => {
+      const post = jest.fn();
+      const storage = mockApis.storage();
+      jest
+        .spyOn(storage.forBucket('agent-platform'), 'set')
+        .mockRejectedValue(new Error('The settings backend is down.'));
+      await renderShell([
+        [storageApiRef, storage],
+        [toastApiRef, { post }],
+      ]);
+
       await act(async () =>
-        lastProvidedActions().props.toolActivity.onChange(true),
+        lastProvidedActions().props.toolActivity.onChange(false),
       );
+
       await waitFor(() =>
-        expect(lastProvidedActions().props.toolActivity.isShown).toBe(true),
+        expect(post).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'Could not hide tool activity',
+            description: 'The settings backend is down.',
+            status: 'danger',
+          }),
+        ),
       );
+      expect(lastProvidedActions().props.toolActivity.isShown).toBe(true);
+      expect(
+        screen.getByRole('button', { name: /Used 2 tools/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('holds the conversation and the switch until the stored choice is read', async () => {
+      // UserSettingsStorage answers "unknown" first and reads in the
+      // background; showing the work and then hiding it would flash.
+      const never = { subscribe: () => ({ unsubscribe: () => {} }) };
+      const bucket = {
+        snapshot: (key: string) => ({ key, presence: 'unknown' }),
+        observe$: () => never,
+        set: jest.fn(),
+        remove: jest.fn(),
+      };
+      const storage = { ...bucket, forBucket: () => bucket };
+      await renderShell([[storageApiRef, storage as unknown as StorageApi]]);
+
+      expect(screen.getByTestId('progress')).toBeInTheDocument();
+      expect(
+        screen.queryByText(/You have two open issues/),
+      ).not.toBeInTheDocument();
+      expect(lastProvidedActions().props.toolActivity).toBeUndefined();
     });
 
     it('keeps the cost chip in the composer there too', async () => {

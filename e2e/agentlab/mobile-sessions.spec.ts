@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   expect,
   expectClearOfBottomBar,
@@ -16,6 +16,76 @@ import {
  * table squeezed to a 31px title column (B1). The session is the worker's
  * own agent's and is deleted again through the portal.
  */
+
+/** The session header's "Show tool activity" switch (S9). */
+function toolActivitySwitch(page: Page): Locator {
+  return page.getByRole('switch', { name: 'Show tool activity', exact: true });
+}
+
+/** Its label, the part a person presses. */
+function toolActivityLabel(page: Page): Locator {
+  return page.getByText('Show tool activity', { exact: true });
+}
+
+/** Turns the switch back on, if the page shows it at all. */
+async function restoreToolActivity(page: Page): Promise<void> {
+  const toolActivity = toolActivitySwitch(page);
+  if ((await toolActivity.count()) > 0 && !(await toolActivity.isChecked())) {
+    await toolActivityLabel(page).click();
+    await expect(toolActivity).toBeChecked();
+  }
+}
+
+/**
+ * Answers the open session's conversation read with one tool call and its
+ * result added to the newest turn, as the artifacts kagent records them. The
+ * rest of the read is the lab's own.
+ */
+async function withToolCall(page: Page): Promise<void> {
+  const sessionId = new URL(page.url()).pathname.split('/').pop();
+  await page.route(
+    url => url.pathname.endsWith(`/kagent/sessions/${sessionId}/tasks`),
+    async route => {
+      const response = await route.fetch();
+      if (!response.ok()) {
+        await route.fulfill({ response });
+        return;
+      }
+      const body = (await response.json()) as {
+        tasks?: { artifacts?: unknown[] }[];
+      };
+      const newest = body.tasks?.[body.tasks.length - 1];
+      if (newest) {
+        newest.artifacts = [
+          ...(newest.artifacts ?? []),
+          {
+            artifactId: 'e2e-tool-call',
+            parts: [
+              {
+                data: { id: 'e2e-call-1', name: 'e2e_lookup', args: {} },
+                metadata: { adk_type: 'function_call' },
+              },
+            ],
+          },
+          {
+            artifactId: 'e2e-tool-result',
+            parts: [
+              {
+                data: {
+                  id: 'e2e-call-1',
+                  name: 'e2e_lookup',
+                  response: { output: 'ready' },
+                },
+                metadata: { adk_type: 'function_response' },
+              },
+            ],
+          },
+        ];
+      }
+      await route.fulfill({ response, json: body });
+    },
+  );
+}
 
 async function deleteCurrentSession(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Session actions' }).click();
@@ -96,21 +166,28 @@ test('a session starts from the home screen with a two-line message, its compose
     await expectNoHorizontalScroll(admin, 'the session page');
 
     // The header's "Show tool activity" switch (S9) fits the phone header,
-    // and off leaves the conversation without its work summaries. The choice
-    // is the admin's for every session, so it is put back on.
-    const toolActivity = admin.getByRole('switch', {
-      name: 'Show tool activity',
-      exact: true,
+    // and off leaves the conversation without its work summaries. The lab
+    // agent has no tools, so the session's conversation read is answered
+    // with one tool call added, in the shape kagent records it.
+    await expect(
+      admin.getByTestId('timeline-agent-message').first(),
+      'the turn finished',
+    ).toBeVisible({ timeout: 180_000 });
+    await withToolCall(admin);
+    await admin.reload();
+    await expect(admin.getByText('Nothing else.').first()).toBeVisible({
+      timeout: 60_000,
     });
-    const toolActivityLabel = admin.getByText('Show tool activity', {
-      exact: true,
-    });
+
+    const toolActivity = toolActivitySwitch(admin);
     await expect(toolActivity).toBeAttached();
     if (!(await toolActivity.isChecked())) {
-      await toolActivityLabel.click();
+      await toolActivityLabel(admin).click();
     }
     await expect(toolActivity).toBeChecked();
-    await toolActivityLabel.click();
+    await expect(admin.getByTestId('timeline-work-summary')).toHaveCount(1);
+
+    await toolActivityLabel(admin).click();
     await expect(toolActivity).not.toBeChecked();
     await expect(admin.getByTestId('timeline-work-summary')).toHaveCount(0);
     await expect(admin.getByText('Nothing else.').first()).toBeVisible();
@@ -118,10 +195,14 @@ test('a session starts from the home screen with a two-line message, its compose
       admin,
       'the session page with tool activity hidden',
     );
-    await toolActivityLabel.click();
-    await expect(toolActivity).toBeChecked();
   } finally {
-    await deleteCurrentSession(admin);
+    // The choice is the admin's for every session and every later spec, so
+    // it goes back on whatever failed above.
+    try {
+      await restoreToolActivity(admin);
+    } finally {
+      await deleteCurrentSession(admin);
+    }
   }
 });
 
