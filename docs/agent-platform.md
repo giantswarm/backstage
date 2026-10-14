@@ -143,14 +143,21 @@ Muster's workflows, read-only.
 
 - **Overview** — platform health and trends from the LLM gateway.
 - **Cost** — spend from the gateway, by agent and model.
-- **Connectors** — every caller's tool calls from muster's metrics, always 30
-  days. Only where the muster plugin is registered.
+- **Connectors** — every caller's tool calls from muster's metrics. Only where
+  the muster plugin is registered.
 - **Your sessions** — the person's own usage from their kagent sessions,
-  limited to what kagent keeps.
+  limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
+  30 days by default); wider ranges are disabled there.
 
 Gateway figures cover everyone's traffic and need the installation's metrics
 (see the configuration page); without them, Overview and Cost say so and still
 show the person's own session figures.
+
+Each installation's metrics start on a different day. When the selected range
+reaches back further than the records, Overview, Cost and Connectors say since
+when calls were recorded and how many of the range's days that covers;
+otherwise they say nothing. Cost shows the change against the previous range
+only when the records reach back before it.
 
 ## Profile and settings
 
@@ -1143,6 +1150,18 @@ never fold. A summary is open while its run is in progress and collapsed after.
 folds out its exact call. The pending approval card always shows the exact
 arguments Allow would run.
 
+**"Show tool activity" hides the work, not detail** (PO, S9). One small
+switch at the end of the header's meta line, after "Started …", on by default
+and stored per person (`useShowToolActivity`, key `showToolActivity` in the
+`agent-platform` bucket). Off, the timeline keeps
+messages, attachments, turn endings, questions and the approval the session is
+waiting on (`openApprovalId`: the newest one, unanswered, while the session
+awaits input), and drops work summaries, lone reasoning and every other
+permission request (`isConversationSegment`). A turn left empty shows no
+marker; the "Working…" row stays. The conversation and the switch wait for the
+stored choice (cached for the app load, the default after 3 s), so the work
+never shows and then hides.
+
 **The composer is docked** (T40): `position: sticky` at the end of the
 conversation column, offset by `--agent-shell-mobile-bar-height` on phones, and
 the column is at least the view's height (`useDockedComposerLayout`).
@@ -2078,7 +2097,8 @@ everyone's calls; Your sessions prices only the reader's tokens.
   midnight, and an instant query per chart,
   `increase(...[<elapsed-since-midnight>])`, fills the last row
   (`applyTodayPartial`). The Cost tab's spend change compares whole windows
-  (`previousCost`, an offset query).
+  (`previousCost`, an offset query), and only when
+  `dataBeforePreviousWindow` finds records before the previous window starts.
 - **The axis is the window.** `reduceDaily` renders every day of
   `dailyWindowDayKeys()`, zeros included; otherwise recharts drew a one-day
   metric as one bar across the chart. `StackedBarChart`'s `maxBarWidth` is the
@@ -2186,8 +2206,43 @@ The 7, 30 or 90-day toggle (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
 out of the URL) drives every view. Gateway views query the window directly.
 Your sessions narrows kagent's `windowDays` answer client-side (`narrowDaily`)
 and disables wider choices; its by-agent and top tables still cover kagent's
-full window. muster's MCP section stays at 30 days. `windowDays` and
-`windowStart` travel in the response, so no heading hardcodes a window.
+full window. muster's MCP section passes the window to `/usage` as hours
+and buckets it by day. `windowDays` and `windowStart` travel in the response,
+so no heading hardcodes a window.
+
+**Where the records start is read from the data**, never configured. A note
+shows only when the records start after the window's first day _and_ nothing
+was recorded in the week before the window (`usageDataStart` in
+`agent-platform-common`):
+
+- Gateway views: `firstSampledDay` takes the earliest day any daily range
+  answer (cost, tokens, calls) has a point for; with none, but window totals,
+  it is today. A zero is a day the series existed, so it counts.
+  `usage.dataStart` feeds `DataStartNote` on Overview and Cost.
+- One definition of "the data reaches back to here" (`dataBefore` in
+  `llmUsageQueries.ts`): `count(last_over_time(<tokens>[7d] offset X))`,
+  scoped like the page. `dataBeforeWindow` (offset: the window) gates the
+  note; `dataBeforePreviousWindow` (offset: twice the window, only with
+  `comparePrevious`) gates the spend delta. Tokens, not cost, so unpriced
+  calls count. An answer is read from the data whenever there is any, so a
+  failed refetch keeps it; without data the note stays away and the delta is
+  dropped.
+- Connectors: muster-backend's `/usage` reads its outcome query from a week
+  before the window and returns `data_start`, the first bucket the chart
+  fills from a sample, unless the week before held one.
+
+A series exists only from its label set's first call since the gateway or
+muster pod started. Prometheus cannot tell a source that was not exporting yet
+from one that restarted and then saw no calls, so the notes say what was
+recorded ("has recorded model calls only since …"), which is true either way.
+The week's lookback keeps a restart followed by a quiet weekend from reading as
+missing data.
+
+`sessionUsage.maxAgeMs` defaults to `windowDays` plus one day. Set explicitly,
+it does not follow `windowDays`: a value below the window drops sessions idle
+for longer than it, though their turns are inside the window. `maxSessions`
+(60) does not scale with `windowDays` either; past it the oldest sessions are
+`skipped`, so raise it with a wider window.
 
 ### Your top connectors is prefix-derived
 

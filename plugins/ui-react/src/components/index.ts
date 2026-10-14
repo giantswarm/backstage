@@ -35,6 +35,7 @@ export * from './LoadingIndicator';
 export * from './ManifestDialog';
 export * from './MenuArrowIcons';
 export * from './Mono';
+export * from './MoreActionsMenu';
 export * from './MoreOptions';
 export * from './MultiplePicker';
 export * from './MultipleSelect';

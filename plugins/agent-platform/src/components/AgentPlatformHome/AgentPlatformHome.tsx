@@ -253,7 +253,7 @@ function AgentPlatformHomeContent({
           <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
           <UnreachableInstallationsAlert
             installations={unreachableInstallations}
-            resourceName="Agents"
+            resourceName="agents"
             isLoading={isLoading}
           />
           <SlackPromoBanner />

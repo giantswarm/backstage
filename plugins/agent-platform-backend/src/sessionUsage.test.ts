@@ -629,6 +629,40 @@ describe('SessionUsageReader', () => {
     expect(result.windowStart).toBe(NOW - 7 * DAY);
   });
 
+  it('reads sessions idle for longer than 31 days when the window is wider', async () => {
+    // A fixed 31-day default would drop this one once `windowDays` is raised,
+    // though the session's last turn is inside the window.
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [
+        wireSession('idle', {
+          updated_at: new Date(NOW - 45 * DAY).toISOString(),
+        }),
+      ],
+    });
+    listSessionTasks.mockResolvedValue(wireTasks());
+
+    await reader({ windowDays: 60 }).read('tok');
+
+    expect(listSessionTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an explicitly configured maxAgeMs over the window’s default', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [
+        wireSession('idle', {
+          updated_at: new Date(NOW - 45 * DAY).toISOString(),
+        }),
+      ],
+    });
+    listSessionTasks.mockResolvedValue(wireTasks());
+
+    await reader({ windowDays: 60, maxAgeMs: 31 * DAY }).read('tok');
+
+    expect(listSessionTasks).not.toHaveBeenCalled();
+  });
+
   it('floors a configured zero rather than disabling itself', async () => {
     // `??` would let a configured 0 through and evaluate nothing at all.
     listSessions.mockResolvedValue({

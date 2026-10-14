@@ -13,17 +13,7 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import {
-  Alert,
-  Button,
-  ButtonIcon,
-  Flex,
-  Link,
-  Menu,
-  MenuItem,
-  MenuTrigger,
-  Text,
-} from '@backstage/ui';
+import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useQuery } from '@tanstack/react-query';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -34,7 +24,8 @@ import {
   DisabledAction,
   EmptyStateCard,
   LoadingIndicator,
-  MENU_WIDTH,
+  MoreActionsMenu,
+  type MoreActionsMenuItem,
   RouteTabSpec,
   ShellDocumentTitle,
   ShellPage,
@@ -72,7 +63,6 @@ import {
   LiveAction,
   serverLiveActions,
 } from '../ServerPage/serverActions';
-import { GitOpsEditDialog } from '../ServerPage/GitOpsEditDialog';
 import { ServerCapabilityTab } from '../ServerPage/ServerCapabilityTab';
 import { ServerInstancesTab } from '../ServerPage/ServerInstancesTab';
 import {
@@ -90,6 +80,8 @@ import {
   useConnectorGroupPaths,
   useServerSignIn,
 } from '../shared';
+// Imported directly: the shared barrel stays free of flux-react.
+import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
 import {
   addedLine,
   callsLine,
@@ -228,13 +220,6 @@ function useCallsThisMonth(
   return data ? callsLine(data, serverNames) : undefined;
 }
 
-type MenuEntry = {
-  id: string;
-  label: string;
-  danger?: boolean;
-  onAction: () => void;
-};
-
 function ConnectorPageContent({
   row,
   servers,
@@ -338,7 +323,7 @@ function ConnectorPageContent({
   const [gitOpsOpen, setGitOpsOpen] = useState(false);
   const [jsonOpen, setJsonOpen] = useState(false);
 
-  const menu: MenuEntry[] = [];
+  const menu: MoreActionsMenuItem[] = [];
   if (singular && gitOpsManaged) {
     menu.push({
       id: 'edit-in-git',
@@ -548,37 +533,16 @@ function ConnectorPageContent({
       </DisabledAction>
     );
   }
-  const moreIcon = <MoreVertIcon />;
   let menuAction: ReactNode;
   if (menu.length > 0) {
-    menuAction = (
-      <MenuTrigger>
-        <ButtonIcon
-          icon={moreIcon}
-          aria-label="More actions"
-          variant="tertiary"
-        />
-        <Menu maxWidth={MENU_WIDTH}>
-          {menu.map(item => (
-            <MenuItem
-              key={item.id}
-              id={item.id}
-              color={item.danger ? 'danger' : undefined}
-              onAction={item.onAction}
-            >
-              {item.label}
-            </MenuItem>
-          ))}
-        </Menu>
-      </MenuTrigger>
-    );
+    menuAction = <MoreActionsMenu items={menu} />;
   } else if (singular) {
     // Only without a muster session: every action runs through it.
     menuAction = (
       <DisabledAction reason={SESSION_ACTIONS_REASON}>
         {describedBy => (
           <ButtonIcon
-            icon={moreIcon}
+            icon={<MoreVertIcon />}
             aria-label="More actions"
             variant="tertiary"
             isDisabled
@@ -692,7 +656,7 @@ function ConnectorPageContent({
         </Flex>
         {singular && gitOpsManaged && (
           <GitOpsEditDialog
-            server={singular}
+            resource={singular}
             isOpen={gitOpsOpen}
             onOpenChange={setGitOpsOpen}
           />
