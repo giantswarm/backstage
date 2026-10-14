@@ -501,3 +501,34 @@ html[data-agent-shell] [class*='Toast_container'] {
     }
   }
 }
+
+/*
+ * Select options. bui pads an option 4px above and below and sets a
+ * description right under its option's name, so a list of described options
+ * (the composer's agent picker, the serve dialog's placement choice) reads
+ * as one dense block. Options pad by space-1_5, a description sits 2px under
+ * its name (the command palette's gap), and each group after the first
+ * starts space-2 further down, so its heading reads with its own rows. A
+ * one-line option keeps bui's 2rem minimum on desktop, so plain selects keep
+ * their length; under touch every option is a 44px thumb target.
+ * Inside bui's components layer, so a component's unlayered overrides win.
+ */
+@layer components {
+  html[data-agent-shell] .bui-SelectItem {
+    padding-block: var(--bui-space-1_5);
+  }
+
+  html[data-agent-shell] .bui-SelectItemTextContent {
+    gap: var(--bui-space-0_5);
+  }
+
+  html[data-agent-shell] .bui-SelectSection:not(:first-child) {
+    margin-top: var(--bui-space-2);
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    html[data-agent-shell] .bui-SelectItem {
+      min-height: 44px;
+    }
+  }
+}
