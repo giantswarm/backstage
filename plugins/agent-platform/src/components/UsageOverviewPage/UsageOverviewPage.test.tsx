@@ -154,6 +154,34 @@ function renderPage(path = '/agent-platform/usage/overview') {
   });
 }
 
+// The formatters read the reader's locale; the assertions below are English,
+// so the default locale is pinned rather than left to the machine's LANG.
+const pinnedLocale = 'en-US';
+let localeSpies: jest.SpyInstance[] = [];
+
+beforeAll(() => {
+  const pin = (proto: any, method: string) => {
+    const original = proto[method];
+    localeSpies.push(
+      jest.spyOn(proto, method).mockImplementation(function pinned(
+        this: unknown,
+        locale?: any,
+        ...rest: any[]
+      ) {
+        return original.call(this, locale ?? pinnedLocale, ...rest);
+      }),
+    );
+  };
+  pin(Date.prototype, 'toLocaleDateString');
+  pin(Date.prototype, 'toLocaleString');
+  pin(Number.prototype, 'toLocaleString');
+});
+
+afterAll(() => {
+  localeSpies.forEach(spy => spy.mockRestore());
+  localeSpies = [];
+});
+
 describe('UsageOverviewPage', () => {
   beforeEach(() => {
     view.state = 'ready';
