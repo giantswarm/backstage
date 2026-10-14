@@ -1,7 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { Accordion, AccordionPanel, AccordionTrigger } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { useSimpleAccordionStyles } from '@giantswarm/backstage-plugin-ui-react';
+import { useSimpleAccordionStyles } from '../SimpleAccordion';
 
 const useStyles = makeStyles({
   // Outlined like the create flow's review step "Technical details".
@@ -18,9 +18,11 @@ export type TechnicalDetailsFoldOutProps = {
    * Follow later changes of `defaultExpanded`, both ways, until the person
    * opens or closes the fold-out themselves: a page that renders from the
    * cache first must neither leave a reason the fresh read found folded away
-   * nor keep open what a stale copy opened. Opt-in, for the model page; key
-   * the fold-out by the resource there, so another one starts afresh. Without
-   * it, `defaultExpanded` only seeds the first render, as on the agent page.
+   * nor keep open what a stale copy opened. Opt-in, for the model and
+   * connector pages. Key the fold-out, or a parent, by the resource, so
+   * another one starts afresh: the model page keys the fold-out, the connector
+   * page its whole content. Without it, `defaultExpanded` only seeds the first
+   * render, as on the agent page.
    */
   followDefaultExpanded?: boolean;
   children: ReactNode;
@@ -31,7 +33,7 @@ export type TechnicalDetailsFoldOutProps = {
  * technical detail on a page, never a page-wide switch. Controlled, so the
  * cards inside (which read the HelmRelease, GitOps source and conditions)
  * mount only while open: bui's panel otherwise stays mounted, merely hidden.
- * Shared by the agent and model pages.
+ * Shared by the agent, model and connector pages.
  */
 export function TechnicalDetailsFoldOut({
   defaultExpanded,

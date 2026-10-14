@@ -32,6 +32,23 @@ const internalPath = `/customize/connectors/internal${scope}`;
  */
 const KUBERNETES_FAMILY = 'kubernetes';
 
+/**
+ * Open the Details tab's fold-out. It also opens by itself while the connector
+ * reads Failed, and follows a refresh that changes that until it is toggled,
+ * so a click can race it: retried until it stays open.
+ */
+async function openTechnicalDetails(page: Page) {
+  const foldOut = page.getByRole('button', { name: 'Technical details' });
+  await expect(async () => {
+    if ((await foldOut.getAttribute('aria-expanded')) !== 'true') {
+      await foldOut.click();
+    }
+    await expect(foldOut).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 1_000,
+    });
+  }).toPass();
+}
+
 /** A connector's row in the table: its name, then its description. */
 function connectorRow(page: Page, name: string) {
   return page.getByRole('row', { name: new RegExp(`^${name}( |$)`) });
@@ -175,11 +192,14 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per co
     admin.getByRole('main'),
     'the fixture CR has settled (Auth Required, or Connected from an earlier sign-in)',
   ).toContainText(/Auth Required|Connected/, { timeout: 120_000 });
+  // The facts are on the Details tab; the sign-in flow is from Tools.
+  await admin.getByRole('tab', { name: 'Details', exact: true }).click();
   await expect(
     admin
-      .getByRole('complementary', { name: 'Connector details' })
+      .getByRole('region', { name: 'Connector details' })
       .getByText('Each person signs in with their own account'),
   ).toBeVisible();
+  await admin.getByRole('tab', { name: /^Tools/ }).click();
 
   // The per-server session is muster's, per user, and outlives a page: a
   // previous run may have left the fixture signed in — sign out first (the
@@ -289,4 +309,38 @@ test("muster's own connector page lists its core tools, and one is tried in plac
     admin.getByText('Result', { exact: true }),
     'the tool ran through the call proxy',
   ).toBeVisible({ timeout: 60_000 });
+});
+
+test("a connector's Details tab folds its resource and auth chain, read from the CR", async ({
+  admin,
+}) => {
+  await open(
+    admin,
+    `/agent-platform/connectors/lab-oauth-fixture/details${scope}`,
+  );
+  await expect(
+    admin.getByRole('heading', { level: 1, name: 'lab-oauth-fixture' }),
+  ).toBeVisible();
+
+  // Read from the MCPServer itself, so no muster session is needed.
+  await openTechnicalDetails(admin);
+  await expect(
+    admin.getByRole('heading', { name: 'Resource', exact: true }),
+  ).toBeVisible();
+  await expect(
+    admin.getByRole('heading', { name: 'Configuration', exact: true }),
+  ).toBeVisible();
+  await expect(
+    admin.getByText('Own account (OAuth sign-in)', { exact: true }),
+  ).toBeVisible();
+
+  // A family shows one instance and leaves the rest to its Instances tab.
+  await open(
+    admin,
+    `/agent-platform/connectors/${KUBERNETES_FAMILY}/details${scope}`,
+  );
+  await openTechnicalDetails(admin);
+  await expect(
+    admin.getByText(/each instance's own configuration, health and/),
+  ).toBeVisible();
 });

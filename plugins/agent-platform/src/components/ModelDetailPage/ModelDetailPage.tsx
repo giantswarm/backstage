@@ -21,6 +21,7 @@ import {
   ShellPageFactsSkeleton,
   ShellPageTitleSkeleton,
   StatusDot,
+  TechnicalDetailsFoldOut,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -39,7 +40,6 @@ import { ModelServingStatus } from '../ModelServingStatus';
 import { ModelTechnicalDetails } from '../ModelTechnicalDetails';
 import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
-import { TechnicalDetailsFoldOut } from '../TechnicalDetailsFoldOut';
 import { ModelActionsMenu } from './ModelActionsMenu';
 import { ModelReadView } from './ModelReadView';
 import { describeContextWindow } from './modelUsage';
