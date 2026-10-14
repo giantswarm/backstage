@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ClusterPageTarget } from '@giantswarm/backstage-plugin-gs';
 
 import { DeleteClusterAction } from './ClusterActions';
@@ -27,7 +27,8 @@ jest.mock('../../hooks/useClusterManager', () => ({
 }));
 
 jest.mock('../DeleteClusterDialog', () => ({
-  DeleteClusterDialog: () => null,
+  DeleteClusterDialog: ({ isOpen, name }: { isOpen: boolean; name: string }) =>
+    isOpen ? <div role="dialog">Delete cluster {name}?</div> : null,
 }));
 jest.mock('../CreateClusterDialog', () => ({
   CreateClusterDialog: () => null,
@@ -39,6 +40,7 @@ const CREATED: ClusterPageTarget = {
   namespace: 'org-acme',
   organization: 'acme',
   isManagementCluster: false,
+  isDeleting: false,
   helmRelease: { name: 'demo1', namespace: 'org-acme' },
 };
 
@@ -75,6 +77,7 @@ describe('DeleteClusterAction', () => {
       },
     ],
     ['the management cluster', { ...CREATED, isManagementCluster: true }],
+    ['a cluster already being deleted', { ...CREATED, isDeleting: true }],
     [
       'the installation’s own cluster without the management label',
       {
@@ -93,4 +96,26 @@ describe('DeleteClusterAction', () => {
     ).not.toBeInTheDocument();
     expect(mockAvailability).toHaveBeenLastCalledWith([]);
   });
+
+  it.each<[string, ClusterPageTarget | undefined]>([
+    ['being deleted', { ...CREATED, isDeleting: true }],
+    ['gone', undefined],
+  ])(
+    'keeps the open dialog once the cluster is %s, without offering Delete again',
+    (_, later) => {
+      mockTarget.mockReturnValue(CREATED);
+      const { rerender } = render(<DeleteClusterAction />);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+      mockTarget.mockReturnValue(later);
+      act(() => rerender(<DeleteClusterAction />));
+
+      expect(screen.getByRole('dialog')).toHaveTextContent(
+        'Delete cluster demo1?',
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Delete' }),
+      ).not.toBeInTheDocument();
+    },
+  );
 });
