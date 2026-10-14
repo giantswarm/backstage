@@ -141,9 +141,15 @@ test('searching a tool name narrows the table to the connectors offering it', as
   await expect(connectorRow(admin, 'agent-manager')).toHaveCount(0);
 
   await kubernetes.getByRole('rowheader').click();
+  // Its Tools tab opens on the same search, at the tools that matched.
   await expect(admin).toHaveURL(
-    new RegExp(`/agent-platform/connectors/${KUBERNETES_FAMILY}(\\?|$)`),
+    new RegExp(
+      `/agent-platform/connectors/${KUBERNETES_FAMILY}\\?.*q=cluster_health`,
+    ),
   );
+  await expect(
+    admin.getByRole('searchbox', { name: 'Search tools', exact: true }),
+  ).toHaveValue('cluster_health');
   await expect(
     admin.getByRole('button', { name: /^cluster_health/ }),
   ).toBeVisible({ timeout: 60_000 });
