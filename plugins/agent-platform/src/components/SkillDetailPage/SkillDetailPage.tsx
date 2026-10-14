@@ -19,7 +19,6 @@ import {
   type MoreActionsMenuItem,
   PageSection,
   type RouteTabSpec,
-  SectionHeader,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageTitleSkeleton,
