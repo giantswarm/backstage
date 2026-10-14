@@ -12,7 +12,7 @@ Assets are placed into a directory on the backend's filesystem and served by the
 | ---------------------------------------------- | -------------------------------------------------------------------------------- |
 | `logo-full.svg` or `logo-full.png`             | Wide logo shown in the expanded sidebar                                          |
 | `logo-icon.svg` or `logo-icon.png`             | Narrow icon shown in the collapsed sidebar                                       |
-| `home-logo.svg` or `home-logo.png`             | Large logo shown at the top of the home page                                     |
+| `home-logo.svg` or `home-logo.png`             | Large logo shown at the top of the home page and the Agent Platform sign-in page |
 | `home-logo-light.svg` or `home-logo-light.png` | Home page logo used when the light theme is active (falls back to `home-logo.*`) |
 | `home-logo-dark.svg` or `home-logo-dark.png`   | Home page logo used when the dark theme is active (falls back to `home-logo.*`)  |
 | `favicon.ico`                                  | Browser tab icon                                                                 |
@@ -205,7 +205,7 @@ To preview overrides locally, drop a `theme:` block under `app.branding` in `app
 
 1. On startup, the `branding` backend plugin scans the configured `assetsPath` directory and registers a `/api/branding/manifest` endpoint that lists the available files, plus an `express.static` handler that serves them at `/api/branding/<filename>`. If the directory does not exist, the manifest returns an empty list and no errors are logged.
 
-2. On the frontend, the `useBranding()` hook fetches the manifest once and caches it. The `LogoFull`, `LogoIcon`, and `HomeLogo` components check whether a matching asset exists and render an `<img>` tag pointing at the backend URL, or fall back to the built-in inline SVG.
+2. On the frontend, the `useBranding()` hook fetches the manifest once and caches it. The `LogoFull`, `LogoIcon`, and `HomeLogo` components, and the Agent Platform sign-in page, check whether a matching asset exists and render an `<img>` tag pointing at the backend URL, or fall back to the built-in inline SVG.
 
 3. The `BrandingFavicon` component (mounted at the app root) updates the `<link>` tags in `<head>` to point at any available favicon assets, leaving unmatched tags unchanged.
 

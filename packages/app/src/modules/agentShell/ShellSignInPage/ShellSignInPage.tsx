@@ -2,8 +2,9 @@ import { useLayoutEffect } from 'react';
 import { Progress } from '@backstage/core-components';
 import type { IdentityApi } from '@backstage/core-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core/styles';
-import { LogoIcon } from '../../nav/LogoIcon';
+import { makeStyles, useTheme } from '@material-ui/core/styles';
+import { GiantSwarmLogoFull } from '../../../assets/logo';
+import { useBranding } from '../../branding';
 import { useAgentShellArea } from '../agentArea';
 import { setAgentShellMark } from '../AgentShellThemeRoot/useAgentShellAttribute';
 import { agentShellLightColors } from '../theme';
@@ -41,12 +42,26 @@ const useStyles = makeStyles({
   title: {
     margin: 0,
     display: 'flex',
-    alignItems: 'center',
     justifyContent: 'center',
-    gap: 'var(--bui-space-2)',
   },
   fullWidth: {
     width: '100%',
+  },
+});
+
+const useLogoStyles = makeStyles({
+  logo: {
+    // The lockup is ~5.3:1: 40px high is ~210px wide, which fits the card
+    // down to a 320px phone. Never stretched, so only the height is set.
+    display: 'block',
+    width: 'auto',
+    height: 40,
+    maxWidth: '100%',
+  },
+  logoSvg: {
+    // The wordmark is `currentColor`, the ant keeps its brand colors. On a
+    // light surface the wordmark is Giant Swarm Blue, on a dark one white.
+    color: ({ dark }: { dark: boolean }) => (dark ? '#ffffff' : '#002645'),
   },
 });
 
@@ -71,6 +86,44 @@ function useShellDocumentMark() {
   }, [ownedByThemeRoot]);
 }
 
+/**
+ * The logo the sign-in card leads with: the full Giant Swarm lockup, or the
+ * deployment's own home page logo (`home-logo-light|dark.*`, `home-logo.*`;
+ * see docs/branding.md) — the card is a content surface, like the home page,
+ * not the sidebar. The shell is light-only today, but both follow the theme
+ * like `HomeLogo`, so a dark shell gets the white wordmark.
+ */
+function SignInLogo() {
+  const theme = useTheme();
+  const dark = theme.palette.type === 'dark';
+  const classes = useLogoStyles({ dark });
+  const { hasAsset, getAssetUrl, isLoading } = useBranding();
+
+  // Nothing until the manifest is in, so a branded deployment never shows
+  // the Giant Swarm logo first.
+  if (isLoading) {
+    return null;
+  }
+
+  const variant = dark ? 'dark' : 'light';
+  const customAsset = [
+    `home-logo-${variant}.svg`,
+    `home-logo-${variant}.png`,
+    'home-logo.svg',
+    'home-logo.png',
+  ].find(name => hasAsset(name));
+
+  if (customAsset) {
+    return (
+      <img className={classes.logo} src={getAssetUrl(customAsset)} alt="Logo" />
+    );
+  }
+
+  return (
+    <GiantSwarmLogoFull className={`${classes.logo} ${classes.logoSvg}`} />
+  );
+}
+
 export interface ShellSignInPageProps {
   onSignInSuccess(identityApi: IdentityApi): void;
   providers: ShellSignInProvider[];
@@ -79,8 +132,8 @@ export interface ShellSignInPageProps {
 /**
  * The sign-in window of a deployment that serves the Agent Platform
  * (`app.portals.agentPlatform`): one centered card in the shell's look — the
- * rail's logo beside the name, as one title, then a button per sign-in option
- * with its message, if it has one, beneath. The first option is the primary
+ * full Giant Swarm logo as the title, then a button per sign-in option with
+ * its message, if it has one, beneath. The first option is the primary
  * action. Behaves like upstream's
  * `SignInPage` (see {@link useProviderSignIn}); classic-only deployments keep
  * that page unchanged.
@@ -104,17 +157,11 @@ export function ShellSignInPage({
     <main className={classes.page}>
       <section className={classes.card} aria-labelledby="shell-sign-in-title">
         <Flex direction="column" gap="6">
-          {/* The mark joins the title, beside it as in the rail, so the
-              card reads as the Giant Swarm Agent Platform (T71): the ant's
-              label is "Giant Swarm", which makes the heading's name too.
-              Beside, not above — the brand allows the horizontal form only.
-              The space keeps the two words apart in that name; the flex row
-              does not draw it. */}
+          {/* The full logo is the title: its label, "Giant Swarm", is the
+              heading's name and the card's. The lockup carries the wordmark,
+              so no text sits beside it. */}
           <h1 id="shell-sign-in-title" className={classes.title}>
-            <LogoIcon />{' '}
-            <Text as="span" variant="title-small">
-              Agent Platform
-            </Text>
+            <SignInLogo />
           </h1>
           {error && error.name !== 'PopupRejectedError' && (
             <Alert

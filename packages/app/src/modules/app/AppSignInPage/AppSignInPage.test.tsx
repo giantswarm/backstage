@@ -8,8 +8,12 @@ import {
 import { screen } from '@testing-library/react';
 import { AppSignInPage } from './AppSignInPage';
 
-jest.mock('../../nav/LogoIcon', () => ({
-  LogoIcon: () => <span data-testid="logo" />,
+jest.mock('../../branding', () => ({
+  useBranding: () => ({
+    isLoading: false,
+    hasAsset: () => false,
+    getAssetUrl: () => undefined,
+  }),
 }));
 
 jest.mock('@backstage/core-components', () => ({
@@ -70,7 +74,7 @@ describe('AppSignInPage', () => {
     expect(screen.getByText('Giant Swarm SSO')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument();
     expect(
-      screen.queryByRole('heading', { name: 'Agent Platform' }),
+      screen.queryByRole('heading', { name: 'Giant Swarm' }),
     ).not.toBeInTheDocument();
     expect(document.documentElement).not.toHaveAttribute('data-agent-shell');
   });
@@ -100,7 +104,7 @@ describe('AppSignInPage', () => {
     });
 
     expect(
-      await screen.findByRole('heading', { name: 'Agent Platform' }),
+      await screen.findByRole('heading', { name: 'Giant Swarm' }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Sign in with GitHub' }),
