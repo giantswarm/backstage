@@ -28,7 +28,7 @@ import {
   ToolEffect,
 } from '../../../lib/toolAnnotations';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
-import { EffectBadge } from '../../shared';
+import { EffectBadge, TruncatedListNote } from '../../shared';
 import { ToolDetailPanel } from '../../ToolDetail';
 import { ServerTools } from '../../ServerPage/useServerPageData';
 
@@ -251,11 +251,7 @@ export function ConnectorToolsTab({
           />
         </div>
       )}
-      {tools.truncated && (
-        <Text as="p" variant="body-small" color="secondary">
-          This list may be incomplete: muster returned only part of the tools.
-        </Text>
-      )}
+      <TruncatedListNote plural="tools" truncated={tools.truncated} />
       {shown.length === 0 ? (
         <CatalogNoMatch
           plural="tools"

@@ -4,7 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
-import { ServerPrompts, ServerResources } from './serverDetail';
+import {
+  resourceUriLabel,
+  ServerPrompts,
+  ServerResources,
+} from './serverDetail';
 
 function makeServer(spec: Record<string, unknown> = {}): MCPServer {
   return new MCPServer(
@@ -67,6 +71,27 @@ describe('ServerResources', () => {
       server: 'pro',
       limit: 200,
     });
+  });
+
+  it('titles a nameless resource by the last segment of its URI, keeping the full URI', async () => {
+    const filterResources = jest.fn().mockResolvedValue({
+      total: 1,
+      filtered_count: 1,
+      truncated: false,
+      resources: [{ uri: 'file:///repo/docs/guides/setup.md', server: 'pro' }],
+    });
+
+    await render(<ServerResources server={makeServer()} />, {
+      filterResources,
+    });
+
+    const row = within(
+      await screen.findByRole('list', { name: 'Resources' }),
+    ).getByRole('listitem');
+    expect(within(row).getByText('setup.md')).toBeInTheDocument();
+    expect(
+      within(row).getByText('file:///repo/docs/guides/setup.md'),
+    ).toBeInTheDocument();
   });
 
   it('distinguishes an empty result from a broken one', async () => {
@@ -229,7 +254,7 @@ describe('resource and prompt lists at scale', () => {
     expect(screen.getAllByText(/^doc:\/\/item-/)).toHaveLength(20);
     expect(
       screen.getByText(
-        'This list may be incomplete: muster returned only part of the resources.',
+        'This list is incomplete: muster returned 200 of 300 resources.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -280,5 +305,42 @@ describe('resource and prompt lists at scale', () => {
     expect(screen.getAllByText(/^prompt_\d+$/)).toHaveLength(1);
     expect(screen.getByText('prompt_250')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
+  });
+});
+
+describe('resourceUriLabel', () => {
+  it.each([
+    ['roadmap://schema', 'schema'],
+    ['file:///repo/docs/setup.md', 'setup.md'],
+    ['https://example.com/a/b/', 'b'],
+    ['doc://', 'doc://'],
+  ])('labels %s as %s', (uri, label) => {
+    expect(resourceUriLabel(uri)).toBe(label);
+  });
+});
+
+describe('capability search', () => {
+  it('does not match a field the entry lacks', async () => {
+    // Optional fields once joined as the string "undefined", so a search for
+    // it matched every resource without a name or description.
+    const filterResources = jest.fn().mockResolvedValue({
+      total: 25,
+      filtered_count: 25,
+      truncated: false,
+      resources: Array.from({ length: 25 }, (_, index) => ({
+        uri: `doc://item-${index + 1}`,
+        server: 'pro',
+      })),
+    });
+
+    await render(<ServerResources server={makeServer()} />, {
+      filterResources,
+    });
+
+    await userEvent.type(
+      await screen.findByRole('searchbox', { name: 'Search resources' }),
+      'undefined',
+    );
+    expect(screen.queryByText(/^doc:\/\/item-/)).toBeNull();
   });
 });

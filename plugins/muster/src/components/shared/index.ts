@@ -63,3 +63,5 @@ export type {
   DefinitionEditorDialogProps,
   DefinitionEditorProps,
 } from './DefinitionEditorDialog';
+export { TruncatedListNote } from './TruncatedListNote';
+export type { TruncatedListNoteProps } from './TruncatedListNote';

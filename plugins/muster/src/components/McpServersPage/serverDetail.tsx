@@ -42,7 +42,12 @@ import {
   formatRelativeTime,
   formatTimestamp,
 } from '../../lib/formatRelativeTime';
-import { StateBadge, severityTone, useServerPageLinks } from '../shared';
+import {
+  StateBadge,
+  severityTone,
+  TruncatedListNote,
+  useServerPageLinks,
+} from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
   mono: {
@@ -682,6 +687,7 @@ function CapabilityList<T>({
   noun,
   label,
   truncated,
+  total,
   searchText,
   row,
 }: {
@@ -689,8 +695,10 @@ function CapabilityList<T>({
   noun: string;
   /** The list's accessible name, e.g. "Prompts". */
   label: string;
-  /** muster returned only part of the list. */
+  /** muster flagged the list as cut at its limit. */
   truncated?: boolean;
+  /** How many muster says exist; the tab's count is read elsewhere. */
+  total?: number;
   searchText: (item: T) => string;
   row: (item: T) => StackedRowItem;
 }) {
@@ -713,11 +721,12 @@ function CapabilityList<T>({
           />
         </Box>
       )}
-      {truncated && (
-        <Text as="p" variant="body-small" color="secondary">
-          This list may be incomplete: muster returned only part of the {noun}s.
-        </Text>
-      )}
+      <TruncatedListNote
+        plural={`${noun}s`}
+        truncated={truncated}
+        shown={items.length}
+        total={total}
+      />
       {shown.length === 0 ? (
         <CatalogNoMatch plural={`${noun}s`} search={query} />
       ) : (
@@ -731,13 +740,13 @@ function CapabilityList<T>({
   );
 }
 
-/** A row's description, in the secondary voice the tools list uses. */
-function RowDescription({ children }: { children: ReactNode }) {
-  return (
-    <Text as="p" variant="body-small" color="secondary">
-      {children}
-    </Text>
-  );
+/**
+ * A short title for a resource the server gives no name: the URI's last path
+ * segment, so the full URI can sit on the row's unclamped second line.
+ */
+export function resourceUriLabel(uri: string): string {
+  const path = uri.replace(/^[a-z][a-z0-9+.-]*:\/*/i, '').replace(/\/+$/, '');
+  return path.slice(path.lastIndexOf('/') + 1) || uri;
 }
 
 /**
@@ -791,19 +800,21 @@ export function ServerResources({
       noun="resource"
       label="Resources"
       truncated={data?.truncated}
+      total={data?.total}
       searchText={resource =>
-        [resource.uri, resource.name, resource.description].join(' ')
+        [resource.uri, resource.name, resource.description]
+          .filter(Boolean)
+          .join(' ')
       }
-      // The name reads as the title where the server gives one; the URI is
-      // what an agent asks for, so it stays on the row either way.
+      // The title is clamped to two lines, so it is the name, or a short
+      // label for a nameless resource. The URI is what an agent asks for: it
+      // sits in full on the second line, which wraps instead.
       row={resource => ({
         id: `${resource.server}:${resource.uri}`,
-        title: resource.name || <Mono>{resource.uri}</Mono>,
-        facts: resource.name
-          ? [<Mono key="uri">{resource.uri}</Mono>]
-          : undefined,
+        title: resource.name || resourceUriLabel(resource.uri),
+        facts: [<Mono key="uri">{resource.uri}</Mono>],
         details: resource.description ? (
-          <RowDescription>{resource.description}</RowDescription>
+          <Note>{resource.description}</Note>
         ) : undefined,
       })}
     />
@@ -865,14 +876,15 @@ export function ServerPrompts({
       noun="prompt"
       label="Prompts"
       truncated={data?.truncated}
+      total={data?.total}
       searchText={prompt =>
-        [shortName(prompt.name), prompt.description].join(' ')
+        [shortName(prompt.name), prompt.description].filter(Boolean).join(' ')
       }
       row={prompt => ({
         id: prompt.name,
         title: shortName(prompt.name),
         details: prompt.description ? (
-          <RowDescription>{prompt.description}</RowDescription>
+          <Note>{prompt.description}</Note>
         ) : undefined,
       })}
     />
