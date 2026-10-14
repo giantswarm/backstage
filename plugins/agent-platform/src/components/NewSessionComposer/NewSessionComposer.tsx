@@ -64,6 +64,26 @@ const useStyles = makeStyles(theme => ({
     display: 'inline-flex',
     marginRight: theme.spacing(0.75),
   },
+  // bui's option rows are tight (4px above and below, the name and its
+  // description touching), which packs a list of described agents densely.
+  // Spaced like the command palette's rows: more padding, a 2px gap
+  // under the name, and a wider break before each group after the first.
+  // The popover renders in a portal with no class of its own, so the
+  // options' avatars mark it as this picker's and other Selects keep bui's
+  // spacing.
+  pickerOptions: {
+    '.bui-SelectPopover:has(&)': {
+      '& .bui-SelectItem': {
+        paddingBlock: 'var(--bui-space-1_5)',
+      },
+      '& .bui-SelectItemTextContent': {
+        gap: 'var(--bui-space-0_5)',
+      },
+      '& .bui-SelectSection:not(:first-child)': {
+        marginTop: 'var(--bui-space-2)',
+      },
+    },
+  },
   // Kept compact rather than filling the row, matching the prototype: the prompt
   // is the hero and the knobs are secondary, which a full-width picker undoes.
   // It still shrinks on a narrow viewport.
@@ -492,7 +512,7 @@ export function NewSessionComposer({
   // not the display name.
   const renderAvatar = useCallback(
     (agent: AgentRow) => (
-      <span className={classes.agentAvatar}>
+      <span className={`${classes.agentAvatar} ${classes.pickerOptions}`}>
         <AgentAvatar
           size="small"
           purpose="decoration"
@@ -505,7 +525,7 @@ export function NewSessionComposer({
         />
       </span>
     ),
-    [buildAvatarUrl, classes.agentAvatar],
+    [buildAvatarUrl, classes.agentAvatar, classes.pickerOptions],
   );
 
   // With `groupByNamespace`, grouped by namespace behind the Recent and
