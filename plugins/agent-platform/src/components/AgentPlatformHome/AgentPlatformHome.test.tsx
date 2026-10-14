@@ -16,7 +16,10 @@ import {
   sessionsRouteRef,
 } from '../../routes';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
-import { selectKagentMissing } from '../AgentsDataProvider/helpers';
+import {
+  selectKagentMissing,
+  selectKagentSwitchedOff,
+} from '../AgentsDataProvider/helpers';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { AgentPlatformHome } from './AgentPlatformHome';
 import {
@@ -153,6 +156,7 @@ const loadedAgents: AgentsContextValue = {
   hasInstallations: true,
   unreachableInstallations: [],
   kagentMissing: undefined,
+  kagentSwitchedOff: [],
 };
 
 function environment(
@@ -195,6 +199,7 @@ function agentsOver(
     scope,
     installations: applyInstallationScope(withKagent, scope),
     kagentMissing: selectKagentMissing(entries, scope, withKagent),
+    kagentSwitchedOff: selectKagentSwitchedOff(entries, scope),
   };
 }
 
@@ -493,7 +498,7 @@ describe('AgentPlatformHome', () => {
       ).toBeInTheDocument();
     });
 
-    it('does not say kagent is missing while a switched-off environment runs it', async () => {
+    it('names an environment switched off in Cluster access that runs kagent, as Customize does', async () => {
       // lab runs kagent but is switched off in Cluster access: switching it
       // back on is the way to its agents, not installing kagent.
       mockUseAgents.mockReturnValue(
@@ -506,12 +511,32 @@ describe('AgentPlatformHome', () => {
 
       expect(
         screen.getByText(
-          'No agents are deployed on the reachable environments.',
+          'lab runs kagent but is switched off in Cluster access, so its agents are not read.',
         ),
       ).toBeInTheDocument();
       expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/No agents are deployed/),
+      ).not.toBeInTheDocument();
       expect(screen.queryByText('No agents yet')).not.toBeInTheDocument();
-      expect(screen.getByTestId('installation-scope-note')).toBeInTheDocument();
+      expect(prompt()).not.toBeInTheDocument();
+    });
+
+    it('names every environment switched off in Cluster access that runs kagent', async () => {
+      mockUseAgents.mockReturnValue(
+        agentsOver([
+          environment('golem', { home: true, kagent: false }),
+          environment('lab', { muted: true }),
+          environment('dingo', { muted: true }),
+        ]),
+      );
+      await render();
+
+      expect(
+        screen.getByText(
+          'lab, dingo run kagent but are switched off in Cluster access, so their agents are not read.',
+        ),
+      ).toBeInTheDocument();
     });
 
     it('invites creating the first agent where kagent runs and no agent is deployed', async () => {

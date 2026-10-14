@@ -53,6 +53,7 @@ const loadedAgents: AgentsContextValue = {
   hasInstallations: true,
   unreachableInstallations: [],
   kagentMissing: undefined,
+  kagentSwitchedOff: [],
 };
 
 function render(props: StartNewSessionProps, { agentsBound = true } = {}) {

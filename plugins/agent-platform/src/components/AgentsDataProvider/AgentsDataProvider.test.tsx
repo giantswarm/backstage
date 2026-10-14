@@ -564,6 +564,7 @@ describe('AgentsDataProvider installation scope', () => {
     const { result: hook } = renderHook(() => useAgents(), { wrapper });
 
     expect(hook.current.kagentMissing).toBeUndefined();
+    expect(hook.current.kagentSwitchedOff).toEqual(['beta']);
   });
 
   it('reports an installation that could not be read next to the rows of the others', async () => {

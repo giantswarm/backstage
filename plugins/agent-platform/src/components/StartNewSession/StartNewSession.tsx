@@ -11,7 +11,11 @@ import {
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { agentsRouteRef, sessionDetailRouteRef } from '../../routes';
-import { AgentRow, useAgents } from '../AgentsDataProvider';
+import {
+  AgentRow,
+  describeKagentSwitchedOff,
+  useAgents,
+} from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
 import { KagentMissingCard } from '../KagentMissingCard';
 import {
@@ -90,6 +94,7 @@ export function StartNewSession({
     isLoadingMore: isLoadingMoreAgents,
     unreachableInstallations,
     kagentMissing,
+    kagentSwitchedOff,
   } = useAgents();
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
   const creation = useCreateSession(entryPoint, { titleMaxLength });
@@ -166,18 +171,21 @@ export function StartNewSession({
       return <FirstAgentCard />;
     }
 
-    // Three distinct situations, and conflating them would tell the user to look
-    // in the wrong place: nothing could be read (look at the warning), nothing
-    // is deployed and no environment in reach runs kagent to deploy to (where
-    // it is not known missing: say, the one that runs it is switched off in
-    // Cluster access), or something is deployed but none of it is ready (look
-    // at the Agents tab, where the reason is). Standalone, the Agents tab is a
-    // link rather than a neighbouring tab.
+    // Distinct situations, and conflating them would tell the user to look in
+    // the wrong place: nothing could be read (look at the warning), the
+    // environments that run kagent are switched off in Cluster access (switch
+    // one back on; Customize › Agents says the same), nothing is deployed and
+    // no environment in reach runs kagent to deploy to, or something is
+    // deployed but none of it is ready (look at the Agents tab, where the
+    // reason is). Standalone, the Agents tab is a link rather than a
+    // neighbouring tab.
     let reason: string;
     let pointer: 'warning' | 'agentsTab' | undefined;
     if (unreachableInstallations.length > 0 && agents.length === 0) {
       reason = 'No agents could be read to start a session with.';
       pointer = 'warning';
+    } else if (agents.length === 0 && kagentSwitchedOff.length > 0) {
+      reason = describeKagentSwitchedOff(kagentSwitchedOff);
     } else if (agents.length === 0) {
       reason = 'No agents are deployed on the reachable environments.';
     } else {

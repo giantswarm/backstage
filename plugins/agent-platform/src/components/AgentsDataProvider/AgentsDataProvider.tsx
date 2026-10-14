@@ -34,6 +34,7 @@ import {
   type KagentMissing,
   ResolveModelServing,
   selectKagentMissing,
+  selectKagentSwitchedOff,
   TRANSITIONAL_REFETCH_INTERVAL_MS,
   sortAgentRows,
   toAgentRow,
@@ -79,6 +80,12 @@ export type AgentsContextValue = {
    * "All environments" while one switched off in Cluster access runs kagent.
    */
   kagentMissing: KagentMissing | undefined;
+  /**
+   * Under "All environments", the environments switched off in Cluster access
+   * that run kagent: their agents are not read until one is switched back on.
+   * Empty under a pinned scope.
+   */
+  kagentSwitchedOff: string[];
 };
 
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
@@ -127,6 +134,8 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     scope,
     inventory.installationsWith('kagent'),
   );
+  const kagentSwitchedOff = selectKagentSwitchedOff(inventory.entries, scope);
+  const kagentSwitchedOffKey = kagentSwitchedOff.join(',');
   const kagentMissingKey = kagentMissing
     ? `${kagentMissing.installations.join(',')}|${kagentMissing.canChooseAnother}`
     : '';
@@ -485,6 +494,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
       hasInstallations,
       unreachableInstallations,
       kagentMissing,
+      kagentSwitchedOff,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -502,6 +512,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     allInstallationsKey,
     scopedInstallationsKey,
     kagentMissingKey,
+    kagentSwitchedOffKey,
   ]);
 
   return (

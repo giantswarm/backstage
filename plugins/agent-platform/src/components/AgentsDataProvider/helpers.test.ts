@@ -17,7 +17,9 @@ import {
   resolveModelLabel,
   sortAgentRows,
   toAgentRow,
+  describeKagentSwitchedOff,
   selectKagentMissing,
+  selectKagentSwitchedOff,
 } from './helpers';
 
 function makeAgent(
@@ -778,5 +780,50 @@ describe('selectKagentMissing', () => {
         ['golem'],
       ),
     ).toBeUndefined();
+  });
+});
+
+describe('selectKagentSwitchedOff', () => {
+  const entry = (
+    installation: string,
+    overrides: Partial<InstallationInventoryEntry> = {},
+  ): InstallationInventoryEntry => ({
+    installation,
+    home: false,
+    accessState: 'healthy',
+    muted: false,
+    probe: 'answered',
+    components: { kagent: true, muster: true, kserve: false, capi: true },
+    ...overrides,
+  });
+  const entries = [
+    entry('golem'),
+    entry('lab', { muted: true }),
+    entry('dingo', {
+      muted: true,
+      components: { kagent: false, muster: true, kserve: false, capi: true },
+    }),
+  ];
+
+  it('names the switched-off environments that run kagent under All environments', () => {
+    expect(selectKagentSwitchedOff(entries, 'all')).toEqual(['lab']);
+  });
+
+  it('names none under a pinned scope', () => {
+    expect(selectKagentSwitchedOff(entries, 'lab')).toEqual([]);
+  });
+});
+
+describe('describeKagentSwitchedOff', () => {
+  it('says it of one environment', () => {
+    expect(describeKagentSwitchedOff(['lab'])).toBe(
+      'lab runs kagent but is switched off in Cluster access, so its agents are not read.',
+    );
+  });
+
+  it('says it of several', () => {
+    expect(describeKagentSwitchedOff(['lab', 'dingo'])).toBe(
+      'lab, dingo run kagent but are switched off in Cluster access, so their agents are not read.',
+    );
   });
 });

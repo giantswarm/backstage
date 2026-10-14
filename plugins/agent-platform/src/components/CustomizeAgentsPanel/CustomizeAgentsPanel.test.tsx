@@ -32,19 +32,26 @@ function mockInstallationsWith(component: 'kagent') {
     .map(entry => entry.installation);
 }
 let mockAgents: Partial<AgentsContextValue>;
-// `kagentMissing` follows the mocked inventory by the provider's own rule.
-jest.mock('../AgentsDataProvider', () => ({
-  useAgents: () => ({
-    kagentMissing: jest
-      .requireActual('../AgentsDataProvider/helpers')
-      .selectKagentMissing(
+// `kagentMissing` and `kagentSwitchedOff` follow the mocked inventory by the
+// provider's own rules.
+jest.mock('../AgentsDataProvider', () => {
+  const actual = jest.requireActual('../AgentsDataProvider/helpers');
+  return {
+    describeKagentSwitchedOff: actual.describeKagentSwitchedOff,
+    useAgents: () => ({
+      kagentMissing: actual.selectKagentMissing(
         mockInventoryEntries,
         mockAgents.scope ?? 'all',
         mockInstallationsWith('kagent'),
       ),
-    ...mockAgents,
-  }),
-}));
+      kagentSwitchedOff: actual.selectKagentSwitchedOff(
+        mockInventoryEntries,
+        mockAgents.scope ?? 'all',
+      ),
+      ...mockAgents,
+    }),
+  };
+});
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   useInstallationInventory: () => ({

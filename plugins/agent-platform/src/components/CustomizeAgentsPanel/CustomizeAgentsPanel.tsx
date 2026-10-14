@@ -17,7 +17,6 @@ import {
   CatalogFilterBar,
   CatalogNoMatch,
   EmptyStateCard,
-  joinNames,
   LoadingIndicator,
   PHONE_MEDIA,
   StatusDot,
@@ -38,7 +37,11 @@ import {
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentsHelperBanner } from '../AgentsHelperBanner';
-import { type AgentRow, useAgents } from '../AgentsDataProvider';
+import {
+  type AgentRow,
+  describeKagentSwitchedOff,
+  useAgents,
+} from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
 import { KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
@@ -470,6 +473,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     hasInstallations,
     unreachableInstallations,
     kagentMissing,
+    kagentSwitchedOff,
   } = useAgents();
   const inventory = useInstallationInventory();
   const buildAvatarUrl = useAgentAvatarUrl();
@@ -557,19 +561,6 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
             .map(classifyInventoryFailure)
             .find(failure => failure !== undefined)
         : undefined));
-  // Under "All environments", environments switched off in the sidebar's
-  // Cluster access that run kagent: the way to their agents.
-  const switchedOff =
-    pinned === null
-      ? inventory.entries
-          .filter(
-            entry =>
-              entry.muted &&
-              entry.probe === 'answered' &&
-              entry.components.kagent,
-          )
-          .map(entry => entry.installation)
-      : [];
 
   let body;
   if (rows.length === 0 && unknownPin) {
@@ -610,17 +601,11 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       body = null;
     } else if (installations.length > 0) {
       body = <FirstAgentCard />;
-    } else if (switchedOff.length > 0) {
+    } else if (kagentSwitchedOff.length > 0) {
       body = (
         <EmptyStateCard
           title="No agents to list"
-          description={
-            switchedOff.length === 1
-              ? `${switchedOff[0]} runs kagent but is switched off in Cluster access, so its agents are not read.`
-              : `${joinNames(
-                  switchedOff,
-                )} run kagent but are switched off in Cluster access, so their agents are not read.`
-          }
+          description={describeKagentSwitchedOff(kagentSwitchedOff)}
         />
       );
     } else {

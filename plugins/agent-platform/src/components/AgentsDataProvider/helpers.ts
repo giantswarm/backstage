@@ -11,10 +11,12 @@ import {
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  ALL_INSTALLATIONS,
   installationsWithoutComponent,
   type InstallationInventoryEntry,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
 import {
   summarizeClientServing,
   type ClientServingState,
@@ -412,4 +414,36 @@ export function selectKagentMissing(
       installation => !installations.includes(installation),
     ),
   };
+}
+
+/**
+ * Under "All environments", the environments switched off in the sidebar's
+ * Cluster access that run kagent: switching one back on is the way to its
+ * agents. Empty under a pinned scope.
+ */
+export function selectKagentSwitchedOff(
+  entries: InstallationInventoryEntry[],
+  scope: InstallationScope,
+): string[] {
+  if (scope !== ALL_INSTALLATIONS) {
+    return [];
+  }
+  return entries
+    .filter(
+      entry =>
+        entry.muted && entry.probe === 'answered' && entry.components.kagent,
+    )
+    .map(entry => entry.installation);
+}
+
+/**
+ * What every page says when no agent is read because the environments that
+ * run kagent are switched off in Cluster access ({@link selectKagentSwitchedOff}).
+ */
+export function describeKagentSwitchedOff(installations: string[]): string {
+  return installations.length === 1
+    ? `${installations[0]} runs kagent but is switched off in Cluster access, so its agents are not read.`
+    : `${joinNames(
+        installations,
+      )} run kagent but are switched off in Cluster access, so their agents are not read.`;
 }
