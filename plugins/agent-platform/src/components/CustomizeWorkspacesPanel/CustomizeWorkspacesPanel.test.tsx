@@ -23,6 +23,8 @@ const docs: WorkspaceRow = {
   lastSync: { time: '2026-10-14T03:00:00Z', result: 'Succeeded' },
   repositories: 12,
   sessions: 2,
+  storedBytes: 4 * 1024 ** 3,
+  volumeSize: '15Gi',
 };
 const infra: WorkspaceRow = {
   ...docs,
@@ -35,6 +37,8 @@ const infra: WorkspaceRow = {
   },
   repositories: 0,
   sessions: 0,
+  storedBytes: undefined,
+  volumeSize: undefined,
 };
 
 let mockData: WorkspacesData;
@@ -114,6 +118,23 @@ describe('CustomizeWorkspacesPanel', () => {
 
     const failed = screen.getByRole('row', { name: /infra/ });
     expect(within(failed).getByText('Failed')).toBeInTheDocument();
+    // A manager whose list does not carry the stored size: none, no read per row.
+    expect(within(failed).getByText('—')).toBeInTheDocument();
+  });
+
+  it('says when the last sync happened, and why it failed, behind the state’s info hint', async () => {
+    const user = userEvent.setup();
+    await renderPanel();
+
+    // react-aria opens a tooltip on hover only once it has seen the pointer
+    // move over the page.
+    await user.hover(document.body);
+    await user.hover(
+      screen.getByRole('button', { name: 'About the state of infra' }),
+    );
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      /^Failed .+ ago\.\s*owner not reachable$/,
+    );
   });
 
   it('takes what the volume stores from the list where the manager answers it, ↑ when the last sync grew the share', async () => {
@@ -169,6 +190,23 @@ describe('CustomizeWorkspacesPanel', () => {
     ).toBeInTheDocument();
   });
 
+  it('keeps loading while the Organizations are still read, saying nothing about membership', async () => {
+    mockData = data({
+      rows: [],
+      organizations: [],
+      organization: undefined,
+      isLoading: true,
+    });
+    await renderPanel();
+
+    expect(
+      await screen.findByText('Reading your workspaces…'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No Organization to show workspaces of'),
+    ).toBeNull();
+  });
+
   it('says so to a person in no Organization', async () => {
     mockData = data({ rows: [], organizations: [], organization: undefined });
     await renderPanel();
@@ -212,6 +250,24 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.queryByText('No workspaces in alpha yet')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(mockData.retry).toHaveBeenCalled();
+  });
+
+  it('names the unreachable muster, not a missing workspace-manager, where no muster answered', async () => {
+    mockData = data({
+      isAvailable: undefined,
+      installations: [],
+      rows: [],
+      organizations: [],
+      organization: undefined,
+      failures: { gazelle: 'Its muster could not be reached.' },
+    });
+    await renderPanel();
+
+    expect(
+      screen.getByText('Your workspaces could not be read'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Workspaces are not available here')).toBeNull();
+    expect(screen.queryByText('Reading your workspaces…')).toBeNull();
   });
 
   it('says when the search matches nothing', async () => {

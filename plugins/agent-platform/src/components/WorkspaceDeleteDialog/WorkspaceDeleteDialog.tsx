@@ -42,9 +42,9 @@ function SessionsStillUsing({
     // Unread: the list's count is all there is to say.
     return row.sessions > 0 ? (
       <Text variant="body-medium">
-        {sessionsNoun(row.sessions)} still{' '}
-        {row.sessions === 1 ? 'uses' : 'use'} it; each keeps its directory
-        until it is cleaned up, then the volume goes.
+        {sessionsNoun(row.sessions)} still {row.sessions === 1 ? 'uses' : 'use'}{' '}
+        it; each keeps its directory until it is cleaned up, then the volume
+        goes.
       </Text>
     ) : (
       <Text variant="body-medium">Its volume goes with it.</Text>

@@ -100,7 +100,9 @@ function LastSyncCell({ row }: { row: WorkspaceRow }) {
           subject={row.name}
           explanation={[
             ...(state.when
-              ? [`${state.when.verb} ${getRelativeDate(state.when.at)}.`]
+              ? [
+                  `${state.when.verb} ${getRelativeDate(state.when.at, new Date())}.`,
+                ]
               : []),
             ...(state.detail ? [state.detail] : []),
           ]}

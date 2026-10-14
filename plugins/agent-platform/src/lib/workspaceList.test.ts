@@ -67,7 +67,11 @@ describe('syncState', () => {
         ...base,
         lastSync: { time: 't', result: 'Failed', message: 'owner gone' },
       }),
-    ).toMatchObject({ tone: 'danger', detail: 'owner gone', at: 't' });
+    ).toMatchObject({
+      tone: 'danger',
+      detail: 'owner gone',
+      when: { verb: 'Failed', at: 't' },
+    });
   });
 });
 

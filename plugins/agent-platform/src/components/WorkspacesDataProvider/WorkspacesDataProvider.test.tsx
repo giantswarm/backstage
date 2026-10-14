@@ -37,13 +37,20 @@ let mockNotMember: string[];
 /** The installations the inventory knows to run muster, and whether it still probes. */
 let mockMusterInstallations: string[];
 let mockProbing: boolean;
+/** The installations whose muster does not answer. */
+let mockUnreachable: string[];
 
 const mockMusterApi = {
-  listServers: jest.fn(async (installation: string) => ({
-    mcpServers: mockWithManager.includes(installation)
-      ? [{ name: 'workspace-manager' }]
-      : [{ name: 'kubernetes' }],
-  })),
+  listServers: jest.fn(async (installation: string) => {
+    if (mockUnreachable.includes(installation)) {
+      throw new Error('muster: 503 Service Unavailable');
+    }
+    return {
+      mcpServers: mockWithManager.includes(installation)
+        ? [{ name: 'workspace-manager' }]
+        : [{ name: 'kubernetes' }],
+    };
+  }),
   callTool: jest.fn(
     async (
       tool: string,
@@ -124,6 +131,7 @@ describe('WorkspacesDataProvider', () => {
     mockNotMember = [];
     mockMusterInstallations = ['gazelle'];
     mockProbing = false;
+    mockUnreachable = [];
     jest.clearAllMocks();
   });
 
@@ -141,6 +149,17 @@ describe('WorkspacesDataProvider', () => {
     await renderWorkspaces();
 
     expect(await screen.findByText('available: undefined')).toBeInTheDocument();
+  });
+
+  it('is not known, and says why, where no muster answered', async () => {
+    mockUnreachable = ['gazelle'];
+    await renderWorkspaces();
+
+    expect(
+      await screen.findByText('Your workspaces could not be read'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('available: undefined')).toBeInTheDocument();
+    expect(screen.queryByText('Workspaces are not available here')).toBeNull();
   });
 
   it('offers no Organization scope to a person in one Organization', async () => {
