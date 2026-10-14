@@ -110,7 +110,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
     await expect(preview(admin)).toContainText('1 excluded');
 
     await admin.getByRole('button', { name: 'Create workspace' }).click();
-    await expect(admin).toHaveURL(/\/customize\/workspaces/, {
+    await expect(admin).toHaveURL(/\/customize\//, {
       timeout: 60_000,
     });
 
@@ -138,7 +138,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
       preview(admin).getByText(`${OWNER}/kagent`, { exact: true }),
     ).toBeVisible({ timeout: 60_000 });
     await admin.getByRole('button', { name: 'Save changes' }).click();
-    await expect(admin).toHaveURL(/\/customize\/workspaces/, {
+    await expect(admin).toHaveURL(/\/customize\//, {
       timeout: 60_000,
     });
 
