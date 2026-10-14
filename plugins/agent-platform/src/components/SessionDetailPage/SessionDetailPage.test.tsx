@@ -2275,22 +2275,35 @@ describe('SessionDetailPage', () => {
       );
     });
 
-    it('hides the tool activity from the header switch, and remembers it', async () => {
+    /** The "Show tool activity" switch on the session's meta line (S9). */
+    const toolActivitySwitch = () =>
+      screen.getByRole('switch', { name: 'Show tool activity' });
+
+    it('puts the tool activity switch on the line with the start, not among the actions', async () => {
+      await renderShell();
+
+      const started = screen.getByText(/^Started/);
+      // The badge row under the title holds both, in that order.
+      expect(started.parentElement).toContainElement(toolActivitySwitch());
+      expect(
+        started.compareDocumentPosition(toolActivitySwitch()) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(lastProvidedActions().props).not.toHaveProperty('toolActivity');
+    });
+
+    it('hides the tool activity from the switch, and remembers it', async () => {
       // S9: one switch, on by default, kept per person like the pin.
       await renderShell();
 
-      expect(lastProvidedActions().props.toolActivity.isShown).toBe(true);
+      expect(toolActivitySwitch()).toBeChecked();
       expect(
         screen.getByRole('button', { name: /Used 2 tools/ }),
       ).toBeInTheDocument();
 
-      await act(async () =>
-        lastProvidedActions().props.toolActivity.onChange(false),
-      );
+      await userEvent.click(toolActivitySwitch());
 
-      await waitFor(() =>
-        expect(lastProvidedActions().props.toolActivity.isShown).toBe(false),
-      );
+      await waitFor(() => expect(toolActivitySwitch()).not.toBeChecked());
       expect(
         screen.queryByRole('button', { name: /Used 2 tools/ }),
       ).not.toBeInTheDocument();
@@ -2308,9 +2321,7 @@ describe('SessionDetailPage', () => {
         [toastApiRef, { post }],
       ]);
 
-      await act(async () =>
-        lastProvidedActions().props.toolActivity.onChange(false),
-      );
+      await userEvent.click(toolActivitySwitch());
 
       await waitFor(() =>
         expect(post).toHaveBeenCalledWith(
@@ -2321,7 +2332,7 @@ describe('SessionDetailPage', () => {
           }),
         ),
       );
-      expect(lastProvidedActions().props.toolActivity.isShown).toBe(true);
+      await waitFor(() => expect(toolActivitySwitch()).toBeChecked());
       expect(
         screen.getByRole('button', { name: /Used 2 tools/ }),
       ).toBeInTheDocument();
@@ -2344,7 +2355,11 @@ describe('SessionDetailPage', () => {
       expect(
         screen.queryByText(/You have two open issues/),
       ).not.toBeInTheDocument();
-      expect(lastProvidedActions().props.toolActivity).toBeUndefined();
+      expect(
+        screen.queryByRole('switch', { name: 'Show tool activity' }),
+      ).not.toBeInTheDocument();
+      // The rest of the line does not wait.
+      expect(screen.getByText(/^Started/)).toBeInTheDocument();
     });
 
     it('keeps the cost chip in the composer there too', async () => {

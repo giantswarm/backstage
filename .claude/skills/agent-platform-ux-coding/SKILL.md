@@ -144,9 +144,10 @@ them and never invent a palette.
   stored "technical mode". Pages use a "Technical details" bui `Accordion`
   styled by `useSimpleAccordionStyles`, mounted only while open.
 - The one page-wide switch is the session page's "Show tool activity" (PO,
-  S9): it hides the agent's work, it does not change how detail reads. It sits
-  in the header before the pin, is on by default and is stored per person
-  (`useShowToolActivity`). Off still shows anything that waits on the person.
+  S9): it hides the agent's work, it does not change how detail reads. It is
+  small, at the end of the header's meta line after "Started …", on by
+  default and stored per person (`useShowToolActivity`). Off still shows
+  anything that waits on the person.
 - Forms put technical knobs with sensible defaults under `MoreOptions`. When
   validation blocks on a field inside it, open it in the same handler as
   `useFieldValidation`'s `reveal()`.

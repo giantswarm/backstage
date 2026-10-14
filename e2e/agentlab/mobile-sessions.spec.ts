@@ -17,7 +17,7 @@ import {
  * own agent's and is deleted again through the portal.
  */
 
-/** The session header's "Show tool activity" switch (S9). */
+/** The "Show tool activity" switch on the session's start line (S9). */
 function toolActivitySwitch(page: Page): Locator {
   return page.getByRole('switch', { name: 'Show tool activity', exact: true });
 }
@@ -165,7 +165,7 @@ test('a session starts from the home screen with a two-line message, its compose
     await expectClearOfBottomBar(admin, message, 'the session composer');
     await expectNoHorizontalScroll(admin, 'the session page');
 
-    // The header's "Show tool activity" switch (S9) fits the phone header,
+    // The "Show tool activity" switch (S9) wraps with the start line,
     // and off leaves the conversation without its work summaries. The lab
     // agent has no tools, so the session's conversation read is answered
     // with one tool call added, in the shape kagent records it.

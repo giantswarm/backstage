@@ -1133,9 +1133,10 @@ never fold. A summary is open while its run is in progress and collapsed after.
 folds out its exact call. The pending approval card always shows the exact
 arguments Allow would run.
 
-**"Show tool activity" hides the work, not detail** (PO, S9). One header
-switch, on by default and stored per person (`useShowToolActivity`, key
-`showToolActivity` in the `agent-platform` bucket). Off, the timeline keeps
+**"Show tool activity" hides the work, not detail** (PO, S9). One small
+switch at the end of the header's meta line, after "Started …", on by default
+and stored per person (`useShowToolActivity`, key `showToolActivity` in the
+`agent-platform` bucket). Off, the timeline keeps
 messages, attachments, turn endings, questions and the approval the session is
 waiting on (`openApprovalId`: the newest one, unanswered, while the session
 awaits input), and drops work summaries, lone reasoning and every other

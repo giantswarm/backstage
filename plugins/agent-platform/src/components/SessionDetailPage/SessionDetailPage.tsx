@@ -14,7 +14,7 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
+import { Alert, Badge, Button, Flex, Switch, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   DateComponent,
@@ -25,6 +25,7 @@ import {
   ShellPageBadgeSkeleton,
   ShellPageTitleSkeleton,
   StatusDot,
+  TOUCH_MEDIA,
   useProvidePageHeaderActions,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -104,6 +105,35 @@ const TOOL_ACTIVITY_TOAST_TIMEOUT_MS = 12000;
 const AVATAR_SIZE: AvatarSize = 48;
 
 const useStyles = makeStyles(theme => ({
+  // bui's Switch has one size, sized for forms. On the meta line it takes the
+  // line's text size and a proportionally smaller track (1.5 × 0.875rem
+  // rather than 2 × 1.143rem: two thumbs plus their margins wide, so bui's
+  // `translateX(100%)` still lands the thumb at the end). One unit when the
+  // line wraps at phone width.
+  toolActivitySwitch: {
+    gap: 'var(--bui-space-2)',
+    fontSize: 'var(--bui-font-size-2)',
+    lineHeight: 1.4,
+    color: 'var(--bui-fg-secondary)',
+    whiteSpace: 'nowrap',
+    // A 44px thumb target on touch without a taller line: the padding widens
+    // what the label catches, the negative margin gives the height back.
+    [TOUCH_MEDIA]: {
+      paddingBlock: 14,
+      marginBlock: -14,
+    },
+    '& .bui-SwitchIndicator': {
+      flexShrink: 0,
+      width: '1.5rem',
+      height: '0.875rem',
+      borderRadius: '0.875rem',
+      '&::before': {
+        width: '0.625rem',
+        height: '0.625rem',
+        margin: '0.125rem',
+      },
+    },
+  },
   // One readable column, like any chat surface: full-bleed prose is hard to
   // scan, and the conversation is what this page is for.
   //
@@ -612,37 +642,29 @@ export function SessionDetailPage() {
   );
 
   // Whether the conversation shows the agent's tool activity, kept per
-  // person. Storage backed like the pin, so it works from the shared header.
-  // The switch waits for the stored choice like the conversation does, so it
-  // never shows a state it is about to flip from.
+  // person through the StorageApi like the pin.
   const toastApi = useApi(toastApiRef);
   const {
     showToolActivity,
     isKnown: isToolActivityKnown,
     setShowToolActivity,
   } = useShowToolActivity();
-  const toolActivity = useMemo(
-    () =>
-      isToolActivityKnown
-        ? {
-            isShown: showToolActivity,
-            onChange: (show: boolean) => {
-              // A failed write puts the switch and the conversation back to
-              // the stored choice, so say why rather than let it snap back.
-              setShowToolActivity(show).catch((failure: Error) => {
-                toastApi.post({
-                  title: show
-                    ? 'Could not show tool activity'
-                    : 'Could not hide tool activity',
-                  description: failure.message,
-                  status: 'danger',
-                  timeout: TOOL_ACTIVITY_TOAST_TIMEOUT_MS,
-                });
-              });
-            },
-          }
-        : undefined,
-    [isToolActivityKnown, showToolActivity, setShowToolActivity, toastApi],
+  const changeToolActivity = useCallback(
+    (show: boolean) => {
+      // A failed write puts the switch and the conversation back to the
+      // stored choice, so say why rather than let it snap back.
+      setShowToolActivity(show).catch((failure: Error) => {
+        toastApi.post({
+          title: show
+            ? 'Could not show tool activity'
+            : 'Could not hide tool activity',
+          description: failure.message,
+          status: 'danger',
+          timeout: TOOL_ACTIVITY_TOAST_TIMEOUT_MS,
+        });
+      });
+    },
+    [setShowToolActivity, toastApi],
   );
 
   const actions = useMemo(
@@ -655,19 +677,9 @@ export function SessionDetailPage() {
           isUserScoped={isUserScoped}
           runtimeLoss={runtimeLoss}
           pin={pin}
-          toolActivity={toolActivity}
         />
       ) : null,
-    [
-      row,
-      sessionTitle,
-      deletion,
-      openRename,
-      isUserScoped,
-      runtimeLoss,
-      pin,
-      toolActivity,
-    ],
+    [row, sessionTitle, deletion, openRename, isUserScoped, runtimeLoss, pin],
   );
   useProvidePageHeaderActions(actions);
 
@@ -1364,7 +1376,24 @@ export function SessionDetailPage() {
      does not move `updated_at` on a turn, so both would only restate the start
      (kagent-dev/kagent#2397). */
   const startedMeta = (
-    <>Started {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}</>
+    <Text variant="body-small" color="secondary">
+      Started {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
+    </Text>
+  );
+
+  /* A view preference for the conversation below, so it sits on the line
+     that describes the session rather than among the actions on it (PO), at
+     the line's text size. Rendered here rather than through ShellPage's
+     `meta`, which wraps its content in text the switch's label cannot nest
+     in. Held until the stored choice is read, like the conversation, so it
+     never shows a state it is about to flip from. */
+  const toolActivitySwitch = isToolActivityKnown && (
+    <Switch
+      label="Show tool activity"
+      isSelected={showToolActivity}
+      onChange={changeToolActivity}
+      className={classes.toolActivitySwitch}
+    />
   );
 
   return (
@@ -1375,9 +1404,10 @@ export function SessionDetailPage() {
         <>
           {stateBadges}
           {agentIdentity}
+          {startedMeta}
+          {toolActivitySwitch}
         </>
       }
-      meta={startedMeta}
     >
       <Flex
         ref={setColumnElement}
