@@ -1,22 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
-import {
-  Accordion,
-  AccordionPanel,
-  AccordionTrigger,
-  Alert,
-  Box,
-  Button,
-  Flex,
-  Text,
-} from '@backstage/ui';
+import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
+  SectionHeader,
+  SimpleAccordion,
   YamlEditorFormField,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import { hasMarkers, ToolMarkers, useToolDescription } from '../shared';
+import { useToolDescription } from '../shared';
 import {
   buildArgs,
   enumDefaults,
@@ -25,7 +18,7 @@ import {
   schemaFields,
 } from '../../lib/schemaForm';
 import { ToolArgField } from './ToolArgField';
-import { ToolResultViewer } from './ToolResultViewer';
+import { RESULT_MAX_HEIGHT, ToolResultViewer } from './ToolResultViewer';
 import { ExplorerError } from './ExplorerError';
 import { DetailSkeleton } from './states';
 
@@ -54,18 +47,16 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
-  /**
-   * Show the read-only / destructive markers above the description. Off where
-   * the page already shows them, as the tool page does beside the tool's name.
-   */
-  showMarkers?: boolean;
   /** One line beside the run button, e.g. what running the tool does. */
   note?: string;
-  /** The run button's label. */
-  runLabel?: string;
 }
 
 /**
+ * The body of a tool's page, in sections down the page's full width: the
+ * tool's description, its input schema folded away, "Try it" (the argument
+ * form and the run button) and the result. The page's header carries the
+ * name and the markers.
+ *
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
  * form (typed widgets, inline validation, remembered last-used args), and
  * executes it via the `call_tool` proxy. The UI executes whatever tools muster
@@ -75,11 +66,10 @@ export interface ToolDetailPanelProps {
 export function ToolDetailPanel({
   name,
   installation,
-  showMarkers = true,
   note,
-  runLabel = 'Execute',
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
+  const headingId = useId();
 
   const storageKey = argsKey(installation, name);
   const [values, setValues] = useState<Record<string, FormValue>>(() =>
@@ -183,7 +173,7 @@ export function ToolDetailPanel({
 
   const executeButton = (
     <Button variant="primary" isPending={mutation.isPending} onClick={run}>
-      {mutation.isPending ? 'Running…' : runLabel}
+      {mutation.isPending ? 'Running…' : 'Run'}
     </Button>
   );
 
@@ -195,106 +185,101 @@ export function ToolDetailPanel({
   }
 
   return (
-    <Box>
-      {showMarkers && hasMarkers(data?.annotations) && (
-        <Box mt="1">
-          <ToolMarkers annotations={data?.annotations} />
-        </Box>
-      )}
-
+    <Flex direction="column" gap="5">
       {data?.description && (
-        <Box mt="1">
-          <Text
-            as="p"
-            variant="body-medium"
-            color="secondary"
-            style={{ whiteSpace: 'pre-wrap' }}
-          >
-            {data.description}
-          </Text>
-        </Box>
+        <Text
+          as="p"
+          variant="body-medium"
+          color="secondary"
+          style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+        >
+          {data.description}
+        </Text>
       )}
 
       {data?.inputSchema && (
-        <Box mt="3">
-          <Accordion>
-            <AccordionTrigger title="Input schema" />
-            <AccordionPanel>
-              <YamlEditorFormField
-                value={JSON.stringify(data.inputSchema, null, 2)}
-                language="json"
-                readOnly
-                maxHeight={360}
+        // Technical detail, folded in place: the form below is the schema
+        // drawn for people. Opened, it is as tall as a result may be.
+        <SimpleAccordion title="Input schema" headingLevel={2}>
+          <YamlEditorFormField
+            value={JSON.stringify(data.inputSchema, null, 2)}
+            language="json"
+            readOnly
+            maxHeight={RESULT_MAX_HEIGHT}
+          />
+        </SimpleAccordion>
+      )}
+
+      <section aria-labelledby={`${headingId}-try-it`}>
+        <SectionHeader
+          as="h2"
+          variant="title-x-small"
+          title="Try it"
+          id={`${headingId}-try-it`}
+        />
+        <Box mt="2">
+          {fields.length === 0 ? (
+            <Text as="p" variant="body-medium" color="secondary">
+              This tool takes no arguments.
+            </Text>
+          ) : (
+            fields.map(field => (
+              <ToolArgField
+                key={field.name}
+                field={field}
+                value={values[field.name]}
+                error={fieldErrors[field.name]}
+                jsonMode={
+                  Boolean(jsonModes[field.name]) &&
+                  fieldKind(field) === 'array'
+                }
+                onChange={value => setValue(field.name, value)}
+                onToggleJson={() => toggleJson(field)}
               />
-            </AccordionPanel>
-          </Accordion>
+            ))
+          )}
         </Box>
-      )}
-
-      <Box mt="3">
-        <Box mb="1">
-          <Text as="p" variant="body-large" weight="bold">
-            Arguments
-          </Text>
+        <Box mt="2">
+          {note ? (
+            <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
+              {executeButton}
+              <Text variant="body-small" color="secondary">
+                {note}
+              </Text>
+            </Flex>
+          ) : (
+            executeButton
+          )}
         </Box>
-        {fields.length === 0 ? (
-          <Text variant="body-medium" color="secondary">
-            This tool takes no arguments.
-          </Text>
-        ) : (
-          fields.map(field => (
-            <ToolArgField
-              key={field.name}
-              field={field}
-              value={values[field.name]}
-              error={fieldErrors[field.name]}
-              jsonMode={
-                Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
-              }
-              onChange={value => setValue(field.name, value)}
-              onToggleJson={() => toggleJson(field)}
+        {mutation.isError && (
+          <Box mt="3">
+            <Alert
+              status="danger"
+              title="Could not run the tool"
+              description={(mutation.error as Error).message}
             />
-          ))
-        )}
-      </Box>
-
-      <Box mt="2">
-        {note ? (
-          <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
-            {executeButton}
-            <Text variant="body-small" color="secondary">
-              {note}
-            </Text>
-          </Flex>
-        ) : (
-          executeButton
-        )}
-      </Box>
-
-      {mutation.isError && (
-        <Box mt="3">
-          <Alert
-            status="danger"
-            title="Could not run the tool"
-            description={(mutation.error as Error).message}
-          />
-        </Box>
-      )}
-      {mutation.isSuccess && (
-        <Box mt="3">
-          <Box mb="1">
-            <Text as="p" variant="body-large" weight="bold">
-              Result
-            </Text>
           </Box>
-          <ToolResultViewer
-            result={mutation.data.result}
-            durationMs={mutation.data.durationMs}
-            onRerun={() => execute(lastArgs)}
-            rerunDisabled={mutation.isPending}
+        )}
+      </section>
+
+      {mutation.isSuccess && (
+        <section aria-labelledby={`${headingId}-result`}>
+          <SectionHeader
+            as="h2"
+            variant="title-x-small"
+            title="Result"
+            id={`${headingId}-result`}
           />
-        </Box>
+          <Box mt="2">
+            <ToolResultViewer
+              result={mutation.data.result}
+              durationMs={mutation.data.durationMs}
+              onRerun={() => execute(lastArgs)}
+              rerunDisabled={mutation.isPending}
+            />
+          </Box>
+        </section>
       )}
-    </Box>
+    </Flex>
   );
 }

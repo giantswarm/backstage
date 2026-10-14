@@ -47,7 +47,13 @@ describe('ToolDetailPanel', () => {
     expect(
       await screen.findByText('Echoes a message back.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Arguments')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Try it' }),
+    ).toBeInTheDocument();
+    // Folded: the form is the schema drawn for people.
+    expect(
+      screen.getByRole('button', { name: 'Input schema' }),
+    ).toHaveAttribute('aria-expanded', 'false');
     expect(
       screen.getByRole('textbox', { name: /message/i }),
     ).toBeInTheDocument();
@@ -62,7 +68,7 @@ describe('ToolDetailPanel', () => {
       screen.getByRole('textbox', { name: /message/i }),
       'hi',
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Execute' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
 
     await waitFor(() =>
       expect(api.callTool).toHaveBeenCalledWith(
@@ -71,10 +77,12 @@ describe('ToolDetailPanel', () => {
         undefined,
       ),
     );
-    expect(await screen.findByText('Result')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
   });
 
-  it('shows a note beside the Execute button when given one', async () => {
+  it('shows a note beside the Run button when given one', async () => {
     await renderPanel(makeApi(), 'Nothing is changed.');
 
     await screen.findByText('Echoes a message back.');

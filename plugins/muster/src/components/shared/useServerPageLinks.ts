@@ -26,11 +26,15 @@ export interface ServerPageLinks {
     installation: string | undefined,
     options?: { tab?: ServerPageTab; q?: string },
   ) => string | undefined;
-  /** A tool's page beneath its server. */
+  /**
+   * A tool's page beneath its server; `q` is the Tools search it was opened
+   * from, which the page's way back to the server keeps.
+   */
   tool: (
     server: string,
     tool: string,
     installation: string | undefined,
+    options?: { q?: string },
   ) => string | undefined;
 }
 
@@ -56,9 +60,12 @@ export function useServerPageLinks(): ServerPageLinks {
           q: options.q,
         });
       },
-      tool: (server, tool, installation) =>
+      tool: (server, tool, installation, options = {}) =>
         toolRoute
-          ? withQuery(toolRoute({ server, tool }), { installation })
+          ? withQuery(toolRoute({ server, tool }), {
+              installation,
+              q: options.q,
+            })
           : undefined,
     }),
     [serverRoute, toolRoute],

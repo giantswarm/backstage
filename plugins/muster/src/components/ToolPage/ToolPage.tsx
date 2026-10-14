@@ -1,5 +1,5 @@
 import { ReactNode, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { Alert, Link } from '@backstage/ui';
 import {
   EmptyStateCard,
@@ -7,6 +7,7 @@ import {
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
+import { toolEffect, ToolEffect } from '../../lib/toolAnnotations';
 import {
   serverPageResolver,
   serverPrefixInfos,
@@ -22,15 +23,29 @@ import {
 } from '../shared';
 import { ToolDetailPanel } from '../ToolDetail';
 import {
+  representativeServer,
   useServersListHref,
   useServerTools,
 } from '../ServerPage/useServerPageData';
+import { runsAsCaller } from '../ConnectorPage/connectorFacts';
 
 /** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
 const TOOL_NAME_STYLE = {
   fontFamily: 'monospace',
   overflowWrap: 'anywhere',
 } as const;
+
+/** What the Try it section says beside its Run button for a tool. */
+export function tryItNote(
+  effect: ToolEffect,
+  runsAsCaller: boolean,
+): string | undefined {
+  const parts = [
+    runsAsCaller ? 'Runs as you.' : undefined,
+    effect === 'reads' ? 'Nothing is changed.' : undefined,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : undefined;
+}
 
 /**
  * One tool's page, beneath the server offering it: its short and full name,
@@ -41,6 +56,8 @@ const TOOL_NAME_STYLE = {
  */
 export function ToolPage() {
   const { server: key = '', tool = '' } = useParams();
+  // The Tools search the tool was opened from: the way back keeps it.
+  const toolsQuery = new URLSearchParams(useLocation().search).get('q');
   const paths = useConnectorGroupPaths();
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
@@ -78,7 +95,13 @@ export function ToolPage() {
   });
   const annotations = described.data?.annotations ?? listed?.annotations;
 
-  const toolsHref = links.server(serverKey, activeInstallation);
+  const toolsHref = links.server(serverKey, activeInstallation, {
+    q: toolsQuery ?? undefined,
+  });
+  const representative =
+    row && activeInstallation
+      ? representativeServer(row, activeInstallation)?.server
+      : undefined;
   let body: ReactNode;
   if (isLoadingInstallations || isLoading) {
     body = <LoadingIndicator label="Reading the environment's connectors…" />;
@@ -108,9 +131,7 @@ export function ToolPage() {
       />
     );
   } else if (!row || !offered) {
-    const serverHref = row
-      ? links.server(serverKey, activeInstallation)
-      : listHref;
+    const serverHref = row ? toolsHref : listHref;
     body = (
       <EmptyStateCard
         title={`No tool “${tool}” on ${activeInstallation}`}
@@ -136,7 +157,10 @@ export function ToolPage() {
         key={`${activeInstallation}/${tool}`}
         name={tool}
         installation={activeInstallation}
-        showMarkers={false}
+        note={tryItNote(
+          toolEffect({ annotations }),
+          representative ? runsAsCaller(representative) : false,
+        )}
       />
     );
   }

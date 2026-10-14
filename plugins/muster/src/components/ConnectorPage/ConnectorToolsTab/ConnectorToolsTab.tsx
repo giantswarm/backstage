@@ -1,16 +1,6 @@
 import { ReactNode, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import {
-  Accordion,
-  AccordionGroup,
-  AccordionPanel,
-  AccordionTrigger,
-  Alert,
-  Box,
-  Flex,
-  SearchField,
-  Text,
-} from '@backstage/ui';
+import { Alert, Box, Flex, SearchField, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   CatalogFilterBar,
@@ -20,6 +10,7 @@ import {
   LoadingIndicator,
   SEARCH_MIN,
   ShowMore,
+  StackedRowList,
   useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../../apis';
@@ -29,8 +20,7 @@ import {
   ToolEffect,
 } from '../../../lib/toolAnnotations';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
-import { EffectBadge, TruncatedListNote } from '../../shared';
-import { ToolDetailPanel } from '../../ToolDetail';
+import { EffectBadge, TruncatedListNote, useServerPageLinks } from '../../shared';
 import { ServerTools } from '../../ServerPage/useServerPageData';
 
 const useStyles = makeStyles({
@@ -46,29 +36,13 @@ const useStyles = makeStyles({
   search: {
     maxWidth: 360,
   },
-  trigger: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14,
-    flex: '1 1 auto',
-    minWidth: 0,
-    textAlign: 'left',
-  },
-  rowText: {
-    flex: '1 1 auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-    minWidth: 0,
-    // A tool's label is one snake_case token: it breaks rather than run
-    // under the effect badge on a phone.
+  // Two lines of a tool's description, then its page: some run to pages.
+  description: {
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
     overflowWrap: 'anywhere',
-  },
-  tryIt: {
-    margin: '4px 0 12px',
-    padding: 18,
-    borderRadius: 12,
-    background: 'var(--bui-bg-neutral-1)',
   },
 });
 
@@ -84,10 +58,10 @@ const EFFECT_FACETS: readonly CatalogFacet<ToolSummary>[] = [
 ];
 
 export interface ConnectorToolsTabProps {
+  /** The connector's key in the address, which its tools' pages sit under. */
+  server: string;
   installation: string;
   tools: ServerTools;
-  /** Whether a call reaches the server with the caller's own identity. */
-  runsAsCaller: boolean;
   /** Why the connector lists no tools, when it lists none. */
   emptyExplanation: string;
   /** Shown instead of the list while the muster session is missing. */
@@ -99,86 +73,23 @@ export interface ConnectorToolsTabProps {
   signInGate?: ReactNode;
 }
 
-/** What the Try it panel says beside its button for a tool. */
-export function tryItNote(
-  effect: ToolEffect,
-  runsAsCaller: boolean,
-): string | undefined {
-  const parts = [
-    runsAsCaller ? 'Runs as you.' : undefined,
-    effect === 'reads' ? 'Nothing is changed.' : undefined,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(' ') : undefined;
-}
-
-function ToolRow({
-  tool,
-  label,
-  open,
-  installation,
-  runsAsCaller,
-}: {
-  tool: ToolSummary;
-  label: string;
-  open: boolean;
-  installation: string;
-  runsAsCaller: boolean;
-}) {
-  const classes = useStyles();
-  const effect = toolEffect(tool);
-  const description = tool.description ?? tool.summary;
-  return (
-    <Accordion id={tool.name}>
-      <AccordionTrigger>
-        <span className={classes.trigger}>
-          <span className={classes.rowText}>
-            <Text variant="body-medium" weight="bold">
-              {label}
-            </Text>
-            {description && (
-              <Text variant="body-small" color="secondary" truncate>
-                {description}
-              </Text>
-            )}
-          </span>
-          <EffectBadge effect={effect} />
-        </span>
-      </AccordionTrigger>
-      <AccordionPanel>
-        {open && (
-          <div className={classes.tryIt}>
-            <Text as="h4" variant="body-medium" weight="bold">
-              Try it
-            </Text>
-            <ToolDetailPanel
-              name={tool.name}
-              installation={installation}
-              showMarkers={false}
-              note={tryItNote(effect, runsAsCaller)}
-              runLabel="Run"
-            />
-          </div>
-        )}
-      </AccordionPanel>
-    </Accordion>
-  );
-}
-
 /**
- * The connector's tools as an expandable list: a search, a "What it does"
- * dropdown (only when the tools both read and change things) with a count per
- * choice, and per tool its effect and an inline
- * Try it that runs the tool through muster. A short list (`SEARCH_MIN` or
- * fewer) is read, not searched, so it shows neither, unless the tab opened
- * with a search; a long one renders a page of tools at a time. The search is
- * seeded once from the page's `?q=`: the Customize list's search links a
- * connector it matched by its tools here with it, so the tab opens on the
- * matching tools.
+ * The connector's tools as a list of links, one row per tool: its name, its
+ * description cut to two lines and what it does. Each row opens the tool's own
+ * page, which holds its schema, the form that runs it and the result. A search
+ * and a "What it does" dropdown (only when the tools both read and change
+ * things) with a count per choice sit above a long list. A short list
+ * (`SEARCH_MIN` or fewer) is read, not searched, so it shows neither, unless
+ * the tab opened with a search; a long one renders a page of tools at a time.
+ * The search is seeded once from the page's `?q=`: the Customize list's search
+ * links a connector it matched by its tools here with it, so the tab opens on
+ * the matching tools. A tool's link carries the search in force, so the way
+ * back from its page lands on the same tools.
  */
 export function ConnectorToolsTab({
+  server,
   installation,
   tools,
-  runsAsCaller,
   emptyExplanation,
   sessionGate,
   signInGate,
@@ -194,7 +105,7 @@ export function ConnectorToolsTab({
   // A search the tab opened with keeps its field, short list or not, so it
   // can be read and cleared; clearing it does not take the field away.
   const openedSearched = initialQuery.trim() !== '';
-  const [openTool, setOpenTool] = useState<string | undefined>();
+  const links = useServerPageLinks();
 
   const { tools: listed, shortName } = tools;
   const all = useMemo(() => listed ?? [], [listed]);
@@ -274,8 +185,8 @@ export function ConnectorToolsTab({
           onClearFilters={filters.clear}
         />
       ) : (
-        // A server can list hundreds of tools, each an accordion; a page of
-        // them at a time, starting over when the search or filter changes.
+        // A server can list hundreds of tools; a page of them at a time,
+        // starting over when the search or filter changes.
         <ShowMore
           key={`${filters.key}|${query}`}
           items={shown}
@@ -283,24 +194,30 @@ export function ConnectorToolsTab({
           noun="tool"
         >
           {page => (
-            <AccordionGroup
-              expandedKeys={openTool ? [openTool] : []}
-              onExpandedChange={keys => {
-                const [next] = [...keys];
-                setOpenTool(next === undefined ? undefined : String(next));
-              }}
-            >
-              {page.map(tool => (
-                <ToolRow
-                  key={tool.name}
-                  tool={tool}
-                  label={shortName(tool.name)}
-                  open={openTool === tool.name}
-                  installation={installation}
-                  runsAsCaller={runsAsCaller}
-                />
-              ))}
-            </AccordionGroup>
+            <StackedRowList
+              aria-label="Tools"
+              rows={page.map(tool => {
+                const description = tool.description ?? tool.summary;
+                return {
+                  id: tool.name,
+                  title: shortName(tool.name),
+                  href: links.tool(server, tool.name, installation, {
+                    q: query.trim() || undefined,
+                  }),
+                  status: <EffectBadge effect={toolEffect(tool)} />,
+                  details: description ? (
+                    <Text
+                      as="p"
+                      variant="body-small"
+                      color="secondary"
+                      className={classes.description}
+                    >
+                      {description}
+                    </Text>
+                  ) : undefined,
+                };
+              })}
+            />
           )}
         </ShowMore>
       )}
