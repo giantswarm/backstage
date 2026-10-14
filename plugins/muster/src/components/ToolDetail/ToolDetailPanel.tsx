@@ -1,14 +1,11 @@
 import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
-import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
-import { useApi } from '@backstage/frontend-plugin-api';
 import {
   SectionHeader,
   TechnicalDetailsFoldOut,
   YamlEditorFormField,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
 import { useToolDescription } from '../shared';
 import {
   buildArgs,
@@ -21,6 +18,7 @@ import { ToolArgField } from './ToolArgField';
 import { RESULT_MAX_HEIGHT, ToolResultViewer } from './ToolResultViewer';
 import { ExplorerError } from './ExplorerError';
 import { DetailSkeleton } from './states';
+import { ToolRun, useToolRun } from './useToolRun';
 
 /** localStorage key for a tool's last-used arguments, scoped per installation. */
 function argsKey(installation: string | undefined, name: string): string {
@@ -60,9 +58,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** A call's outcome as the Result section shows it. */
-type CallResult = { result: unknown; durationMs: number };
-
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
@@ -76,10 +71,10 @@ export interface ToolDetailPanelProps {
    */
   subject?: 'tool' | 'workflow';
   /**
-   * Called once each call ends, returned or failed: a workflow records a
-   * failed run too, so its run records are worth re-reading either way.
+   * The runs of the tool, where a page keeps them above the panel (a
+   * workflow page, across its tabs); else the panel keeps its own.
    */
-  onRan?: () => void;
+  run?: ToolRun;
 }
 
 /**
@@ -92,22 +87,18 @@ export interface ToolDetailPanelProps {
  *
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
  * form (typed widgets, inline validation, remembered last-used args), and
- * executes it via the `call_tool` proxy. The UI executes whatever tools muster
- * exposes; the trust boundary is the downstream MCP server's deployment (e.g.
- * mcp-kubernetes is deployed read-only), not the portal.
+ * runs it with {@link useToolRun}.
  */
 export function ToolDetailPanel({
   name,
   installation,
   note,
   subject = 'tool',
-  onRan,
+  run,
 }: ToolDetailPanelProps) {
-  const musterApi = useApi(musterApiRef);
-  // The last call that returned, kept on screen while a re-run is pending:
-  // the result is most of the page, and dropping it would collapse the page
-  // under the reader until the call returns.
-  const [lastResult, setLastResult] = useState<CallResult | undefined>();
+  // Always called, as hooks must be; idle where the page passes its own.
+  const ownRun = useToolRun(name, installation);
+  const toolRun = run ?? ownRun;
 
   const storageKey = argsKey(installation, name);
   const [values, setValues] = useState<Record<string, FormValue>>(() =>
@@ -115,7 +106,6 @@ export function ToolDetailPanel({
   );
   const [jsonModes, setJsonModes] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [lastArgs, setLastArgs] = useState<Record<string, unknown>>({});
 
   // Reload the remembered args when the selected tool changes.
   useEffect(() => {
@@ -151,24 +141,6 @@ export function ToolDetailPanel({
     });
   }, [fields]);
 
-  const mutation = useTrackedMutation({
-    // A workflow's run is reported, without its inputs. A tool call from the
-    // explorer is not: it is a probe, and its arguments are free text.
-    event: () =>
-      subject === 'workflow'
-        ? { name: 'Muster.workflowRan', attributes: {} }
-        : null,
-    mutationFn: async (args: Record<string, unknown>) => {
-      const startedAt = performance.now();
-      const result = await musterApi.callTool(name, args, installation);
-      return { result, durationMs: Math.round(performance.now() - startedAt) };
-    },
-    onSuccess: setLastResult,
-    // A failed call says so above; an older result below would read as its.
-    onError: () => setLastResult(undefined),
-    onSettled: () => onRan?.(),
-  });
-
   const setValue = (key: string, value: FormValue) =>
     setValues(prev => ({ ...prev, [key]: value }));
 
@@ -202,12 +174,11 @@ export function ToolDetailPanel({
   };
 
   const execute = (args: Record<string, unknown>) => {
-    setLastArgs(args);
     storeArgs(storageKey, values);
-    mutation.mutate(args);
+    toolRun.run(args);
   };
 
-  const run = () => {
+  const submit = () => {
     const { args, errors } = buildArgs(fields, values);
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
@@ -217,8 +188,8 @@ export function ToolDetailPanel({
   };
 
   const executeButton = (
-    <Button variant="primary" isPending={mutation.isPending} onClick={run}>
-      {mutation.isPending ? 'Running…' : 'Run'}
+    <Button variant="primary" isPending={toolRun.isPending} onClick={submit}>
+      {toolRun.isPending ? 'Running…' : 'Run'}
     </Button>
   );
 
@@ -302,24 +273,24 @@ export function ToolDetailPanel({
             executeButton
           )}
         </Box>
-        {mutation.isError && (
+        {toolRun.error && (
           <Box mt="3">
             <Alert
               status="danger"
               title={`Could not run the ${subject}`}
-              description={(mutation.error as Error).message}
+              description={toolRun.error.message}
             />
           </Box>
         )}
       </Section>
 
-      {lastResult && (
+      {toolRun.lastResult && (
         <Section title="Result">
           <ToolResultViewer
-            result={lastResult.result}
-            durationMs={lastResult.durationMs}
-            onRerun={() => execute(lastArgs)}
-            rerunDisabled={mutation.isPending}
+            result={toolRun.lastResult.result}
+            durationMs={toolRun.lastResult.durationMs}
+            onRerun={toolRun.rerun}
+            rerunDisabled={toolRun.isPending}
           />
         </Section>
       )}

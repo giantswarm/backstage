@@ -1,9 +1,7 @@
 import { useApi } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { useQuery } from '@tanstack/react-query';
-import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../../apis';
-import { useMusterInstance } from '../../MusterInstanceProvider';
 import { authStatusQueryKey, needsSignIn, ServerSignIn } from '../../shared';
 
 /**
@@ -13,6 +11,9 @@ import { authStatusQueryKey, needsSignIn, ServerSignIn } from '../../shared';
  * per installation and shared with every sign-in affordance, so a completed
  * sign-in drops the connector from the list. Nothing when every connector the
  * workflow needs is signed in to.
+ *
+ * Only for an installation with per-user muster sessions: without one the
+ * Run it tab explains that no run is possible, and no sign-in is either.
  */
 export function WorkflowAuthNotice({
   connectors,
@@ -23,7 +24,6 @@ export function WorkflowAuthNotice({
   installation?: string;
 }) {
   const musterApi = useApi(musterApiRef);
-  const { activeInstallationInfo } = useMusterInstance();
 
   const { data } = useQuery({
     queryKey: authStatusQueryKey(installation),
@@ -42,10 +42,6 @@ export function WorkflowAuthNotice({
     return null;
   }
 
-  // Signing a person in to a connector needs a per-user muster session, which
-  // only an installation with an auth provider has.
-  const canSignIn = activeInstallationInfo?.requiresAuth ?? false;
-
   return (
     <Alert
       status="warning"
@@ -61,23 +57,15 @@ export function WorkflowAuthNotice({
               ? 'This workflow calls a connector you are not signed in to, and muster refuses the run until you are.'
               : 'This workflow calls connectors you are not signed in to, and muster refuses the run until you are.'}
           </Text>
-          {canSignIn ? (
-            waiting.map(connector => (
-              <ServerSignIn
-                key={connector}
-                noun="connector"
-                serverName={connector}
-                installation={installation}
-                showName
-              />
-            ))
-          ) : (
-            <Text variant="body-small" color="secondary">
-              This portal talks to muster without personal credentials, so it
-              cannot sign you in to {joinNames(waiting)}. An administrator has
-              to configure an auth provider for this environment.
-            </Text>
-          )}
+          {waiting.map(connector => (
+            <ServerSignIn
+              key={connector}
+              noun="connector"
+              serverName={connector}
+              installation={installation}
+              showName
+            />
+          ))}
         </Flex>
       }
     />

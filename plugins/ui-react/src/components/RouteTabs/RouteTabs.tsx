@@ -1,6 +1,7 @@
-import { RefObject, useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { useHref, useLocation, useNavigate } from 'react-router-dom';
 import { Tab, TabList, Tabs } from '@backstage/ui';
+import { RouterProvider } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core';
 import { useSplatBasePath } from '../../hooks/useSplatBasePath';
 import {
@@ -34,6 +35,13 @@ export interface RouteTabsProps {
    * into the page gutter, so the tabs scroll to the screen's edge.
    */
   className?: string;
+  /**
+   * Called instead of switching tabs, with the switch to make: a page that
+   * must ask first (a run in flight) calls `navigate` once the person agrees,
+   * and other pages leave it out. The strip's links navigate on press through
+   * react-aria's router, not on click, so this is the one place to hold them.
+   */
+  onNavigate?: (href: string, navigate: () => void) => void;
 }
 
 /** How wide the fade at a strip edge with more tabs beyond it is. */
@@ -270,6 +278,7 @@ export function RouteTabs({
   search = '',
   basePath: explicitBasePath,
   className,
+  onNavigate,
 }: RouteTabsProps) {
   const classes = useStyles();
   const splatBasePath = useSplatBasePath();
@@ -284,11 +293,40 @@ export function RouteTabs({
   }));
   const selected = selectedRouteTab(links, pathname);
   const overflow = useOverflow(stripRef, isPhone);
+  const routerNavigate = useNavigate();
+  // A tab carries no router options, so this is bui's own navigation for it.
+  const guardedNavigate = useCallback(
+    (href: string) => {
+      if (onNavigate) {
+        onNavigate(href, () => routerNavigate(href));
+      } else {
+        routerNavigate(href);
+      }
+    },
+    [onNavigate, routerNavigate],
+  );
   useSelectedTabInView(
     stripRef,
     selected,
     tabs.map(tabLabel).join('\n'),
     isPhone,
+  );
+
+  const strip = (
+    <Tabs>
+      <TabList>
+        {links.map(tab => (
+          <Tab
+            key={tab.id}
+            id={tab.id}
+            href={tab.href}
+            matchStrategy={tab.path ? 'prefix' : 'exact'}
+          >
+            {tabLabel(tab)}
+          </Tab>
+        ))}
+      </TabList>
+    </Tabs>
   );
 
   return (
@@ -298,20 +336,15 @@ export function RouteTabs({
       data-overflow-start={overflow.start || undefined}
       data-overflow-end={overflow.end || undefined}
     >
-      <Tabs>
-        <TabList>
-          {links.map(tab => (
-            <Tab
-              key={tab.id}
-              id={tab.id}
-              href={tab.href}
-              matchStrategy={tab.path ? 'prefix' : 'exact'}
-            >
-              {tabLabel(tab)}
-            </Tab>
-          ))}
-        </TabList>
-      </Tabs>
+      {onNavigate ? (
+        // The closest router provider wins: this strip's presses go through
+        // the page's guard, the rest of the app keeps bui's.
+        <RouterProvider navigate={guardedNavigate} useHref={useHref}>
+          {strip}
+        </RouterProvider>
+      ) : (
+        strip
+      )}
     </div>
   );
 }

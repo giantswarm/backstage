@@ -91,7 +91,7 @@ export const portalEvents = defineEvents({
   },
   'Muster.workflowRan': {
     description:
-      'A muster workflow was run from its page in the Agent Platform and returned a result.',
+      "A muster workflow was run from the Agent Platform, on its page or its tool's, and returned a result.",
     attributes: {},
   },
 });

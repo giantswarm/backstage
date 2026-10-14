@@ -1,12 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { analyticsApiRef } from '@backstage/core-plugin-api';
-import {
-  mockApis,
-  renderInTestApp,
-  TestApiProvider,
-} from '@backstage/test-utils';
+import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { MusterApi, musterApiRef, ToolDetail } from '../../apis';
 import { ToolDetailPanel, ToolDetailPanelProps } from './ToolDetailPanel';
 
@@ -28,8 +23,6 @@ function makeApi(): Pick<MusterApi, 'describeTool' | 'callTool'> {
   };
 }
 
-const analyticsApi = mockApis.analytics.mock();
-
 async function renderPanel(
   api: Pick<MusterApi, 'describeTool' | 'callTool'>,
   note?: string,
@@ -39,12 +32,7 @@ async function renderPanel(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider
-      apis={[
-        [musterApiRef, api],
-        [analyticsApiRef, analyticsApi],
-      ]}
-    >
+    <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
         <ToolDetailPanel name="core_echo" note={note} {...props} />
       </QueryClientProvider>
@@ -53,15 +41,11 @@ async function renderPanel(
 }
 
 describe('ToolDetailPanel', () => {
-  beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
-
-  it('runs a workflow’s tool as its inputs, without the description, and reports the run', async () => {
+  it('runs a workflow’s tool as its inputs, without the description', async () => {
     const api = makeApi();
-    const onRan = jest.fn();
     await renderPanel(api, undefined, {
       name: 'workflow_echo',
       subject: 'workflow',
-      onRan,
     });
 
     expect(
@@ -73,16 +57,9 @@ describe('ToolDetailPanel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Run' }));
     await screen.findByRole('heading', { level: 2, name: 'Result' });
-    expect(onRan).toHaveBeenCalledTimes(1);
-    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'Muster.workflowRan',
-        attributes: {},
-      }),
-    );
   });
 
-  it('names a workflow’s failed run as the workflow’s, and still calls back', async () => {
+  it('names a workflow’s failed run as the workflow’s', async () => {
     const api = makeApi();
     api.callTool = jest.fn(() =>
       Promise.reject(new Error('workflow echo is not available')),
@@ -90,11 +67,9 @@ describe('ToolDetailPanel', () => {
     api.describeTool = jest.fn(() =>
       Promise.resolve({ ...detail, inputSchema: undefined }),
     );
-    const onRan = jest.fn();
     await renderPanel(api, undefined, {
       name: 'workflow_echo',
       subject: 'workflow',
-      onRan,
     });
 
     expect(
@@ -104,18 +79,6 @@ describe('ToolDetailPanel', () => {
     expect(
       await screen.findByText('Could not run the workflow'),
     ).toBeInTheDocument();
-    await waitFor(() => expect(onRan).toHaveBeenCalledTimes(1));
-    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
-  });
-
-  it('reports no event for a tool call from the explorer', async () => {
-    const api = makeApi();
-    await renderPanel(api);
-
-    await screen.findByText('Echoes a message back.');
-    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
-    await screen.findByRole('heading', { level: 2, name: 'Result' });
-    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('renders the described tool and its argument form', async () => {

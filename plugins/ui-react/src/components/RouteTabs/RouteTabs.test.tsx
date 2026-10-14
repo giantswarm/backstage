@@ -1,4 +1,11 @@
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
+import userEvent from '@testing-library/user-event';
 import {
   act,
   fireEvent,
@@ -51,7 +58,43 @@ function stripOf(container: HTMLElement): HTMLElement {
   return root!.parentElement!;
 }
 
+function Location() {
+  const { pathname } = useLocation();
+  return <p>{`at ${pathname}`}</p>;
+}
+
 describe('RouteTabs', () => {
+  it('holds a tab switch for the page’s guard, which makes it once agreed', async () => {
+    const onNavigate = jest.fn();
+    render(
+      <MemoryRouter initialEntries={['/workflows/deploy/run']}>
+        <Routes>
+          <Route
+            path="/workflows/:name/*"
+            element={
+              <>
+                <Location />
+                <RouteTabs tabs={TABS} onNavigate={onNavigate} />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Executions (3)' }));
+    expect(onNavigate).toHaveBeenCalledWith(
+      '/workflows/deploy/executions',
+      expect.any(Function),
+    );
+    expect(screen.getByText('at /workflows/deploy/run')).toBeInTheDocument();
+
+    act(() => onNavigate.mock.calls[0][1]());
+    expect(
+      screen.getByText('at /workflows/deploy/executions'),
+    ).toBeInTheDocument();
+  });
+
   it('links every tab absolutely below the page, keeping the query string', () => {
     renderAt('/workflows/deploy/run');
 

@@ -68,6 +68,7 @@
     "json-schema": "^0.4.0",
     "lodash": "^4.17.21",
     "qs": "^6.14.0",
+    "react-aria-components": "~1.17.0",
     "react-helmet": "6.1.0",
     "react-syntax-highlighter": "^16.0.0",
     "react-use": "^17.6.0",

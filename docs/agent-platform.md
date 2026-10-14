@@ -164,10 +164,19 @@ page. The note beside Run says "Runs as you." when every step calls a
 connector that acts with the person's identity, and "Nothing is changed." for
 a workflow muster marks read-only. Connectors the steps call that wait for the
 person's sign-in are named above the form, with their Sign in, because muster
-refuses the run until then. Without a muster session the tab asks for one;
-where muster lists no `workflow_<name>` tool for the person, it says so
-instead of showing a form. A run, whether it succeeds or fails, refreshes the
-Usage tab and the last run on Overview.
+refuses the run until then. The tab shows no form without a muster session (it
+asks for one), on an installation without an `authProvider` (the portal
+refuses runs there, since they would act as muster's shared identity), or
+where muster lists no `workflow_<name>` tool for the person. A run, whether it
+succeeds or fails, refreshes that workflow's run records: Usage, the last run
+on Overview and the Customize list.
+
+While a run is in flight, leaving the tab asks first, because its result shows
+only there; muster finishes the run either way. The question covers the
+page's tabs, clicks on links to other addresses (breadcrumbs, the rail, links
+in the page) and, through the browser's own prompt, a reload or a closed tab.
+The browser's Back, the command palette and navigation that code starts are
+not held: the app's router has no navigation blocker.
 
 ## Usage
 

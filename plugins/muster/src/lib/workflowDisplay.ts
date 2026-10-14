@@ -97,12 +97,19 @@ export function conditionSummary(
   return 'Only if a condition holds';
 }
 
+/** A workflow's `workflow_<name>` tool in a tool list, if listed. */
+export function workflowToolOf<
+  T extends { name: string; annotations?: ToolAnnotations },
+>(name: string, tools: T[] | null | undefined): T | undefined {
+  return tools?.find(t => t.name === `${WORKFLOW_TOOL_PREFIX}${name}`);
+}
+
 /** The derived read-only effect of one workflow's `workflow_<name>` tool. */
 export function workflowEffect(
   name: string,
   tools: { name: string; annotations?: ToolAnnotations }[] | null | undefined,
 ): ToolEffect | undefined {
-  const tool = tools?.find(t => t.name === `${WORKFLOW_TOOL_PREFIX}${name}`);
+  const tool = workflowToolOf(name, tools);
   return tool ? toolEffect(tool) : undefined;
 }
 

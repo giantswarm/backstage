@@ -56,12 +56,14 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
 
 let mockWorkflows: MusterWorkflow[] = [];
 let mockAuthenticated = true;
+let mockRequiresAuth = true;
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
     installations: ['gazelle'],
     isLoadingInstallations: false,
     activeInstallation: 'gazelle',
-    activeInstallationInfo: { name: 'gazelle', requiresAuth: true },
+    activeInstallationInfo: { name: 'gazelle', requiresAuth: mockRequiresAuth },
+    installationInfos: [{ name: 'gazelle', requiresAuth: mockRequiresAuth }],
     mcpServers: [
       new MCPServer(
         {
@@ -260,37 +262,25 @@ function makeApi() {
     getExecution: jest.fn(async (id: string) =>
       id === 'run-1' ? COMPLETED_RUN_DETAIL : FAILED_RUN_DETAIL,
     ),
-    filterTools: jest.fn(async (options: { pattern?: string } = {}) =>
-      // The workflow's own tool, looked up by its name; else the catalogue.
-      options.pattern
-        ? {
-            total: 1,
-            filtered_count: 1,
-            truncated: false,
-            tools: [
-              {
-                name: options.pattern,
-                kind: 'workflow',
-                annotations: { readOnlyHint: true },
-              },
-            ],
-          }
-        : {
-            total: 2,
-            filtered_count: 2,
-            truncated: false,
-            tools: [
-              {
-                name: 'x_kubernetes_get_pods',
-                annotations: { readOnlyHint: true },
-              },
-              {
-                name: 'x_kubernetes_apply',
-                annotations: { readOnlyHint: false },
-              },
-            ],
-          },
-    ),
+    // The installation's tool catalogue: the steps' tools and the
+    // workflow's own, with muster's derived read-only hint.
+    filterTools: jest.fn(async () => ({
+      total: 3,
+      filtered_count: 3,
+      truncated: false,
+      tools: [
+        {
+          name: 'x_kubernetes_get_pods',
+          annotations: { readOnlyHint: true },
+        },
+        { name: 'x_kubernetes_apply', annotations: { readOnlyHint: false } },
+        {
+          name: 'workflow_deploy',
+          kind: 'workflow',
+          annotations: { readOnlyHint: true },
+        },
+      ] as Array<Record<string, unknown>>,
+    })),
     getWorkflowStats: jest.fn(async () => ({
       workflow_name: 'deploy',
       runs: 2,
@@ -359,6 +349,7 @@ const BASE = '/agent-platform/workflows';
 beforeEach(() => {
   mockWorkflows = [DEPLOY];
   mockAuthenticated = true;
+  mockRequiresAuth = true;
   // Run it remembers a run's inputs per installation and tool.
   window.localStorage.clear();
   mockUseGitOpsSource.mockReset();
@@ -411,12 +402,12 @@ describe('WorkflowPage', () => {
     );
     expect(await screen.findByText('Only reads')).toBeInTheDocument();
     // The derived hint comes off the tools endpoint, never the CR.
+    // Off the catalogue the flow canvas reads too: no request of its own.
+    expect(api.filterTools).toHaveBeenCalledTimes(1);
     expect(api.filterTools).toHaveBeenCalledWith(
-      expect.objectContaining({
-        installation: 'gazelle',
-        pattern: 'workflow_deploy',
-      }),
+      expect.objectContaining({ installation: 'gazelle' }),
     );
+    expect(api.describeTool).not.toHaveBeenCalled();
     // One column: no facts beside the content, everything in the tabs.
     expect(screen.queryByRole('complementary')).toBeNull();
   });
@@ -1173,10 +1164,10 @@ describe('WorkflowPage', () => {
   it('explains on Run it, instead of a form, a workflow muster offers the person no tool for', async () => {
     const api = makeApi();
     api.filterTools.mockImplementation(async () => ({
-      total: 0,
-      filtered_count: 0,
+      total: 1,
+      filtered_count: 1,
       truncated: false,
-      tools: [],
+      tools: [{ name: 'x_kubernetes_get_pods' }],
     }));
     await renderAt(`${BASE}/deploy/run?installation=gazelle`, api);
 
@@ -1189,6 +1180,128 @@ describe('WorkflowPage', () => {
     // Not described: describing a tool muster lacks is an error, not an answer.
     expect(api.describeTool).not.toHaveBeenCalled();
     expect(screen.queryByText('Only reads')).toBeNull();
+  });
+
+  it('lets the form describe a workflow a truncated catalogue stops short of', async () => {
+    const api = makeApi();
+    api.filterTools.mockImplementation(async () => ({
+      total: 3000,
+      filtered_count: 1,
+      truncated: true,
+      tools: [{ name: 'x_kubernetes_get_pods' }],
+    }));
+    await renderAt(`${BASE}/deploy/run?installation=gazelle`, api);
+
+    expect(
+      await screen.findByRole('region', { name: 'Inputs' }),
+    ).toBeInTheDocument();
+    // Described, for the badge and the form alike.
+    expect(api.describeTool).toHaveBeenCalledWith('workflow_deploy', 'gazelle');
+    expect(screen.getByText('Only reads')).toBeInTheDocument();
+  });
+
+  it('says on Run it that no run is possible where muster has no per-user sessions', async () => {
+    mockRequiresAuth = false;
+    const api = await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'This portal cannot run workflows on gazelle',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/configure an auth provider/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+    expect(api.describeTool).not.toHaveBeenCalled();
+  });
+
+  describe('while a run is in flight', () => {
+    /** Starts a run on Run it that does not return. */
+    async function startRun() {
+      const api = makeApi();
+      api.callTool.mockImplementation(() => new Promise(() => {}));
+      await renderAt(`${BASE}/deploy/run?installation=gazelle`, api);
+      const inputs = await screen.findByRole('region', { name: 'Inputs' });
+      await userEvent.type(
+        within(inputs).getByRole('textbox', { name: /app/i }),
+        'shop',
+      );
+      await userEvent.click(
+        within(inputs).getByRole('button', { name: 'Run' }),
+      );
+      await within(inputs).findByRole('button', { name: /Running/ });
+      return api;
+    }
+
+    it('asks before a tab switch, says the run goes on, and stays on Stay', async () => {
+      await startRun();
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        within(dialog).getByText('Leave while the workflow runs?'),
+      ).toBeInTheDocument();
+      expect(dialog).toHaveTextContent(
+        'muster keeps running it after you leave',
+      );
+      // Still here, behind the modal dialog.
+      expect(
+        screen.getByRole('region', { name: 'Inputs', hidden: true }),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Stay' }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(
+        within(screen.getByRole('region', { name: 'Inputs' })).getByRole(
+          'button',
+          { name: /Running/ },
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('switches the tab on Leave', async () => {
+      await startRun();
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Leave' }),
+      );
+      expect(await screen.findByText(/^Every run counts/)).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'Inputs' })).toBeNull();
+    });
+
+    it('asks before following a link out of the page', async () => {
+      await startRun();
+
+      await userEvent.click(screen.getByRole('link', { name: 'Workflows' }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      // Still here, behind the modal dialog.
+      expect(
+        screen.getByRole('region', { name: 'Inputs', hidden: true }),
+      ).toBeInTheDocument();
+    });
+
+    it('has the browser ask before a reload or a closed tab', async () => {
+      await startRun();
+
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    });
+  });
+
+  it('lets the page go without asking once no run is in flight', async () => {
+    await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+    await screen.findByRole('region', { name: 'Inputs' });
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+    expect(await screen.findByText(/^Every run counts/)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('asks for a muster session on Run it in place of the form', async () => {

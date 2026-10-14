@@ -59,6 +59,7 @@ import {
   WorkflowPageTargetProvider,
 } from './workflowPageTarget';
 import { WORKFLOW_PAGE_TABS } from './workflowTabs';
+import { useRunLeaveGuard } from './useRunLeaveGuard';
 import { useWorkflowTool } from './useWorkflowTool';
 
 export type WorkflowPageProps = {
@@ -138,10 +139,16 @@ function WorkflowPageContent({
   // The address's own query, as it is: the tab links and the redirect keep
   // it, the same while loading and once loaded.
   const { search } = useLocation();
-  const { workflows, mcpServers, activeInstallationInfo } = useMusterInstance();
+  const { workflows, mcpServers, activeInstallationInfo, installationInfos } =
+    useMusterInstance();
   const session = useMusterSession();
   const hasSession =
     session.authenticated || !(activeInstallationInfo?.requiresAuth ?? false);
+  // The workflow's own installation, which a fallback by name may make
+  // another than the active one.
+  const perUserSession =
+    installationInfos.find(info => info.name === installation)?.requiresAuth ??
+    false;
 
   const name = workflow.getName();
   const toolName = `${WORKFLOW_TOOL_PREFIX}${name}`;
@@ -159,13 +166,34 @@ function WorkflowPageContent({
     [stepTools, prefixes],
   );
   const asCaller = useMemo(
-    () => workflowRunsAsCaller(stepTools, prefixes, mcpServers, installation),
-    [stepTools, prefixes, mcpServers, installation],
+    () =>
+      workflowRunsAsCaller(
+        stepTools,
+        workflows,
+        prefixes,
+        mcpServers,
+        installation,
+      ),
+    [stepTools, workflows, prefixes, mcpServers, installation],
+  );
+  // A run records runs of this workflow and of each it runs as a step.
+  const recordedWorkflows = useMemo(
+    () => [
+      name,
+      ...stepTools
+        .filter(tool => tool.startsWith(WORKFLOW_TOOL_PREFIX))
+        .map(tool => tool.slice(WORKFLOW_TOOL_PREFIX.length)),
+    ],
+    [name, stepTools],
   );
 
   // The badge and the Run it tab's form both read the workflow's tool.
-  const toolQuery = useWorkflowTool(toolName, installation, hasSession);
-  const effect = toolQuery.data ? toolEffect(toolQuery.data) : undefined;
+  const workflowTool = useWorkflowTool(name, installation, hasSession);
+  const effect = workflowTool.tool ? toolEffect(workflowTool.tool) : undefined;
+
+  // A run in flight shows its result only on Run it: leaving asks first.
+  const [running, setRunning] = useState(false);
+  const leaveGuard = useRunLeaveGuard(running);
 
   const target = useMemo<WorkflowPageTarget>(
     () => ({
@@ -256,6 +284,7 @@ function WorkflowPageContent({
         // with it instead.
         tabs={WORKFLOW_PAGE_TABS}
         tabsSearch={search}
+        onTabNavigate={leaveGuard.onTabNavigate}
       >
         <Routes>
           <Route
@@ -279,13 +308,15 @@ function WorkflowPageContent({
                 installation={installation}
                 toolName={toolName}
                 hasSession={hasSession}
+                perUserSession={perUserSession}
                 sessionGate={sessionGate(
                   'Running a workflow needs a muster session.',
                 )}
-                tool={toolQuery}
-                effect={effect}
+                workflowTool={workflowTool}
                 asCaller={asCaller}
                 connectors={connectors}
+                recordedWorkflows={recordedWorkflows}
+                onRunningChange={setRunning}
               />
             }
           />
@@ -322,6 +353,7 @@ function WorkflowPageContent({
           isOpen={manifestOpen}
           onOpenChange={setManifestOpen}
         />
+        {leaveGuard.dialog}
       </ShellPage>
     </WorkflowPageTargetProvider>
   );

@@ -1,5 +1,5 @@
-import type { ToolEffect } from '../../lib/toolAnnotations';
-import { ToolDetailPanel, type ToolDetailPanelProps } from './ToolDetailPanel';
+import type { ToolEffect } from '../../../lib/toolAnnotations';
+import { ToolDetailPanel, type ToolDetailPanelProps } from '../ToolDetailPanel';
 
 /** What the run form says beside its Run button. */
 export function tryItNote(

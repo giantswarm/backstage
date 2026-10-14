@@ -1,26 +1,15 @@
-import { ReactNode, useCallback } from 'react';
+import { ReactNode, useCallback, useEffect } from 'react';
 import { Alert, Flex } from '@backstage/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   EmptyStateCard,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
-import type { ToolSummary } from '../../../apis/types';
-import type { ToolEffect } from '../../../lib/toolAnnotations';
-import { ToolRunPanel } from '../../ToolDetail';
-import { WorkflowAuthNotice } from './WorkflowAuthNotice';
-
-/**
- * The run records a run adds to: the page's last run and totals, its
- * statistics, and the Customize list's runs columns.
- */
-const RUN_RECORD_QUERIES = new Set([
-  'workflow-latest-run',
-  'workflow-run-count',
-  'workflow-stats',
-  'workflow-runs',
-  'workflow-last-runs',
-]);
+import { toolEffect } from '../../../lib/toolAnnotations';
+import { invalidateWorkflowRuns } from '../../../lib/workflowRunKeys';
+import { ToolRunPanel, useToolRun } from '../../ToolDetail';
+import { WorkflowAuthNotice } from '../WorkflowAuthNotice';
+import type { WorkflowToolState } from '../useWorkflowTool';
 
 export type WorkflowRunTabProps = {
   installation?: string;
@@ -28,20 +17,27 @@ export type WorkflowRunTabProps = {
   toolName: string;
   /** Whether the muster session can list and call tools. */
   hasSession: boolean;
+  /**
+   * Whether the installation gives each person a muster session of their
+   * own. Without one the portal refuses every run that is not one of
+   * muster's own tools, since it would act as muster's shared identity.
+   */
+  perUserSession: boolean;
   /** Where muster asks for a session, what to show in place of the form. */
   sessionGate?: ReactNode;
   /** The workflow's tool as muster lists it for this session. */
-  tool: {
-    data?: ToolSummary | null;
-    isLoading: boolean;
-    error: Error | null;
-  };
-  /** Its derived effect; undefined while the tool is unread. */
-  effect?: ToolEffect;
+  workflowTool: WorkflowToolState;
   /** Whether every step acts with the person's identity. */
   asCaller: boolean;
   /** The connectors its steps call, by MCPServer name. */
   connectors: string[];
+  /**
+   * The workflows a run records runs of: this one and those it runs as
+   * steps, whose run records are re-read once it ends.
+   */
+  recordedWorkflows: string[];
+  /** Told whether a run is in flight, so the page can ask before leaving. */
+  onRunningChange: (running: boolean) => void;
 };
 
 /**
@@ -49,42 +45,58 @@ export type WorkflowRunTabProps = {
  * the workflow's `workflow_<name>` tool, keyed as the tool page keys its
  * own, so both remember the same last-used inputs. Connectors waiting for
  * the person's sign-in are named above the form. Without a muster session,
- * or where muster lists no such tool for the person, the tab says why
- * instead of drawing a form that cannot run.
+ * on an installation without per-user sessions, or where muster lists no
+ * such tool for the person, the tab says why instead of drawing a form that
+ * cannot run.
  */
 export function WorkflowRunTab({
   installation,
   toolName,
   hasSession,
+  perUserSession,
   sessionGate,
-  tool,
-  effect,
+  workflowTool,
   asCaller,
   connectors,
+  recordedWorkflows,
+  onRunningChange,
 }: WorkflowRunTabProps) {
   const queryClient = useQueryClient();
-  // A run, finished or failed, is a new record: re-read what counts them.
-  const onRan = useCallback(() => {
-    queryClient.invalidateQueries({
-      predicate: ({ queryKey }) =>
-        queryKey[0] === 'muster' &&
-        RUN_RECORD_QUERIES.has(String(queryKey[1])) &&
-        queryKey[2] === installation,
-    });
-  }, [queryClient, installation]);
+  // A run, finished or failed, is a new record of each workflow it ran.
+  const onRan = useCallback(
+    () => invalidateWorkflowRuns(queryClient, installation, recordedWorkflows),
+    [queryClient, installation, recordedWorkflows],
+  );
+  const run = useToolRun(toolName, installation, { onRan });
+  useEffect(() => {
+    onRunningChange(run.isPending);
+  }, [onRunningChange, run.isPending]);
+  // Leaving the tab ends the page's question; muster finishes the run.
+  useEffect(() => () => onRunningChange(false), [onRunningChange]);
 
   if (!hasSession) {
     return <>{sessionGate}</>;
   }
-  if (!tool.data && tool.isLoading) {
+  if (!perUserSession) {
+    return (
+      <EmptyStateCard
+        title={`This portal cannot run workflows${
+          installation ? ` on ${installation}` : ''
+        }`}
+        description="It talks to this environment's muster without personal credentials, so a run would act as muster's shared identity instead of yours. An administrator has to configure an auth provider for this environment."
+      />
+    );
+  }
+  const { tool, isAwaiting, error } = workflowTool;
+  if (!tool && isAwaiting) {
     return <LoadingIndicator label="Reading the workflow from muster…" />;
   }
-  if (tool.error) {
+  if (!tool && error) {
     return (
       <Alert
         status="danger"
         title="Could not read the workflow from muster"
-        description={tool.error.message}
+        description={error.message}
       />
     );
   }
@@ -92,7 +104,7 @@ export function WorkflowRunTab({
   const authNotice = (
     <WorkflowAuthNotice connectors={connectors} installation={installation} />
   );
-  if (!tool.data) {
+  if (!tool) {
     return (
       <Flex direction="column" gap="4">
         {authNotice}
@@ -119,9 +131,9 @@ export function WorkflowRunTab({
         name={toolName}
         installation={installation}
         subject="workflow"
-        effect={effect ?? 'changes'}
+        effect={toolEffect(tool)}
         asCaller={asCaller}
-        onRan={onRan}
+        run={run}
       />
     </Flex>
   );
