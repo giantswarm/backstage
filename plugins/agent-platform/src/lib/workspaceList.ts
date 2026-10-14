@@ -1,14 +1,10 @@
 /**
  * What the Workspaces tab shows of a workspace: its row's words, from
- * `list_workspaces` (and `get_workspace` for what the volume stores).
+ * `list_workspaces`.
  */
 
 import { formatBytes } from './formatNumbers';
-import type {
-  Workspace,
-  WorkspaceSource,
-  WorkspaceStorage,
-} from './workspaceManager';
+import type { Workspace, WorkspaceSource } from './workspaceManager';
 
 /**
  * A workspace with the installation whose workspace-manager listed it; `id`
@@ -61,13 +57,14 @@ export type SyncTone = 'success' | 'danger' | 'info' | 'neutral';
 
 /**
  * The Last sync column: the state now (deleting, syncing, requested), else
- * the last cycle's result. The time is shown beside it, relative.
+ * the last cycle's result. When it happened sits behind the state's info hint:
+ * `Synced 5 minutes ago.`
  */
 export function syncState(workspace: Workspace): {
   label: string;
   tone: SyncTone;
-  /** The time the label refers to, when it refers to one. */
-  at?: string;
+  /** What happened when, for a state that refers to a time. */
+  when?: { verb: string; at: string };
   /** The manager's own words, for a failure. */
   detail?: string;
 } {
@@ -78,14 +75,14 @@ export function syncState(workspace: Workspace): {
     return {
       label: 'Syncing',
       tone: 'info',
-      at: workspace.activeSync.startedAt,
+      when: { verb: 'Started', at: workspace.activeSync.startedAt },
     };
   }
   if (workspace.syncRequest) {
     return {
       label: 'Sync requested',
       tone: 'info',
-      at: workspace.syncRequest.requestedAt,
+      when: { verb: 'Requested', at: workspace.syncRequest.requestedAt },
     };
   }
   const last = workspace.lastSync;
@@ -94,14 +91,22 @@ export function syncState(workspace: Workspace): {
   }
   switch (last.result) {
     case 'Succeeded':
-      return { label: 'Synced', tone: 'success', at: last.time };
+      return {
+        label: 'Synced',
+        tone: 'success',
+        when: { verb: 'Synced', at: last.time },
+      };
     case 'NoChange':
-      return { label: 'No change', tone: 'success', at: last.time };
+      return {
+        label: 'No change',
+        tone: 'success',
+        when: { verb: 'Checked', at: last.time },
+      };
     default:
       return {
         label: 'Failed',
         tone: 'danger',
-        at: last.time,
+        when: { verb: 'Failed', at: last.time },
         detail: last.message,
       };
   }
@@ -127,11 +132,6 @@ export function storedLabel(
   const stored = formatBytes(storedBytes);
   const share = volumeSize ? `${stored} of ${volumeSize}` : stored;
   return grewFrom ? `${share} ↑` : share;
-}
-
-/** The stored bytes of `get_workspace`'s storage. */
-export function storageBytes(storage: WorkspaceStorage): number {
-  return storage.mirrorsBytes + storage.sessionsBytes;
 }
 
 /** Rows whose name, Organization or sources contain the search. */

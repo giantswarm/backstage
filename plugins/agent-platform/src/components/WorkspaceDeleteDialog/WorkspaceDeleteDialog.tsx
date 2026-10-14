@@ -1,5 +1,8 @@
 import { Flex, Text } from '@backstage/ui';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useWorkspaceDetail } from '../../hooks/useWorkspaceActions';
 import { sessionsNoun, type WorkspaceRow } from '../../lib/workspaceList';
@@ -16,7 +19,8 @@ export type WorkspaceDeleteDialogProps = {
 /**
  * What deleting takes away, and what stays: the Sessions with a directory on
  * the volume keep it until each is cleaned up, so the volume goes only after
- * the last one. Names them from `get_workspace`, read when the dialog opens.
+ * the last one. Names them from `get_workspace`, read afresh each time the
+ * dialog opens.
  */
 function SessionsStillUsing({
   row,
@@ -26,7 +30,7 @@ function SessionsStillUsing({
   isOpen: boolean;
 }) {
   const detail = useWorkspaceDetail(row.installation, row.name, isOpen);
-  if (detail.isPending && detail.fetchStatus !== 'idle') {
+  if (isAwaitingData(detail)) {
     return (
       <Text variant="body-medium" color="secondary">
         Checking which Sessions still use it…
@@ -38,7 +42,8 @@ function SessionsStillUsing({
     // Unread: the list's count is all there is to say.
     return row.sessions > 0 ? (
       <Text variant="body-medium">
-        {sessionsNoun(row.sessions)} still use it; each keeps its directory
+        {sessionsNoun(row.sessions)} still{' '}
+        {row.sessions === 1 ? 'uses' : 'use'} it; each keeps its directory
         until it is cleaned up, then the volume goes.
       </Text>
     ) : (

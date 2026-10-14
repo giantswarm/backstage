@@ -6,7 +6,11 @@ import {
   type ReactNode,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import {
+  useQueries,
+  useQueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import {
   applyInstallationScope,
   useInstallationInventory,
@@ -28,7 +32,6 @@ import {
   type WorkspaceRow,
 } from '../../lib/workspaceList';
 import {
-  classifyWorkspaceManagerError,
   WORKSPACE_MANAGER_SERVER,
   type Workspace,
 } from '../../lib/workspaceManager';
@@ -39,10 +42,14 @@ export const ORGANIZATION_SEARCH_PARAM = 'organization';
 /** How often the list is read again while a row syncs or is deleted. */
 const SETTLING_REFETCH_MS = 5_000;
 
+/** How long an Organization's membership answer is taken as current. */
+const MEMBERSHIP_STALE_MS = 5 * 60_000;
+
 export type WorkspacesData = {
   /**
    * Whether an installation in scope offers workspaces (its muster lists the
-   * workspace-manager); `undefined` until one does or every one answered.
+   * workspace-manager); `undefined` until one does or every one answered
+   * without it, so also while a muster did not answer (see `failures`).
    */
   isAvailable: boolean | undefined;
   /** The installations in scope whose muster lists the workspace-manager. */
@@ -54,7 +61,10 @@ export type WorkspacesData = {
   setOrganization: (organization: string) => void;
   /** The scope's workspaces, every installation's. */
   rows: WorkspaceRow[];
-  /** Some installation's list has not answered yet. */
+  /**
+   * Some installation's list, the Organizations or a membership has not
+   * answered yet.
+   */
   isLoading: boolean;
   /** Why an installation's workspaces could not be read, by installation. */
   failures: Record<string, string>;
@@ -83,7 +93,9 @@ export function useWorkspacesData(): WorkspacesData {
  * of. The Organizations offered are those, and the installation's
  * Organization resources the person is a member of without a workspace yet:
  * each is asked for its workspaces, and the manager's membership refusal
- * keeps it out. Nothing is offered that the manager would refuse.
+ * keeps it out. Nothing is offered that the manager would refuse. A person who
+ * may not list the installation's Organizations sees an Organization only once
+ * it has a workspace, until the manager names the caller's Organizations.
  *
  * Must be mounted inside the plugin's `QueryClientProvider`.
  */
@@ -101,6 +113,25 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
   );
   const installations = availability.available;
 
+  const combineLists = useCallback(
+    (results: UseQueryResult<Workspace[]>[]) => ({
+      rows: installations.flatMap((installation, index) =>
+        (results[index]?.data ?? []).map(workspace => ({
+          ...workspace,
+          installation,
+          id: workspaceRowId({ installation, name: workspace.name }),
+        })),
+      ),
+      errors: Object.fromEntries(
+        installations.flatMap((installation, index) => {
+          const error = results[index]?.error;
+          return error ? [[installation, error.message]] : [];
+        }),
+      ) as Record<string, string>,
+      isAwaiting: results.some(result => isAwaitingData(result)),
+    }),
+    [installations],
+  );
   const lists = useQueries({
     queries: installations.map(installation => ({
       queryKey: musterWorkspacesQueryKey(installation),
@@ -111,30 +142,19 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       refetchInterval: (query: { state: { data?: Workspace[] } }) =>
         query.state.data?.some(isSettling) ? SETTLING_REFETCH_MS : false,
     })),
+    combine: combineLists,
   });
-
-  const allRows = useMemo(
-    () =>
-      installations.flatMap((installation, index) =>
-        (lists[index]?.data ?? []).map(workspace => ({
-          ...workspace,
-          installation,
-          id: workspaceRowId({ installation, name: workspace.name }),
-        })),
-      ),
-    // `useQueries` returns a fresh array each render; key on the data.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [installations.join(','), ...lists.map(list => list.data)],
-  );
+  const allRows = lists.rows;
 
   // The installation's Organizations, as far as the person may read them;
   // those without a workspace of theirs are asked about below.
-  const { resources: organizationResources } = useResources(
+  const organizationsRead = useResources(
     installations,
     Organization,
     {},
     { enabled: installations.length > 0 },
   );
+  const organizationResources = organizationsRead.resources;
   const candidates = useMemo(() => {
     const listed = new Set(
       allRows.map(row => `${row.installation}/${row.organization}`),
@@ -149,6 +169,17 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
           !listed.has(`${installation}/${organization}`),
       );
   }, [organizationResources, allRows]);
+  const combineMemberships = useCallback(
+    (results: UseQueryResult<Workspace[]>[]) => ({
+      // The manager refuses a person outside the Organization: an answer is
+      // membership.
+      organizations: candidates
+        .filter((_, index) => results[index]?.isSuccess)
+        .map(candidate => candidate.organization),
+      isAwaiting: results.some(result => isAwaitingData(result)),
+    }),
+    [candidates],
+  );
   const memberships = useQueries({
     queries: candidates.map(({ installation, organization }) => ({
       queryKey: musterWorkspacesQueryKey(installation, organization),
@@ -158,42 +189,57 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
           organization,
         ),
       retry: false,
-      staleTime: 60_000,
+      // Membership changes rarely; a refusal is an answer too, not asked
+      // again on every visit.
+      staleTime: MEMBERSHIP_STALE_MS,
+      retryOnMount: false,
     })),
+    combine: combineMemberships,
   });
 
-  const memberSignature = candidates
-    .filter((_, index) => memberships[index]?.isSuccess)
-    .map(candidate => candidate.organization)
-    .join(',');
   const organizations = useMemo(
     () =>
       [
         ...new Set([
           ...allRows.map(row => row.organization),
-          ...(memberSignature ? memberSignature.split(',') : []),
+          ...memberships.organizations,
         ]),
       ].sort((a, b) => a.localeCompare(b)),
-    [allRows, memberSignature],
+    [allRows, memberships.organizations],
   );
 
   const queryClient = useQueryClient();
   const retry = useCallback(() => {
-    // The server lists too: an installation whose muster did not answer is
-    // asked again whether it has the workspace-manager.
-    for (const prefix of ['workspaces', 'mcp-servers']) {
+    for (const installation of installations) {
       void queryClient.invalidateQueries({
-        queryKey: ['muster', 'agent-platform', prefix],
+        queryKey: musterWorkspacesQueryKey(installation),
+        exact: true,
       });
     }
-  }, [queryClient]);
+    // An installation whose muster did not answer is asked again whether it
+    // has the workspace-manager.
+    void queryClient.invalidateQueries({
+      queryKey: ['muster', 'agent-platform', 'mcp-servers'],
+    });
+  }, [queryClient, installations]);
+
+  const isInventoryPending = inventory.isLoading || inventory.isProbing;
+  const isOrganizationsPending =
+    lists.isAwaiting ||
+    memberships.isAwaiting ||
+    (installations.length > 0 && organizationsRead.isLoading);
+  const isLoading = availability.isLoading || isOrganizationsPending;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = searchParams.get(ORGANIZATION_SEARCH_PARAM);
-  const organization =
-    requested && organizations.includes(requested)
-      ? requested
-      : organizations[0];
+  let organization: string | undefined;
+  if (requested && organizations.includes(requested)) {
+    organization = requested;
+  } else if (!isOrganizationsPending) {
+    // Only once every membership is known: the address's Organization, or
+    // one before it, may still be confirmed.
+    organization = organizations[0];
+  }
   const setOrganization = useCallback(
     (next: string) =>
       setSearchParams(
@@ -206,50 +252,43 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     [setSearchParams],
   );
 
-  const failureSignature = [
-    ...installations.flatMap((installation, index) => {
-      const error = lists[index]?.error;
-      return error
-        ? [[installation, classifyWorkspaceManagerError(error).message]]
-        : [];
+  // An installation whose muster did not answer cannot say whether it has
+  // workspaces: a gap in the list, not an empty one.
+  const unreachable = availability.isLoading
+    ? []
+    : scoped.filter(
+        installation => availability.presenceOf(installation) === 'unknown',
+      );
+  const unreachableKey = unreachable.join(',');
+  const failures = useMemo(
+    () => ({
+      ...lists.errors,
+      ...Object.fromEntries(
+        (unreachableKey ? unreachableKey.split(',') : []).map(installation => [
+          installation,
+          'Its muster could not be reached.',
+        ]),
+      ),
     }),
-    // An installation whose muster did not answer cannot say whether it
-    // has workspaces: a gap in the list, not an empty one.
-    ...(availability.isLoading
-      ? []
-      : scoped
-          .filter(
-            installation => availability.presenceOf(installation) === 'unknown',
-          )
-          .map(installation => [
-            installation,
-            'Its muster could not be reached.',
-          ])),
-  ]
-    .map(pair => pair.join('\u0000'))
-    .join('\u0001');
+    [lists.errors, unreachableKey],
+  );
 
-  const isListAwaiting = lists.some(list => isAwaitingData(list));
-  const isInventoryPending = inventory.isLoading || inventory.isProbing;
-  const value = useMemo<WorkspacesData>(() => {
-    const failures = Object.fromEntries(
-      failureSignature
-        ? failureSignature
-            .split('\u0001')
-            .map(pair => pair.split('\u0000') as [string, string])
-        : [],
-    );
-    const isLoading = availability.isLoading || isListAwaiting;
-    let isAvailable: boolean | undefined;
-    if (installations.length > 0) {
-      isAvailable = true;
-    } else if (!availability.isLoading && !isInventoryPending) {
-      // Only once every installation's probe answered: while the inventory
-      // still probes, an installation with muster may be about to appear,
-      // and a deep link to the tab must not be sent elsewhere meanwhile.
-      isAvailable = false;
-    }
-    return {
+  let isAvailable: boolean | undefined;
+  if (installations.length > 0) {
+    isAvailable = true;
+  } else if (
+    !availability.isLoading &&
+    !isInventoryPending &&
+    unreachable.length === 0
+  ) {
+    // Only once every installation's muster answered without it: while the
+    // inventory still probes, or a muster did not answer, it may be there,
+    // and a deep link to the tab must not be told otherwise.
+    isAvailable = false;
+  }
+
+  const value = useMemo<WorkspacesData>(
+    () => ({
       isAvailable,
       installations,
       organizations,
@@ -263,19 +302,19 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       isLoading,
       failures,
       retry,
-    };
-  }, [
-    allRows,
-    availability.isLoading,
-    failureSignature,
-    installations,
-    isInventoryPending,
-    organization,
-    organizations,
-    setOrganization,
-    retry,
-    isListAwaiting,
-  ]);
+    }),
+    [
+      allRows,
+      failures,
+      installations,
+      isAvailable,
+      isLoading,
+      organization,
+      organizations,
+      setOrganization,
+      retry,
+    ],
+  );
 
   return (
     <WorkspacesDataContext.Provider value={value}>

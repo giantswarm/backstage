@@ -7,7 +7,7 @@ import {
   musterWorkspacesQueryKey,
 } from '../lib/queryKeys';
 import {
-  classifyWorkspaceManagerError,
+  WorkspaceManagerError,
   type DeleteWorkspaceResult,
   type SyncWorkspaceResult,
   type WorkspaceDetail,
@@ -15,7 +15,8 @@ import {
 
 /**
  * One workspace with its storage and Session directories (`get_workspace`),
- * as the person; read only while `enabled`.
+ * as the person, read afresh each time it is `enabled`: what it says is
+ * acted on.
  */
 export function useWorkspaceDetail(
   installation: string,
@@ -26,37 +27,34 @@ export function useWorkspaceDetail(
   return useQuery<WorkspaceDetail>({
     queryKey: musterWorkspaceQueryKey(installation, name),
     enabled: enabled && Boolean(client),
-    queryFn: async () => {
-      try {
-        return await client!.getWorkspace(name);
-      } catch (error) {
-        throw classifyWorkspaceManagerError(error);
-      }
-    },
+    queryFn: () => client!.getWorkspace(name),
     retry: false,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 
 /**
  * Sync now and Delete on one workspace, as the person. Each re-reads the
- * installation's list, which shows the requested sync or the deletion.
+ * installation's list, which shows the requested sync or the deletion, without
+ * waiting for it: the caller's own success follows the answer at once.
  */
 export function useWorkspaceActions(installation: string, name: string) {
   const client = useWorkspaceManagerClient(installation);
   const queryClient = useQueryClient();
-  const reread = () =>
-    Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: musterWorkspacesQueryKey(installation),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: musterWorkspaceQueryKey(installation, name),
-      }),
-    ]);
+  const reread = () => {
+    void queryClient.invalidateQueries({
+      queryKey: musterWorkspacesQueryKey(installation),
+      exact: true,
+    });
+    void queryClient.invalidateQueries({
+      queryKey: musterWorkspaceQueryKey(installation, name),
+    });
+  };
   const requireClient = () => {
     if (!client) {
-      throw new Error(
+      throw new WorkspaceManagerError(
+        'unavailable',
         'The workspace-manager cannot be reached from this portal.',
       );
     }
@@ -67,13 +65,7 @@ export function useWorkspaceActions(installation: string, name: string) {
     event: null,
     untrackedReason:
       'Housekeeping on a workspace; workspaces are measured at their creation.',
-    mutationFn: async () => {
-      try {
-        return await requireClient().syncWorkspace(name);
-      } catch (error) {
-        throw classifyWorkspaceManagerError(error);
-      }
-    },
+    mutationFn: () => requireClient().syncWorkspace(name),
     onSuccess: reread,
   });
 
@@ -81,13 +73,7 @@ export function useWorkspaceActions(installation: string, name: string) {
     event: null,
     untrackedReason:
       'Housekeeping on a workspace; workspaces are measured at their creation.',
-    mutationFn: async () => {
-      try {
-        return await requireClient().deleteWorkspace(name);
-      } catch (error) {
-        throw classifyWorkspaceManagerError(error);
-      }
-    },
+    mutationFn: () => requireClient().deleteWorkspace(name),
     onSuccess: reread,
   });
 

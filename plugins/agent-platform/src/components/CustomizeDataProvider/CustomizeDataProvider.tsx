@@ -74,7 +74,12 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
   } = useModelConfigs();
   const { servingStateFor, capabilitiesFor, backends } = useServing();
   const skillCatalog = useSkillCatalog();
-  const workspaces = useWorkspacesData();
+  // Only what the strip reads: a list refetch leaves the other tabs alone.
+  const {
+    isAvailable: hasWorkspaces,
+    isLoading: workspacesLoading,
+    rows: { length: workspaceCount },
+  } = useWorkspacesData();
 
   const modelRows = useMemo<ModelRow[]>(
     () =>
@@ -115,18 +120,26 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
             : modelRows.length,
         skills: skillCountOf(skillCatalog),
         workspaces:
-          workspaces.isLoading && workspaces.rows.length === 0
+          workspacesLoading && workspaceCount === 0
             ? undefined
-            : workspaces.rows.length,
+            : workspaceCount,
       },
-      hasWorkspaces: workspaces.isAvailable,
+      hasWorkspaces,
       hasSkillRepositories: skillCatalog.isLoading
         ? undefined
         : skillCatalog.hasRepositories,
       modelRows,
       skillCatalog,
     }),
-    [agents, modelsLoading, modelRows, skillCatalog, workspaces],
+    [
+      agents,
+      modelsLoading,
+      modelRows,
+      skillCatalog,
+      hasWorkspaces,
+      workspacesLoading,
+      workspaceCount,
+    ],
   );
 
   return (
@@ -137,8 +150,8 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * The agents, models, skills and workspaces of the shell's Customize screen, read once
- * for every tab so each tab's count is known before it is opened. The
+ * The agents, models, skills and workspaces of the shell's Customize screen,
+ * read once for every tab so each tab's count is known before it is opened. The
  * children render inside this plugin's query client.
  */
 export function CustomizeDataProvider({ children }: { children: ReactNode }) {

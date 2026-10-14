@@ -23,8 +23,8 @@ import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import SyncIcon from '@material-ui/icons/Sync';
 import {
   CatalogNoMatch,
-  DateComponent,
   EmptyStateCard,
+  getRelativeDate,
   INITIAL_ROWS,
   LoadingIndicator,
   MENU_WIDTH,
@@ -35,20 +35,16 @@ import {
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import {
-  useWorkspaceActions,
-  useWorkspaceDetail,
-} from '../../hooks/useWorkspaceActions';
+import { useWorkspaceActions } from '../../hooks/useWorkspaceActions';
 import {
   searchWorkspaces,
   sourcesLabel,
-  storageBytes,
   storedLabel,
   syncState,
   type WorkspaceRow,
 } from '../../lib/workspaceList';
+import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
 import { useWorkspacesData } from '../WorkspacesDataProvider';
-import { WorkspaceDeleteDialog } from './WorkspaceDeleteDialog';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -66,31 +62,17 @@ export type CustomizeWorkspacesPanelProps = {
 };
 
 /**
- * What the volume stores: the list's own figure, or, from a manager whose
- * list does not carry it yet, the workspace's own read. Before the first sync
- * there is nothing stored to show.
+ * What the volume stores, from the list. A manager whose list does not carry
+ * it yet, and a workspace before its first sync, show none.
  */
 function StoredCell({ row }: { row: WorkspaceRow }) {
-  const fromDetail = row.storedBytes === undefined && Boolean(row.lastSync);
-  const detail = useWorkspaceDetail(
-    row.installation,
-    row.name,
-    fromDetail && !row.deleting,
-  );
-  let title = '—';
-  if (row.storedBytes !== undefined) {
-    title = storedLabel(row.storedBytes, row.volumeSize, row.grewFrom);
-  } else if (detail.data) {
-    title = storedLabel(
-      storageBytes(detail.data.storage),
-      detail.data.storage.volumeSize,
-    );
-  } else if (detail.isPending && detail.fetchStatus !== 'idle') {
-    title = '…';
-  }
   return (
     <CellText
-      title={title}
+      title={
+        row.storedBytes === undefined
+          ? '—'
+          : storedLabel(row.storedBytes, row.volumeSize, row.grewFrom)
+      }
       description={
         row.grewFrom ? `Grown from ${row.grewFrom} at the last sync` : undefined
       }
@@ -98,7 +80,10 @@ function StoredCell({ row }: { row: WorkspaceRow }) {
   );
 }
 
-/** The sync's state now, or the last cycle's result, with its time. */
+/**
+ * The sync's state now, or the last cycle's result: the dot and its label,
+ * and behind the info hint when it happened and the manager's words.
+ */
 function LastSyncCell({ row }: { row: WorkspaceRow }) {
   const state = syncState(row);
   return (
@@ -108,16 +93,18 @@ function LastSyncCell({ row }: { row: WorkspaceRow }) {
           display: 'inline-flex',
           alignItems: 'center',
           gap: 'var(--bui-space-1)',
-          flexWrap: 'wrap',
         }}
       >
         <StatusDot tone={state.tone} label={state.label} />
-        <StatusHint subject={row.name} explanation={state.detail} />
-        {state.at && (
-          <Text variant="body-small" color="secondary">
-            <DateComponent value={state.at} relative />
-          </Text>
-        )}
+        <StatusHint
+          subject={row.name}
+          explanation={[
+            ...(state.when
+              ? [`${state.when.verb} ${getRelativeDate(state.when.at)}.`]
+              : []),
+            ...(state.detail ? [state.detail] : []),
+          ]}
+        />
       </span>
     </Cell>
   );
@@ -267,7 +254,8 @@ function ReadFailures({
  * The Workspaces tab of the shell's Customize screen: the workspaces of the
  * scope's Organization on the installations in scope — sources, repositories,
  * what the volume stores, the last sync and the Sessions on it — with Sync now
- * and Delete per row. Must be mounted inside a `WorkspacesDataProvider`.
+ * and Delete per row. Must be mounted inside the plugin's
+ * `CustomizeDataProvider`.
  */
 export function CustomizeWorkspacesPanel({
   search,
@@ -363,7 +351,10 @@ export function CustomizeWorkspacesPanel({
     failed && !isLoading && installations.every(name => name in failures);
 
   let body;
-  if (isAvailable === false) {
+  if (isEverythingFailed) {
+    // The alert above says why, with a way to try again.
+    body = null;
+  } else if (isAvailable === false) {
     body = (
       <EmptyStateCard
         title="Workspaces are not available here"
@@ -372,8 +363,6 @@ export function CustomizeWorkspacesPanel({
     );
   } else if (isReading || isAvailable === undefined) {
     body = <LoadingIndicator label="Reading your workspaces…" />;
-  } else if (isEverythingFailed) {
-    body = null;
   } else if (!organization) {
     body = failed ? null : (
       <EmptyStateCard
