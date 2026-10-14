@@ -34,6 +34,9 @@ let mockWithManager: string[];
 let mockOrganizations: { cluster: string; name: string }[];
 /** Organizations whose manager refuses the person as not a member. */
 let mockNotMember: string[];
+/** The installations the inventory knows to run muster, and whether it still probes. */
+let mockMusterInstallations: string[];
+let mockProbing: boolean;
 
 const mockMusterApi = {
   listServers: jest.fn(async (installation: string) => ({
@@ -70,8 +73,9 @@ jest.mock('../../hooks/useMusterPluginApi', () => ({
 }));
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   useInstallationInventory: () => ({
-    installationsWith: () => ['gazelle'],
+    installationsWith: () => mockMusterInstallations,
     isLoading: false,
+    isProbing: mockProbing,
   }),
   useInstallationScope: () => ({ scope: 'all' }),
   applyInstallationScope: (installations: string[]) => installations,
@@ -118,6 +122,8 @@ describe('WorkspacesDataProvider', () => {
     };
     mockOrganizations = [];
     mockNotMember = [];
+    mockMusterInstallations = ['gazelle'];
+    mockProbing = false;
     jest.clearAllMocks();
   });
 
@@ -127,6 +133,16 @@ describe('WorkspacesDataProvider', () => {
 
     expect(await screen.findByText('available: false')).toBeInTheDocument();
     expect(mockMusterApi.callTool).not.toHaveBeenCalled();
+  });
+
+  it('is not known yet while the inventory still probes for muster', async () => {
+    mockMusterInstallations = [];
+    mockProbing = true;
+    await renderWorkspaces();
+
+    expect(
+      await screen.findByText('available: undefined'),
+    ).toBeInTheDocument();
   });
 
   it('offers no Organization scope to a person in one Organization', async () => {

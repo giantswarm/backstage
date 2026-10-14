@@ -230,6 +230,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     .join('\u0001');
 
   const isListAwaiting = lists.some(list => isAwaitingData(list));
+  const isInventoryPending = inventory.isLoading || inventory.isProbing;
   const value = useMemo<WorkspacesData>(() => {
     const failures = Object.fromEntries(
       failureSignature
@@ -242,7 +243,10 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     let isAvailable: boolean | undefined;
     if (installations.length > 0) {
       isAvailable = true;
-    } else if (!availability.isLoading && !inventory.isLoading) {
+    } else if (!availability.isLoading && !isInventoryPending) {
+      // Only once every installation's probe answered: while the inventory
+      // still probes, an installation with muster may be about to appear,
+      // and a deep link to the tab must not be sent elsewhere meanwhile.
       isAvailable = false;
     }
     return {
@@ -265,7 +269,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     availability.isLoading,
     failureSignature,
     installations,
-    inventory.isLoading,
+    isInventoryPending,
     organization,
     organizations,
     setOrganization,
