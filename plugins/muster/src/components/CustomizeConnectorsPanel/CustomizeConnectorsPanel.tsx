@@ -15,6 +15,7 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  applyCatalogFilters,
   type CatalogFacet,
   CatalogFilterBar,
   CatalogNoMatch,
@@ -61,7 +62,7 @@ import {
 } from '../shared';
 import {
   authLabel,
-  type CatalogueState,
+  catalogueState,
   CONNECTOR_REACH_LABELS,
   CONNECTOR_REACH_ORDER,
   type ConnectorReach,
@@ -409,6 +410,13 @@ function ConnectorsTable({
   const sessionFailed = session.failure !== undefined;
   const answered = catalogue.data !== undefined;
   const catalogueFailed = Boolean(catalogue.error);
+  // What the search's tool names came from, for an empty result to say.
+  const searchedTools = catalogueState({
+    answered,
+    truncated: Boolean(catalogue.data?.truncated),
+    loading: (!hasSession && session.pending) || isAwaitingData(catalogue),
+    failed: catalogueFailed,
+  });
   const musterSession = useMemo<MusterSessionState>(
     () => ({
       requiresAuth: activeInstallationInfo?.requiresAuth,
@@ -489,14 +497,6 @@ function ConnectorsTable({
     facets: CONNECTOR_FACETS,
   });
   const rows = filters.filtered;
-  let catalogueState: CatalogueState = 'unavailable';
-  if (catalogue.data) {
-    catalogueState = 'loaded';
-  } else if (isAwaitingData(catalogue)) {
-    catalogueState = 'loading';
-  } else if (catalogue.error) {
-    catalogueState = 'failed';
-  }
   const isPhone = usePhoneLayout();
   const hrefOf = (row: Row) =>
     row.entry.shadowed
@@ -560,15 +560,21 @@ function ConnectorsTable({
     );
   } else if (rows.length === 0) {
     // A search that found nothing says what it could not look at, where the
-    // tool may still be.
+    // tool may still be: among the connectors the filters keep.
     const unsearched =
-      search.trim() === '' ? [] : unsearchedToolsNotes(catalogueState, allRows);
+      search.trim() === ''
+        ? []
+        : unsearchedToolsNotes(
+            searchedTools,
+            applyCatalogFilters(allRows, CONNECTOR_FACETS, filters.selection),
+            authStatus.data !== undefined,
+          );
+    const toolsSearched =
+      searchedTools === 'loaded' || searchedTools === 'partial';
     list = (
       <Flex direction="column" gap="2">
         <CatalogNoMatch
-          plural={
-            catalogueState === 'loaded' ? 'connectors or tools' : 'connectors'
-          }
+          plural={toolsSearched ? 'connectors or tools' : 'connectors'}
           search={search}
           isFiltered={filters.isFiltered}
           onClearFilters={filters.clear}

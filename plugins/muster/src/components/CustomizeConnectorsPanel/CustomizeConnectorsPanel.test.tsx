@@ -27,6 +27,7 @@ jest.mock('../QueryClientProvider', () => ({
 
 let mockServers: MCPServer[] = [];
 let mockAuthenticated = true;
+let mockSessionPending = false;
 let mockInstance: Record<string, unknown> = {};
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -44,7 +45,7 @@ jest.mock('../MusterInstanceProvider', () => ({
   }),
   useMusterSession: () => ({
     authenticated: mockAuthenticated,
-    pending: false,
+    pending: mockSessionPending,
     connecting: false,
     connect: jest.fn(),
   }),
@@ -193,6 +194,7 @@ describe('CustomizeConnectorsPanel', () => {
   beforeEach(() => {
     mockServers = servers();
     mockAuthenticated = true;
+    mockSessionPending = false;
     mockInstance = {};
     api.filterTools.mockClear();
     api.getAuthStatus.mockClear();
@@ -651,7 +653,7 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel('issue');
 
     expect(await screen.findByText(/need your sign-in/)).toHaveTextContent(
-      'The tools of github need your sign-in and were not searched. The tools of web-search could not be read and were not searched.',
+      'The tools of github were not searched: they need your sign-in. The tools of web-search were not searched: they could not be read.',
     );
     expect(
       screen.getByText('No connectors or tools match “issue”.'),
@@ -672,17 +674,69 @@ describe('CustomizeConnectorsPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it('says a search that found nothing covered names only when the tools failed', async () => {
+  it('leaves a failed tool read to the alert when a search finds nothing', async () => {
     api.filterTools.mockImplementationOnce(async () => {
       throw new Error('muster answered 502');
     });
     await renderPanel('pods');
 
     expect(
+      await screen.findByText('No connectors match “pods”.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/the search covers connector names only/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/were not searched/)).not.toBeInTheDocument();
+  });
+
+  it('says the tools are loading while the muster session opens', async () => {
+    mockAuthenticated = false;
+    mockSessionPending = true;
+    await renderPanel('pods');
+
+    expect(
       await screen.findByText(
-        'Only connector names were searched: the tools could not be read.',
+        'Only connector names were searched: the tools are still loading.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('names every connector without tools while sign-ins are not known yet', async () => {
+    // Its own state says nothing of this person's sign-in.
+    mockServers = [
+      makeServer('github', { auth: { type: 'oauth' } }),
+      ...servers().filter(server => server.getName() !== 'github'),
+    ];
+    api.getAuthStatus.mockImplementation(() => new Promise(() => {}));
+    api.filterTools.mockImplementationOnce(async () => ({
+      total: 1,
+      filtered_count: 1,
+      truncated: false,
+      tools: [{ name: 'x_kubernetes_get_pods', description: 'List pods' }],
+    }));
+    await renderPanel('issue');
+
+    expect(
+      await screen.findByText(
+        'The tools of 2 connectors (github, web-search) were not searched: muster listed none of them.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says a cut-off tool list was not searched in full', async () => {
+    api.filterTools.mockImplementationOnce(async () => ({
+      total: 2500,
+      filtered_count: 2500,
+      truncated: true,
+      tools: [{ name: 'x_kubernetes_get_pods', description: 'List pods' }],
+    }));
+    await renderPanel('issue');
+
+    expect(
+      await screen.findByText(/Some tools were not searched/),
+    ).toHaveTextContent(
+      'Some tools were not searched: muster returned only part of them. The tools of github were not searched: they need your sign-in.',
+    );
   });
 
   it('says a search that found nothing covered names only without a session', async () => {
@@ -796,6 +850,25 @@ describe('CustomizeConnectorsPanel', () => {
       );
       await userEvent.keyboard('{Escape}');
     };
+
+    it('names only the connectors the filters keep', async () => {
+      api.filterTools.mockImplementationOnce(async () => ({
+        total: 1,
+        filtered_count: 1,
+        truncated: false,
+        tools: [{ name: 'x_kubernetes_get_pods', description: 'List pods' }],
+      }));
+      await renderPanel('issue');
+
+      await screen.findByText(/need your sign-in/);
+      await pickFilter('connection', 'Connected 0');
+      expect(
+        screen.getByText(
+          'No connectors or tools match “issue” with these filters.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/were not searched/)).not.toBeInTheDocument();
+    });
 
     it('offers one-option dropdowns over three connectors that sign in alike and all answer', async () => {
       mockServers = ['a', 'b', 'c'].map(name => makeServer(name));

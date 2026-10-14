@@ -129,16 +129,20 @@ describe('ConnectorToolsTab', () => {
     expect(toolRows()).toHaveLength(10);
   });
 
-  it('keeps its search in the address', async () => {
-    await renderTab(makeTools(300), '/connector?installation=gazelle');
+  it('does not write its search into the address', async () => {
+    await renderTab(
+      makeTools(300),
+      '/connector?installation=gazelle&q=tool_29',
+    );
 
+    // Each change of the address is a page view.
     await userEvent.type(
       screen.getByRole('searchbox', { name: 'Search tools' }),
-      'tool_1',
+      '9',
     );
-    expect(location()).toHaveTextContent('?installation=gazelle&q=tool_1');
-    await userEvent.clear(screen.getByRole('searchbox'));
-    expect(location()).toHaveTextContent(/^\?installation=gazelle$/);
+    expect(toolRows()).toHaveLength(1);
+    expect(location()).toHaveTextContent('?installation=gazelle&q=tool_29');
+    expect(location()).not.toHaveTextContent('tool_299');
   });
 
   it('shows a short list its search, and keeps the field once cleared', async () => {
