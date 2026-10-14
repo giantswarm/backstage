@@ -663,6 +663,23 @@ describe('KagentClient against a fake controller', () => {
       });
     });
 
+    it('reports a new message with no first event within the request timeout as an upstream timeout', async () => {
+      // A new turn is answered with a task snapshot at once; silence means
+      // kagent is unwell, unlike a resumed turn (see the answer tests).
+      const { client } = build({}, [delayFirstEvent(700)]);
+      const id = await created(client);
+
+      await expect(
+        client.streamMessage(
+          id,
+          AGENT,
+          { messageId: 'm1', text: 'x' },
+          USER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'UpstreamError', reason: 'timeout' });
+    });
+
     it('maps a rejection before the stream opens to the caller’s error', async () => {
       const { client } = build();
       await expect(
@@ -866,59 +883,19 @@ describe('KagentClient against a fake controller', () => {
       });
     });
 
-    it('keeps streaming a resumed turn whose first event is slower than the request timeout', async () => {
+    it('reports a resumed turn silent past the request timeout as pending, and leaves it running', async () => {
       // Seen on gazelle: the resumed turn produced nothing within the request
-      // timeout, and the stream was reported as a pending turn — a 500 from the
-      // route. A slow first event is the agent working, not kagent unwell; and
-      // giving up on the stream would only cut the preview the page follows.
-      const { client } = build({ turn: () => approval }, [
-        delayFirstEvent(1_200),
-      ]);
-      const id = await created(client);
-      const paused = (await client.sendMessage(
-        id,
-        AGENT,
-        { messageId: 'm1', text: 'delete it' },
-        USER,
-      )) as {
-        task: { id: string };
-      };
-
-      const response = await client.streamAnswer(
-        id,
-        AGENT,
-        { messageId: 'm2', taskId: paused.task.id, decision: 'approve' },
-        USER,
-        new AbortController().signal,
-      );
-
-      expect(response.status).toBe(200);
-      const events = (await frames(response)) as Record<string, unknown>[];
-      expect(events.at(-1)).toEqual({
-        statusUpdate: expect.objectContaining({
-          taskId: paused.task.id,
-          status: expect.objectContaining({ state: 'TASK_STATE_COMPLETED' }),
-        }),
-      });
-    });
-
-    it('reports a rejection after a slow start in-band, as one error frame', async () => {
-      // Once the stream has been answered there is no status left to carry a
-      // refusal; the frame is what the page reports it from.
+      // timeout, and the route answered 500. A resumed task says nothing until
+      // the agent does; that is the 202 contract, not a failure.
+      let call: AbortSignal | undefined;
       const { client } = build({ turn: () => approval }, [
         next => async request => {
-          const response = await next(request);
-          if (!response.stream) {
-            return response;
+          if (request.stream) {
+            call = request.signal;
           }
-          return {
-            ...response,
-            message: (async function* refused() {
-              await new Promise(resolve => setTimeout(resolve, 1_200));
-              throw new ConnectError('runtime refused', Code.Internal);
-            })(),
-          };
+          return next(request);
         },
+        delayFirstEvent(700),
       ]);
       const id = await created(client);
       const paused = (await client.sendMessage(
@@ -929,18 +906,39 @@ describe('KagentClient against a fake controller', () => {
       )) as {
         task: { id: string };
       };
+      const relay = new AbortController();
 
-      const response = await client.streamAnswer(
-        id,
-        AGENT,
-        { messageId: 'm2', taskId: paused.task.id, decision: 'approve' },
-        USER,
-        new AbortController().signal,
-      );
+      await expect(
+        client.streamAnswer(
+          id,
+          AGENT,
+          { messageId: 'm2', taskId: paused.task.id, decision: 'approve' },
+          USER,
+          relay.signal,
+        ),
+      ).rejects.toMatchObject({
+        name: TURN_PENDING_ERROR_NAME,
+        message: expect.stringContaining('within 500ms'),
+      });
 
-      expect(await frames(response)).toEqual([
-        { error: { code: 'Internal', message: 'runtime refused' } },
-      ]);
+      // The router answers the 202 and the browser connection closes. The
+      // upstream call must outlive it: dropping a stream before its first
+      // event can take the turn with it.
+      relay.abort();
+      expect(call?.aborted).toBe(false);
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        const { tasks } = (await client.listSessionTasks(id, USER)) as {
+          tasks: { id: string; status: { state: string } }[];
+        };
+        if (
+          tasks.find(task => task.id === paused.task.id)?.status.state ===
+          'TASK_STATE_COMPLETED'
+        ) {
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      throw new Error('the resumed turn never completed');
     });
 
     it('refuses to stream an answer to a task that is not waiting, as a 409', async () => {

@@ -313,6 +313,28 @@ function readAnswerBody(req: express.Request): {
 const STREAM_MAX_DURATION_MS = 30 * 60_000;
 
 /**
+ * Answer a turn that is still running ({@link isTurnPendingError}) with the
+ * 202 every send route shares, and rethrow anything else.
+ *
+ * Never a 5xx for it: `MiddlewareFactory.error()` forwards those to Sentry —
+ * one issue per long turn, for the thing an agent is supposed to do. The
+ * caller follows the conversation poll from the 202.
+ */
+function answerTurnPending(
+  error: unknown,
+  res: express.Response,
+  logger: LoggerService,
+): void {
+  if (!isTurnPendingError(error)) {
+    throw error;
+  }
+  logger.debug('A kagent turn is still running; answering 202', {
+    error: (error as Error).message,
+  });
+  res.status(202).json({ status: 'pending' });
+}
+
+/**
  * Relay one upstream event stream to the browser as SSE.
  *
  * Shared by the streaming routes (a message, an answer): `open` opens the
@@ -361,17 +383,10 @@ async function relayEventStream(
     if (res.writableEnded || upstreamControl.signal.aborted) {
       return;
     }
-    // A turn kagent reports still running before the stream opened is the
-    // unary routes' 202, not a 5xx that would reach Sentry: the frontend
-    // follows the poll exactly as it does after a cut stream.
-    if (isTurnPendingError(error)) {
-      logger.debug(
-        'A kagent turn was reported still running before its stream opened; answering 202',
-      );
-      res.status(202).json({ status: 'pending' });
-      return;
-    }
-    throw error;
+    // A turn still running before its stream opened is the unary routes'
+    // 202: the frontend follows the poll exactly as after a cut stream.
+    answerTurnPending(error, res, logger);
+    return;
   }
 
   res.status(200);
@@ -1049,16 +1064,9 @@ export async function createRouter(
       );
       res.json(result);
     } catch (error) {
-      if (!isTurnPendingError(error)) {
-        throw error;
-      }
       // Accepted, not finished. The caller stops waiting and reads the outcome
       // from the conversation poll like any other progress.
-      logger.debug(
-        'A kagent turn outlived its timeout; answering 202 and leaving it running',
-        { turnTimeoutMs },
-      );
-      res.status(202).json({ status: 'pending' });
+      answerTurnPending(error, res, logger);
     }
   });
 
@@ -1150,10 +1158,7 @@ export async function createRouter(
       // Same contract as the messages route: a turn still running is a 202, not a
       // failure. The answer has been accepted by then; only the agent's reply is
       // outstanding.
-      if (!isTurnPendingError(error)) {
-        throw error;
-      }
-      res.status(202).json({ status: 'pending' });
+      answerTurnPending(error, res, logger);
     }
   });
 
