@@ -18,9 +18,11 @@ export type TechnicalDetailsFoldOutProps = {
    * Follow later changes of `defaultExpanded`, both ways, until the person
    * opens or closes the fold-out themselves: a page that renders from the
    * cache first must neither leave a reason the fresh read found folded away
-   * nor keep open what a stale copy opened. Opt-in, for the model page; key
-   * the fold-out by the resource there, so another one starts afresh. Without
-   * it, `defaultExpanded` only seeds the first render, as on the agent page.
+   * nor keep open what a stale copy opened. Opt-in, for the model and
+   * connector pages. Key the fold-out, or a parent, by the resource, so
+   * another one starts afresh: the model page keys the fold-out, the connector
+   * page its whole content. Without it, `defaultExpanded` only seeds the first
+   * render, as on the agent page.
    */
   followDefaultExpanded?: boolean;
   children: ReactNode;

@@ -4,6 +4,7 @@ import {
   type Fact,
   FactList,
   InfoCard,
+  Mono,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer, mcpServerStateSeverity } from '../../../lib/k8s';
 import {
@@ -16,8 +17,8 @@ import { ServerPageRow } from '../../../lib/serverGrouping';
 import {
   AuthChain,
   hasAuthChain,
+  hasHealthDetails,
   HealthDetails,
-  Mono,
   ServerConfig,
 } from '../../McpServersPage/serverDetail';
 
@@ -73,28 +74,21 @@ function ResourceCard({
   );
 }
 
-/** Whether muster's status says more about the server than its state. */
-function hasHealthDetails(server: MCPServer): boolean {
-  return Boolean(
-    server.getReadyCondition()?.message ||
-    server.getLastConnected() ||
-    (server.getConsecutiveFailures() ?? 0) > 0 ||
-    server.getNextRetryAfter() ||
-    server.getLastError(),
+/** Failed, rather than turned off on purpose. */
+function isFailed(server: MCPServer): boolean {
+  return (
+    !server.getSuspended() &&
+    mcpServerStateSeverity(server.getState()) === 'error'
   );
 }
 
 /**
  * Whether the fold-out opens on arrival: while muster reports the connector
  * failed, as the agent and model pages open theirs for a resource that is
- * not ready, since the health card says why.
+ * not ready, since the health card says why (or that muster gave no reason).
  */
 export function technicalDetailsOpenByDefault(row: ServerPageRow): boolean {
-  return (
-    row.kind === 'server' &&
-    !row.server.getSuspended() &&
-    mcpServerStateSeverity(row.server.getState()) === 'error'
-  );
+  return row.kind === 'server' && isFailed(row.server);
 }
 
 export type ConnectorTechnicalDetailsProps = {
@@ -142,9 +136,15 @@ export function ConnectorTechnicalDetails({
           </Flex>
         </InfoCard>
       )}
-      {!isFamily && hasHealthDetails(server) && (
+      {!isFamily && (hasHealthDetails(server) || isFailed(server)) && (
         <InfoCard title="Health">
-          <HealthDetails server={server} />
+          {hasHealthDetails(server) ? (
+            <HealthDetails server={server} />
+          ) : (
+            <Text as="p" variant="body-small" color="secondary">
+              muster reports the connector as failed but gives no reason.
+            </Text>
+          )}
         </InfoCard>
       )}
     </Flex>

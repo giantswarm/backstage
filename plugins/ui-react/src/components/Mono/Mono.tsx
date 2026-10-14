@@ -8,8 +8,8 @@ export const MONO: CSSProperties = {
 };
 
 /**
- * An identifier as the Technical details fold-outs show it, small and in
- * {@link MONO}.
+ * An identifier as the Technical details fold-outs (agent, model, connector)
+ * show it, small and in {@link MONO}.
  */
 export function Mono({ children }: { children: string }) {
   return (

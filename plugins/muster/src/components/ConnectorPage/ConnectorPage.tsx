@@ -498,7 +498,7 @@ function ConnectorPageContent({
   }
   // Last, as the agent page's Overview is first: the tab people open least.
   // muster itself has neither facts nor an MCPServer, so no Details.
-  const hasDetails = facts.length > 0 || Boolean(representative);
+  const hasDetails = row.kind !== 'core';
   if (hasDetails) {
     tabs.push({ id: 'details', path: 'details', title: 'Details' });
   }

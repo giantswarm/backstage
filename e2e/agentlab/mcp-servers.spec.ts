@@ -32,6 +32,23 @@ const internalPath = `/customize/connectors/internal${scope}`;
  */
 const KUBERNETES_FAMILY = 'kubernetes';
 
+/**
+ * Open the Details tab's fold-out. It also opens by itself while the connector
+ * reads Failed, and follows a refresh that changes that until it is toggled,
+ * so a click can race it: retried until it stays open.
+ */
+async function openTechnicalDetails(page: Page) {
+  const foldOut = page.getByRole('button', { name: 'Technical details' });
+  await expect(async () => {
+    if ((await foldOut.getAttribute('aria-expanded')) !== 'true') {
+      await foldOut.click();
+    }
+    await expect(foldOut).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 1_000,
+    });
+  }).toPass();
+}
+
 /** A connector's row in the table: its name, then its description. */
 function connectorRow(page: Page, name: string) {
   return page.getByRole('row', { name: new RegExp(`^${name}( |$)`) });
@@ -300,10 +317,7 @@ test("a connector's Details tab folds its resource and auth chain, read from the
   ).toBeVisible();
 
   // Read from the MCPServer itself, so no muster session is needed.
-  const foldOut = admin.getByRole('button', { name: 'Technical details' });
-  if ((await foldOut.getAttribute('aria-expanded')) !== 'true') {
-    await foldOut.click();
-  }
+  await openTechnicalDetails(admin);
   await expect(
     admin.getByRole('heading', { name: 'Resource', exact: true }),
   ).toBeVisible();
@@ -319,7 +333,7 @@ test("a connector's Details tab folds its resource and auth chain, read from the
     admin,
     `/agent-platform/connectors/${KUBERNETES_FAMILY}/details${scope}`,
   );
-  await admin.getByRole('button', { name: 'Technical details' }).click();
+  await openTechnicalDetails(admin);
   await expect(
     admin.getByText(/each instance's own configuration, health and/),
   ).toBeVisible();

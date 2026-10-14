@@ -130,6 +130,17 @@ describe('ConnectorTechnicalDetails', () => {
     ).toBe(true);
   });
 
+  it('says so where muster gives no reason for a failure', () => {
+    renderServer(makeServer({ name: 'jira', status: { state: 'Failed' } }));
+
+    expect(screen.getByRole('heading', { name: 'Health' })).toBeVisible();
+    expect(
+      screen.getByText(
+        'muster reports the connector as failed but gives no reason.',
+      ),
+    ).toBeVisible();
+  });
+
   it('stays folded for a healthy, a turned-off or a family connector', () => {
     const healthy = makeServer({ name: 'jira' });
     const off = makeServer({
