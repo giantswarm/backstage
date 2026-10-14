@@ -315,13 +315,14 @@ export function resolveSkillDetailPath<
 
 /**
  * The skill's source in the repository at the commit it is pinned to: the
- * SKILL.md's directory (or the repository root). Undefined outside github.com.
+ * SKILL.md's directory (or the repository root). Undefined outside github.com,
+ * and without a commit to read it at.
  */
 export function skillSourceUrl(
   skill: Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit'>,
 ): string | undefined {
   const parts = githubRepoParts(skill.repoUrl);
-  if (!parts) {
+  if (!parts || !skill.commit) {
     return undefined;
   }
   const dir = cleanSkillPath(skill.path);
@@ -352,14 +353,4 @@ export function skillFileUrl(
   return `https://github.com/${parts.owner}/${parts.repo}/blob/${
     skill.commit
   }/${segments.map(encodeURIComponent).join('/')}`;
-}
-
-/** The pinned commit on github.com, for the facts column. */
-export function skillCommitUrl(
-  skill: Pick<DiscoveredSkill, 'repoUrl' | 'commit'>,
-): string | undefined {
-  const parts = githubRepoParts(skill.repoUrl);
-  return parts
-    ? `https://github.com/${parts.owner}/${parts.repo}/commit/${skill.commit}`
-    : undefined;
 }
