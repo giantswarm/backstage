@@ -853,6 +853,76 @@ describe('KagentClient against a fake controller', () => {
     });
   });
 
+  describe('a delete right after a turn', () => {
+    const NOT_SETTLED =
+      'begin Session operation: runtime cleanup or lifecycle work is not yet settled: precondition failed';
+
+    /** A client whose controller refuses the delete with `refusals` in turn, then deletes. */
+    function refusing(refusals: string[], delaysMs = [0, 0, 0]) {
+      let attempts = 0;
+      const client = new KagentClient(
+        installation,
+        logger,
+        createRouterTransport(router => {
+          router.service(
+            (
+              require('./kagent/gen/kagent/api/v1alpha1/sessions_pb') as typeof import('./kagent/gen/kagent/api/v1alpha1/sessions_pb')
+            ).SessionService,
+            {
+              deleteSession(request) {
+                const refusal = refusals[attempts];
+                attempts += 1;
+                if (refusal !== undefined) {
+                  throw new ConnectError(refusal, Code.FailedPrecondition);
+                }
+                return { session: { id: request.sessionId } };
+              },
+            },
+          );
+        }),
+        500,
+        500,
+        delaysMs,
+      );
+      return { client, attempts: () => attempts };
+    }
+
+    it('retries while the last turn settles, and answers the delete', async () => {
+      const { client, attempts } = refusing([NOT_SETTLED, NOT_SETTLED]);
+      await expect(client.deleteSession('s1', USER)).resolves.toEqual({
+        session: { id: 's1' },
+      });
+      expect(attempts()).toBe(3);
+    });
+
+    it('answers a 409 with kagent’s reason once the retries are spent', async () => {
+      const { client, attempts } = refusing(
+        [NOT_SETTLED, NOT_SETTLED, NOT_SETTLED, NOT_SETTLED],
+        [0, 0],
+      );
+      await expect(client.deleteSession('s1', USER)).rejects.toMatchObject({
+        name: 'ConflictError',
+        message: expect.stringContaining(
+          'is still settling its last turn; try deleting it again in a moment. (begin Session operation: runtime cleanup or lifecycle work is not yet settled',
+        ),
+      });
+      expect(attempts()).toBe(3);
+    });
+
+    it('does not retry any other precondition', async () => {
+      const { client, attempts } = refusing([
+        'the Agent has no ready revision',
+      ]);
+      await expect(client.deleteSession('s1', USER)).rejects.toMatchObject({
+        name: 'ConflictError',
+        message: expect.stringContaining(
+          'reported a conflict: the Agent has no ready revision',
+        ),
+      });
+      expect(attempts()).toBe(1);
+    });
+  });
+
   describe('failure mapping', () => {
     it('logs a failed session list with its call, status and request id', async () => {
       const failing = mockServices.logger.mock();
