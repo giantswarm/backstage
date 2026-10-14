@@ -13,6 +13,15 @@ import {
 } from '../ConnectorTechnicalDetails';
 
 const useStyles = makeStyles({
+  // The tab reads at the page's body size (bui's body-medium, 14px), as its
+  // Tools tab and the rest of the page do. FactList, muster's detail blocks
+  // and Mono set body-small (12px) for denser places, the instance pane and
+  // the agent and model pages among them, so the step up is made here alone.
+  root: {
+    '& .bui-Text[data-variant="body-small"], & pre': {
+      fontSize: 'var(--bui-font-size-3)',
+    },
+  },
   // Inset as the Technical details fold-out below insets its title (its 1px
   // border plus bui's accordion padding), so the facts line up with it
   // instead of starting at the content's edge, left of it and of the tabs'
@@ -44,7 +53,7 @@ export function ConnectorDetailsTab({
 }: ConnectorDetailsTabProps) {
   const classes = useStyles();
   return (
-    <Flex direction="column" gap="5">
+    <Flex direction="column" gap="5" className={classes.root}>
       {facts.length > 0 && (
         <section aria-label="Connector details" className={classes.facts}>
           <FactList facts={facts} labelWidth={160} />

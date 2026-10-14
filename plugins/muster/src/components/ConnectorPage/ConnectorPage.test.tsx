@@ -729,6 +729,22 @@ describe('ConnectorPage Details tab', () => {
     ).toBeInTheDocument();
   });
 
+  it('reads at the page body size, facts and technical details alike', async () => {
+    await renderAt(`${BASE}/jira/details`);
+    await userEvent.click(foldOut());
+
+    // bui's body-small (12px) is lifted to body-medium's size on this tab.
+    for (const text of [
+      '1 of 1 instance healthy',
+      'muster/jira',
+      'Auto start',
+    ]) {
+      expect(getComputedStyle(screen.getByText(text)).fontSize).toBe(
+        'var(--bui-font-size-3)',
+      );
+    }
+  });
+
   it("lists a family's facts and one instance's technical details", async () => {
     await renderAt(`${BASE}/kubernetes/details`);
 
