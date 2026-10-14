@@ -555,6 +555,13 @@ export class KagentApiClient implements KagentApi {
       await this.throwIfNotOk(response, { badRequestIsMissing: false });
     }
 
+    if (response.status === 202) {
+      // The backend's "still running", as on the unary routes: the turn
+      // outlived the wait for its first event. Resolved like a stream that
+      // ended without one, so the caller follows the turn through the poll.
+      return;
+    }
+
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.includes('text/event-stream') || !response.body) {
       // A 200 that is not a stream is something between us and the backend

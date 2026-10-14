@@ -332,6 +332,13 @@ async function relayEventStream(
     if (res.writableEnded || upstreamControl.signal.aborted) {
       return;
     }
+    // A turn that outlived the wait for its first event is still running: the
+    // unary routes' 202, not a 5xx that would reach Sentry. The frontend
+    // follows the poll exactly as it does after a cut stream.
+    if (isTurnPendingError(error)) {
+      res.status(202).json({ status: 'pending' });
+      return;
+    }
     throw error;
   }
 
