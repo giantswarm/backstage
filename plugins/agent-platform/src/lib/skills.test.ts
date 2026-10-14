@@ -237,4 +237,14 @@ describe('skillSourceUrl', () => {
       'https://github.com/giantswarm/skills/tree/a1b2c3d4e5',
     );
   });
+
+  it('has nothing to point at without a commit or outside github.com', () => {
+    expect(skillSourceUrl({ ...skill, commit: '' })).toBeUndefined();
+    expect(
+      skillSourceUrl({
+        ...skill,
+        repoUrl: 'http://gitea.lab.local/lab/skills',
+      }),
+    ).toBeUndefined();
+  });
 });

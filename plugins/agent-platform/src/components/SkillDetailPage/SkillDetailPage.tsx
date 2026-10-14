@@ -16,6 +16,7 @@ import {
   FactList,
   LoadingIndicator,
   MoreActionsMenu,
+  type MoreActionsMenuItem,
   type RouteTabSpec,
   SectionHeader,
   ShellPage,
@@ -258,13 +259,22 @@ function UsedByTab({
     const pinnedBehind = new Map(
       behind.map(({ row, pinned }) => [row.id, pinned]),
     );
+    // The rows span every installation and namespace: where two agents share
+    // a name on one installation, their namespaces tell them apart.
+    const nameKey = (row: AgentRow) => `${row.installation}\u0000${row.name}`;
+    const named = new Map<string, number>();
+    for (const row of using) {
+      named.set(nameKey(row), (named.get(nameKey(row)) ?? 0) + 1);
+    }
     return using.map(row => {
       const pinned = pinnedBehind.get(row.id);
       return {
         row,
-        detail: pinned
-          ? `${row.installation} · older version (${shortCommit(pinned)})`
-          : row.installation,
+        detail: [
+          row.installation,
+          ...(named.get(nameKey(row))! > 1 ? [row.namespace] : []),
+          ...(pinned ? [`older version (${shortCommit(pinned)})`] : []),
+        ].join(' · '),
       };
     });
   }, [using, behind]);
@@ -303,12 +313,9 @@ function UsedByTab({
   );
 }
 
-/** One header action. */
-type SkillAction = {
-  id: string;
-  label: string;
+/** One header action: a press, as a button or a menu item. */
+type SkillAction = Pick<MoreActionsMenuItem, 'id' | 'label' | 'isDisabled'> & {
   onAction: () => void;
-  isDisabled?: boolean;
 };
 
 /**

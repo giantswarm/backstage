@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { Alert, Text } from '@backstage/ui';
-import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ConnectorPageTarget,
   useConnectorPageTarget,
@@ -46,10 +45,7 @@ function UsedByList({ target }: { target: ConnectorPageTarget }) {
     [rows, target],
   );
 
-  if (isLoading) {
-    return <LoadingIndicator label="Reading the agents…" />;
-  }
-  if (unreachableInstallations.includes(target.installation)) {
+  if (!isLoading && unreachableInstallations.includes(target.installation)) {
     return (
       <Alert
         status="warning"
@@ -62,6 +58,7 @@ function UsedByList({ target }: { target: ConnectorPageTarget }) {
   return (
     <AgentUsageList
       agents={using}
+      isLoading={isLoading}
       label="Agents using this connector"
       emptyText={`No agent on ${target.installation} uses this connector.`}
     >

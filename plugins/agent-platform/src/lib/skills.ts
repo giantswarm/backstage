@@ -315,13 +315,14 @@ export function resolveSkillDetailPath<
 
 /**
  * The skill's source in the repository at the commit it is pinned to: the
- * SKILL.md's directory (or the repository root). Undefined outside github.com.
+ * SKILL.md's directory (or the repository root). Undefined outside github.com,
+ * and without a commit to read it at.
  */
 export function skillSourceUrl(
   skill: Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit'>,
 ): string | undefined {
   const parts = githubRepoParts(skill.repoUrl);
-  if (!parts) {
+  if (!parts || !skill.commit) {
     return undefined;
   }
   const dir = cleanSkillPath(skill.path);

@@ -378,6 +378,31 @@ describe('SkillDetailPage', () => {
     expect(screen.getByText('bot-299')).toBeInTheDocument();
   }, 30_000);
 
+  it('names the namespace of agents that share a name on one installation', async () => {
+    const elsewhere = {
+      ...agent('triage-bot', [`${REPO}#ticket-triage`]),
+      id: 'gazelle/team-a/triage-bot',
+      namespace: 'team-a',
+    };
+    mockRows = [
+      agent('triage-bot', [`${REPO}#ticket-triage`]),
+      elsewhere,
+      agent('solo-bot', [`${REPO}#ticket-triage`]),
+    ];
+    await renderPage('giantswarm/skills/ticket-triage/used-by');
+
+    const list = screen.getByRole('grid', { name: 'Agents using this skill' });
+    expect(
+      within(list)
+        .getAllByRole('row')
+        .map(item => item.textContent),
+    ).toEqual([
+      expect.stringContaining('solo-botgazelle'),
+      expect.stringContaining('triage-botgazelle · kagent'),
+      expect.stringContaining('triage-botgazelle · team-a'),
+    ]);
+  }, 30_000);
+
   it('says when no agent uses the skill', async () => {
     mockRows = [agent('other-bot', [])];
     await renderPage('giantswarm/skills/ticket-triage/used-by');
