@@ -142,6 +142,45 @@ describe('StartNewSession', () => {
     ).not.toBeInTheDocument();
   });
 
+  describe("when the agents' installation cannot start sessions as the person", () => {
+    const blocker =
+      "Muster on gazelle has no per-user sign-in in this portal, so agent-manager would act under muster's shared identity instead of as you.";
+
+    beforeEach(() => {
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [{ ...sre, sessionBlocker: blocker }],
+      });
+    });
+
+    it('says nothing while it is still being asked', async () => {
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [{ ...sre, isSessionPending: true }],
+      });
+      await render({ entryPoint: 'sessionsList' });
+
+      expect(
+        screen.queryByRole('textbox', { name: 'Prompt' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/Sessions cannot start/),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/not ready/)).not.toBeInTheDocument();
+    });
+
+    it('offers no composer and says why, instead of a Start that ends in a refusal', async () => {
+      await render({ entryPoint: 'sessionsList' });
+
+      expect(
+        screen.queryByRole('textbox', { name: 'Prompt' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(`Sessions cannot start from this portal. ${blocker}`),
+      ).toBeInTheDocument();
+    });
+  });
+
   describe('when no agent is ready', () => {
     beforeEach(() => {
       mockUseAgents.mockReturnValue({

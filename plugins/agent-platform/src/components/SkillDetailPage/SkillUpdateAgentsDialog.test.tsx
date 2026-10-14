@@ -337,6 +337,12 @@ describe('updateVerdictOf', () => {
       kind: 'blocked',
       reason: 'Muster on gazelle lists no agent-manager.',
     });
+    expect(updateVerdictOf({ ...base, presence: 'sharedIdentity' })).toEqual({
+      kind: 'blocked',
+      reason: expect.stringContaining(
+        "Muster on gazelle has no per-user sign-in in this portal, so agent-manager would act under muster's shared identity",
+      ),
+    });
     expect(
       updateVerdictOf({
         ...base,

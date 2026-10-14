@@ -6,7 +6,11 @@ import {
   AgentInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { agentsRouteRef } from '../../routes';
-import { AgentActionsMenu, type AgentManagerGate } from './AgentActionsMenu';
+import {
+  AgentActionsMenu,
+  agentManagerAbsenceReason,
+  type AgentManagerGate,
+} from './AgentActionsMenu';
 
 // The menu renders in the shared plugin header, outside the plugin's
 // QueryClientProvider, so it calls no react-query hook itself: whether the write
@@ -194,6 +198,23 @@ describe('AgentActionsMenu', () => {
     expect(
       screen.queryByRole('menuitem', { name: /Delete agent/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('offers none of the three where muster runs under its shared identity, and says why', async () => {
+    const gate: AgentManagerGate = {
+      ...AVAILABLE,
+      presence: 'sharedIdentity',
+    };
+    await renderMenu(gate);
+    await openMenu();
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(
+      screen.queryByRole('menuitem', { name: /Update all skills/ }),
+    ).not.toBeInTheDocument();
+    expect(agentManagerAbsenceReason(gate, 'gazelle')).toMatch(
+      /muster on gazelle has no per-user sign-in in this portal/i,
+    );
   });
 
   it('withholds the actions while the server list is still being read', async () => {
