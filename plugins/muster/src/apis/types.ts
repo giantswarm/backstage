@@ -179,6 +179,12 @@ export interface McpUsage {
   range_hours: number;
   step_hours: number;
   buckets: McpUsageBucket[];
+  /**
+   * The start of the first bucket holding any sample: where muster's records
+   * start inside the window. Absent when no bucket has one, or when muster
+   * recorded calls in the week before the window.
+   */
+  data_start?: string;
   totals: {
     calls: number;
     errors: number;

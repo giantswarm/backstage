@@ -8,7 +8,9 @@ import { useSearchParams } from 'react-router-dom';
 import {
   formatCount,
   formatSeconds,
+  formatDayWithYear,
   parseUsageWindowParam,
+  usageDataStart,
   USAGE_WINDOW_PARAM,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
@@ -143,6 +145,10 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'block',
     marginTop: theme.spacing(2),
   },
+  dataStart: {
+    display: 'block',
+    marginBottom: theme.spacing(2),
+  },
 }));
 
 /** Axis tick for a bucket start: hour of day for hourly, date for daily. */
@@ -266,8 +272,21 @@ function UsageBody({
   const errorResultColor = theme.palette.warning.main;
   const errorColor = theme.palette.error.main;
   // One fixed window now, so the label is derived rather than looked up.
-  const rangeLabel = `${Math.round(hours / 24)}d`;
-  const windowNote = `over the last ${Math.round(hours / 24)} days`;
+  const windowDays = Math.round(hours / 24);
+  const rangeLabel = `${windowDays}d`;
+  const windowNote = `over the last ${windowDays} days`;
+  // Where muster's records start, when that is after the window does and it
+  // recorded nothing in the week before: the figures then cover fewer days
+  // than the window names. Worded as what was recorded, because a restart
+  // followed by a quiet spell looks the same. Daily buckets only, which is all
+  // the Usage screen asks for.
+  const dataStart =
+    data.step_hours >= 24
+      ? usageDataStart(
+          data.buckets.map(bucket => bucket.start.slice(0, 10)),
+          data.data_start?.slice(0, 10),
+        )
+      : undefined;
 
   /**
    * The data bars' hues, one per measure.
@@ -436,6 +455,18 @@ function UsageBody({
 
   return (
     <>
+      {dataStart && (
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          className={classes.dataStart}
+        >
+          Tool calls have been recorded only since{' '}
+          {formatDayWithYear(dataStart.day)}, so these figures cover{' '}
+          {dataStart.coveredDays} of the {windowDays} days.
+        </Text>
+      )}
       <Box className={classes.statRow}>
         <Stat
           label="Tool calls"

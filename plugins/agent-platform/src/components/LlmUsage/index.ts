@@ -2,6 +2,7 @@ export { ActivityHeatmap, ActivityHeatmapUnavailable } from './ActivityHeatmap';
 export type { HeatmapDay } from './ActivityHeatmap';
 export { CostKpiTiles } from './CostKpiTiles';
 export { CostPerDayCard } from './CostPerDayCard';
+export { DataStartNote } from './DataStartNote';
 export { SessionKpiTiles } from './SessionKpiTiles';
 export { LlmByAgentTable } from './LlmByAgentTable';
 export { LlmByModelTable } from './LlmByModelTable';

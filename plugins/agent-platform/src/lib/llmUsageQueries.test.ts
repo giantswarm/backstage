@@ -172,6 +172,8 @@ describe('llmUsageQueriesFor', () => {
       'durationP50',
       'durationP95',
       'previousCost',
+      'dataBeforeWindow',
+      'dataBeforePreviousWindow',
     ] as const) {
       expect(queries[key]).toContain(only);
     }
@@ -189,6 +191,20 @@ describe('llmUsageQueriesFor', () => {
         '7d',
         '7d',
       )}`,
+    );
+  });
+
+  it('asks whether the gateway recorded anything in the week before each window', () => {
+    const queries = llmUsageQueriesFor({ days: 7 });
+
+    expect(queries.dataBeforeWindow).toBe(
+      'count(last_over_time(agentgateway_gen_ai_client_token_usage_sum[7d] offset 7d))',
+    );
+    expect(queries.dataBeforePreviousWindow).toBe(
+      'count(last_over_time(agentgateway_gen_ai_client_token_usage_sum[7d] offset 14d))',
+    );
+    expect(llmUsageQueriesFor({ days: 90 }).dataBeforePreviousWindow).toContain(
+      '[7d] offset 180d',
     );
   });
 
@@ -304,8 +320,14 @@ describe('counterIncrease', () => {
   });
 
   it('is what every usage query counts with — no bare increase() or rate()', () => {
+    // The coverage checks count series that exist, not a counter's growth.
+    const {
+      dataBeforeWindow: _window,
+      dataBeforePreviousWindow: _previous,
+      ...counted
+    } = llmUsageQueriesFor({ days: 7, org: 'support' });
     const all = [
-      ...Object.values(llmUsageQueriesFor({ days: 7, org: 'support' })),
+      ...Object.values(counted),
       ...Object.values(llmUsageRangeQueriesFor()),
       ...Object.values(todayPartialQueries('600s')),
     ];
