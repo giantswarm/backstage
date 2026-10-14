@@ -77,8 +77,12 @@ from the skill catalog the page reads anyway.
 ### Skills
 
 The catalog comes from the configured skill repositories, most-used skills
-first. The Instructions tab renders the SKILL.md body without raw HTML or
-remote images, and only when the portal can read the file.
+first. A skill's page is a single column. Its Overview says what the skill is
+for and where it lives; the latest commit links to the skill's folder at that
+commit on github.com. The Instructions tab renders the SKILL.md body without
+raw HTML or remote images, and only when the portal can read the file. The
+Used by tab lists the agents as the connector page does, and marks an agent
+that pins an older commit.
 
 - **Add skill** and **Edit** open a pull request against the skill's
   repository, authored as the person with their own GitHub account (connected
