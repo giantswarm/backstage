@@ -33,7 +33,7 @@ export type TechnicalDetailsFoldOutProps = {
  * technical detail on a page, never a page-wide switch. Controlled, so the
  * cards inside (which read the HelmRelease, GitOps source and conditions)
  * mount only while open: bui's panel otherwise stays mounted, merely hidden.
- * Shared by the agent, model, connector and workflow pages.
+ * Shared by the agent, model and connector pages.
  */
 export function TechnicalDetailsFoldOut({
   defaultExpanded,

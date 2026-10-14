@@ -17,5 +17,4 @@ are gone, and so is muster-backend's unused `GET /workflows/:name` route.
 
 `ui-react` gains `PageSection`, the heading-and-content section of a detail
 page tab that the agent, skill and workflow pages now share, and a `compact`
-option on `SectionHeader`. `TechnicalDetailsFoldOut` moves from the
-agent-platform plugin to `ui-react`.
+option on `SectionHeader`.

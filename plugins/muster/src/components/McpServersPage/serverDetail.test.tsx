@@ -95,7 +95,7 @@ describe('ServerConfig', () => {
 
     expect(screen.getByText('Deactivated')).toBeInTheDocument();
     expect(
-      screen.getByText(/Use “Activate” in the connector’s actions/),
+      screen.getByText(/Use “Turn on” in the connector’s menu/),
     ).toBeInTheDocument();
   });
 
@@ -124,7 +124,7 @@ describe('ServerConfig', () => {
     expect(
       screen.getByText(/disconnected until activated\./),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Use “Activate”/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Use “Turn on”/)).not.toBeInTheDocument();
   });
 });
 
@@ -369,7 +369,7 @@ describe('ServerTools with no tools to show', () => {
 
     expect(
       await screen.findByText(
-        'No tools exposed — this connector is deactivated. Use “Activate” in the connector’s actions.',
+        'No tools exposed — this connector is deactivated. Use “Turn on” in the connector’s menu.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
