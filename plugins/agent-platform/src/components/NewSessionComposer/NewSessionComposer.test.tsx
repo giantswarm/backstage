@@ -11,6 +11,7 @@ import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import {
   agentOptionLabel,
+  isStartableAgent,
   modelWarningFor,
   NewSessionComposer,
 } from './NewSessionComposer';
@@ -583,6 +584,24 @@ describe('opt-in picker options', () => {
 
     expect(option).toHaveAttribute('aria-disabled', 'true');
     expect(option).toHaveTextContent('Unavailable: 0/1 pods are ready');
+  });
+
+  it("leaves out a ready agent whose installation's agent-manager cannot start a session, and lists it disabled with the reason", async () => {
+    const shared = {
+      ...issues,
+      sessionBlocker:
+        'Muster on gazelle has no per-user sign-in in this portal.',
+    };
+    expect(isStartableAgent(shared)).toBe(false);
+
+    renderComposer({ agents: [sre, shared], showUnavailable: true });
+
+    await userEvent.click(agentPicker());
+    const option = screen.getByRole('option', { name: /Issue Tracker/ });
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    expect(option).toHaveTextContent(
+      'Unavailable: Muster on gazelle has no per-user sign-in in this portal.',
+    );
   });
 
   it('never selects a disabled option', async () => {

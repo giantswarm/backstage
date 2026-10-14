@@ -141,6 +141,16 @@ export function EditAgentPage() {
         actions={backLink}
       />
     );
+  } else if (presence === 'unknown' && !availability.isLoading) {
+    // Settled without an answer: muster's server list or the portal's muster
+    // installations could not be read, so a spinner would never end.
+    body = (
+      <EmptyStateCard
+        title="This agent cannot be edited from here"
+        description={`Could not check ${installation} for agent-manager. Sign in to muster there, or try again later.`}
+        actions={backLink}
+      />
+    );
   } else if (
     presence === 'unknown' ||
     gate.isVerdictPending ||

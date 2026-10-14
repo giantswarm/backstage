@@ -7,13 +7,14 @@ import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentManagerPresence } from '../../hooks/useAgentManager';
-import type { WriteMode } from '../../lib/agentManager';
+import { agentManagerBlocker, type WriteMode } from '../../lib/agentManager';
 import { AgentManifestDialog } from './AgentManifestDialog';
 
 /**
  * What the write actions gate on. `presence` is whether the installation's
  * muster lists agent-manager, per installation (`core_mcpserver_list` through
- * the person's own muster session); `isUnavailable` means this portal has no
+ * the person's own muster session), and reaches it as the person
+ * (`sharedIdentity` when it cannot); `isUnavailable` means this portal has no
  * muster plugin, the only way to reach agent-manager.
  *
  * `isGitOpsOwned` is agent-manager's own verdict on this agent (`get_agent`'s
@@ -90,6 +91,12 @@ export function agentManagerAbsenceReason(
   }
   if (gate.presence === 'missing') {
     return `Editing, updating skills and deleting need agent-manager, which muster on ${installation} does not list.`;
+  }
+  if (gate.presence === 'sharedIdentity') {
+    return `Editing, updating skills and deleting go through agent-manager as you. ${agentManagerBlocker(
+      gate.presence,
+      installation,
+    )}`;
   }
   return undefined;
 }

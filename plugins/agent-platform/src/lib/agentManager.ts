@@ -11,8 +11,36 @@
  * — the portal composes nothing of its own.
  */
 
+import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
+
 /** The MCPServer name muster registers agent-manager under. */
 export const AGENT_MANAGER_SERVER = 'agent-manager';
+
+/**
+ * Why agent-manager cannot be used on an installation, in one sentence, from
+ * its presence (`useAgentManagerAvailability`): muster lists no agent-manager,
+ * or muster has no per-user sign-in in this portal, so muster-backend refuses
+ * agent-manager's tools rather than run them under muster's shared identity.
+ * `undefined` for any other presence: available, or not known yet.
+ */
+export function agentManagerBlocker(
+  presence: MusterServerPresence,
+  installation: string,
+): string | undefined {
+  switch (presence) {
+    case 'missing':
+      return `Muster on ${installation} lists no agent-manager.`;
+    case 'sharedIdentity':
+      return `Muster on ${installation} has no per-user sign-in in this portal, so agent-manager would act under muster's shared identity instead of as you. A platform admin can give the installation's muster entry an authProvider.`;
+    case 'available':
+    case 'unknown':
+      return undefined;
+    default: {
+      const unhandled: never = presence;
+      return unhandled;
+    }
+  }
+}
 
 /** The tools this plugin calls, by their agent-manager name. */
 export const AGENT_MANAGER_TOOLS = {

@@ -67,6 +67,7 @@ export {
   MusterInstanceProvider,
   useMusterInstance,
   useMusterInstallations,
+  musterInstallationsQueryKey,
 } from './components/MusterInstanceProvider';
 export type {
   MusterInstance,
