@@ -21,14 +21,15 @@ jest.mock('../AgentsDataProvider', () => ({
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
-// The inventory the panel reads to tell an environment without kagent; the
-// gate, covered by its own tests in gs, renders a marker while an entry failed.
+// The inventory the panel reads to tell an environment without kagent, and
+// which environment's failure the gate explains (the real selectors). The
+// gate itself, covered by its own tests in gs, renders a marker naming it.
 let mockInventoryEntries: InstallationInventoryEntry[] = [];
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   useInstallationInventory: () => ({
     entries: mockInventoryEntries,
-    home: mockInventoryEntries[0]?.installation,
+    home: mockInventoryEntries.find(entry => entry.home)?.installation,
     isLoading: false,
     isProbing: false,
     installationsWith: (component: 'kagent') =>
@@ -42,10 +43,11 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
         .map(entry => entry.installation),
     refresh: () => {},
   }),
-  InstallationInventoryGate: () =>
-    mockInventoryEntries.some(entry => entry.probe === 'failed') ? (
-      <div>Inventory gate</div>
-    ) : null,
+  InventoryFailureGate: ({
+    failure,
+  }: {
+    failure: { installation: string };
+  }) => <div>Inventory gate: {failure.installation}</div>,
 }));
 function environment(
   installation: string,
@@ -63,8 +65,9 @@ function environment(
   };
 }
 beforeEach(() => {
-  mockInventoryEntries = [environment('golem')];
+  mockInventoryEntries = [environment('golem', { home: true })];
 });
+const failedProbe = (name: string) => Object.assign(new Error(name), { name });
 
 let mockSessions: SessionRow[] = [];
 jest.mock('../SessionsDataProvider', () => ({
@@ -414,8 +417,8 @@ describe('CustomizeAgentsPanel', () => {
       mockInventoryEntries = [
         environment('golem', { kagent: false }),
         environment('dingo', { kagent: false }),
-        // Switched off in the sidebar: not in scope, whatever it runs.
-        environment('lab', { muted: true }),
+        // Switched off in the sidebar, and without kagent either.
+        environment('lab', { muted: true, kagent: false }),
       ];
       mockAgents = { ...mockAgents, rows: [], installations: [] };
       await renderPanel();
@@ -455,33 +458,111 @@ describe('CustomizeAgentsPanel', () => {
         environment('golem', {
           home: true,
           probe: 'failed',
-          error: Object.assign(new Error('Unauthorized'), {
-            name: 'UnauthorizedError',
-          }),
+          error: failedProbe('UnauthorizedError'),
         }),
       ];
       mockAgents = { ...mockAgents, rows: [], installations: [] };
       await renderPanel();
 
-      expect(screen.getByText('Inventory gate')).toBeInTheDocument();
+      expect(screen.getByText('Inventory gate: golem')).toBeInTheDocument();
       expect(screen.queryByRole('heading')).not.toBeInTheDocument();
     });
 
-    it('shows a thin bar while more environments are still read, in a slot that stays', async () => {
+    it('explains an empty list by an environment other than home that could not be asked', async () => {
+      // The home answered without kagent; dingo might run it, but its probe
+      // was refused, so it is the only explanation of the empty list.
+      mockInventoryEntries = [
+        environment('golem', { home: true, kagent: false }),
+        environment('dingo', {
+          probe: 'failed',
+          error: failedProbe('ForbiddenError'),
+        }),
+      ];
+      mockAgents = { ...mockAgents, rows: [], installations: [] };
+      await renderPanel();
+
+      expect(screen.getByText('Inventory gate: dingo')).toBeInTheDocument();
+      expect(screen.queryByText('No agents to list')).not.toBeInTheDocument();
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the gate to the home environment while the list has rows', async () => {
+      mockInventoryEntries = [
+        environment('golem', { home: true }),
+        environment('dingo', {
+          probe: 'failed',
+          error: failedProbe('ForbiddenError'),
+        }),
+      ];
+      await renderPanel();
+
+      expect(screen.getByText('Support triage')).toBeInTheDocument();
+      expect(screen.queryByText(/Inventory gate/)).not.toBeInTheDocument();
+    });
+
+    it('says a pinned environment is unknown, instead of blaming another one', async () => {
+      mockInventoryEntries = [
+        environment('golem', {
+          home: true,
+          probe: 'failed',
+          error: failedProbe('UnauthorizedError'),
+        }),
+        environment('dingo'),
+      ];
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        scope: 'old-lab',
+        installations: [],
+      };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'Unknown environment' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'This portal knows no environment named “old-lab”. Choose another environment.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Inventory gate/)).not.toBeInTheDocument();
+      expect(screen.queryByText('No agents to list')).not.toBeInTheDocument();
+    });
+
+    it('names an environment switched off in Cluster access that runs kagent', async () => {
+      mockInventoryEntries = [
+        environment('golem', { home: true, kagent: false }),
+        environment('lab', { muted: true }),
+      ];
+      mockAgents = { ...mockAgents, rows: [], installations: [] };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'No agents to list' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'lab runs kagent but is switched off in Cluster access, so its agents are not read.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
+    });
+
+    it('shows a thin bar while more environments are still read, over the same list', async () => {
       mockAgents = { ...mockAgents, isLoadingMore: true };
       await renderRerenderablePanel();
 
-      expect(screen.getByText('Support triage')).toBeInTheDocument();
+      const list = screen.getByRole('list', { name: 'Agents' });
+      expect(within(list).getByText('Support triage')).toBeInTheDocument();
       expect(
         await screen.findByRole('progressbar', { name: 'Loading more agents' }),
       ).toBeInTheDocument();
-      const slot = screen.getByRole('progressbar').parentElement!;
 
+      // The last environment answers: the bar goes, the list stays mounted.
       mockAgents = { ...mockAgents, isLoadingMore: false };
       act(() => rerenderPanel());
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-      expect(slot).toBeInTheDocument();
-      expect(slot).toBeEmptyDOMElement();
+      expect(screen.getByRole('list', { name: 'Agents' })).toBe(list);
     });
   });
 

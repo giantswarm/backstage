@@ -7,7 +7,9 @@ import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
   ALL_INSTALLATIONS,
-  InstallationInventoryGate,
+  classifyInventoryFailure,
+  installationsWithoutComponent,
+  InventoryFailureGate,
   selectInventoryFailure,
   useInstallationInventory,
 } from '@giantswarm/backstage-plugin-gs';
@@ -16,6 +18,7 @@ import {
   CatalogFilterBar,
   CatalogNoMatch,
   EmptyStateCard,
+  joinNames,
   LoadingIndicator,
   PHONE_MEDIA,
   StatusDot,
@@ -38,7 +41,7 @@ import { AgentAvatar } from '../AgentAvatar';
 import { AgentsHelperBanner } from '../AgentsHelperBanner';
 import { type AgentRow, useAgents } from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
-import { KagentMissingCard, kagentMissingFrom } from '../KagentMissingCard';
+import { KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
 import { SessionsDataProvider } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
@@ -64,10 +67,18 @@ const TWO_LINES = {
 } as const;
 
 const useStyles = makeStyles({
-  // Held at the bar's height whether or not it shows, so the list under it
-  // never moves when the last environment answers.
+  // The list and the "loading more" bar over the gap above it.
+  listFrame: {
+    position: 'relative',
+  },
+  // Laid over the middle of the panel's gap above the list rather than in a
+  // slot of its own: the list neither moves when it comes and goes nor sits
+  // lower on a settled fleet. 4px is the bar's own height.
   loadingMore: {
-    height: 4,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 'calc(var(--bui-space-5) / -2 - 2px)',
   },
   // The prototype's agent list: one rounded, bordered surface, an avatar row
   // per agent — no column headers.
@@ -524,18 +535,58 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     />
   );
 
+  const pinned = scope === ALL_INSTALLATIONS ? null : scope;
+  // A pin the portal does not know (a stale `?installation=` deep link): no
+  // inventory to ask, and nothing else on the panel can say why it is empty.
+  const unknownPin =
+    pinned !== null &&
+    !inventory.isLoading &&
+    inventory.entries.length > 0 &&
+    !inventory.entries.some(entry => entry.installation === pinned);
   // The environments in scope, when each answered without kagent: nothing
   // can be listed or created there, whatever else is still loading.
-  const kagentMissing = kagentMissingFrom(inventory.entries, scope);
-  // The environment this tab reads could not be asked whether it runs kagent;
-  // `InstallationInventoryGate` below says so, with the remedy.
-  const inventoryFailure = selectInventoryFailure(
-    inventory,
-    scope === ALL_INSTALLATIONS ? null : scope,
+  const kagentMissing = installationsWithoutComponent(
+    inventory.entries,
+    scope,
+    'kagent',
   );
+  const isEmpty = !isLoading && rows.length === 0;
+  // The environment this tab reads could not be asked whether it runs kagent:
+  // the pinned one, or the home one under "All environments" -- or, when
+  // the list is empty with nowhere to read agents from, any environment in
+  // scope, since that failure is then the only explanation there is.
+  const inventoryFailure = unknownPin
+    ? undefined
+    : (selectInventoryFailure(inventory, pinned) ??
+      (isEmpty && installations.length === 0 && pinned === null
+        ? inventory.entries
+            .filter(entry => !entry.muted)
+            .map(classifyInventoryFailure)
+            .find(failure => failure !== undefined)
+        : undefined));
+  // Under "All environments", environments switched off in the sidebar's
+  // Cluster access that run kagent: the way to their agents.
+  const switchedOff =
+    pinned === null
+      ? inventory.entries
+          .filter(
+            entry =>
+              entry.muted &&
+              entry.probe === 'answered' &&
+              entry.components.kagent,
+          )
+          .map(entry => entry.installation)
+      : [];
 
   let body;
-  if (rows.length === 0 && kagentMissing) {
+  if (rows.length === 0 && unknownPin) {
+    body = (
+      <EmptyStateCard
+        title="Unknown environment"
+        description={`This portal knows no environment named “${pinned}”. Choose another environment.`}
+      />
+    );
+  } else if (rows.length === 0 && kagentMissing) {
     body = (
       <KagentMissingCard
         installations={kagentMissing}
@@ -559,20 +610,32 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     // somewhere to deploy to (`installations`, the environments in scope that
     // run kagent and are reachable) is invited to create one; anywhere else
     // the invitation would dead-end in the create form.
-    if (unreachableInstallations.length > 0) {
-      // Nothing could be read, which is not nothing there: the read warning
-      // is the whole answer.
+    if (
+      unreachableInstallations.length > 0 ||
+      (installations.length === 0 && inventoryFailure)
+    ) {
+      // Nothing could be read, or the environment could not be asked whether
+      // it runs kagent, which is not nothing there: the read warning or the
+      // inventory gate is the whole answer.
       body = null;
     } else if (installations.length > 0) {
       body = <FirstAgentCard />;
-    } else if (inventoryFailure) {
-      // The environment could not be asked whether it runs kagent: the gate
-      // is the whole answer.
-      body = null;
+    } else if (switchedOff.length > 0) {
+      body = (
+        <EmptyStateCard
+          title="No agents to list"
+          description={
+            switchedOff.length === 1
+              ? `${switchedOff[0]} runs kagent but is switched off in Cluster access, so its agents are not read.`
+              : `${joinNames(
+                  switchedOff,
+                )} run kagent but are switched off in Cluster access, so their agents are not read.`
+          }
+        />
+      );
     } else {
       // Environments in scope that run kagent exist only out of reach (their
-      // access is not healthy, or some are switched off), next to ones that
-      // answered without it.
+      // access is not healthy), next to ones that answered without it.
       body = (
         <EmptyStateCard
           title="No agents to list"
@@ -635,8 +698,15 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
         />
       )}
       {/* The environment this tab reads could not be asked whether it runs
-          kagent: said once, with the remedy. Renders nothing otherwise. */}
-      <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
+          kagent: said once, with the remedy, as `InstallationInventoryGate`
+          says it on the Sessions list. */}
+      {inventoryFailure && (
+        <InventoryFailureGate
+          failure={inventoryFailure}
+          onRetry={inventory.refresh}
+          context="Which environments run kagent is read through their Kubernetes API."
+        />
+      )}
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
         resourceName="Agents"
@@ -651,12 +721,14 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
         </SessionsDataProvider>
       )}
       {rows.length > 0 ? (
-        <Flex direction="column" gap="2">
+        <Flex direction="column" gap="5" className={classes.listFrame}>
           {/* Rows are in, but more environments are still being read: a thin
-              bar rather than a skeleton, in a slot that is always there. */}
-          <div className={classes.loadingMore}>
-            {isLoadingMore && <Progress aria-label="Loading more agents" />}
-          </div>
+              bar rather than a skeleton. */}
+          {isLoadingMore && (
+            <div className={classes.loadingMore}>
+              <Progress aria-label="Loading more agents" />
+            </div>
+          )}
           {body}
         </Flex>
       ) : (
