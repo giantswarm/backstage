@@ -509,8 +509,8 @@ html[data-agent-shell] [class*='Toast_container'] {
  * as one dense block. Options pad by space-1_5, a description sits 2px under
  * its name (the command palette's gap), and each group after the first
  * starts space-2 further down, so its heading reads with its own rows. A
- * one-line option keeps bui's 2rem minimum on desktop, so plain selects keep
- * their length; under touch every option is a 44px thumb target.
+ * described option grows from 38px to 44px and a one-line one from 32px to
+ * 36px; under touch every option is a 44px thumb target.
  * Inside bui's components layer, so a component's unlayered overrides win.
  */
 @layer components {
