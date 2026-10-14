@@ -116,6 +116,21 @@ describe('ConnectorUsedBy', () => {
     ).toBeInTheDocument();
   });
 
+  it("links each agent's name to its page, on the agent's installation", async () => {
+    await render();
+
+    expect(screen.getByRole('link', { name: 'Ops' })).toHaveAttribute(
+      'href',
+      '/agent-platform/agents/gazelle/team/ops',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Escalation Helper' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/agents/gazelle/team/escalation-helper',
+    );
+  });
+
   it('opens an agent from anywhere on its row', async () => {
     await render();
 

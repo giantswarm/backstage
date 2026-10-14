@@ -10,10 +10,10 @@ import {
   type Fact,
   FactList,
   InfoCard,
+  Mono,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { STALE_MODEL_DETAIL } from '../../lib/customize';
-import { Mono } from '../Mono';
 
 /**
  * The resource behind the model, in the terms of the people who run the

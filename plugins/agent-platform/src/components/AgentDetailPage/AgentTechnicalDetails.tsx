@@ -11,12 +11,13 @@ import {
   type Fact,
   FactList,
   InfoCard,
+  MONO,
+  Mono,
   usePhoneLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ClientServingSummary } from '../../lib/serving';
-import { Mono, MONO } from '../Mono';
 import { AgentConfigurationCard } from './AgentConfigurationCard';
 import { AgentStatusCard } from './AgentStatusCard';
 import { shortPin, skillLabel } from './helpers';
