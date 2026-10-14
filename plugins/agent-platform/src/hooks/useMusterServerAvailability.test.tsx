@@ -74,13 +74,19 @@ describe('useMusterServerAvailability', () => {
     );
 
     await waitFor(() => expect(listServers).toHaveBeenCalled());
+    // gamma's server list answers first: still nothing is offered.
+    await waitFor(() =>
+      expect(listServers.mock.results[0]?.value).resolves.toBeDefined(),
+    );
     expect(result.current.isLoading).toBe(true);
+    expect(result.current.presenceOf('gamma')).toBe('unknown');
+    expect(result.current.available).toEqual([]);
     answer({ installations: [{ name: 'gamma', requiresAuth: false }] });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.available).toEqual([]);
   });
 
-  it('leaves the server lists to decide when the installations cannot be read', async () => {
+  it('offers nothing when the installations cannot be read', async () => {
     listInstallations.mockRejectedValue(new Error('backend down'));
     const { result } = renderHook(
       () =>
@@ -91,7 +97,24 @@ describe('useMusterServerAvailability', () => {
     );
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.presenceOf('gamma')).toBe('available');
+    expect(result.current.presenceOf('gamma')).toBe('unknown');
+    expect(result.current.available).toEqual([]);
+  });
+
+  it('reports a missing server before the shared identity, which a sign-in alone would not fix', async () => {
+    listInstallations.mockResolvedValue({
+      installations: [{ name: 'beta', requiresAuth: false }],
+    });
+    const { result } = renderHook(
+      () =>
+        useMusterServerAvailability('agent-manager', ['beta'], {
+          asPerson: true,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.presenceOf('beta')).toBe('missing');
   });
 
   it('does not ask for the installations without asPerson', async () => {

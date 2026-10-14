@@ -231,36 +231,42 @@ export type AgentRow = {
   /**
    * Why no session can start with the agent from this portal, whatever its
    * readiness: sessions start through agent-manager as the person, and the
-   * installation's muster lists none, runs calls under its shared identity,
-   * or could not be asked ({@link agentManagerSessionBlocker}). `undefined`
-   * when nothing stands in the way, or while that is still being read.
+   * installation's muster lists none or runs calls under its shared identity
+   * ({@link agentManagerSessionGate}). `undefined` when nothing stands in the
+   * way, or while that is still being read.
    */
   sessionBlocker?: string;
+  /**
+   * Whether that is still being read: the agent is not offered yet, so
+   * nothing is preselected or started that the answer then withdraws.
+   */
+  isSessionPending?: boolean;
 };
 
 /**
- * Why sessions cannot start on an installation through agent-manager, from
- * its availability. Nothing while the server lists are being read, and
- * nothing on a portal without the muster plugin, where starting reports that
- * itself.
+ * Whether sessions can start on an installation through agent-manager, from
+ * its availability: a blocker with its reason, or pending while the reads are
+ * in flight. A settled `unknown` (the person's muster session there is not
+ * connected yet, or the read failed) blocks nothing: starting then offers
+ * the sign-in, as it always has. Nothing either on a portal without the
+ * muster plugin, where starting reports that itself.
  */
-export function agentManagerSessionBlocker(
+export function agentManagerSessionGate(
   availability: Pick<
     AgentManagerAvailability,
     'presenceOf' | 'isLoading' | 'isUnavailable'
   >,
   installation: string,
-): string | undefined {
+): Pick<AgentRow, 'sessionBlocker' | 'isSessionPending'> {
   if (availability.isUnavailable) {
-    return undefined;
+    return {};
   }
   const presence = availability.presenceOf(installation);
   if (presence === 'unknown') {
-    return availability.isLoading
-      ? undefined
-      : `Could not check ${installation} for agent-manager.`;
+    return availability.isLoading ? { isSessionPending: true } : {};
   }
-  return agentManagerBlocker(presence, installation);
+  const sessionBlocker = agentManagerBlocker(presence, installation);
+  return sessionBlocker ? { sessionBlocker } : {};
 }
 
 /**

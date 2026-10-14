@@ -30,7 +30,7 @@ import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
 import {
   AgentRow,
-  agentManagerSessionBlocker,
+  agentManagerSessionGate,
   BASELINE_REFETCH_INTERVAL_MS,
   getAgentsRefetchInterval,
   ResolveModelServing,
@@ -203,11 +203,6 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // Model labels resolve progressively as ModelConfigs arrive; we deliberately
   // don't block the agent rows on the ModelConfig query settling.
   const { modelConfigsFor } = useModelConfigs();
-
-  // Sessions start through agent-manager as the person, so an agent on an
-  // installation where that cannot happen carries the reason, and every
-  // session picker leaves it out (`isStartableAgent`).
-  const agentManager = useAgentManagerAvailability(scopedInstallations);
 
   // Likewise the serving state of the model behind each agent — when a
   // ServingProvider is mounted above (the Agents and Sessions tabs mount one);
@@ -404,13 +399,20 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedInstallationsKey]);
 
+  // Sessions start through agent-manager as the person, so an agent on an
+  // installation where that cannot happen carries the reason, and every
+  // session picker leaves it out (`isStartableAgent`). Asked only of the
+  // installations that have agents: no other row needs the answer.
+  const agentManager = useAgentManagerAvailability(
+    Object.keys(agentsByInstallation).filter(
+      cluster => agentsByInstallation[cluster].length > 0,
+    ),
+  );
+
   const value = useMemo<AgentsContextValue>(() => {
     const rows = sortAgentRows(
       Object.entries(agentsByInstallation).flatMap(([cluster, agents]) => {
-        const sessionBlocker = agentManagerSessionBlocker(
-          agentManager,
-          cluster,
-        );
+        const sessionGate = agentManagerSessionGate(agentManager, cluster);
         return agents.map(agent => ({
           ...toAgentRow(
             agent,
@@ -421,7 +423,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             carriersByInstallation[cluster],
             harnessesByInstallation[cluster],
           ),
-          sessionBlocker,
+          ...sessionGate,
         }));
       }),
       home,

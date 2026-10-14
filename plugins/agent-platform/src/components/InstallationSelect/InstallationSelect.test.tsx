@@ -198,6 +198,24 @@ describe('InstallationSelect', () => {
       expect(queryByLabelText('Environment')).not.toBeInTheDocument();
     });
 
+    it('never picks the sole installation when its muster runs under its shared identity', () => {
+      mockInstallations = [{ name: 'solo' }];
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['solo'],
+      };
+      mockState = { installation: 'solo' };
+      mockPresence = { solo: 'sharedIdentity' };
+
+      const { getByText } = render(<InstallationSelect />);
+
+      expect(mockSetInstallation).not.toHaveBeenCalledWith('solo');
+      expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
+      expect(
+        getByText('Agents cannot be created on solo from this portal'),
+      ).toBeInTheDocument();
+    });
+
     it('does not hide the sole installation when its muster lacks agent-manager', () => {
       mockInstallations = [{ name: 'solo' }];
       mockModelConfigs = {

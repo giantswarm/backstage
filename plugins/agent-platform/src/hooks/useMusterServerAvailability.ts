@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
-import type { McpServerRuntime } from '@giantswarm/backstage-plugin-muster';
-
 import {
   musterInstallationsQueryKey,
-  musterServersQueryKey,
-} from '../lib/queryKeys';
+  type McpServerRuntime,
+} from '@giantswarm/backstage-plugin-muster';
+
+import { musterServersQueryKey } from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
 /**
@@ -16,7 +16,8 @@ import { useMusterPluginApi } from './useMusterPluginApi';
  * server reached as the person: the portal's muster entry for the
  * installation has no per-user sign-in (`requiresAuth: false` on
  * `/installations`), so muster-backend refuses the server's tools rather than
- * run them under muster's own identity, shared by every portal user.
+ * run them under muster's own identity, shared by every portal user. A
+ * `missing` server wins over it: a per-user sign-in alone would not help.
  */
 export type MusterServerPresence =
   'available' | 'missing' | 'unknown' | 'sharedIdentity';
@@ -64,9 +65,9 @@ export type MusterServerAvailability = {
 export type MusterServerAvailabilityOptions = {
   /**
    * The server's tools act for the person, so an installation whose muster
-   * has no per-user sign-in is `sharedIdentity`, never `available`. A failed
-   * `/installations` read leaves the server lists to decide: muster-backend
-   * still refuses such a call, in its own words.
+   * has no per-user sign-in is `sharedIdentity`, never `available`. Until
+   * `/installations` has answered, and when it failed, every installation is
+   * `unknown`: nothing is offered that muster-backend may refuse.
    */
   asPerson?: boolean;
 };
@@ -84,6 +85,8 @@ export function useMusterServerAvailability(
   { asPerson = false }: MusterServerAvailabilityOptions = {},
 ): MusterServerAvailability {
   const musterApi = useMusterPluginApi();
+  // The muster plugin's own read of `/installations`, under its key, so the
+  // page header's installation selector and this share one cache entry.
   const installationInfo = useQuery({
     queryKey: musterInstallationsQueryKey(),
     enabled: Boolean(musterApi) && asPerson && installations.length > 0,
@@ -97,6 +100,8 @@ export function useMusterServerAvailability(
       .map(info => info.name),
   );
   const isReadingInstallations = asPerson && isAwaitingData(installationInfo);
+  // Without an answer, whether an installation runs as the person is unknown.
+  const isInstallationsUnknown = asPerson && !installationInfo.data;
   const queries = useQueries({
     queries: installations.map(installation => ({
       queryKey: musterServersQueryKey(installation),
@@ -112,9 +117,13 @@ export function useMusterServerAvailability(
   const signature = installations
     .map((installation, index) => {
       const query = queries[index];
-      const presence = shared.has(installation)
-        ? 'sharedIdentity'
-        : presenceIn(query.data?.mcpServers, serverName);
+      const listed = presenceIn(query.data?.mcpServers, serverName);
+      let presence: MusterServerPresence = listed;
+      if (listed !== 'missing' && shared.has(installation)) {
+        presence = 'sharedIdentity';
+      } else if (listed === 'available' && isInstallationsUnknown) {
+        presence = 'unknown';
+      }
       const loading = isAwaitingData(query) || isReadingInstallations;
       return `${installation}:${presence}:${loading ? 'l' : ''}`;
     })

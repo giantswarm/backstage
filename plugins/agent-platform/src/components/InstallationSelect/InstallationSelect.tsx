@@ -259,7 +259,17 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
       availableInstallations.length
       ? usableInstallations[0]
       : undefined;
-  const singleInstallation = singleConfigured ?? singleUsable;
+  // Muster answered that agents cannot be created there: never picked, not
+  // even as the sole installation, so the form cannot go on to a Deploy that
+  // agent-manager would refuse.
+  const isWithheld = (installation: string) => {
+    const presence = agentManager.presenceOf(installation);
+    return presence === 'missing' || presence === 'sharedIdentity';
+  };
+  const singleInstallation =
+    singleConfigured && !isWithheld(singleConfigured)
+      ? singleConfigured
+      : singleUsable;
 
   useEffect(() => {
     if (singleInstallation && state.installation !== singleInstallation) {
@@ -270,17 +280,17 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   // A pick that turned out not to be usable (the server list or the
   // installations answered after the selection) is withdrawn: the review page
   // could not deploy it.
+  // A usable sole installation replaces it instead (the effect above).
   useEffect(() => {
-    const presence = state.installation
-      ? agentManager.presenceOf(state.installation)
-      : undefined;
     if (
       state.installation &&
       !singleInstallation &&
-      (presence === 'missing' || presence === 'sharedIdentity')
+      isWithheld(state.installation)
     ) {
       setInstallation(undefined);
     }
+    // `isWithheld` reads `agentManager`, which is a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.installation, singleInstallation, agentManager, setInstallation]);
 
   // Until the installations config resolves we don't know whether this field

@@ -156,6 +156,16 @@ export function StartNewSession({
       return <FirstAgentCard />;
     }
 
+    // A ready agent whose installation is still being asked whether
+    // agent-manager can start a session as the person: nothing to say yet.
+    if (
+      agents.some(
+        agent => agent.readiness === 'ready' && agent.isSessionPending,
+      )
+    ) {
+      return null;
+    }
+
     // Three distinct situations, and conflating them would tell the user to look
     // in the wrong place: nothing could be read (look at the warning), nothing
     // is deployed and there is nowhere to deploy to either (an installation

@@ -153,6 +153,22 @@ describe('StartNewSession', () => {
       });
     });
 
+    it('says nothing while it is still being asked', async () => {
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [{ ...sre, isSessionPending: true }],
+      });
+      await render({ entryPoint: 'sessionsList' });
+
+      expect(
+        screen.queryByRole('textbox', { name: 'Prompt' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/Sessions cannot start/),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/not ready/)).not.toBeInTheDocument();
+    });
+
     it('offers no composer and says why, instead of a Start that ends in a refusal', async () => {
       await render({ entryPoint: 'sessionsList' });
 
