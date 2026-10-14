@@ -18,7 +18,7 @@ export type NewSessionDialogProps = {
   isLoadingAgents?: boolean;
   defaultAgent?: AgentRow;
   isStarting: boolean;
-  error?: string;
+  error?: string | Error;
   onStart: (agent: AgentRow, prompt: string) => void;
 };
 

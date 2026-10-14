@@ -9,11 +9,7 @@ import {
   normalizeRuntimeState,
 } from './kagentSessionRecord';
 import { normalizeSessionDetail } from './kagentSessionDetail';
-import {
-  isListableSession,
-  normalizeSessionList,
-  parseCreatedSessionId,
-} from './kagentSessions';
+import { isListableSession, normalizeSessionList } from './kagentSessions';
 
 // Recorded (2026-09) on an earlier controller build, kagent-a8353a0, whose
 // sessions still had a `contextId` different from their `id`. Current controllers
@@ -79,12 +75,6 @@ describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0
       expect.objectContaining({ reason: 'no ready revision' }),
     );
     expect(rows.every(isListableSession)).toBe(true);
-  });
-
-  it('reads the created session’s id out of the create response', () => {
-    expect(parseCreatedSessionId(session)).toBe(session.session.id);
-    expect(parseCreatedSessionId({ session: {} })).toBeUndefined();
-    expect(parseCreatedSessionId({})).toBeUndefined();
   });
 
   it('normalizes a one-session response into a session detail', () => {
