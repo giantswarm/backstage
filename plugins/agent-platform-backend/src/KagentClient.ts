@@ -188,8 +188,8 @@ const MAX_LOGGED_ERROR = 300;
  * a moment later the same delete goes through. The person pressed Delete once,
  * so the backend retries that one refusal with a doubling backoff. The waits
  * add up to about 16 s, which keeps the attempts and their own request
- * timeouts inside the front door's 60 s; a session still unsettled after them
- * answers the 409 with kagent's reason.
+ * timeouts inside the front door's 60 s. Each wait is logged at `info`; a
+ * session still unsettled after them answers the 409 with kagent's reason.
  */
 export const DELETE_SETTLE_RETRY_DELAYS_MS: readonly number[] = [
   250, 500, 1_000, 2_000, 4_000, 4_000, 4_000,
@@ -855,9 +855,15 @@ export class KagentClient {
             if (delayMs === undefined || !isNotYetSettled(error)) {
               throw error;
             }
-            this.logger.debug(
-              `kagent session delete waits for the last turn to settle on installation '${this.installation.name}'`,
-              { attempt: attempt + 1, delayMs, requestId: options.requestId },
+            // `info`: an expected refusal the retry recovers from, not a fault.
+            this.logger.info(
+              'kagent session delete waits for the last turn to settle',
+              {
+                installation: this.installation.name,
+                attempt: attempt + 1,
+                delayMs,
+                requestId: options.requestId,
+              },
             );
             await new Promise(resolve => setTimeout(resolve, delayMs));
           }
