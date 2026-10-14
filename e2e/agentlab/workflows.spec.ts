@@ -130,8 +130,12 @@ test('a GitOps-managed workflow says where in Git to change it, from Edit in Git
     .getByRole('menuitem', { name: 'Edit in Git…', exact: true })
     .click();
 
-  const dialog = admin.getByRole('dialog');
-  await expect(dialog).toContainText(`Edit or remove ${WORKFLOW}`);
+  // By name: the closing menu's popover is a dialog too for a moment.
+  const dialog = admin.getByRole('dialog', {
+    name: `Edit or remove ${WORKFLOW}`,
+    exact: true,
+  });
+  await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(
     'Managed through GitOps: make the change in Git, or Flux reverts it.',
   );
@@ -185,7 +189,13 @@ test('a workflow’s page keeps its statistics on Usage, its facts on Details an
   });
   await expect(technical).toHaveAttribute('aria-expanded', 'false');
   await technical.click();
-  await expect(admin.getByText(/^Namespace /)).toBeVisible();
+  // The facts are a definition list: the term, and its definition beside it.
+  await expect(
+    admin
+      .getByRole('main')
+      .locator('dt', { hasText: /^Namespace$/ })
+      .locator('xpath=following-sibling::dd[1]'),
+  ).toHaveText(/^[a-z0-9-]+$/);
 
   await admin
     .getByRole('button', { name: 'More actions', exact: true })
@@ -193,8 +203,11 @@ test('a workflow’s page keeps its statistics on Usage, its facts on Details an
   await admin
     .getByRole('menuitem', { name: 'View manifest', exact: true })
     .click();
-  const dialog = admin.getByRole('dialog');
-  await expect(dialog).toContainText('Workflow manifest');
+  const dialog = admin.getByRole('dialog', {
+    name: 'Workflow manifest',
+    exact: true,
+  });
+  await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('kind: Workflow');
   await expect(dialog).toContainText(`name: ${WORKFLOW}`);
   await expect(

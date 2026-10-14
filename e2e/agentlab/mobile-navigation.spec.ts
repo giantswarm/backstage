@@ -126,8 +126,8 @@ test('Customize’s tab strip scrolls sideways with fades, the underline under t
 }) => {
   await open(admin, '/customize/agents');
   const tablist = admin.getByRole('main').getByRole('tablist').first();
-  await expect(tablist.getByRole('tab')).toHaveCount(5);
-  // The counts arrive with the data: measured before them, the five bare
+  await expect(tablist.getByRole('tab')).toHaveCount(6);
+  // The counts arrive with the data: measured before them, the six bare
   // labels can just fit.
   for (const tab of await tablist.getByRole('tab').all()) {
     await expect(tab).toHaveText(/\(\d+\)$/, { timeout: 60_000 });
@@ -151,7 +151,7 @@ test('Customize’s tab strip scrolls sideways with fades, the underline under t
   expect(first.overflowX, 'the strip scrolls on its own').toBe('auto');
   expect(
     first.scrollWidth,
-    'five tabs with counts are wider than a phone',
+    'six tabs with counts are wider than a phone',
   ).toBeGreaterThan(first.clientWidth);
   expect(first.start, 'nothing before the first tab').toBe(false);
   expect(first.end, 'more tabs after the visible ones').toBe(true);
@@ -190,6 +190,7 @@ test('Customize’s tab strip scrolls sideways with fades, the underline under t
     'connectors/infrastructure',
     'connectors/internal',
     'models',
+    'workspaces',
   ]) {
     await open(admin, `/customize/${tab}`);
     await expectNoHorizontalScroll(admin, `Customize · ${tab}`);
