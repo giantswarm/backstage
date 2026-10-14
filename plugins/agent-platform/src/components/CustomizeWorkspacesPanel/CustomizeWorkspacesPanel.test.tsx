@@ -81,6 +81,7 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
   return {
     isAvailable: true,
     installations: ['gazelle'],
+    sharedIdentity: [],
     organizations: ['alpha'],
     organization: 'alpha',
     setOrganization: jest.fn(),
@@ -188,6 +189,37 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(
       screen.getByText('Workspaces are not available here'),
     ).toBeInTheDocument();
+  });
+
+  it('says why where the workspace-manager is withheld for want of a per-user sign-in', async () => {
+    mockData = data({
+      isAvailable: false,
+      installations: [],
+      sharedIdentity: ['golem'],
+      rows: [],
+    });
+    await renderPanel();
+
+    expect(
+      screen.getByText('Workspaces cannot be used on golem from this portal'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Workspaces are managed through workspace-manager as you, and muster on golem has no per-user sign-in in this portal/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Workspaces are not available here')).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('names the environments without per-user sign-in above the workspaces of the others', async () => {
+    mockData = data({ sharedIdentity: ['golem'] });
+    await renderPanel();
+
+    expect(
+      screen.getByText('Workspaces cannot be used on golem from this portal'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /docs/ })).toBeInTheDocument();
   });
 
   it('keeps loading while the Organizations are still read, saying nothing about membership', async () => {

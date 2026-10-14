@@ -14,7 +14,8 @@ import {
 } from './useWorkspaceManager';
 
 const listServers = jest.fn();
-const musterApi = { listServers } as unknown as MusterApi;
+const listInstallations = jest.fn();
+const musterApi = { listServers, listInstallations } as unknown as MusterApi;
 
 function wrapperFor(withMuster: boolean) {
   const queryClient = new QueryClient({
@@ -35,10 +36,18 @@ function wrapperFor(withMuster: boolean) {
 }
 
 beforeEach(() => {
+  listInstallations.mockReset();
+  listInstallations.mockResolvedValue({
+    installations: [
+      { name: 'lab', requiresAuth: true },
+      { name: 'other', requiresAuth: true },
+      { name: 'shared', requiresAuth: false },
+    ],
+  });
   listServers.mockReset();
   listServers.mockImplementation(async (installation: string) => ({
     mcpServers:
-      installation === 'lab'
+      installation === 'lab' || installation === 'shared'
         ? [{ name: 'agent-manager' }, { name: 'workspace-manager' }]
         : [{ name: 'agent-manager' }],
   }));
@@ -59,6 +68,17 @@ describe('useWorkspaceManagerAvailability', () => {
       isLoading: false,
     });
     expect(listServers).toHaveBeenCalledWith('lab');
+  });
+
+  it('reports sharedIdentity, not available, where the muster has no per-user sign-in', async () => {
+    const { result } = renderHook(
+      () => useWorkspaceManagerAvailability('shared'),
+      { wrapper: wrapperFor(true) },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.presence).toBe('sharedIdentity');
+    expect(result.current.isAvailable).toBe(false);
   });
 
   it('reports unavailable where the muster lists no workspace-manager', async () => {
