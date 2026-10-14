@@ -206,7 +206,7 @@ jest.mock('./AgentUpdateSkillsDialog', () => ({
   ),
 }));
 
-// Stubbed for the same reason: it reads `kagentApiRef`, and this page's APIs and
+// Stubbed for the same reason: it reads the muster API, and this page's APIs and
 // react-query client are not part of the test. What it drives — the "Start a
 // session" button and its dialog — is covered by `NewSessionComposer`'s own tests
 // and end to end.

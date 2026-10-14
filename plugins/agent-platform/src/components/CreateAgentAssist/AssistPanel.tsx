@@ -296,7 +296,7 @@ export function AssistPanel({ assistant, isOpen, onClose }: AssistPanelProps) {
                 defaultAgent={assistant}
                 initialPrompt={assistOpeningPrompt(state)}
                 isStarting={creation.isCreating}
-                error={creation.error?.message}
+                error={creation.error ?? undefined}
                 onStart={handleStart}
                 // The person just opened the panel in order to type; see the
                 // dialogs that make the same exception.

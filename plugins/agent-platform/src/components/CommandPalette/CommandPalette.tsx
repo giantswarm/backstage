@@ -363,7 +363,7 @@ function PaletteSessionComposer({
       isLoadingAgents={isLoading || isLoadingMore}
       defaultAgent={agent}
       isStarting={isCreating}
-      error={error?.message}
+      error={error ?? undefined}
       onStart={onStart}
     />
   );
