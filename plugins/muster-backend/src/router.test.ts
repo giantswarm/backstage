@@ -1074,6 +1074,27 @@ describe('createRouter', () => {
       expect(callTool).not.toHaveBeenCalled();
     });
 
+    /**
+     * Without an authProvider muster would run the tool under its own
+     * identity, shared by every portal user; agent-manager acts as the person.
+     */
+    it.each([
+      'x_agent-manager_start_session',
+      'x_agent-manager_create_agent',
+      'x_agent-manager_update_agent',
+      'x_agent-manager_delete_agent',
+      'x_agent-manager_list_agents',
+    ])('refuses %s on an installation without per-user auth', async name => {
+      const response = await request(app)
+        .post('/call')
+        .send({ name, arguments: {} });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.message).toContain('without an authProvider');
+      expect(response.body.error.message).toContain(name);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
     // cluster-manager's delete_node_pool answers its structured refusal as a
     // second text block; gs-node keeps it as the error's `details`, and the
     // error middleware serializes it next to the message for the frontend.
@@ -1175,6 +1196,16 @@ describe('createRouter', () => {
         .send({ arguments: {} });
 
       expect(response.status).toBe(400);
+      expect(callToolWithProgress).not.toHaveBeenCalled();
+    });
+
+    it('refuses an agent-manager tool on an installation without per-user auth', async () => {
+      const response = await request(app)
+        .post('/call/progress')
+        .send({ name: 'x_agent-manager_start_session', arguments: {} });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.message).toContain('without an authProvider');
       expect(callToolWithProgress).not.toHaveBeenCalled();
     });
   });
@@ -1309,6 +1340,23 @@ describe('createRouter', () => {
       expect(response.status).toBe(200);
       expect(callTool).toHaveBeenCalledWith(
         'core_workflow_list',
+        {},
+        { authToken: 'user-token' },
+      );
+    });
+
+    it("runs an agent-manager tool with the person's token", async () => {
+      const authApp = await buildAuthApp();
+      callTool.mockResolvedValue({ session: 's-1' });
+
+      const response = await request(authApp)
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_agent-manager_start_session', arguments: {} });
+
+      expect(response.status).toBe(200);
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_start_session',
         {},
         { authToken: 'user-token' },
       );

@@ -6,6 +6,7 @@ import { Config } from '@backstage/config';
 import {
   AuthenticationError,
   InputError,
+  NotAllowedError,
   ServiceUnavailableError,
 } from '@backstage/errors';
 import express from 'express';
@@ -37,6 +38,13 @@ const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
  * installation per request, so no provider suffix is needed.
  */
 export const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
+
+/**
+ * Tool prefixes of the servers whose tools act as the signed-in person and
+ * never under muster's own identity: agent-manager starts sessions and
+ * creates, changes and deletes agents under the caller's RBAC.
+ */
+const PERSON_ONLY_TOOL_PREFIXES = ['x_agent-manager_'];
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -313,6 +321,26 @@ export async function createRouter(
     return { authToken };
   };
 
+  /**
+   * Without per-user auth muster runs a call under its own identity, shared
+   * by every portal user. Discovery and the core tools tolerate that; a tool
+   * that must act as the person is refused before muster is called.
+   */
+  const assertRunsAsPerson = (
+    name: string,
+    installation: MusterInstallationConfig,
+  ) => {
+    if (
+      musterInstallationRequiresAuth(installation) ||
+      !PERSON_ONLY_TOOL_PREFIXES.some(prefix => name.startsWith(prefix))
+    ) {
+      return;
+    }
+    throw new NotAllowedError(
+      `The muster installation '${installation.name}' is configured without an authProvider, so '${name}' would run under muster's shared identity instead of yours. A platform admin can set muster.installations[].authProvider for it.`,
+    );
+  };
+
   // --- Tool discovery / execution (meta-tools) -----------------------------
 
   router.get('/tools', async (req, res) => {
@@ -470,6 +498,7 @@ export async function createRouter(
     ) {
       throw new InputError('arguments must be a JSON object when provided');
     }
+    assertRunsAsPerson(name, installation);
 
     const result = await client.callTool(
       name,
@@ -502,6 +531,7 @@ export async function createRouter(
     ) {
       throw new InputError('arguments must be a JSON object when provided');
     }
+    assertRunsAsPerson(name, installation);
     const callOptions = readCallOptions(req, installation);
 
     const abort = new AbortController();
