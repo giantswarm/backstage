@@ -18,7 +18,13 @@ export type WorkspaceDeleteDialogProps = {
  * the volume keep it until each is cleaned up, so the volume goes only after
  * the last one. Names them from `get_workspace`, read when the dialog opens.
  */
-function SessionsStillUsing({ row, isOpen }: { row: WorkspaceRow; isOpen: boolean }) {
+function SessionsStillUsing({
+  row,
+  isOpen,
+}: {
+  row: WorkspaceRow;
+  isOpen: boolean;
+}) {
   const detail = useWorkspaceDetail(row.installation, row.name, isOpen);
   if (detail.isPending && detail.fetchStatus !== 'idle') {
     return (
@@ -40,14 +46,18 @@ function SessionsStillUsing({ row, isOpen }: { row: WorkspaceRow; isOpen: boolea
     );
   }
   if (directories.length === 0) {
-    return <Text variant="body-medium">No Session uses it: its volume goes with it.</Text>;
+    return (
+      <Text variant="body-medium">
+        No Session uses it: its volume goes with it.
+      </Text>
+    );
   }
   return (
     <Flex direction="column" gap="2">
       <Text variant="body-medium">
         {sessionsNoun(directories.length)} still{' '}
-        {directories.length === 1 ? 'uses' : 'use'} it; each keeps its
-        directory until it is cleaned up, then the volume goes:
+        {directories.length === 1 ? 'uses' : 'use'} it; each keeps its directory
+        until it is cleaned up, then the volume goes:
       </Text>
       <ul style={{ margin: 0, paddingLeft: 'var(--bui-space-5)' }}>
         {directories.map(directory => (

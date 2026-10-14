@@ -102,9 +102,13 @@ describe('CustomizeWorkspacesPanel', () => {
     await renderPanel();
 
     const row = screen.getByRole('row', { name: /docs/ });
-    expect(within(row).getByText('github: example-org · topic docs')).toBeInTheDocument();
+    expect(
+      within(row).getByText('github: example-org · topic docs'),
+    ).toBeInTheDocument();
     expect(within(row).getByText('12')).toBeInTheDocument();
-    expect(within(row).getByText(/4(\.0)? GiB of 15Gi|4(\.0)? GB of 15Gi/)).toBeInTheDocument();
+    expect(
+      within(row).getByText(/4(\.0)? GiB of 15Gi|4(\.0)? GB of 15Gi/),
+    ).toBeInTheDocument();
     expect(within(row).getByText('Synced')).toBeInTheDocument();
     expect(within(row).getByText('2')).toBeInTheDocument();
 
@@ -112,11 +116,29 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(within(failed).getByText('Failed')).toBeInTheDocument();
   });
 
+  it("takes what the volume stores from the list where the manager answers it, ↑ when the last sync grew the share", async () => {
+    mockData = data({
+      rows: [
+        { ...docs, storedBytes: 9 * 1024 ** 3, volumeSize: '16Gi', grewFrom: '8Gi' },
+      ],
+    });
+    await renderPanel();
+
+    const row = screen.getByRole('row', { name: /docs/ });
+    expect(within(row).getByText(/ of 16Gi ↑$/)).toBeInTheDocument();
+    expect(
+      within(row).getByText('Grown from 8Gi at the last sync'),
+    ).toBeInTheDocument();
+  });
+
   it('shows the loading state while nothing is read yet', async () => {
     mockData = data({ rows: [], isLoading: true });
     await renderPanel();
 
-    expect(screen.getByText('Reading your workspaces…')).toBeInTheDocument();
+    // The label follows the progress bar after a short delay.
+    expect(
+      await screen.findByText('Reading your workspaces…'),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('table')).toBeNull();
   });
 
@@ -128,7 +150,9 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(
       screen.getByRole('button', { name: 'Create workspace' }),
     ).toBeDisabled();
-    expect(screen.getByText('Coming with the workspace page.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Coming with the workspace page.'),
+    ).toBeInTheDocument();
   });
 
   it('says so to a person in no Organization', async () => {
@@ -138,7 +162,9 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(
       screen.getByText('No Organization to show workspaces of'),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Create workspace' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Create workspace' }),
+    ).toBeNull();
   });
 
   it('lists the rest and names the installation it could not read', async () => {
@@ -153,7 +179,9 @@ describe('CustomizeWorkspacesPanel', () => {
         'Workspaces on golem could not be read; the list shows the rest',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('golem: Its muster could not be reached.')).toBeInTheDocument();
+    expect(
+      screen.getByText('golem: Its muster could not be reached.'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /docs/ })).toBeInTheDocument();
   });
 
@@ -213,7 +241,9 @@ describe('CustomizeWorkspacesPanel', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByText(/2 Sessions still use it; each keeps its directory/),
+      within(dialog).getByText(
+        /2 Sessions still use it; each keeps its directory/,
+      ),
     ).toBeInTheDocument();
     expect(within(dialog).getByText('Fix the flaky test')).toBeInTheDocument();
     // A Session kagent names no title for goes by its id.

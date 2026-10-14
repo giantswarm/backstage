@@ -8,6 +8,7 @@ import {
 let mockAgentsLoading = false;
 let mockModelsLoading = false;
 let mockSkillsLoading = false;
+let mockWorkspacesLoading = false;
 
 jest.mock('../QueryClientProvider', () => ({
   QueryClientProvider: ({ children }: { children: ReactNode }) => children,
@@ -48,6 +49,13 @@ jest.mock('../ModelConfigsProvider', () => ({
           ],
   }),
 }));
+jest.mock('../WorkspacesDataProvider', () => ({
+  WorkspacesDataProvider: ({ children }: { children: ReactNode }) => children,
+  useWorkspacesData: () =>
+    mockWorkspacesLoading
+      ? { isAvailable: undefined, isLoading: true, rows: [] }
+      : { isAvailable: true, isLoading: false, rows: [{}, {}, {}] },
+}));
 jest.mock('../ServingProvider', () => ({
   ServingProvider: ({ children }: { children: ReactNode }) => children,
   useServing: () => ({
@@ -77,6 +85,7 @@ function Probe() {
       {JSON.stringify({
         counts: data.counts,
         hasSkillRepositories: data.hasSkillRepositories,
+        hasWorkspaces: data.hasWorkspaces,
       })}
     </pre>
   );
@@ -96,14 +105,16 @@ describe('CustomizeDataProvider', () => {
     mockAgentsLoading = false;
     mockModelsLoading = false;
     mockSkillsLoading = false;
+    mockWorkspacesLoading = false;
     mockSkills = [{ name: 'triage', repoUrl: SKILLS, path: 'triage' }];
     mockFailedRepositories = [];
   });
 
   it('counts each tab', () => {
     expect(read()).toEqual({
-      counts: { agents: 2, models: 1, skills: 1 },
+      counts: { agents: 2, models: 1, skills: 1, workspaces: 3 },
       hasSkillRepositories: true,
+      hasWorkspaces: true,
     });
   });
 
@@ -126,6 +137,7 @@ describe('CustomizeDataProvider', () => {
     mockAgentsLoading = true;
     mockModelsLoading = true;
     mockSkillsLoading = true;
+    mockWorkspacesLoading = true;
     expect(read()).toEqual({ counts: {} });
   });
 });

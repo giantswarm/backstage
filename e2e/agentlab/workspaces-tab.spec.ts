@@ -43,7 +43,9 @@ test('a member sees the fixture workspace with its repositories, last sync and S
   });
   const cells = row.getByRole('gridcell');
   await expect(
-    cells.filter({ hasText: `${PUBLIC_SOURCE.provider}: ${PUBLIC_SOURCE.owner}` }),
+    cells.filter({
+      hasText: `${PUBLIC_SOURCE.provider}: ${PUBLIC_SOURCE.owner}`,
+    }),
   ).toHaveCount(1);
   await expect(
     cells.filter({ hasText: new RegExp(`^${PUBLIC_REPOSITORIES.length}$`) }),

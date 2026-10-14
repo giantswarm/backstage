@@ -219,8 +219,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       ? []
       : scoped
           .filter(
-            installation =>
-              availability.presenceOf(installation) === 'unknown',
+            installation => availability.presenceOf(installation) === 'unknown',
           )
           .map(installation => [
             installation,
@@ -230,6 +229,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     .map(pair => pair.join('\u0000'))
     .join('\u0001');
 
+  const isListAwaiting = lists.some(list => isAwaitingData(list));
   const value = useMemo<WorkspacesData>(() => {
     const failures = Object.fromEntries(
       failureSignature
@@ -238,8 +238,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
             .map(pair => pair.split('\u0000') as [string, string])
         : [],
     );
-    const isLoading =
-      availability.isLoading || lists.some(list => isAwaitingData(list));
+    const isLoading = availability.isLoading || isListAwaiting;
     let isAvailable: boolean | undefined;
     if (installations.length > 0) {
       isAvailable = true;
@@ -255,16 +254,12 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       rows: allRows
         .filter(row => row.organization === organization)
         .sort(
-          (a, b) =>
-            a.name.localeCompare(b.name) ||
-            a.id.localeCompare(b.id),
+          (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
         ),
       isLoading,
       failures,
       retry,
     };
-    // `lists` is captured by `allRows` and the signatures.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     allRows,
     availability.isLoading,
@@ -275,7 +270,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     organizations,
     setOrganization,
     retry,
-    lists.some(list => isAwaitingData(list)),
+    isListAwaiting,
   ]);
 
   return (

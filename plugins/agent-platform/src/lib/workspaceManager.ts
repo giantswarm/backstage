@@ -165,6 +165,13 @@ export type Workspace = {
   volumeSize?: string;
   /** The number of Session directories on the volume. */
   sessions: number;
+  /**
+   * What the volume stores, mirrors and Session directories, measured at the
+   * last sync; absent before the first, and from a manager that predates it.
+   */
+  storedBytes?: number;
+  /** The share's size before the last sync grew it; absent when it did not. */
+  grewFrom?: string;
   conditions?: WorkspaceCondition[];
 };
 

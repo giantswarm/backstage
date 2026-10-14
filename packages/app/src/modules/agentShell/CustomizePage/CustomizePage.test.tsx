@@ -553,9 +553,9 @@ describe('CustomizePage', () => {
       mockCustomizeData = { ...mockCustomizeData, hasWorkspaces: undefined };
       await renderCustomize('/customize/agents');
 
-      expect(
-        tabs().some(([title]) => title?.startsWith('Workspaces')),
-      ).toBe(false);
+      expect(tabs().some(([title]) => title?.startsWith('Workspaces'))).toBe(
+        false,
+      );
     });
   });
 

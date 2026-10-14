@@ -115,12 +115,23 @@ export function isSettling(workspace: Workspace): boolean {
 }
 
 /**
- * What the volume stores (mirrors and session directories), and the share's
- * size where its class provisions one: `9.5 GB of 15Gi`.
+ * What the volume stores (mirrors and session directories), the share's size
+ * where its class provisions one, and ↑ when the last sync grew the share:
+ * `9.5 GB of 15Gi ↑`.
  */
-export function storedLabel(storage: WorkspaceStorage): string {
-  const stored = formatBytes(storage.mirrorsBytes + storage.sessionsBytes);
-  return storage.volumeSize ? `${stored} of ${storage.volumeSize}` : stored;
+export function storedLabel(
+  storedBytes: number,
+  volumeSize?: string,
+  grewFrom?: string,
+): string {
+  const stored = formatBytes(storedBytes);
+  const share = volumeSize ? `${stored} of ${volumeSize}` : stored;
+  return grewFrom ? `${share} ↑` : share;
+}
+
+/** The stored bytes of `get_workspace`'s storage. */
+export function storageBytes(storage: WorkspaceStorage): number {
+  return storage.mirrorsBytes + storage.sessionsBytes;
 }
 
 /** Rows whose name, Organization or sources contain the search. */

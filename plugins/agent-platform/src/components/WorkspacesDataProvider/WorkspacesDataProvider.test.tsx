@@ -5,13 +5,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Workspace } from '../../lib/workspaceManager';
 import { CustomizeWorkspacesPanel } from '../CustomizeWorkspacesPanel';
 import { WorkspaceOrganizationSelect } from '../WorkspaceOrganizationSelect';
-import { useWorkspacesData, WorkspacesDataProvider } from './WorkspacesDataProvider';
+import {
+  useWorkspacesData,
+  WorkspacesDataProvider,
+} from './WorkspacesDataProvider';
 
 function workspace(name: string, organization: string): Workspace {
   return {
     name,
     organization,
-    sources: [{ provider: 'github', owner: 'example-org', repositories: [name] }],
+    sources: [
+      { provider: 'github', owner: 'example-org', repositories: [name] },
+    ],
     sync: { schedule: 'nightly' },
     resourceVersion: '1',
     createdAt: '2026-10-01T00:00:00Z',
@@ -143,7 +148,7 @@ describe('WorkspacesDataProvider', () => {
     await waitFor(() => expect(shownNames()).toEqual(['mcp']));
   });
 
-  it("offers an Organization without a workspace yet only where the manager takes the person as a member", async () => {
+  it('offers an Organization without a workspace yet only where the manager takes the person as a member', async () => {
     mockWorkspaces = { gazelle: [workspace('docs', 'alpha')] };
     mockOrganizations = [
       { cluster: 'gazelle', name: 'alpha' },

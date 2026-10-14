@@ -42,6 +42,7 @@ import {
 import {
   searchWorkspaces,
   sourcesLabel,
+  storageBytes,
   storedLabel,
   syncState,
   type WorkspaceRow,
@@ -64,16 +65,37 @@ export type CustomizeWorkspacesPanelProps = {
   search: string;
 };
 
-/** What the volume stores, from the workspace's own read. */
+/**
+ * What the volume stores: the list's own figure, or, from a manager whose
+ * list does not carry it yet, the workspace's own read. Before the first sync
+ * there is nothing stored to show.
+ */
 function StoredCell({ row }: { row: WorkspaceRow }) {
-  const detail = useWorkspaceDetail(row.installation, row.name, !row.deleting);
+  const fromDetail = row.storedBytes === undefined && Boolean(row.lastSync);
+  const detail = useWorkspaceDetail(
+    row.installation,
+    row.name,
+    fromDetail && !row.deleting,
+  );
   let title = '—';
-  if (detail.data) {
-    title = storedLabel(detail.data.storage);
+  if (row.storedBytes !== undefined) {
+    title = storedLabel(row.storedBytes, row.volumeSize, row.grewFrom);
+  } else if (detail.data) {
+    title = storedLabel(
+      storageBytes(detail.data.storage),
+      detail.data.storage.volumeSize,
+    );
   } else if (detail.isPending && detail.fetchStatus !== 'idle') {
     title = '…';
   }
-  return <CellText title={title} />;
+  return (
+    <CellText
+      title={title}
+      description={
+        row.grewFrom ? `Grown from ${row.grewFrom} at the last sync` : undefined
+      }
+    />
+  );
 }
 
 /** The sync's state now, or the last cycle's result, with its time. */

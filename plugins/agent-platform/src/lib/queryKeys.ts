@@ -368,11 +368,5 @@ export function musterWorkspacesQueryKey(
 }
 
 export function musterWorkspaceQueryKey(installation: string, name: string) {
-  return [
-    'muster',
-    'agent-platform',
-    'workspace',
-    installation,
-    name,
-  ] as const;
+  return ['muster', 'agent-platform', 'workspace', installation, name] as const;
 }

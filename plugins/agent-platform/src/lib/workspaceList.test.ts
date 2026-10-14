@@ -72,13 +72,10 @@ describe('syncState', () => {
 });
 
 describe('storedLabel', () => {
-  it('adds the share where its class provisions one', () => {
-    expect(
-      storedLabel({ mirrorsBytes: 1024, sessionsBytes: 0, volumeSize: '8Gi' }),
-    ).toMatch(/ of 8Gi$/);
-    expect(storedLabel({ mirrorsBytes: 1024, sessionsBytes: 0 })).not.toMatch(
-      / of /,
-    );
+  it('adds the share where its class provisions one, and ↑ when the last sync grew it', () => {
+    expect(storedLabel(1024, '8Gi')).toMatch(/ of 8Gi$/);
+    expect(storedLabel(1024)).not.toMatch(/ of /);
+    expect(storedLabel(1024, '16Gi', '8Gi')).toMatch(/ of 16Gi ↑$/);
   });
 });
 
