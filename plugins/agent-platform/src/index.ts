@@ -35,6 +35,9 @@ export {
 } from './components/CustomizeSkillsPanel';
 export type { CustomizeSkillsPanelProps } from './components/CustomizeSkillsPanel';
 export { CustomizeModelsPanel } from './components/CustomizeModelsPanel';
+export { CustomizeWorkspacesPanel } from './components/CustomizeWorkspacesPanel';
+export type { CustomizeWorkspacesPanelProps } from './components/CustomizeWorkspacesPanel';
+export { WorkspaceOrganizationSelect } from './components/WorkspaceOrganizationSelect';
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
 export { CustomizeModelPage } from './components/CustomizeModelPage';
 export { WorkflowCreateAssist } from './components/WorkflowCreateAssist';

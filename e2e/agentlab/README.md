@@ -171,6 +171,11 @@ starts clean, and a run going on at the same time against the same lab keeps
 its workspaces. A leftover that does not go is reported as a warning, not as a
 failure of this run.
 
+`workspaces-tab.spec.ts` drives Customize · Workspaces on them, in the
+`agentlab-shell` project: the member sees `labWorkspace` with its repository
+count, last sync and Sessions, `NON_MEMBER` does not, and a workspace of its
+own is deleted through the row menu's confirmation.
+
 What the lab needs:
 
 - Workspaces on (`agentlab configure --workspaces`, then `agentlab platform`),

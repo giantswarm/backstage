@@ -346,3 +346,18 @@ export function musterCreateNodePoolSchemaQueryKey(installation: string) {
     installation,
   ] as const;
 }
+
+/**
+ * workspace-manager's reads, as the signed-in person: the workspaces and
+ * Organizations of the person on one installation (`list_workspaces`) and one
+ * workspace with its storage and Sessions (`get_workspace`). Under the
+ * `muster` prefix like the reads above: what a person sees depends on their
+ * Organizations, so none of it is persisted.
+ */
+export function musterWorkspacesQueryKey(installation: string) {
+  return ['muster', 'agent-platform', 'workspaces', installation] as const;
+}
+
+export function musterWorkspaceQueryKey(installation: string, name: string) {
+  return ['muster', 'agent-platform', 'workspace', installation, name] as const;
+}
