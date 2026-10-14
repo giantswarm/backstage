@@ -35,7 +35,31 @@ const queuesOf = (byTeam: Record<string, MargeResult | string>) => ({
 
 const callTool = jest.fn();
 const listServers = jest.fn();
-const musterApi = { callTool, listServers } as unknown as MusterApi;
+// What marge reports before a sweep answers, per call.
+let sweepProgress: string[] = [];
+// A sweep streams its progress; the stand-in reports `sweepProgress`, then
+// answers as callTool does.
+const callToolWithProgress = (
+  name: string,
+  args: Record<string, unknown>,
+  {
+    installation,
+    onProgress,
+  }: {
+    installation?: string;
+    onProgress: (progress: { progress: number; message?: string }) => void;
+  },
+) => {
+  sweepProgress.forEach((message, index) =>
+    onProgress({ progress: index + 1, message }),
+  );
+  return callTool(name, args, installation);
+};
+const musterApi = {
+  callTool,
+  callToolWithProgress,
+  listServers,
+} as unknown as MusterApi;
 
 const summary = {
   total: 1,
@@ -95,6 +119,7 @@ const client = () =>
 beforeEach(() => {
   callTool.mockReset();
   listServers.mockReset();
+  sweepProgress = [];
 });
 
 describe('useBotPrs', () => {
@@ -130,6 +155,38 @@ describe('useBotPrs', () => {
     await waitFor(() => expect(result.current.queues[0].error).toBeTruthy());
     expect(result.current.queues[0].error?.message).toMatch(/one team a call/);
     expect(result.current.queues[0].result).toBeUndefined();
+  });
+
+  it('shows where each team’s classification stands until it answers', async () => {
+    sweepProgress = ['120 of 290 PRs done'];
+    let answer: (result: MargeResult) => void = () => {};
+    callTool
+      .mockResolvedValueOnce(queuesOf({ honeybadger: stored }))
+      .mockReturnValueOnce(
+        new Promise<MargeResult>(resolve => {
+          answer = resolve;
+        }),
+      )
+      .mockResolvedValue(queuesOf({ honeybadger: live }));
+    const { result } = renderHook(() => useBotPrs('gazelle', ['honeybadger']), {
+      wrapper: wrapperWith(client()),
+    });
+    await waitFor(() =>
+      expect(result.current.queues[0].result).toEqual(stored),
+    );
+
+    act(() => result.current.classify());
+
+    await waitFor(() =>
+      expect(result.current.classifyProgress).toEqual({
+        honeybadger: '120 of 290 PRs done',
+      }),
+    );
+    expect(result.current.isClassifying).toBe(true);
+
+    await act(async () => answer(live));
+    await waitFor(() => expect(result.current.isClassifying).toBe(false));
+    expect(result.current.classifyProgress).toEqual({});
   });
 
   it('classifies only when asked, and writes the class to each label', async () => {
@@ -278,6 +335,41 @@ describe('useBotPrs', () => {
 });
 
 describe('useMargeTeamSweeps', () => {
+  it('shows where each team stands while the run is in flight, and nothing after', async () => {
+    sweepProgress = ['finding the PRs', '34 of 79 PRs done'];
+    let answer: (result: MargeResult) => void = () => {};
+    callTool.mockReturnValue(
+      new Promise<MargeResult>(resolve => {
+        answer = resolve;
+      }),
+    );
+    const { result } = renderHook(() => useMargeTeamSweeps('gazelle'), {
+      wrapper: wrapperWith(client()),
+    });
+
+    let run: Promise<unknown> = Promise.resolve();
+    act(() => {
+      run = result.current.run({
+        teams: ['honeybadger'],
+        actions: 'approve,merge,mark',
+        dryRun: false,
+      });
+    });
+
+    await waitFor(() =>
+      expect(result.current.progress).toEqual({
+        honeybadger: '34 of 79 PRs done',
+      }),
+    );
+    expect(result.current.isPending).toBe(true);
+
+    await act(async () => {
+      answer(live);
+      await run;
+    });
+    await waitFor(() => expect(result.current.progress).toEqual({}));
+  });
+
   it('calls marge once per team with that team\u2019s PRs, and invalidates only on a write', async () => {
     callTool.mockResolvedValue(live);
     const queryClient = client();

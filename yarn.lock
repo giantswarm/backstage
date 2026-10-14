@@ -8795,7 +8795,7 @@ __metadata:
     "@backstage/plugin-events-node": "backstage:^"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.21.1"
     "@giantswarm/backstage-plugin-gs-node": "npm:^0.3.0"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.2"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.4"
     js-yaml: "npm:^5.0.0"
   languageName: unknown
   linkType: soft
@@ -8914,7 +8914,7 @@ __metadata:
   resolution: "@giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common"
   dependencies:
     "@backstage/cli": "backstage:^"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.2"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.4"
   languageName: unknown
   linkType: soft
 
@@ -8930,8 +8930,10 @@ __metadata:
     "@backstage/errors": "backstage:^"
     "@backstage/types": "backstage:^"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.21.1"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.2"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.4"
+    "@modelcontextprotocol/sdk": "npm:1.32.1"
     node-fetch: "npm:^3.3.2"
+    zod: "npm:^4.4.3"
   languageName: unknown
   linkType: soft
 
@@ -8985,7 +8987,7 @@ __metadata:
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-platform-capabilities": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.2"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.4"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@material-ui/lab": "npm:^4.0.0-alpha.60"
@@ -9383,7 +9385,7 @@ __metadata:
     "@codemirror/view": "npm:^6.38.8"
     "@fsegurai/codemirror-theme-vscode-dark": "npm:^6.2.2"
     "@fsegurai/codemirror-theme-vscode-light": "npm:^6.2.2"
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.2"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.4"
     "@material-ui/core": "npm:^4.9.13"
     "@material-ui/icons": "npm:^4.11.3"
     "@material-ui/lab": "npm:^4.0.0-alpha.61"
@@ -9422,9 +9424,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@giantswarm/semver-ts@github:giantswarm/semver-ts#v0.2.2":
+"@giantswarm/semver-ts@github:giantswarm/semver-ts#v0.2.4":
   version: 0.2.0
-  resolution: "@giantswarm/semver-ts@https://github.com/giantswarm/semver-ts.git#commit=d15a37f92288edf26d34a1b763f4659a5e532575"
+  resolution: "@giantswarm/semver-ts@https://github.com/giantswarm/semver-ts.git#commit=b05b2ec72814172493e244050d597f9f9bab031f"
   checksum: 10c0/07c87bf7a080fc7801f26eb76b077f2d99a924d3bad61ed39a5e9a2c4bce567dfc4bacf37b74248328b5f0be48da286cf495f6b715a66e16ec16418e1d9b733d
   languageName: node
   linkType: hard
@@ -9652,12 +9654,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hono/node-server@npm:^1.19.9":
-  version: 1.19.9
-  resolution: "@hono/node-server@npm:1.19.9"
+"@hono/node-server@npm:^1.19.9 || ^2.0.5":
+  version: 2.1.3
+  resolution: "@hono/node-server@npm:2.1.3"
   peerDependencies:
     hono: ^4
-  checksum: 10c0/de18c06b6b266dc45fe55fb82053bd1da8fe84939c49b6fbab4d2448b679d54ab5affbf8b15de9bead26f29b1755284d770aafb5ad14a8e4b3cfb4f79334554e
+  checksum: 10c0/1b9996f41be620c301f73529928ccb056574fadf822a0979e4925c17cce209583e7f27376ae2308b4e87ab6c1c7501d6f282333c364ed79f21b99b45b47f7ffb
   languageName: node
   linkType: hard
 
@@ -10756,12 +10758,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@lezer/highlight@npm:1.2.4":
-  version: 1.2.4
-  resolution: "@lezer/highlight@npm:1.2.4"
+"@lezer/highlight@npm:1.2.5":
+  version: 1.2.5
+  resolution: "@lezer/highlight@npm:1.2.5"
   dependencies:
     "@lezer/common": "npm:^1.3.0"
-  checksum: 10c0/4d0425fd069097644be6a15c9ce4e9d1d65ecba45c68c20e73f6a1bb3aa3bb616023793b645d04b1cb475e84f9c11018eb5a39ad227218128649517c2600be91
+  checksum: 10c0/cb40f6efd8ba947b4a391368114ae394e36cbb2b7db07a7629278f9feed953d909868296f4acb936c7b70e4e7032458c5fcd6a2e836012ae6c02790b2de574fa
   languageName: node
   linkType: hard
 
@@ -11073,11 +11075,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@modelcontextprotocol/sdk@npm:^1.25.2":
-  version: 1.29.0
-  resolution: "@modelcontextprotocol/sdk@npm:1.29.0"
+"@modelcontextprotocol/sdk@npm:1.32.1, @modelcontextprotocol/sdk@npm:^1.25.2":
+  version: 1.32.1
+  resolution: "@modelcontextprotocol/sdk@npm:1.32.1"
   dependencies:
-    "@hono/node-server": "npm:^1.19.9"
+    "@hono/node-server": "npm:^1.19.9 || ^2.0.5"
     ajv: "npm:^8.17.1"
     ajv-formats: "npm:^3.0.1"
     content-type: "npm:^1.0.5"
@@ -11102,7 +11104,7 @@ __metadata:
       optional: true
     zod:
       optional: false
-  checksum: 10c0/7c4bc339205b1652330cd4e6b121cc859079655f2b9c0506bbb15563ba0d07924bda3d949705530532db7f4d2cb86d633dc8f92bc32803d97c7bece2ac63e29f
+  checksum: 10c0/8b6c8ff6aa5358aeb316fedfa2094a4241ce12d98a0f818cee42510ec9149fed21fc75244c5f0e8cb453337f243c09fa8a90425cd2533fd481964d8583a1f0c9
   languageName: node
   linkType: hard
 

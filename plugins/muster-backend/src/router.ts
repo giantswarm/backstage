@@ -82,6 +82,30 @@ function authNote(installation: MusterInstallationConfig): string {
   return '';
 }
 
+/**
+ * A failure inside a streamed answer, in the fields the error middleware
+ * gives a non-streamed one: the name the frontend keys on, the message, and
+ * a tool's further text blocks.
+ */
+function serializeStreamError(error: unknown): {
+  name: string;
+  message: string;
+  details?: string[];
+} {
+  if (!(error instanceof Error)) {
+    return { name: 'Error', message: String(error) };
+  }
+  const { details } = error as { details?: unknown };
+  return {
+    name: error.name,
+    message: error.message,
+    ...(Array.isArray(details) &&
+    details.every(detail => typeof detail === 'string')
+      ? { details }
+      : {}),
+  };
+}
+
 function parseOptionalInt(value: unknown, name: string): number | undefined {
   if (value === undefined) {
     return undefined;
@@ -453,6 +477,72 @@ export async function createRouter(
       readCallOptions(req, installation),
     );
     res.json(result);
+  });
+
+  /**
+   * `/call` for a tool that reports progress while it works. The answer is
+   * newline-delimited JSON: a `{"type":"progress",...}` line per
+   * notification, then one `{"type":"result","result":...}` or
+   * `{"type":"error","error":{name,message,details}}` line. A failure before
+   * the first line is an ordinary error response with its status. A caller
+   * that goes away cancels the call.
+   */
+  router.post('/call/progress', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { name, arguments: toolArgs } = req.body ?? {};
+
+    if (typeof name !== 'string' || name === '') {
+      throw new InputError('name is required in the request body');
+    }
+    if (
+      toolArgs !== undefined &&
+      (typeof toolArgs !== 'object' ||
+        toolArgs === null ||
+        Array.isArray(toolArgs))
+    ) {
+      throw new InputError('arguments must be a JSON object when provided');
+    }
+    const callOptions = readCallOptions(req, installation);
+
+    const abort = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) {
+        abort.abort();
+      }
+    });
+    const writeLine = (line: unknown) => {
+      if (!res.headersSent) {
+        res.writeHead(200, {
+          'Content-Type': 'application/x-ndjson',
+          // Every line must reach the browser as it is written.
+          'Cache-Control': 'no-cache, no-transform',
+          'X-Accel-Buffering': 'no',
+        });
+      }
+      res.write(`${JSON.stringify(line)}\n`);
+    };
+
+    try {
+      const result = await client.callToolWithProgress(
+        name,
+        (toolArgs as Record<string, unknown>) ?? {},
+        {
+          ...callOptions,
+          onProgress: progress => writeLine({ type: 'progress', ...progress }),
+          signal: abort.signal,
+        },
+      );
+      writeLine({ type: 'result', result });
+    } catch (error) {
+      if (!res.headersSent) {
+        throw error;
+      }
+      if (abort.signal.aborted) {
+        return;
+      }
+      writeLine({ type: 'error', error: serializeStreamError(error) });
+    }
+    res.end();
   });
 
   // --- Downstream server authentication ------------------------------------

@@ -15,6 +15,9 @@ import {
   MARGE_SERVER,
   MargeAnswerLostError,
   MargeNotConnectedError,
+  MargeRateLimitError,
+  rateLimitOf,
+  rateLimitResetOf,
   type MargeMarkResult,
   type MargeResult,
   type MargeTeamQueues,
@@ -162,6 +165,8 @@ export type BotPrsState = {
   isClassifying: boolean;
   /** The teams whose classification has not answered yet. */
   classifying: string[];
+  /** Where each team's classification stands, as marge last reported it. */
+  classifyProgress: Record<string, string>;
   /**
    * Why the classification failed, when it did: marge's refusal, or a
    * `MargeAnswerLostError` when its answer never arrived and the labels hold
@@ -225,21 +230,34 @@ export function useBotPrs(
   // bot PR the person can see. A read can be refused after the fact; a
   // write cannot.
   const [classifying, setClassifying] = useState<string[]>([]);
+  const [classifyProgress, setClassifyProgress] = useState<
+    Record<string, string>
+  >({});
   const classifyRun = useTrackedMutation({
     event: null,
     untrackedReason: 'Internal bot PR tooling, not a customer portal action.',
     mutationFn: async (prsByTeam?: Record<string, string[]>) => {
       const named = prsByTeam ? Object.keys(prsByTeam) : teams;
       setClassifying(named);
+      setClassifyProgress({});
       const answers = await Promise.allSettled(
         named.map(team =>
           client!
-            .sweep({
-              team,
-              prs: prsByTeam?.[team],
-              actions: CLASSIFY_ACTIONS,
-              dry_run: false,
-            })
+            .sweep(
+              {
+                team,
+                prs: prsByTeam?.[team],
+                actions: CLASSIFY_ACTIONS,
+                dry_run: false,
+              },
+              {
+                onProgress: message =>
+                  setClassifyProgress(current => ({
+                    ...current,
+                    [team]: message,
+                  })),
+              },
+            )
             .finally(() =>
               setClassifying(current =>
                 current.filter(pending => pending !== team),
@@ -261,9 +279,25 @@ export function useBotPrs(
       if (reason) {
         throw reason;
       }
+      // A run that stopped at the rate limit answers, and what it left
+      // undecided keeps its old label: the page says why the table moved
+      // less than asked.
+      const resetAt = rateLimitResetOf(
+        [],
+        answers.map(answer =>
+          answer.status === 'fulfilled' ? answer.value : undefined,
+        ),
+      );
+      if (resetAt) {
+        throw new MargeRateLimitError(
+          `GitHub rate limit reached for this token; it resets at ${resetAt.toISOString()}`,
+          resetAt,
+        );
+      }
     },
     onSettled: () => {
       setClassifying([]);
+      setClassifyProgress({});
       // Whatever the run wrote is in the labels now, so the stored read is
       // the answer -- including for a team whose own call failed or whose
       // answer was lost on the way back.
@@ -295,7 +329,11 @@ export function useBotPrs(
       result: answer?.result,
       readAt: query.data?.readAt,
       isLoading: enabled && isAwaitingData(query),
-      error: failure ?? (answer?.error ? new Error(answer.error) : null),
+      error:
+        failure ??
+        (answer?.error
+          ? (rateLimitOf(answer.error) ?? new Error(answer.error))
+          : null),
     };
   });
   const classifyError = (classifyRun.error as Error | null) ?? null;
@@ -309,6 +347,7 @@ export function useBotPrs(
     isLoading: enabled && isAwaitingData(query),
     isClassifying: classifyRun.isPending,
     classifying,
+    classifyProgress,
     classifyError:
       classifyError instanceof MargeNotConnectedError ? null : classifyError,
     notConnected,
@@ -337,8 +376,17 @@ export type MargeTeamSweepsState = {
   /** Whether `runs` came from a dry run. */
   isDryRun: boolean;
   isPending: boolean;
+  /** Where each team of the run in flight stands, as marge last reported it. */
+  progress: Record<string, string>;
   /** The first not-connected refusal, when one team's call met one. */
   notConnected: MargeNotConnectedError | undefined;
+  /**
+   * When GitHub serves the person's token again, when a call of the last
+   * run was refused for rate or a run stopped at the limit.
+   */
+  rateLimitReset: Date | undefined;
+  /** The PRs the last run's teams stopped before deciding. */
+  notReached: number;
   run: (args: TeamSweepArgs) => Promise<TeamSweepRun[]>;
   /**
    * The last run again, for the given teams only: every other team keeps the
@@ -385,6 +433,7 @@ export function useMargeTeamSweeps(
 ): MargeTeamSweepsState {
   const client = useMargeClient(installation);
   const queryClient = useQueryClient();
+  const [progress, setProgress] = useState<Record<string, string>>({});
 
   const mutation = useTrackedMutation({
     event: null,
@@ -400,14 +449,21 @@ export function useMargeTeamSweeps(
       const teams = args.teams.filter(
         team => !narrowed || (narrowed[team]?.length ?? 0) > 0,
       );
+      setProgress({});
       const answers = await Promise.allSettled(
         teams.map(team =>
-          client.sweep({
-            team,
-            prs: narrowed?.[team],
-            actions: args.actions,
-            dry_run: args.dryRun,
-          }),
+          client.sweep(
+            {
+              team,
+              prs: narrowed?.[team],
+              actions: args.actions,
+              dry_run: args.dryRun,
+            },
+            {
+              onProgress: message =>
+                setProgress(current => ({ ...current, [team]: message })),
+            },
+          ),
         ),
       );
       const fresh = teams.map((team, index) => {
@@ -428,6 +484,7 @@ export function useMargeTeamSweeps(
         ...fresh.filter(run => !kept.some(old => old.team === run.team)),
       ];
     },
+    onSettled: () => setProgress({}),
     onSuccess: (_runs, { args }) => {
       if (args.dryRun) {
         return;
@@ -449,6 +506,15 @@ export function useMargeTeamSweeps(
       error instanceof MargeNotConnectedError,
   );
 
+  const rateLimitReset = rateLimitResetOf(
+    [mutation.error as Error | null, ...runs.map(run => run.error)],
+    runs.map(run => run.result),
+  );
+  const notReached = runs.reduce(
+    (sum, run) => sum + (run.result?.summary.not_reached ?? 0),
+    0,
+  );
+
   const run = useCallback(
     (args: TeamSweepArgs) => mutateAsync({ args, kept: [] }),
     [mutateAsync],
@@ -468,7 +534,10 @@ export function useMargeTeamSweeps(
     runs,
     isDryRun: last?.args.dryRun ?? true,
     isPending: mutation.isPending,
+    progress,
     notConnected,
+    rateLimitReset,
+    notReached,
     run,
     retry,
     reset: mutation.reset,

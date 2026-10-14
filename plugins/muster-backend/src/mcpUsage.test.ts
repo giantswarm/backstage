@@ -111,6 +111,17 @@ describe('getMcpUsage', () => {
     expect(usage.totals.calls).toBe(0);
   });
 
+  it('reports unavailable, naming the tool, where prometheus answers structured data instead of text', async () => {
+    const client = fakeClient(tool =>
+      tool === 'core_mcpserver_list' ? SERVER_LIST : { data: { result: [] } },
+    );
+    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    expect(usage.available).toBe(false);
+    expect(usage.reason).toMatch(
+      /answered structured data, not the text the usage query parses/,
+    );
+  });
+
   it('aggregates buckets, tools and servers from step-split range queries', async () => {
     const calls: Array<{ tool: string; args: Record<string, unknown> }> = [];
     const client = fakeClient((tool, args) => {

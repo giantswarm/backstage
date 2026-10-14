@@ -49,6 +49,7 @@ function expressApp() {
 
 describe('createRouter', () => {
   const callTool = jest.fn();
+  const callToolWithProgress = jest.fn();
   const callToolWithStructured = jest.fn();
   const listTools = jest.fn();
   const filterTools = jest.fn();
@@ -60,6 +61,7 @@ describe('createRouter', () => {
 
   const mockClient = {
     callTool,
+    callToolWithProgress,
     callToolWithStructured,
     listTools,
     filterTools,
@@ -117,6 +119,7 @@ describe('createRouter', () => {
   beforeEach(async () => {
     mockGetMcpUsage.mockReset();
     callTool.mockReset();
+    callToolWithProgress.mockReset();
     callToolWithStructured.mockReset();
     listTools.mockReset();
     filterTools.mockReset();
@@ -1091,6 +1094,88 @@ describe('createRouter', () => {
         message: 'node pool gpu-l4 still runs 1 node(s)',
         details: ['{"refused":{"nodes":["i-0abc"],"models":[],"hint":"wait"}}'],
       });
+    });
+  });
+
+  describe('/call/progress', () => {
+    const lines = (text: string) =>
+      text
+        .trim()
+        .split('\n')
+        .map(line => JSON.parse(line));
+
+    it("streams the tool's progress, then its result, as lines", async () => {
+      callToolWithProgress.mockImplementation(async (_name, _args, options) => {
+        options.onProgress({ progress: 1, message: '0 of 2 PRs done' });
+        options.onProgress({ progress: 2, message: '2 of 2 PRs done' });
+        return { swept: 2 };
+      });
+
+      const response = await request(app)
+        .post('/call/progress')
+        .send({ name: 'x_marge_sweep', arguments: { team: 'honeybadger' } });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toMatch(/application\/x-ndjson/);
+      expect(lines(response.text)).toEqual([
+        { type: 'progress', progress: 1, message: '0 of 2 PRs done' },
+        { type: 'progress', progress: 2, message: '2 of 2 PRs done' },
+        { type: 'result', result: { swept: 2 } },
+      ]);
+      expect(callToolWithProgress).toHaveBeenCalledWith(
+        'x_marge_sweep',
+        { team: 'honeybadger' },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+
+    it('answers a failure before the first line as an ordinary error', async () => {
+      callToolWithProgress.mockRejectedValue(
+        new MusterToolError('no team file for "x"'),
+      );
+
+      const response = await request(app)
+        .post('/call/progress')
+        .send({ name: 'x_marge_sweep', arguments: {} });
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterToolError',
+        message: 'no team file for "x"',
+      });
+    });
+
+    it('ends a started stream with an error line', async () => {
+      callToolWithProgress.mockImplementation(async (_name, _args, options) => {
+        options.onProgress({ progress: 1, message: '1 of 3 PRs done' });
+        throw new MusterToolError('refused', ['{"why":"x"}']);
+      });
+
+      const response = await request(app)
+        .post('/call/progress')
+        .send({ name: 'x_marge_sweep', arguments: {} });
+
+      expect(response.status).toBe(200);
+      expect(lines(response.text)).toEqual([
+        { type: 'progress', progress: 1, message: '1 of 3 PRs done' },
+        {
+          type: 'error',
+          error: {
+            name: 'MusterToolError',
+            message: 'refused',
+            details: ['{"why":"x"}'],
+          },
+        },
+      ]);
+    });
+
+    it('requires a name', async () => {
+      const response = await request(app)
+        .post('/call/progress')
+        .send({ arguments: {} });
+
+      expect(response.status).toBe(400);
+      expect(callToolWithProgress).not.toHaveBeenCalled();
     });
   });
 
