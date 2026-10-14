@@ -1,5 +1,4 @@
 import { screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { usageRouteRef } from '../../routes';
 import type { LlmUsage } from '../../lib/llmUsage';
@@ -307,25 +306,28 @@ describe('UsageOverviewPage', () => {
     expect(screen.queryByText('sonnet-4-5')).toBeNull();
   });
 
-  it('shows the gateway health, with the token trend folded away in place', async () => {
-    // T52: the Overview fits one desktop viewport, so the token-type chart —
-    // a detail behind the headline trend — sits in a collapsed fold-out on
-    // this view, its one home, rather than moving elsewhere.
-    const user = userEvent.setup();
+  it('shows the gateway health and the token trend, nothing folded away', async () => {
     renderPage();
 
     expect(await screen.findByText('Gateway health')).toBeInTheDocument();
     expect(screen.getByText('Call duration p95')).toBeInTheDocument();
+    expect(screen.getByText('Rate limited')).toBeInTheDocument();
     expect(screen.queryByText(/Technical details/)).toBeNull();
-    expect(screen.queryByText('Tokens per day, by type')).toBeNull();
+    expect(screen.queryByText(/counts model calls only/)).toBeNull();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Token breakdown by type' }),
-    );
-
+    // The token trend is a section of its own, open from the start.
     expect(
-      await screen.findByText('Tokens per day, by type'),
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Token breakdown by type',
+      }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: 'Token breakdown by type' }),
+    ).toHaveTextContent('Tokens per day, by type');
+    expect(
+      screen.queryByRole('button', { name: 'Token breakdown by type' }),
+    ).toBeNull();
   });
 
   it('draws model calls per day as an activity heatmap', async () => {

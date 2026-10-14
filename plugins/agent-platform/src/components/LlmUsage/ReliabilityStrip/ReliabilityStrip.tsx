@@ -78,7 +78,7 @@ export function ReliabilityStrip({
         hint={`Shows the share of LLM requests answered with anything but 2xx or 3xx over the last ${WINDOW_DAYS} days.`}
       />
       <Stat
-        label="Rate limited (429)"
+        label="Rate limited"
         value={formatCount(reliability.rateLimited)}
         tone={reliability.rateLimited > 0 ? 'warning' : undefined}
         hint={`Counts requests answered 429 over the last ${WINDOW_DAYS} days by the provider or the gateway's rate limit, a sign to raise the quota or lower the concurrency. They also count in the error rate.`}

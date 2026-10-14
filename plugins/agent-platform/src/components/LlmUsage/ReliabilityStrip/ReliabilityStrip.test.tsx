@@ -22,6 +22,16 @@ describe('ReliabilityStrip', () => {
     expect(screen.getByText('12 s')).toBeInTheDocument();
   });
 
+  it('labels the rate-limit count in words and leaves the status code to its hint', () => {
+    render(<ReliabilityStrip reliability={RELIABILITY} />);
+
+    expect(screen.getByText('Rate limited')).toBeInTheDocument();
+    expect(screen.queryByText(/\(429\)/)).toBeNull();
+    expect(
+      screen.getByLabelText('How Rate limited is calculated'),
+    ).toBeInTheDocument();
+  });
+
   it('shows an em dash for the speed when nothing streamed', () => {
     // The other figures still describe every call, so the strip must not go
     // quiet just because the per-output-token histogram is empty.

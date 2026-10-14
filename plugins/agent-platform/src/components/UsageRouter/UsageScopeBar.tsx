@@ -77,7 +77,10 @@ export function UsageScopeBar() {
       : undefined;
 
   return (
-    <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
+    // Bottom-aligned: the Environment select carries its label above the
+    // field, so centring would lift the time range above the field's edge.
+    // Wrapped onto its own line at phone width, the time range is unaffected.
+    <Flex align="end" gap="3" style={{ flexWrap: 'wrap' }}>
       {showEnvironment && <EnvironmentSelect component="kagent" />}
       <ToggleButtonGroup
         aria-label="Time range"
