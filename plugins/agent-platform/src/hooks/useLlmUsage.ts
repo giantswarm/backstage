@@ -35,7 +35,9 @@ export type LlmUsageView = {
 export type LlmUsageOptions = LlmUsageQueryOptions & {
   /**
    * Also query the spend over the window before this one, reported as
-   * `usage.totals.previousCostUsd`. Off by default: one more query.
+   * `usage.totals.previousCostUsd` when the data reaches back to that
+   * window's start. Off by default: two more queries, one of them a day's
+   * read to check that reach.
    */
   comparePrevious?: boolean;
   /**
@@ -46,6 +48,20 @@ export type LlmUsageOptions = LlmUsageQueryOptions & {
   dailyCalls?: boolean;
 };
 
+/**
+ * A coverage check's answer: whether its vector holds a series, from the data
+ * whenever there is any — react-query keeps the last good answer beside a
+ * failed background refetch, and one transient Mimir error must not flip the
+ * page. `undefined` (unknown) only without data: disabled, or failed before it
+ * ever answered.
+ */
+function hasSeries(query: {
+  data?: { data?: { result?: unknown[] } };
+}): boolean | undefined {
+  const result = query.data?.data?.result;
+  return result ? result.length > 0 : undefined;
+}
+
 /** Copy for the gateway's own `unknown`: a call it could attribute to no caller. */
 const UNKNOWN_AGENT = 'Unattributed';
 const UNKNOWN_MODEL = 'Unknown model';
@@ -55,8 +71,8 @@ const UNKNOWN_MODEL = 'Unknown model';
  * default its last `WINDOW_DAYS` across every organization, or the window and
  * the organization `options` name.
  *
- * Twelve queries (a thirteenth with `comparePrevious`, two more with
- * `dailyCalls`): ten instant and two range, written out one call at a time.
+ * Thirteen queries (two more with `comparePrevious`, two more with
+ * `dailyCalls`): eleven instant and two range, written out one call at a time.
  * A *fixed* list of hook calls rather than `useQueries` — the same shape
  * `useMimirResourceUsage` uses for its four — and not wrapped in a local
  * helper either, because a helper that calls a hook is unverifiable by
@@ -228,6 +244,17 @@ export function useLlmUsage(
     query: llmUsageQueries.previousCost,
     enabled: enabled && comparePrevious,
   });
+  const dataBeforePreviousWindow = useMimirQuery({
+    installationName,
+    query: llmUsageQueries.dataBeforePreviousWindow,
+    enabled: enabled && comparePrevious,
+  });
+  // Whether the "data starts on …" note may show at all; see `dataStart`.
+  const dataBeforeWindow = useMimirQuery({
+    installationName,
+    query: llmUsageQueries.dataBeforeWindow,
+    enabled,
+  });
 
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
@@ -253,7 +280,12 @@ export function useLlmUsage(
     unpricedLookups.isLoading ||
     costPerDay.isLoading ||
     tokensPerDay.isLoading ||
-    (comparePrevious && previousCost.isLoading) ||
+    // One small read, waited for so the data-start note does not pop in
+    // after the page has rendered. Its failure is not the page's: the note
+    // then stays away (`hasSeries`).
+    dataBeforeWindow.isLoading ||
+    (comparePrevious &&
+      (previousCost.isLoading || dataBeforePreviousWindow.isLoading)) ||
     (dailyCalls && callsPerDay.isLoading);
   // The two **range** queries count as page failures alongside the instant
   // vectors. A failed range query leaves `reduceDaily` with nothing, and since
@@ -269,6 +301,10 @@ export function useLlmUsage(
     cost.error || tokens.error || costPerDay.error || tokensPerDay.error,
   );
   const isAvailable = cost.isAvailable;
+
+  // Booleans, not the query results, so the memo below keys on the answer.
+  const hasDataBeforeWindow = hasSeries(dataBeforeWindow);
+  const hasDataBeforePreviousWindow = hasSeries(dataBeforePreviousWindow);
 
   const usage = useMemo(() => {
     if (!enabled || isLoading || isError) {
@@ -311,6 +347,8 @@ export function useLlmUsage(
       previousCost: comparePrevious
         ? (previousCost.data?.data?.result ?? [])
         : undefined,
+      dataBeforeWindow: hasDataBeforeWindow,
+      dataBeforePreviousWindow: hasDataBeforePreviousWindow,
     });
   }, [
     enabled,
@@ -336,6 +374,8 @@ export function useLlmUsage(
     windowDays,
     comparePrevious,
     previousCost.data,
+    hasDataBeforeWindow,
+    hasDataBeforePreviousWindow,
     dailyCalls,
     callsPerDay.data,
     callsPerDay.error,

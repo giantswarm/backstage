@@ -34,7 +34,9 @@ export const DEFAULT_WINDOW_DAYS = 30;
 /**
  * How many of a user's sessions may be evaluated in one pass.
  *
- * Three times a measured real account (21 sessions).
+ * Three times a measured real account (21 sessions) over the default 30-day
+ * window. It does not scale with `windowDays`: a wider window holds more
+ * sessions, so raise this with it, within what `budgetMs` can read.
  * Unlike the session-states pass, the window here *is* the reported scope, so
  * this cap is the only thing that can make the page under-report — which is why
  * it is generous and why exceeding it is surfaced as `skipped` rather than
@@ -43,13 +45,18 @@ export const DEFAULT_WINDOW_DAYS = 30;
 export const DEFAULT_MAX_SESSIONS = 60;
 
 /**
- * How stale a session may be and still be worth a task read.
+ * How stale a session may be and still be worth a task read, for a window.
  *
  * The window plus a day of slack for clock skew and the UTC day boundary. Safe
  * because the controller bumps an instance's `updated_at` on every turn, so an
  * instance with no activity in 31 days can hold no turn inside a 30-day window.
+ *
+ * Derived from the configured window rather than fixed: a fixed 31 days would
+ * silently drop every session idle for longer once `windowDays` is raised.
  */
-export const DEFAULT_MAX_AGE_MS = (DEFAULT_WINDOW_DAYS + 1) * DAY_MS;
+export function defaultMaxAgeMs(windowDays: number): number {
+  return (windowDays + 1) * DAY_MS;
+}
 
 /**
  * Task reads in flight at once.
@@ -163,7 +170,11 @@ export class SessionUsageReader {
     // `0` would reach through and silently disable the route.
     this.windowDays = atLeast(1, options.windowDays, DEFAULT_WINDOW_DAYS);
     this.maxSessions = atLeast(1, options.maxSessions, DEFAULT_MAX_SESSIONS);
-    this.maxAgeMs = atLeast(1, options.maxAgeMs, DEFAULT_MAX_AGE_MS);
+    this.maxAgeMs = atLeast(
+      1,
+      options.maxAgeMs,
+      defaultMaxAgeMs(this.windowDays),
+    );
     this.concurrency = atLeast(1, options.concurrency, DEFAULT_CONCURRENCY);
     this.taskTimeoutMs = atLeast(
       MIN_READ_SLICE_MS,
