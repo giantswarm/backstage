@@ -1,4 +1,9 @@
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  storageApiRef,
+  toastApiRef,
+  type StorageApi,
+} from '@backstage/frontend-plugin-api';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
@@ -249,8 +254,11 @@ const emptyTimeline = {
   skippedMessages: 0,
 };
 
-async function render() {
+async function render(
+  apis?: NonNullable<Parameters<typeof renderInTestApp>[1]>['apis'],
+) {
   return renderInTestApp(<SessionDetailPage />, {
+    apis,
     // `agentsRouteRef` is here for the link on the agent's name, which resolves
     // through `agentDetailRouteRef` — a SubRouteRef, which `mountedRoutes` does not
     // take, so its parent is what gets mounted.
@@ -2191,6 +2199,11 @@ describe('SessionDetailPage', () => {
   describe('the header', () => {
     const renderShell = render;
 
+    // The "Show tool activity" choice lives in the test app's localStorage,
+    // shared by every test here: one failing test must not leave it off for
+    // the rest.
+    afterEach(() => window.localStorage.clear());
+
     it('heads the page with the platform-standard frame', async () => {
       // The ShellPage idiom every platform page uses (All Sessions, Customize):
       // the session's name is the h1 at the standard scale, under a breadcrumb
@@ -2260,6 +2273,93 @@ describe('SessionDetailPage', () => {
       await waitFor(() =>
         expect(lastProvidedActions().props.pin.isPinned).toBe(true),
       );
+    });
+
+    /** The "Show tool activity" switch on the session's meta line (S9). */
+    const toolActivitySwitch = () =>
+      screen.getByRole('switch', { name: 'Show tool activity' });
+
+    it('puts the tool activity switch on the line with the start, not among the actions', async () => {
+      await renderShell();
+
+      const started = screen.getByText(/^Started/);
+      // The badge row under the title holds both, in that order.
+      expect(started.parentElement).toContainElement(toolActivitySwitch());
+      expect(
+        started.compareDocumentPosition(toolActivitySwitch()) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(lastProvidedActions().props).not.toHaveProperty('toolActivity');
+    });
+
+    it('hides the tool activity from the switch, and remembers it', async () => {
+      // S9: one switch, on by default, kept per person like the pin.
+      await renderShell();
+
+      expect(toolActivitySwitch()).toBeChecked();
+      expect(
+        screen.getByRole('button', { name: /Used 2 tools/ }),
+      ).toBeInTheDocument();
+
+      await userEvent.click(toolActivitySwitch());
+
+      await waitFor(() => expect(toolActivitySwitch()).not.toBeChecked());
+      expect(
+        screen.queryByRole('button', { name: /Used 2 tools/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+    });
+
+    it('says why the switch went back when the choice could not be stored', async () => {
+      const post = jest.fn();
+      const storage = mockApis.storage();
+      jest
+        .spyOn(storage.forBucket('agent-platform'), 'set')
+        .mockRejectedValue(new Error('The settings backend is down.'));
+      await renderShell([
+        [storageApiRef, storage],
+        [toastApiRef, { post }],
+      ]);
+
+      await userEvent.click(toolActivitySwitch());
+
+      await waitFor(() =>
+        expect(post).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'Could not hide tool activity',
+            description: 'The settings backend is down.',
+            status: 'danger',
+          }),
+        ),
+      );
+      await waitFor(() => expect(toolActivitySwitch()).toBeChecked());
+      expect(
+        screen.getByRole('button', { name: /Used 2 tools/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('holds the conversation and the switch until the stored choice is read', async () => {
+      // UserSettingsStorage answers "unknown" first and reads in the
+      // background; showing the work and then hiding it would flash.
+      const never = { subscribe: () => ({ unsubscribe: () => {} }) };
+      const bucket = {
+        snapshot: (key: string) => ({ key, presence: 'unknown' }),
+        observe$: () => never,
+        set: jest.fn(),
+        remove: jest.fn(),
+      };
+      const storage = { ...bucket, forBucket: () => bucket };
+      await renderShell([[storageApiRef, storage as unknown as StorageApi]]);
+
+      expect(screen.getByTestId('progress')).toBeInTheDocument();
+      expect(
+        screen.queryByText(/You have two open issues/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('switch', { name: 'Show tool activity' }),
+      ).not.toBeInTheDocument();
+      // The rest of the line does not wait.
+      expect(screen.getByText(/^Started/)).toBeInTheDocument();
     });
 
     it('keeps the cost chip in the composer there too', async () => {

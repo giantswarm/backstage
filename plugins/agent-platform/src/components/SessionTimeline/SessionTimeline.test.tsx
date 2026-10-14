@@ -703,6 +703,216 @@ describe('SessionTimeline', () => {
   });
 });
 
+describe('SessionTimeline — with tool activity hidden (S9)', () => {
+  function timelineOf(items: TimelineItem[]): Timeline {
+    return {
+      items,
+      tokens: { total: 0, prompt: 0, completion: 0 },
+      skippedMessages: 0,
+    };
+  }
+
+  const turn = [
+    { kind: 'user-message', id: 'u', taskIndex: 0, text: 'Reconcile it' },
+    { kind: 'reasoning', id: 'r', taskIndex: 0, text: 'Thinking it over' },
+    {
+      kind: 'tool-call',
+      id: 't',
+      taskIndex: 0,
+      toolName: 'flux_reconcile',
+      isPending: false,
+    },
+    {
+      kind: 'agent-call',
+      id: 'd',
+      taskIndex: 0,
+      agentId: 'sre_agent',
+      isPending: false,
+    },
+    {
+      kind: 'approval',
+      id: 'a1',
+      taskIndex: 0,
+      asks: 'approval',
+      toolName: 'flux_suspend',
+      verdict: 'approved',
+    },
+    { kind: 'agent-message', id: 'm', taskIndex: 0, text: 'Reconciled.' },
+  ] as TimelineItem[];
+
+  it('leaves only the conversation', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf(turn)}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText('Reconcile it')).toBeInTheDocument();
+    expect(screen.getByText('Reconciled.')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-work-summary'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Reasoning')).not.toBeInTheDocument();
+    // A permission already decided is how the work went, not conversation.
+    expect(screen.queryByText('Approval requested')).not.toBeInTheDocument();
+    // The agent still speaks under its name.
+    expect(screen.getByText('SRE')).toBeInTheDocument();
+  });
+
+  it('shows everything when on, as before', async () => {
+    await renderInTestApp(
+      <SessionTimeline timeline={timelineOf(turn)} agentName="SRE" />,
+    );
+
+    expect(screen.getByTestId('timeline-work-summary')).toBeInTheDocument();
+    expect(screen.getByText('Approval requested')).toBeInTheDocument();
+  });
+
+  const unanswered = {
+    kind: 'approval',
+    id: 'a2',
+    taskIndex: 0,
+    asks: 'approval',
+    toolName: 'flux_suspend',
+  } as TimelineItem;
+
+  it('keeps the request the session waits on the person for', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([turn[0], turn[2], unanswered])}
+        agentName="SRE"
+        showToolActivity={false}
+        isAwaitingPerson
+      />,
+    );
+
+    expect(screen.getByText('Approval requested')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting a decision')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-work-summary'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides an unanswered request the session no longer waits on', async () => {
+    // A verdict in words the parser does not know, or a turn that failed or
+    // was canceled after the request, leaves no verdict; it waits on nobody.
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          unanswered,
+          { kind: 'agent-message', id: 'm2', taskIndex: 0, text: 'Done.' },
+        ] as TimelineItem[])}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.queryByText('Approval requested')).not.toBeInTheDocument();
+    expect(screen.getByText('Done.')).toBeInTheDocument();
+  });
+
+  it('keeps only the newest unanswered request while the person is asked', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          { ...unanswered, id: 'stale' } as TimelineItem,
+          { kind: 'user-message', id: 'u2', taskIndex: 1, text: 'Go on' },
+          { ...unanswered, id: 'open', taskIndex: 1 } as TimelineItem,
+        ] as TimelineItem[])}
+        agentName="SRE"
+        showToolActivity={false}
+        isAwaitingPerson
+      />,
+    );
+
+    expect(screen.getAllByText('Approval requested')).toHaveLength(1);
+    expect(screen.getAllByTestId('timeline-approval')).toHaveLength(1);
+  });
+
+  it('leaves no marker over a turn of nothing but work', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          { ...turn[2], id: 't2', taskIndex: 1 } as TimelineItem,
+          { kind: 'user-message', id: 'u3', taskIndex: 2, text: 'Thanks' },
+        ] as TimelineItem[])}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText(/^Turn 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Turn 2/)).not.toBeInTheDocument();
+    // The turns around it keep their numbers.
+    expect(screen.getByText(/^Turn 3/)).toBeInTheDocument();
+  });
+
+  it('keeps a question the person answered, so the reply answers something', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksAskUser)}
+        agentName="SRE Agent"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(
+      screen.getByText('Which management cluster should I look at?'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Responded')).toBeInTheDocument();
+  });
+
+  it('keeps a pending question', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksAskUserPending)}
+        agentName="SRE Agent"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText('User input requested')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting a reply')).toBeInTheDocument();
+  });
+
+  it('names no agent over a turn whose agent side is all activity', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf(turn.slice(0, 4))}
+        agentName="SRE"
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText('Reconcile it')).toBeInTheDocument();
+    expect(screen.queryByText('SRE')).not.toBeInTheDocument();
+  });
+
+  it('still says the agent is working', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineOf([
+          turn[0],
+          { ...turn[2], isPending: true } as TimelineItem,
+        ])}
+        agentName="SRE"
+        isAgentWorking
+        showToolActivity={false}
+      />,
+    );
+
+    expect(screen.getByText('Working…')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-work-summary'),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe('a lost stream', () => {
   it('says the result is being checked, in place of Working…', async () => {
     await renderInTestApp(

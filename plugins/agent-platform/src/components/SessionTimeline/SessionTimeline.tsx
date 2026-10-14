@@ -20,7 +20,9 @@ import { WorkSummary } from './WorkSummary';
 import {
   authorLabel,
   groupIntoTurns,
+  isConversationSegment,
   isUserItem,
+  openApprovalId,
   segmentTurn,
 } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
@@ -213,6 +215,17 @@ export type SessionTimelineProps = {
   firstMessageCaption?: string;
   /** Names a tool call's connector in the plain register (UX review M2). */
   connectorOf?: ConnectorOf;
+  /**
+   * Whether the agent's tool activity is shown. Off leaves the conversation
+   * and whatever waits on the person (see `isConversationSegment`); the
+   * "Working…" row stays, so a turn in progress still says so.
+   */
+  showToolActivity?: boolean;
+  /**
+   * The session waits on the person (an input-required state), so its open
+   * approval stays in sight with tool activity hidden.
+   */
+  isAwaitingPerson?: boolean;
 };
 
 /**
@@ -235,6 +248,8 @@ export function SessionTimeline({
   isCancellingTurn = false,
   firstMessageCaption,
   connectorOf,
+  showToolActivity = true,
+  isAwaitingPerson = false,
 }: SessionTimelineProps) {
   const classes = useStyles();
 
@@ -252,12 +267,18 @@ export function SessionTimeline({
   const scrollAnchor = useRef<{ index: number; top: number } | null>(null);
 
   const showEarlier = useCallback(() => {
-    const anchor = findTurn(listRef.current, firstShown);
+    // The first turn on screen, which is not always `firstShown`: with tool
+    // activity hidden a turn of nothing but work renders nothing.
+    const anchor =
+      listRef.current?.querySelector<HTMLElement>('[data-turn-index]');
     scrollAnchor.current = anchor
-      ? { index: firstShown, top: anchor.getBoundingClientRect().top }
+      ? {
+          index: Number(anchor.dataset.turnIndex),
+          top: anchor.getBoundingClientRect().top,
+        }
       : null;
     setWindowSize(size => size + RECENT_TURNS);
-  }, [firstShown]);
+  }, []);
 
   useLayoutEffect(() => {
     const anchor = scrollAnchor.current;
@@ -349,6 +370,9 @@ export function SessionTimeline({
    * opens onto its exact call; a row inside one is technical, because opening
    * the summary was already the decision to see how the work was done.
    */
+  const openApproval = showToolActivity
+    ? undefined
+    : openApprovalId(timeline.items, isAwaitingPerson);
   const firstUserMessageId = firstMessageCaption
     ? timeline.items.find(item => item.kind === 'user-message')?.id
     : undefined;
@@ -386,7 +410,18 @@ export function SessionTimeline({
         // window moving.
         const turnIndex = firstShown + offset;
         const isLastTurn = turnIndex === turns.length - 1;
-        const segments = segmentTurn(turn.items);
+        const allSegments = segmentTurn(turn.items);
+        const segments = showToolActivity
+          ? allSegments
+          : allSegments.filter(segment =>
+              isConversationSegment(segment, openApproval),
+            );
+        // A turn of nothing but work (resumed by a decision with no words,
+        // say) leaves no marker standing over nothing. Its number stays
+        // taken, so the turns around it keep theirs.
+        if (segments.length === 0) {
+          return null;
+        }
         // The agent's side of the turn opens with its name and face, once —
         // everything until the next user bubble is then implicitly the agent's.
         const entries: ReactNode[] = [];

@@ -197,6 +197,29 @@ export function counterIncrease(
 }
 
 /**
+ * How far before a point {@link dataBefore} looks for a sample.
+ *
+ * A gateway series exists only from its label set's first call since its pod
+ * started, so a restart followed by a quiet spell (a weekend) leaves no series
+ * at all — a day's lookback mistook that for data not reaching back. A week
+ * is still a small read beside the window-long queries the page already runs.
+ */
+export const DATA_START_LOOKBACK = '7d';
+
+/**
+ * Whether any token series has a sample in the {@link DATA_START_LOOKBACK}
+ * before `secondsAgo`: one sample, or an empty vector. The one definition of
+ * "the data reaches back to here" behind both the data-start note and the
+ * spend change.
+ *
+ * Tokens rather than cost: every model call records them, priced or not, so a
+ * window of unpriced calls still counts as recorded.
+ */
+function dataBefore(only: string, secondsAgo: number): string {
+  return `count(last_over_time(${TokenUsage.name}_sum${only}[${DATA_START_LOOKBACK}] offset ${formatDuration(secondsAgo)}))`;
+}
+
+/**
  * The LLM usage queries for a window and, optionally, one organization.
  *
  * `previousCost` is the same spend over the window just before this one
@@ -253,6 +276,20 @@ export function llmUsageQueriesFor({ days, org }: LlmUsageQueryOptions = {}) {
     unpricedLookups: `sum by (gen_ai_request_model, gen_ai_response_model, status) ${counterIncrease(`${CatalogLookups.name}{status!="Exact"}`, window)} > 0`,
     /** {@link cost} over the window before this one. */
     previousCost: `sum by (${BY_AGENT_MODEL_TYPE}) ${counterIncrease(`${Cost.name}${only}`, window, window)}`,
+    /**
+     * Whether the gateway recorded anything in the
+     * {@link DATA_START_LOOKBACK} before this window starts: one sample, or
+     * none. Gates the "data starts on …" note, so a window whose first days
+     * merely had no calls does not read as one the data does not reach.
+     */
+    dataBeforeWindow: dataBefore(only, durationSeconds(window)),
+    /**
+     * The same check before the *previous* window starts. Without data
+     * there, {@link previousCost} covers only part of its window and the
+     * change against it overstates growth — on a gateway whose metrics began
+     * mid-window it read "▲ 330%".
+     */
+    dataBeforePreviousWindow: dataBefore(only, 2 * durationSeconds(window)),
   };
 }
 

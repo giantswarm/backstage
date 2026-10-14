@@ -9,8 +9,12 @@ import {
 } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
+import { Alert, Badge, Button, Flex, Switch, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   DateComponent,
@@ -21,6 +25,7 @@ import {
   ShellPageBadgeSkeleton,
   ShellPageTitleSkeleton,
   StatusDot,
+  TOUCH_MEDIA,
   useProvidePageHeaderActions,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -41,6 +46,7 @@ import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
+import { useShowToolActivity } from '../../hooks/useShowToolActivity';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
 import { AvatarSize } from '../../lib/agentAvatar';
@@ -92,10 +98,42 @@ import { AgentAvatar } from '../AgentAvatar';
 import { SEND_KEY_CAPTIONS } from '../../lib/sendKey';
 import { SendKeyHint } from '../SendKeyHint';
 
+/** Long enough to read why the switch went back, like the other failure toasts. */
+const TOOL_ACTIVITY_TOAST_TIMEOUT_MS = 12000;
+
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
 
 const useStyles = makeStyles(theme => ({
+  // bui's Switch has one size, sized for forms. On the meta line it takes the
+  // line's text size and a proportionally smaller track (1.5 × 0.875rem
+  // rather than 2 × 1.143rem: two thumbs plus their margins wide, so bui's
+  // `translateX(100%)` still lands the thumb at the end). One unit when the
+  // line wraps at phone width.
+  toolActivitySwitch: {
+    gap: 'var(--bui-space-2)',
+    fontSize: 'var(--bui-font-size-2)',
+    lineHeight: 1.4,
+    color: 'var(--bui-fg-secondary)',
+    whiteSpace: 'nowrap',
+    // A 44px thumb target on touch without a taller line: the padding widens
+    // what the label catches, the negative margin gives the height back.
+    [TOUCH_MEDIA]: {
+      paddingBlock: 14,
+      marginBlock: -14,
+    },
+    '& .bui-SwitchIndicator': {
+      flexShrink: 0,
+      width: '1.5rem',
+      height: '0.875rem',
+      borderRadius: '0.875rem',
+      '&::before': {
+        width: '0.625rem',
+        height: '0.625rem',
+        margin: '0.125rem',
+      },
+    },
+  },
   // One readable column, like any chat surface: full-bleed prose is hard to
   // scan, and the conversation is what this page is for.
   //
@@ -601,6 +639,32 @@ export function SessionDetailPage() {
           }
         : undefined,
     [rowId, pinned, togglePin],
+  );
+
+  // Whether the conversation shows the agent's tool activity, kept per
+  // person through the StorageApi like the pin.
+  const toastApi = useApi(toastApiRef);
+  const {
+    showToolActivity,
+    isKnown: isToolActivityKnown,
+    setShowToolActivity,
+  } = useShowToolActivity();
+  const changeToolActivity = useCallback(
+    (show: boolean) => {
+      // A failed write puts the switch and the conversation back to the
+      // stored choice, so say why rather than let it snap back.
+      setShowToolActivity(show).catch((failure: Error) => {
+        toastApi.post({
+          title: show
+            ? 'Could not show tool activity'
+            : 'Could not hide tool activity',
+          description: failure.message,
+          status: 'danger',
+          timeout: TOOL_ACTIVITY_TOAST_TIMEOUT_MS,
+        });
+      });
+    },
+    [setShowToolActivity, toastApi],
   );
 
   const actions = useMemo(
@@ -1312,7 +1376,24 @@ export function SessionDetailPage() {
      does not move `updated_at` on a turn, so both would only restate the start
      (kagent-dev/kagent#2397). */
   const startedMeta = (
-    <>Started {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}</>
+    <Text variant="body-small" color="secondary">
+      Started {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
+    </Text>
+  );
+
+  /* A view preference for the conversation below, so it sits on the line
+     that describes the session rather than among the actions on it (PO), at
+     the line's text size. Rendered here rather than through ShellPage's
+     `meta`, which wraps its content in text the switch's label cannot nest
+     in. Held until the stored choice is read, like the conversation, so it
+     never shows a state it is about to flip from. */
+  const toolActivitySwitch = isToolActivityKnown && (
+    <Switch
+      label="Show tool activity"
+      isSelected={showToolActivity}
+      onChange={changeToolActivity}
+      className={classes.toolActivitySwitch}
+    />
   );
 
   return (
@@ -1323,9 +1404,10 @@ export function SessionDetailPage() {
         <>
           {stateBadges}
           {agentIdentity}
+          {startedMeta}
+          {toolActivitySwitch}
         </>
       }
-      meta={startedMeta}
     >
       <Flex
         ref={setColumnElement}
@@ -1344,23 +1426,33 @@ export function SessionDetailPage() {
           />
         )}
 
-        <SessionTimeline
-          timeline={timelineWithLive}
-          agentName={row.agentName}
-          agentAvatarUrl={avatarUrl}
-          isAgentWorking={showWorking}
-          streamLost={streamLost}
-          stalledSince={stalledSince}
-          onCancelTurn={isStalled ? stopTurn : undefined}
-          isCancellingTurn={cancellation.isCancelling}
-          // A hand-off's opener was written by the portal, not the person
-          // (UX review M20). Known only from the router state of the arrival:
-          // kagent stores no such flag, so a later visit shows it plain.
-          firstMessageCaption={
-            handoff?.prepared ? 'Prepared by the portal' : undefined
-          }
-          connectorOf={connectorOf}
-        />
+        {/* Held until the stored "Show tool activity" choice is read, so a
+            person who hides the work never sees it appear and vanish. */}
+        {!isToolActivityKnown ? (
+          <LoadingIndicator label="Reading the session…" />
+        ) : (
+          <SessionTimeline
+            timeline={timelineWithLive}
+            agentName={row.agentName}
+            agentAvatarUrl={avatarUrl}
+            isAgentWorking={showWorking}
+            streamLost={streamLost}
+            stalledSince={stalledSince}
+            onCancelTurn={isStalled ? stopTurn : undefined}
+            isCancellingTurn={cancellation.isCancelling}
+            // A hand-off's opener was written by the portal, not the person
+            // (UX review M20). Known only from the router state of the arrival:
+            // kagent stores no such flag, so a later visit shows it plain.
+            firstMessageCaption={
+              handoff?.prepared ? 'Prepared by the portal' : undefined
+            }
+            connectorOf={connectorOf}
+            showToolActivity={showToolActivity}
+            isAwaitingPerson={Boolean(
+              state && AWAITING_INPUT_STATES.has(state.key),
+            )}
+          />
+        )}
 
         {bottomControl}
       </Flex>
