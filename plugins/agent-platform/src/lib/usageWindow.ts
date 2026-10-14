@@ -4,7 +4,6 @@
  */
 export {
   DEFAULT_USAGE_WINDOW_DAYS,
-  formatUsageDay,
   formatUsageWindowParam,
   parseUsageWindowParam,
   USAGE_WINDOW_OPTIONS,

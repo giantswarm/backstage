@@ -145,10 +145,10 @@ Gateway figures cover everyone's traffic and need the installation's metrics
 show the person's own session figures.
 
 Each installation's metrics start on a different day. When the selected range
-reaches back further than the data, Overview, Cost and Connectors say where
-their data starts and how many of the range's days it covers; otherwise they
-say nothing. Cost shows the change against the previous range only when the
-data covers all of it.
+reaches back further than the records, Overview, Cost and Connectors say since
+when calls were recorded and how many of the range's days that covers;
+otherwise they say nothing. Cost shows the change against the previous range
+only when the records reach back before it.
 
 ## Profile and settings
 
@@ -2076,8 +2076,8 @@ everyone's calls; Your sessions prices only the reader's tokens.
   midnight, and an instant query per chart,
   `increase(...[<elapsed-since-midnight>])`, fills the last row
   (`applyTodayPartial`). The Cost tab's spend change compares whole windows
-  (`previousCost`, an offset query), and only when `previousCostCovered`
-  finds cost samples in the day before the previous window starts.
+  (`previousCost`, an offset query), and only when
+  `dataBeforePreviousWindow` finds records before the previous window starts.
 - **The axis is the window.** `reduceDaily` renders every day of
   `dailyWindowDayKeys()`, zeros included; otherwise recharts drew a one-day
   metric as one bar across the chart. `StackedBarChart`'s `maxBarWidth` is the
@@ -2189,29 +2189,39 @@ full window. muster's MCP section passes the window to `/usage` as hours
 and buckets it by day. `windowDays` and `windowStart` travel in the response,
 so no heading hardcodes a window.
 
-**Where the data starts is read from the data**, never configured, and shown
-only when it is after the window's first day (`usageDataStart` in
+**Where the records start is read from the data**, never configured. A note
+shows only when the records start after the window's first day _and_ nothing
+was recorded in the week before the window (`usageDataStart` in
 `agent-platform-common`):
 
 - Gateway views: `firstSampledDay` takes the earliest day any daily range
-  answer (cost, tokens, calls) has a point for, else today's partial. No extra
-  query; a zero is a day the series existed, so it counts. `usage.dataStart`
-  feeds `DataStartNote` on Overview and Cost.
-- Connectors: muster-backend's `/usage` returns `data_start`, the first bucket
-  any outcome series has a sample for.
-- The spend delta: one more instant query with `comparePrevious`,
-  `count(last_over_time(<cost>[1d] offset <2 × window>))`, scoped like
-  `previousCost`. Empty or failed drops `previousCostUsd`, which hides the
-  delta; the Spend tile's hint says it shows only when the data covers the
-  previous window.
+  answer (cost, tokens, calls) has a point for; with none, but window totals,
+  it is today. A zero is a day the series existed, so it counts.
+  `usage.dataStart` feeds `DataStartNote` on Overview and Cost.
+- One definition of "the data reaches back to here" (`dataBefore` in
+  `llmUsageQueries.ts`): `count(last_over_time(<tokens>[7d] offset X))`,
+  scoped like the page. `dataBeforeWindow` (offset: the window) gates the
+  note; `dataBeforePreviousWindow` (offset: twice the window, only with
+  `comparePrevious`) gates the spend delta. Tokens, not cost, so unpriced
+  calls count. An answer is read from the data whenever there is any, so a
+  failed refetch keeps it; without data the note stays away and the delta is
+  dropped.
+- Connectors: muster-backend's `/usage` reads its outcome query from a week
+  before the window and returns `data_start`, the first bucket the chart
+  fills from a sample, unless the week before held one.
 
-A series is absent, not zero, before its label set's first call since the
-gateway or muster pod started, so a long quiet stretch at the start of the
-window after a restart also reads as the data starting later.
+A series exists only from its label set's first call since the gateway or
+muster pod started. Prometheus cannot tell a source that was not exporting yet
+from one that restarted and then saw no calls, so the notes say what was
+recorded ("has recorded model calls only since …"), which is true either way.
+The week's lookback keeps a restart followed by a quiet weekend from reading as
+missing data.
 
 `sessionUsage.maxAgeMs` defaults to `windowDays` plus one day. Set explicitly,
 it does not follow `windowDays`: a value below the window drops sessions idle
-for longer than it, though their turns are inside the window.
+for longer than it, though their turns are inside the window. `maxSessions`
+(60) does not scale with `windowDays` either; past it the oldest sessions are
+`skipped`, so raise it with a wider window.
 
 ### Your top connectors is prefix-derived
 

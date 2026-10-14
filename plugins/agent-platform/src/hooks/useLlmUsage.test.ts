@@ -30,11 +30,16 @@ function stub({ query, enabled = true }: { query: string; enabled?: boolean }) {
   if (enabled) {
     issued.add(query);
   }
+  // As react-query: no data while disabled, nor for a failure that never had
+  // an answer; a failed refetch keeps the answer it had.
+  const hasData = enabled && (!failed.has(query) || answers.has(query));
   return {
-    data: {
-      status: 'success',
-      data: { resultType: 'vector', result: answers.get(query) ?? [] },
-    },
+    data: hasData
+      ? {
+          status: 'success',
+          data: { resultType: 'vector', result: answers.get(query) ?? [] },
+        }
+      : undefined,
     isLoading: pending.has(query),
     error: failed.has(query) ? new Error('mimir') : null,
     isAvailable: true,
@@ -178,11 +183,11 @@ describe('useLlmUsage with options', () => {
   });
 
   it('reports the previous period’s spend when asked', () => {
-    const { previousCost, previousCostCovered } = llmUsageQueriesFor();
+    const { previousCost, dataBeforePreviousWindow } = llmUsageQueriesFor();
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
     ]);
-    answers.set(previousCostCovered, [
+    answers.set(dataBeforePreviousWindow, [
       { metric: {}, value: [1757462400, '3'] },
     ]);
 
@@ -191,7 +196,7 @@ describe('useLlmUsage with options', () => {
     );
 
     expect(issued).toContain(previousCost);
-    expect(issued).toContain(previousCostCovered);
+    expect(issued).toContain(dataBeforePreviousWindow);
     expect(result.current.usage?.totals.previousCostUsd).toBe(4.5);
   });
 
@@ -211,15 +216,32 @@ describe('useLlmUsage with options', () => {
     expect(result.current.usage?.totals.previousCostUsd).toBeUndefined();
   });
 
-  it('drops the previous period’s spend when the coverage check fails', () => {
-    const { previousCost, previousCostCovered } = llmUsageQueriesFor();
+  it('keeps the previous period’s spend when a refetch of the check fails', () => {
+    // react-query keeps the last good answer beside the error; one transient
+    // Mimir error must not hide a delta whose baseline was verified.
+    const { previousCost, dataBeforePreviousWindow } = llmUsageQueriesFor();
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
     ]);
-    answers.set(previousCostCovered, [
+    answers.set(dataBeforePreviousWindow, [
       { metric: {}, value: [1757462400, '3'] },
     ]);
-    failed.add(previousCostCovered);
+    failed.add(dataBeforePreviousWindow);
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { comparePrevious: true }),
+    );
+
+    expect(result.current.isError).toBe(false);
+    expect(result.current.usage?.totals.previousCostUsd).toBe(4.5);
+  });
+
+  it('drops the previous period’s spend when the check never answered', () => {
+    const { previousCost, dataBeforePreviousWindow } = llmUsageQueriesFor();
+    answers.set(previousCost, [
+      { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
+    ]);
+    failed.add(dataBeforePreviousWindow);
 
     const { result } = renderHook(() =>
       useLlmUsage('gazelle', { comparePrevious: true }),
@@ -230,13 +252,13 @@ describe('useLlmUsage with options', () => {
   });
 
   it('compares one organization with its own previous period', () => {
-    const { previousCost, previousCostCovered } = llmUsageQueriesFor({
+    const { previousCost, dataBeforePreviousWindow } = llmUsageQueriesFor({
       org: 'support',
     });
     answers.set(previousCost, [
       { metric: { agent: 'sre' }, value: [1757462400, '2.25'] },
     ]);
-    answers.set(previousCostCovered, [
+    answers.set(dataBeforePreviousWindow, [
       { metric: {}, value: [1757462400, '1'] },
     ]);
 
@@ -253,7 +275,7 @@ describe('useLlmUsage with options', () => {
 
   it.each([
     ['spend', llmUsageQueriesFor().previousCost],
-    ['coverage check', llmUsageQueriesFor().previousCostCovered],
+    ['coverage check', llmUsageQueriesFor().dataBeforePreviousWindow],
   ])('waits for the comparison’s %s it asked for', (_label, query) => {
     pending.add(query);
 
@@ -339,9 +361,9 @@ describe('useLlmUsage data start', () => {
   >('../lib/llmUsageQueries');
   const DAY = 86400;
 
-  it('names the day the gateway’s data starts when it starts inside the window', () => {
+  /** Data on the newest two complete days of a 7-day window only. */
+  function dataFromYesterdayButOne() {
     const { end } = dailyRangeWindow(Date.now(), 7);
-    // The newest two complete days hold data; the five before do not.
     const first = Number(end) - DAY;
     answers.set(llmUsageRangeQueries.tokensPerDayByType, [
       {
@@ -352,13 +374,47 @@ describe('useLlmUsage data start', () => {
         ],
       },
     ]);
+    return new Date((first - DAY) * 1000).toISOString().slice(0, 10);
+  }
+
+  it('names the day the gateway’s records start when nothing came before the window', () => {
+    const day = dataFromYesterdayButOne();
 
     const { result } = renderHook(() => useLlmUsage('gazelle', { days: 7 }));
 
-    expect(result.current.usage?.dataStart).toEqual({
-      day: new Date((first - DAY) * 1000).toISOString().slice(0, 10),
-      coveredDays: 3,
-    });
+    expect(issued).toContain(llmUsageQueriesFor({ days: 7 }).dataBeforeWindow);
+    expect(result.current.usage?.dataStart).toEqual({ day, coveredDays: 3 });
+  });
+
+  it('says nothing when the gateway recorded something in the week before the window', () => {
+    // The window's first days were quiet, not unrecorded — after a restart,
+    // a series exists only from its first call.
+    dataFromYesterdayButOne();
+    answers.set(llmUsageQueriesFor({ days: 7 }).dataBeforeWindow, [
+      { metric: {}, value: [1757462400, '4'] },
+    ]);
+
+    const { result } = renderHook(() => useLlmUsage('gazelle', { days: 7 }));
+
+    expect(result.current.usage?.dataStart).toBeUndefined();
+  });
+
+  it('says nothing when the check failed before it ever answered', () => {
+    dataFromYesterdayButOne();
+    failed.add(llmUsageQueriesFor({ days: 7 }).dataBeforeWindow);
+
+    const { result } = renderHook(() => useLlmUsage('gazelle', { days: 7 }));
+
+    expect(result.current.isError).toBe(false);
+    expect(result.current.usage?.dataStart).toBeUndefined();
+  });
+
+  it('waits for the check rather than popping the note in later', () => {
+    pending.add(llmUsageQueriesFor({ days: 7 }).dataBeforeWindow);
+
+    const { result } = renderHook(() => useLlmUsage('gazelle', { days: 7 }));
+
+    expect(result.current.isLoading).toBe(true);
   });
 
   it('says nothing when the data covers the whole window', () => {

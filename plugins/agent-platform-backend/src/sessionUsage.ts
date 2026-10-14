@@ -34,7 +34,9 @@ export const DEFAULT_WINDOW_DAYS = 30;
 /**
  * How many of a user's sessions may be evaluated in one pass.
  *
- * Three times a measured real account (21 sessions).
+ * Three times a measured real account (21 sessions) over the default 30-day
+ * window. It does not scale with `windowDays`: a wider window holds more
+ * sessions, so raise this with it, within what `budgetMs` can read.
  * Unlike the session-states pass, the window here *is* the reported scope, so
  * this cap is the only thing that can make the page under-report — which is why
  * it is generous and why exceeding it is surfaced as `skipped` rather than
@@ -55,9 +57,6 @@ export const DEFAULT_MAX_SESSIONS = 60;
 export function defaultMaxAgeMs(windowDays: number): number {
   return (windowDays + 1) * DAY_MS;
 }
-
-/** {@link defaultMaxAgeMs} for the default window. */
-export const DEFAULT_MAX_AGE_MS = defaultMaxAgeMs(DEFAULT_WINDOW_DAYS);
 
 /**
  * Task reads in flight at once.

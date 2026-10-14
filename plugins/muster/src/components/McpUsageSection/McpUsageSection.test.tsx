@@ -8,6 +8,7 @@ import {
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import { formatDayWithYear } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { McpUsage, MusterApi, musterApiRef } from '../../apis';
 import {
   MusterInstance,
@@ -335,18 +336,12 @@ describe('McpUsageSection data start', () => {
     await screen.findByText('Tool calls');
   }
 
-  it('says where the data starts when it starts inside the window', async () => {
+  it('says since when calls were recorded when that is inside the window', async () => {
     await renderWith(weekFrom('2026-10-12T00:00:00.000Z'));
 
-    const day = new Date(Date.UTC(2026, 9, 12)).toLocaleDateString(undefined, {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'UTC',
-    });
     expect(
       screen.getByText(
-        `Tool-call data starts on ${day}, so these figures cover 3 of the 7 days.`,
+        `Tool calls have been recorded only since ${formatDayWithYear('2026-10-12')}, so these figures cover 3 of the 7 days.`,
       ),
     ).toBeInTheDocument();
   });
@@ -357,7 +352,7 @@ describe('McpUsageSection data start', () => {
   ])('says nothing when the data %s', async (_label, dataStart) => {
     await renderWith(weekFrom(dataStart));
 
-    expect(screen.queryByText(/Tool-call data starts/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/recorded only since/)).not.toBeInTheDocument();
   });
 });
 

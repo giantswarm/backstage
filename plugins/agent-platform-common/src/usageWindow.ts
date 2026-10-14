@@ -108,17 +108,3 @@ export function usageDataStart(
   const coveredDays = windowDays.filter(day => day >= firstDataDay).length;
   return { day: firstDataDay, coveredDays };
 }
-
-/** A `YYYY-MM-DD` UTC day as a date with its year, e.g. `9 Sep 2026`. */
-export function formatUsageDay(day: string): string {
-  const at = Date.parse(`${day}T00:00:00Z`);
-  if (Number.isNaN(at)) {
-    return day;
-  }
-  return new Date(at).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-}

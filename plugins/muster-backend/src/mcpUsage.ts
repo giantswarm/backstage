@@ -43,10 +43,12 @@ export interface McpUsageResponse {
   step_hours: number;
   buckets: McpUsageBucket[];
   /**
-   * The start of the first bucket holding any sample, ISO timestamp — where
-   * muster's metrics start inside the window. Absent when no bucket has one.
-   * A bucket seeded with zeros has no sample; a series that existed and
-   * counted nothing does.
+   * The start of the first bucket the chart fills from a sample, ISO
+   * timestamp — where muster's records start inside the window. Absent when
+   * none does, or when muster recorded calls in the
+   * {@link DATA_START_LOOKBACK_SECONDS} before the window: the window's first
+   * days were then quiet, not unrecorded. A bucket seeded with zeros has no
+   * sample; a series that existed and counted nothing does.
    */
   data_start?: string;
   totals: {
@@ -116,6 +118,24 @@ export function pickPrometheusServer(
 
 const HOUR_SECONDS = 3600;
 const DAY_SECONDS = 24 * HOUR_SECONDS;
+
+/**
+ * How far before the window the outcome query also reads, to tell a window
+ * muster's records do not reach from one whose first days had no calls.
+ *
+ * A series exists only from its label set's first call since muster started,
+ * so a restart followed by a quiet spell leaves none. A week matches the
+ * gateway views' lookback (`DATA_START_LOOKBACK` in the agent-platform
+ * plugin), so the Usage tabs mean the same thing by "recorded only since".
+ */
+export const DATA_START_LOOKBACK_SECONDS = 7 * DAY_SECONDS;
+
+const OUTCOMES = ['ok', 'error', 'error_result'] as const;
+type Outcome = (typeof OUTCOMES)[number];
+
+function isOutcome(value: string | undefined): value is Outcome {
+  return OUTCOMES.some(outcome => outcome === value);
+}
 
 /** What `/usage` covers: the last `n` hours, or the UTC month so far. */
 export type McpUsageRange = number | 'month';
@@ -367,34 +387,48 @@ export async function getMcpUsage(
   // fine, [12h]+ returning 500 while the equivalent range query kept working).
   // The first evaluation is one step after the window's start: the one at the
   // start itself covers the step before the window.
-  const rangeQuery = (query: string): Promise<PromSeries[]> =>
+  const rangeQueryFrom = (
+    query: string,
+    fromSeconds: number,
+  ): Promise<PromSeries[]> =>
     runQuery(RANGE_TOOL, {
       query,
       // RFC3339, not Unix seconds: mcp-prometheus documents both but its
       // deployed versions only parse RFC3339.
-      start: new Date((startSeconds + stepSeconds) * 1000).toISOString(),
+      start: new Date((fromSeconds + stepSeconds) * 1000).toISOString(),
       end: new Date(endSeconds * 1000).toISOString(),
       step,
-    }).then(series => withinWindow(series, startSeconds, endSeconds));
+    });
+  const rangeQuery = (query: string): Promise<PromSeries[]> =>
+    rangeQueryFrom(query, startSeconds).then(series =>
+      withinWindow(series, startSeconds, endSeconds),
+    );
+  const lookbackStart = startSeconds - DATA_START_LOOKBACK_SECONDS;
   // The secondary rollups degrade to empty on failure instead of taking the
   // whole view down.
   const optional = (promise: Promise<PromSeries[]>): Promise<PromSeries[]> =>
     promise.catch(() => []);
 
-  let byOutcomeOverTime: PromSeries[];
+  let byOutcomeWithLookback: PromSeries[];
   let byToolOutcome: PromSeries[];
   let byServerOutcome: PromSeries[];
   let latencyBuckets: PromSeries[];
   let latencyBucketsByTool: PromSeries[];
   try {
     [
-      byOutcomeOverTime,
+      byOutcomeWithLookback,
       byToolOutcome,
       byServerOutcome,
       latencyBuckets,
       latencyBucketsByTool,
     ] = await Promise.all([
-      rangeQuery(`sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`),
+      // Read from a week before the window: the extra points say whether
+      // muster recorded anything there (`data_start`), and are dropped before
+      // anything is counted.
+      rangeQueryFrom(
+        `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`,
+        lookbackStart,
+      ),
       optional(
         rangeQuery(
           `sum by (tool, outcome) (increase(${METRIC_CALLS}[${step}]))`,
@@ -421,6 +455,22 @@ export async function getMcpUsage(
     );
   }
 
+  const byOutcomeOverTime = withinWindow(
+    byOutcomeWithLookback,
+    startSeconds,
+    endSeconds,
+  );
+  const recordedBeforeWindow = byOutcomeWithLookback.some(
+    series =>
+      isOutcome(series.labels.outcome) &&
+      series.points.some(
+        point =>
+          point.ts > lookbackStart &&
+          point.ts <= startSeconds &&
+          Number.isFinite(point.value),
+      ),
+  );
+
   // Time buckets: seed every step in the window so the chart reads as a full
   // range, then fill from the range-query samples. A sample at timestamp T
   // covers (T - step, T]; label the bucket by its start for display.
@@ -437,29 +487,21 @@ export async function getMcpUsage(
       error_result: 0,
     });
   }
+  // The first step the chart fills from a sample, by the chart's own
+  // definition of one, so the note and the bars cannot disagree.
+  let firstSampled: number | undefined;
   for (const series of byOutcomeOverTime) {
     const outcome = series.labels.outcome;
-    if (outcome !== 'ok' && outcome !== 'error' && outcome !== 'error_result') {
+    if (!isOutcome(outcome)) {
       continue;
     }
     for (const point of series.points) {
       const bucket = buckets.get(point.ts);
       if (bucket && Number.isFinite(point.value)) {
         bucket[outcome] += point.value;
-      }
-    }
-  }
-
-  // The first step any outcome series has a sample for, so the page can say
-  // when the window reaches back further than the metrics do.
-  let firstSampled: number | undefined;
-  for (const series of byOutcomeOverTime) {
-    for (const point of series.points) {
-      if (
-        Number.isFinite(point.value) &&
-        (firstSampled === undefined || point.ts < firstSampled)
-      ) {
-        firstSampled = point.ts;
+        if (firstSampled === undefined || point.ts < firstSampled) {
+          firstSampled = point.ts;
+        }
       }
     }
   }
@@ -524,9 +566,10 @@ export async function getMcpUsage(
     range_hours: hours,
     step_hours: stepHours,
     buckets: [...buckets.values()],
-    ...(firstSampled !== undefined && {
-      data_start: new Date((firstSampled - stepSeconds) * 1000).toISOString(),
-    }),
+    ...(firstSampled !== undefined &&
+      !recordedBeforeWindow && {
+        data_start: new Date((firstSampled - stepSeconds) * 1000).toISOString(),
+      }),
     totals: {
       calls: totalCalls,
       errors: totalErrors,

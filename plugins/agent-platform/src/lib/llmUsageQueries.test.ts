@@ -172,7 +172,8 @@ describe('llmUsageQueriesFor', () => {
       'durationP50',
       'durationP95',
       'previousCost',
-      'previousCostCovered',
+      'dataBeforeWindow',
+      'dataBeforePreviousWindow',
     ] as const) {
       expect(queries[key]).toContain(only);
     }
@@ -193,12 +194,17 @@ describe('llmUsageQueriesFor', () => {
     );
   });
 
-  it('asks whether spend was recorded in the day before the previous window', () => {
-    expect(llmUsageQueriesFor({ days: 7 }).previousCostCovered).toBe(
-      'count(last_over_time(agentgateway_gen_ai_client_cost_usd_total[1d] offset 14d))',
+  it('asks whether the gateway recorded anything in the week before each window', () => {
+    const queries = llmUsageQueriesFor({ days: 7 });
+
+    expect(queries.dataBeforeWindow).toBe(
+      'count(last_over_time(agentgateway_gen_ai_client_token_usage_sum[7d] offset 7d))',
     );
-    expect(llmUsageQueriesFor({ days: 90 }).previousCostCovered).toContain(
-      '[1d] offset 180d',
+    expect(queries.dataBeforePreviousWindow).toBe(
+      'count(last_over_time(agentgateway_gen_ai_client_token_usage_sum[7d] offset 14d))',
+    );
+    expect(llmUsageQueriesFor({ days: 90 }).dataBeforePreviousWindow).toContain(
+      '[7d] offset 180d',
     );
   });
 
@@ -314,11 +320,12 @@ describe('counterIncrease', () => {
   });
 
   it('is what every usage query counts with — no bare increase() or rate()', () => {
-    // The coverage check counts series that exist, not a counter's growth.
-    const { previousCostCovered: _, ...counted } = llmUsageQueriesFor({
-      days: 7,
-      org: 'support',
-    });
+    // The coverage checks count series that exist, not a counter's growth.
+    const {
+      dataBeforeWindow: _window,
+      dataBeforePreviousWindow: _previous,
+      ...counted
+    } = llmUsageQueriesFor({ days: 7, org: 'support' });
     const all = [
       ...Object.values(counted),
       ...Object.values(llmUsageRangeQueriesFor()),

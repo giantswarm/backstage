@@ -57,7 +57,7 @@ export function CostKpiTiles({
 
   const windowNote = `the last ${windowDays} days`;
   // Said in the hint because the change is hidden, not zero, when the data
-  // starts inside the previous window (`previousCostCovered`).
+  // does not reach back to the previous window (`dataBeforePreviousWindow`).
   const deltaNote = `The change against the previous ${windowDays} days shows only when the data covers all of them.`;
 
   return (

@@ -141,12 +141,18 @@ export interface Config {
          * Instances and tasks the controller has pruned are gone outright — past
          * that point the window is silently incomplete and no field in the
          * response can say so.
+         *
+         * `maxAgeMs` follows it unless set; `maxSessions` does not. A wider
+         * window holds more sessions, and past the cap the oldest are
+         * `skipped`, so raise `maxSessions` with it (and keep the pass within
+         * `budgetMs`).
          */
         windowDays?: number;
 
         /**
          * How many sessions may be evaluated in one pass, newest activity
-         * first. Defaults to 60 — three times a measured real account.
+         * first. Defaults to 60 — three times a measured real account over
+         * the default 30-day window. It does not scale with `windowDays`.
          *
          * Higher than the `sessionStates` cap because the window here *is* the
          * reported scope, which makes this cap the only thing that can make the

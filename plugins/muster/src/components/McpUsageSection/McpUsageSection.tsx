@@ -8,7 +8,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   formatCount,
   formatSeconds,
-  formatUsageDay,
+  formatDayWithYear,
   parseUsageWindowParam,
   usageDataStart,
   USAGE_WINDOW_PARAM,
@@ -275,9 +275,11 @@ function UsageBody({
   const windowDays = Math.round(hours / 24);
   const rangeLabel = `${windowDays}d`;
   const windowNote = `over the last ${windowDays} days`;
-  // Where muster's metrics start, when that is after the window does: the
-  // figures then cover fewer days than the window names. Daily buckets only,
-  // which is all the Usage screen asks for.
+  // Where muster's records start, when that is after the window does and it
+  // recorded nothing in the week before: the figures then cover fewer days
+  // than the window names. Worded as what was recorded, because a restart
+  // followed by a quiet spell looks the same. Daily buckets only, which is all
+  // the Usage screen asks for.
   const dataStart =
     data.step_hours >= 24
       ? usageDataStart(
@@ -460,8 +462,9 @@ function UsageBody({
           color="secondary"
           className={classes.dataStart}
         >
-          Tool-call data starts on {formatUsageDay(dataStart.day)}, so these
-          figures cover {dataStart.coveredDays} of the {windowDays} days.
+          Tool calls have been recorded only since{' '}
+          {formatDayWithYear(dataStart.day)}, so these figures cover{' '}
+          {dataStart.coveredDays} of the {windowDays} days.
         </Text>
       )}
       <Box className={classes.statRow}>

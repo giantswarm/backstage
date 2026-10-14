@@ -310,10 +310,20 @@ describe('getMcpUsage', () => {
           'month',
         );
 
-        expect(seen[0].start).toBe('2026-10-02T00:00:00.000Z');
-        expect(seen[0].end).toBe(
-          new Date(Date.UTC(2026, 9, day + 1)).toISOString(),
+        // The outcome query also reads the week before the window, for
+        // `data_start`; every other query reads the window alone.
+        const outcome = seen.find(args =>
+          String(args.query).startsWith('sum by (outcome)'),
         );
+        expect(outcome?.start).toBe('2026-09-25T00:00:00.000Z');
+        const others = seen.filter(args => args !== outcome);
+        expect(others.length).toBeGreaterThan(0);
+        for (const args of others) {
+          expect(args.start).toBe('2026-10-02T00:00:00.000Z');
+          expect(args.end).toBe(
+            new Date(Date.UTC(2026, 9, day + 1)).toISOString(),
+          );
+        }
         expect(usage.range_hours).toBe(24 * day);
         expect(usage.step_hours).toBe(24);
         expect(usage.buckets.map(bucket => bucket.start)).toEqual(
@@ -322,8 +332,9 @@ describe('getMcpUsage', () => {
           ),
         );
         expect(usage.totals.calls).toBe(day);
-        // The pre-window sample does not move where the data starts.
-        expect(usage.data_start).toBe(usage.buckets[0].start);
+        // The week before the window holds samples, so the records reach
+        // back past it and there is no start to name.
+        expect(usage).not.toHaveProperty('data_start');
         expect(usage.servers).toEqual([
           { server: 'jira', calls: day, errors: 0 },
         ]);
@@ -378,6 +389,49 @@ describe('getMcpUsage', () => {
 
       expect(usage.buckets).toHaveLength(7);
       expect(usage.data_start).toBe('2026-10-12T00:00:00.000Z');
+    });
+
+    it('is absent when muster recorded calls in the week before the window', async () => {
+      // The window's first days were quiet, not unrecorded.
+      jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
+      const client = fakeClient((tool, args) => {
+        if (tool === 'core_mcpserver_list') {
+          return SERVER_LIST;
+        }
+        const end = Date.parse(String(args.end)) / 1000;
+        return [
+          'Result Type: matrix',
+          'Result: {outcome="ok"} =>',
+          `4 @[${end - 9 * 86400}]`,
+          `2 @[${end}]`,
+        ].join('\n');
+      });
+
+      const usage = await getMcpUsage(client, INSTALLATION, {}, 168);
+
+      expect(usage.totals.calls).toBe(2);
+      expect(usage).not.toHaveProperty('data_start');
+    });
+
+    it('counts only the outcomes the chart draws, as the chart does', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
+      const client = fakeClient((tool, args) => {
+        if (tool === 'core_mcpserver_list') {
+          return SERVER_LIST;
+        }
+        const end = Date.parse(String(args.end)) / 1000;
+        return [
+          'Result Type: matrix',
+          'Result: {outcome="unknown"} =>',
+          `4 @[${end - 5 * 86400}]`,
+          '{outcome="ok"} =>',
+          `2 @[${end}]`,
+        ].join('\n');
+      });
+
+      const usage = await getMcpUsage(client, INSTALLATION, {}, 168);
+
+      expect(usage.data_start).toBe('2026-10-14T00:00:00.000Z');
     });
 
     it('is absent when no bucket has a sample', async () => {

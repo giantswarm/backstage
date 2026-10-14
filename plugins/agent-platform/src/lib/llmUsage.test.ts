@@ -823,10 +823,45 @@ describe('buildLlmUsage', () => {
         sample({ ...labels, gen_ai_response_model: 'sonnet' }, '10'),
         sample({ ...labels, gen_ai_response_model: 'haiku' }, '2'),
       ],
+      dataBeforePreviousWindow: true,
     });
 
     expect(usage.windowDays).toBe(7);
     expect(usage.totals.previousCostUsd).toBe(12);
+  });
+
+  it.each([
+    ['the data does not reach back to the previous window', false],
+    ['that is unknown', undefined],
+  ])('leaves the previous spend out when %s', (_label, covered) => {
+    const usage = buildLlmUsage({
+      ...base,
+      cost: [],
+      tokens: [],
+      previousCost: [sample(labels, '10')],
+      dataBeforePreviousWindow: covered,
+    });
+
+    expect(usage.totals).toHaveProperty('previousCostUsd', undefined);
+  });
+
+  it('names where the records start only when nothing came before the window', () => {
+    // A point at midnight of 11 Sep totals 10 Sep, the window's second day.
+    const tokensPerDay = [
+      { metric: {}, values: [[Date.UTC(2026, 8, 11) / 1000, '5']] },
+    ] as MimirMatrixSample[];
+    const build = (dataBeforeWindow: boolean | undefined) =>
+      buildLlmUsage({
+        ...base,
+        cost: [],
+        tokens: [],
+        tokensPerDay,
+        dataBeforeWindow,
+      }).dataStart;
+
+    expect(build(false)).toEqual({ day: '2026-09-10', coveredDays: 1 });
+    expect(build(true)).toBeUndefined();
+    expect(build(undefined)).toBeUndefined();
   });
 
   it('leaves the previous spend unknown when nothing was priced then', () => {
@@ -952,6 +987,7 @@ describe('firstSampledDay', () => {
   // Midnight of 10 Sep 2026: a point there totals 9 Sep.
   const SEP_10 = Date.UTC(2026, 8, 10) / 1000;
   const DAY = 86400;
+  const noTotals = { today: '2026-10-14', windowTotals: [] };
 
   it('is the earliest day any daily series has a point for, by the day it covers', () => {
     expect(
@@ -960,7 +996,7 @@ describe('firstSampledDay', () => {
           [{ metric: {}, values: [[SEP_10 + DAY, '1']] }],
           [{ metric: {}, values: [[SEP_10, '0']] }],
         ],
-        { day: '2026-10-14', samples: [] },
+        noTotals,
       ),
     ).toBe('2026-09-09');
   });
@@ -981,23 +1017,26 @@ describe('firstSampledDay', () => {
           null,
           undefined,
         ],
-        { day: '2026-10-14', samples: [] },
+        noTotals,
       ),
     ).toBe('2026-09-10');
   });
 
-  it('is today when only today’s partial has data', () => {
+  it('is today when only the window’s totals have data, since the range stops at yesterday', () => {
     expect(
       firstSampledDay([[]], {
-        day: '2026-10-14',
-        samples: [undefined, [{ metric: {}, value: [SEP_10, '3'] }]],
+        today: '2026-10-14',
+        windowTotals: [undefined, [{ metric: {}, value: [SEP_10, '3'] }]],
       }),
     ).toBe('2026-10-14');
   });
 
   it('is undefined without any data', () => {
     expect(
-      firstSampledDay([[], undefined], { day: '2026-10-14', samples: [[]] }),
+      firstSampledDay([[], undefined], {
+        today: '2026-10-14',
+        windowTotals: [[]],
+      }),
     ).toBeUndefined();
   });
 });
