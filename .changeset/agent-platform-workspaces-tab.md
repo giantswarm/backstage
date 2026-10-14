@@ -3,7 +3,7 @@
 'app': minor
 ---
 
-Customize gains a **Workspaces** tab, between Skills and Connectors, on
+Customize gains a **Workspaces** tab, last after Workflows, on
 installations whose muster lists the workspace-manager (absent elsewhere). It
 lists the workspaces of one Organization: their sources, repository count,
 what the shared volume stores (with the share's size where its class

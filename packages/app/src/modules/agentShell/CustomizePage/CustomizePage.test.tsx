@@ -512,7 +512,7 @@ describe('CustomizePage', () => {
   });
 
   describe('the Workspaces tab', () => {
-    it('sits between Skills and Connectors where an installation in scope has the workspace-manager', async () => {
+    it('sits last, after Workflows, where an installation in scope has the workspace-manager', async () => {
       mockCustomizeData = {
         ...mockCustomizeData,
         counts: { ...(mockCustomizeData.counts as object), workspaces: 2 },
@@ -523,10 +523,10 @@ describe('CustomizePage', () => {
       expect(tabs().map(([title]) => title)).toEqual([
         'Agents (5)',
         'Skills (71)',
-        'Workspaces (2)',
         'Connectors (7)',
         'Models (3)',
         'Workflows (2)',
+        'Workspaces (2)',
       ]);
       expect(screen.getByText(/^Workspaces panel/)).toBeInTheDocument();
       // The Organization scope beside the Environment control.

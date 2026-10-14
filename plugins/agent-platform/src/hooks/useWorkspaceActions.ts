@@ -45,7 +45,6 @@ export function useWorkspaceActions(installation: string, name: string) {
   const reread = () => {
     void queryClient.invalidateQueries({
       queryKey: musterWorkspacesQueryKey(installation),
-      exact: true,
     });
     void queryClient.invalidateQueries({
       queryKey: musterWorkspaceQueryKey(installation, name),

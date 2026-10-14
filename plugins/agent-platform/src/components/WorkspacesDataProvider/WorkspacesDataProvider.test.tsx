@@ -30,10 +30,11 @@ function workspace(name: string, organization: string): Workspace {
 let mockWorkspaces: Record<string, Workspace[]>;
 /** The installations whose muster lists the workspace-manager. */
 let mockWithManager: string[];
-/** The Organization resources the person reads. */
-let mockOrganizations: { cluster: string; name: string }[];
-/** Organizations whose manager refuses the person as not a member. */
-let mockNotMember: string[];
+/**
+ * The person's Organizations the manager names, per installation; `undefined`
+ * for a manager older than 0.8.0, which names none.
+ */
+let mockMemberOf: Record<string, string[]> | undefined;
 /** The installations the inventory knows to run muster, and whether it still probes. */
 let mockMusterInstallations: string[];
 let mockProbing: boolean;
@@ -52,24 +53,15 @@ const mockMusterApi = {
     };
   }),
   callTool: jest.fn(
-    async (
-      tool: string,
-      args: { organization?: string },
-      installation: string,
-    ) => {
+    async (tool: string, _args: unknown, installation: string) => {
       if (tool !== 'x_workspace-manager_list_workspaces') {
         throw new Error(`unexpected ${tool}`);
       }
-      if (args.organization && mockNotMember.includes(args.organization)) {
-        throw new Error(
-          `list workspaces: permission denied: forbidden: dev@example.io is not a member of Organization "${args.organization}"`,
-        );
-      }
-      const all = mockWorkspaces[installation] ?? [];
       return {
-        workspaces: args.organization
-          ? all.filter(w => w.organization === args.organization)
-          : all,
+        workspaces: mockWorkspaces[installation] ?? [],
+        ...(mockMemberOf
+          ? { organizations: mockMemberOf[installation] ?? [] }
+          : {}),
       };
     },
   ),
@@ -86,14 +78,6 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   }),
   useInstallationScope: () => ({ scope: 'all' }),
   applyInstallationScope: (installations: string[]) => installations,
-}));
-jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
-  Organization: class {},
-  useResources: (installations: string[]) => ({
-    resources: mockOrganizations
-      .filter(o => installations.includes(o.cluster))
-      .map(o => ({ cluster: o.cluster, getName: () => o.name })),
-  }),
 }));
 
 function Availability() {
@@ -127,8 +111,7 @@ describe('WorkspacesDataProvider', () => {
     mockWorkspaces = {
       gazelle: [workspace('docs', 'alpha'), workspace('mcp', 'beta')],
     };
-    mockOrganizations = [];
-    mockNotMember = [];
+    mockMemberOf = { gazelle: ['alpha', 'beta'] };
     mockMusterInstallations = ['gazelle'];
     mockProbing = false;
     mockUnreachable = [];
@@ -164,6 +147,7 @@ describe('WorkspacesDataProvider', () => {
 
   it('offers no Organization scope to a person in one Organization', async () => {
     mockWorkspaces = { gazelle: [workspace('docs', 'alpha')] };
+    mockMemberOf = { gazelle: ['alpha'] };
     await renderWorkspaces();
 
     await waitFor(() => expect(shownNames()).toEqual(['docs']));
@@ -181,14 +165,9 @@ describe('WorkspacesDataProvider', () => {
     await waitFor(() => expect(shownNames()).toEqual(['mcp']));
   });
 
-  it('offers an Organization without a workspace yet only where the manager takes the person as a member', async () => {
+  it('offers an Organization without a workspace yet where the manager names the person a member, in one call', async () => {
     mockWorkspaces = { gazelle: [workspace('docs', 'alpha')] };
-    mockOrganizations = [
-      { cluster: 'gazelle', name: 'alpha' },
-      { cluster: 'gazelle', name: 'gamma' },
-      { cluster: 'gazelle', name: 'outside' },
-    ];
-    mockNotMember = ['outside'];
+    mockMemberOf = { gazelle: ['alpha', 'gamma'] };
     await renderWorkspaces();
 
     await waitFor(() => expect(shownNames()).toEqual(['docs']));
@@ -202,5 +181,18 @@ describe('WorkspacesDataProvider', () => {
     expect(
       await screen.findByText('No workspaces in gamma yet'),
     ).toBeInTheDocument();
+    expect(mockMusterApi.callTool).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers the workspaces’ own Organizations from a manager that names none', async () => {
+    mockMemberOf = undefined;
+    await renderWorkspaces();
+
+    await waitFor(() => expect(shownNames()).toEqual(['docs']));
+    await userEvent.click(screen.getByRole('button', { name: /Organization/ }));
+    const options = (await screen.findAllByRole('option')).map(
+      option => option.textContent,
+    );
+    expect(options).toEqual(['alpha', 'beta']);
   });
 });

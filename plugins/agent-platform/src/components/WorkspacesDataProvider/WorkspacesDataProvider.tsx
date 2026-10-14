@@ -16,10 +16,6 @@ import {
   useInstallationInventory,
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
-import {
-  Organization,
-  useResources,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
@@ -33,7 +29,7 @@ import {
 } from '../../lib/workspaceList';
 import {
   WORKSPACE_MANAGER_SERVER,
-  type Workspace,
+  type WorkspaceList,
 } from '../../lib/workspaceManager';
 
 /** The address's Organization scope: `?organization=<name>`. */
@@ -41,9 +37,6 @@ export const ORGANIZATION_SEARCH_PARAM = 'organization';
 
 /** How often the list is read again while a row syncs or is deleted. */
 const SETTLING_REFETCH_MS = 5_000;
-
-/** How long an Organization's membership answer is taken as current. */
-const MEMBERSHIP_STALE_MS = 5 * 60_000;
 
 export type WorkspacesData = {
   /**
@@ -61,10 +54,7 @@ export type WorkspacesData = {
   setOrganization: (organization: string) => void;
   /** The scope's workspaces, every installation's. */
   rows: WorkspaceRow[];
-  /**
-   * Some installation's list, the Organizations or a membership has not
-   * answered yet.
-   */
+  /** Some installation's list has not answered yet. */
   isLoading: boolean;
   /** Why an installation's workspaces could not be read, by installation. */
   failures: Record<string, string>;
@@ -88,14 +78,10 @@ export function useWorkspacesData(): WorkspacesData {
  * The person's workspaces on the installations in the section's scope whose
  * muster lists the workspace-manager, and the Organization scope over them.
  *
- * `list_workspaces` is called as the person, without an Organization: the
- * manager answers the workspaces of every Organization the person is a member
- * of. The Organizations offered are those, and the installation's
- * Organization resources the person is a member of without a workspace yet:
- * each is asked for its workspaces, and the manager's membership refusal
- * keeps it out. Nothing is offered that the manager would refuse. A person who
- * may not list the installation's Organizations sees an Organization only once
- * it has a workspace, until the manager names the caller's Organizations.
+ * `list_workspaces` is called once per installation as the person, without an
+ * Organization: the manager answers the workspaces of every Organization the
+ * person is a member of, and those Organizations, with or without a workspace.
+ * They are the Organizations offered: nothing the manager would refuse.
  *
  * Must be mounted inside the plugin's `QueryClientProvider`.
  */
@@ -114,14 +100,17 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
   const installations = availability.available;
 
   const combineLists = useCallback(
-    (results: UseQueryResult<Workspace[]>[]) => ({
+    (results: UseQueryResult<WorkspaceList>[]) => ({
       rows: installations.flatMap((installation, index) =>
-        (results[index]?.data ?? []).map(workspace => ({
+        (results[index]?.data?.workspaces ?? []).map(workspace => ({
           ...workspace,
           installation,
           id: workspaceRowId({ installation, name: workspace.name }),
         })),
       ),
+      organizations: [
+        ...new Set(results.flatMap(result => result.data?.organizations ?? [])),
+      ].sort((a, b) => a.localeCompare(b)),
       errors: Object.fromEntries(
         installations.flatMap((installation, index) => {
           const error = results[index]?.error;
@@ -139,81 +128,21 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       queryFn: () =>
         new WorkspaceManagerClient(musterApi!, installation).listWorkspaces(),
       retry: false,
-      refetchInterval: (query: { state: { data?: Workspace[] } }) =>
-        query.state.data?.some(isSettling) ? SETTLING_REFETCH_MS : false,
+      refetchInterval: (query: { state: { data?: WorkspaceList } }) =>
+        query.state.data?.workspaces.some(isSettling)
+          ? SETTLING_REFETCH_MS
+          : false,
     })),
     combine: combineLists,
   });
   const allRows = lists.rows;
-
-  // The installation's Organizations, as far as the person may read them;
-  // those without a workspace of theirs are asked about below.
-  const organizationsRead = useResources(
-    installations,
-    Organization,
-    {},
-    { enabled: installations.length > 0 },
-  );
-  const organizationResources = organizationsRead.resources;
-  const candidates = useMemo(() => {
-    const listed = new Set(
-      allRows.map(row => `${row.installation}/${row.organization}`),
-    );
-    return organizationResources
-      .map(resource => ({
-        installation: resource.cluster,
-        organization: resource.getName(),
-      }))
-      .filter(
-        ({ installation, organization }) =>
-          !listed.has(`${installation}/${organization}`),
-      );
-  }, [organizationResources, allRows]);
-  const combineMemberships = useCallback(
-    (results: UseQueryResult<Workspace[]>[]) => ({
-      // The manager refuses a person outside the Organization: an answer is
-      // membership.
-      organizations: candidates
-        .filter((_, index) => results[index]?.isSuccess)
-        .map(candidate => candidate.organization),
-      isAwaiting: results.some(result => isAwaitingData(result)),
-    }),
-    [candidates],
-  );
-  const memberships = useQueries({
-    queries: candidates.map(({ installation, organization }) => ({
-      queryKey: musterWorkspacesQueryKey(installation, organization),
-      enabled: Boolean(musterApi),
-      queryFn: () =>
-        new WorkspaceManagerClient(musterApi!, installation).listWorkspaces(
-          organization,
-        ),
-      retry: false,
-      // Membership changes rarely; a refusal is an answer too, not asked
-      // again on every visit.
-      staleTime: MEMBERSHIP_STALE_MS,
-      retryOnMount: false,
-    })),
-    combine: combineMemberships,
-  });
-
-  const organizations = useMemo(
-    () =>
-      [
-        ...new Set([
-          ...allRows.map(row => row.organization),
-          ...memberships.organizations,
-        ]),
-      ].sort((a, b) => a.localeCompare(b)),
-    [allRows, memberships.organizations],
-  );
+  const organizations = lists.organizations;
 
   const queryClient = useQueryClient();
   const retry = useCallback(() => {
     for (const installation of installations) {
       void queryClient.invalidateQueries({
         queryKey: musterWorkspacesQueryKey(installation),
-        exact: true,
       });
     }
     // An installation whose muster did not answer is asked again whether it
@@ -224,20 +153,16 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
   }, [queryClient, installations]);
 
   const isInventoryPending = inventory.isLoading || inventory.isProbing;
-  const isOrganizationsPending =
-    lists.isAwaiting ||
-    memberships.isAwaiting ||
-    (installations.length > 0 && organizationsRead.isLoading);
-  const isLoading = availability.isLoading || isOrganizationsPending;
+  const isLoading = availability.isLoading || lists.isAwaiting;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = searchParams.get(ORGANIZATION_SEARCH_PARAM);
   let organization: string | undefined;
   if (requested && organizations.includes(requested)) {
     organization = requested;
-  } else if (!isOrganizationsPending) {
-    // Only once every membership is known: the address's Organization, or
-    // one before it, may still be confirmed.
+  } else if (!lists.isAwaiting) {
+    // Only once every installation answered: the address's Organization, or
+    // one before it, may still be named.
     organization = organizations[0];
   }
   const setOrganization = useCallback(

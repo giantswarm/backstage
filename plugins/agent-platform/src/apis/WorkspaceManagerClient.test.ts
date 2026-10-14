@@ -89,16 +89,24 @@ describe('WorkspaceManagerClient', () => {
       (c: WorkspaceManagerClient) => c.listWorkspaces('acme'),
       'x_workspace-manager_list_workspaces',
       { organization: 'acme' },
+      { workspaces: [WORKSPACE], organizations: ['acme', 'beta'] },
+      { workspaces: [WORKSPACE], organizations: ['acme', 'beta'] },
+    ],
+    [
+      'listWorkspaces from a manager that names no Organizations',
+      (c: WorkspaceManagerClient) => c.listWorkspaces(),
+      'x_workspace-manager_list_workspaces',
+      {},
       { workspaces: [WORKSPACE] },
-      [WORKSPACE],
+      { workspaces: [WORKSPACE], organizations: ['acme'] },
     ],
     [
       'listWorkspaces of every Organization',
       (c: WorkspaceManagerClient) => c.listWorkspaces(),
       'x_workspace-manager_list_workspaces',
       {},
-      { workspaces: [] },
-      [],
+      { workspaces: [], organizations: ['acme'] },
+      { workspaces: [], organizations: ['acme'] },
     ],
     [
       'getWorkspace',
@@ -313,7 +321,10 @@ describe('WorkspaceManagerClient', () => {
     const { api } = makeMusterApi(JSON.stringify({ workspaces: [WORKSPACE] }));
     const client = new WorkspaceManagerClient(api, 'lab');
 
-    await expect(client.listWorkspaces()).resolves.toEqual([WORKSPACE]);
+    await expect(client.listWorkspaces()).resolves.toEqual({
+      workspaces: [WORKSPACE],
+      organizations: ['acme'],
+    });
   });
 
   it('fails on prose where the data was expected', async () => {

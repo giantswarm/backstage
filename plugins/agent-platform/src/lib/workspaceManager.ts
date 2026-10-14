@@ -211,6 +211,17 @@ export type SessionDirectory = {
   cleanupAfter?: string;
 };
 
+/**
+ * `list_workspaces`: the workspaces of the caller's Organizations, and those
+ * Organizations, with or without a workspace (workspace-manager 0.8.0 and
+ * later; from an older manager, the workspaces' own Organizations).
+ */
+export type WorkspaceList = {
+  workspaces: Workspace[];
+  /** The caller's member Organizations, sorted. */
+  organizations: string[];
+};
+
 /** `get_workspace`: the workspace with its mirrors, storage and Sessions. */
 export type WorkspaceDetail = {
   workspace: Workspace;

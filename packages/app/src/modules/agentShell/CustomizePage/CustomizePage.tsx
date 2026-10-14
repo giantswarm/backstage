@@ -86,14 +86,6 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     },
   },
   {
-    // Offered only where an installation in scope has the workspace-manager
-    // (`hasWorkspaces`). Created in the workspace editor, not from here yet.
-    id: 'workspaces',
-    title: 'Workspaces',
-    searchLabel: 'Search workspaces',
-    component: 'muster',
-  },
-  {
     id: 'connectors',
     title: 'Connectors',
     searchLabel: 'Search connectors and tools',
@@ -117,6 +109,15 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     id: 'workflows',
     title: 'Workflows',
     searchLabel: 'Search workflows',
+    component: 'muster',
+  },
+  {
+    // Last: the tab the fewest people use, and least often. Offered only
+    // where an installation in scope has the workspace-manager
+    // (`hasWorkspaces`). Created in the workspace editor, not from here yet.
+    id: 'workspaces',
+    title: 'Workspaces',
+    searchLabel: 'Search workspaces',
     component: 'muster',
   },
 ];

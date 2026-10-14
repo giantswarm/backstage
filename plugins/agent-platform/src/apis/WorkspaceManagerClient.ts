@@ -17,6 +17,7 @@ import {
   type Workspace,
   type WorkspaceAuthorization,
   type WorkspaceDetail,
+  type WorkspaceList,
   type WorkspaceManagerTool,
   type WorkspacePreview,
   type WorkspaceProvider,
@@ -69,13 +70,27 @@ export class WorkspaceManagerClient {
     return result as T;
   }
 
-  /** The workspaces of the person's Organizations, or of one of them. */
-  async listWorkspaces(organization?: string): Promise<Workspace[]> {
-    const result = await this.call<{ workspaces?: Workspace[] }>(
+  /**
+   * The workspaces of the person's Organizations, or of one of them, and the
+   * person's Organizations whatever the filter.
+   */
+  async listWorkspaces(organization?: string): Promise<WorkspaceList> {
+    const result = await this.call<{
+      workspaces?: Workspace[];
+      organizations?: string[];
+    }>(
       WORKSPACE_MANAGER_TOOLS.listWorkspaces,
       organization ? { organization } : {},
     );
-    return result.workspaces ?? [];
+    const workspaces = result.workspaces ?? [];
+    return {
+      workspaces,
+      organizations:
+        result.organizations ??
+        [...new Set(workspaces.map(w => w.organization))].sort((a, b) =>
+          a.localeCompare(b),
+        ),
+    };
   }
 
   /** One workspace with its mirrors, storage and Session directories. */
