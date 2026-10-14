@@ -84,6 +84,33 @@ export const lab = {
     /** `viewers`: view only. */
     viewer: { email: 'viewer@lab.local', name: 'Lab Viewer' },
   } satisfies Record<string, LabUser>,
+  /**
+   * The lab's workspaces (`platform.workspaces` in its `agentlab.yaml`): the
+   * workspace-manager behind muster, its Organization and its provider
+   * instance, which the workspace fixtures (`workspaces.fixture.ts`) use.
+   */
+  workspaces: {
+    /**
+     * The Organization the lab gives the workspace-manager: its members are
+     * the Dex groups `platform-admins` and `developers` (the admin and the
+     * developer), the `viewers` stay outside.
+     */
+    organization: process.env.AGENTLAB_WORKSPACE_ORGANIZATION ?? 'lab',
+    /**
+     * The provider instance the fixtures' sources name: `fake`, the lab's
+     * own GitHub (`agentlab github-fake --workspaces`), whose fixture
+     * repositories and per-user access are the same on every lab.
+     */
+    provider: process.env.AGENTLAB_WORKSPACE_PROVIDER ?? 'fake',
+    /**
+     * The lab's GitHub as this host reaches it: the loopback port its
+     * container publishes (`docker port <cluster>-lab-github`, served over
+     * TLS). Pods reach it by its name on the lab domain, the browser does
+     * not, so a person's consent to the `fake` instance is fetched from here.
+     * Unset, the specs that need a person connected to it skip.
+     */
+    githubFakeURL: process.env.AGENTLAB_GITHUB_FAKE_URL,
+  },
 } as const;
 
 /**
