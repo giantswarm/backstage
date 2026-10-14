@@ -21,6 +21,7 @@ import { useConnectorPageTarget } from './connectorPageTarget';
 
 jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
   useGitOpsSource: () => ({ isLoading: false }),
+  GitOpsCard: () => null,
 }));
 
 let mockServers: MCPServer[] = [];
@@ -336,10 +337,8 @@ describe('ConnectorPage', () => {
         .getByRole('tab', { name: /^Tools/ })
         .compareDocumentPosition(endpoint) & Node.DOCUMENT_POSITION_PRECEDING,
     ).toBeTruthy();
-    // Not a fact: muster has none, so its page has no facts column.
-    expect(
-      screen.queryByRole('complementary', { name: 'Connector details' }),
-    ).not.toBeInTheDocument();
+    // Not a fact: muster has none, and no MCPServer, so no Details tab.
+    expect(screen.queryByRole('tab', { name: 'Details' })).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Edit' }),
     ).not.toBeInTheDocument();
@@ -359,10 +358,14 @@ describe('ConnectorPage', () => {
     expect(within(breadcrumb).queryByRole('link')).not.toBeInTheDocument();
   });
 
-  it('lists the facts beside the content', async () => {
+  it('lists the facts on the Details tab, not beside the content', async () => {
     const api = await renderAt(`${BASE}/jira`);
+    expect(
+      screen.queryByRole('complementary', { name: 'Connector details' }),
+    ).toBeNull();
 
-    const facts = screen.getByRole('complementary', {
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    const facts = await screen.findByRole('region', {
       name: 'Connector details',
     });
     expect(
@@ -378,10 +381,39 @@ describe('ConnectorPage', () => {
       installation: 'gazelle',
       window: 'month',
     });
-    expect(
-      within(facts).getByText('https://jira.example.test/mcp'),
-    ).toBeInTheDocument();
     expect(within(facts).getByText('4 Aug 2026')).toBeInTheDocument();
+    // The address is technical: in the fold-out's configuration.
+    expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
+  });
+
+  it('keeps the tools search across a visit to another tab', async () => {
+    await renderAt(`${BASE}/jira?installation=gazelle&q=search`);
+
+    const searchbox = () =>
+      screen.getByRole('searchbox', { name: 'Search tools' });
+    expect(
+      await screen.findByRole('button', { name: /search_issues/ }),
+    ).toBeInTheDocument();
+    expect(searchbox()).toHaveValue('search');
+    expect(screen.queryByRole('button', { name: /add_comment/ })).toBeNull();
+
+    // The address's search, back from Details.
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await screen.findByRole('region', { name: 'Connector details' });
+    await userEvent.click(screen.getByRole('tab', { name: /^Tools/ }));
+    expect(searchbox()).toHaveValue('search');
+    expect(screen.queryByRole('button', { name: /add_comment/ })).toBeNull();
+
+    // And one typed on the tab, which the address does not carry.
+    await userEvent.clear(searchbox());
+    await userEvent.type(searchbox(), 'comment');
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await userEvent.click(screen.getByRole('tab', { name: /^Tools/ }));
+    expect(searchbox()).toHaveValue('comment');
+    expect(
+      screen.getByRole('button', { name: /add_comment/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /search_issues/ })).toBeNull();
   });
 
   it('lists a few tools without search or filter and tries one inline', async () => {
@@ -518,12 +550,6 @@ describe('ConnectorPage', () => {
       await screen.findByRole('tab', { name: /Instances/, selected: true }),
     ).toBeInTheDocument();
     expect(screen.getByText('walrus-mcp-kubernetes')).toBeInTheDocument();
-    const facts = screen.getByRole('complementary', {
-      name: 'Connector details',
-    });
-    expect(
-      within(facts).getByText('1 of 2 instances healthy'),
-    ).toBeInTheDocument();
     // Helm-applied instances: changed in Git, not here.
     const edit = screen.getByRole('button', { name: 'Edit' });
     expect(edit).toBeDisabled();
@@ -657,28 +683,105 @@ describe('ConnectorPage at phone width', () => {
   });
   afterEach(() => layout.restore());
 
-  it('puts the facts first, folded, and keeps Edit and the menu in the header', async () => {
-    await renderAt(`${BASE}/jira`);
+  it('keeps Edit and the menu in the header, and the facts on the Details tab', async () => {
+    await renderAt(`${BASE}/jira/details`);
 
     // The header holds one button and the menu: nothing to overflow.
     expect(headerButtons()).toEqual(['Edit', 'More actions']);
-    // The facts are a "Details" fold-out above the tools, not a column
-    // after hundreds of them.
-    const details = screen.getByRole('button', { name: 'Details' });
-    expect(details).toHaveAttribute('aria-expanded', 'false');
-    const tool = await screen.findByRole('button', { name: /search_issues/ });
+    // No facts fold-out above the content any more: the tab holds them.
+    expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
     expect(
-      details.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING,
+      screen.getByRole('tab', { name: 'Details', selected: true }),
+    ).toBeInTheDocument();
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(
+      within(facts).getByText('1 of 1 instance healthy'),
+    ).toBeInTheDocument();
+    const foldOut = screen.getByRole('button', { name: 'Technical details' });
+    expect(
+      facts.compareDocumentPosition(foldOut) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(
-      screen.queryByRole('complementary', { name: 'Connector details' }),
-    ).toBeNull();
 
-    await userEvent.click(details);
+    await userEvent.click(foldOut);
+    expect(
+      screen.getByText('https://jira.example.test/mcp'),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('ConnectorPage Details tab', () => {
+  const foldOut = () =>
+    screen.getByRole('button', { name: 'Technical details' });
+
+  it('folds the connector resource under the facts', async () => {
+    await renderAt(`${BASE}/jira/details`);
+
+    expect(foldOut()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('muster/jira')).toBeNull();
+
+    await userEvent.click(foldOut());
+    expect(screen.getByText('muster/jira')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Authentication' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('https://jira.example.test/mcp'),
+    ).toBeInTheDocument();
+  });
+
+  it('reads at the page body size, facts and technical details alike', async () => {
+    await renderAt(`${BASE}/jira/details`);
+    await userEvent.click(foldOut());
+
+    // bui's body-small (12px) is lifted to body-medium's size on this tab.
+    for (const text of [
+      '1 of 1 instance healthy',
+      'muster/jira',
+      'Auto start',
+    ]) {
+      expect(getComputedStyle(screen.getByText(text)).fontSize).toBe(
+        'var(--bui-font-size-3)',
+      );
+    }
+  });
+
+  it("lists a family's facts and one instance's technical details", async () => {
+    await renderAt(`${BASE}/kubernetes/details`);
+
     expect(
       within(
-        screen.getByRole('complementary', { name: 'Connector details' }),
-      ).getByText('https://jira.example.test/mcp'),
+        screen.getByRole('region', { name: 'Connector details' }),
+      ).getByText('1 of 2 instances healthy'),
     ).toBeInTheDocument();
+    // A failed instance does not open the family's fold-out: the Instances
+    // tab says which one.
+    expect(foldOut()).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(foldOut());
+    expect(
+      screen.getByText(/each instance's own configuration, health and/),
+    ).toBeInTheDocument();
+  });
+
+  it('opens the fold-out on arrival while muster reports the connector failed', async () => {
+    mockServers = [
+      ...makeServers(),
+      makeServer({ name: 'linear', state: 'Failed' }),
+    ];
+    await renderAt(`${BASE}/linear/details`);
+
+    expect(foldOut()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('muster/linear')).toBeInTheDocument();
+  });
+
+  it("is not on muster's own page, whose address leads to its tools", async () => {
+    await renderAt(`${BASE}/muster/details`);
+
+    expect(
+      await screen.findByRole('tab', { name: /^Tools/, selected: true }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Details' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Technical details' }),
+    ).toBeNull();
   });
 });
