@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { createContext, Fragment, type ReactNode, useContext } from 'react';
 import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { PHONE_MEDIA } from '../../utils/breakpoints';
@@ -15,6 +15,31 @@ const SHELL_NARROW_MEDIA = PHONE_MEDIA;
 type StyleProps = {
   labelWidth: number;
   maxWidth: number | undefined;
+};
+
+/** The bui text variant a fact list's labels and values are set in. */
+export type FactTextVariant = 'body-small' | 'body-medium';
+
+const FactTextVariantContext = createContext<FactTextVariant | undefined>(
+  undefined,
+);
+
+/**
+ * The text variant of the fact list this renders in, for a custom value that
+ * sets its own text (`Mono`, a `Text` or a `Link`) to match its label rather
+ * than stepping down to a smaller size. Outside any fact list it is
+ * `fallback`.
+ */
+export function useFactTextVariant(
+  fallback: FactTextVariant = 'body-small',
+): FactTextVariant {
+  return useContext(FactTextVariantContext) ?? fallback;
+}
+
+/** The font size of each variant, for the plain text a custom value holds. */
+const FONT_SIZE: Record<FactTextVariant, string> = {
+  'body-small': 'var(--bui-font-size-2)',
+  'body-medium': 'var(--bui-font-size-3)',
 };
 
 const listRule = (narrowMedia: string) => ({
@@ -70,6 +95,10 @@ const useStyles = makeStyles({
   value: {
     overflowWrap: 'anywhere',
   },
+  // Plain text in a custom value (a fragment of text and `Mono`) follows the
+  // list's size instead of the page's.
+  smallValue: { fontSize: FONT_SIZE['body-small'] },
+  mediumValue: { fontSize: FONT_SIZE['body-medium'] },
   narrowStacked: narrowStackedRule(CLASSIC_NARROW_MEDIA),
   shellNarrowStacked: narrowStackedRule(SHELL_NARROW_MEDIA),
   stackedList: {
@@ -98,8 +127,8 @@ const useStyles = makeStyles({
 export interface Fact {
   label: string;
   /**
-   * A string or a number is wrapped in `body-small` text; anything else
-   * renders as given.
+   * A string or a number is wrapped in text of the list's size; anything else
+   * renders as given, and reads that size from `useFactTextVariant`.
    */
   value: ReactNode;
 }
@@ -119,6 +148,14 @@ export interface FactListProps {
    * Defaults to false: label and value side by side.
    */
   stacked?: boolean;
+  /**
+   * The text size of the labels and values beside them. Inside the
+   * agent-platform shell it defaults to the shell's body size, `medium`
+   * (14px), so a list reads at the size of the text around it; classic pages
+   * keep their long-standing `small` (12px). A stacked list keeps `small`: its
+   * labels are captions over the value, in a narrow column.
+   */
+  size?: 'small' | 'medium';
 }
 
 /**
@@ -127,8 +164,9 @@ export interface FactListProps {
  * apart from its neighbours.
  */
 function FactValue({ value }: { value: ReactNode }) {
+  const variant = useFactTextVariant();
   return typeof value === 'string' || typeof value === 'number' ? (
-    <Text variant="body-small">{value}</Text>
+    <Text variant={variant}>{value}</Text>
   ) : (
     <>{value}</>
   );
@@ -147,6 +185,7 @@ export const FactList = ({
   labelWidth = 180,
   maxWidth = 720,
   stacked = false,
+  size,
 }: FactListProps) => {
   const classes = useStyles({
     labelWidth,
@@ -156,41 +195,56 @@ export const FactList = ({
 
   if (stacked) {
     return (
-      <dl className={classes.stackedList}>
+      <FactTextVariantContext.Provider value="body-small">
+        <dl className={classes.stackedList}>
+          {facts.map(fact => (
+            <Fragment key={fact.label}>
+              <dt className={classes.stackedLabel}>
+                <Text variant="body-small" color="secondary">
+                  {fact.label}
+                </Text>
+              </dt>
+              <dd className={`${classes.stackedValue} ${classes.smallValue}`}>
+                <FactValue value={fact.value} />
+              </dd>
+            </Fragment>
+          ))}
+        </dl>
+      </FactTextVariantContext.Provider>
+    );
+  }
+
+  const variant: FactTextVariant =
+    (size ?? (inShell ? 'medium' : 'small')) === 'medium'
+      ? 'body-medium'
+      : 'body-small';
+
+  return (
+    <FactTextVariantContext.Provider value={variant}>
+      <dl className={inShell ? classes.shellList : classes.list}>
         {facts.map(fact => (
           <Fragment key={fact.label}>
-            <dt className={classes.stackedLabel}>
-              <Text variant="body-small" color="secondary">
+            <dt
+              className={`${classes.cell} ${classes.label} ${
+                inShell ? classes.shellNarrowStacked : classes.narrowStacked
+              }`}
+            >
+              <Text variant={variant} weight="bold">
                 {fact.label}
               </Text>
             </dt>
-            <dd className={classes.stackedValue}>
+            <dd
+              className={`${classes.cell} ${classes.value} ${
+                variant === 'body-medium'
+                  ? classes.mediumValue
+                  : classes.smallValue
+              }`}
+            >
               <FactValue value={fact.value} />
             </dd>
           </Fragment>
         ))}
       </dl>
-    );
-  }
-
-  return (
-    <dl className={inShell ? classes.shellList : classes.list}>
-      {facts.map(fact => (
-        <Fragment key={fact.label}>
-          <dt
-            className={`${classes.cell} ${classes.label} ${
-              inShell ? classes.shellNarrowStacked : classes.narrowStacked
-            }`}
-          >
-            <Text variant="body-small" weight="bold">
-              {fact.label}
-            </Text>
-          </dt>
-          <dd className={`${classes.cell} ${classes.value}`}>
-            <FactValue value={fact.value} />
-          </dd>
-        </Fragment>
-      ))}
-    </dl>
+    </FactTextVariantContext.Provider>
   );
 };

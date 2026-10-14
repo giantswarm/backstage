@@ -165,6 +165,13 @@ export type Workspace = {
   volumeSize?: string;
   /** The number of Session directories on the volume. */
   sessions: number;
+  /**
+   * What the volume stores, mirrors and Session directories, measured at the
+   * last sync; absent before the first, and from a manager that predates it.
+   */
+  storedBytes?: number;
+  /** The share's size before the last sync grew it; absent when it did not. */
+  grewFrom?: string;
   conditions?: WorkspaceCondition[];
 };
 
@@ -202,6 +209,17 @@ export type SessionDirectory = {
   sizeBytes: number;
   /** When the directory is deleted. */
   cleanupAfter?: string;
+};
+
+/**
+ * `list_workspaces`: the workspaces of the caller's Organizations, and those
+ * Organizations, with or without a workspace (workspace-manager 0.8.0 and
+ * later; from an older manager, the workspaces' own Organizations).
+ */
+export type WorkspaceList = {
+  workspaces: Workspace[];
+  /** The caller's member Organizations, sorted. */
+  organizations: string[];
 };
 
 /** `get_workspace`: the workspace with its mirrors, storage and Sessions. */

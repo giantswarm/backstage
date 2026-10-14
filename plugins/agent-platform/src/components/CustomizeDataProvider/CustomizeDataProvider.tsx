@@ -10,12 +10,17 @@ import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { ModelRow, toModelRow, toModelServedBy } from '../ModelsTable';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ServingProvider, useServing } from '../ServingProvider';
+import {
+  useWorkspacesData,
+  WorkspacesDataProvider,
+} from '../WorkspacesDataProvider';
 
 /** What the Customize screen's tab strip counts; absent while still loading. */
 export type CustomizeCounts = {
   agents?: number;
   skills?: number;
   models?: number;
+  workspaces?: number;
 };
 
 export type CustomizeDataValue = {
@@ -25,6 +30,11 @@ export type CustomizeDataValue = {
    * signed-in config is known.
    */
   hasSkillRepositories?: boolean;
+  /**
+   * Whether an installation in scope offers workspaces (its muster lists the
+   * workspace-manager); `undefined` until that is known.
+   */
+  hasWorkspaces?: boolean;
   /** The models in scope, each with what the serving layer says about it. */
   modelRows: ModelRow[];
   skillCatalog: SkillCatalog;
@@ -64,6 +74,12 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
   } = useModelConfigs();
   const { servingStateFor, capabilitiesFor, backends } = useServing();
   const skillCatalog = useSkillCatalog();
+  // Only what the strip reads: a list refetch leaves the other tabs alone.
+  const {
+    isAvailable: hasWorkspaces,
+    isLoading: workspacesLoading,
+    rows: { length: workspaceCount },
+  } = useWorkspacesData();
 
   const modelRows = useMemo<ModelRow[]>(
     () =>
@@ -103,14 +119,27 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
             ? undefined
             : modelRows.length,
         skills: skillCountOf(skillCatalog),
+        workspaces:
+          workspacesLoading && workspaceCount === 0
+            ? undefined
+            : workspaceCount,
       },
+      hasWorkspaces,
       hasSkillRepositories: skillCatalog.isLoading
         ? undefined
         : skillCatalog.hasRepositories,
       modelRows,
       skillCatalog,
     }),
-    [agents, modelsLoading, modelRows, skillCatalog],
+    [
+      agents,
+      modelsLoading,
+      modelRows,
+      skillCatalog,
+      hasWorkspaces,
+      workspacesLoading,
+      workspaceCount,
+    ],
   );
 
   return (
@@ -121,8 +150,8 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * The agents, models and skills of the shell's Customize screen, read once
- * for every tab so each tab's count is known before it is opened. The
+ * The agents, models, skills and workspaces of the shell's Customize screen,
+ * read once for every tab so each tab's count is known before it is opened. The
  * children render inside this plugin's query client.
  */
 export function CustomizeDataProvider({ children }: { children: ReactNode }) {
@@ -131,9 +160,11 @@ export function CustomizeDataProvider({ children }: { children: ReactNode }) {
       <ModelConfigsProvider>
         <ServingProvider>
           <AgentsDataProvider>
-            <CustomizeDataContextProvider>
-              {children}
-            </CustomizeDataContextProvider>
+            <WorkspacesDataProvider>
+              <CustomizeDataContextProvider>
+                {children}
+              </CustomizeDataContextProvider>
+            </WorkspacesDataProvider>
           </AgentsDataProvider>
         </ServingProvider>
       </ModelConfigsProvider>

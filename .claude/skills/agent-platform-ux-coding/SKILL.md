@@ -61,6 +61,13 @@ them and never invent a palette.
 - Every page is a `ShellPage` (`ui-react`): breadcrumbs, title row, badges,
   header actions, routed tabs (`RouteTabs`) and an optional facts column that
   folds above the content at phone width.
+- `ShellPage` owns the header's geometry: the actions and any `leading`
+  mark sit beside the title's first line, a long title wraps beside them, and
+  only a group too wide to leave the title 192px (320px with a description)
+  moves under it. Actions are top-aligned 8px apart; a row with a labelled
+  field (the Environment select) aligns on the bottom edge, so the field's
+  box lines up with the buttons. Pass header controls as the row's own items
+  (a fragment), and do not wrap, align or space them per page.
 - `Breadcrumbs` leads with a back arrow to the nearest linked parent crumb.
   Navigate to the parent, never to browser history.
 - `ShellPage` and `WizardFrame` set the document title through
@@ -69,7 +76,9 @@ them and never invent a palette.
   Do not add a raw `<Helmet>`.
 - Type scale beats pixel-matching an artboard. Page sections and wizard
   sub-sections use `SectionHeader` as `h2` with `variant="title-x-small"`;
-  only a wizard's step heading is `title-small`.
+  only a wizard's step heading is `title-small`. A detail page tab's sections
+  are `PageSection` (`ui-react`), which draws that heading and names the
+  region by it.
 
 ### Lists
 
@@ -336,9 +345,9 @@ is a defect; one with it is not a finding. The kept list:
 - `AssistPanel`, the workflow full-screen layer and `DisabledAction` handle
   Escape themselves. The New session, palette and attachment dialogs close
   only from the header X, because they have nothing to cancel.
-- The workflow page has an "Advanced" fold-out; the connector wizard's
-  credentials group carries a third-level label; Home has a centred landing
-  frame without a page header; the session crumb reads "Session".
+- The connector wizard's credentials group carries a third-level label; Home
+  has a centred landing frame without a page header; the session crumb reads
+  "Session".
 - "Let X help" and "Create with X" differ because they are different actions.
 - `formatCompactAge` (the rail's "16m") and lifecycle's elapsed `ago` are
   deliberate formats.

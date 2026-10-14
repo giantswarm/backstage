@@ -46,6 +46,7 @@ export const SHELL_SPECS = [
   'wizard-tools-layout.spec.ts',
   'workflows.spec.ts',
   'workspace-editor.spec.ts',
+  'workspaces-tab.spec.ts',
 ] as const;
 
 /**
