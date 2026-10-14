@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   EmptyStateCard,
-  LoadingIndicator,
   ShellDocumentTitle,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -12,7 +11,10 @@ import {
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
 import { Box, Container, Flex, Text } from '@backstage/ui';
-import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
+import {
+  InventoryFailureGate,
+  useInstallationInventory,
+} from '@giantswarm/backstage-plugin-gs';
 
 import { makeStyles } from '@material-ui/core/styles';
 
@@ -132,7 +134,14 @@ function AgentPlatformHomeContent({
 }: AgentPlatformHomeProps) {
   const classes = useStyles();
   const displayName = useDisplayName();
-  const { rows: agents, isLoading, unreachableInstallations } = useAgents();
+  const {
+    rows: agents,
+    isLoading,
+    unreachableInstallations,
+    kagentMissing,
+    inventoryFailure,
+  } = useAgents();
+  const { refresh: refreshInventory } = useInstallationInventory();
   const { rows: sessions } = useSessions();
   const [selectedAgent, setSelectedAgent] = useState<AgentRow>();
   const navigate = useNavigate();
@@ -226,44 +235,50 @@ function AgentPlatformHomeContent({
                 : 'Choose an agent, then say what you need.'}
             </Text>
           </Flex>
-          {isLoading ? (
-            <LoadingIndicator label="Reading your agents…" />
-          ) : (
-            <StartNewSession
-              entryPoint="home"
-              layout="standalone"
-              // The rename dialog's bound, less the ellipsis a clipped title
-              // ends in.
-              titleMaxLength={SESSION_NAME_MAX_LENGTH - 1}
-              composerProps={{
-                // The agent is unmistakably the first step: the picker carries
-                // the accent ring and the prompt field waits, per the artboard.
-                agentFirst: true,
-                // Picker-first, as the Main artboard draws it: the agent row
-                // heads the box and the message follows under it.
-                pickerPlacement: 'top',
-                pickerLabel,
-                defaultAgent: requestedAgent,
-                showUnavailable: true,
-                groupByNamespace: true,
-                recentAgentIds,
-                favoriteAgentIds,
-                pickerPlaceholder: 'Choose an agent',
-                pickerFooterAction: manageAgents,
-                promptPlaceholder,
-                renderPickerAccessory: pickerAccessory,
-                renderFooter,
-                onSelectedAgentChange: setSelectedAgent,
-              }}
-            />
-          )}
+          <StartNewSession
+            entryPoint="home"
+            layout="standalone"
+            // The rename dialog's bound, less the ellipsis a clipped title
+            // ends in.
+            titleMaxLength={SESSION_NAME_MAX_LENGTH - 1}
+            composerProps={{
+              // The agent is unmistakably the first step: the picker carries
+              // the accent ring and the prompt field waits, per the artboard.
+              agentFirst: true,
+              // Picker-first, as the Main artboard draws it: the agent row
+              // heads the box and the message follows under it.
+              pickerPlacement: 'top',
+              pickerLabel,
+              defaultAgent: requestedAgent,
+              showUnavailable: true,
+              groupByNamespace: true,
+              recentAgentIds,
+              favoriteAgentIds,
+              pickerPlaceholder: 'Choose an agent',
+              pickerFooterAction: manageAgents,
+              promptPlaceholder,
+              renderPickerAccessory: pickerAccessory,
+              renderFooter,
+              onSelectedAgentChange: setSelectedAgent,
+            }}
+          />
           {/* The Main artboard's order: composer (recent agents or reach
               line under it), then the Slack banner. The scope notes and the
               read warning stand between the two only when they have something
               to say — they render nothing otherwise — and they belong under
               the composer, whose empty state points at "the warning below". */}
-          <InstallationScopeNote component="kagent" />
-          <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
+          {/* The kagent-missing card in place of the composer names the
+              environment; the scope note would say it twice. */}
+          {!kagentMissing && <InstallationScopeNote component="kagent" />}
+          {/* The failure Customize › Agents explains, from the same value:
+              the one the composer's silence leaves to it. */}
+          {inventoryFailure && (
+            <InventoryFailureGate
+              failure={inventoryFailure}
+              onRetry={refreshInventory}
+              context="Which environments run kagent is read through their Kubernetes API."
+            />
+          )}
           <UnreachableInstallationsAlert
             installations={unreachableInstallations}
             resourceName="agents"
