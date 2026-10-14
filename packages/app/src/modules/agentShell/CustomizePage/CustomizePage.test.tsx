@@ -536,17 +536,26 @@ describe('CustomizePage', () => {
       expect(screen.queryByRole('link', { name: /workspace/i })).toBeNull();
     });
 
-    it('is absent, and its address goes to the Agents tab, where no installation has the workspace-manager', async () => {
+    it('is absent from the strip where no installation has the workspace-manager', async () => {
+      mockCustomizeData = { ...mockCustomizeData, hasWorkspaces: false };
+      await renderCustomize('/customize/agents');
+
+      expect(
+        tabs().some(([title]) => title?.startsWith('Workspaces')),
+      ).toBe(false);
+    });
+
+    it('renders at its address whatever is known, its panel saying what there is', async () => {
       mockCustomizeData = { ...mockCustomizeData, hasWorkspaces: false };
       await renderCustomize('/customize/workspaces');
 
-      await waitFor(() =>
-        expect(screen.getByTestId('location')).toHaveTextContent(
-          '/customize/agents',
-        ),
+      expect(screen.getByText(/^Workspaces panel/)).toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/customize/workspaces',
       );
-      expect(tabs().map(([title]) => title)).not.toContain('Workspaces');
-      expect(screen.queryByText('Organization scope')).toBeNull();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Workspaces',
+      );
     });
 
     it('stays out of the strip while it is not known yet, its address loading', async () => {

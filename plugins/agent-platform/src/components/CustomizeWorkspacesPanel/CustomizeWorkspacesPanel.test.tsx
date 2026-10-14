@@ -155,6 +155,15 @@ describe('CustomizeWorkspacesPanel', () => {
     ).toBeInTheDocument();
   });
 
+  it('says so where no environment in scope has the workspace-manager', async () => {
+    mockData = data({ isAvailable: false, installations: [], rows: [] });
+    await renderPanel();
+
+    expect(
+      screen.getByText('Workspaces are not available here'),
+    ).toBeInTheDocument();
+  });
+
   it('says so to a person in no Organization', async () => {
     mockData = data({ rows: [], organizations: [], organization: undefined });
     await renderPanel();

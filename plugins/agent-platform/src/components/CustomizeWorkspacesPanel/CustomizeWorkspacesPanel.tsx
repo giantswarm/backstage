@@ -273,6 +273,7 @@ export function CustomizeWorkspacesPanel({
   search,
 }: CustomizeWorkspacesPanelProps) {
   const {
+    isAvailable,
     rows: allRows,
     organization,
     organizations,
@@ -359,7 +360,14 @@ export function CustomizeWorkspacesPanel({
     failed && !isLoading && installations.every(name => name in failures);
 
   let body;
-  if (isReading) {
+  if (isAvailable === false) {
+    body = (
+      <EmptyStateCard
+        title="Workspaces are not available here"
+        description="No environment in scope runs the workspace-manager. Pick another environment, or ask your platform team to turn workspaces on."
+      />
+    );
+  } else if (isReading || isAvailable === undefined) {
     body = <LoadingIndicator label="Reading your workspaces…" />;
   } else if (isEverythingFailed) {
     body = null;

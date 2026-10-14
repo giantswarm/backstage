@@ -124,9 +124,10 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
 const DEFAULT_TAB: CustomizeTabId = 'agents';
 
 /**
- * Whether the strip shows a tab: Skills unless no skill repository is
- * configured, Workspaces only once an installation in scope is known to have
- * the workspace-manager, so the tab never shows where workspaces are off.
+ * Whether the strip shows a tab besides the open one: Skills unless no skill
+ * repository is configured, Workspaces only once an installation in scope is
+ * known to have the workspace-manager, so the tab never shows where
+ * workspaces are off.
  */
 function isTabShown(
   id: CustomizeTabId,
@@ -273,8 +274,10 @@ function CustomizeTabContent({
     tab.id === 'connectors' && connectorGroup !== 'yours'
       ? connectorGroupInfo(connectorGroup).title
       : undefined;
-  const tabs = CUSTOMIZE_TABS.filter(candidate =>
-    isTabShown(candidate.id, { hasSkillRepositories, hasWorkspaces }),
+  const tabs = CUSTOMIZE_TABS.filter(
+    candidate =>
+      candidate.id === tab.id ||
+      isTabShown(candidate.id, { hasSkillRepositories, hasWorkspaces }),
   ).map(({ id, title }) => ({ id, path: id, title, count: tabCounts[id] }));
 
   return (
@@ -393,14 +396,13 @@ function CustomizeTabPage() {
   const splat = useParams()['*'] ?? '';
   const [tabId, ...rest] = splat.split('/');
   const { search } = useLocation();
-  const { hasSkillRepositories, hasWorkspaces } = useCustomizeData();
+  const { hasSkillRepositories } = useCustomizeData();
   const tab = CUSTOMIZE_TABS.find(candidate => candidate.id === tabId);
-  // A tab that turned out to have nothing behind it lands on the first one;
-  // one still being found out renders, its panel loading.
-  const isGone =
-    (tab?.id === 'skills' && hasSkillRepositories === false) ||
-    (tab?.id === 'workspaces' && hasWorkspaces === false);
-  if (!tab || isGone) {
+  // Skills without a repository lands on the first tab. Workspaces always
+  // render at their address: whether an installation has the
+  // workspace-manager settles only as the probes answer, and the panel says
+  // so where none has.
+  if (!tab || (tab.id === 'skills' && hasSkillRepositories === false)) {
     return <DefaultTabRedirect />;
   }
   let connectorGroup: ConnectorGroup | undefined;
