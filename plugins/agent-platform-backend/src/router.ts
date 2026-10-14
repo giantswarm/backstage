@@ -324,7 +324,8 @@ const STREAM_MAX_DURATION_MS = 30 * 60_000;
  *   middleware exactly as on the non-streaming routes — a malformed body is a
  *   400, an unknown agent a 404, a rejected token a 401, a session that is
  *   still working on the previous turn a 409. Nothing has been dispatched, and
- *   the caller hears so.
+ *   the caller hears so. The one exception is a turn reported still running,
+ *   which is a 202 as on the unary routes.
  * - **After it opens**, the route has already answered 200 and can only relay
  *   or stop. A relay that ends without a terminal event — kagent cut off by a
  *   gateway, this response cut off by the browser's own door, the duration
@@ -358,6 +359,16 @@ async function relayEventStream(
     // to answer, and the error middleware writing to a closed response
     // would only log noise about it.
     if (res.writableEnded || upstreamControl.signal.aborted) {
+      return;
+    }
+    // A turn kagent reports still running before the stream opened is the
+    // unary routes' 202, not a 5xx that would reach Sentry: the frontend
+    // follows the poll exactly as it does after a cut stream.
+    if (isTurnPendingError(error)) {
+      logger.debug(
+        'A kagent turn was reported still running before its stream opened; answering 202',
+      );
+      res.status(202).json({ status: 'pending' });
       return;
     }
     throw error;

@@ -1,6 +1,11 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import { ConfigReader } from '@backstage/config';
-import { Code, ConnectError, createRouterTransport } from '@connectrpc/connect';
+import {
+  Code,
+  ConnectError,
+  createRouterTransport,
+  Interceptor,
+} from '@connectrpc/connect';
 import {
   deriveKagentApiBaseUrl,
   isTransportFailure,
@@ -26,16 +31,40 @@ const AGENTS: NonNullable<FakeControllerOptions['agents']> = [
 ];
 
 /** A client wired to a fresh fake controller over an in-memory transport. */
-function build(options: FakeControllerOptions = {}) {
+function build(
+  options: FakeControllerOptions = {},
+  interceptors: Interceptor[] = [],
+) {
   const fake = createFakeController({ agents: AGENTS, ...options });
   const client = new KagentClient(
     installation,
     logger,
-    createRouterTransport(fake.routes),
+    createRouterTransport(fake.routes, { transport: { interceptors } }),
     500,
     800,
   );
   return { fake, client };
+}
+
+/**
+ * Holds back the first event of every streaming response by `delayMs`, as a
+ * turn that is slow to produce anything does.
+ */
+function delayFirstEvent(delayMs: number): Interceptor {
+  return next => async request => {
+    const response = await next(request);
+    if (!response.stream) {
+      return response;
+    }
+    const events = response.message;
+    return {
+      ...response,
+      message: (async function* delayed() {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        yield* events;
+      })(),
+    };
+  };
 }
 
 /** Create a session and return its id. */
@@ -835,6 +864,83 @@ describe('KagentClient against a fake controller', () => {
         type: 'tool_approval_response',
         approvals: [{ id: 'appr-1', approved: true }],
       });
+    });
+
+    it('keeps streaming a resumed turn whose first event is slower than the request timeout', async () => {
+      // Seen on gazelle: the resumed turn produced nothing within the request
+      // timeout, and the stream was reported as a pending turn — a 500 from the
+      // route. A slow first event is the agent working, not kagent unwell; and
+      // giving up on the stream would only cut the preview the page follows.
+      const { client } = build({ turn: () => approval }, [
+        delayFirstEvent(1_200),
+      ]);
+      const id = await created(client);
+      const paused = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'delete it' },
+        USER,
+      )) as {
+        task: { id: string };
+      };
+
+      const response = await client.streamAnswer(
+        id,
+        AGENT,
+        { messageId: 'm2', taskId: paused.task.id, decision: 'approve' },
+        USER,
+        new AbortController().signal,
+      );
+
+      expect(response.status).toBe(200);
+      const events = (await frames(response)) as Record<string, unknown>[];
+      expect(events.at(-1)).toEqual({
+        statusUpdate: expect.objectContaining({
+          taskId: paused.task.id,
+          status: expect.objectContaining({ state: 'TASK_STATE_COMPLETED' }),
+        }),
+      });
+    });
+
+    it('reports a rejection after a slow start in-band, as one error frame', async () => {
+      // Once the stream has been answered there is no status left to carry a
+      // refusal; the frame is what the page reports it from.
+      const { client } = build({ turn: () => approval }, [
+        next => async request => {
+          const response = await next(request);
+          if (!response.stream) {
+            return response;
+          }
+          return {
+            ...response,
+            message: (async function* refused() {
+              await new Promise(resolve => setTimeout(resolve, 1_200));
+              throw new ConnectError('runtime refused', Code.Internal);
+            })(),
+          };
+        },
+      ]);
+      const id = await created(client);
+      const paused = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'delete it' },
+        USER,
+      )) as {
+        task: { id: string };
+      };
+
+      const response = await client.streamAnswer(
+        id,
+        AGENT,
+        { messageId: 'm2', taskId: paused.task.id, decision: 'approve' },
+        USER,
+        new AbortController().signal,
+      );
+
+      expect(await frames(response)).toEqual([
+        { error: { code: 'Internal', message: 'runtime refused' } },
+      ]);
     });
 
     it('refuses to stream an answer to a task that is not waiting, as a 409', async () => {

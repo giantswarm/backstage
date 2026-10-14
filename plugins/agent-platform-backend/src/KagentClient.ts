@@ -86,6 +86,12 @@ export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
 
 /**
+ * What the wait for a stream's first event rejects with once the request
+ * timeout passes: not an error, only "no event yet" — see `openStream`.
+ */
+const FIRST_EVENT_PENDING = Symbol('kagent.firstEventPending');
+
+/**
  * How long to wait for an A2A turn before answering "still running".
  *
  * `SendMessage` answers only once the agent has finished, so this is not "how
@@ -589,10 +595,12 @@ export class KagentClient {
    * Each `StreamResponse` is relayed as one SSE `data:` frame carrying its JSON
    * (`{task}`, `{message}`, `{statusUpdate}`, `{artifactUpdate}`), so the router
    * relays bytes and the frontend interprets. The returned {@link Response} has
-   * been opened (its first event awaited under the ordinary request timeout, as
-   * the gateway answers a `task` snapshot the moment the turn is accepted) so a
-   * rejection before the turn starts surfaces as an error here rather than as an
-   * empty stream; the caller relays its body and owns its lifetime through
+   * been opened (its first event awaited for up to the ordinary request
+   * timeout, as kagent refuses a turn at once) so a rejection before the turn
+   * starts surfaces as an error here rather than as an empty stream. A first
+   * event slower than that — a resumed task says nothing until the agent does —
+   * is relayed when it comes, and a failure after that point arrives as one
+   * `{error}` frame. The caller relays the body and owns its lifetime through
    * `signal`.
    *
    * A stream that dies mid-turn — a gateway's request timeout, an Envoy drain —
@@ -671,18 +679,30 @@ export class KagentClient {
       })
       [Symbol.asyncIterator]();
 
-    // The first event is awaited under the ordinary request timeout: a slow
-    // start means kagent is unwell, not that the agent is thinking.
-    let first: IteratorResult<StreamResponse>;
+    // The first event is awaited for at most the ordinary request timeout, so
+    // a rejection — which kagent answers at once — still surfaces as an error
+    // here. A first event slower than that is not a failure: a resumed task
+    // produces nothing until the agent does, and an approved tool call can run
+    // for minutes first. The stream is then answered as it is and the event
+    // relayed when it comes; giving up on it would only cut the preview. A
+    // failure after that point arrives in-band, as one error frame.
+    const firstEvent = stream.next();
+    let first: IteratorResult<StreamResponse> | undefined;
     try {
-      first = await this.withTimeout(stream.next(), this.timeoutMs, signal);
+      first = await this.withTimeout(firstEvent, this.timeoutMs, signal);
     } catch (error) {
       if (signal.aborted) {
         // The caller hung up before kagent answered. Nothing to report to
         // anyone — rethrown for the router to swallow as a closed connection.
         throw error;
       }
-      throw this.mapError(error, this.sendContext(true));
+      if (error !== FIRST_EVENT_PENDING) {
+        throw this.mapError(error, this.sendContext(true));
+      }
+      this.logger.debug(
+        `A kagent event stream for installation '${this.installation.name}' has no event yet; relaying it as it is`,
+        { timeoutMs: this.timeoutMs },
+      );
     }
 
     const encoder = new TextEncoder();
@@ -694,7 +714,7 @@ export class KagentClient {
     const body = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          let next = first;
+          let next = first ?? (await firstEvent);
           while (!next.done) {
             controller.enqueue(frame(toJson(StreamResponseSchema, next.value)));
             next = await stream.next();
@@ -1383,6 +1403,10 @@ export class KagentClient {
     );
   }
 
+  /**
+   * `promise`, or {@link FIRST_EVENT_PENDING} as the rejection once `timeoutMs`
+   * has passed without it settling. The promise itself is left running.
+   */
   private withTimeout<T>(
     promise: Promise<T>,
     timeoutMs: number,
@@ -1390,9 +1414,7 @@ export class KagentClient {
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(
-          new ConnectError('first event timed out', Code.DeadlineExceeded),
-        );
+        reject(FIRST_EVENT_PENDING);
       }, timeoutMs);
       const onAbort = () => {
         clearTimeout(timer);

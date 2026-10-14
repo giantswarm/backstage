@@ -12,7 +12,7 @@ import {
   KagentClient,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
-import { upstreamError } from './kagent/errors';
+import { turnPendingError, upstreamError } from './kagent/errors';
 import { createRouter, kagentProbeUrl, RouterOptions } from './router';
 
 /**
@@ -2027,6 +2027,19 @@ describe('createRouter', () => {
       expect(response.body.error.message).toContain('no such agent');
     });
 
+    it('answers 202 for a turn that is still running, never a 5xx', async () => {
+      // The contract of the unary route: a turn that outlived the wait is still
+      // running, and `MiddlewareFactory.error()` would forward a 500 to Sentry.
+      streamMessage.mockRejectedValue(
+        turnPendingError('The agent on gazelle has not finished.'),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ status: 'pending' });
+    });
+
     it('ends the relay cleanly when the upstream body dies mid-stream', async () => {
       // A gateway cutting the upstream connection must not crash the route or
       // surface as anything: an unterminated stream is the frontend's cue to
@@ -2251,6 +2264,19 @@ describe('createRouter', () => {
       // Never the unary call: that one is held for the turn timeout and then
       // answers 202, which is the blind spot this route exists to close.
       expect(answerConfirmation).not.toHaveBeenCalled();
+    });
+
+    it('answers 202 for a resumed turn that is still running, never a 5xx', async () => {
+      // Seen on gazelle: the resumed turn outlived the wait and the route let
+      // `KagentTurnPendingError` through as a 500.
+      streamAnswer.mockRejectedValue(
+        turnPendingError('The agent on gazelle has not finished.'),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ status: 'pending' });
     });
 
     it('validates the body exactly as the unary answer route does', async () => {
