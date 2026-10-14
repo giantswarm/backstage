@@ -20,7 +20,11 @@ import {
   ToolEffect,
 } from '../../../lib/toolAnnotations';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
-import { EffectBadge, TruncatedListNote, useServerPageLinks } from '../../shared';
+import {
+  EffectBadge,
+  TruncatedListNote,
+  useServerPageLinks,
+} from '../../shared';
 import { ServerTools } from '../../ServerPage/useServerPageData';
 
 const useStyles = makeStyles({

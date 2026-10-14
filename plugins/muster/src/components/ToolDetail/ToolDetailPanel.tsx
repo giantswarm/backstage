@@ -230,8 +230,7 @@ export function ToolDetailPanel({
                 value={values[field.name]}
                 error={fieldErrors[field.name]}
                 jsonMode={
-                  Boolean(jsonModes[field.name]) &&
-                  fieldKind(field) === 'array'
+                  Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
                 }
                 onChange={value => setValue(field.name, value)}
                 onToggleJson={() => toggleJson(field)}
