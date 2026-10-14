@@ -34,10 +34,10 @@ jest.mock('../UsageConversationsPage', () => ({
   UsageConversationsPage: () => <div>conversations-view</div>,
 }));
 
-// The scope bar's two inputs: the Environment control collapses on a
-// single-installation portal (decision O5), which this state drives, and the
-// selector itself is the gs scope select under another name — its own
-// behaviour is tested with it, so a marker stands in.
+// The Environment control is the gs scope select under another name, and it
+// collapses on a single-installation portal (decision O5) by itself — both
+// tested with it — so a marker stands in. The scope state stays mocked for
+// anything else in the tree that reads it.
 const scopeState = { isSingleInstallation: false, isLoading: false };
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
@@ -284,18 +284,6 @@ describe('UsageRouter', () => {
       expect(await screen.findByTestId('environment-select')).toHaveTextContent(
         'environment:kagent',
       );
-    });
-
-    it('hides the Environment control on a single-installation portal', async () => {
-      // Decision O5: agentlab-style setups have nothing to select between.
-      scopeState.isSingleInstallation = true;
-
-      renderTab('/agent-platform/usage/overview');
-
-      expect(await screen.findByText('overview-view')).toBeInTheDocument();
-      expect(
-        screen.queryByTestId('environment-select'),
-      ).not.toBeInTheDocument();
     });
 
     it('offers the time window on the gateway views and sets it in the URL', async () => {

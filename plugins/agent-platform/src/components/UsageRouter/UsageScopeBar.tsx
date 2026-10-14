@@ -1,6 +1,5 @@
 import { useLocation } from 'react-router-dom';
 import { Flex, Text, ToggleButton, ToggleButtonGroup } from '@backstage/ui';
-import { useInstallationScope } from '@giantswarm/backstage-plugin-gs';
 import {
   usePhoneLayout,
   useTouchInput,
@@ -20,10 +19,8 @@ import {
  * reads, and over which window.
  *
  * The Environment control appears **only when the portal knows more than one
- * installation** (decision O5). `EnvironmentSelect` hides itself in that case
- * too; the explicit gate here keeps the decision visible — and testable — at
- * the screen that owes it, and spares the single-installation layout an empty
- * flex slot.
+ * installation** (decision O5); `EnvironmentSelect` owns that gate and
+ * renders no slot otherwise.
  *
  * The window control shows on every view. The gateway views scope their
  * queries by it; Your sessions narrows the kagent fan-out's fixed-window
@@ -42,7 +39,6 @@ import {
  * URL.
  */
 export function UsageScopeBar() {
-  const { isSingleInstallation, isLoading } = useInstallationScope();
   const { days, setDays } = useUsageWindow();
   // A phone, or any touch screen, never shows the greyed buttons' `title=`:
   // the reason is said beside the control there instead (T22 C23).
@@ -69,7 +65,6 @@ export function UsageScopeBar() {
       ? usage.windowDays
       : undefined;
 
-  const showEnvironment = !isLoading && !isSingleInstallation;
   const windowReason =
     backendWindowDays !== undefined &&
     USAGE_WINDOW_OPTIONS.some(option => option > backendWindowDays)
@@ -78,7 +73,7 @@ export function UsageScopeBar() {
 
   return (
     <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
-      {showEnvironment && <EnvironmentSelect component="kagent" />}
+      <EnvironmentSelect component="kagent" />
       <ToggleButtonGroup
         aria-label="Time range"
         selectionMode="single"

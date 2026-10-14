@@ -18,6 +18,24 @@ export type InstallationScopeNoteProps = {
 };
 
 /**
+ * The pinned installation, when the portal knows no installation by that
+ * name (a stale deep link); undefined under "All installations", while the
+ * installations config is read, and for a known one. A page whose views read
+ * nothing there lets `InstallationScopeNote` stand alone instead of an empty
+ * state that would say something else about the same state.
+ */
+export function useUnknownScopePin(): string | undefined {
+  const { scope, isLoading } = useInstallationScope();
+  const { entries } = useInstallationInventory();
+  if (scope === ALL_INSTALLATIONS || isLoading) {
+    return undefined;
+  }
+  return entries.some(entry => entry.installation === scope)
+    ? undefined
+    : scope;
+}
+
+/**
  * Under a pinned scope, the one line that explains an empty tab: the pinned
  * installation does not run the component this tab reads, or the portal does
  * not know an installation by that name (a stale deep link). Renders nothing

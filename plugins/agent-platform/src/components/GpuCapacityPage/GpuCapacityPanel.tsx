@@ -34,6 +34,7 @@ import {
   type GpuCapacityUnavailableReason,
   type GpuNode,
 } from '../../lib/serving';
+import { nothingCouldBeRead } from '../../lib/soleInstallation';
 import { backendServerName } from '../../lib/modelManagerServing';
 
 /** The default order, and the one while the Installation column is hidden. */
@@ -776,6 +777,12 @@ export function GpuCapacityPanel({
   const readableInstallations = installations.filter(
     installation => !(installation in unavailable),
   );
+  // One pinned environment, or every one in view, failed: the alert below is
+  // all the panel knows.
+  const noneRead = nothingCouldBeRead({
+    installations,
+    unreadable: unavailableEntries.map(([installation]) => installation),
+  });
 
   let body: ReactNode;
   if (nodes.length > 0) {
@@ -798,13 +805,7 @@ export function GpuCapacityPanel({
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading nodes…" />;
-  } else if (
-    // Where no environment could be read (one pinned, say), the alert
-    // below is the answer: "No GPU nodes found" would claim what was not
-    // seen.
-    readableInstallations.length > 0 ||
-    unavailableEntries.length === 0
-  ) {
+  } else if (!noneRead) {
     body = (
       <Text variant="body-medium" color="secondary">
         {readableInstallations.length > 0
@@ -834,12 +835,10 @@ export function GpuCapacityPanel({
         {unavailableEntries.length > 0 && (
           <Alert
             status="info"
-            // "Some" only while others were read: under one pinned
-            // environment, or when none could be read, it is all of them.
             title={
-              readableInstallations.length > 0
-                ? 'GPU capacity is unavailable for some environments'
-                : 'GPU capacity is unavailable'
+              noneRead
+                ? 'GPU capacity is unavailable'
+                : 'GPU capacity is unavailable for some environments'
             }
             description={
               <UnavailableDescription entries={unavailableEntries} />

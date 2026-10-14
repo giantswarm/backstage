@@ -1,6 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, renderHook, screen } from '@testing-library/react';
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
-import { InstallationScopeNote } from './InstallationScopeNote';
+import {
+  InstallationScopeNote,
+  useUnknownScopePin,
+} from './InstallationScopeNote';
 
 let mockScope = 'all';
 let mockEntries: InstallationInventoryEntry[] = [];
@@ -85,5 +88,20 @@ describe('InstallationScopeNote', () => {
     expect(
       screen.getByText(/knows no environment named “nowhere”/),
     ).toBeInTheDocument();
+  });
+
+  it('names an unknown pinned installation, and nothing else', () => {
+    mockScope = 'nowhere';
+    expect(renderHook(() => useUnknownScopePin()).result.current).toBe(
+      'nowhere',
+    );
+    mockScope = 'wombat';
+    expect(renderHook(() => useUnknownScopePin()).result.current).toBe(
+      undefined,
+    );
+    mockScope = 'all';
+    expect(renderHook(() => useUnknownScopePin()).result.current).toBe(
+      undefined,
+    );
   });
 });

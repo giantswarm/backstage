@@ -42,6 +42,7 @@ import {
   serveSeedSearch,
 } from '../../lib/modelManagerServe';
 import { backendsOn, type ServedModel } from '../../lib/serving';
+import { nothingCouldBeRead } from '../../lib/soleInstallation';
 import {
   importModelRouteRef,
   pullModelRouteRef,
@@ -520,11 +521,11 @@ export function ServingPage() {
   // answers, none runs a backend (model-manager ships that way) and nothing
   // is served. Registering one is this page's job, so its empty state
   // carries the control.
+  const nothingListed = rows.length === 0 && emptyGroups.length === 0;
   const noBackendYet =
     !noServingLayer &&
     !serving.isLoading &&
-    rows.length === 0 &&
-    emptyGroups.length === 0 &&
+    nothingListed &&
     serving.unreachableInstallations.length === 0 &&
     installations.every(name => backendsOn(serving, name).length === 0);
   // The table's own loading state, and what its read warnings wait for: the
@@ -535,12 +536,11 @@ export function ServingPage() {
   // listed is not "no model is running", so the table's empty line gives way
   // to the warning below.
   const nothingRead =
-    rows.length === 0 &&
-    emptyGroups.length === 0 &&
-    serving.unreachableInstallations.length > 0 &&
-    installations.every(name =>
-      serving.unreachableInstallations.includes(name),
-    );
+    nothingListed &&
+    nothingCouldBeRead({
+      installations,
+      unreadable: serving.unreachableInstallations,
+    });
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
     emptyBody = <LoadingIndicator label="Reading the serving layer…" />;
