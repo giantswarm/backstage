@@ -105,11 +105,11 @@ export type ConnectorTechnicalDetailsProps = {
 };
 
 /**
- * The connector as an MCPServer resource, inside the page's "Technical
- * details" fold-out, as on the agent and model pages: where it comes from
- * (GitOps), its configuration, its authentication chain and muster's health
- * detail. What the facts column says (sign-in, health count, address, added)
- * is not repeated. A family shows one instance's resource and points to the
+ * The connector as an MCPServer resource, inside the Details tab's
+ * "Technical details" fold-out, as on the agent and model pages: where it
+ * comes from (GitOps), its configuration, its authentication chain and
+ * muster's health detail. The tab's plain facts (sign-in, health count, calls,
+ * added) are not repeated. A family shows one instance's resource and points to the
  * Instances tab for the rest. Needs an `ErrorsProvider` above it, for the
  * GitOps card (`MusterProviders` mounts one).
  */
@@ -133,7 +133,7 @@ export function ConnectorTechnicalDetails({
       )}
       <ResourceCard server={server} showName={!isFamily} />
       <InfoCard title="Configuration">
-        <ServerConfig server={server} omitUrl />
+        <ServerConfig server={server} />
       </InfoCard>
       {hasAuthChain(server) && (
         <InfoCard title="Authentication">

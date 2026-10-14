@@ -29,20 +29,18 @@ import { useQuery } from '@tanstack/react-query';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
+  type Fact,
   CopyButton,
   DisabledAction,
   EmptyStateCard,
-  FactsColumn,
   LoadingIndicator,
   MENU_WIDTH,
   RouteTabSpec,
   ShellDocumentTitle,
   ShellPage,
   ShellPageBadgeSkeleton,
-  ShellPageFactsSkeleton,
   StatusDot,
   type StatusDotTone,
-  TechnicalDetailsFoldOut,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
@@ -104,10 +102,7 @@ import {
   ConnectorPageTargetProvider,
 } from './connectorPageTarget';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
-import {
-  ConnectorTechnicalDetails,
-  technicalDetailsOpenByDefault,
-} from './ConnectorTechnicalDetails';
+import { ConnectorDetailsTab } from './ConnectorDetailsTab';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
 /** How long a success toast stays, as on the platform's other deletes. */
@@ -485,7 +480,9 @@ function ConnectorPageContent({
     });
   }
 
-  const facts = [];
+  // The Details tab's plain facts; the address and the rest of the MCPServer
+  // are in its Technical details.
+  const facts: Fact[] = [];
   if (representative) {
     facts.push({ label: 'Sign-in', value: signInLabel(representative) });
   }
@@ -495,20 +492,15 @@ function ConnectorPageContent({
   if (calls !== undefined) {
     facts.push({ label: 'Calls this month', value: calls });
   }
-  const address = representative?.getUrl();
-  if (address) {
-    facts.push({
-      label: 'Address',
-      value: (
-        <Text variant="body-small" style={{ wordBreak: 'break-all' }}>
-          {address}
-        </Text>
-      ),
-    });
-  }
   const added = addedLine(members);
   if (added) {
     facts.push({ label: 'Added', value: added });
+  }
+  // Last, as the agent page's Overview is first: the tab people open least.
+  // muster itself has neither facts nor an MCPServer, so no Details.
+  const hasDetails = facts.length > 0 || Boolean(representative);
+  if (hasDetails) {
+    tabs.push({ id: 'details', path: 'details', title: 'Details' });
   }
 
   const breadcrumbs: BreadcrumbItem[] = [
@@ -612,27 +604,6 @@ function ConnectorPageContent({
         menu={menuAction}
         tabs={tabs}
         tabsSearch={search}
-        aside={
-          facts.length > 0 ? (
-            <FactsColumn facts={facts} aria-label="Connector details" />
-          ) : undefined
-        }
-        footer={
-          // On every tab, below it: the connector has no overview tab to
-          // carry it, as the agent's does. muster itself has no MCPServer.
-          representative ? (
-            <TechnicalDetailsFoldOut
-              defaultExpanded={technicalDetailsOpenByDefault(row)}
-              followDefaultExpanded
-            >
-              <ConnectorTechnicalDetails
-                server={representative}
-                isFamily={row.kind === 'family'}
-                installation={installation}
-              />
-            </TechnicalDetailsFoldOut>
-          ) : undefined
-        }
       >
         <Flex direction="column" gap="3">
           {ssoFailure && <Alert status="danger" description={ssoFailure} />}
@@ -688,6 +659,19 @@ function ConnectorPageContent({
                     fleetClusters={fleetClusters}
                     authenticated={authenticated}
                     windowed
+                  />
+                }
+              />
+            )}
+            {hasDetails && (
+              <Route
+                path="details"
+                element={
+                  <ConnectorDetailsTab
+                    row={row}
+                    facts={facts}
+                    representative={representative}
+                    installation={installation}
                   />
                 }
               />
@@ -752,8 +736,8 @@ export interface ConnectorPageProps {
 
 /**
  * One connector's page in the agent-platform shell: Tools (the index), Used
- * by, a family's Instances, and Resources and Prompts when it exposes any,
- * with its facts beside them. `:server` names a server, a server family or
+ * by, a family's Instances, Resources and Prompts when it exposes any, and
+ * Details with its facts and technical details. `:server` names a server, a server family or
  * muster itself on the installation the section's scope selects.
  *
  * Edit opens the connector wizard pre-filled (`new?edit=<name>`), the flow
@@ -789,7 +773,7 @@ function ConnectorPageBody({
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, tile, badge row,
-    // tab strip, facts column — with skeletons where the read will fill in
+    // tab strip — with skeletons where the read will fill in
     // (T95). Tools is the one tab every connector has; the rest join it.
     return (
       <ShellPage
@@ -803,7 +787,6 @@ function ConnectorPageBody({
         badges={<ShellPageBadgeSkeleton />}
         tabs={[{ id: 'tools', path: '', title: 'Tools' }]}
         tabsSearch={search}
-        aside={<ShellPageFactsSkeleton />}
       >
         <LoadingIndicator label="Reading the environment's connectors…" />
       </ShellPage>

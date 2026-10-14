@@ -141,17 +141,8 @@ function activateHint(server: MCPServer): string {
     : ' Use “Activate” in the connector’s actions.';
 }
 
-/**
- * CRD-sourced configuration (always available, no muster session needed).
- * `omitUrl` leaves out the URL where the page already shows it.
- */
-export function ServerConfig({
-  server,
-  omitUrl = false,
-}: {
-  server: MCPServer;
-  omitUrl?: boolean;
-}) {
+/** CRD-sourced configuration (always available, no muster session needed). */
+export function ServerConfig({ server }: { server: MCPServer }) {
   const facts: Fact[] = [];
 
   // The durable switch behind a `Disconnected` live state. Only added when
@@ -168,7 +159,7 @@ export function ServerConfig({
   if (server.getManagementCluster()) {
     facts.push({ label: 'Target MC', value: server.getManagementCluster() });
   }
-  if (server.getUrl() && !omitUrl) {
+  if (server.getUrl()) {
     facts.push({ label: 'URL', value: <Mono>{server.getUrl()}</Mono> });
   }
   if (server.getTimeout() !== undefined) {

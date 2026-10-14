@@ -59,7 +59,7 @@ function renderServer(server: MCPServer) {
 }
 
 describe('ConnectorTechnicalDetails', () => {
-  it('shows a connector added through muster with its configuration and authentication', () => {
+  it('shows a connector added through muster with its address, configuration and authentication', () => {
     renderServer(
       makeServer({ name: 'jira', spec: { auth: { type: 'oauth' } } }),
     );
@@ -70,9 +70,9 @@ describe('ConnectorTechnicalDetails', () => {
     expect(screen.queryByText('Managed through GitOps')).toBeNull();
 
     expect(fact('Configuration', 'Timeout')).toHaveTextContent('30s');
-    // The facts column carries the address already.
-    expect(screen.queryByText('URL')).toBeNull();
-    expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
+    expect(fact('Configuration', 'URL')).toHaveTextContent(
+      'https://jira.example.test/mcp',
+    );
 
     expect(fact('Authentication', 'Mode')).toHaveTextContent(
       'Own account (OAuth sign-in)',
