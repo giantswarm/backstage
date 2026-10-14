@@ -1039,9 +1039,8 @@ describe('ServingPage', () => {
       screen.getByText('Could not read 1 environment'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/served models could not be read/),
+      screen.getByText(/^The served models on inst-3 could not be read\./),
     ).toBeInTheDocument();
-    expect(screen.getByText(/inst-3/)).toBeInTheDocument();
   });
 
   describe('on an Ollama-backed model-manager installation (no node inventory)', () => {

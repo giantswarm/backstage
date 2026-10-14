@@ -575,7 +575,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       )}
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
-        resourceName="Agents"
+        resourceName="agents"
         isLoading={isLoading}
       />
       <AgentsHelperBanner />
