@@ -1,14 +1,11 @@
 import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
-import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
-import { useApi } from '@backstage/frontend-plugin-api';
 import {
   SectionHeader,
   TechnicalDetailsFoldOut,
   YamlEditorFormField,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
 import { useToolDescription } from '../shared';
 import {
   buildArgs,
@@ -21,6 +18,7 @@ import { ToolArgField } from './ToolArgField';
 import { RESULT_MAX_HEIGHT, ToolResultViewer } from './ToolResultViewer';
 import { ExplorerError } from './ExplorerError';
 import { DetailSkeleton } from './states';
+import { ToolRun, useToolRun } from './useToolRun';
 
 /** localStorage key for a tool's last-used arguments, scoped per installation. */
 function argsKey(installation: string | undefined, name: string): string {
@@ -60,38 +58,47 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** A call's outcome as the Result section shows it. */
-type CallResult = { result: unknown; durationMs: number };
-
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
   /** One line beside the run button, e.g. what running the tool does. */
   note?: string;
+  /**
+   * What the tool is: a connector's or muster's own tool, or the tool muster
+   * runs a workflow as (`workflow_<name>`). A workflow's page says what it is
+   * for on Overview, so its run form leaves the description out and speaks
+   * of inputs and the workflow.
+   */
+  subject?: 'tool' | 'workflow';
+  /**
+   * The runs of the tool, where a page keeps them above the panel (a
+   * workflow page, across its tabs); else the panel keeps its own.
+   */
+  run?: ToolRun;
 }
 
 /**
  * The body of a tool's page, in sections down its single column: the
  * tool's description, its input schema folded away, "Try it" (the argument
  * form and the run button) and the result. The page's header carries the
- * name and the markers.
+ * name and the markers. A workflow's Run it tab renders the same body for
+ * the workflow's tool, without the description and with "Inputs" for "Try
+ * it".
  *
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
  * form (typed widgets, inline validation, remembered last-used args), and
- * executes it via the `call_tool` proxy. The UI executes whatever tools muster
- * exposes; the trust boundary is the downstream MCP server's deployment (e.g.
- * mcp-kubernetes is deployed read-only), not the portal.
+ * runs it with {@link useToolRun}.
  */
 export function ToolDetailPanel({
   name,
   installation,
   note,
+  subject = 'tool',
+  run,
 }: ToolDetailPanelProps) {
-  const musterApi = useApi(musterApiRef);
-  // The last call that returned, kept on screen while a re-run is pending:
-  // the result is most of the page, and dropping it would collapse the page
-  // under the reader until the call returns.
-  const [lastResult, setLastResult] = useState<CallResult | undefined>();
+  // Always called, as hooks must be; idle where the page passes its own.
+  const ownRun = useToolRun(name, installation);
+  const toolRun = run ?? ownRun;
 
   const storageKey = argsKey(installation, name);
   const [values, setValues] = useState<Record<string, FormValue>>(() =>
@@ -99,7 +106,6 @@ export function ToolDetailPanel({
   );
   const [jsonModes, setJsonModes] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [lastArgs, setLastArgs] = useState<Record<string, unknown>>({});
 
   // Reload the remembered args when the selected tool changes.
   useEffect(() => {
@@ -135,20 +141,6 @@ export function ToolDetailPanel({
     });
   }, [fields]);
 
-  const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'A tool call from the explorer; its arguments are free text and stay out.',
-    mutationFn: async (args: Record<string, unknown>) => {
-      const startedAt = performance.now();
-      const result = await musterApi.callTool(name, args, installation);
-      return { result, durationMs: Math.round(performance.now() - startedAt) };
-    },
-    onSuccess: setLastResult,
-    // A failed call says so above; an older result below would read as its.
-    onError: () => setLastResult(undefined),
-  });
-
   const setValue = (key: string, value: FormValue) =>
     setValues(prev => ({ ...prev, [key]: value }));
 
@@ -182,12 +174,11 @@ export function ToolDetailPanel({
   };
 
   const execute = (args: Record<string, unknown>) => {
-    setLastArgs(args);
     storeArgs(storageKey, values);
-    mutation.mutate(args);
+    toolRun.run(args);
   };
 
-  const run = () => {
+  const submit = () => {
     const { args, errors } = buildArgs(fields, values);
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
@@ -197,8 +188,8 @@ export function ToolDetailPanel({
   };
 
   const executeButton = (
-    <Button variant="primary" isPending={mutation.isPending} onClick={run}>
-      {mutation.isPending ? 'Running…' : 'Run'}
+    <Button variant="primary" isPending={toolRun.isPending} onClick={submit}>
+      {toolRun.isPending ? 'Running…' : 'Run'}
     </Button>
   );
 
@@ -212,25 +203,27 @@ export function ToolDetailPanel({
   return (
     <Flex direction="column" gap="5">
       {/* Headed as the agent, skill and workflow pages head theirs. */}
-      <Section title="What it’s for">
-        {data?.description ? (
-          <Text
-            as="p"
-            variant="body-medium"
-            style={{
-              margin: 0,
-              whiteSpace: 'pre-wrap',
-              overflowWrap: 'anywhere',
-            }}
-          >
-            {data.description}
-          </Text>
-        ) : (
-          <Text as="p" variant="body-medium" color="secondary">
-            Its connector gives no description.
-          </Text>
-        )}
-      </Section>
+      {subject === 'tool' && (
+        <Section title="What it’s for">
+          {data?.description ? (
+            <Text
+              as="p"
+              variant="body-medium"
+              style={{
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {data.description}
+            </Text>
+          ) : (
+            <Text as="p" variant="body-medium" color="secondary">
+              Its connector gives no description.
+            </Text>
+          )}
+        </Section>
+      )}
 
       {data?.inputSchema && (
         // Technical detail, folded in place and boxed as the other pages'
@@ -246,10 +239,12 @@ export function ToolDetailPanel({
         </TechnicalDetailsFoldOut>
       )}
 
-      <Section title="Try it">
+      <Section title={subject === 'workflow' ? 'Inputs' : 'Try it'}>
         {fields.length === 0 ? (
           <Text as="p" variant="body-medium" color="secondary">
-            This tool takes no arguments.
+            {subject === 'workflow'
+              ? 'This workflow takes no inputs.'
+              : 'This tool takes no arguments.'}
           </Text>
         ) : (
           fields.map(field => (
@@ -278,24 +273,24 @@ export function ToolDetailPanel({
             executeButton
           )}
         </Box>
-        {mutation.isError && (
+        {toolRun.error && (
           <Box mt="3">
             <Alert
               status="danger"
-              title="Could not run the tool"
-              description={(mutation.error as Error).message}
+              title={`Could not run the ${subject}`}
+              description={toolRun.error.message}
             />
           </Box>
         )}
       </Section>
 
-      {lastResult && (
+      {toolRun.lastResult && (
         <Section title="Result">
           <ToolResultViewer
-            result={lastResult.result}
-            durationMs={lastResult.durationMs}
-            onRerun={() => execute(lastArgs)}
-            rerunDisabled={mutation.isPending}
+            result={toolRun.lastResult.result}
+            durationMs={toolRun.lastResult.durationMs}
+            onRerun={toolRun.rerun}
+            rerunDisabled={toolRun.isPending}
           />
         </Section>
       )}

@@ -1,4 +1,10 @@
-import { expect, expectNoHorizontalScroll, open, test } from './fixtures';
+import {
+  connectToMuster,
+  expect,
+  expectNoHorizontalScroll,
+  open,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -36,4 +42,28 @@ test('a workflow reads as a list of steps that take a tap, the page never scroll
     admin.getByText(/something went wrong|error boundary/i),
   ).toBeHidden();
   await expectNoHorizontalScroll(admin, 'workflow page, a step opened');
+});
+
+test('a workflow runs from its Run it tab on a phone, form and result never scrolling the page sideways', async ({
+  admin,
+}) => {
+  test.setTimeout(150_000);
+  await open(
+    admin,
+    `/agent-platform/workflows/${WORKFLOW}/run?installation=${lab.installation}`,
+  );
+  const run = admin
+    .getByRole('main')
+    .getByRole('button', { name: 'Run', exact: true });
+  await connectToMuster(admin, run);
+  await expect(run).toBeVisible({ timeout: 60_000 });
+  await expectNoHorizontalScroll(admin, "a workflow's Run it tab");
+  await run.click();
+  await expect(
+    admin.getByRole('heading', { level: 2, name: 'Result', exact: true }),
+  ).toBeVisible({ timeout: 90_000 });
+  await expectNoHorizontalScroll(
+    admin,
+    "a workflow's Run it tab with its result",
+  );
 });

@@ -151,9 +151,32 @@ running models, GPU capacity and the model cache.
 
 ### Workflows
 
-Muster's workflows, read-only. A workflow's page splits into Overview, Usage
-(its run statistics) and Details tabs; its ⋮ menu shows the Workflow CR as
-YAML and, where Flux reconciles the workflow, where in Git to change it.
+Muster's workflows. The portal does not create, edit or delete them; agents
+and Git do. A workflow's page splits into Overview, Run it, Usage (its run
+statistics) and Details tabs; its ⋮ menu shows the Workflow CR as YAML and,
+where Flux reconciles the workflow, where in Git to change it.
+
+Run it (`/agent-platform/workflows/<name>/run?installation=<name>`) runs the
+workflow as a tool's page runs a tool: muster exposes each workflow as the
+tool `workflow_<name>`, and the tab shows that tool's input form and result,
+and remembers the last inputs per installation, shared with the tool's own
+page. The note beside Run says "Runs as you." when every step calls a
+connector that acts with the person's identity, and "Nothing is changed." for
+a workflow muster marks read-only. Connectors the steps call that wait for the
+person's sign-in are named above the form, with their Sign in, because muster
+refuses the run until then. The tab shows no form without a muster session (it
+asks for one), on an installation without an `authProvider` (the portal
+refuses runs there, since they would act as muster's shared identity), or
+where muster lists no `workflow_<name>` tool for the person. A run, whether it
+succeeds or fails, refreshes that workflow's run records: Usage, the last run
+on Overview and the Customize list.
+
+While a run is in flight, leaving the tab asks first, because its result shows
+only there; muster finishes the run either way. The question covers the
+page's tabs, clicks on links to other addresses (breadcrumbs, the rail, links
+in the page) and, through the browser's own prompt, a reload or a closed tab.
+The browser's Back, the command palette and navigation that code starts are
+not held: the app's router has no navigation blocker.
 
 ## Usage
 

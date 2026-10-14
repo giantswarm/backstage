@@ -207,6 +207,8 @@ export interface ShellPageProps {
   tabsSearch?: string;
   /** The tab hrefs' base, when not the splat route's (see `RouteTabs`). */
   tabsBasePath?: string;
+  /** Holds a tab switch until the page agrees (see `RouteTabs`'s `onNavigate`). */
+  onTabNavigate?: (href: string, navigate: () => void) => void;
   /**
    * A narrow column beside the content, e.g. a `FactsColumn`. At phone
    * width it comes first instead, folded under {@link ShellPageProps.asideLabel},
@@ -342,6 +344,7 @@ export function ShellPage({
   tabs,
   tabsSearch,
   tabsBasePath,
+  onTabNavigate,
   aside,
   asideLabel = 'Details',
   footer,
@@ -407,6 +410,7 @@ export function ShellPage({
             search={tabsSearch}
             basePath={tabsBasePath}
             className={classes.tabStrip}
+            onNavigate={onTabNavigate}
           />
         </div>
       )}

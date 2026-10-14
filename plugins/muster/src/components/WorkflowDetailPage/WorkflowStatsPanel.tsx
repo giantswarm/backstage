@@ -16,6 +16,7 @@ import {
 import { musterApiRef } from '../../apis';
 import type { WorkflowStatsPerDay } from '../../apis';
 import { formatDuration } from '../../lib/formatDuration';
+import { workflowRunKeys } from '../../lib/workflowRunKeys';
 import { Stat } from '../shared';
 
 /** Minimum number of days the runs-per-day chart always spans. */
@@ -177,7 +178,7 @@ export function WorkflowStatsPanel({
   const musterApi = useApi(musterApiRef);
 
   const { data, error, isPending, fetchStatus } = useQuery({
-    queryKey: ['muster', 'workflow-stats', installation, name],
+    queryKey: workflowRunKeys.stats(installation, name),
     queryFn: () => musterApi.getWorkflowStats(name, installation),
     enabled: name !== '',
   });
