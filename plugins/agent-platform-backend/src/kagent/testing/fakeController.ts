@@ -149,6 +149,17 @@ export type FakeController = {
   sessions: Map<string, Session>;
   /** Tasks by session id, oldest first. */
   tasks: Map<string, StoredTask[]>;
+  /**
+   * Start a session as agent-manager's `start_session` does, for the person
+   * `token` names: the portal never creates one itself. Keyed like the
+   * controller's `CreateSession`, so a repeated `requestId` answers the same
+   * session.
+   */
+  startSession: (
+    token: string,
+    agent: { namespace: string; name: string },
+    session?: { requestId?: string; name?: string },
+  ) => Session;
 };
 
 const DEFAULT_USERS = {
@@ -296,7 +307,7 @@ export function createFakeController(
       session = contextSession(ctx, tenant, message.contextId);
     } else {
       const agent = agentOf(tenant);
-      session = createSession(ctx, {
+      session = createSession(creatorOf(ctx), {
         agent,
         requestId: `a2a/${tenant}/${message.messageId}`,
         name: '',
@@ -351,10 +362,9 @@ export function createFakeController(
   }
 
   function createSession(
-    ctx: HandlerContext,
+    creator: string,
     request: CreateSessionRequest,
   ): Session {
-    const creator = creatorOf(ctx);
     const requestId = request.requestId;
     if (
       !requestId ||
@@ -820,10 +830,6 @@ export function createFakeController(
 
   const routes = (router: ConnectRouter) => {
     router.service(SessionService, {
-      createSession(request, ctx) {
-        record('SessionService', 'CreateSession', ctx);
-        return { session: createSession(ctx, request) };
-      },
       getSession(request, ctx) {
         record('SessionService', 'GetSession', ctx);
         return { session: owned(ctx, request.sessionId) };
@@ -967,5 +973,24 @@ export function createFakeController(
     });
   };
 
-  return { routes, calls, sessions, tasks };
+  function startSession(
+    token: string,
+    agent: { namespace: string; name: string },
+    {
+      requestId = randomUUID(),
+      name = '',
+    }: { requestId?: string; name?: string } = {},
+  ): Session {
+    const creator = users[token];
+    if (!creator) {
+      throw new Error(`no user for token ${token}`);
+    }
+    return createSession(creator, {
+      agent,
+      requestId,
+      name,
+    } as CreateSessionRequest);
+  }
+
+  return { routes, calls, sessions, tasks, startSession };
 }
