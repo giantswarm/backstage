@@ -23,7 +23,6 @@ import {
   type Task,
 } from './kagent/gen/a2a_pb';
 import {
-  CreateSessionResponseSchema,
   CreateSessionShareResponseSchema,
   DeleteSessionResponseSchema,
   GetSessionResponseSchema,
@@ -122,14 +121,6 @@ export const SESSION_NAME_MAX_LENGTH = 200;
  * the bound a caller actually meets, rather than the body parser's.
  */
 export { MESSAGE_TEXT_MAX_LENGTH };
-
-/**
- * Bounds of the controller's `request_id` (`CreateSessionRequest`,
- * `min_len: 1, max_len: 128`), which the browser supplies so a retried create
- * is idempotent. Checked here so a bad one is a 400 with our words rather than
- * an `InvalidArgument` with the controller's.
- */
-export const REQUEST_ID_MAX_LENGTH = 128;
 
 /**
  * Longest lifetime this proxy will request for a session share, in seconds.
@@ -418,54 +409,6 @@ export class KagentClient {
       ListSessionsResponseSchema,
       create(ListSessionsResponseSchema, { sessions }),
     );
-  }
-
-  /**
-   * `SessionService/CreateSession` — start a conversation with one Agent. The
-   * Agent names the Harness it runs on, so nothing is picked here.
-   *
-   * An Agent whose Harness has not compiled a ready revision cannot start a
-   * session: the controller answers `FailedPrecondition`, which is a 409
-   * naming the agent — a stale list or a platform state, not a fault.
-   *
-   * `requestId` is the browser's, one per submission and reused on a retry:
-   * the controller keys idempotency on `(creator, request_id)` and answers the
-   * existing session for a repeat with the same parameters, `AlreadyExists`
-   * (409) for a repeat with different ones.
-   */
-  async createSession(
-    agent: { namespace: string; name: string },
-    name: string,
-    requestId: string,
-    options: KagentRequestOptions,
-  ): Promise<unknown> {
-    const agentRef = `${agent.namespace}/${agent.name}`;
-
-    const response = await this.call(
-      () =>
-        this.sessionService.createSession(
-          {
-            agent: { namespace: agent.namespace, name: agent.name },
-            requestId,
-            name,
-          },
-          this.callOptions(options),
-        ),
-      {
-        endpoint: 'session create',
-        missingResource: `Installation '${this.installation.name}' cannot start a session: kagent does not know the agent '${agentRef}'.`,
-        invalidArgument: reason =>
-          new InputError(
-            `kagent on installation '${this.installation.name}' did not accept the new session: ${reason}`,
-          ),
-        failedPrecondition: reason =>
-          new ConflictError(
-            `The agent '${agentRef}' on installation '${this.installation.name}' cannot start a session yet: ${reason}`,
-          ),
-      },
-    );
-    this.remember(response.session);
-    return toJson(CreateSessionResponseSchema, response);
   }
 
   /**
@@ -1266,7 +1209,7 @@ export class KagentClient {
 
   /**
    * Where a call on `sessionId` goes when the caller names no Agent: the one
-   * remembered from a list, a create or a read of the session, else read off
+   * remembered from a list or a read of the session, else read off
    * the Session now. The context is the session id, as in {@link targetOf} —
    * see there for why that is correct rather than a shortcut.
    */

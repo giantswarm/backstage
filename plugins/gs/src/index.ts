@@ -80,6 +80,7 @@ export {
   useInstallationScopeUrlSync,
   applyInstallationScope,
   describeInstallationScopeOption,
+  installationsWithoutComponent,
   isPlatformInstallation,
   selectPlatformInstallations,
   setInstallationScope,
