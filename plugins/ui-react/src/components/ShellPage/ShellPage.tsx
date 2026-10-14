@@ -30,6 +30,16 @@ export const SHELL_PAGE_PADDING_BOTTOM_VAR = '--shell-page-padding-bottom';
 /** The page's side gutter at phone width, in px. */
 const PHONE_GUTTER = 16;
 
+/**
+ * The width, in px, the title's column claims beside the header's actions
+ * before they move under it. A long title wraps beside the actions instead of
+ * pushing them down, so a session's pin and menu stay at the top right even
+ * on a phone (192 + 20 + two 32px icon buttons fit a 288px content column).
+ * A wider group — the Environment select and a button — cannot leave a phone
+ * title that much, and wraps under the title as a whole.
+ */
+const TITLE_MIN_WIDTH = 192;
+
 const useStyles = makeStyles({
   root: {
     boxSizing: 'border-box',
@@ -44,9 +54,11 @@ const useStyles = makeStyles({
       padding: `20px ${PHONE_GUTTER}px var(${SHELL_PAGE_PADDING_BOTTOM_VAR})`,
     },
   },
+  // Top-aligned: the actions sit beside the title's first line, however many
+  // lines the title and the rows under it take.
   header: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: 20,
@@ -58,6 +70,7 @@ const useStyles = makeStyles({
     display: 'flex',
     alignItems: 'center',
     gap: 16,
+    flex: `1 1 ${TITLE_MIN_WIDTH}px`,
     minWidth: 0,
   },
   titles: {
@@ -84,9 +97,12 @@ const useStyles = makeStyles({
   description: {
     margin: 0,
   },
+  // Bottom-aligned: a field with its label above it (the Environment select)
+  // lines its box up with the buttons beside it, not its label. One gap
+  // between every control, as across a wrapped row.
   actions: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     flexWrap: 'wrap',
     gap: 8,
   },

@@ -73,10 +73,10 @@ export function UsageScopeBar() {
 
   return (
     <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
-      {/* Bottom-aligned among themselves: the Environment select carries its
-          label above the field, so centring would lift the time range above
-          the field's edge. The reason paragraph stays centred beside them. */}
-      <Flex align="end" gap="3" style={{ flexWrap: 'wrap' }}>
+      {/* As ShellPage's header actions: bottom-aligned, so the time range
+          lines up with the Environment select's field rather than its label,
+          8px apart. The reason paragraph stays centred beside them. */}
+      <Flex align="end" gap="2" style={{ flexWrap: 'wrap' }}>
         <EnvironmentSelect component="kagent" />
         <ToggleButtonGroup
           aria-label="Time range"
