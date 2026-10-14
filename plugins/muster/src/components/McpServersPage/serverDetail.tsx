@@ -19,6 +19,7 @@ import {
   isAwaitingData,
   CatalogNoMatch,
   matchesQuery,
+  Mono,
   ShowMore,
   StackedRowList,
   type StackedRowItem,
@@ -50,11 +51,6 @@ import {
 } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
-  mono: {
-    fontFamily: 'monospace',
-    fontSize: 12,
-    wordBreak: 'break-all',
-  },
   block: {
     marginBottom: theme.spacing(2),
   },
@@ -104,12 +100,6 @@ function Note({ children }: { children: ReactNode }) {
   );
 }
 
-/** Monospace for an identifier the reader may need to copy or compare. */
-function Mono({ children }: { children: ReactNode }) {
-  const classes = useStyles();
-  return <span className={classes.mono}>{children}</span>;
-}
-
 /** A small captioned sub-section inside a disclosure body. */
 export function DetailBlock({
   title,
@@ -138,7 +128,7 @@ export function DetailBlock({
 function activateHint(server: MCPServer): string {
   return isGitOpsManaged(server)
     ? ''
-    : ' Use “Activate” in the connector’s actions.';
+    : ' Use “Turn on” in the connector’s menu.';
 }
 
 /** CRD-sourced configuration (always available, no muster session needed). */
@@ -159,8 +149,9 @@ export function ServerConfig({ server }: { server: MCPServer }) {
   if (server.getManagementCluster()) {
     facts.push({ label: 'Target MC', value: server.getManagementCluster() });
   }
-  if (server.getUrl()) {
-    facts.push({ label: 'URL', value: <Mono>{server.getUrl()}</Mono> });
+  const url = server.getUrl();
+  if (url) {
+    facts.push({ label: 'URL', value: <Mono>{url}</Mono> });
   }
   if (server.getTimeout() !== undefined) {
     facts.push({ label: 'Timeout', value: `${server.getTimeout()}s` });
@@ -198,6 +189,20 @@ function authTypeLabel(auth: MCPServerAuth): string {
 }
 
 /**
+ * Whether `spec.auth` says more than "no authentication": anonymous with
+ * nothing else set reads as one line, which a page with a sign-in fact
+ * already says.
+ */
+export function hasAuthChain(server: MCPServer): boolean {
+  const auth = server.getAuth();
+  return Boolean(
+    auth &&
+    (serverAuthMode(server) !== 'anonymous' ||
+      Object.keys(withoutCrdDefaults(auth)).length > 0),
+  );
+}
+
+/**
  * The per-server auth/token chain recovered from `spec.auth`.
  *
  * The sign-in/sign-out affordance deliberately lives in the disclosures'
@@ -213,10 +218,7 @@ export function AuthChain({ server }: { server: MCPServer }) {
 
   // Anonymous with nothing else set reads as one line; any other key of
   // `spec.auth` is shown, since the wizard's edit gate reports it too.
-  if (
-    !auth ||
-    (mode === 'anonymous' && Object.keys(withoutCrdDefaults(auth)).length === 0)
-  ) {
+  if (!auth || !hasAuthChain(server)) {
     return <Note>{AUTH_MODE_LABELS.anonymous}</Note>;
   }
 
@@ -320,6 +322,20 @@ export function AuthChain({ server }: { server: MCPServer }) {
       )}
       <FactList facts={facts} maxWidth={null} />
     </>
+  );
+}
+
+/**
+ * Whether {@link HealthDetails} has anything to show: muster's status says
+ * more about the server than its state. Kept beside it, row for row.
+ */
+export function hasHealthDetails(server: MCPServer): boolean {
+  return Boolean(
+    server.getReadyCondition()?.message ||
+    server.getLastConnected() ||
+    (server.getConsecutiveFailures() ?? 0) > 0 ||
+    server.getNextRetryAfter() ||
+    server.getLastError(),
   );
 }
 
@@ -909,7 +925,7 @@ export function Provenance({ server }: { server: MCPServer }) {
   if (p.managedBy) {
     facts.push({ label: 'Managed by', value: p.managedBy });
   }
-  if (p.helmRelease ?? p.fluxHelmRelease) {
+  if (releaseId && (p.helmRelease ?? p.fluxHelmRelease)) {
     facts.push({ label: 'HelmRelease', value: <Mono>{releaseId}</Mono> });
   }
   if (p.fluxKustomization) {

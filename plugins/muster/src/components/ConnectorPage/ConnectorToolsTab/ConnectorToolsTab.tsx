@@ -57,6 +57,32 @@ const EFFECT_FACETS: readonly CatalogFacet<ToolSummary>[] = [
   },
 ];
 
+/** The Tools tab's search: what is typed, and whether the page opened with one. */
+export type ToolSearchState = {
+  query: string;
+  setQuery: (query: string) => void;
+  /**
+   * A search the tab opened with keeps its field, short list or not, so it
+   * can be read and cleared; clearing it does not take the field away.
+   */
+  openedSearched: boolean;
+};
+
+/**
+ * The Tools tab's search, seeded once from the page's `?q=`, as Customize's
+ * search is, and not written back: every change of the address is a page
+ * view. The connector page holds it above its tabs, so what was typed is
+ * still there after a visit to another tab.
+ */
+export function useToolSearchState(): ToolSearchState {
+  const { search } = useLocation();
+  const [initialQuery] = useState(
+    () => new URLSearchParams(search).get('q') ?? '',
+  );
+  const [query, setQuery] = useState(initialQuery);
+  return { query, setQuery, openedSearched: initialQuery.trim() !== '' };
+}
+
 export interface ConnectorToolsTabProps {
   /** The connector's key in the address, which its tools' pages sit under. */
   server: string;
@@ -71,6 +97,11 @@ export interface ConnectorToolsTabProps {
    * in to the server, which hides its tools.
    */
   signInGate?: ReactNode;
+  /**
+   * The search, held by the page so it outlives the tab; without it the tab
+   * holds its own, seeded the same way.
+   */
+  searchState?: ToolSearchState;
 }
 
 /**
@@ -81,10 +112,10 @@ export interface ConnectorToolsTabProps {
  * things) with a count per choice sit above a long list. A short list
  * (`SEARCH_MIN` or fewer) is read, not searched, so it shows neither, unless
  * the tab opened with a search; a long one renders a page of tools at a time.
- * The search is seeded once from the page's `?q=`: the Customize list's search
- * links a connector it matched by its tools here with it, so the tab opens on
- * the matching tools. A tool's link carries the search in force, so the way
- * back from its page lands on the same tools.
+ * The search is seeded once from the page's `?q=` (`useToolSearchState`): the
+ * Customize list's search links a connector it matched by its tools here with
+ * it, so the tab opens on the matching tools. A tool's link carries the search
+ * in force, so the way back from its page lands on the same tools.
  */
 export function ConnectorToolsTab({
   server,
@@ -93,18 +124,11 @@ export function ConnectorToolsTab({
   emptyExplanation,
   sessionGate,
   signInGate,
+  searchState,
 }: ConnectorToolsTabProps) {
   const classes = useStyles();
-  const { search } = useLocation();
-  // Seeded once from `?q=`, as Customize's search is, and not written back:
-  // every change of the address is a page view.
-  const [initialQuery] = useState(
-    () => new URLSearchParams(search).get('q') ?? '',
-  );
-  const [query, setQuery] = useState(initialQuery);
-  // A search the tab opened with keeps its field, short list or not, so it
-  // can be read and cleared; clearing it does not take the field away.
-  const openedSearched = initialQuery.trim() !== '';
+  const ownSearch = useToolSearchState();
+  const { query, setQuery, openedSearched } = searchState ?? ownSearch;
   const links = useServerPageLinks();
 
   const { tools: listed, shortName } = tools;
