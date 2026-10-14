@@ -1209,7 +1209,7 @@ export class KagentClient {
 
   /**
    * Where a call on `sessionId` goes when the caller names no Agent: the one
-   * remembered from a list, a create or a read of the session, else read off
+   * remembered from a list or a read of the session, else read off
    * the Session now. The context is the session id, as in {@link targetOf} —
    * see there for why that is correct rather than a shortcut.
    */

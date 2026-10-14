@@ -743,8 +743,9 @@ kagent-dev/kagent#2397 exposes it.
 #### Session ids come in two shapes, and neither is ours
 
 The controller assigns ids when agent-manager's `start_session` creates the
-Session; sessions started from Slack by klaus-gateway have another shape. An id is **opaque**: never
-parse it or assume hex or a UUID. The code only `encodeURIComponent`s it.
+Session; sessions started from Slack by klaus-gateway have another shape. An id
+is **opaque**: never parse it or assume hex or a UUID. The code only
+`encodeURIComponent`s it.
 
 Creates carry a browser `request_id`, and the controller is idempotent on
 (creator, request id), so a lost create answer returns the existing session on

@@ -5,6 +5,7 @@ import {
   type PortalEventAttributes,
 } from '@giantswarm/backstage-plugin-analytics-react';
 import { AgentManagerClient } from '../apis/AgentManagerClient';
+import { AgentManagerNotConnectedError } from '../lib/agentManager';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
@@ -71,9 +72,15 @@ export function useCreateSession(
       if (!musterApi) {
         // agent-manager is reached through muster only; a portal without the
         // muster plugin has no way to start a session.
-        throw new Error(
-          'Starting a session needs the muster plugin, which this portal does not have.',
+        throw new AgentManagerNotConnectedError(
+          'agent-manager is reached through muster, and the muster plugin is not installed in this portal.',
         );
+      }
+      // kagent never titles a session, so one started untitled stays that way
+      // in every list: a prompt with nothing to title it by starts nothing.
+      const sessionName = deriveSessionTitle(prompt, titleMaxLength);
+      if (!sessionName) {
+        throw new Error('A session starts with a prompt; this one is empty.');
       }
       const { sessionId } = await new AgentManagerClient(
         musterApi,
@@ -84,7 +91,7 @@ export function useCreateSession(
         namespace: agent.namespace,
         name: agent.technicalName,
         requestId,
-        sessionName: deriveSessionTitle(prompt, titleMaxLength),
+        sessionName,
       });
 
       return { sessionId };

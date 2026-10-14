@@ -12,6 +12,7 @@ import {
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import type { AgentRow } from '../components/AgentsDataProvider';
+import { AgentManagerNotConnectedError } from '../lib/agentManager';
 import {
   useCreateSession,
   type SessionEntryPoint,
@@ -440,7 +441,19 @@ describe('useCreateSession', () => {
     await act(async () => {
       await expect(
         result.current.createSession({ agent, prompt: 'Check' }),
-      ).rejects.toThrow(/muster plugin/);
+      ).rejects.toThrow(AgentManagerNotConnectedError);
     });
+  });
+
+  it('starts nothing for a prompt with nothing to title it by', async () => {
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({ agent, prompt: ' \n ' }),
+      ).rejects.toThrow(/empty/);
+    });
+
+    expect(startCalls()).toHaveLength(0);
   });
 });

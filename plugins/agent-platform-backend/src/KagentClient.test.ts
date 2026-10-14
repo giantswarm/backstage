@@ -229,8 +229,8 @@ describe('KagentClient against a fake controller', () => {
           { namespace: 'kagent', name: 'other', ready: true },
         ],
       });
-      await created(fake, 'a');
-      await created(fake, 'b', USER, { namespace: 'kagent', name: 'other' });
+      created(fake, 'a');
+      created(fake, 'b', USER, { namespace: 'kagent', name: 'other' });
 
       const narrowed = (await client.listSessions(USER, {
         agent: { namespace: 'kagent', name: 'other' },

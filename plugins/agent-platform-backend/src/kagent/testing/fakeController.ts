@@ -977,7 +977,7 @@ export function createFakeController(
     token: string,
     agent: { namespace: string; name: string },
     {
-      requestId = randomUUID() as string,
+      requestId = randomUUID(),
       name = '',
     }: { requestId?: string; name?: string } = {},
   ): Session {

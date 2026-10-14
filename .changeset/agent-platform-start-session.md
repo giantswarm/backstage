@@ -1,7 +1,7 @@
 ---
 '@giantswarm/backstage-plugin-agent-platform': minor
 '@giantswarm/backstage-plugin-agent-platform-backend': minor
-'@giantswarm/backstage-plugin-agent-platform-common': patch
+'@giantswarm/backstage-plugin-agent-platform-common': minor
 ---
 
 Every session starts through agent-manager's `start_session`, called through
