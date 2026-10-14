@@ -28,10 +28,12 @@ import {
   CustomizeModelPage,
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
+  CustomizeWorkspacesPanel,
   EnvironmentSelect,
   useCanAddSkill,
   useCustomizeData,
   WorkflowCreateAssist,
+  WorkspaceOrganizationSelect,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import musterPlugin, {
   CONNECTOR_GROUPS,
@@ -84,6 +86,14 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     },
   },
   {
+    // Offered only where an installation in scope has the workspace-manager
+    // (`hasWorkspaces`). Created in the workspace editor, not from here yet.
+    id: 'workspaces',
+    title: 'Workspaces',
+    searchLabel: 'Search workspaces',
+    component: 'muster',
+  },
+  {
     id: 'connectors',
     title: 'Connectors',
     searchLabel: 'Search connectors and tools',
@@ -112,6 +122,28 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
 ];
 
 const DEFAULT_TAB: CustomizeTabId = 'agents';
+
+/**
+ * Whether the strip shows a tab: Skills unless no skill repository is
+ * configured, Workspaces only once an installation in scope is known to have
+ * the workspace-manager, so the tab never shows where workspaces are off.
+ */
+function isTabShown(
+  id: CustomizeTabId,
+  {
+    hasSkillRepositories,
+    hasWorkspaces,
+  }: { hasSkillRepositories?: boolean; hasWorkspaces?: boolean },
+): boolean {
+  switch (id) {
+    case 'skills':
+      return hasSkillRepositories !== false;
+    case 'workspaces':
+      return hasWorkspaces === true;
+    default:
+      return true;
+  }
+}
 
 function CreateAction({
   create,
@@ -150,6 +182,8 @@ function TabPanel({
       return <CustomizeAgentsPanel search={search} />;
     case 'skills':
       return <CustomizeSkillsPanel search={search} />;
+    case 'workspaces':
+      return <CustomizeWorkspacesPanel search={search} />;
     case 'connectors':
       return (
         <CustomizeConnectorsPanel search={search} group={connectorGroup} />
@@ -218,7 +252,7 @@ function CustomizeTabContent({
   /** The Connectors tab's sub-tab; the customer's own connectors by default. */
   connectorGroup?: ConnectorGroup;
 }) {
-  const { counts, hasSkillRepositories } = useCustomizeData();
+  const { counts, hasSkillRepositories, hasWorkspaces } = useCustomizeData();
   const canAddSkill = useCanAddSkill();
   const create = tab.id === 'skills' && !canAddSkill ? undefined : tab.create;
   const musterCounts = useMusterCustomizeCounts();
@@ -239,8 +273,8 @@ function CustomizeTabContent({
     tab.id === 'connectors' && connectorGroup !== 'yours'
       ? connectorGroupInfo(connectorGroup).title
       : undefined;
-  const tabs = CUSTOMIZE_TABS.filter(
-    candidate => candidate.id !== 'skills' || hasSkillRepositories !== false,
+  const tabs = CUSTOMIZE_TABS.filter(candidate =>
+    isTabShown(candidate.id, { hasSkillRepositories, hasWorkspaces }),
   ).map(({ id, title }) => ({ id, path: id, title, count: tabCounts[id] }));
 
   return (
@@ -254,8 +288,17 @@ function CustomizeTabContent({
           ? [groupTitle, tab.title, 'Customize']
           : [tab.title, 'Customize']
       }
-      description="Manage the agents, skills, connectors and models behind your sessions."
-      actions={<EnvironmentSelect component={tab.component} />}
+      description="Manage the agents, skills, workspaces, connectors and models behind your sessions."
+      actions={
+        tab.id === 'workspaces' ? (
+          <Flex gap="3" align="end" style={{ flexWrap: 'wrap' }}>
+            <WorkspaceOrganizationSelect />
+            <EnvironmentSelect component={tab.component} />
+          </Flex>
+        ) : (
+          <EnvironmentSelect component={tab.component} />
+        )
+      }
       tabs={tabs}
     >
       <Flex direction="column" gap="5">
@@ -350,9 +393,14 @@ function CustomizeTabPage() {
   const splat = useParams()['*'] ?? '';
   const [tabId, ...rest] = splat.split('/');
   const { search } = useLocation();
-  const { hasSkillRepositories } = useCustomizeData();
+  const { hasSkillRepositories, hasWorkspaces } = useCustomizeData();
   const tab = CUSTOMIZE_TABS.find(candidate => candidate.id === tabId);
-  if (!tab || (tab.id === 'skills' && hasSkillRepositories === false)) {
+  // A tab that turned out to have nothing behind it lands on the first one;
+  // one still being found out renders, its panel loading.
+  const isGone =
+    (tab?.id === 'skills' && hasSkillRepositories === false) ||
+    (tab?.id === 'workspaces' && hasWorkspaces === false);
+  if (!tab || isGone) {
     return <DefaultTabRedirect />;
   }
   let connectorGroup: ConnectorGroup | undefined;

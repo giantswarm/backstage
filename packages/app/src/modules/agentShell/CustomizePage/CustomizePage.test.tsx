@@ -51,6 +51,8 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeAgentsPanel: mockPanel('Agents'),
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
+    CustomizeWorkspacesPanel: mockPanel('Workspaces'),
+    WorkspaceOrganizationSelect: () => <p>Organization scope</p>,
     CustomizeModelPage: () => {
       const { useParams } = jest.requireActual('react-router-dom');
       const { installation, namespace, name } = useParams();
@@ -507,6 +509,54 @@ describe('CustomizePage', () => {
       ),
     );
     expect(tabs().map(([title]) => title)).not.toContain('Skills (71)');
+  });
+
+  describe('the Workspaces tab', () => {
+    it('sits between Skills and Connectors where an installation in scope has the workspace-manager', async () => {
+      mockCustomizeData = {
+        ...mockCustomizeData,
+        counts: { ...(mockCustomizeData.counts as object), workspaces: 2 },
+        hasWorkspaces: true,
+      };
+      await renderCustomize('/customize/workspaces');
+
+      expect(tabs().map(([title]) => title)).toEqual([
+        'Agents (5)',
+        'Skills (71)',
+        'Workspaces (2)',
+        'Connectors (7)',
+        'Models (3)',
+        'Workflows (2)',
+      ]);
+      expect(screen.getByText(/^Workspaces panel/)).toBeInTheDocument();
+      // The Organization scope beside the Environment control.
+      expect(screen.getByText('Organization scope')).toBeInTheDocument();
+      expect(screen.getByText('Environment for muster')).toBeInTheDocument();
+      // Created in the workspace editor, not from the header.
+      expect(screen.queryByRole('link', { name: /workspace/i })).toBeNull();
+    });
+
+    it('is absent, and its address goes to the Agents tab, where no installation has the workspace-manager', async () => {
+      mockCustomizeData = { ...mockCustomizeData, hasWorkspaces: false };
+      await renderCustomize('/customize/workspaces');
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent(
+          '/customize/agents',
+        ),
+      );
+      expect(tabs().map(([title]) => title)).not.toContain('Workspaces');
+      expect(screen.queryByText('Organization scope')).toBeNull();
+    });
+
+    it('stays out of the strip while it is not known yet, its address loading', async () => {
+      mockCustomizeData = { ...mockCustomizeData, hasWorkspaces: undefined };
+      await renderCustomize('/customize/agents');
+
+      expect(
+        tabs().some(([title]) => title?.startsWith('Workspaces')),
+      ).toBe(false);
+    });
   });
 
   it('names itself and its tab in the document title, and follows the tab', async () => {

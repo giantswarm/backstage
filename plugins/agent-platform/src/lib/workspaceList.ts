@@ -1,0 +1,146 @@
+/**
+ * What the Workspaces tab shows of a workspace: its row's words, from
+ * `list_workspaces` (and `get_workspace` for what the volume stores).
+ */
+
+import { formatBytes } from './formatNumbers';
+import type {
+  Workspace,
+  WorkspaceSource,
+  WorkspaceStorage,
+} from './workspaceManager';
+
+/**
+ * A workspace with the installation whose workspace-manager listed it; `id`
+ * is {@link workspaceRowId}.
+ */
+export type WorkspaceRow = Workspace & { installation: string; id: string };
+
+/** A row's identity across installations. */
+export function workspaceRowId(row: {
+  installation: string;
+  name: string;
+}): string {
+  return `${row.installation}/${row.name}`;
+}
+
+/**
+ * One source in a line: `github: example-org · lang Go · topic mcp`, the
+ * repositories by name (`repo-a, repo-b`), the exclusions last. A source
+ * with neither names nor filters selects all of the owner's repositories.
+ */
+export function sourceLabel(source: WorkspaceSource): string {
+  const parts: string[] = [];
+  if (source.repositories?.length) {
+    parts.push(source.repositories.join(', '));
+  }
+  const languages = source.filters?.languages ?? [];
+  if (languages.length > 0) {
+    parts.push(`lang ${languages.join(', ')}`);
+  }
+  const topics = source.filters?.topics;
+  if (topics && topics.names.length > 0) {
+    const joiner = topics.match === 'all' ? ' + ' : ', ';
+    parts.push(`topic ${topics.names.join(joiner)}`);
+  }
+  if (parts.length === 0) {
+    parts.push('all repositories');
+  }
+  if (source.exclude?.length) {
+    parts.push(`excl. ${source.exclude.join(', ')}`);
+  }
+  return [`${source.provider}: ${source.owner}`, ...parts].join(' · ');
+}
+
+/** Every source of a workspace, one after the other. */
+export function sourcesLabel(sources: WorkspaceSource[]): string {
+  return sources.map(sourceLabel).join('; ');
+}
+
+export type SyncTone = 'success' | 'danger' | 'info' | 'neutral';
+
+/**
+ * The Last sync column: the state now (deleting, syncing, requested), else
+ * the last cycle's result. The time is shown beside it, relative.
+ */
+export function syncState(workspace: Workspace): {
+  label: string;
+  tone: SyncTone;
+  /** The time the label refers to, when it refers to one. */
+  at?: string;
+  /** The manager's own words, for a failure. */
+  detail?: string;
+} {
+  if (workspace.deleting) {
+    return { label: 'Deleting', tone: 'neutral' };
+  }
+  if (workspace.activeSync) {
+    return {
+      label: 'Syncing',
+      tone: 'info',
+      at: workspace.activeSync.startedAt,
+    };
+  }
+  if (workspace.syncRequest) {
+    return {
+      label: 'Sync requested',
+      tone: 'info',
+      at: workspace.syncRequest.requestedAt,
+    };
+  }
+  const last = workspace.lastSync;
+  if (!last) {
+    return { label: 'Not synced yet', tone: 'neutral' };
+  }
+  switch (last.result) {
+    case 'Succeeded':
+      return { label: 'Synced', tone: 'success', at: last.time };
+    case 'NoChange':
+      return { label: 'No change', tone: 'success', at: last.time };
+    default:
+      return {
+        label: 'Failed',
+        tone: 'danger',
+        at: last.time,
+        detail: last.message,
+      };
+  }
+}
+
+/** Whether the row changes on its own soon: worth reading again. */
+export function isSettling(workspace: Workspace): boolean {
+  return Boolean(
+    workspace.deleting || workspace.activeSync || workspace.syncRequest,
+  );
+}
+
+/**
+ * What the volume stores (mirrors and session directories), and the share's
+ * size where its class provisions one: `9.5 GB of 15Gi`.
+ */
+export function storedLabel(storage: WorkspaceStorage): string {
+  const stored = formatBytes(storage.mirrorsBytes + storage.sessionsBytes);
+  return storage.volumeSize ? `${stored} of ${storage.volumeSize}` : stored;
+}
+
+/** Rows whose name, Organization or sources contain the search. */
+export function searchWorkspaces(
+  rows: WorkspaceRow[],
+  search: string,
+): WorkspaceRow[] {
+  const needle = search.trim().toLowerCase();
+  if (!needle) {
+    return rows;
+  }
+  return rows.filter(row =>
+    [row.name, row.organization, row.installation, sourcesLabel(row.sources)]
+      .join('\n')
+      .toLowerCase()
+      .includes(needle),
+  );
+}
+
+/** "1 Session", "3 Sessions". */
+export function sessionsNoun(count: number): string {
+  return `${count} ${count === 1 ? 'Session' : 'Sessions'}`;
+}

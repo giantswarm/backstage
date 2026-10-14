@@ -2,6 +2,7 @@
 export const CUSTOMIZE_TAB_IDS = [
   'agents',
   'skills',
+  'workspaces',
   'connectors',
   'models',
   'workflows',
