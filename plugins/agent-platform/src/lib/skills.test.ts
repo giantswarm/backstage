@@ -5,7 +5,6 @@ import {
   normalizedRepoUrl,
   parseSkillDetailPath,
   resolveSkillDetailPath,
-  skillCommitUrl,
   skillDetailPath,
   skillSourceUrl,
 } from './skills';
@@ -223,7 +222,7 @@ describe('canProposeSkillTo', () => {
   });
 });
 
-describe('skillSourceUrl / skillCommitUrl', () => {
+describe('skillSourceUrl', () => {
   const skill = {
     repoUrl: 'https://github.com/giantswarm/skills',
     path: 'ticket-triage',
@@ -236,12 +235,6 @@ describe('skillSourceUrl / skillCommitUrl', () => {
     );
     expect(skillSourceUrl({ ...skill, path: '' })).toBe(
       'https://github.com/giantswarm/skills/tree/a1b2c3d4e5',
-    );
-  });
-
-  it('points at the pinned commit itself', () => {
-    expect(skillCommitUrl(skill)).toBe(
-      'https://github.com/giantswarm/skills/commit/a1b2c3d4e5',
     );
   });
 });

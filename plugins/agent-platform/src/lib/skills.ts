@@ -353,13 +353,3 @@ export function skillFileUrl(
     skill.commit
   }/${segments.map(encodeURIComponent).join('/')}`;
 }
-
-/** The pinned commit on github.com, for the facts column. */
-export function skillCommitUrl(
-  skill: Pick<DiscoveredSkill, 'repoUrl' | 'commit'>,
-): string | undefined {
-  const parts = githubRepoParts(skill.repoUrl);
-  return parts
-    ? `https://github.com/${parts.owner}/${parts.repo}/commit/${skill.commit}`
-    : undefined;
-}
