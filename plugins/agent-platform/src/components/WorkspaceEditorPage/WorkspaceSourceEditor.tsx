@@ -125,6 +125,15 @@ export function WorkspaceSourceEditor({
     return [...source.topics, ...shown];
   }, [facets.data?.topics, source.topics, topicSearch]);
   const topicCount = facets.data?.topics.length ?? 0;
+  // Why there is nothing to choose from yet, before the owner's listing.
+  let facetsHint: string | undefined;
+  if (!source.provider) {
+    facetsHint = 'Choose the provider first.';
+  } else if (!owner) {
+    facetsHint = 'Enter the owner first.';
+  } else if (facets.isLoading) {
+    facetsHint = 'Reading the owner’s repositories…';
+  }
 
   return (
     <Card data-testid={`workspace-source-${index}`}>
@@ -202,9 +211,7 @@ export function WorkspaceSourceEditor({
                   />
                 ) : (
                   <Text variant="body-small" color="secondary">
-                    {owner
-                      ? 'No languages reported.'
-                      : 'Enter the owner first.'}
+                    {facetsHint ?? 'No languages reported.'}
                   </Text>
                 )}
                 {field('languages') && (
@@ -257,7 +264,7 @@ export function WorkspaceSourceEditor({
                   />
                 ) : (
                   <Text variant="body-small" color="secondary">
-                    {owner ? 'No topics reported.' : 'Enter the owner first.'}
+                    {facetsHint ?? 'No topics reported.'}
                   </Text>
                 )}
                 {field('topics') && (
