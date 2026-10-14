@@ -75,6 +75,7 @@ async function render(
   const musterApi = {
     callTool: fake.callTool,
     listServers: fake.listServers,
+    listInstallations: fake.listInstallations,
   } as unknown as MusterApi;
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },

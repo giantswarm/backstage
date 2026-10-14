@@ -1119,7 +1119,15 @@ export function SessionDetailPage() {
     // The way out, offered under the box: a second button while the loss is
     // only suspected, the only one once kagent has reported it. Needs the agent
     // as a row to create against; without one the notice says where else to go.
-    const offersNewSession = Boolean(runtimeLoss && agentRow && !isConfirming);
+    // Withheld where agent-manager cannot start a session as the person (the
+    // notice gives the row's `sessionBlocker`), and while that is still read.
+    const offersNewSession = Boolean(
+      runtimeLoss &&
+      agentRow &&
+      !agentRow.sessionBlocker &&
+      !agentRow.isSessionPending &&
+      !isConfirming,
+    );
     bottomControl = (
       <div
         ref={setDockElement}
@@ -1131,6 +1139,7 @@ export function SessionDetailPage() {
             loss={runtimeLoss}
             agentName={row.agentName || undefined}
             offersNewSession={offersNewSession}
+            newSessionBlocker={agentRow?.sessionBlocker}
             startError={creation.error?.message}
           />
         )}

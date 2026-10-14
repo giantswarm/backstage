@@ -77,7 +77,5 @@ export type AgentManagerAvailability = MusterServerAvailability;
 export function useAgentManagerAvailability(
   installations: string[],
 ): AgentManagerAvailability {
-  return useMusterServerAvailability(AGENT_MANAGER_SERVER, installations, {
-    asPerson: true,
-  });
+  return useMusterServerAvailability(AGENT_MANAGER_SERVER, installations);
 }

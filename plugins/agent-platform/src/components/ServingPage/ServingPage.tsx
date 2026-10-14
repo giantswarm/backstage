@@ -55,6 +55,7 @@ import {
 } from '../ModelManagerControls';
 import { useGpuNodePoolControls } from '../GpuNodePools';
 import { useModelBackendControls } from '../ModelBackends';
+import { useModelHostingSharedIdentity } from '../ModelHostingSharedIdentity';
 import {
   ModelHostingActions,
   type HostingAction,
@@ -143,6 +144,7 @@ const TOAST_TIMEOUT_MS = 6000;
  */
 export function ServingPage() {
   const serving = useServing();
+  const sharedIdentity = useModelHostingSharedIdentity();
   const { servedModels, installations } = serving;
   const { rows: servedRows } = useServedModelRows();
   const backends = useModelBackendControls();
@@ -551,7 +553,11 @@ export function ServingPage() {
       ) : (
         <EmptyStateCard
           title="No serving layer"
-          description="No environment in reach runs KServe or model-manager. Models on external endpoints work without one; a GPU node pool adds serving to a cluster."
+          description={
+            sharedIdentity.modelManager.length > 0
+              ? 'No environment in reach runs KServe, or a model-manager this portal can reach as you (see above). Models on external endpoints work without one.'
+              : 'No environment in reach runs KServe or model-manager. Models on external endpoints work without one; a GPU node pool adds serving to a cluster.'
+          }
           actions={addActions}
         />
       );

@@ -64,6 +64,21 @@ jest.mock('../InstallationScopeNote', () => ({
   useUnknownScopePin: () => mockUnknownPin,
 }));
 
+// Which installations withhold cluster-manager and model-manager for want of
+// a per-user sign-in; none unless a case says so.
+let mockSharedIdentity: { clusterManager: string[]; modelManager: string[] } = {
+  clusterManager: [],
+  modelManager: [],
+};
+jest.mock('../ModelHostingSharedIdentity', () => ({
+  ModelHostingSharedIdentityNote: () =>
+    mockSharedIdentity.clusterManager.length +
+      mockSharedIdentity.modelManager.length >
+    0 ? (
+      <p>shared-identity-note</p>
+    ) : null,
+}));
+
 // Whether an installation in view runs cluster-manager: what offers the GPU
 // pools and the Model cache tab.
 let mockClusterManager: string[] = [];
@@ -139,6 +154,7 @@ const withServingLayer: Partial<ServingContextValue> = {
 
 describe('ModelsRouter', () => {
   beforeEach(() => {
+    mockSharedIdentity = { clusterManager: [], modelManager: [] };
     mockClusterManager = [];
     scopeState.scope = 'all';
     mockUnknownPin = undefined;
@@ -186,6 +202,18 @@ describe('ModelsRouter', () => {
         within(breadcrumbs).getByText('Model hosting'),
       ).toBeInTheDocument();
     });
+
+    it.each(['serving', 'capacity', 'cache'])(
+      'says above the %s view why a manager is withheld for want of a per-user sign-in',
+      async view => {
+        mockSharedIdentity = { clusterManager: ['inst-1'], modelManager: [] };
+        renderTab(`/agent-platform/models/${view}`);
+
+        expect(
+          await screen.findByText('shared-identity-note'),
+        ).toBeInTheDocument();
+      },
+    );
 
     it('offers the serving views as the page tabs, without Model configs', async () => {
       renderTab('/agent-platform/models/serving');

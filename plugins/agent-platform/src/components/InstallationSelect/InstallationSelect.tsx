@@ -15,6 +15,7 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
 import { musterServersExternalRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { SharedIdentityNote } from '../SharedIdentityNote';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
@@ -62,29 +63,6 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
           : 'No agent-manager on some environments'
       }
       description={`muster on ${list} lists no agent-manager, so agents cannot be created there. A platform admin can enable the Agent Platform's agent-manager component.`}
-    />
-  );
-}
-
-/**
- * Why an installation with agent-manager is still not offered: its muster has
- * no per-user sign-in in this portal, so agent-manager's tools are refused
- * there rather than run under muster's shared identity.
- */
-function SharedIdentityNote({ installations }: { installations: string[] }) {
-  if (installations.length === 0) {
-    return null;
-  }
-  const list = joinNames(installations);
-  return (
-    <Alert
-      status="info"
-      title={
-        installations.length === 1
-          ? `Agents cannot be created on ${list} from this portal`
-          : 'Agents cannot be created on some environments from this portal'
-      }
-      description={`Agents are created through agent-manager as you, and muster on ${list} has no per-user sign-in in this portal, so it would act under muster's shared identity instead. A platform admin can give the muster entry an authProvider.`}
     />
   );
 }
@@ -336,7 +314,11 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
         installations={inaccessibleInstallations}
       />
       <NoAgentManagerNote installations={withoutAgentManager} />
-      <SharedIdentityNote installations={withSharedIdentity} />
+      <SharedIdentityNote
+        installations={withSharedIdentity}
+        blocked="Agents cannot be created"
+        via="Agents are created through agent-manager"
+      />
       <AgentManagerUnknownNote installations={agentManagerUnknown} />
     </>
   );
@@ -372,7 +354,11 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
             />
             {selectError.message}
             <NoAgentManagerNote installations={withoutAgentManager} />
-            <SharedIdentityNote installations={withSharedIdentity} />
+            <SharedIdentityNote
+              installations={withSharedIdentity}
+              blocked="Agents cannot be created"
+              via="Agents are created through agent-manager"
+            />
           </Flex>
         </InstallationCard>
       );

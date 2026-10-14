@@ -23,6 +23,7 @@ export type FakeCall = { tool: string; args: Record<string, any> };
 export type WorkspaceManagerFake = {
   callTool: jest.Mock;
   listServers: jest.Mock;
+  listInstallations: jest.Mock;
   calls: FakeCall[];
   callsOf: (tool: string) => Array<Record<string, any>>;
   /** Replaces the answer of a write: throw to refuse it. */
@@ -216,10 +217,16 @@ export function createWorkspaceManagerFake({
   const listServers = jest.fn(async () => ({
     mcpServers: [{ name: 'workspace-manager' }],
   }));
+  // Every installation's muster signs the person in, so the manager's tools
+  // run as the person.
+  const listInstallations = jest.fn(async () => ({
+    installations: [{ name: 'lab', requiresAuth: true }],
+  }));
 
   return {
     callTool,
     listServers,
+    listInstallations,
     calls,
     callsOf: tool => calls.filter(c => c.tool === tool).map(c => c.args),
     onWrite: (tool, handler) => {

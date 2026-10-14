@@ -40,14 +40,14 @@ beforeEach(() => {
 });
 
 describe('useMusterServerAvailability', () => {
-  it('reads an installation without per-user sign-in as sharedIdentity for a server reached as the person', async () => {
+  it('reads an installation without per-user sign-in as sharedIdentity, by default', async () => {
     const { result } = renderHook(
       () =>
-        useMusterServerAvailability(
-          'agent-manager',
-          ['alpha', 'beta', 'gamma'],
-          { asPerson: true },
-        ),
+        useMusterServerAvailability('agent-manager', [
+          'alpha',
+          'beta',
+          'gamma',
+        ]),
       { wrapper },
     );
 
@@ -66,10 +66,7 @@ describe('useMusterServerAvailability', () => {
       }),
     );
     const { result } = renderHook(
-      () =>
-        useMusterServerAvailability('agent-manager', ['gamma'], {
-          asPerson: true,
-        }),
+      () => useMusterServerAvailability('agent-manager', ['gamma']),
       { wrapper },
     );
 
@@ -89,10 +86,7 @@ describe('useMusterServerAvailability', () => {
   it('offers nothing when the installations cannot be read', async () => {
     listInstallations.mockRejectedValue(new Error('backend down'));
     const { result } = renderHook(
-      () =>
-        useMusterServerAvailability('agent-manager', ['gamma'], {
-          asPerson: true,
-        }),
+      () => useMusterServerAvailability('agent-manager', ['gamma']),
       { wrapper },
     );
 
@@ -106,10 +100,7 @@ describe('useMusterServerAvailability', () => {
       installations: [{ name: 'beta', requiresAuth: false }],
     });
     const { result } = renderHook(
-      () =>
-        useMusterServerAvailability('agent-manager', ['beta'], {
-          asPerson: true,
-        }),
+      () => useMusterServerAvailability('agent-manager', ['beta']),
       { wrapper },
     );
 
@@ -117,9 +108,27 @@ describe('useMusterServerAvailability', () => {
     expect(result.current.presenceOf('beta')).toBe('missing');
   });
 
-  it('does not ask for the installations without asPerson', async () => {
+  it.each(['cluster-manager', 'model-manager', 'workspace-manager'])(
+    'withholds %s where muster has no per-user sign-in',
+    async server => {
+      listServers.mockResolvedValue({ mcpServers: [{ name: server }] });
+      const { result } = renderHook(
+        () => useMusterServerAvailability(server, ['alpha', 'gamma']),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.available).toEqual(['alpha']);
+      expect(result.current.sharedIdentity).toEqual(['gamma']);
+    },
+  );
+
+  it('does not ask for the installations for a server whose tools run without the person', async () => {
     const { result } = renderHook(
-      () => useMusterServerAvailability('agent-manager', ['gamma']),
+      () =>
+        useMusterServerAvailability('agent-manager', ['gamma'], {
+          asPerson: false,
+        }),
       { wrapper },
     );
 
