@@ -1,14 +1,14 @@
 import { lab } from './lab';
 import {
-  createSyncedWorkspace,
   deleteWorkspace,
   expect,
   NON_MEMBER,
-  removeLeftovers,
+  OWNER,
+  PUBLIC_REPOSITORIES,
+  PUBLIC_SOURCE,
   test,
   WORKSPACE_PREFIX,
   WorkspaceToolError,
-  workspaceName,
 } from './workspaces.fixture';
 
 /**
@@ -23,69 +23,72 @@ test.describe('workspaces', () => {
     test.skip(!!workspaceLab.unavailable, workspaceLab.unavailable);
     test.setTimeout(10 * 60_000);
     const admin = await workspaceLab.tools(lab.users.admin);
-    await removeLeftovers(admin);
 
-    const name = workspaceName('smoke', testInfo.workerIndex);
-    try {
-      const synced = await createSyncedWorkspace(
-        admin,
-        name,
-        [
-          {
-            provider: lab.workspaces.provider,
-            owner: 'agentlab-org',
-            repositories: ['platform-api'],
-            filters: { languages: ['Go'], topics: { names: ['monorepo'] } },
-          },
-        ],
-        ['agentlab-org/monorepo', 'agentlab-org/platform-api'],
-      );
-      testInfo.annotations.push({
-        type: 'first sync',
-        description: `${synced.firstSyncSeconds} s for ${synced.repositories.join(', ')}`,
-      });
-      const listed = await admin.listWorkspaces(lab.workspaces.organization);
-      expect(
-        listed.find(workspace => workspace.name === name),
-        'the Organization lists the workspace with both repositories',
-      ).toMatchObject({
-        organization: lab.workspaces.organization,
-        repositories: 2,
-      });
-    } finally {
-      await deleteWorkspace(admin, name);
-    }
+    const synced = await workspaceLab.create(
+      'smoke',
+      [PUBLIC_SOURCE],
+      PUBLIC_REPOSITORIES,
+    );
+    testInfo.annotations.push({
+      type: 'first sync',
+      description: `${synced.firstSyncSeconds} s for ${synced.repositories.join(', ')}`,
+    });
+    const listed = await admin.listWorkspaces(lab.workspaces.organization);
+    expect(
+      listed.find(workspace => workspace.name === synced.name),
+      'the Organization lists the workspace with both repositories',
+    ).toMatchObject({
+      organization: lab.workspaces.organization,
+      repositories: PUBLIC_REPOSITORIES.length,
+    });
+
+    await deleteWorkspace(admin, synced.name);
     const remaining = await admin.listWorkspaces(lab.workspaces.organization);
-    expect(remaining.map(workspace => workspace.name)).not.toContain(name);
+    expect(remaining.map(workspace => workspace.name)).not.toContain(
+      synced.name,
+    );
   });
 
   test('a rerun removes what an aborted run left before it creates', async ({
     workspaceLab,
   }) => {
     test.skip(!!workspaceLab.unavailable, workspaceLab.unavailable);
-    test.setTimeout(5 * 60_000);
+    test.setTimeout(10 * 60_000);
     const admin = await workspaceLab.tools(lab.users.admin);
-    // As an aborted run leaves it: a workspace of another run id, never deleted.
-    const aborted = `${WORKSPACE_PREFIX}aborted${Date.now().toString(36)}-0-public`;
+    // As an aborted run leaves it: a workspace of a run that started four
+    // hours ago, never deleted.
+    const abortedRun = (Date.now() - 4 * 60 * 60_000).toString(36);
+    const aborted = `${WORKSPACE_PREFIX}${abortedRun}-0-public`;
     await admin.call('create_workspace', {
       name: aborted,
       organization: lab.workspaces.organization,
       sources: [
         {
           provider: lab.workspaces.provider,
-          owner: 'agentlab-org',
+          owner: OWNER,
           repositories: ['platform-api'],
         },
       ],
     });
     try {
-      expect(await removeLeftovers(admin)).toContain(aborted);
+      // The fixtures' own creation sweeps before it creates.
+      const synced = await workspaceLab.create(
+        'rerun',
+        [PUBLIC_SOURCE],
+        PUBLIC_REPOSITORIES,
+      );
+      expect(
+        synced.sweep.removed,
+        'the creation removed the leftover',
+      ).toContain(aborted);
       const names = (
         await admin.listWorkspaces(lab.workspaces.organization)
       ).map(workspace => workspace.name);
-      expect(names, 'no workspace of another run is left').not.toContain(
+      expect(names, 'no workspace of the aborted run is left').not.toContain(
         aborted,
       );
+      expect(names, 'the rerun has its own').toContain(synced.name);
+      await deleteWorkspace(admin, synced.name);
     } finally {
       await deleteWorkspace(admin, aborted);
     }
@@ -145,12 +148,13 @@ test.describe('workspaces', () => {
     });
     expect(authorization.unreadable).toEqual(refusalWorkspace.unreadable);
 
-    // The admin, who reads every repository, is granted on the same one.
-    const admin = await workspaceLab.tools(lab.users.admin);
-    const granted = await admin.authorizeWorkspace(refusalWorkspace.name);
-    expect(
-      granted.outcome,
-      `the admin's start is not refused: ${JSON.stringify(granted)}`,
-    ).not.toBe('refused');
+    // A member who reads every repository, connected too, is granted on the
+    // same one.
+    const granted = await workspaceLab.tools(refusalWorkspace.granted);
+    const grant = await granted.authorizeWorkspace(refusalWorkspace.name);
+    expect(grant, JSON.stringify(grant)).toMatchObject({
+      workspace: refusalWorkspace.name,
+      outcome: 'granted',
+    });
   });
 });

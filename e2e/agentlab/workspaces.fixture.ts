@@ -1,4 +1,9 @@
-import type { BrowserContext, Page, Response } from '@playwright/test';
+import type {
+  APIResponse,
+  BrowserContext,
+  Page,
+  Response,
+} from '@playwright/test';
 import { expect, signIn, test as base } from './fixtures';
 import { contextOptionsFor, lab, type LabUser } from './lab';
 
@@ -13,22 +18,26 @@ import { contextOptionsFor, lab, type LabUser } from './lab';
  *
  * - {@link WorkspaceFixtures.labWorkspace}: a workspace of the lab's
  *   Organization, created as the admin, with one source of public
- *   repositories on the lab's GitHub (`agentlab-org`): `platform-api` by
- *   name and `monorepo` by its language (Go) and topic (`monorepo`). It is
+ *   repositories on the lab's GitHub ({@link PUBLIC_SOURCE}): `platform-api`
+ *   by name and `monorepo` by its language (Go) and topic (`monorepo`). It is
  *   handed to the test once its first sync succeeded with both repositories
  *   in the manifest, and deleted when the worker ends.
  * - {@link WorkspaceFixtures.refusalWorkspace}: a workspace whose last sync
  *   holds the private `agentlab-org/platform-infra`, which the developer, a
- *   member of the Organization, cannot read: once the developer is connected
- *   to the provider, their Session start is refused naming it.
+ *   member of the Organization, cannot read. The developer and the admin are
+ *   connected to the provider: the developer's Session start is refused
+ *   naming it, the admin's is granted.
  * - The non-member is the lab's viewer ({@link NON_MEMBER}): the `viewers`
  *   group is outside the lab's Organization.
  *
- * What they create is named `e2e-ws-<run>-…`; before creating anything, a
- * worker removes what an earlier run left (any other run id), so a rerun after
- * an aborted run starts clean. A lab without the workspace-manager, or
- * without the provider instance the sources name, skips every spec that asks
- * for a workspace, with the reason.
+ * What they create is named `e2e-ws-<run>-…`, the run id being the run's start
+ * in base 36 ({@link RUN}). Before every creation the fixtures remove what an
+ * earlier run left: a fixture workspace of another run that started more than
+ * {@link LEFTOVER_AGE} ago, so a rerun after an aborted run starts clean while
+ * a run going on at the same time against the same lab keeps its own. A lab
+ * without the workspace-manager, with one that does not answer, or without
+ * the provider instance the sources name, skips every spec that asks for a
+ * workspace, with the reason.
  */
 
 export const WORKSPACE_MANAGER = 'workspace-manager';
@@ -37,22 +46,48 @@ const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
 
 /** The prefix of every workspace the fixtures create. */
 export const WORKSPACE_PREFIX = 'e2e-ws-';
-const RUN = (process.env.AGENTLAB_E2E_RUN ?? 'local').toLowerCase();
+
+/**
+ * This run's id: `AGENTLAB_E2E_RUN`, which `playwright.config.ts` sets to the
+ * run's start (`Date.now()` in base 36) unless it is given. A workspace name
+ * takes lower-case letters, digits and '-', so a given id must be letters and
+ * digits only.
+ */
+export const RUN = (() => {
+  const run = (process.env.AGENTLAB_E2E_RUN ?? 'local').toLowerCase();
+  if (!/^[a-z0-9]+$/.test(run)) {
+    throw new Error(
+      `AGENTLAB_E2E_RUN must be letters and digits only (it names workspaces), not "${run}"`,
+    );
+  }
+  return run;
+})();
+
+/**
+ * A fixture workspace of another run is left over once that run started this
+ * long ago: no run of the suite takes so long, so a run going on at the same
+ * time keeps what it uses.
+ */
+export const LEFTOVER_AGE = 3 * 60 * 60_000;
 
 /** The person outside the lab's Organization: the `viewers` group. */
 export const NON_MEMBER = lab.users.viewer;
 
 /** The lab GitHub's owner the sources select from (`agentlab github-fake`). */
-const OWNER = 'agentlab-org';
+export const OWNER = 'agentlab-org';
 
-/** The public workspace's selection and the manifest its first sync must hold. */
-const PUBLIC_SOURCE = {
+/** The public workspace's selection. */
+export const PUBLIC_SOURCE = {
   provider: lab.workspaces.provider,
   owner: OWNER,
   repositories: ['platform-api'],
   filters: { languages: ['Go'], topics: { names: ['monorepo'] } },
 };
-const PUBLIC_REPOSITORIES = [`${OWNER}/platform-api`, `${OWNER}/monorepo`];
+/** The manifest the public selection's first sync holds. */
+export const PUBLIC_REPOSITORIES = [
+  `${OWNER}/monorepo`,
+  `${OWNER}/platform-api`,
+];
 
 /** The private repository only the admin and the App's installation read. */
 const PRIVATE_REPOSITORY = `${OWNER}/platform-infra`;
@@ -110,15 +145,21 @@ export class WorkspaceToolError extends Error {
     super(`${tool}: ${message}`);
   }
 
-  /** The manager's membership refusal (its Organization check). */
+  /**
+   * The manager's own membership refusal: its Organization check answers
+   * `<operation>: permission denied: forbidden: <person> is not a member of
+   * Organization "<name>"`. A refusal by muster or the portal before the
+   * manager runs is not this.
+   */
   get notMember(): boolean {
     return /is not a member of Organization|: permission denied: /.test(
       this.message,
     );
   }
 
+  /** The workspace does not exist (the manager's `not found`, any wording). */
   get notFound(): boolean {
-    return /: not found: /.test(this.message);
+    return /not found/i.test(this.message);
   }
 }
 
@@ -206,14 +247,24 @@ export class WorkspaceTools {
     await this.refreshTokens();
   }
 
-  private async post(path: string, data: unknown) {
-    if (!this.tokens) {
-      await this.refreshTokens();
-    }
-    const send = () =>
-      this.page.request.post(
+  /**
+   * One request to the portal's muster routes as the person, against the
+   * lab's installation; a 401 (a token expired mid-run) is retried once with
+   * fresh tokens.
+   */
+  private async request(
+    method: 'GET' | 'POST',
+    path: string,
+    data?: unknown,
+  ): Promise<APIResponse> {
+    const send = async () => {
+      if (!this.tokens) {
+        await this.refreshTokens();
+      }
+      return this.page.request.fetch(
         `/api/muster${path}?installation=${encodeURIComponent(lab.installation)}`,
         {
+          method,
           headers: {
             Authorization: `Bearer ${this.tokens!.backstage}`,
             [MUSTER_AUTH_HEADER]: this.tokens!.muster,
@@ -222,29 +273,18 @@ export class WorkspaceTools {
           timeout: 60_000,
         },
       );
-    let response = await send();
-    if (response.status() === 401) {
-      // A token expired mid-run: read fresh ones from the next page load.
-      await this.refreshTokens();
-      response = await send();
+    };
+    const response = await send();
+    if (response.status() !== 401) {
+      return response;
     }
-    return response;
+    this.tokens = undefined;
+    return send();
   }
 
-  /** Lists the MCP servers the person's muster aggregates. */
+  /** The MCP servers the person's muster aggregates, with their state. */
   async listServers(): Promise<{ name: string; state?: string }[]> {
-    if (!this.tokens) {
-      await this.refreshTokens();
-    }
-    const response = await this.page.request.get(
-      `/api/muster/servers?installation=${encodeURIComponent(lab.installation)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${this.tokens!.backstage}`,
-          [MUSTER_AUTH_HEADER]: this.tokens!.muster,
-        },
-      },
-    );
+    const response = await this.request('GET', '/servers');
     expect(
       response.ok(),
       `the portal lists muster's servers for ${this.user.email} (${response.status()})`,
@@ -259,7 +299,7 @@ export class WorkspaceTools {
    * words.
    */
   async call<T>(tool: string, args: Record<string, unknown> = {}): Promise<T> {
-    const response = await this.post('/call', {
+    const response = await this.request('POST', '/call', {
       name: `${TOOL_PREFIX}${tool}`,
       arguments: args,
     });
@@ -309,11 +349,32 @@ export class WorkspaceTools {
   }
 }
 
-/** Whether a workspace name is the fixtures' and not of this run. */
-export function isLeftover(name: string, run: string = RUN): boolean {
+/**
+ * When the run that created a fixture workspace started: from its run id
+ * (base 36 milliseconds) where that reads as a time, else the workspace's own
+ * creation.
+ */
+function runStart(workspace: Workspace): number {
+  const run = workspace.name.slice(WORKSPACE_PREFIX.length).split('-')[0];
+  const started = parseInt(run, 36);
+  // A start between 2020 and an hour from now is a run id of the config's.
+  return started > Date.UTC(2020, 0) && started < Date.now() + 60 * 60_000
+    ? started
+    : Date.parse(workspace.createdAt);
+}
+
+/**
+ * Whether a workspace is a fixture workspace an earlier run left: another run
+ * id, and that run started more than {@link LEFTOVER_AGE} ago.
+ */
+export function isLeftover(
+  workspace: Workspace,
+  now: number = Date.now(),
+): boolean {
   return (
-    name.startsWith(WORKSPACE_PREFIX) &&
-    !name.startsWith(`${WORKSPACE_PREFIX}${run}-`)
+    workspace.name.startsWith(WORKSPACE_PREFIX) &&
+    !workspace.name.startsWith(`${WORKSPACE_PREFIX}${RUN}-`) &&
+    now - runStart(workspace) > LEFTOVER_AGE
   );
 }
 
@@ -335,9 +396,9 @@ export type SyncedWorkspace = {
 /**
  * Creates a workspace of the lab's Organization as `tools`' person and waits
  * until its first sync succeeded with exactly `expected` in its manifest,
- * each with a head commit. A failed cycle fails at once with the manager's
- * message. From the create on, the workspace exists: the caller deletes it,
- * whatever happens next.
+ * each with a head commit. A failed first cycle fails at once with the
+ * manager's message. From the create on, the workspace exists: the caller
+ * deletes it, whatever happens next.
  */
 export async function createSyncedWorkspace(
   tools: WorkspaceTools,
@@ -352,83 +413,111 @@ export async function createSyncedWorkspace(
   });
   expect(created.name).toBe(name);
   const createdAt = Date.parse(created.createdAt);
+  const want = [...expected].sort();
 
-  let detail: WorkspaceDetail | undefined;
-  await expect
-    .poll(
-      async () => {
-        detail = await tools.getWorkspace(name);
-        const last = detail.workspace.lastSync;
-        if (last?.result === 'Failed') {
-          throw new Error(
-            `the first sync of ${name} failed: ${last.message ?? '(no message)'}`,
-          );
-        }
-        return last?.result === 'Succeeded'
-          ? detail.mirrors
-              .filter(mirror => mirror.head)
-              .map(mirror => mirror.repository)
-              .sort()
-          : [];
-      },
-      {
-        timeout: FIRST_SYNC_TIMEOUT,
-        intervals: [2_000],
-        message: `the first sync of ${name} succeeds with ${expected.join(', ')} in its manifest — the sync Job's log: \`kubectl -n kagent get jobs\``,
-      },
-    )
-    .toEqual([...expected].sort());
-
-  const syncedAt = Date.parse(detail!.workspace.lastSync!.time);
-  return {
-    name,
-    organization: lab.workspaces.organization,
-    repositories: [...expected].sort(),
-    firstSyncSeconds: Math.max(0, Math.round((syncedAt - createdAt) / 1000)),
-  };
+  // A loop of its own rather than expect.poll, which would swallow a failed
+  // first sync and keep polling until a later cycle passes.
+  const deadline = Date.now() + FIRST_SYNC_TIMEOUT;
+  let mirrored: string[] = [];
+  for (;;) {
+    const detail = await tools.getWorkspace(name);
+    const last = detail.workspace.lastSync;
+    if (last?.result === 'Failed') {
+      throw new Error(
+        `the first sync of ${name} failed: ${last.message ?? '(no message)'}`,
+      );
+    }
+    mirrored = detail.mirrors
+      .filter(mirror => mirror.head)
+      .map(mirror => mirror.repository)
+      .sort();
+    if (last?.result === 'Succeeded') {
+      expect(
+        mirrored,
+        `the first sync of ${name} mirrored exactly the selection, each with its head`,
+      ).toEqual(want);
+      return {
+        name,
+        organization: lab.workspaces.organization,
+        repositories: want,
+        firstSyncSeconds: Math.max(
+          0,
+          Math.round((Date.parse(last.time) - createdAt) / 1000),
+        ),
+      };
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        `the first sync of ${name} did not succeed within ${FIRST_SYNC_TIMEOUT / 1000} s (last: ${last?.result ?? 'none'}, mirrored: ${mirrored.join(', ') || 'none'}): the sync Job's log, \`kubectl -n kagent get jobs\``,
+      );
+    }
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+  }
 }
 
 /**
- * Deletes a workspace and waits until the manager no longer lists it; one
- * already gone is fine.
+ * Deletes workspaces and waits until the manager lists none of them: every
+ * deletion is requested first, then one wait covers them all. One already
+ * gone is fine. Resolves with the names still listed at the deadline.
  */
+export async function deleteWorkspaces(
+  tools: WorkspaceTools,
+  names: string[],
+  timeout: number = DELETION_TIMEOUT,
+): Promise<string[]> {
+  for (const name of names) {
+    try {
+      await tools.call('delete_workspace', { workspace: name });
+    } catch (error) {
+      if (!(error instanceof WorkspaceToolError && error.notFound)) {
+        throw error;
+      }
+    }
+  }
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const listed = new Set(
+      (await tools.listWorkspaces(lab.workspaces.organization)).map(
+        workspace => workspace.name,
+      ),
+    );
+    const remaining = names.filter(name => listed.has(name));
+    if (remaining.length === 0 || Date.now() > deadline) {
+      return remaining;
+    }
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+  }
+}
+
+/** Deletes a workspace and fails unless the manager stops listing it. */
 export async function deleteWorkspace(
   tools: WorkspaceTools,
   name: string,
 ): Promise<void> {
-  try {
-    await tools.call('delete_workspace', { workspace: name });
-  } catch (error) {
-    if (!(error instanceof WorkspaceToolError && error.notFound)) {
-      throw error;
-    }
-  }
-  await expect
-    .poll(
-      async () =>
-        (await tools.listWorkspaces(lab.workspaces.organization)).some(
-          workspace => workspace.name === name,
-        ),
-      {
-        timeout: DELETION_TIMEOUT,
-        intervals: [2_000],
-        message: `workspace ${name} is gone after its deletion`,
-      },
-    )
-    .toBe(false);
+  const remaining = await deleteWorkspaces(tools, [name]);
+  expect(remaining, `workspace ${name} is gone after its deletion`).toEqual([]);
 }
 
-/** Deletes every workspace an earlier run of the suite left behind. */
-export async function removeLeftovers(
-  tools: WorkspaceTools,
-): Promise<string[]> {
+/** What a sweep for leftovers removed, and what it could not. */
+export type Sweep = { removed: string[]; stuck: string[] };
+
+/**
+ * Deletes every fixture workspace an earlier run left ({@link isLeftover}).
+ * One that does not go within the deletion wait is reported, not thrown: it
+ * belongs to no run going on, so it does not fail this one.
+ */
+export async function removeLeftovers(tools: WorkspaceTools): Promise<Sweep> {
   const leftovers = (await tools.listWorkspaces(lab.workspaces.organization))
-    .map(workspace => workspace.name)
-    .filter(name => isLeftover(name));
-  for (const name of leftovers) {
-    await deleteWorkspace(tools, name);
+    .filter(workspace => isLeftover(workspace))
+    .map(workspace => workspace.name);
+  const stuck = await deleteWorkspaces(tools, leftovers);
+  if (stuck.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `workspace fixtures: leftovers still listed after their deletion: ${stuck.join(', ')}`,
+    );
   }
-  return leftovers;
+  return { removed: leftovers.filter(name => !stuck.includes(name)), stuck };
 }
 
 /**
@@ -481,6 +570,17 @@ export interface WorkspaceLab {
   refusalUnavailable?: string;
   /** workspace-manager's tools as a lab user, on a page of their own. */
   tools(user: LabUser): Promise<WorkspaceTools>;
+  /**
+   * The fixtures' own creation, for a spec that needs a workspace of its
+   * own: leftovers of earlier runs removed first, then a workspace of this
+   * run named for `kind`, synced; the worker deletes it at the end unless the
+   * spec did. `sweep` reports what the removal found.
+   */
+  create(
+    kind: string,
+    sources: Record<string, unknown>[],
+    expected: string[],
+  ): Promise<SyncedWorkspace & { sweep: Sweep }>;
   workspace(): Promise<SyncedWorkspace>;
   refusal(): Promise<RefusalWorkspace>;
 }
@@ -489,8 +589,53 @@ export interface WorkspaceLab {
 export type RefusalWorkspace = SyncedWorkspace & {
   /** A member of the Organization who cannot read {@link unreadable}. */
   refused: LabUser;
+  /** A member who reads every repository of it, connected too. */
+  granted: LabUser;
   unreadable: string[];
 };
+
+/**
+ * Whether the lab serves what the specs need, and why not: the
+ * workspace-manager listed and connected in the admin's muster, answering
+ * `list_providers` with structured content, with the provider instance the
+ * sources name.
+ */
+async function availability(
+  admin: WorkspaceTools,
+): Promise<{ unavailable?: string; refusalUnavailable?: string }> {
+  const server = (await admin.listServers()).find(
+    s => s.name === WORKSPACE_MANAGER,
+  );
+  if (!server) {
+    return {
+      unavailable: `the lab's muster serves no ${WORKSPACE_MANAGER} (platform.workspaces off): \`agentlab configure --workspaces\`, then \`agentlab platform\``,
+    };
+  }
+  if (server.state && !/^(connected|running)$/i.test(server.state)) {
+    return {
+      unavailable: `the lab's muster lists ${WORKSPACE_MANAGER} as ${server.state}, not connected: \`kubectl -n agent-platform get pods\``,
+    };
+  }
+  let providers: Provider[];
+  try {
+    providers = await admin.listProviders();
+  } catch (error) {
+    return {
+      unavailable: `the lab's ${WORKSPACE_MANAGER} does not answer list_providers: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  if (!providers.some(p => p.name === lab.workspaces.provider)) {
+    return {
+      unavailable: `the lab's ${WORKSPACE_MANAGER} has no provider instance "${lab.workspaces.provider}" (it lists ${providers.map(p => p.name).join(', ') || 'none'}): \`agentlab configure --workspaces-provider fake\` (or fake,github), or AGENTLAB_WORKSPACE_PROVIDER`,
+    };
+  }
+  if (!lab.workspaces.githubFakeURL) {
+    return {
+      refusalUnavailable: `the refusal needs people connected to the lab's GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (see e2e/agentlab/README.md)`,
+    };
+  }
+  return {};
+}
 
 type WorkerFixtures = { workspaceLab: WorkspaceLab };
 
@@ -531,20 +676,7 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
         return entry;
       };
       const admin = await tools(lab.users.admin);
-
-      let unavailable: string | undefined;
-      let refusalUnavailable: string | undefined;
-      const servers = await admin.listServers();
-      if (!servers.some(server => server.name === WORKSPACE_MANAGER)) {
-        unavailable = `the lab's muster serves no ${WORKSPACE_MANAGER} (platform.workspaces off): \`agentlab configure --workspaces\`, then \`agentlab platform\``;
-      } else {
-        const providers = await admin.listProviders();
-        if (!providers.some(p => p.name === lab.workspaces.provider)) {
-          unavailable = `the lab's ${WORKSPACE_MANAGER} has no provider instance "${lab.workspaces.provider}" (it lists ${providers.map(p => p.name).join(', ') || 'none'}): \`agentlab configure --workspaces-provider fake\` (or fake,github), or AGENTLAB_WORKSPACE_PROVIDER`;
-        } else if (!lab.workspaces.githubFakeURL) {
-          refusalUnavailable = `the refusal needs a person connected to the lab's GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (\`docker port <cluster>-lab-github\`, https)`;
-        }
-      }
+      const { unavailable, refusalUnavailable } = await availability(admin);
 
       const created = new Set<string>();
       const connected: WorkspaceTools[] = [];
@@ -552,23 +684,25 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
         let result: Promise<T> | undefined;
         return () => (result ??= make());
       };
-      // Before anything is created: what an aborted run left goes first.
-      const cleaned = once(() => removeLeftovers(admin));
       const create = async (
         kind: string,
         sources: Record<string, unknown>[],
         expected: string[],
       ) => {
-        await cleaned();
+        const sweep = await removeLeftovers(admin);
         const name = workspaceName(kind, workerInfo.workerIndex);
         created.add(name);
-        return createSyncedWorkspace(admin, name, sources, expected);
+        return {
+          ...(await createSyncedWorkspace(admin, name, sources, expected)),
+          sweep,
+        };
       };
 
       await use({
         unavailable,
         refusalUnavailable: unavailable ?? refusalUnavailable,
         tools,
+        create,
         workspace: once(() =>
           create('public', [PUBLIC_SOURCE], PUBLIC_REPOSITORIES),
         ),
@@ -578,12 +712,15 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
             [REFUSAL_SOURCE],
             [`${OWNER}/platform-api`, PRIVATE_REPOSITORY],
           );
-          const refused = await tools(lab.users.dev);
-          connected.push(refused);
-          await connectToLabGitHub(refused);
+          for (const user of [lab.users.dev, lab.users.admin]) {
+            const person = await tools(user);
+            connected.push(person);
+            await connectToLabGitHub(person);
+          }
           return {
             ...synced,
             refused: lab.users.dev,
+            granted: lab.users.admin,
             unreadable: [PRIVATE_REPOSITORY],
           };
         }),
@@ -597,8 +734,12 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
           .call('disconnect_provider', { provider: lab.workspaces.provider })
           .catch(error => failures.push(error));
       }
-      for (const name of created) {
-        await deleteWorkspace(admin, name).catch(error => failures.push(error));
+      if (created.size > 0) {
+        await deleteWorkspaces(admin, [...created])
+          .then(stuck =>
+            expect(stuck, 'the worker removes its workspaces').toEqual([]),
+          )
+          .catch(error => failures.push(error));
       }
       await Promise.all(contexts.map(context => context.close()));
       if (failures.length > 0) {
