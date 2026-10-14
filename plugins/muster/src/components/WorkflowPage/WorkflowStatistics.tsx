@@ -65,8 +65,6 @@ function LastRun({ run }: { run: WorkflowExecutionSummary }) {
 export interface WorkflowStatisticsProps {
   name: string;
   installation?: string;
-  /** Whether the muster session can read executions. */
-  hasSession: boolean;
 }
 
 /**
@@ -74,23 +72,15 @@ export interface WorkflowStatisticsProps {
  * (completed/failed over every recorded run, not a sample), and the derived
  * statistics — success rate, durations, runs per day. It replaces both the
  * page's former run list and its "Runs" fact: a workflow's page answers how
- * it does, and a single run's step-by-step is drawn on the flow.
+ * it does, and a single run's step-by-step is drawn on the flow. Rendered
+ * only with a muster session: the Usage tab shows its gate otherwise.
  */
 export function WorkflowStatistics({
   name,
   installation,
-  hasSession,
 }: WorkflowStatisticsProps) {
-  const { latest } = useLatestRun(name, installation, hasSession);
-  const counts = useRunCounts(name, installation, hasSession);
-
-  if (!hasSession) {
-    return (
-      <Text as="p" variant="body-medium" color="secondary">
-        Connect to muster above to see statistics.
-      </Text>
-    );
-  }
+  const { latest } = useLatestRun(name, installation, true);
+  const counts = useRunCounts(name, installation, true);
 
   return (
     <Flex direction="column" gap="4">

@@ -139,7 +139,9 @@ running models, GPU capacity and the model cache.
 
 ### Workflows
 
-Muster's workflows, read-only.
+Muster's workflows, read-only. A workflow's page splits into Overview, Usage
+(its run statistics) and Details tabs; its ⋮ menu shows the Workflow CR as
+YAML and, where Flux reconciles the workflow, where in Git to change it.
 
 ## Usage
 

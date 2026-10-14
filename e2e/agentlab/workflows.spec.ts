@@ -5,10 +5,11 @@ import { lab } from './lab';
 /**
  * Workflows in the agent shell — read-only there (agents create and change
  * them through muster): Customize's Workflows tab lists the installation's
- * workflows, and a workflow's page reads how it runs (the step canvas with
- * the last run on it), its statistics and its facts. The lab ships the
- * read-only `lab-cluster-overview`, which lists namespaces and then pods
- * through mcp-kubernetes.
+ * workflows, and a workflow's page reads, in tabs, what it is for and how it
+ * runs (Overview: the step canvas with the last run on it), its statistics
+ * (Usage) and its facts (Details), with its manifest in the ⋮ menu. The lab
+ * ships the read-only `lab-cluster-overview`, which lists namespaces and then
+ * pods through mcp-kubernetes.
  */
 
 const WORKFLOW = 'lab-cluster-overview';
@@ -143,4 +144,62 @@ test('a GitOps-managed workflow says where in Git to change it, from Edit in Git
   await expect(dialog).toContainText(
     `Change the values that render ${WORKFLOW}`,
   );
+});
+
+test('a workflow’s page keeps its statistics on Usage, its facts on Details and its manifest in the menu', async ({
+  admin,
+}) => {
+  await open(admin, `${workflowPath}?installation=${lab.installation}`);
+  await expect(
+    admin.getByRole('heading', {
+      level: 2,
+      name: 'What it’s for',
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 60_000 });
+  // One column: no facts beside the content.
+  await expect(admin.getByRole('main').getByRole('complementary')).toHaveCount(
+    0,
+  );
+
+  await admin.getByRole('tab', { name: 'Usage', exact: true }).click();
+  await expect(admin).toHaveURL(
+    new RegExp(`${workflowPath}/usage\\?installation=`),
+  );
+  await expect(admin.getByText(/^Every run counts/)).toBeVisible();
+
+  await admin.getByRole('tab', { name: 'Details', exact: true }).click();
+  await expect(admin).toHaveURL(
+    new RegExp(`${workflowPath}/details\\?installation=`),
+  );
+  const facts = admin.getByRole('region', {
+    name: 'Workflow details',
+    exact: true,
+  });
+  await expect(
+    facts.getByText(`workflow_${WORKFLOW}`, { exact: true }),
+  ).toBeVisible();
+  const technical = admin.getByRole('button', {
+    name: 'Technical details',
+    exact: true,
+  });
+  await expect(technical).toHaveAttribute('aria-expanded', 'false');
+  await technical.click();
+  await expect(admin.getByText(/^Namespace /)).toBeVisible();
+
+  await admin
+    .getByRole('button', { name: 'More actions', exact: true })
+    .click();
+  await admin
+    .getByRole('menuitem', { name: 'View manifest', exact: true })
+    .click();
+  const dialog = admin.getByRole('dialog');
+  await expect(dialog).toContainText('Workflow manifest');
+  await expect(dialog).toContainText('kind: Workflow');
+  await expect(dialog).toContainText(`name: ${WORKFLOW}`);
+  await expect(
+    dialog.getByRole('button', { name: 'Copy manifest', exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toBeHidden();
 });

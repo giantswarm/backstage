@@ -76,7 +76,9 @@ them and never invent a palette.
   Do not add a raw `<Helmet>`.
 - Type scale beats pixel-matching an artboard. Page sections and wizard
   sub-sections use `SectionHeader` as `h2` with `variant="title-x-small"`;
-  only a wizard's step heading is `title-small`.
+  only a wizard's step heading is `title-small`. A detail page tab's sections
+  are `PageSection` (`ui-react`), which draws that heading and names the
+  region by it.
 
 ### Lists
 
@@ -343,9 +345,9 @@ is a defect; one with it is not a finding. The kept list:
 - `AssistPanel`, the workflow full-screen layer and `DisabledAction` handle
   Escape themselves. The New session, palette and attachment dialogs close
   only from the header X, because they have nothing to cancel.
-- The workflow page has an "Advanced" fold-out; the connector wizard's
-  credentials group carries a third-level label; Home has a centred landing
-  frame without a page header; the session crumb reads "Session".
+- The connector wizard's credentials group carries a third-level label; Home
+  has a centred landing frame without a page header; the session crumb reads
+  "Session".
 - "Let X help" and "Create with X" differ because they are different actions.
 - `formatCompactAge` (the rail's "16m") and lifecycle's elapsed `ago` are
   deliberate formats.

@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   mockPhoneLayout,
@@ -141,9 +142,12 @@ const loaded: SkillCatalog = {
 
 function renderPage(path = 'giantswarm/skills/ticket-triage') {
   return renderInTestApp(
-    <Routes>
-      <Route path="/agent-platform/skills/*" element={<SkillDetailPage />} />
-    </Routes>,
+    // The shell mounts the scope around its pages, as the app does.
+    <ShellScopeProvider>
+      <Routes>
+        <Route path="/agent-platform/skills/*" element={<SkillDetailPage />} />
+      </Routes>
+    </ShellScopeProvider>,
     {
       initialRouteEntries: [`/agent-platform/skills/${path}`],
       mountedRoutes: {
@@ -230,6 +234,13 @@ describe('SkillDetailPage', () => {
       `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage`,
     );
     expect(screen.queryByRole('link', { name: /View source/ })).toBeNull();
+    // Labels, values and links read at the shell's body size.
+    for (const text of ['Branch', 'main', 'a1b2c3d']) {
+      expect(within(facts).getByText(text)).toHaveAttribute(
+        'data-variant',
+        'body-medium',
+      );
+    }
     // The Overview reads nothing more than the listing has.
     expect(mockUseSkillContent).not.toHaveBeenCalled();
   });

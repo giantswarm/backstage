@@ -17,11 +17,12 @@ import {
   LoadingIndicator,
   MoreActionsMenu,
   type MoreActionsMenuItem,
+  PageSection,
   type RouteTabSpec,
-  SectionHeader,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageTitleSkeleton,
+  useFactTextVariant,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -91,24 +92,19 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 'var(--bui-space-6)',
   },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 'var(--bui-space-3)',
-    // SectionHeader carries a bottom margin meant for a description under
-    // it; these sections put their own content there.
-    '& h2': { marginBottom: 0 },
-  },
 });
 
-/** A section of a tab: a small heading, then what it says. */
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  const classes = useStyles();
+/** A fact's link out to GitHub, at the size of the fact list it is in. */
+function FactLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <section className={classes.section} aria-label={title}>
-      <SectionHeader as="h2" variant="title-x-small" title={title} />
+    <Link
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      variant={useFactTextVariant()}
+    >
       {children}
-    </section>
+    </Link>
   );
 }
 
@@ -145,7 +141,7 @@ function OverviewTab({
           description="Its SKILL.md could not be read, so this page shows only what the listing knows and the skill cannot be edited here."
         />
       )}
-      <Section title="What it’s for">
+      <PageSection title="What it’s for">
         {skill.description ? (
           <Text as="p" variant="body-medium" style={{ margin: 0 }}>
             {skill.description}
@@ -155,10 +151,10 @@ function OverviewTab({
             Its SKILL.md gives no description.
           </Text>
         )}
-      </Section>
-      <Section title="Where it lives">
+      </PageSection>
+      <PageSection title="Where it lives">
         <FactList facts={facts} labelWidth={160} />
-      </Section>
+      </PageSection>
     </div>
   );
 }
@@ -422,14 +418,7 @@ function SkillPage({
     {
       label: 'Source',
       value: (
-        <Link
-          href={canonicalRepoUrl(skill.repoUrl)}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="body-small"
-        >
-          {source}
-        </Link>
+        <FactLink href={canonicalRepoUrl(skill.repoUrl)}>{source}</FactLink>
       ),
     },
     {
@@ -442,14 +431,7 @@ function SkillPage({
       // (UX review M19). It opens the skill's folder at that commit.
       label: 'Latest commit',
       value: sourceUrl ? (
-        <Link
-          href={sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="body-small"
-        >
-          {shortCommit(skill.commit)}
-        </Link>
+        <FactLink href={sourceUrl}>{shortCommit(skill.commit)}</FactLink>
       ) : (
         shortCommit(skill.commit)
       ),

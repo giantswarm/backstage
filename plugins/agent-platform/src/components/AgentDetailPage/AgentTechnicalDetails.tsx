@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Flex, Text } from '@backstage/ui';
 import {
   Agent,
@@ -13,6 +14,7 @@ import {
   InfoCard,
   MONO,
   Mono,
+  useFactTextVariant,
   usePhoneLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -38,6 +40,11 @@ function Pin({ value }: { value: string }) {
       {shortPin(value)}
     </span>
   );
+}
+
+/** Text at the size of the fact list it is a value in. */
+function FactText({ children }: { children: ReactNode }) {
+  return <Text variant={useFactTextVariant()}>{children}</Text>;
 }
 
 /**
@@ -67,9 +74,9 @@ function ResourceFacts({ agent }: { agent: Agent }) {
     facts.push({
       label: 'Revision',
       value: (
-        <Text variant="body-small">
+        <FactText>
           <Pin value={revision} />
-        </Text>
+        </FactText>
       ),
     });
   }
@@ -85,12 +92,9 @@ function ResourceFacts({ agent }: { agent: Agent }) {
       value: (
         <Flex direction="column" gap="1">
           {skills.map((skill, index) => (
-            <Text
-              key={`${skill.url}#${skill.path ?? ''}#${index}`}
-              variant="body-small"
-            >
+            <FactText key={`${skill.url}#${skill.path ?? ''}#${index}`}>
               {skillLabel(skill)} at <Pin value={skill.pin} />
-            </Text>
+            </FactText>
           ))}
         </Flex>
       ),
