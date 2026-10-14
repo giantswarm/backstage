@@ -40,8 +40,16 @@ let mockMusterInstallations: string[];
 let mockProbing: boolean;
 /** The installations whose muster does not answer. */
 let mockUnreachable: string[];
+/** The installations whose muster has no per-user sign-in in this portal. */
+let mockSharedIdentity: string[];
 
 const mockMusterApi = {
+  listInstallations: jest.fn(async () => ({
+    installations: mockMusterInstallations.map(name => ({
+      name,
+      requiresAuth: !mockSharedIdentity.includes(name),
+    })),
+  })),
   listServers: jest.fn(async (installation: string) => {
     if (mockUnreachable.includes(installation)) {
       throw new Error('muster: 503 Service Unavailable');
@@ -115,6 +123,7 @@ describe('WorkspacesDataProvider', () => {
     mockMusterInstallations = ['gazelle'];
     mockProbing = false;
     mockUnreachable = [];
+    mockSharedIdentity = [];
     jest.clearAllMocks();
   });
 
@@ -123,6 +132,17 @@ describe('WorkspacesDataProvider', () => {
     await renderWorkspaces();
 
     expect(await screen.findByText('available: false')).toBeInTheDocument();
+    expect(mockMusterApi.callTool).not.toHaveBeenCalled();
+  });
+
+  it('is not available, and says why, where muster has no per-user sign-in', async () => {
+    mockSharedIdentity = ['gazelle'];
+    await renderWorkspaces();
+
+    expect(await screen.findByText('available: false')).toBeInTheDocument();
+    expect(
+      screen.getByText('Workspaces cannot be used on gazelle from this portal'),
+    ).toBeInTheDocument();
     expect(mockMusterApi.callTool).not.toHaveBeenCalled();
   });
 

@@ -102,6 +102,24 @@ describe('RuntimeLostNotice', () => {
     expect(screen.queryByText(/kagent reported:/)).not.toBeInTheDocument();
   });
 
+  it('names why no new session can start from this portal', () => {
+    render(
+      <RuntimeLostNotice
+        loss={{ reported: true, attempts: 1 }}
+        agentName="Grill master"
+        offersNewSession={false}
+        newSessionBlocker="Muster on gazelle has no per-user sign-in in this portal."
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        /A new session with Grill master cannot be started from this portal: sessions start through agent-manager as you\. Muster on gazelle has no per-user sign-in in this portal\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Sessions list/)).not.toBeInTheDocument();
+  });
+
   it('reports a failed start', () => {
     render(
       <RuntimeLostNotice

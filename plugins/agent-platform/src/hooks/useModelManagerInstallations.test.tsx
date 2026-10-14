@@ -9,7 +9,8 @@ import {
 import { useModelManagerInstallations } from './useModelManagerInstallations';
 
 const listServers = jest.fn();
-const musterApi = { listServers } as unknown as MusterApi;
+const listInstallations = jest.fn();
+const musterApi = { listServers, listInstallations } as unknown as MusterApi;
 
 function render(installations: string[], withMuster = true) {
   const queryClient = new QueryClient({
@@ -33,10 +34,19 @@ function render(installations: string[], withMuster = true) {
 }
 
 beforeEach(() => {
+  listInstallations.mockReset();
+  listInstallations.mockResolvedValue({
+    installations: [
+      { name: 'lab', requiresAuth: true },
+      { name: 'gpu', requiresAuth: true },
+      { name: 'down', requiresAuth: true },
+      { name: 'shared', requiresAuth: false },
+    ],
+  });
   listServers.mockReset();
   listServers.mockImplementation(async (installation: string) => ({
     mcpServers:
-      installation === 'gpu'
+      installation === 'gpu' || installation === 'shared'
         ? [{ name: 'mcp-kubernetes' }, { name: 'model-manager' }]
         : [{ name: 'mcp-kubernetes' }],
   }));
@@ -53,6 +63,15 @@ describe('useModelManagerInstallations', () => {
     expect(result.current.isUnavailable).toBe(false);
     expect(listServers).toHaveBeenCalledWith('lab');
     expect(listServers).toHaveBeenCalledWith('gpu');
+  });
+
+  it('leaves out an installation whose muster has no per-user sign-in, and names it', async () => {
+    const { result } = render(['gpu', 'shared']);
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.installations).toEqual(['gpu']);
+    expect(result.current.sharedIdentity).toEqual(['shared']);
+    expect(result.current.presenceOf('shared')).toBe('sharedIdentity');
   });
 
   it('answers unknown, never missing, while a list is in flight or failed', async () => {

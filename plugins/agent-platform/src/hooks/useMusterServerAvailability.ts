@@ -12,12 +12,13 @@ import { useMusterPluginApi } from './useMusterPluginApi';
 /**
  * Whether an installation's muster lists a server (`core_mcpserver_list`).
  * `unknown` while the read is in flight or failed; `missing` when muster
- * answered without it. `sharedIdentity`, only when the caller asks for a
- * server reached as the person: the portal's muster entry for the
- * installation has no per-user sign-in (`requiresAuth: false` on
- * `/installations`), so muster-backend refuses the server's tools rather than
- * run them under muster's own identity, shared by every portal user. A
- * `missing` server wins over it: a per-user sign-in alone would not help.
+ * answered without it. `sharedIdentity`: the server is reached as the person
+ * (the default) and the portal's muster entry for the installation has no
+ * per-user sign-in (`requiresAuth: false` on `/installations`), so
+ * muster-backend refuses the server's tools rather than run them under
+ * muster's own identity, shared by every portal user. A caller treats it like
+ * an absent server and says why (`sharedIdentityReason`). A `missing` server
+ * wins over it: a per-user sign-in alone would not help.
  */
 export type MusterServerPresence =
   'available' | 'missing' | 'unknown' | 'sharedIdentity';
@@ -52,7 +53,7 @@ export type MusterServerAvailability = {
   missing: string[];
   /**
    * The installations whose muster runs calls under its shared identity, so
-   * the server's tools are refused there (only with `asPerson`).
+   * the server's tools are refused there (not with `asPerson: false`).
    */
   sharedIdentity: string[];
   presenceOf: (installation: string) => MusterServerPresence;
@@ -64,17 +65,19 @@ export type MusterServerAvailability = {
 
 export type MusterServerAvailabilityOptions = {
   /**
-   * The server's tools act for the person, so an installation whose muster
-   * has no per-user sign-in is `sharedIdentity`, never `available`. Until
-   * `/installations` has answered, and when it failed, every installation is
-   * `unknown`: nothing is offered that muster-backend may refuse.
+   * The server's tools act for the person (the default): an installation
+   * whose muster has no per-user sign-in is `sharedIdentity`, never
+   * `available`. Until `/installations` has answered, and when it failed,
+   * every installation is `unknown`: nothing is offered that muster-backend
+   * may refuse. `false` only for a server whose tools run without the person,
+   * as muster's own core tools do.
    */
   asPerson?: boolean;
 };
 
 /**
- * The installations on which a manager (agent-manager, cluster-manager) can
- * be reached: the ones whose muster registers it as an MCPServer. Read per
+ * The installations on which a manager (agent-manager, cluster-manager,
+ * model-manager, workspace-manager) can be reached as the person: the ones whose muster registers it as an MCPServer. Read per
  * installation through the person's own muster session (`musterApi.listServers`),
  * which is also what the manager's tools will go through — so an installation
  * offered here is one the person can actually reach the server on.
@@ -82,7 +85,7 @@ export type MusterServerAvailabilityOptions = {
 export function useMusterServerAvailability(
   serverName: string,
   installations: string[],
-  { asPerson = false }: MusterServerAvailabilityOptions = {},
+  { asPerson = true }: MusterServerAvailabilityOptions = {},
 ): MusterServerAvailability {
   const musterApi = useMusterPluginApi();
   // The muster plugin's own read of `/installations`, under its key, so the

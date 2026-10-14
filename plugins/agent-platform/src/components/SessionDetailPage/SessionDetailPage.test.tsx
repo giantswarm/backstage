@@ -2076,6 +2076,32 @@ describe('SessionDetailPage', () => {
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
+    it('withholds the new session, and says why, where muster has no per-user sign-in', async () => {
+      const blocker =
+        "Muster on gazelle has no per-user sign-in in this portal, so agent-manager would act under muster's shared identity instead of as you.";
+      const context = mockUseAgents();
+      mockUseAgents.mockReturnValue({
+        ...context,
+        rows: context.rows.map(row => ({
+          ...row,
+          sessionBlocker: blocker,
+        })),
+      } as AgentsContextValue);
+      mockUseSessionDetail.mockReturnValue(reportedView);
+      await render();
+
+      expect(
+        screen.queryByRole('button', {
+          name: 'Start a new session with Issue tracker',
+        }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /A new session with Issue tracker cannot be started from this portal: sessions start through agent-manager as you\. Muster on gazelle has no per-user sign-in/,
+        ),
+      ).toBeInTheDocument();
+    });
+
     it('carries the message that never got its answer when the box is empty', async () => {
       mockUseSessionDetail.mockReturnValue(suspectedView);
       await render();
