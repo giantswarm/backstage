@@ -116,7 +116,6 @@ export function DeleteClusterDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, installation, organization, name]);
 
-
   /** Delete, Continue after a partial answer, Finish removal and the live step after a merge: the same call. */
   const onDelete = async () => {
     try {
