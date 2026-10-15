@@ -64,7 +64,7 @@ describe('validateModelConfigForm', () => {
 
   it('requires a DNS-label name', () => {
     expect(validateModelConfigForm(values({ name: '' }))).toContainEqual(
-      expect.stringContaining('Technical name is required'),
+      expect.stringContaining('Enter a technical name.'),
     );
     expect(validateModelConfigForm(values({ name: 'Qwen_3' }))).toContainEqual(
       expect.stringContaining('lowercase'),
@@ -73,14 +73,14 @@ describe('validateModelConfigForm', () => {
 
   it('requires the model id', () => {
     expect(validateModelConfigForm(values({ model: ' ' }))).toContainEqual(
-      expect.stringContaining('Model is required'),
+      expect.stringContaining('Enter the model id.'),
     );
   });
 
   it('requires a host for Ollama and accepts it keyless without a key', () => {
     const ollama = values({ provider: 'Ollama', apiKey: '', endpoint: '' });
     expect(validateModelConfigForm(ollama)).toEqual([
-      'Host is required for Ollama',
+      'Enter the Ollama host, e.g. http://ollama.ollama:11434.',
     ]);
     expect(
       validateModelConfigForm(
@@ -113,7 +113,7 @@ describe('validateModelConfigForm', () => {
     // made with kubectl may have none and stays saveable as it is.
     expect(
       modelConfigFieldErrors(values({ displayName: ' ' })).displayName,
-    ).toBe('Name is required');
+    ).toBe('Enter a name for the model.');
     expect(
       modelConfigFieldErrors(values({ displayName: '' }), { isEdit: true }),
     ).toEqual({});

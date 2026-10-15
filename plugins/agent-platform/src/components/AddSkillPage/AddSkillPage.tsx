@@ -155,14 +155,14 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         return undefined;
       }
       if (!skillName) {
-        return 'Name is required';
+        return 'Enter a name for the skill.';
       }
       return SKILL_NAME_RE.test(skillName)
         ? undefined
         : 'Use lowercase letters, digits and dashes, e.g. ticket-triage';
     })(),
-    description: description.trim() ? undefined : 'Description is required',
-    instructions: instructions.trim() ? undefined : 'Instructions are required',
+    description: description.trim() ? undefined : 'Enter a description.',
+    instructions: instructions.trim() ? undefined : 'Enter the instructions.',
   };
   const isValid = Object.values(fieldErrors).every(problem => !problem);
   // An edit with nothing changed has nothing to propose — not a field's

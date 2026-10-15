@@ -168,7 +168,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   );
 
   const installationError =
-    edit || installation ? undefined : 'Select an environment';
+    edit || installation ? undefined : 'Choose an environment.';
   const fieldErrors = modelConfigFieldErrors(values, {
     isEdit: Boolean(edit),
   });

@@ -171,7 +171,7 @@ describe('NewAgentPage', () => {
     expect(moreOptions().open).toBe(true);
     // The picker itself carries the problem, inside the opened disclosure.
     expect(
-      screen.getByText('model picker: Select a model'),
+      screen.getByText('model picker: Choose a model.'),
     ).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -222,7 +222,7 @@ describe('NewAgentPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
-    expect(screen.getByText(/Name is required/)).toBeInTheDocument();
+    expect(screen.getByText(/Enter a name for the agent/)).toBeInTheDocument();
     expect(moreOptions().open).toBe(false);
   });
 
@@ -235,7 +235,7 @@ describe('NewAgentPage', () => {
 
     expect(name).toHaveAttribute('aria-invalid', 'true');
     expect(name).toHaveAccessibleDescription(
-      expect.stringContaining('Name is required'),
+      expect.stringContaining('Enter a name for the agent.'),
     );
     expect(name).toHaveFocus();
     expect(
@@ -272,6 +272,8 @@ describe('NewAgentPage', () => {
     await userEvent.tab();
 
     expect(name).not.toHaveAttribute('aria-invalid');
-    expect(screen.queryByText(/Name is required/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Enter a name for the agent/),
+    ).not.toBeInTheDocument();
   });
 });

@@ -480,6 +480,24 @@ async function renderStep(
 }
 
 const continueButton = () => screen.getByRole('button', { name: 'Continue' });
+
+/**
+ * Continue stays pressable over a toolset problem: pressed, it moves the focus
+ * to the problem instead of leaving the step.
+ */
+async function expectContinueBlocked(user: ReturnType<typeof userEvent.setup>) {
+  expect(continueButton()).toBeEnabled();
+  await user.click(continueButton());
+  // The toolset's problem where the Toolset section shows it, else the line
+  // by Continue that says the step is blocked.
+  expect(document.activeElement).toHaveTextContent(
+    /selectors|Fix the toolset to continue/,
+  );
+  // Still on the step.
+  expect(
+    screen.getByRole('heading', { name: 'What may it do?' }),
+  ).toBeInTheDocument();
+}
 const toolsetOutput = () => screen.getByTestId('toolset').textContent;
 /** The narrow-layout *Selected so far* bar (jsdom has no two-column viewport). */
 const summaryBar = () =>
@@ -996,7 +1014,7 @@ describe('NewAgentToolsPage', () => {
       // it is 41 selectors, one per connector plus the workflow.
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()?.split(' | ')).toHaveLength(41);
-      expect(continueButton()).toBeDisabled();
+      await expectContinueBlocked(user);
       expect(
         within(summaryBar()).getByText(
           'This toolset needs 41 selectors but may list at most 32, so choose fewer connectors or tools.',
@@ -1057,7 +1075,7 @@ describe('NewAgentToolsPage', () => {
 
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()).not.toContain('preset:read-only');
-      expect(continueButton()).toBeDisabled();
+      await expectContinueBlocked(user);
 
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
@@ -1093,7 +1111,7 @@ describe('NewAgentToolsPage', () => {
 
       await user.click(access('alpha', 'Read-only'));
       await user.click(access('beta', 'Read-only'));
-      expect(continueButton()).toBeDisabled();
+      await expectContinueBlocked(user);
       expect(
         within(summaryBar()).getByText(
           'This toolset needs 40 selectors but may list at most 32; most come from alpha (20) and beta (20), so choose All or fewer tools there.',
@@ -1364,7 +1382,7 @@ describe('NewAgentToolsPage', () => {
         ),
       ).toBeInTheDocument();
       expect(screen.getByText('Fix the toolset to continue.')).toBeVisible();
-      expect(continueButton()).toBeDisabled();
+      await expectContinueBlocked(user);
       // Muster's own refusal, which dumps every selector, is not shown beside it.
       await waitFor(() =>
         expect(filterTools).toHaveBeenCalledWith(
@@ -1425,11 +1443,21 @@ describe('NewAgentToolsPage', () => {
         ),
       ).toBeInTheDocument();
 
-      await user.type(screen.getByLabelText('Selector'), 'toolset:shared');
+      const selector = screen.getByLabelText('Selector');
+      await user.type(selector, 'toolset:shared');
+      // Not while it is typed; on leaving the field, on the field itself.
+      expect(selector).not.toHaveAttribute('aria-invalid');
       await user.click(screen.getByRole('button', { name: 'Add selector' }));
-      expect(
-        screen.getByText(/reserved for shared toolsets/),
-      ).toBeInTheDocument();
+      expect(selector).toHaveAttribute('aria-invalid', 'true');
+      expect(selector).toHaveAccessibleDescription(
+        expect.stringMatching(/reserved for shared toolsets/),
+      );
+      expect(selector).toHaveFocus();
+      expect(toolsetOutput()).toBe('preset:read-only | preset:foo');
+
+      await user.clear(selector);
+      await user.type(selector, 'server:pro');
+      expect(selector).not.toHaveAttribute('aria-invalid');
     });
 
     it('resolves the selection in the Toolset list, saying it changes things', async () => {

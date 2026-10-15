@@ -261,7 +261,7 @@ export function NewAgentFormProvider({
     fieldErrors.systemMessage = systemMessageProblem(state.systemMessage);
     fieldErrors.egress = egressProblem(parseEgressText(state.egressText));
     if (!state.name.trim()) {
-      fieldErrors.name = 'Name is required';
+      fieldErrors.name = 'Enter a name for the agent.';
     }
     if (state.slug.trim()) {
       // The slug is emitted verbatim as a k8s object name — reject anything that
@@ -272,13 +272,13 @@ export function NewAgentFormProvider({
       }
     } else if (state.name.trim()) {
       // Only flag a missing slug once there's a name (it derives from the name).
-      fieldErrors.slug = 'Technical name is required';
+      fieldErrors.slug = 'Enter a technical name.';
     }
     if (!state.installation) {
-      fieldErrors.installation = 'Select an environment';
+      fieldErrors.installation = 'Choose an environment.';
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
-      fieldErrors.model = 'Select a model';
+      fieldErrors.model = 'Choose a model.';
     }
     // The list keeps its historical order (the summary's, and the tests').
     const validationErrors = (

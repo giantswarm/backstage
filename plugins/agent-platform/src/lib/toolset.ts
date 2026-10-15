@@ -111,7 +111,7 @@ export function formatSelector(selector: Selector): string {
 export function selectorProblem(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (trimmed === '') {
-    return 'A selector cannot be empty.';
+    return 'Enter a selector, e.g. server:pro.';
   }
   if (trimmed.startsWith('toolset:')) {
     return `"${trimmed}" is reserved for shared toolsets, which do not exist yet.`;

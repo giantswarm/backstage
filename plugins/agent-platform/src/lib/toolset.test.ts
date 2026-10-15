@@ -62,7 +62,7 @@ describe('selector grammar', () => {
     expect(selectorProblem('read-only')).toMatch(/not a selector/);
     expect(selectorProblem('tool:has space')).toMatch(/not a selector/);
     expect(selectorProblem('tool:a,b')).toMatch(/not a selector/);
-    expect(selectorProblem('')).toMatch(/empty/);
+    expect(selectorProblem('')).toMatch(/Enter a selector/);
     expect(selectorProblem('preset:none')).toBeUndefined();
   });
 

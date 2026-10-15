@@ -108,9 +108,27 @@ describe('SessionRenameDialog', () => {
       await userEvent.type(nameField(), value);
     }
 
-    expect(saveButton()).toBeDisabled();
+    // Save stays pressable and says what is wrong on the field instead.
     await userEvent.click(saveButton());
     expect(onConfirm).not.toHaveBeenCalled();
+    expect(nameField()).toHaveAttribute('aria-invalid', 'true');
+    expect(nameField()).toHaveAccessibleDescription(
+      expect.stringContaining('Enter a name for the session.'),
+    );
+    expect(nameField()).toHaveFocus();
+
+    await userEvent.type(nameField(), 'Renamed');
+    expect(nameField()).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('says an emptied name needs one when the person leaves the field', async () => {
+    await renderDialog();
+
+    await userEvent.clear(nameField());
+    expect(nameField()).not.toHaveAttribute('aria-invalid');
+    await userEvent.tab();
+
+    expect(nameField()).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('caps the name at the length the backend also enforces', async () => {

@@ -15,6 +15,7 @@ import {
   CatalogFilterBar,
   CatalogNoMatch,
   LoadingIndicator,
+  useFieldValidation,
   useProvidePageHeaderActions,
   useWizardFrameRail,
   WizardStepHeading,
@@ -452,22 +453,33 @@ export function NewAgentToolsPage() {
 
   // A selector typed by hand: `server:x` on a portal without the muster
   // plugin, a tool known by name, or a second preset. Validated against the
-  // grammar the chart and agent-manager enforce.
+  // grammar the chart and agent-manager enforce, on the field: when the person
+  // leaves it, and on Add selector (the `forms` skill).
   const [manualSelector, setManualSelector] = useState('');
-  const [manualProblem, setManualProblem] = useState<string | undefined>();
+  const manualProblem = selectorProblem(manualSelector);
+  const selectorScope = useRef<HTMLDivElement>(null);
+  const selectorValidation = useFieldValidation(selectorScope);
+  const { reveal: revealSelector, reset: resetSelector } = selectorValidation;
   const addManualSelector = useCallback(() => {
-    const value = manualSelector.trim();
-    const problem = selectorProblem(value);
-    if (problem) {
-      setManualProblem(problem);
+    if (manualProblem) {
+      revealSelector();
       return;
     }
-    setManualProblem(undefined);
+    const value = manualSelector.trim();
     setManualSelector('');
+    resetSelector();
     if (!base.includes(value) && !state.toolset.includes(value)) {
       commit(toggleSelector(base, value));
     }
-  }, [manualSelector, base, state.toolset, commit]);
+  }, [
+    manualProblem,
+    manualSelector,
+    base,
+    state.toolset,
+    commit,
+    revealSelector,
+    resetSelector,
+  ]);
 
   // A preset replaces the selection; *Only the tools I choose below* keeps
   // what a preset showed, written out (Full gateway's everything is not a
@@ -557,18 +569,31 @@ export function NewAgentToolsPage() {
 
   const backLink = hasRepositories ? skillsLink : newAgentLink;
 
+  // A blocked Continue moves the focus to what says why: the toolset's
+  // problem, else the line by the button. The problems themselves follow
+  // each pick, since a pick is complete when made (the `forms` skill).
+  const blockedNote = useRef<HTMLDivElement>(null);
+  const problemsAlert = useRef<HTMLDivElement>(null);
+  const onContinue = useCallback(() => {
+    if (!isToolsetValid) {
+      const target = problemsAlert.current ?? blockedNote.current;
+      target?.scrollIntoView?.({ block: 'center' });
+      target?.focus();
+      return;
+    }
+    if (reviewLink) {
+      navigate(reviewLink());
+    }
+  }, [isToolsetValid, reviewLink, navigate]);
+
   // The frame's footer carries Cancel and Back; only the primary lives here.
   const actions = useMemo(
     () => (
-      <Button
-        variant="primary"
-        isDisabled={!isToolsetValid}
-        onPress={() => reviewLink && navigate(reviewLink())}
-      >
+      <Button variant="primary" onPress={onContinue}>
         Continue
       </Button>
     ),
-    [reviewLink, navigate, isToolsetValid],
+    [onContinue],
   );
 
   const onBack = useCallback(() => {
@@ -795,7 +820,7 @@ export function NewAgentToolsPage() {
                   <summary className={classes.summaryLine}>
                     Add a selector by name
                   </summary>
-                  <div className={classes.detailsBody}>
+                  <div className={classes.detailsBody} ref={selectorScope}>
                     <Text variant="body-small" color="secondary">
                       Enter <span className={classes.code}>preset:</span>,{' '}
                       <span className={classes.code}>server:</span>,{' '}
@@ -808,24 +833,18 @@ export function NewAgentToolsPage() {
                         <TextField
                           label="Selector"
                           value={manualSelector}
-                          onChange={value => {
-                            setManualSelector(value);
-                            setManualProblem(undefined);
-                          }}
+                          onChange={setManualSelector}
                           placeholder="server:pro"
+                          {...selectorValidation.textFieldProps(
+                            'selector',
+                            manualProblem,
+                          )}
                         />
                       </Flex>
                       <Button variant="secondary" onPress={addManualSelector}>
                         Add selector
                       </Button>
                     </Flex>
-                    {manualProblem && (
-                      <Alert
-                        status="danger"
-                        title="Not a selector"
-                        description={manualProblem}
-                      />
-                    )}
                   </div>
                 </details>
 
@@ -833,15 +852,17 @@ export function NewAgentToolsPage() {
                   <SectionTitle title="Toolset" />
                   <Flex direction="column" gap="3">
                     {problems.length > 0 && (
-                      <Alert
-                        status="danger"
-                        title={
-                          overCap
-                            ? 'Too many selectors'
-                            : 'The toolset cannot be applied as it is'
-                        }
-                        description={problems.join(' ')}
-                      />
+                      <div ref={problemsAlert} tabIndex={-1}>
+                        <Alert
+                          status="danger"
+                          title={
+                            overCap
+                              ? 'Too many selectors'
+                              : 'The toolset cannot be applied as it is'
+                          }
+                          description={problems.join(' ')}
+                        />
+                      </div>
                     )}
                     {unsigned.length > 0 && (
                       <Alert
@@ -867,9 +888,11 @@ export function NewAgentToolsPage() {
 
         {/* The rail says why too; this sits by Continue, where it is blocked. */}
         {!isToolsetValid && (
-          <Text as="p" color="danger">
-            Fix the toolset to continue.
-          </Text>
+          <div ref={blockedNote} tabIndex={-1}>
+            <Text as="p" color="danger">
+              Fix the toolset to continue.
+            </Text>
+          </div>
         )}
       </Flex>
     </AgentWizardFrame>
