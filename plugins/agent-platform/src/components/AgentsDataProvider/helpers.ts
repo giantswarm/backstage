@@ -6,6 +6,7 @@ import {
   deriveAgentReadiness,
   getAgentStatusChangedAt,
   Harness,
+  type HarnessRuntime,
   isAgentTransitional,
   KubeObjectInterface,
   ModelConfig,
@@ -194,6 +195,13 @@ export type AgentRow = {
   harness?: string;
   /** {@link harnessTitle} of that Harness, once it has been read. */
   harnessTitle?: string;
+  /**
+   * That Harness's runtime family, once it has been read: what decides
+   * whether a message may carry images (`imagesUnsupportedReason`).
+   */
+  harnessRuntime?: HarnessRuntime;
+  /** The ModelConfig's `spec.provider` (`Anthropic`, `OpenAI`, `Ollama`, …). */
+  modelProvider?: string;
   skillCount: number;
   /**
    * The git-sourced skills the agent mounts, each as its
@@ -397,6 +405,10 @@ export function toAgentRow(
     modelName: modelConfig?.getModel(),
     harness: harnessName,
     ...(harness && { harnessTitle: harnessTitle(harnessChoiceOf(harness)) }),
+    ...(harness?.getRuntime() && { harnessRuntime: harness.getRuntime() }),
+    ...(modelConfig?.getProvider() && {
+      modelProvider: modelConfig.getProvider(),
+    }),
     skillCount: agent.getSkillCount(),
     ...(skillIds.length > 0 ? { skillIds, skillPins } : {}),
     ...(modelConfigName

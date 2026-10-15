@@ -3,6 +3,7 @@ import { Config } from '@backstage/config';
 import { ConflictError, InputError } from '@backstage/errors';
 import { create, toJson, type JsonObject } from '@bufbuild/protobuf';
 import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
+import type { MessageImagePart } from './messageImages';
 import {
   Code,
   ConnectError,
@@ -312,7 +313,31 @@ export function readKagentInstallationsFromConfig(
 }
 
 /** A `Part` as `create(SendMessageRequestSchema, …)` accepts it. */
-type PartInit = Pick<Part, 'content'>;
+type PartInit = Pick<Part, 'content'> &
+  Partial<Pick<Part, 'mediaType' | 'filename'>>;
+
+/** A message the person typed: its text, and the images attached to it. */
+export type OutboundUserMessage = {
+  messageId: string;
+  text: string;
+  images?: readonly MessageImagePart[];
+};
+
+/**
+ * The parts of a message the person typed: the text first, then each image as
+ * a `raw` part with its type and name, which kagent's Go ADK runtime hands the
+ * model as inline image data.
+ */
+function userMessageParts(message: OutboundUserMessage): PartInit[] {
+  return [
+    { content: { case: 'text', value: message.text } },
+    ...(message.images ?? []).map(image => ({
+      content: { case: 'raw' as const, value: image.bytes },
+      mediaType: image.mediaType,
+      ...(image.name ? { filename: image.name } : {}),
+    })),
+  ];
+}
 
 /** A message as {@link KagentClient.dispatch} sends it. */
 type OutboundMessage = {
@@ -541,14 +566,14 @@ export class KagentClient {
   async sendMessage(
     sessionId: string,
     agent: AgentRef,
-    message: { messageId: string; text: string },
+    message: OutboundUserMessage,
     options: KagentRequestOptions,
   ): Promise<unknown> {
     return this.dispatch(
       this.targetOf(sessionId, agent),
       {
         messageId: message.messageId,
-        parts: [{ content: { case: 'text', value: message.text } }],
+        parts: userMessageParts(message),
       },
       options,
     );
@@ -578,7 +603,7 @@ export class KagentClient {
   async streamMessage(
     sessionId: string,
     agent: AgentRef,
-    message: { messageId: string; text: string },
+    message: OutboundUserMessage,
     options: KagentRequestOptions,
     /**
      * Aborts the upstream stream — wired by the router to the client connection,
@@ -590,7 +615,7 @@ export class KagentClient {
       this.targetOf(sessionId, agent),
       {
         messageId: message.messageId,
-        parts: [{ content: { case: 'text', value: message.text } }],
+        parts: userMessageParts(message),
       },
       options,
       signal,
@@ -1183,29 +1208,27 @@ export class KagentClient {
     const tasks: Task[] = [];
     let totalSize = 0;
     let pageToken = '';
-    for (let page = 0; page < MAX_TASK_PAGES; page += 1) {
-      // A per-iteration copy, as in `listSessions`.
+    // Halved for the rest of the read when a page is too large to answer:
+    // the controller answers at most 16 MiB at once, and a task carries the
+    // images of its message, up to `MESSAGE_IMAGES_MAX_TOTAL_BYTES` each. A
+    // conversation of a handful of turns with images fills a page of 100;
+    // a page of one always fits.
+    let pageSize = PAGE_SIZE;
+    // The page bound, counted in tasks asked for so smaller pages read as far.
+    for (
+      let budget = MAX_TASK_PAGES * PAGE_SIZE;
+      budget > 0;
+      budget -= pageSize
+    ) {
+      // Per-iteration copies, as in `listSessions`.
       const token = pageToken;
-      const response = await this.call(
-        () =>
-          this.a2aService.listTasks(
-            {
-              tenant: target.tenant,
-              contextId: target.contextId,
-              pageSize: PAGE_SIZE,
-              pageToken: token,
-              includeArtifacts: extra.includeArtifacts ?? true,
-              ...(extra.historyLength !== undefined && {
-                historyLength: extra.historyLength,
-              }),
-            },
-            {
-              headers: this.turnHeaders(options),
-              timeoutMs: extra.timeoutMs ?? this.timeoutMs,
-            },
-          ),
+      const size = pageSize;
+      const read = await this.call(
+        () => this.listTasksPage(target, options, extra, token, size),
         context,
       );
+      pageSize = read.pageSize;
+      const { response } = read;
       tasks.push(...response.tasks);
       totalSize = response.totalSize;
       pageToken = response.nextPageToken;
@@ -1214,6 +1237,51 @@ export class KagentClient {
       }
     }
     return { tasks, totalSize: Math.max(totalSize, tasks.length) };
+  }
+
+  /**
+   * One page of `ListTasks`, asked again at half the size for as long as the
+   * controller answers that it is too large to send (`ResourceExhausted`), down
+   * to a page of one. Answers the page and the size that fitted, which the
+   * rest of the read keeps.
+   */
+  private async listTasksPage(
+    target: Target,
+    options: KagentRequestOptions,
+    extra: ListSessionTasksOptions,
+    pageToken: string,
+    initialPageSize: number,
+  ) {
+    let pageSize = initialPageSize;
+    for (;;) {
+      try {
+        const response = await this.a2aService.listTasks(
+          {
+            tenant: target.tenant,
+            contextId: target.contextId,
+            pageSize,
+            pageToken,
+            includeArtifacts: extra.includeArtifacts ?? true,
+            ...(extra.historyLength !== undefined && {
+              historyLength: extra.historyLength,
+            }),
+          },
+          {
+            headers: this.turnHeaders(options),
+            timeoutMs: extra.timeoutMs ?? this.timeoutMs,
+          },
+        );
+        return { response, pageSize };
+      } catch (error) {
+        if (
+          pageSize === 1 ||
+          ConnectError.from(error).code !== Code.ResourceExhausted
+        ) {
+          throw error;
+        }
+        pageSize = Math.ceil(pageSize / 2);
+      }
+    }
   }
 
   /**

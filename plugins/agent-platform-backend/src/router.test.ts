@@ -19,6 +19,13 @@ import { createRouter, kagentProbeUrl, RouterOptions } from './router';
  * A reachability cache that never touches the network: every endpoint answers
  * as reachable, immediately. Tests of the reachability route build their own.
  */
+/** Base64 of bytes that start like a PNG, padded to `size`. */
+function pngBase64(size = 64): string {
+  const bytes = Buffer.alloc(size);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+  return bytes.toString('base64');
+}
+
 function reachableEverywhere() {
   return new ReachabilityCache({
     probe: async () => ({ reachable: true, checkedAt: 0 }),
@@ -1686,7 +1693,7 @@ describe('createRouter', () => {
       expect(sendMessage).toHaveBeenCalledWith(
         'abc',
         { namespace: 'kagent', name: 'issue-tracker' },
-        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?', images: [] },
         { userToken: 'user-token' },
       );
     });
@@ -1699,7 +1706,7 @@ describe('createRouter', () => {
       expect(sendMessage).toHaveBeenCalledWith(
         'abc',
         expect.anything(),
-        { messageId: 'msg-1', text: 'line one\n\n  line two' },
+        { messageId: 'msg-1', text: 'line one\n\n  line two', images: [] },
         expect.anything(),
       );
     });
@@ -1715,6 +1722,61 @@ describe('createRouter', () => {
       ['missing messageId', { ...validBody, messageId: undefined }],
     ])('rejects a body with %s as a 400', async (_, body) => {
       const response = await post(body);
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('decodes the images a message carries and forwards them with it', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({
+        ...validBody,
+        images: [{ mediaType: 'image/png', data: pngBase64(), name: 'a.png' }],
+      });
+
+      expect(response.status).toBe(200);
+      const [, , message] = sendMessage.mock.calls[0];
+      expect(message.images).toEqual([
+        {
+          mediaType: 'image/png',
+          bytes: expect.any(Uint8Array),
+          name: 'a.png',
+        },
+      ]);
+      expect(Array.from(message.images[0].bytes.subarray(0, 4))).toEqual([
+        0x89, 0x50, 0x4e, 0x47,
+      ]);
+    });
+
+    it('takes a body of full-size images past the general 256 kB limit', async () => {
+      // Two images filling the per-message cap, base64 in the JSON: ~4 MB.
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({
+        ...validBody,
+        text: '漢'.repeat(32_000),
+        images: [
+          { mediaType: 'image/png', data: pngBase64(2 * 1024 * 1024) },
+          { mediaType: 'image/png', data: pngBase64(1024 * 1024) },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['images that are not an array', { images: 'x' }],
+      [
+        'an image whose bytes are not its type',
+        { images: [{ mediaType: 'image/jpeg', data: pngBase64() }] },
+      ],
+      [
+        'an SVG',
+        { images: [{ mediaType: 'image/svg+xml', data: 'PHN2Zz4=' }] },
+      ],
+    ])('rejects a body with %s as a 400', async (_, extra) => {
+      const response = await post({ ...validBody, ...extra });
 
       expect(response.status).toBe(400);
       expect(sendMessage).not.toHaveBeenCalled();
@@ -1846,7 +1908,7 @@ describe('createRouter', () => {
       expect(streamMessage).toHaveBeenCalledWith(
         'abc',
         { namespace: 'kagent', name: 'issue-tracker' },
-        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?', images: [] },
         { userToken: 'user-token' },
         expect.any(AbortSignal),
       );
@@ -1860,6 +1922,10 @@ describe('createRouter', () => {
         { ...validBody, text: 'x'.repeat(32_001) },
         { ...validBody, agentName: undefined },
         { ...validBody, messageId: undefined },
+        {
+          ...validBody,
+          images: [{ mediaType: 'image/gif', data: pngBase64() }],
+        },
       ]) {
         const response = await post(body);
         expect(response.status).toBe(400);

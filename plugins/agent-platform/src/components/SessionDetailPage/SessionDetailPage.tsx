@@ -38,8 +38,13 @@ import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
 import {
   NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
   useNewSessionHandoff,
 } from '../../hooks/useNewSessionHandoff';
+import {
+  ComposerImage,
+  imagesUnsupportedReason,
+} from '../../lib/messageImages';
 import { useRenameSession } from '../../hooks/useRenameSession';
 import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
@@ -54,6 +59,7 @@ import {
   AWAITING_INPUT_STATES,
   describeSessionState,
   isRuntimeLostFailureText,
+  readAttachmentPreview,
   RuntimeLoss,
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -464,6 +470,21 @@ export function SessionDetailPage() {
     rates,
   );
 
+  // What the composer needs to know about images: whether this agent can take
+  // them, and how much the conversation already carries — every turn sends
+  // the model all of it, so a session has a budget of its own.
+  const composerImages = useMemo(
+    () => ({
+      unsupportedReason: imagesUnsupportedReason(agentRow),
+      sessionBytes: timeline.items.reduce(
+        (sum, item) =>
+          item.kind === 'attachment' ? sum + (item.preview.byteSize ?? 0) : sum,
+        0,
+      ),
+    }),
+    [agentRow, timeline.items],
+  );
+
   // Dispatch the session's first message, once.
   //
   // The create and the send are two kagent calls, and only the create happened
@@ -482,7 +503,7 @@ export function SessionDetailPage() {
     // Errors surface through `send.error` and `send.failed`, exactly as they do
     // for a reply typed into the composer — which is also what hands the text
     // back so it is not lost.
-    sendMessage(handoff.text).catch(() => {});
+    sendMessage(handoff.text, handoff.images).catch(() => {});
   }, [handoff, sendMessage]);
 
   // The message the user just sent, shown as the newest turn before kagent's copy
@@ -546,6 +567,23 @@ export function SessionDetailPage() {
         taskIndex,
         text: pending.text,
       });
+      // Its images after it, as kagent's copy will have them: same entries,
+      // previewed by the same rule, from the bytes that were sent.
+      for (const image of pending.images ?? []) {
+        items.push({
+          kind: 'attachment' as const,
+          id: `pending:${pending.messageId}:${image.id}`,
+          messageId: pending.messageId,
+          taskIndex,
+          isUser: true,
+          name: image.name,
+          declaredType: image.mediaType,
+          preview: readAttachmentPreview({
+            base64: image.data,
+            declaredType: image.mediaType,
+          }),
+        });
+      }
     }
 
     if (streamVisible) {
@@ -820,7 +858,7 @@ export function SessionDetailPage() {
   const { createSession } = creation;
   const unansweredText = send.failed?.text ?? lastUserMessageText;
   const startNewSession = useCallback(
-    async (draft: string) => {
+    async (draft: string, images: ComposerImage[]) => {
       const text = draft.trim() || unansweredText;
       if (!agentRow || !text) {
         return;
@@ -845,6 +883,7 @@ export function SessionDetailPage() {
             text,
             agentNamespace: agentRow.namespace,
             agentName: agentRow.technicalName,
+            imagesKey: stashHandoffImages(images),
           },
         },
       });
@@ -1220,10 +1259,10 @@ export function SessionDetailPage() {
             offersNewSession
               ? {
                   label: `Start a new session with ${row.agentName || 'this agent'}`,
-                  onStart: draft => {
+                  onStart: (draft, images) => {
                     // Errors surface through the create hook's `error`, which
                     // the notice renders.
-                    startNewSession(draft).catch(() => {});
+                    startNewSession(draft, images).catch(() => {});
                   },
                   isStarting: creation.isCreating,
                   replacesSend: runtimeLoss!.reported,
@@ -1248,10 +1287,11 @@ export function SessionDetailPage() {
           // a session merely opened from the list gets no autofocus.
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus={Boolean(handoff)}
-          onSubmit={text => {
+          images={composerImages}
+          onSubmit={(text, images) => {
             // Errors are surfaced through the hook's `error`, which the composer
             // renders beside the text it hands back.
-            send.sendMessage(text).catch(() => {});
+            send.sendMessage(text, images).catch(() => {});
             // The optimistic echo appears at the very bottom; go where it is.
             scrollToBottom();
           }}

@@ -52,7 +52,11 @@ import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import {
+  NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
+} from '../../hooks/useNewSessionHandoff';
+import type { ComposerImage } from '../../lib/messageImages';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { clientLookupOf } from '../../lib/serving';
 import { toolsetHasTools } from '../../lib/toolset';
@@ -521,7 +525,7 @@ function AgentDetailPageContent() {
 
   const { createSession } = creation;
   const onStartSession = useCallback(
-    async (target: AgentRow, prompt: string) => {
+    async (target: AgentRow, prompt: string, images?: ComposerImage[]) => {
       let sessionId: string;
       try {
         sessionId = await createSession({ agent: target, prompt });
@@ -551,6 +555,7 @@ function AgentDetailPageContent() {
             text: prompt,
             agentNamespace: target.namespace,
             agentName: target.technicalName,
+            imagesKey: stashHandoffImages(images),
           },
         },
       });

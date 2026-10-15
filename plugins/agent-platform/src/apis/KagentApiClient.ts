@@ -33,6 +33,7 @@ import {
   KAGENT_AUTH_HEADER,
   KagentApi,
   KagentIdentity,
+  OutboundMessage,
   REQUEST_ID_HEADER,
 } from './types';
 
@@ -424,7 +425,7 @@ export class KagentApiClient implements KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
   ): Promise<void> {
     const { url, headers } = await this.prepare(
       `/kagent/sessions/${encodeURIComponent(sessionId)}/messages`,
@@ -438,6 +439,7 @@ export class KagentApiClient implements KagentApi {
         agentName: agent.name,
         messageId: message.messageId,
         text: message.text,
+        ...(message.images?.length ? { images: message.images } : {}),
       }),
     });
 
@@ -468,7 +470,7 @@ export class KagentApiClient implements KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
   ): Promise<void> {
@@ -480,6 +482,7 @@ export class KagentApiClient implements KagentApi {
         agentName: agent.name,
         messageId: message.messageId,
         text: message.text,
+        ...(message.images?.length ? { images: message.images } : {}),
       },
       onEvent,
       signal,

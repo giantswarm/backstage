@@ -3,9 +3,20 @@ import {
   A2aTaskWire,
   KagentSession,
   KagentSessionDetail,
+  MessageImage,
   SessionStatesResponse,
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+
+/**
+ * A message the person sends: its id (minted by the caller), its text, and
+ * the images attached to it.
+ */
+export type OutboundMessage = {
+  messageId: string;
+  text: string;
+  images?: readonly MessageImage[];
+};
 
 export type { KagentInstallation } from '../lib/kagentInstallations';
 
@@ -185,7 +196,7 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
   ): Promise<void>;
 
   /**
@@ -223,7 +234,7 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
   ): Promise<void>;

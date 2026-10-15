@@ -1154,6 +1154,9 @@ config arrays, so a deployment overriding `img-src` must re-list `data:`.
 
 **Only the poll renders attachments.** The first stream event of a turn with a
 file part (`StreamTurn.carriesFile`) triggers one tasks re-read for that turn.
+An image the person sent shows as a thumbnail (see
+[Images in a message](#images-in-a-message)); one the agent sent shows at up
+to 480 px high.
 
 **Unreadable messages are counted.** `skippedMessages` counts history entries
 that failed the schema (artifact and status updates excluded), and the warning
@@ -1482,8 +1485,63 @@ by both composers and the answer panel). The field clears on submit; on failure
 the text returns, keyed by attempt id, without overwriting an edit.
 
 **Limits.** Messages are capped at 32,000 UTF-16 code units (ours; kagent
-validates nothing), in the route and the box. The route's JSON body limit is
-256 kB, so 32,000 CJK code units (about 96 kB) never hit a 413.
+validates nothing), in the route and the box. The backend's JSON body limit is
+256 kB, so 32,000 CJK code units (about 96 kB) never hit a 413; the two message
+routes take 5 MB, for images.
+
+#### Images in a message
+
+Both composers take images: pasted, dropped on the box, or picked with
+**Attach images** (the system's file picker, for phones and keyboards). They
+show as removable thumbnails above the text and go with the next message as
+A2A `raw` parts (`mediaType`, `filename`) after its text part. The session
+page's composer, the home and Sessions composer (`StartNewSession`) and the
+New session dialog take them; the meta-agent hand-offs and `CreateAgentAssist`
+stay text only. A new session's images travel to the session page with the
+prompt, held in memory under a key in the router state
+(`stashHandoffImages`), never in the router state itself.
+
+- **Paste** attaches only a clipboard without both plain text and HTML: a
+  spreadsheet or word processor copies a picture of the selection beside its
+  text, and there the text is pasted as before.
+- **Drop** reacts to drags that carry files only, so dragged text still lands
+  in the box. While the composer is on the page, a file dropped anywhere else
+  is refused instead of opened by the browser in place of the page. Desktop
+  only; on a phone, paste and the picker remain.
+- **Types** are read from the bytes (`sniffImageType`), never the name: PNG,
+  JPEG, GIF, WebP — what the transcript previews. Anything else is refused
+  with a message naming them.
+- **Scaling.** A PNG, JPEG or WebP longer than 2,000 px on a side is scaled
+  down to it in its own format before the size check: models scale larger
+  images down themselves, and Anthropic refuses images over 2,000 px in a
+  request with more than 20. A GIF is kept as it is.
+- **Caps** (`kagentMessageLimits.ts`, checked in the composer and again in the
+  route, which also checks each image's bytes against its type): 2 MiB per
+  image, 4 images and 3 MiB per message, 16 MiB per session. The message cap
+  is kagent's narrowest hop: the controller relays to the runtime over gRPC
+  with the 4 MiB default. The session cap exists because every turn sends the
+  model the whole conversation, base64-encoded, and Anthropic's request limit
+  and agentgateway's LLM buffer are both 32 MB. Each refusal says what is wrong
+  and what to do.
+- **Agents that cannot take images** (`imagesUnsupportedReason`): kagent's
+  Claude Code and Codex runtimes accept one text part per message and fail
+  the turn otherwise, and its Go ADK runtime drops images for Ollama models.
+  The composer says so on a paste, drop or press of Attach images, from the
+  agent's Harness runtime and ModelConfig provider. Whether a given model
+  takes images is recorded nowhere in kagent: an OpenAI-compatible endpoint
+  serving a text-only model refuses the turn, and the failure path hands the
+  text and the images back to the box.
+- **The transcript** shows a sent image after the message, as a thumbnail
+  (at most 240 × 160 px) that opens at full size; the optimistic copy of a
+  message in flight shows its images the same way. Each poll re-reads the
+  images with the conversation, which is what the per-session cap also
+  bounds. A conversation too large for one `ListTasks` answer (the
+  controller's 16 MiB) is read in smaller pages.
+
+The chart's ingress raises `nginx.ingress.kubernetes.io/proxy-body-size` to
+`6m`, because ingress-nginx refuses a body over 1 MB by default. A deployment
+that replaces the chart's ingress annotations, or fronts the portal with
+another proxy, must allow the same.
 
 ### Answering the agent's question
 

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -9,6 +9,7 @@ import {
 import type { AgentRow } from '../AgentsDataProvider';
 import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
+import { pngFile } from '../../lib/__fixtures__/images';
 import {
   agentOptionLabel,
   isStartableAgent,
@@ -276,7 +277,11 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), '  why is the ingress failing?  ');
       await userEvent.click(startButton());
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'why is the ingress failing?');
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'why is the ingress failing?',
+        [],
+      );
     });
 
     it('starts on Enter', async () => {
@@ -284,7 +289,7 @@ describe('NewSessionComposer', () => {
 
       await userEvent.type(field(), 'check the cluster{Enter}');
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster');
+      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster', []);
     });
 
     it('still starts on Cmd/Ctrl+Enter, the key it used to be', async () => {
@@ -293,7 +298,7 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), 'check the cluster');
       await userEvent.keyboard('{Meta>}{Enter}{/Meta}');
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster');
+      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster', []);
     });
 
     it('breaks the line on Shift+Enter', async () => {
@@ -534,7 +539,7 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), 'check');
       await userEvent.click(startButton());
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check');
+      expect(onStart).toHaveBeenCalledWith(sre, 'check', []);
     });
   });
 
@@ -679,7 +684,7 @@ describe('opt-in picker options', () => {
     await userEvent.type(field(), 'check');
     await userEvent.click(startButton());
 
-    expect(onStart).toHaveBeenCalledWith(research, 'check');
+    expect(onStart).toHaveBeenCalledWith(research, 'check', []);
   });
 
   it('lists the favorites second, after the recent agents, in display order', async () => {
@@ -747,7 +752,7 @@ describe('opt-in picker options', () => {
     await userEvent.type(field(), 'check');
     await userEvent.click(startButton());
 
-    expect(onStart).toHaveBeenCalledWith(research, 'check');
+    expect(onStart).toHaveBeenCalledWith(research, 'check', []);
   });
 
   it('moves from Recent into Favorites with the arrow keys', async () => {
@@ -1374,7 +1379,7 @@ describe('NewSessionComposer agent-first', () => {
     expect(field()).toBeEnabled();
     await userEvent.type(field(), 'Check the cluster');
     await userEvent.click(startButton());
-    expect(onStart).toHaveBeenCalledWith(sre, 'Check the cluster');
+    expect(onStart).toHaveBeenCalledWith(sre, 'Check the cluster', []);
   });
 
   it('without the flag, an unchosen agent leaves the field open and is refused on submit', async () => {
@@ -1408,7 +1413,7 @@ describe('NewSessionComposer with touch input (T22 B2)', () => {
     ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Start' }));
-    expect(onStart).toHaveBeenCalledWith(sre, 'line one\nline two');
+    expect(onStart).toHaveBeenCalledWith(sre, 'line one\nline two', []);
   });
 
   it('names Enter and Shift+Enter with a keyboard', () => {
@@ -1422,5 +1427,64 @@ describe('NewSessionComposer with touch input (T22 B2)', () => {
       'Enter starts the session with this message, Shift+Enter for a new line.',
     );
     expect(field()).toHaveAttribute('enterkeyhint', 'send');
+  });
+});
+
+describe('NewSessionComposer — images', () => {
+  function paste(files: File[]) {
+    fireEvent.paste(field(), {
+      clipboardData: { files, types: ['Files'], getData: () => '' },
+    });
+  }
+
+  it('starts with the pasted images as part of the first message', async () => {
+    renderComposer({ defaultAgent: sre, acceptsImages: true });
+
+    paste([pngFile('a.png')]);
+    expect(await screen.findByText('a.png')).toBeInTheDocument();
+    await userEvent.type(field(), 'what is this?{Enter}');
+
+    expect(onStart).toHaveBeenCalledWith(sre, 'what is this?', [
+      expect.objectContaining({ name: 'a.png', mediaType: 'image/png' }),
+    ]);
+  });
+
+  it('takes no images without acceptsImages', async () => {
+    renderComposer({ defaultAgent: sre });
+
+    paste([pngFile('a.png')]);
+
+    await act(async () => {});
+    expect(screen.queryByText('a.png')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Attach images' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('holds the start while the chosen agent cannot take the attached images', async () => {
+    const coder = agentRow({
+      id: 'gazelle/kagent/coder',
+      name: 'Coder',
+      technicalName: 'coder',
+      harnessRuntime: 'claude',
+    });
+    renderComposer({ agents: [sre, coder], acceptsImages: true });
+    await userEvent.click(screen.getByRole('button', { name: /Agent/ }));
+    await userEvent.click(screen.getByRole('option', { name: /^SRE Agent/ }));
+    paste([pngFile('a.png')]);
+    await screen.findByText('a.png');
+
+    await userEvent.click(screen.getByRole('button', { name: /Agent/ }));
+    await userEvent.click(screen.getByRole('option', { name: /^Coder/ }));
+    await userEvent.type(field(), 'fix it{Enter}');
+
+    expect(onStart).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Coder cannot take images: its Claude Code runtime accepts text only. Remove the images, or choose another agent.',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove a.png' }));
+    await userEvent.click(startButton());
+    expect(onStart).toHaveBeenCalledWith(coder, 'fix it', []);
   });
 });

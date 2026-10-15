@@ -72,7 +72,11 @@ describe('NewSessionDialog', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'Start' }));
 
-    expect(onStart).toHaveBeenCalledWith(sre, 'why is the ingress failing?');
+    expect(onStart).toHaveBeenCalledWith(
+      sre,
+      'why is the ingress failing?',
+      [],
+    );
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 

@@ -12,7 +12,11 @@ import {
   type SessionEntryPoint,
 } from '../../hooks/useCreateSession';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import {
+  NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
+} from '../../hooks/useNewSessionHandoff';
+import type { ComposerImage } from '../../lib/messageImages';
 import { agentsRouteRef, sessionDetailRouteRef } from '../../routes';
 import {
   AgentRow,
@@ -112,7 +116,7 @@ export function StartNewSession({
 
   const { createSession } = creation;
   const onStart = useCallback(
-    async (agent: AgentRow, prompt: string) => {
+    async (agent: AgentRow, prompt: string, images?: ComposerImage[]) => {
       let sessionId: string;
       try {
         sessionId = await createSession({ agent, prompt });
@@ -147,6 +151,7 @@ export function StartNewSession({
             // The technical name: it is what addresses the agent's A2A
             // endpoint. The display name is an annotation.
             agentName: agent.technicalName,
+            imagesKey: stashHandoffImages(images),
           },
         },
       });
@@ -297,6 +302,8 @@ export function StartNewSession({
       collapsible={layout === 'inline'}
       isStarting={creation.isCreating}
       error={creation.error ?? undefined}
+      // The session page sends the prompt, images and all.
+      acceptsImages
       onStart={onStart}
     />
   );

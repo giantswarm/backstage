@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 
 import {
   NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
   useNewSessionHandoff,
 } from './useNewSessionHandoff';
 
@@ -52,6 +53,34 @@ describe('useNewSessionHandoff', () => {
       [NEW_SESSION_STATE_KEY]: { ...handoff, prepared: 'yes' },
     });
     expect(other.result.current.handoff).toEqual(handoff);
+  });
+
+  it('reads the images stashed for the hand-off, by the key the state carries', () => {
+    const image = {
+      id: 'image-1',
+      name: 'a.png',
+      mediaType: 'image/png' as const,
+      data: 'iVBORw0K',
+      byteSize: 6,
+      previewUrl: 'data:image/png;base64,iVBORw0K',
+    };
+    const imagesKey = stashHandoffImages([image]);
+
+    const { result } = renderWithState({
+      [NEW_SESSION_STATE_KEY]: { ...handoff, imagesKey },
+    });
+    expect(result.current.handoff).toEqual({ ...handoff, images: [image] });
+
+    // A key that is not the last one stashed finds nothing.
+    const stale = renderWithState({
+      [NEW_SESSION_STATE_KEY]: { ...handoff, imagesKey: 'another' },
+    });
+    expect(stale.result.current.handoff).toEqual(handoff);
+  });
+
+  it('stashes nothing for a hand-off without images', () => {
+    expect(stashHandoffImages(undefined)).toBeUndefined();
+    expect(stashHandoffImages([])).toBeUndefined();
   });
 
   it('clears the router state, so a reload or Back cannot re-send the message', async () => {

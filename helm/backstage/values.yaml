@@ -420,6 +420,9 @@ ingress:
     cert-manager.io/cluster-issuer: letsencrypt-giantswarm
     kubernetes.io/tls-acme: 'true'
     nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+    # ingress-nginx refuses a request body over 1m by default; a session
+    # message carrying images is up to ~4.3 MB (the backend allows 5mb).
+    nginx.ingress.kubernetes.io/proxy-body-size: 6m
   # @schema item:string
   # -- Hostnames for the Ingress rules and TLS configuration
   hostnames: ['default-hostname']

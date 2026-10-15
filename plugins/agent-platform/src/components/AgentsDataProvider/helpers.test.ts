@@ -272,6 +272,7 @@ describe('toAgentRow', () => {
       // fields: only `modelName` matches what the gateway calls the model
       // (`gen_ai_response_model`), so only it can price a session.
       modelName: 'claude-sonnet-4-6',
+      modelProvider: 'Anthropic',
       harness: 'kagent',
       skillCount: 3,
       skillIds: Array.from(

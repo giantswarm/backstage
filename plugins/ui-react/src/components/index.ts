@@ -7,6 +7,7 @@ export * from './Autocomplete';
 export * from './CodeBlock';
 export * from './CollapsibleMarkdown';
 export * from './CollapsibleMarkdownCard';
+export * from './ComposerAttachmentList';
 export * from './ComposerFrame';
 export * from './ConditionsList';
 export * from './ConfirmDialog';

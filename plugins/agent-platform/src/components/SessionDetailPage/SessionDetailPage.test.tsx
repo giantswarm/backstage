@@ -17,6 +17,7 @@ import type { UseCreateSessionResult } from '../../hooks/useCreateSession';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline } from '../../lib/kagentTimeline';
+import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
   deriveSessionState,
   normalizeSessionDetail,
@@ -197,6 +198,16 @@ jest.mock('../../hooks/useNewSessionHandoff', () => ({
 }));
 
 /** The hook's idle state, which most tests want. */
+/** An image of a message in flight, as the composer prepared it. */
+const PENDING_IMAGE = {
+  id: 'image-1',
+  name: 'shot.png',
+  mediaType: 'image/png' as const,
+  data: TINY_PNG_BASE64,
+  byteSize: 70,
+  previewUrl: `data:image/png;base64,${TINY_PNG_BASE64}`,
+};
+
 function idleSend(
   overrides: Partial<UseSendMessageResult> = {},
 ): UseSendMessageResult {
@@ -793,6 +804,7 @@ describe('SessionDetailPage', () => {
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         'why is the ingress failing?',
+        [],
       );
     });
 
@@ -1616,6 +1628,26 @@ describe('SessionDetailPage', () => {
       expect(screen.getByText('a message in flight')).toBeInTheDocument();
     });
 
+    it('shows the images of the message in flight with it', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          isSending: true,
+          pending: {
+            messageId: 'pending-1',
+            text: 'what is wrong here?',
+            images: [PENDING_IMAGE],
+          },
+        }),
+      );
+      await render();
+
+      expect(screen.getByRole('img', { name: 'shot.png' })).toHaveAttribute(
+        'src',
+        PENDING_IMAGE.previewUrl,
+      );
+    });
+
     it('stops showing the pending copy once kagent returns the real one', async () => {
       // Recognised by `messageId`, not by timing — a poll can deliver the stored
       // message long before the turn ends, and showing both would double it for
@@ -1841,6 +1873,21 @@ describe('SessionDetailPage', () => {
       agentName: 'issue-tracker',
     };
 
+    it('sends the images that came with it', async () => {
+      mockUseNewSessionHandoff.mockReturnValue({
+        ...handoff,
+        images: [PENDING_IMAGE],
+      });
+      await render();
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledWith(
+          'why is the ingress failing?',
+          [PENDING_IMAGE],
+        );
+      });
+    });
+
     it('sends it on arrival, so the user watches the reply appear', async () => {
       // Created on the previous screen, sent here: `message/send` blocks for the
       // whole turn, so awaiting it before navigating would have meant staring at
@@ -1851,6 +1898,7 @@ describe('SessionDetailPage', () => {
       await waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           'why is the ingress failing?',
+          undefined,
         );
       });
     });
@@ -1913,6 +1961,7 @@ describe('SessionDetailPage', () => {
       await waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           'why is the ingress failing?',
+          undefined,
         );
       });
     });
