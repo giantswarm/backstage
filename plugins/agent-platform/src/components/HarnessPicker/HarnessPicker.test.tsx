@@ -26,7 +26,7 @@ jest.mock('../../hooks/useAgentManager', () => ({
 
 function harness(
   name: string,
-  runtime: 'kagent' | 'claude',
+  runtime: 'kagent' | 'claude' | 'codex',
   {
     namespace = 'kagent',
     displayName = undefined as string | undefined,
@@ -115,14 +115,18 @@ describe('HarnessPicker', () => {
     expect(screen.queryByText('Runtime')).not.toBeInTheDocument();
   });
 
-  it("says so when the namespace's Harnesses could not be read", async () => {
+  it("says so when the namespace's Harnesses could not be read, and keeps the platform Harness", async () => {
     mockUseResources.mockReturnValue(
       listing([], [{ cluster: 'gazelle', error: new Error('Forbidden') }]),
     );
     await render();
 
     expect(screen.getByText('Could not read the runtimes')).toBeInTheDocument();
+    expect(
+      screen.getByText(/so the agent runs on the platform Harness\.$/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 
   it("titles a card by the Harness's display name when an admin set one", async () => {
@@ -195,6 +199,45 @@ describe('HarnessPicker', () => {
     // Back to the platform Harness is no pick at all.
     await user.click(screen.getByRole('radio', { name: /Harness kagent/ }));
     expect(formHarness).toBeUndefined();
+  });
+
+  it('offers a Codex card where the namespace holds a codex Harness, and records its pick', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('claude', 'claude'),
+        harness('codex', 'codex'),
+      ]),
+    );
+    const user = userEvent.setup();
+    await render();
+
+    const codex = screen.getByRole('radio', { name: 'Codex, Harness codex' });
+    expect(codex).toHaveTextContent('Codex');
+    expect(codex).toHaveTextContent('codex-harness');
+    expect(codex).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(codex);
+    expect(formHarness).toBe('codex');
+    // Limits are a Claude Code Harness's; a codex pick shows none, not even
+    // "No limits set".
+    expect(screen.queryByRole('group', { name: 'Limits' })).toBeNull();
+  });
+
+  it('offers no Codex card in a namespace without a codex Harness', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('claude', 'claude'),
+        harness('codex', 'codex', { namespace: 'other' }),
+      ]),
+    );
+    await render();
+
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    expect(
+      screen.queryByRole('radio', { name: /Codex/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('says the runtimes are loading while the list is being read', async () => {
