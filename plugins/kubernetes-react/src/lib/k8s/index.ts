@@ -67,7 +67,7 @@ export { Node } from './Node';
 export type { NodeInterface } from './Node';
 export { Pod } from './Pod';
 export type { PodContainerStatus, PodInterface, PodPendingState } from './Pod';
-export { Harness } from './Harness';
+export { Harness, harnessRuntimeOf } from './Harness';
 export type {
   ClaudeHarnessLimits,
   HarnessInterface,

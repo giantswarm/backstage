@@ -683,6 +683,22 @@ describe('KagentApiClient', () => {
       });
     });
 
+    it('carries the images of a message, and no images key without any', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+      const images = [
+        { mediaType: 'image/png' as const, data: 'iVBORw0K', name: 'a.png' },
+      ];
+
+      await buildClient().sendMessage('gazelle', 'abc123', AGENT, {
+        ...MESSAGE,
+        images,
+      });
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).images).toEqual(
+        images,
+      );
+    });
+
     it('sends the agent’s real names rather than anything decoded', async () => {
       // kagent's stored `agent_id` rewrites every `-` to `_`, so a name containing
       // an underscore cannot be recovered from it. These come from the Agent

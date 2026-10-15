@@ -28,6 +28,47 @@ describe('ComposerFrame', () => {
     );
   });
 
+  it('puts the attachments in the box, above the text field', () => {
+    render(
+      <ComposerFrame
+        data-testid="frame"
+        attachments={<ul aria-label="Attached images" />}
+        input={<textarea aria-label="Message" />}
+      />,
+    );
+
+    const list = screen.getByRole('list', { name: 'Attached images' });
+    expect(screen.getByTestId('frame')).toContainElement(list);
+    expect(
+      list.compareDocumentPosition(screen.getByRole('textbox')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('shows what letting go does only while something is dragged over it', () => {
+    const { rerender } = render(
+      <ComposerFrame
+        data-testid="frame"
+        dropLabel="Drop images to attach them"
+        input={<textarea aria-label="Message" />}
+      />,
+    );
+    expect(
+      screen.queryByText('Drop images to attach them'),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <ComposerFrame
+        data-testid="frame"
+        isDropTarget
+        dropLabel="Drop images to attach them"
+        input={<textarea aria-label="Message" />}
+      />,
+    );
+    expect(screen.getByText('Drop images to attach them')).toBeInTheDocument();
+    expect(screen.getByTestId('frame')).toHaveAttribute('data-drop-target');
+  });
+
   it('sends a press on its own padding to the text field', () => {
     renderFrame();
 

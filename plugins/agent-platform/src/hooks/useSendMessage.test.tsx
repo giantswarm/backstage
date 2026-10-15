@@ -138,6 +138,30 @@ describe('useSendMessage', () => {
     );
   });
 
+  it('sends the images as the API takes them, and keeps them on the pending message', async () => {
+    const { result } = renderWith();
+    const image = {
+      id: 'image-1',
+      name: 'a.png',
+      mediaType: 'image/png' as const,
+      byteSize: 6,
+      previewUrl: 'data:image/png;base64,iVBORw0K',
+    };
+    streamMessage.mockImplementation(() => new Promise(() => {}));
+
+    act(() => {
+      result.current.sendMessage('look', [image]).catch(() => {});
+    });
+
+    await waitFor(() => expect(streamMessage).toHaveBeenCalled());
+    expect(streamMessage.mock.calls[0][3]).toEqual({
+      messageId: expect.any(String),
+      text: 'look',
+      images: [{ mediaType: 'image/png', data: 'iVBORw0K', name: 'a.png' }],
+    });
+    expect(result.current.pending?.images).toEqual([image]);
+  });
+
   it('generates a message id, so the sent message can be recognised later', async () => {
     // The id has to exist before the request is made: it is what lets the
     // optimistically rendered message be matched to kagent's stored copy and

@@ -295,6 +295,101 @@ describe('KagentClient against a fake controller', () => {
       expect(fake.tasks.get(id)?.[0]?.task.contextId).toBe(id);
     });
 
+    it('sends the images of a message as raw parts after its text', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+
+      const response = await client.streamMessage(
+        id,
+        AGENT,
+        {
+          messageId: 'm0',
+          text: 'what is wrong here?',
+          images: [{ mediaType: 'image/png', bytes, name: 'shot.png' }],
+        },
+        USER,
+        new AbortController().signal,
+      );
+      await response.text();
+
+      const [user] = fake.tasks.get(id)![0].task.history;
+      expect(user.parts).toHaveLength(2);
+      expect(user.parts[0].content).toEqual({
+        case: 'text',
+        value: 'what is wrong here?',
+      });
+      expect(user.parts[1].content).toEqual({ case: 'raw', value: bytes });
+      expect(user.parts[1].mediaType).toBe('image/png');
+      expect(user.parts[1].filename).toBe('shot.png');
+    });
+
+    it('reads a conversation too large for one answer in smaller pages', async () => {
+      // A task with an image is large: two of these overflow the cap, one fits.
+      const { fake, client } = build({ maxListTasksBytes: 2_500 });
+      const id = created(fake);
+      for (let turn = 0; turn < 5; turn += 1) {
+        await client.sendMessage(
+          id,
+          AGENT,
+          {
+            messageId: `m${turn}`,
+            text: 'look',
+            images: [{ mediaType: 'image/png', bytes: new Uint8Array(1_000) }],
+          },
+          USER,
+        );
+      }
+
+      const before = fake.calls.length;
+      const listed = (await client.listSessionTasks(id, USER)) as {
+        tasks: unknown[];
+        totalSize: number;
+      };
+
+      expect(listed.tasks).toHaveLength(5);
+      expect(listed.totalSize).toBe(5);
+      // Refused at 100, 50, 25, 13, 7, 4 and 2; then read one task at a time.
+      const listCalls = (from: number) =>
+        fake.calls.slice(from).filter(call => call.method === 'ListTasks');
+      expect(listCalls(before)).toHaveLength(12);
+
+      // The next read of the session — the next poll — starts at the size
+      // that fitted instead of being refused all over again.
+      const next = fake.calls.length;
+      await client.listSessionTasks(id, USER);
+      expect(listCalls(next)).toHaveLength(5);
+    });
+
+    it('counts the images the person’s messages in a session carry', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      await client.sendMessage(
+        id,
+        AGENT,
+        {
+          messageId: 'm0',
+          text: 'look',
+          images: [
+            { mediaType: 'image/png', bytes: new Uint8Array(100) },
+            { mediaType: 'image/jpeg', bytes: new Uint8Array(50) },
+          ],
+        },
+        USER,
+      );
+      await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'and now?' },
+        USER,
+      );
+
+      expect(await client.readSessionImageUsage(id, AGENT, USER)).toEqual({
+        bytes: 150,
+        count: 2,
+      });
+    });
+
     it('reads a session’s tasks through the Agent it remembers, and through a fresh read otherwise', async () => {
       const { fake, client } = build();
       const id = created(fake);

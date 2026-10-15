@@ -25,7 +25,11 @@ import {
 
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import {
+  NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
+} from '../../hooks/useNewSessionHandoff';
+import type { ComposerImage } from '../../lib/messageImages';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { skillSource, uniqueSkills } from '../../lib/customize';
 import { skillDetailPath } from '../../lib/skills';
@@ -318,7 +322,7 @@ function PaletteSessionComposer({
     useCreateSession('searchPalette');
 
   const onStart = useCallback(
-    async (chosen: AgentRow, prompt: string) => {
+    async (chosen: AgentRow, prompt: string, images?: ComposerImage[]) => {
       let sessionId: string;
       try {
         sessionId = await createSession({ agent: chosen, prompt });
@@ -342,6 +346,7 @@ function PaletteSessionComposer({
             text: prompt,
             agentNamespace: chosen.namespace,
             agentName: chosen.technicalName,
+            imagesKey: stashHandoffImages(images),
           },
         },
       });

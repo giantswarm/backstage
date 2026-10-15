@@ -191,10 +191,10 @@ names the value. `githubAppCredentials`, `google.credentialsJson` and
 | backstage.extraVolumeMounts | list | `[]` | Additional volume mounts for the Backstage container |
 | backstage.extraVolumes | list | `[]` | Additional volumes for the Backstage pod |
 | backstage.initContainers | list | `[]` | Init containers to run before the Backstage container starts. Common use: `chown` a freshly provisioned PVC mount so the non-root Backstage user can write to it. |
-| ingress | object | `{"annotations":{"cert-manager.io/cluster-issuer":"letsencrypt-giantswarm","kubernetes.io/tls-acme":"true","nginx.ingress.kubernetes.io/force-ssl-redirect":"true"},"className":"nginx","enabled":true,"hostnames":["default-hostname"]}` | Traditional Ingress configuration |
+| ingress | object | `{"annotations":{"cert-manager.io/cluster-issuer":"letsencrypt-giantswarm","kubernetes.io/tls-acme":"true","nginx.ingress.kubernetes.io/force-ssl-redirect":"true","nginx.ingress.kubernetes.io/proxy-body-size":"6m"},"className":"nginx","enabled":true,"hostnames":["default-hostname"]}` | Traditional Ingress configuration |
 | ingress.enabled | bool | `true` | Enable the Kubernetes Ingress resource for external HTTP access |
 | ingress.className | string | `"nginx"` | Ingress class name |
-| ingress.annotations | object | `{"cert-manager.io/cluster-issuer":"letsencrypt-giantswarm","kubernetes.io/tls-acme":"true","nginx.ingress.kubernetes.io/force-ssl-redirect":"true"}` | Annotations applied to the Ingress resource |
+| ingress.annotations | object | `{"cert-manager.io/cluster-issuer":"letsencrypt-giantswarm","kubernetes.io/tls-acme":"true","nginx.ingress.kubernetes.io/force-ssl-redirect":"true","nginx.ingress.kubernetes.io/proxy-body-size":"6m"}` | Annotations applied to the Ingress resource |
 | ingress.hostnames | list | `["default-hostname"]` | Hostnames for the Ingress rules and TLS configuration |
 | route | object | `{"additionalRules":[],"annotations":{},"backendTrafficPolicy":{"annotations":{},"enabled":true,"labels":{},"spec":{}},"enabled":false,"filters":[],"hostnames":[],"kind":"HTTPRoute","labels":{},"matches":[{"path":{"type":"PathPrefix","value":"/"}}],"name":"","parentRefs":[],"securityPolicy":{"annotations":{},"authorization":{},"basicAuth":{},"cors":{},"enabled":false,"extAuth":{},"jwt":{},"labels":{},"oidc":{}}}` | Gateway API route configuration |
 | route.enabled | bool | `false` | Enable the Gateway API HTTPRoute resource |

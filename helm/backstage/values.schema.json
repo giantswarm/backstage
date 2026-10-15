@@ -2913,6 +2913,9 @@
                         },
                         "nginx.ingress.kubernetes.io/force-ssl-redirect": {
                             "type": "string"
+                        },
+                        "nginx.ingress.kubernetes.io/proxy-body-size": {
+                            "type": "string"
                         }
                     },
                     "additionalProperties": {

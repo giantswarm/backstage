@@ -1,5 +1,9 @@
 import { TimelineItem } from '../../lib/kagentTimeline';
-import { createPolledPairing, fresherStreamedCopy } from './helpers';
+import {
+  createPolledPairing,
+  fresherStreamedCopy,
+  readLastUserMessage,
+} from './helpers';
 
 describe('fresherStreamedCopy', () => {
   const call = (
@@ -147,5 +151,74 @@ describe('createPolledPairing', () => {
     expect(pair({ kind: 'agent-message', messageId: 'm-1' })).toBeUndefined();
     expect(pair({ kind: 'agent-message', messageId: 'm-2' })).toBeUndefined();
     expect(pair({ kind: 'agent-message' })).toBeUndefined();
+  });
+});
+
+describe('readLastUserMessage', () => {
+  const image = (
+    id: string,
+    messageId: string,
+    isUser = true,
+  ): TimelineItem => ({
+    kind: 'attachment',
+    id,
+    taskIndex: 1,
+    messageId,
+    isUser,
+    name: `${id}.png`,
+    preview: {
+      kind: 'image',
+      type: 'image/png',
+      dataUrl: `data:image/png;base64,${id}`,
+      byteSize: 3,
+    },
+  });
+
+  it('reads the last message the person sent, with its images as the composer holds them', () => {
+    const items: TimelineItem[] = [
+      {
+        kind: 'user-message',
+        id: 'u0',
+        taskIndex: 0,
+        messageId: 'm0',
+        text: 'first',
+      },
+      image('old', 'm0'),
+      {
+        kind: 'user-message',
+        id: 'u1',
+        taskIndex: 1,
+        messageId: 'm1',
+        text: 'look',
+      },
+      image('a', 'm1'),
+      image('agent', 'm1', false),
+      {
+        kind: 'attachment',
+        id: 'pdf',
+        taskIndex: 1,
+        messageId: 'm1',
+        isUser: true,
+        name: 'report.pdf',
+        preview: { kind: 'none', reason: 'not-previewable', byteSize: 9 },
+      },
+    ];
+
+    expect(readLastUserMessage(items)).toEqual({
+      text: 'look',
+      images: [
+        {
+          id: 'sent:a',
+          name: 'a.png',
+          mediaType: 'image/png',
+          byteSize: 3,
+          previewUrl: 'data:image/png;base64,a',
+        },
+      ],
+    });
+  });
+
+  it('reads nothing from a conversation the person has not written in', () => {
+    expect(readLastUserMessage([])).toBeUndefined();
   });
 });

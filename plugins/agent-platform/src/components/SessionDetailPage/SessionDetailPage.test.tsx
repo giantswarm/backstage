@@ -17,6 +17,7 @@ import type { UseCreateSessionResult } from '../../hooks/useCreateSession';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline } from '../../lib/kagentTimeline';
+import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
   deriveSessionState,
   normalizeSessionDetail,
@@ -198,6 +199,48 @@ jest.mock('../../hooks/useNewSessionHandoff', () => ({
 }));
 
 /** The hook's idle state, which most tests want. */
+/** An image of a message in flight, as the composer prepared it. */
+const PENDING_IMAGE = {
+  id: 'image-1',
+  name: 'shot.png',
+  mediaType: 'image/png' as const,
+  byteSize: 70,
+  previewUrl: `data:image/png;base64,${TINY_PNG_BASE64}`,
+};
+
+/**
+ * The timeline with an image attached to the last message the person sent,
+ * as the poll reads one back.
+ */
+function withImageOnLastMessage(view: SessionDetailView): SessionDetailView {
+  const last = [...view.timeline.items]
+    .reverse()
+    .find(item => item.kind === 'user-message')!;
+  return {
+    ...view,
+    timeline: {
+      ...view.timeline,
+      items: [
+        ...view.timeline.items,
+        {
+          kind: 'attachment',
+          id: 'sent-image',
+          taskIndex: last.taskIndex,
+          messageId: last.messageId,
+          isUser: true,
+          name: 'shot.png',
+          preview: {
+            kind: 'image',
+            type: 'image/png',
+            dataUrl: PENDING_IMAGE.previewUrl,
+            byteSize: PENDING_IMAGE.byteSize,
+          },
+        },
+      ],
+    },
+  };
+}
+
 function idleSend(
   overrides: Partial<UseSendMessageResult> = {},
 ): UseSendMessageResult {
@@ -794,6 +837,7 @@ describe('SessionDetailPage', () => {
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         'why is the ingress failing?',
+        [],
       );
     });
 
@@ -1319,6 +1363,21 @@ describe('SessionDetailPage', () => {
         );
       });
 
+      it('puts the unanswered message’s images back with its text', async () => {
+        mockUseSessionDetail.mockReturnValue(
+          withImageOnLastMessage(stalledView),
+        );
+        await render();
+
+        await userEvent.click(
+          screen.getByText('Stop the turn', { selector: 'button, button *' }),
+        );
+
+        expect(
+          await screen.findByRole('button', { name: 'Remove shot.png' }),
+        ).toBeInTheDocument();
+      });
+
       it('does not offer the cancel when the task is not known', async () => {
         mockUseSessionDetail.mockReturnValue({
           ...stalledView,
@@ -1617,6 +1676,26 @@ describe('SessionDetailPage', () => {
       expect(screen.getByText('a message in flight')).toBeInTheDocument();
     });
 
+    it('shows the images of the message in flight with it', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          isSending: true,
+          pending: {
+            messageId: 'pending-1',
+            text: 'what is wrong here?',
+            images: [PENDING_IMAGE],
+          },
+        }),
+      );
+      await render();
+
+      expect(screen.getByRole('img', { name: 'shot.png' })).toHaveAttribute(
+        'src',
+        PENDING_IMAGE.previewUrl,
+      );
+    });
+
     it('stops showing the pending copy once kagent returns the real one', async () => {
       // Recognised by `messageId`, not by timing — a poll can deliver the stored
       // message long before the turn ends, and showing both would double it for
@@ -1842,6 +1921,21 @@ describe('SessionDetailPage', () => {
       agentName: 'issue-tracker',
     };
 
+    it('sends the images that came with it', async () => {
+      mockUseNewSessionHandoff.mockReturnValue({
+        ...handoff,
+        images: [PENDING_IMAGE],
+      });
+      await render();
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledWith(
+          'why is the ingress failing?',
+          [PENDING_IMAGE],
+        );
+      });
+    });
+
     it('sends it on arrival, so the user watches the reply appear', async () => {
       // Created on the previous screen, sent here: `message/send` blocks for the
       // whole turn, so awaiting it before navigating would have meant staring at
@@ -1852,6 +1946,7 @@ describe('SessionDetailPage', () => {
       await waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           'why is the ingress failing?',
+          undefined,
         );
       });
     });
@@ -1914,6 +2009,7 @@ describe('SessionDetailPage', () => {
       await waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           'why is the ingress failing?',
+          undefined,
         );
       });
     });
@@ -2047,6 +2143,29 @@ describe('SessionDetailPage', () => {
       ).toBeInTheDocument();
       expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
       expect(composer()).toHaveValue('Six of them are vegetarian.');
+    });
+
+    it('opens the new session on the unanswered message with its images, from an empty box', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        withImageOnLastMessage(suspectedView),
+      );
+      await render();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith(
+          '/agent-platform/sessions/gazelle/new-1',
+          {
+            state: {
+              newSession: expect.objectContaining({
+                text: lastUserMessage,
+                imagesKey: expect.any(String),
+              }),
+            },
+          },
+        );
+      });
     });
 
     it('starts a new session with the box’s text and hands the message over', async () => {

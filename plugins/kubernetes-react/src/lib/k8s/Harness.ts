@@ -3,6 +3,7 @@ import {
   KAGENT_API_GROUP,
   type ClaudeHarnessLimits,
   type HarnessInterface,
+  type HarnessSpec,
 } from './kagentApi';
 
 export type { ClaudeHarnessLimits, HarnessInterface } from './kagentApi';
@@ -21,6 +22,16 @@ const RUNTIMES: readonly HarnessRuntime[] = [
 ];
 
 /**
+ * The runtime a Harness spec sets — of a `Harness` object, or one inline in an
+ * Agent — `undefined` when it sets none this client knows.
+ */
+export function harnessRuntimeOf(
+  spec: HarnessSpec | undefined,
+): HarnessRuntime | undefined {
+  return RUNTIMES.find(runtime => spec?.[runtime] !== undefined);
+}
+
+/**
  * kagent Harness — a runtime (the Go ADK, Claude Code, Codex or a custom
  * image) and its infrastructure policy. An Agent runs on the Harness its
  * `spec.harnessRef` names; any Harness of the namespace is a valid choice.
@@ -33,8 +44,7 @@ export class Harness extends KubeObject<HarnessInterface> {
 
   /** The runtime adapter, `undefined` when the spec sets none this client knows. */
   getRuntime(): HarnessRuntime | undefined {
-    const spec = this.jsonData.spec;
-    return RUNTIMES.find(runtime => spec?.[runtime] !== undefined);
+    return harnessRuntimeOf(this.jsonData.spec);
   }
 
   /**
