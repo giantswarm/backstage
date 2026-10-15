@@ -15,6 +15,10 @@ import {
   partitionServers,
   presenceByMc,
   selectRepresentative,
+  connectorDisplayNameOn,
+  connectorDisplayNames,
+  mcpServerDisplayNames,
+  serverRowDisplayName,
   serverRowKey,
 } from './serverGrouping';
 
@@ -27,6 +31,8 @@ function makeServer(opts: {
   toolGroup?: ToolGroup | string;
   /** `spec.suspended`: the server is deactivated. */
   suspended?: boolean;
+  /** The `ui.giantswarm.io/display-name` annotation. */
+  displayName?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -34,6 +40,13 @@ function makeServer(opts: {
       kind: 'MCPServer',
       metadata: {
         name: opts.name,
+        ...(opts.displayName
+          ? {
+              annotations: {
+                'ui.giantswarm.io/display-name': opts.displayName,
+              },
+            }
+          : {}),
         labels: {
           ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
           ...(opts.toolGroup ? { [TOOL_GROUP_LABEL]: opts.toolGroup } : {}),
@@ -519,5 +532,97 @@ describe('findServerRow', () => {
     for (const key of ['kubernetes', 'aws-root', 'muster']) {
       expect(serverRowKey(findServerRow(servers, key)!)).toBe(key);
     }
+  });
+});
+
+describe('connectorDisplayNames', () => {
+  it('names a connector by its display name, else by its own name', () => {
+    const names = mcpServerDisplayNames([
+      makeServer({ name: 'mcp-github', displayName: 'GitHub' }),
+      makeServer({ name: 'grafana' }),
+    ]);
+    expect(names.get('mcp-github')).toBe('GitHub');
+    expect(names.get('grafana')).toBe('grafana');
+  });
+
+  it('names a family by the display name its annotated members agree on', () => {
+    expect(
+      mcpServerDisplayNames([
+        makeServer({ name: 'a', family: 'kubernetes', displayName: 'K8s' }),
+        // Not rolled out here yet: the annotated members decide.
+        makeServer({ name: 'b', family: 'kubernetes' }),
+      ]).get('kubernetes'),
+    ).toBe('K8s');
+    expect(
+      mcpServerDisplayNames([
+        makeServer({ name: 'a', family: 'kubernetes', displayName: 'A' }),
+        makeServer({ name: 'b', family: 'kubernetes', displayName: 'B' }),
+      ]).get('kubernetes'),
+    ).toBe('kubernetes');
+  });
+
+  it('names two connectors that would read the same by their own names', () => {
+    const names = connectorDisplayNames([
+      { name: 'github-org-a', displayName: 'GitHub' },
+      { name: 'github-org-b', displayName: 'github ' },
+      { name: 'jira', displayName: 'Jira' },
+    ]);
+    expect(names.get('github-org-a')).toBe('github-org-a');
+    expect(names.get('github-org-b')).toBe('github-org-b');
+    expect(names.get('jira')).toBe('Jira');
+  });
+
+  it('keeps an unannotated name and renames the connector annotated like it', () => {
+    const names = connectorDisplayNames([
+      { name: 'github' },
+      { name: 'zz-github', displayName: 'GitHub' },
+    ]);
+    expect(names.get('github')).toBe('github');
+    expect(names.get('zz-github')).toBe('zz-github');
+  });
+
+  it('settles a fallback that collides in turn', () => {
+    const names = connectorDisplayNames([
+      { name: 'a', displayName: 'Same' },
+      { name: 'b', displayName: 'Same' },
+      { name: 'c', displayName: 'a' },
+    ]);
+    expect([...names.values()].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('leaves out a singular server a family of its name shadows', () => {
+    const names = connectorDisplayNames([
+      { name: 'k-a', family: 'kubernetes', displayName: 'Kubernetes' },
+      { name: 'kubernetes', displayName: 'Other' },
+    ]);
+    expect(names.get('kubernetes')).toBe('Kubernetes');
+  });
+
+  it('names a row by the rule, and muster itself by its key', () => {
+    const server = makeServer({ name: 'mcp-github', displayName: 'GitHub' });
+    const names = mcpServerDisplayNames([server]);
+    expect(serverRowDisplayName({ kind: 'server', server }, names)).toBe(
+      'GitHub',
+    );
+    expect(serverRowDisplayName({ kind: 'core' }, names)).toBe('muster');
+  });
+
+  it('names a connector on one installation by that installation’s servers only', () => {
+    const here = makeServer({
+      name: 'jira',
+      displayName: 'Jira',
+      mc: 'gazelle',
+    });
+    const there = makeServer({
+      name: 'jira2',
+      displayName: 'Jira',
+      mc: 'walrus',
+    });
+    expect(connectorDisplayNameOn([here, there], 'gazelle', 'jira')).toBe(
+      'Jira',
+    );
+    expect(connectorDisplayNameOn([here, there], 'gazelle', 'gone')).toBe(
+      'gone',
+    );
   });
 });

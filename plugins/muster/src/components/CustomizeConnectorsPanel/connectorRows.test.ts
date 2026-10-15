@@ -30,6 +30,7 @@ function single(s: MCPServer, toolCount?: number): ServerListEntry {
   return {
     key: `server:${s.getName()}`,
     id: s.getName(),
+    displayName: s.getName(),
     row: { kind: 'server', server: s },
     shadowed: false,
     toolCount,
@@ -66,6 +67,7 @@ describe('connectorStatus', () => {
     const entry: ServerListEntry = {
       key: 'family:kubernetes',
       id: 'kubernetes',
+      displayName: 'kubernetes',
       row: {
         kind: 'family',
         family: 'kubernetes',
@@ -94,6 +96,7 @@ describe('connectorReach', () => {
   const family = (...servers: MCPServer[]): ServerListEntry => ({
     key: 'family:kubernetes',
     id: 'kubernetes',
+    displayName: 'kubernetes',
     row: { kind: 'family', family: 'kubernetes', servers } as never,
     shadowed: false,
   });
@@ -225,6 +228,7 @@ describe('unsearchedToolsNotes', () => {
       entry: {
         key: 'core',
         id: 'muster',
+        displayName: 'muster',
         row: { kind: 'core' as const },
         shadowed: false,
         toolCount: 0,

@@ -12,6 +12,39 @@ import {
   HIDDEN_NOTICE_STORAGE_KEY,
   McpAuthNoticeContent,
 } from './McpAuthNotice';
+import { MCPServer } from '../../lib/k8s';
+
+/** The installation's MCPServers, per test; none by default. */
+let mockServers: MCPServer[] = [];
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
+  useResources: () => ({
+    resources: mockServers,
+    errors: [],
+    queries: [],
+    isLoading: false,
+    retry: jest.fn(),
+  }),
+}));
+
+function annotated(name: string, displayName: string): MCPServer {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: {
+        name,
+        annotations: { 'ui.giantswarm.io/display-name': displayName },
+      },
+      spec: {},
+    } as never,
+    'graveler',
+  );
+}
+
+afterEach(() => {
+  mockServers = [];
+});
 
 jest.mock('./useNoticeInstallation', () => ({
   useNoticeInstallation: () => 'graveler',
@@ -76,6 +109,13 @@ describe('McpAuthNotice', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/mcp-kubernetes/)).not.toBeInTheDocument();
     expect(api.getAuthStatus).toHaveBeenCalledWith('graveler');
+  });
+
+  it('names a server by its display name', async () => {
+    mockServers = [annotated('workspace-manager', 'Workspaces')];
+    await renderNotice(makeApi({ servers: [waitingFor('workspace-manager')] }));
+
+    expect(await screen.findByText(/in: Workspaces\./)).toBeInTheDocument();
   });
 
   it('shortens a long list to three names and a count', async () => {

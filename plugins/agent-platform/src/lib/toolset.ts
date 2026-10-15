@@ -20,6 +20,7 @@ import type {
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  connectorDisplayNames,
   TOOL_GROUPS,
   type FilterToolsResponse,
   type ToolGroupKey,
@@ -509,11 +510,26 @@ export interface ServerInfo {
   state?: string;
   /** Whether the server declares per-user OAuth (`spec.auth.type: oauth`). */
   oauth: boolean;
+  /** The CR's `ui.giantswarm.io/display-name`, when one is set. */
+  displayName?: string;
 }
 
 /** The name a server surface goes by: the family for a family member, else the CR name. */
 export function surfaceName(server: ServerInfo): string {
   return server.family ?? server.name;
+}
+
+/**
+ * What people call each server surface, keyed by its surface name: the
+ * muster plugin's one rule (`connectorDisplayNames`) — the display name its
+ * CRs agree on, unless another connector would read the same, else the
+ * surface name itself, which `server:` selectors, tool prefixes and URLs keep
+ * using. Built once per server list; look names up in it.
+ */
+export function connectorLabels(
+  servers: readonly ServerInfo[],
+): ReadonlyMap<string, string> {
+  return connectorDisplayNames(servers);
 }
 
 /**
@@ -545,11 +561,12 @@ export function serverOfTool(
  * prefix, with the tool's own part: `x_agentlab-mcp-kubernetes_get_pods` →
  * `{ connector: 'kubernetes', tool: 'get_pods' }` for a server of the
  * kubernetes family. The connector is named as Customize names it (the family
- * for a family member). `undefined` for a name no server's prefix matches.
+ * for a family member, by its display name where it has one). `undefined` for a name no server's prefix matches.
  */
 export function connectorOfTool(
   name: string,
   servers: ServerInfo[],
+  labels: ReadonlyMap<string, string> = connectorLabels(servers),
 ): { connector: string; tool: string } | undefined {
   let best: ServerInfo | undefined;
   for (const server of servers) {
@@ -564,23 +581,31 @@ export function connectorOfTool(
   }
   return best
     ? {
-        connector: surfaceName(best),
+        connector: labels.get(surfaceName(best)) ?? surfaceName(best),
         tool: name.slice(best.toolNamePrefix.length + 1),
       }
     : undefined;
 }
 
 /**
- * A muster server as Customize names it — the family for a family member —
- * from its CR name or its tool-name segment (`agentlab-mcp-kubernetes` →
- * `kubernetes`); the name itself when no server matches.
+ * A muster server as Customize names it — the family for a family member, by
+ * its display name where it has one — from its CR name or its tool-name
+ * segment (`agentlab-mcp-kubernetes` → `kubernetes`); the name itself when no
+ * server matches.
  */
-export function connectorName(server: string, servers: ServerInfo[]): string {
+export function connectorName(
+  server: string,
+  servers: ServerInfo[],
+  labels: ReadonlyMap<string, string> = connectorLabels(servers),
+): string {
   const match = servers.find(
     candidate =>
       candidate.name === server || candidate.toolNamePrefix === `x_${server}`,
   );
-  return match ? surfaceName(match) : server;
+  if (!match) {
+    return server;
+  }
+  return labels.get(surfaceName(match)) ?? surfaceName(match);
 }
 
 export function isCoreTool(tool: Pick<ToolSummary, 'name' | 'kind'>): boolean {
@@ -644,6 +669,11 @@ export function toolGroupTitle(key: PickerGroupKey): string {
 export interface ServerBucket {
   /** The surface name — `server:<name>` selects it. */
   name: string;
+  /**
+   * What people call it ({@link connectorLabels}); absent where it is
+   * {@link name}. Read it through {@link bucketLabel}.
+   */
+  displayName?: string;
   /** Whether this is a federated family (several CRs, one surface). */
   isFamily: boolean;
   tools: ToolSummary[];
@@ -655,6 +685,13 @@ export interface ServerBucket {
   state?: string;
   /** Present when muster listed tools for a server no CR describes. */
   unknownServer: boolean;
+}
+
+/** A bucket's name as people read it: its display name, else its name. */
+export function bucketLabel(
+  bucket: Pick<ServerBucket, 'name' | 'displayName'>,
+) {
+  return bucket.displayName ?? bucket.name;
 }
 
 export interface CatalogueGroup {
@@ -726,6 +763,7 @@ export function buildCatalogue(
   const surfaceOfCr = new Map(
     servers.map(server => [server.name, surfaceName(server)] as const),
   );
+  const labels = connectorLabels(servers);
   for (const server of servers) {
     const name = surfaceName(server);
     const existing = buckets.get(name);
@@ -740,8 +778,10 @@ export function buildCatalogue(
       existing.state = worstState(existing.state, server.state);
       continue;
     }
+    const displayName = labels.get(name) ?? name;
     buckets.set(name, {
       name,
+      ...(displayName !== name ? { displayName } : {}),
       isFamily: server.family !== undefined,
       tools: [],
       needsSignIn,
@@ -803,7 +843,12 @@ export function buildCatalogue(
   }
 
   for (const entry of groups.values()) {
-    entry.servers.sort((a, b) => a.name.localeCompare(b.name));
+    // By what people read, as the Customize list and the rail sort.
+    entry.servers.sort(
+      (a, b) =>
+        bucketLabel(a).localeCompare(bucketLabel(b)) ||
+        a.name.localeCompare(b.name),
+    );
     for (const bucket of entry.servers) {
       bucket.tools.sort((a, b) => a.name.localeCompare(b.name));
     }

@@ -2,12 +2,21 @@ import { MCPServer } from './k8s';
 import { serverListEntries, serverListRows } from './serverList';
 import { toolMatchesQuery } from './toolSearch';
 
-function makeServer(name: string, family?: string): MCPServer {
+function makeServer(
+  name: string,
+  family?: string,
+  displayName?: string,
+): MCPServer {
   return new MCPServer(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'MCPServer',
-      metadata: { name },
+      metadata: {
+        name,
+        ...(displayName
+          ? { annotations: { 'ui.giantswarm.io/display-name': displayName } }
+          : {}),
+      },
       spec: {
         ...(family ? { family: { name: family, instanceArg: 'mc' } } : {}),
       },
@@ -66,6 +75,35 @@ describe('serverListEntries', () => {
     expect(
       serverListEntries(rows, 'github').map(e => [e.id, e.toolMatches]),
     ).toEqual([['github', undefined]]);
+  });
+});
+
+describe('serverListEntries with display names', () => {
+  const rows = serverListRows(
+    [
+      makeServer('mcp-zendesk', undefined, 'Acme Support'),
+      makeServer('github'),
+    ],
+    undefined,
+  );
+
+  it('carries the display name and sorts by it', () => {
+    expect(serverListEntries(rows, '').map(e => [e.id, e.displayName])).toEqual(
+      [
+        ['mcp-zendesk', 'Acme Support'],
+        ['github', 'github'],
+        ['muster', 'muster'],
+      ],
+    );
+  });
+
+  it('matches the display name and the name its page uses', () => {
+    expect(serverListEntries(rows, 'acme').map(e => e.id)).toEqual([
+      'mcp-zendesk',
+    ]);
+    expect(serverListEntries(rows, 'zendesk').map(e => e.id)).toEqual([
+      'mcp-zendesk',
+    ]);
   });
 });
 

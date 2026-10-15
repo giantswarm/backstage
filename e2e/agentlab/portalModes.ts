@@ -20,6 +20,7 @@ export const SHELL_SPECS = [
   'agents-list-states.spec.ts',
   'agents-redirect.spec.ts',
   'agents.spec.ts',
+  'connector-display-name.spec.ts',
   'definition-editor.spec.ts',
   'first-agent.spec.ts',
   'gpu-node-pool.spec.ts',

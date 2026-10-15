@@ -4,6 +4,7 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { McpAuthDialog } from './McpAuthDialog';
+import { useServerLabels } from './useServerLabels';
 import { useMcpServersAwaitingSignIn } from './useMcpServersAwaitingSignIn';
 import { useNoticeInstallation } from './useNoticeInstallation';
 
@@ -72,6 +73,7 @@ export function McpAuthNoticeContent() {
   const [hidden, setHidden] = useState<string[]>(readHidden);
   const [isDialogOpen, setDialogOpen] = useState(false);
 
+  const labelOf = useServerLabels(installation, waiting);
   const isHidden = waiting.every(name => hidden.includes(name));
   const showNotice = waiting.length > 0 && !isHidden;
 
@@ -97,7 +99,7 @@ export function McpAuthNoticeContent() {
                 <Text variant="body-small">
                   Agents and portal features cannot use{' '}
                   {waiting.length === 1 ? 'its' : 'their'} tools until you sign
-                  in: {namedList(waiting)}.
+                  in: {namedList(waiting.map(labelOf))}.
                 </Text>
                 <Flex gap="2" align="center">
                   <Button

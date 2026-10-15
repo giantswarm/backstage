@@ -11,6 +11,7 @@ import {
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
+import { connectorDisplayNameOn } from '../../lib/serverGrouping';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 
@@ -70,6 +71,10 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
       )
     : undefined;
   const gitOpsManaged = server ? isGitOpsManaged(server) : false;
+  // What people call the connector; the URL keeps its resource name.
+  const shownName = editName
+    ? connectorDisplayNameOn(mcpServers, activeInstallation, editName)
+    : undefined;
   const inSync =
     !gitOpsManaged &&
     (editName
@@ -150,7 +155,7 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
     body = (
       <EmptyStateCard
         title="This connector is managed in Git"
-        description={`"${editName}" is applied from a GitOps repository, so changes are made there, not in the portal. Its Edit/Remove on the connector list links to its source.`}
+        description={`"${shownName}" is applied from a GitOps repository, so changes are made there, not in the portal. Its Edit/Remove on the connector list links to its source.`}
         actions={backToServers}
       />
     );
@@ -171,10 +176,12 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   return (
     <WizardFrame
       title={editName ? 'Edit connector' : 'Add connector'}
-      documentTitle={editName ? [`Edit ${editName}`, 'Connectors'] : undefined}
+      documentTitle={
+        shownName ? [`Edit ${shownName}`, 'Connectors'] : undefined
+      }
       context={
-        editName
-          ? `Customize / Connectors / ${editName}`
+        shownName
+          ? `Customize / Connectors / ${shownName}`
           : 'Customize / Connectors'
       }
       closeHref={connectorsHref ?? '/'}

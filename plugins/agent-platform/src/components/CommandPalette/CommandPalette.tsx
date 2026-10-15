@@ -468,13 +468,13 @@ function PaletteDialog({
     const connectorCandidates: PaletteCandidate[] = serversRoute
       ? connectors.rows.map(connector => ({
           id: `connector:${connector.page}`,
-          title: connector.page,
+          title: connector.displayName,
           meta:
             connector.installations.length > 1
               ? `${connector.installations.length} environments`
               : connector.installations[0],
           href: `${serversRoute()}/${encodeURIComponent(connector.page)}`,
-          haystack: [connector.page],
+          haystack: [connector.displayName, connector.page],
         }))
       : [];
 
