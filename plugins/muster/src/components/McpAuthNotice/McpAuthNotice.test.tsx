@@ -111,6 +111,18 @@ describe('McpAuthNotice', () => {
     expect(api.getAuthStatus).toHaveBeenCalledWith('graveler');
   });
 
+  it('stands clear of what is docked at the bottom: the wizard footer, the composer and the mobile bar', async () => {
+    await renderNotice(makeApi({ servers: [waitingFor('workspace-manager')] }));
+    await screen.findByText('1 MCP server needs your sign-in');
+
+    const styles = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent)
+      .join('\n');
+    expect(styles).toContain(
+      'bottom: calc(24px + var(--agent-shell-mobile-bar-height, 0px) + var(--wizard-footer-height, 0px) + var(--session-dock-height, 0px))',
+    );
+  });
+
   it('names a server by its display name', async () => {
     mockServers = [annotated('workspace-manager', 'Workspaces')];
     await renderNotice(makeApi({ servers: [waitingFor('workspace-manager')] }));
