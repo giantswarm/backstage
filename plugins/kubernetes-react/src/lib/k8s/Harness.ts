@@ -1,12 +1,11 @@
 import { KubeObject } from './KubeObject';
 import {
   KAGENT_API_GROUP,
-  type ClaudeHarnessLimits,
   type HarnessInterface,
   type HarnessSpec,
 } from './kagentApi';
 
-export type { ClaudeHarnessLimits, HarnessInterface } from './kagentApi';
+export type { HarnessInterface } from './kagentApi';
 
 /**
  * The runtime adapter a Harness selects: the one of `spec.kagent`,
@@ -59,11 +58,6 @@ export class Harness extends KubeObject<HarnessInterface> {
   /** The workload image reference, digest included. */
   getImage(): string | undefined {
     return this.jsonData.spec?.workload.image;
-  }
-
-  /** The per-turn bounds a Claude Code Harness enforces on every agent, when set. */
-  getLimits(): ClaudeHarnessLimits | undefined {
-    return this.jsonData.spec?.claude?.limits;
   }
 
   /** The hosts every agent on the Harness may reach besides what its revision compiles. */
