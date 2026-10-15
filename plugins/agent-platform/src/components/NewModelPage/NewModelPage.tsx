@@ -174,6 +174,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     edit || installation ? undefined : 'Choose an environment.';
   const fieldErrors = modelConfigFieldErrors(values, {
     isEdit: Boolean(edit),
+    original: edit ? initialValues : undefined,
   });
   // A technical name that is only empty because the display name is: the
   // display name's own problem says it all, so More options is not opened on
@@ -363,6 +364,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         moreOptionsOpen={moreOptionsOpen}
         onMoreOptionsOpenChange={setMoreOptionsOpen}
         originalProvider={edit?.modelConfig.getProvider()}
+        originalProjectID={edit ? initialValues.projectID : undefined}
       />
 
       {error && (

@@ -511,14 +511,6 @@ function ConnectorPageContent({
   ];
 
   const toIndex = <Navigate to={`${basePath}${search}`} replace />;
-  // The removed Settings tab's address, kept for links and bookmarks: to the
-  // edit it offered where the wizard can make it, to a family's instances it
-  // listed, else to the connector itself.
-  const settingsTarget =
-    editHref ??
-    (row.kind === 'family'
-      ? `${basePath}/instances${search}`
-      : `${basePath}${search}`);
 
   // The same two controls in the same place for every connector, whatever
   // its sign-in state or session: Edit, disabled with the reason where it
@@ -655,12 +647,6 @@ function ConnectorPageContent({
                 }
               />
             )}
-            {row.kind !== 'core' && (
-              <Route
-                path="settings"
-                element={<Navigate to={settingsTarget} replace />}
-              />
-            )}
             <Route path="*" element={toIndex} />
           </Routes>
         </Flex>
@@ -720,11 +706,11 @@ export interface ConnectorPageProps {
  * muster itself on the installation the section's scope selects.
  *
  * Edit opens the connector wizard pre-filled
- * (`new?edit=<name>&installation=<inst>`), the flow
- * that added the connector, the way agents and skills are edited; the old
- * `settings` tab address redirects there. Where the wizard cannot edit the
- * connector — applied from Git, a family, no muster session, settings the
- * wizard cannot represent — Edit stays in place, disabled, saying why.
+ * (`new?edit=<name>&installation=<inst>`), the flow that added the
+ * connector, the way agents and skills are edited. Where the
+ * wizard cannot edit the connector — applied from Git, a family, no muster
+ * session, settings the wizard cannot represent — Edit stays in place,
+ * disabled, saying why.
  */
 export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   const { server: key = '' } = useParams();

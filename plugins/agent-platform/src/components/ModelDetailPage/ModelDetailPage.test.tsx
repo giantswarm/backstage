@@ -424,6 +424,35 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('Agents cannot use this model')).toBeNull();
   });
 
+  it('says on Overview that the LLM gateway does not meter a Vertex AI model', async () => {
+    const vertex = sonnet();
+    vertex.jsonData.spec = {
+      provider: 'AnthropicVertexAI',
+      model: 'claude-sonnet-4-5@20250929',
+      apiKeySecret: 'kagent-sonnet',
+      apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
+      anthropicVertexAI: { projectID: 'my-project-123', location: 'global' },
+    };
+    mockUseResource.mockReturnValue({
+      resource: vertex,
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'The LLM gateway does not meter Vertex AI models yet, so this model’s spend and tokens are not on the Usage tab.',
+    );
+    // The form speaks Vertex AI: no "not editable here".
+    expect(screen.queryByText(/is not editable here/)).toBeNull();
+  });
+
+  it('says nothing about metering for a model the gateway meters', async () => {
+    await renderPage();
+
+    expect(screen.queryByText(/does not meter/)).toBeNull();
+  });
+
   it('says nothing for an accepted model', async () => {
     await renderPage();
 
