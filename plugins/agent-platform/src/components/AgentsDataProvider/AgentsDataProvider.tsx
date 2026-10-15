@@ -28,6 +28,7 @@ import {
 import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
+import { useNamespacedFallback } from '../../hooks/useNamespacedResources';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
 import {
@@ -110,7 +111,9 @@ const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
 
 /**
  * Lists kagent `Agent`s across every installation in the section's
- * scope that runs kagent (all namespaces) and exposes them as plain rows. Model
+ * scope that runs kagent (all namespaces, or the agent namespaces one by one
+ * where the person may not list them cluster-wide) and exposes them as plain
+ * rows. Model
  * references are resolved against the ModelConfigs queried by
  * {@link ModelConfigsProvider}, so this must be mounted inside one. Each row's
  * toolset is read off the agent's carrier `RemoteMCPServer`, listed alongside.
@@ -227,20 +230,33 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // the whole fleet fast: only installations with an agent that is still
   // converging, or one just deployed from this portal that the list does not
   // show yet (`awaitsDeployedAgent`), get the short interval.
-  const { resources, clustersData, isLoading, errors } = useResources(
-    queriedInstallations,
+  //
+  // A person whose kagent reads come from a namespaced RoleBinding may not list
+  // Agents, Harnesses or RemoteMCPServers cluster-wide: each read lists those
+  // installations again, namespace by namespace, with the same options
+  // (`useNamespacedFallback`), so they answer with what the person may read
+  // instead of "couldn't read".
+  const agentsOptions = {
+    enableDiscovery: false,
+    refetchInterval: agentsRefetchInterval,
+  };
+  const { resources, clustersData, isLoading, errors } = useNamespacedFallback(
+    useResources(queriedInstallations, Agent, {}, agentsOptions),
     Agent,
-    {},
-    { enableDiscovery: false, refetchInterval: agentsRefetchInterval },
+    agentsOptions,
   );
+
+  const baselineOptions = {
+    enableDiscovery: false,
+    refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
+  };
 
   // The Harnesses the agents name, for what the list calls each one. A failed
   // read leaves the rows with the Harness name alone.
-  const harnesses = useResources(
-    queriedInstallations,
+  const harnesses = useNamespacedFallback(
+    useResources(queriedInstallations, Harness, {}, baselineOptions),
     Harness,
-    {},
-    { enableDiscovery: false, refetchInterval: BASELINE_REFETCH_INTERVAL_MS },
+    baselineOptions,
   );
 
   // The toolset carriers: on API v2 an agent's `X-Muster-Toolset` header lives
@@ -250,11 +266,10 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // not while an agent converges. A failure here is not "the installation could
   // not be read": the agents are the rows; a missing server list just leaves
   // each row's toolset unresolved.
-  const carriers = useResources(
-    queriedInstallations,
+  const carriers = useNamespacedFallback(
+    useResources(queriedInstallations, RemoteMCPServer, {}, baselineOptions),
     RemoteMCPServer,
-    {},
-    { enableDiscovery: false, refetchInterval: BASELINE_REFETCH_INTERVAL_MS },
+    baselineOptions,
   );
 
   // Model labels resolve progressively as ModelConfigs arrive; we deliberately

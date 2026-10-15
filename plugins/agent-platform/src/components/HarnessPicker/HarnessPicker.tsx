@@ -2,7 +2,6 @@ import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
 
 import { useHarnessChoices } from '../../hooks/useHarnessChoices';
 import { harnessTitle, type HarnessChoice } from '../../lib/harnesses';
-import { HarnessLimits } from '../HarnessLimits';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import {
   SelectableCard,
@@ -134,7 +133,6 @@ export function HarnessPicker() {
   // Picking the platform Harness sends no `harness`; any other card is sent
   // by its name.
   const selected = state.harness?.name ?? platformChoice?.name;
-  const selectedChoice = choices.find(choice => choice.name === selected);
   return (
     <Flex direction="column" gap="2">
       <FieldLabel
@@ -179,13 +177,6 @@ export function HarnessPicker() {
         <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
           <StaticCard>{content(choices[0])}</StaticCard>
         </SelectableCardGrid>
-      )}
-      {selectedChoice?.runtime === 'claude' && (
-        <HarnessLimits
-          limits={selectedChoice.limits}
-          harnessName={selectedChoice.name}
-          showWhenUnset
-        />
       )}
     </Flex>
   );
