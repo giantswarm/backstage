@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -12,6 +12,7 @@ import {
 } from '@backstage/ui';
 import {
   dialogDismissLock,
+  useFieldValidation,
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
@@ -50,8 +51,9 @@ export type SessionRenameDialogProps = {
  * Renames a session.
  *
  * Deliberately not built on `ConfirmDialog`: this asks for a value rather than
- * for a yes, so it needs a `<form>` — which is what makes Enter submit — and a
- * submit button that stays disabled until the field holds something usable.
+ * for a yes, so it needs a `<form>` — which is what makes Enter submit. Save
+ * stays pressable: with the field emptied, it says so on the field and
+ * focuses it instead (the `forms` skill).
  *
  * It does keep that component's two conventions, both of which matter here.
  * Confirming does **not** close it: the rename can fail, and a dialog that
@@ -72,6 +74,8 @@ export function SessionRenameDialog({
   isUserScoped,
 }: SessionRenameDialogProps) {
   const [value, setValue] = useState(title);
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
 
   // Seeded on the closed → open transition only, never on a `title` change.
   //
@@ -82,14 +86,23 @@ export function SessionRenameDialog({
   useOnDialogOpen(isOpen, () => setValue(title));
 
   const trimmed = value.trim();
-  const isValid =
-    trimmed.length > 0 && trimmed.length <= SESSION_NAME_MAX_LENGTH;
+  let nameError: string | undefined;
+  if (trimmed.length === 0) {
+    nameError = 'Enter a name for the session.';
+  } else if (trimmed.length > SESSION_NAME_MAX_LENGTH) {
+    nameError = `Shorten the name to ${SESSION_NAME_MAX_LENGTH} characters or fewer.`;
+  }
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (isValid && !isRenaming) {
-      onConfirm(trimmed);
+    if (isRenaming) {
+      return;
     }
+    if (nameError) {
+      validation.reveal();
+      return;
+    }
+    onConfirm(trimmed);
   };
 
   return (
@@ -101,15 +114,16 @@ export function SessionRenameDialog({
       {...dialogDismissLock(isRenaming, onOpenChange)}
       width="min(90vw, 520px)"
     >
-      <form onSubmit={handleSubmit} style={DIALOG_FORM_STYLE}>
+      <form onSubmit={handleSubmit} noValidate style={DIALOG_FORM_STYLE}>
         <DialogHeader>Rename session</DialogHeader>
         <DialogBody>
-          <Flex direction="column" gap="3">
+          <Flex direction="column" gap="3" ref={scope}>
             <TextField
               label="Session name"
               value={value}
               onChange={setValue}
               maxLength={SESSION_NAME_MAX_LENGTH}
+              {...validation.textFieldProps('name', nameError)}
               // The rule guards against stealing focus on page load. This is a
               // modal the user just opened in order to type a name, and react-aria
               // focuses the dialog container rather than the field — so without
@@ -136,12 +150,7 @@ export function SessionRenameDialog({
           >
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            isDisabled={!isValid}
-            isPending={isRenaming}
-          >
+          <Button variant="primary" type="submit" isPending={isRenaming}>
             {isRenaming ? 'Saving…' : 'Save'}
           </Button>
         </DialogFooter>

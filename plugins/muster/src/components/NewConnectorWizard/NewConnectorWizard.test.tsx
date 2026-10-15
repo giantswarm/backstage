@@ -155,14 +155,14 @@ describe('shell connector wizard', () => {
       const address = screen.getByLabelText(/^Server address/);
       expect(address).toHaveAttribute('aria-invalid', 'true');
       expect(address).toHaveAccessibleDescription(
-        expect.stringContaining('Server address is required'),
+        expect.stringContaining('Enter the server address'),
       );
       // The first invalid field takes the focus.
       expect(address).toHaveFocus();
       const name = screen.getByRole('textbox', { name: /^Name/ });
       expect(name).toHaveAttribute('aria-invalid', 'true');
       expect(name).toHaveAccessibleDescription(
-        expect.stringContaining('Name is required'),
+        expect.stringContaining('Enter a name for the connector.'),
       );
       // Every problem has a field to show it, so no summary box.
       expect(
@@ -525,7 +525,7 @@ describe('shell connector wizard', () => {
       const region = screen.getByLabelText(/^Signing region/);
       expect(region).toHaveAttribute('aria-invalid', 'true');
       expect(region).toHaveAccessibleDescription(
-        expect.stringContaining('Signing region is required'),
+        expect.stringContaining('Enter the signing region'),
       );
       expect(region).toHaveFocus();
       expect(toolCalls('core_mcpserver_create')).toEqual([]);
@@ -642,7 +642,7 @@ describe('shell connector wizard', () => {
 
       expect(address).toHaveAttribute('aria-invalid', 'true');
       expect(address).toHaveAccessibleDescription(
-        expect.stringContaining('Server address is required'),
+        expect.stringContaining('Enter the server address'),
       );
       expect(address).toHaveFocus();
       expect(

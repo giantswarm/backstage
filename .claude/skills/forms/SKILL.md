@@ -58,8 +58,10 @@ focused shows the problem another field gives it as it arises.
   field's error and moves the focus to the first invalid field; it never sits
   disabled waiting for a valid form.
 - A button may be disabled only while its request is in flight, or when it
-  cannot run for a reason outside the form's fields (no connection, nothing
-  loaded yet); then say why with `DisabledAction` (`ui-react`).
+  cannot run for a reason outside the form's fields (no connection, a dry run
+  or fit check that refused, nothing loaded yet); then say why where the
+  person sees it: `DisabledAction` (`ui-react`) on the button, or an alert or
+  caption beside it that names the reason.
 - Never clear what the person typed: not on a failed submit, not on a server
   error, not when a field is hidden and shown again.
 - A field inside a fold-out (`MoreOptions`, an accordion) that blocks the
@@ -172,9 +174,10 @@ error and focuses the first invalid field.
 
 ## 7. Sanctioned exceptions
 
-- Chat composers (the session composer, the new-session composer) keep Send
-  disabled while the message is empty — there is nothing to send — and show
-  the length counter live.
+- Chat composers (the session composer, the new-session composer, the answer
+  and approval panel in a session) keep Send disabled while the message is
+  empty — there is nothing to send — or past its limit, which their live
+  caption says.
 - Confirm dialogs without inputs have nothing to validate.
 - An edit with nothing changed may keep its save button disabled: no field is
   wrong, there is just nothing to save.

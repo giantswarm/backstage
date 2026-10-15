@@ -165,22 +165,22 @@ export function modelConfigFieldErrors(
   const errors: ModelConfigFieldErrors = {};
 
   if (!options.isEdit && !values.displayName.trim()) {
-    errors.displayName = 'Name is required';
+    errors.displayName = 'Enter a name for the model.';
   }
 
   if (!values.name.trim()) {
-    errors.name = 'Technical name is required';
+    errors.name = 'Enter a technical name.';
   } else if (values.name.length > 63 || !DNS_LABEL_PATTERN.test(values.name)) {
     errors.name =
       'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm';
   }
 
   if (!values.model.trim()) {
-    errors.model = 'Model is required';
+    errors.model = 'Enter the model id.';
   }
 
   if (values.provider === 'Ollama' && !values.endpoint.trim()) {
-    errors.endpoint = 'Host is required for Ollama';
+    errors.endpoint = 'Enter the Ollama host, e.g. http://ollama.ollama:11434.';
   } else if (
     values.endpoint.trim() &&
     !/^https?:\/\//.test(values.endpoint.trim())

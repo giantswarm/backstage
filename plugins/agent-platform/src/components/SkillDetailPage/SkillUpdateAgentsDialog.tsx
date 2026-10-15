@@ -5,7 +5,11 @@ import {
   HelmRelease,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  useFieldValidation,
+  useGroupFieldError,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useAgentManagerAvailability,
@@ -246,6 +250,13 @@ async function inPool<T>(
 }
 
 const useStyles = makeStyles({
+  // The select-all box and the rows: one field for validation, laid out as
+  // the dialog's column.
+  selection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 'var(--bui-space-3)',
+  },
   rows: {
     display: 'flex',
     flexDirection: 'column',
@@ -409,6 +420,9 @@ export function SkillUpdateAgentsDialog({
     [behind],
   );
   const availability = useAgentManagerAvailability(installations);
+  // Confirm with nothing selected says so under the list and focuses it.
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
 
   const [verdicts, setVerdicts] = useState<Record<string, UpdateVerdict>>({});
   const onVerdict = useCallback((id: string, verdict: UpdateVerdict) => {
@@ -476,7 +490,11 @@ export function SkillUpdateAgentsDialog({
   };
 
   const onConfirm = async () => {
-    if (selected.length === 0 || isRunning) {
+    if (isRunning) {
+      return;
+    }
+    if (selected.length === 0) {
+      validation.reveal();
       return;
     }
     setRunning(true);
@@ -535,6 +553,12 @@ export function SkillUpdateAgentsDialog({
   const allSelected =
     updatable.length > 0 && selected.length === updatable.length;
   const count = selected.length;
+  const selection = useGroupFieldError(
+    validation.errorFor(
+      'agents',
+      count === 0 ? 'Choose at least one agent to update.' : undefined,
+    ),
+  );
 
   return (
     <ConfirmDialog
@@ -548,7 +572,10 @@ export function SkillUpdateAgentsDialog({
       }
       busyLabel="Updating…"
       isBusy={isRunning}
-      isConfirmDisabled={count === 0 || isChecking}
+      // Waits for the checks in flight, and stays off only when no agent can
+      // be updated at all (each row says why); an empty selection is said
+      // under the list instead.
+      isConfirmDisabled={isChecking || updatable.length === 0}
       isDone={isDone}
       onConfirm={onConfirm}
       width="min(90vw, 640px)"
@@ -570,7 +597,7 @@ export function SkillUpdateAgentsDialog({
           onVerdict={onVerdict}
         />
       ))}
-      <Flex direction="column" gap="3">
+      <Flex direction="column" gap="3" ref={scope}>
         <Text as="p" variant="body-medium" style={{ margin: 0 }}>
           {behind.length === 1 ? 'This agent pins' : 'These agents pin'} the
           skill at an older commit than the newest one,{' '}
@@ -596,36 +623,43 @@ export function SkillUpdateAgentsDialog({
             action="Agents are updated"
           />
         ))}
-        {updatable.length > 1 && !isDone && (
-          <Checkbox
-            isSelected={allSelected}
-            isIndeterminate={!allSelected && selected.length > 0}
-            isDisabled={isRunning}
-            onChange={toggleAll}
-          >
-            {`All agents you can update (${updatable.length})`}
-          </Checkbox>
-        )}
-        <ShowMore items={behind} initial={USED_BY_ROWS} noun="agent">
-          {shown => (
-            <ul className={classes.rows} aria-label="Agents to update">
-              {shown.map(item => (
-                <AgentLine
-                  key={item.row.id}
-                  behind={item}
-                  head={head}
-                  verdict={verdictOf(item.row.id)}
-                  outcome={outcomes[item.row.id]}
-                  isSelected={
-                    isUpdatable(item.row.id) && !deselected.has(item.row.id)
-                  }
-                  isLocked={isRunning || isDone}
-                  onToggle={toggle}
-                />
-              ))}
-            </ul>
+        <div
+          aria-label="Agents"
+          className={classes.selection}
+          {...selection.groupProps}
+        >
+          {updatable.length > 1 && !isDone && (
+            <Checkbox
+              isSelected={allSelected}
+              isIndeterminate={!allSelected && selected.length > 0}
+              isDisabled={isRunning}
+              onChange={toggleAll}
+            >
+              {`All agents you can update (${updatable.length})`}
+            </Checkbox>
           )}
-        </ShowMore>
+          <ShowMore items={behind} initial={USED_BY_ROWS} noun="agent">
+            {shown => (
+              <ul className={classes.rows} aria-label="Agents to update">
+                {shown.map(item => (
+                  <AgentLine
+                    key={item.row.id}
+                    behind={item}
+                    head={head}
+                    verdict={verdictOf(item.row.id)}
+                    outcome={outcomes[item.row.id]}
+                    isSelected={
+                      isUpdatable(item.row.id) && !deselected.has(item.row.id)
+                    }
+                    isLocked={isRunning || isDone}
+                    onToggle={toggle}
+                  />
+                ))}
+              </ul>
+            )}
+          </ShowMore>
+        </div>
+        {selection.message}
         {isChecking && !isDone && (
           <Text as="p" variant="body-small" color="secondary">
             Checking which agents you can update…

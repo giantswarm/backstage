@@ -164,12 +164,12 @@ describe('NewModelPage', () => {
 
     expect(displayName).toHaveAttribute('aria-invalid', 'true');
     expect(displayName).toHaveAccessibleDescription(
-      expect.stringContaining('Name is required'),
+      expect.stringContaining('Enter a name for the model.'),
     );
     expect(displayName).toHaveFocus();
     expect(model).toHaveAttribute('aria-invalid', 'true');
     expect(model).toHaveAccessibleDescription(
-      expect.stringContaining('Model is required'),
+      expect.stringContaining('Enter the model id.'),
     );
     // The technical name is only empty because the display name is: More
     // options stays closed, its field unflagged, and the key is optional.

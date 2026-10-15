@@ -177,7 +177,14 @@ test.describe('clusters: Delete cluster to the end', () => {
     await expect(dialog.getByTestId('what-goes')).toBeVisible({
       timeout: 60_000,
     });
-    await dialog.getByLabel(`Type ${NAME} to confirm`).fill(NAME);
+    // Pressed before the name is typed, Delete says so on the field and
+    // focuses it, as the other typed confirmations do; nothing is deleted.
+    const confirmField = dialog.getByLabel(`Type ${NAME} to confirm`);
+    await dialog.getByRole('button', { name: 'Delete cluster' }).click();
+    await expect(confirmField).toHaveAttribute('aria-invalid', 'true');
+    await expect(confirmField).toBeFocused();
+    await confirmField.fill(NAME);
+    await expect(confirmField).not.toHaveAttribute('aria-invalid', 'true');
     await dialog.getByRole('button', { name: 'Delete cluster' }).click();
     const finish = dialog.getByRole('button', { name: 'Finish removal' });
     await expect(finish).toBeVisible({ timeout: 60_000 });

@@ -193,13 +193,13 @@ describe('AddSkillPage', () => {
     const description = screen.getByLabelText(/Description/);
     expect(description).toHaveAttribute('aria-invalid', 'true');
     expect(description).toHaveAccessibleDescription(
-      expect.stringContaining('Description is required'),
+      expect.stringContaining('Enter a description.'),
     );
     expect(description).toHaveFocus();
     const instructions = screen.getByLabelText(/Instructions/);
     expect(instructions).toHaveAttribute('aria-invalid', 'true');
     expect(instructions).toHaveAccessibleDescription(
-      expect.stringContaining('Instructions are required'),
+      expect.stringContaining('Enter the instructions.'),
     );
     expect(screen.getByLabelText(/Name/)).not.toHaveAttribute('aria-invalid');
   }, 30_000);
@@ -231,7 +231,9 @@ describe('AddSkillPage', () => {
     await user.click(screen.getByLabelText(/Name/));
     await user.tab();
 
-    expect(screen.queryByText('Name is required')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Enter a name for the skill.'),
+    ).not.toBeInTheDocument();
   }, 30_000);
 
   it('shows the opened pull request and what happens next, with Done to leave', async () => {

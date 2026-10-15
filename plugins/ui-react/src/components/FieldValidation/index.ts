@@ -4,6 +4,7 @@ export {
   fieldErrorProps,
   focusFirstInvalidField,
   useFieldValidation,
+  useGroupFieldError,
   useSelectFieldError,
 } from './FieldValidation';
 export type {

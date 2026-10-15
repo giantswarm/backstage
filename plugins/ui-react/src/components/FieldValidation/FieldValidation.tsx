@@ -657,3 +657,46 @@ export function useSelectFieldError(error: string | undefined): {
     ) : null,
   };
 }
+
+/**
+ * {@link useSelectFieldError} for a group of controls validated as one field
+ * — a list of checkboxes, editable rows: `groupProps` make the wrapper a
+ * labelled group (pass its `aria-label` or `aria-labelledby` too), tie it to
+ * the message and mark it invalid, so a blocked submit focuses the group's
+ * first control; `message` renders under it.
+ *
+ * @example
+ * const selection = useGroupFieldError(validation.errorFor('agents', problem));
+ * <div aria-label="Agents" {...selection.groupProps}>…</div>
+ * {selection.message}
+ */
+export function useGroupFieldError(
+  error: string | undefined,
+  describedBy?: string,
+): {
+  groupProps: {
+    role: 'group';
+    'aria-describedby'?: string;
+    'data-invalid'?: '';
+  };
+  /** The message's id, for a control inside that is the one at fault. */
+  messageId: string;
+  message: ReactNode;
+} {
+  const id = useId();
+  const messageId = `${id}-error`;
+  const ids = [error ? messageId : undefined, describedBy]
+    .filter(Boolean)
+    .join(' ');
+  return {
+    groupProps: {
+      role: 'group',
+      'aria-describedby': ids || undefined,
+      ...(error ? { 'data-invalid': '' as const } : {}),
+    },
+    messageId,
+    message: error ? (
+      <FieldErrorText id={messageId}>{error}</FieldErrorText>
+    ) : null,
+  };
+}
