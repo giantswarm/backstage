@@ -17,6 +17,7 @@ import {
   PLACEHOLDER_API_KEY,
   planKeySecret,
   serviceAccountKeyError,
+  serviceAccountKeySummary,
   validateModelConfigForm,
 } from './modelConfigs';
 
@@ -569,12 +570,12 @@ describe('Vertex AI', () => {
     });
 
     it.each([
-      ['not JSON', 'sk-ant-123', 'This is not a JSON key file'],
-      ['a JSON array', '[]', 'This is not a JSON key file'],
+      ['not JSON', 'sk-ant-123', 'This file is not a JSON key'],
+      ['a JSON array', '[]', 'This file is not a JSON key'],
       [
         'another kind of credential',
         serviceAccountKey({ type: 'authorized_user' }),
-        'This is not a service account key',
+        'This file is not a service account key',
       ],
       [
         'a key of another project',
@@ -610,20 +611,32 @@ describe('Vertex AI', () => {
     });
   });
 
+  describe('serviceAccountKeySummary', () => {
+    it('names the project and the account, nothing secret', () => {
+      expect(serviceAccountKeySummary(serviceAccountKey())).toEqual({
+        projectID: 'my-project-123',
+        clientEmail: 'kagent@my-project-123.iam.gserviceaccount.com',
+      });
+    });
+
+    it.each(['sk-ant-123', '[]', 'null'])('reads nothing from %s', raw => {
+      expect(serviceAccountKeySummary(raw)).toBeUndefined();
+    });
+  });
+
   describe('modelConfigFieldErrors', () => {
     it('accepts a complete form', () => {
       expect(modelConfigFieldErrors(vertex())).toEqual({});
     });
 
-    it('requires the project, the location and the key on create', () => {
+    it('requires the location and the key on create', () => {
       expect(
         modelConfigFieldErrors(
           vertex({ projectID: '', location: '', apiKey: '' }),
         ),
       ).toEqual({
-        projectID: 'Project ID is required',
-        location: 'Location is required',
-        apiKey: 'Service account key is required',
+        location: 'Enter the location, e.g. global or europe-west4.',
+        apiKey: 'Choose the service account key file.',
       });
     });
 
@@ -640,16 +653,10 @@ describe('Vertex AI', () => {
       'rejects the location %s',
       location => {
         expect(modelConfigFieldErrors(vertex({ location })).location).toMatch(
-          /^Location must be global, us, eu or a region/,
+          /^Enter global, us, eu or a region/,
         );
       },
     );
-
-    it('rejects a project name in place of its ID', () => {
-      expect(
-        modelConfigFieldErrors(vertex({ projectID: 'My Project' })).projectID,
-      ).toMatch(/^Project ID must be the ID Google Cloud shows/);
-    });
 
     it('shows a key problem on the key field', () => {
       expect(
@@ -681,7 +688,7 @@ describe('Vertex AI', () => {
             original,
           },
         ).apiKey,
-      ).toMatch(/^Enter a key from the new project/);
+      ).toBe('Choose the service account key file.');
     });
 
     it('requires a key when an edit switches to Vertex AI', () => {
@@ -691,7 +698,7 @@ describe('Vertex AI', () => {
           isEdit: true,
           original,
         }).apiKey,
-      ).toBe('Service account key is required');
+      ).toBe('Choose the service account key file.');
     });
   });
 

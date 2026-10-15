@@ -360,6 +360,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         moreOptionsOpen={moreOptionsOpen}
         onMoreOptionsOpenChange={setMoreOptionsOpen}
         originalProvider={edit?.modelConfig.getProvider()}
+        originalProjectID={edit ? initialValues.projectID : undefined}
       />
 
       {error && (

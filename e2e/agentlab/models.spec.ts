@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import {
   createAgentInWizard,
@@ -181,9 +180,9 @@ type VertexModel = {
   provider: 'Claude on Vertex AI' | 'Gemini on Vertex AI';
   displayName: string;
   model: string;
-  projectID: string;
   location: string;
-  key: { paste: string } | { file: string };
+  /** A key file on disk, or the text of one. */
+  key: { file: string } | { content: string };
 };
 
 /** A service account key of the shape kagent checks, signing nothing. */
@@ -221,21 +220,26 @@ async function fillVertexModel(page: Page, model: VertexModel) {
   await page
     .getByRole('textbox', { name: 'Name', exact: true })
     .fill(model.displayName);
-  await page.getByRole('textbox', { name: /^Model/ }).fill(model.model);
-  await page
-    .getByRole('textbox', { name: /^Project ID/ })
-    .fill(model.projectID);
   await page.getByRole('textbox', { name: /^Location/ }).fill(model.location);
-  if ('paste' in model.key) {
-    await page
-      .getByLabel(/^Service account key(?! file)/)
-      .fill(model.key.paste);
-  } else {
-    await page
-      .getByLabel('Service account key file')
-      .setInputFiles(model.key.file);
-    await expect(page.getByRole('status')).toContainText('Read from');
-  }
+  await chooseKeyFile(page, model.key);
+  await expect(keyGroup(page).getByRole('status')).toContainText('Read from');
+  await page.getByRole('textbox', { name: /^Model/ }).fill(model.model);
+}
+
+function keyGroup(page: Page) {
+  return page.getByRole('group', { name: /^Service account key/ });
+}
+
+async function chooseKeyFile(page: Page, key: VertexModel['key']) {
+  await page.getByLabel('Service account key file').setInputFiles(
+    'file' in key
+      ? key.file
+      : {
+          name: 'key.json',
+          mimeType: 'application/json',
+          buffer: Buffer.from(key.content),
+        },
+  );
 }
 
 /**
@@ -293,28 +297,25 @@ test('a Vertex AI model is checked in the form, accepted by kagent, and says the
     provider: 'Claude on Vertex AI',
     displayName: `E2E Vertex ${vertexStamp}`,
     model: 'claude-sonnet-4-5@20250929',
-    projectID,
     location: 'global',
-    key: { paste: fakeServiceAccountKey('another-project') },
+    key: { content: fakeServiceAccountKey(projectID) },
   };
   await dismissMcpSignInNotice(admin);
 
-  // kagent's own check, in the form: a key of another project.
-  await fillVertexModel(admin, model);
-  await admin.getByRole('button', { name: 'Connect model' }).click();
-  const keyField = admin.getByLabel(/^Service account key(?! file)/);
-  await expect(keyField).toHaveAttribute('aria-invalid', 'true');
+  // kagent's own check, in the form, as soon as a file is chosen.
+  await open(admin, '/agent-platform/models/new');
+  await admin.getByRole('button', { name: /Provider/ }).click();
+  await admin.getByRole('option', { name: model.provider }).click();
+  await chooseKeyFile(admin, {
+    content: JSON.stringify({ type: 'authorized_user' }),
+  });
   await expect(
-    admin.getByText(
-      `This key belongs to project another-project, not ${projectID}.`,
-      { exact: false },
-    ),
+    admin.getByText('This file is not a service account key.', {
+      exact: false,
+    }),
   ).toBeVisible();
 
-  const modelPath = await connectVertexModel(admin, {
-    ...model,
-    key: { paste: fakeServiceAccountKey(projectID) },
-  });
+  const modelPath = await connectVertexModel(admin, model);
   try {
     await expect(
       admin.getByRole('note').filter({ hasText: 'does not meter Vertex AI' }),
@@ -359,9 +360,6 @@ for (const turn of vertexTurns) {
     );
     test.setTimeout(15 * 60_000);
 
-    const { project_id: projectID } = JSON.parse(
-      readFileSync(vertexKeyFile!, 'utf8'),
-    ) as { project_id: string };
     const displayName = `E2E Vertex ${turn.slug} ${vertexStamp}`;
     const agentName = `E2E Vertex ${turn.slug} agent ${vertexStamp}`;
     const agentSlug = `e2e-vertex-${turn.slug}-agent-${vertexStamp}`;
@@ -372,18 +370,14 @@ for (const turn of vertexTurns) {
       provider: turn.provider,
       displayName,
       model: turn.model!,
-      projectID,
       location: process.env.VERTEX_LOCATION ?? 'global',
       key: { file: vertexKeyFile! },
     });
     let detailPath: string | undefined;
     try {
-      detailPath = await createAgentInWizard(
-        admin,
-        agentName,
-        agentSlug,
-        { model: new RegExp(displayName) },
-      );
+      detailPath = await createAgentInWizard(admin, agentName, agentSlug, {
+        model: new RegExp(displayName),
+      });
       await startSessionOnReadyAgent(admin, prompt);
       await expect(
         admin.getByTestId('timeline-agent-message').filter({ hasText: 'PONG' }),

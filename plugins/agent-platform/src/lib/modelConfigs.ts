@@ -154,7 +154,11 @@ export type ModelConfigFormValues = {
    * Ollama host. Unused for Gemini and Vertex AI.
    */
   endpoint: string;
-  /** Vertex AI only: the Google Cloud project the model runs in. */
+  /**
+   * Vertex AI only: the Google Cloud project the model runs in. Not typed:
+   * kagent accepts only a key of the model's own project, so it is the key's
+   * `project_id` ({@link serviceAccountKeyProject}), or the stored model's.
+   */
   projectID: string;
   /** Vertex AI only: `global`, the `us`/`eu` multi-region, or a region. */
   location: string;
@@ -187,13 +191,7 @@ const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
 /** The model form's fields a validation problem can belong to. */
 export type ModelConfigField =
-  | 'displayName'
-  | 'name'
-  | 'model'
-  | 'endpoint'
-  | 'projectID'
-  | 'location'
-  | 'apiKey';
+  'displayName' | 'name' | 'model' | 'endpoint' | 'location' | 'apiKey';
 
 export type ModelConfigFieldErrors = Partial<Record<ModelConfigField, string>>;
 
@@ -203,17 +201,9 @@ const MODEL_CONFIG_FIELDS: readonly ModelConfigField[] = [
   'name',
   'model',
   'endpoint',
-  'projectID',
   'location',
   'apiKey',
 ];
-
-/**
- * Google Cloud project IDs: 6 to 30 lowercase letters, digits and hyphens,
- * starting with a letter, optionally behind a legacy `example.com:` domain.
- */
-const GCP_PROJECT_ID_PATTERN =
-  /^([a-z][-a-z0-9.]*[a-z0-9]:)?[a-z][-a-z0-9]{4,28}[a-z0-9]$/;
 
 /**
  * The locations kagent knows how to reach (its `VertexAIHostname`): the
@@ -226,7 +216,6 @@ const VERTEX_AI_LOCATION_PATTERN = /^(global|us|eu|[a-z]+-[a-z]+[0-9]+)$/;
  * Why kagent would refuse this service account key, or `undefined` when it
  * would accept it: the checks of kagent's `ValidateGoogleServiceAccountKey`,
  * run here so the problem shows on the field instead of on the agent later.
- * `projectID` empty skips the project check (the project field says so).
  */
 export function serviceAccountKeyError(
   raw: string,
@@ -236,10 +225,10 @@ export function serviceAccountKeyError(
   try {
     key = JSON.parse(raw);
   } catch {
-    return 'This is not a JSON key file. Paste the JSON key of a service account, as Google Cloud downloads it.';
+    return 'This file is not a JSON key. Choose the JSON key file of a service account, as Google Cloud downloads it.';
   }
   if (typeof key !== 'object' || key === null || Array.isArray(key)) {
-    return 'This is not a JSON key file. Paste the JSON key of a service account, as Google Cloud downloads it.';
+    return 'This file is not a JSON key. Choose the JSON key file of a service account, as Google Cloud downloads it.';
   }
   const {
     type,
@@ -247,13 +236,14 @@ export function serviceAccountKeyError(
     token_uri: tokenURI,
   } = key as Record<string, unknown>;
   if (type !== 'service_account') {
-    return 'This is not a service account key. Create a JSON key for a service account in Google Cloud.';
+    return 'This file is not a service account key. Create a JSON key for a service account in Google Cloud, then choose that file.';
+  }
+  if (typeof keyProject !== 'string' || !keyProject) {
+    return 'This key names no project. Create a new JSON key in Google Cloud, then choose that file.';
   }
   const project = projectID.trim();
   if (project && keyProject !== project) {
-    return typeof keyProject === 'string' && keyProject
-      ? `This key belongs to project ${keyProject}, not ${project}. Use a key from ${project}, or change the project ID.`
-      : `This key names no project. Use a key from ${project}.`;
+    return `This key belongs to project ${keyProject}, not ${project}. Choose a key of ${project}.`;
   }
   if (tokenURI !== undefined && tokenURI !== '') {
     let host: string | undefined;
@@ -266,10 +256,45 @@ export function serviceAccountKeyError(
       host = undefined;
     }
     if (protocol !== 'https:' || host !== 'oauth2.googleapis.com') {
-      return 'This key gets its tokens from somewhere other than https://oauth2.googleapis.com, so agents cannot use it. Use a key Google Cloud created.';
+      return 'This key gets its tokens from somewhere other than https://oauth2.googleapis.com, so agents cannot use it. Choose a key Google Cloud created.';
     }
   }
   return undefined;
+}
+
+/** What a service account key file says about itself, none of it secret. */
+export type ServiceAccountKeySummary = {
+  projectID?: string;
+  clientEmail?: string;
+};
+
+/**
+ * The project and account a service account key file names, for the form to
+ * show what it read and to take the project from. `undefined` when the text
+ * is not a JSON object.
+ */
+export function serviceAccountKeySummary(
+  raw: string,
+): ServiceAccountKeySummary | undefined {
+  let key: unknown;
+  try {
+    key = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof key !== 'object' || key === null || Array.isArray(key)) {
+    return undefined;
+  }
+  const { project_id: projectID, client_email: clientEmail } = key as Record<
+    string,
+    unknown
+  >;
+  return {
+    projectID:
+      typeof projectID === 'string' && projectID ? projectID : undefined,
+    clientEmail:
+      typeof clientEmail === 'string' && clientEmail ? clientEmail : undefined,
+  };
 }
 
 /**
@@ -343,38 +368,22 @@ export function modelConfigFieldErrors(
   }
 
   if (isVertexAIProvider(values.provider)) {
-    const projectID = values.projectID.trim();
-    if (!projectID) {
-      errors.projectID = 'Project ID is required';
-    } else if (!GCP_PROJECT_ID_PATTERN.test(projectID)) {
-      errors.projectID =
-        'Project ID must be the ID Google Cloud shows for the project: 6 to 30 lowercase letters, numbers and hyphens, e.g. my-project-123';
-    }
-
     const location = values.location.trim();
     if (!location) {
-      errors.location = 'Location is required';
+      errors.location = 'Enter the location, e.g. global or europe-west4.';
     } else if (!VERTEX_AI_LOCATION_PATTERN.test(location)) {
       errors.location =
-        'Location must be global, us, eu or a region such as europe-west4';
+        'Enter global, us, eu or a region such as europe-west4.';
     }
 
     const apiKey = values.apiKey.trim();
     if (apiKey) {
-      const keyError = serviceAccountKeyError(
-        apiKey,
-        errors.projectID ? '' : projectID,
-      );
+      const keyError = serviceAccountKeyError(apiKey, values.projectID);
       if (keyError) {
         errors.apiKey = keyError;
       }
     } else if (keyRequired(values, options.original)) {
-      errors.apiKey =
-        options.original &&
-        PROVIDER_SECRET_KEYS[options.original.provider] ===
-          PROVIDER_SECRET_KEYS[values.provider]
-          ? 'Enter a key from the new project: the stored key belongs to the previous one'
-          : 'Service account key is required';
+      errors.apiKey = 'Choose the service account key file.';
     }
   }
 

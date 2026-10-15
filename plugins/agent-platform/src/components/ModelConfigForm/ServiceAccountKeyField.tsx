@@ -1,84 +1,219 @@
-import { useRef, useState, type ChangeEvent } from 'react';
-import { Button, Flex, Text } from '@backstage/ui';
+import {
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+} from 'react';
+import { Button, FieldLabel, Flex, Text } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
+import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
 
-import { SecretTextField } from './SecretTextField';
+import { serviceAccountKeySummary } from '../../lib/modelConfigs';
+
+/** A service account key is about 2.3 KB; anything far larger is another file. */
+const MAX_KEY_FILE_BYTES = 64 * 1024;
+
+const useStyles = makeStyles({
+  zone: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 'var(--bui-space-2)',
+    padding: 'var(--bui-space-3)',
+    borderRadius: 'var(--agent-shell-input-radius, var(--bui-radius-3))',
+    border: '1px dashed var(--agent-shell-input-border, var(--bui-border-1))',
+    background: 'var(--agent-shell-input-bg, var(--bui-bg-neutral-1))',
+  },
+  dragging: {
+    borderStyle: 'solid',
+    borderColor: 'var(--agent-shell-input-focus-border, var(--bui-ring))',
+  },
+  invalid: {
+    borderStyle: 'solid',
+    borderColor: 'var(--bui-negative-border)',
+  },
+  fact: {
+    overflowWrap: 'anywhere',
+  },
+});
 
 export type ServiceAccountKeyFieldProps = {
+  /** The key file's text, or empty for none chosen. */
   value: string;
   onChange: (value: string) => void;
   isRequired: boolean;
-  placeholder?: string;
   description: string;
+  /**
+   * Edit only: the project of the key the model already has, kept while no
+   * file is chosen.
+   */
+  storedKeyProject?: string;
+  /** The problem the field shows now, if any. */
   error?: string;
 };
 
 /**
- * A Google Cloud service account key: pasted into a masked field, or read
- * from the JSON file Google Cloud downloads. The file's contents land in the
- * same field, so both paths are validated and saved alike.
+ * A Google Cloud service account key, read from the JSON file Google Cloud
+ * downloads: chosen, or dropped on the field. The key itself is never shown;
+ * the field says which account and project the file names, so the person can
+ * tell they picked the right one.
  */
 export function ServiceAccountKeyField({
   value,
   onChange,
   isRequired,
-  placeholder,
   description,
+  storedKeyProject,
   error,
 }: ServiceAccountKeyFieldProps) {
+  const classes = useStyles();
+  const id = useId();
+  const labelId = `${id}-label`;
+  const descriptionId = `${id}-description`;
+  const errorId = `${id}-error`;
   const fileInput = useRef<HTMLInputElement>(null);
-  const [loadedFile, setLoadedFile] = useState<string>();
+  const [fileName, setFileName] = useState<string>();
   const [readError, setReadError] = useState<string>();
+  const [dragging, setDragging] = useState(false);
 
-  const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    // The same file chosen twice still fires a change.
-    event.target.value = '';
+  const shownError = readError ?? error;
+  const summary = value ? serviceAccountKeySummary(value) : undefined;
+
+  const read = async (file: File | undefined) => {
     if (!file) {
       return;
     }
+    if (file.size > MAX_KEY_FILE_BYTES) {
+      setFileName(undefined);
+      setReadError(
+        `${file.name} is too large to be a service account key. Choose the JSON key file Google Cloud downloads.`,
+      );
+      return;
+    }
     try {
-      onChange(await file.text());
-      setLoadedFile(file.name);
+      const text = await file.text();
+      setFileName(file.name);
       setReadError(undefined);
+      onChange(text);
     } catch {
-      setLoadedFile(undefined);
+      setFileName(undefined);
       setReadError(`Could not read ${file.name}. Choose the file again.`);
     }
   };
 
+  const onFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // The same file chosen twice still fires a change.
+    event.target.value = '';
+    void read(file);
+  };
+
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragging(false);
+    void read(event.dataTransfer.files?.[0]);
+  };
+
+  const clear = () => {
+    setFileName(undefined);
+    setReadError(undefined);
+    onChange('');
+  };
+
+  let chooseLabel = 'Choose key file';
+  if (value) {
+    chooseLabel = 'Choose another file';
+  } else if (storedKeyProject) {
+    chooseLabel = 'Replace key file';
+  }
+
   return (
     <Flex direction="column" gap="2">
-      <SecretTextField
+      {/* A label for a group, not for the button: the button keeps its own
+          name, which says what it does. */}
+      <FieldLabel
+        id={labelId}
         label="Service account key"
         secondaryLabel={isRequired ? undefined : 'optional'}
-        value={value}
-        onChange={next => {
-          setLoadedFile(undefined);
-          onChange(next);
-        }}
-        placeholder={placeholder}
         description={description}
-        error={error ?? readError}
+        descriptionId={descriptionId}
       />
-      <Flex align="center" gap="2">
-        <Button
-          variant="secondary"
-          size="small"
-          onPress={() => fileInput.current?.click()}
-        >
-          Choose key file
-        </Button>
-        {loadedFile && (
-          <Text
-            variant="body-small"
-            color="secondary"
-            role="status"
-            style={{ overflowWrap: 'anywhere' }}
+      <div
+        role="group"
+        aria-labelledby={labelId}
+        aria-describedby={descriptionId}
+        className={[
+          classes.zone,
+          dragging ? classes.dragging : '',
+          shownError ? classes.invalid : '',
+        ].join(' ')}
+        data-invalid={shownError ? true : undefined}
+        onDragOver={event => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+      >
+        <div role="status">
+          {value && summary && (
+            <Flex direction="column" gap="1">
+              {fileName && (
+                <Text variant="body-medium" className={classes.fact}>
+                  Read from {fileName}.
+                </Text>
+              )}
+              {summary.clientEmail && (
+                <Text
+                  variant="body-small"
+                  color="secondary"
+                  className={classes.fact}
+                >
+                  Service account {summary.clientEmail}
+                </Text>
+              )}
+              {summary.projectID && (
+                <Text
+                  variant="body-small"
+                  color="secondary"
+                  className={classes.fact}
+                >
+                  Project {summary.projectID}
+                </Text>
+              )}
+            </Flex>
+          )}
+          {!value && storedKeyProject && (
+            <Text
+              variant="body-small"
+              color="secondary"
+              className={classes.fact}
+            >
+              The stored key of project {storedKeyProject} is kept.
+            </Text>
+          )}
+        </div>
+        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+          <Button
+            variant="secondary"
+            size="small"
+            aria-describedby={shownError ? errorId : undefined}
+            onPress={() => fileInput.current?.click()}
           >
-            Read from {loadedFile}
-          </Text>
-        )}
-      </Flex>
+            {chooseLabel}
+          </Button>
+          {value ? (
+            <Button variant="tertiary" size="small" onPress={clear}>
+              {storedKeyProject ? 'Keep the stored key' : 'Remove file'}
+            </Button>
+          ) : (
+            <Text variant="body-small" color="secondary">
+              or drop the JSON file here.
+            </Text>
+          )}
+        </Flex>
+      </div>
+      {shownError && <FieldErrorText id={errorId}>{shownError}</FieldErrorText>}
       <input
         ref={fileInput}
         type="file"
