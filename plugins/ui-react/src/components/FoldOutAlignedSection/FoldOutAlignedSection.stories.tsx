@@ -17,9 +17,9 @@ const meta = {
             'A region above a "Technical details" fold-out, inset as the ' +
             "fold-out insets its title, so the region's content lines up with it.",
           whenToUse:
-            "A detail page's Details tab: its plain facts in this section, " +
-            'then the `TechnicalDetailsFoldOut`. The connector and ' +
-            'workflow pages use it.',
+            "A detail page's plain facts in this section, directly above " +
+            'the `TechnicalDetailsFoldOut`: the connector and workflow ' +
+            "pages' Details tabs and the model page's Overview.",
           migration: 'mixed',
         }),
       },

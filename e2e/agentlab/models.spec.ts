@@ -55,7 +55,7 @@ test('the old Model configs path still resolves', async ({ admin }) => {
   ).toBeVisible();
 });
 
-test('a model’s page sits under Customize in tabs, says why in Technical details, and its old path redirects', async ({
+test('a model’s page sits under Customize in tabs, says why in Technical details, and its old paths redirect', async ({
   admin,
 }) => {
   await open(admin, '/customize/models');
@@ -71,13 +71,12 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
   const modelPath = `/customize/models/${lab.installation}/${namespace}/default-model-config`;
 
   // Overview, the model's own address: its facts in the one column, none
-  // beside the content. Used by counts the agents that run on it once they
-  // are read.
+  // beside the content, then Technical details. Used by counts the agents
+  // that run on it once they are read.
   await expect(admin.getByRole('tab')).toHaveText([
     'Overview',
     'Usage',
     /^Used by \(\d+\)$/,
-    'Details',
   ]);
   await expect(
     admin
@@ -95,6 +94,22 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
     admin.getByRole('link', { name: 'Show conditions', exact: true }),
   ).toHaveCount(0);
 
+  // The conditions behind the status, folded in place at Overview's foot as
+  // on the agent page. Once the read settles on Ready the fold-out is closed
+  // (it opens on arrival only for a model that is not accepted); the
+  // assertions retry until then, so a page drawn from the cache first cannot
+  // race the click.
+  const technical = admin.getByRole('button', {
+    name: 'Technical details',
+    exact: true,
+  });
+  await expect(technical).toHaveAttribute('aria-expanded', 'false');
+  await technical.click();
+  await expect(technical).toHaveAttribute('aria-expanded', 'true');
+  await expect(
+    admin.getByRole('heading', { level: 4, name: /^Accepted/ }),
+  ).toBeVisible();
+
   await admin.getByRole('tab', { name: 'Usage', exact: true }).click();
   await expect(admin).toHaveURL(new RegExp(`${modelPath}/usage$`));
 
@@ -106,27 +121,13 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
       .or(admin.getByText('No agent runs on this model yet.', { exact: true })),
   ).toBeVisible();
 
-  await admin.getByRole('tab', { name: 'Details', exact: true }).click();
-  await expect(admin).toHaveURL(new RegExp(`${modelPath}/details$`));
-  // Only the fold-out: the facts are Overview's.
+  // The former Details tab's address lands on Overview, where its Technical
+  // details went.
+  await open(admin, `${modelPath}/details`);
+  await expect(admin).toHaveURL(detail);
   await expect(
-    admin.getByRole('region', { name: 'Model details', exact: true }),
-  ).toHaveCount(0);
-
-  // The conditions behind the status, folded in place as on the agent page.
-  // Once the read settles on Ready the fold-out is closed (it opens on
-  // arrival only for a model that is not accepted); the assertions retry
-  // until then, so a page drawn from the cache first cannot race the click.
-  const technical = admin.getByRole('button', {
-    name: 'Technical details',
-    exact: true,
-  });
-  await expect(technical).toHaveAttribute('aria-expanded', 'false');
-  await technical.click();
-  await expect(technical).toHaveAttribute('aria-expanded', 'true');
-  await expect(
-    admin.getByRole('heading', { level: 4, name: /^Accepted/ }),
-  ).toBeVisible();
+    admin.getByRole('tab', { name: 'Overview', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
 
   // The address the page used to have still lands on it, on Overview.
   await open(

@@ -14,6 +14,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { STALE_MODEL_DETAIL } from '../../lib/customize';
+import { ModelHelmReleaseCard } from './ModelHelmReleaseCard';
 
 /**
  * The resource behind the model, in the terms of the people who run the
@@ -102,8 +103,9 @@ export type ModelTechnicalDetailsProps = {
 
 /**
  * The model as a Kubernetes resource, inside the page's "Technical details"
- * fold-out, as on the agent page: where it came from (GitOps), what it is
- * called in the cluster, and the controller's conditions. Needs an
+ * fold-out, as on the agent page: where it came from (GitOps, the Helm
+ * release that renders it), what it is called in the cluster, and the
+ * controller's conditions. Needs an
  * `ErrorsProvider` above it, for the GitOps card (`ModelDetailPage` mounts
  * one).
  */
@@ -118,6 +120,10 @@ export function ModelTechnicalDetails({
       {isGitOpsManaged(modelConfig) && (
         <GitOpsCard resource={modelConfig} installationName={installation} />
       )}
+      <ModelHelmReleaseCard
+        modelConfig={modelConfig}
+        installation={installation}
+      />
       <ResourceFacts modelConfig={modelConfig} />
       <StatusConditions modelConfig={modelConfig} />
     </Flex>

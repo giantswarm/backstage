@@ -211,7 +211,7 @@ function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
         />
       </Routes>
       {/* Another model under the same route, as the palette opens one. */}
-      <RouterLink to="/customize/models/inst-1/kagent/haiku/details">
+      <RouterLink to="/customize/models/inst-1/kagent/haiku">
         Next model
       </RouterLink>
     </PageHeaderActionsProvider>,
@@ -239,7 +239,7 @@ function rejectedSonnet() {
   return rejected;
 }
 
-const DETAILS = '/customize/models/inst-1/kagent/sonnet/details';
+const OVERVIEW = '/customize/models/inst-1/kagent/sonnet';
 const USAGE = '/customize/models/inst-1/kagent/sonnet/usage';
 const USED_BY = '/customize/models/inst-1/kagent/sonnet/used-by';
 
@@ -281,7 +281,6 @@ describe('ModelDetailPage', () => {
       'Overview',
       'Usage',
       'Used by (2)',
-      'Details',
     ]);
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
       'aria-selected',
@@ -294,7 +293,7 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByLabelText(/Model ID|^Model$/)).toBeNull();
   });
 
-  it('says why a model the controller did not accept, on Overview, with a link to its conditions', async () => {
+  it('says why a model the controller did not accept, with its conditions open at the foot of Overview', async () => {
     mockUseResource.mockReturnValue({
       resource: rejectedSonnet(),
       isLoading: false,
@@ -306,23 +305,8 @@ describe('ModelDetailPage', () => {
     expect(
       screen.getByText('kagent did not accept this model'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('Secret kagent/sonnet-key not found'),
-    ).toBeInTheDocument();
-
-    await userEvent.click(
-      screen.getByRole('link', { name: 'Show conditions' }),
-    );
-
-    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    // On Details the alert keeps to its title, without a link to where it
+    // On Overview the alert keeps to its title, without a link to where it
     // already is: the open conditions below say the rest, once.
-    expect(
-      screen.getByText('kagent did not accept this model'),
-    ).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Show conditions' })).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Technical details' }),
@@ -334,7 +318,38 @@ describe('ModelDetailPage', () => {
     ).toHaveLength(1);
   });
 
-  it('says once on Details that a stale model awaits the controller', async () => {
+  it('says why on the other tabs too, with a link to the conditions on Overview', async () => {
+    mockUseResource.mockReturnValue({
+      resource: rejectedSonnet(),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage(USAGE);
+
+    expect(
+      screen.getByText('kagent did not accept this model'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Secret kagent/sonnet-key not found'),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('link', { name: 'Show conditions' }),
+    );
+
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Technical details' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.getAllByText('Secret kagent/sonnet-key not found'),
+    ).toHaveLength(1);
+  });
+
+  it('says once on Overview that a stale model awaits the controller', async () => {
     const stale = sonnet();
     stale.jsonData.metadata.generation = 2;
     mockUseResource.mockReturnValue({
@@ -342,7 +357,7 @@ describe('ModelDetailPage', () => {
       isLoading: false,
       errors: [],
     });
-    await renderPage();
+    await renderPage(USED_BY);
 
     expect(
       screen.getByText('kagent has not accepted this model yet'),
@@ -379,7 +394,7 @@ describe('ModelDetailPage', () => {
       isLoading: false,
       errors: [],
     });
-    await renderPage();
+    await renderPage(USAGE);
 
     expect(
       screen.getByText('kagent has not accepted this model yet'),
@@ -389,14 +404,15 @@ describe('ModelDetailPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Show conditions' }),
-    ).toHaveAttribute('href', DETAILS);
+    ).toHaveAttribute('href', OVERVIEW);
   });
 
-  it('folds Technical details away for an accepted model, with the resource and its conditions inside', async () => {
-    await renderPage(DETAILS);
+  it('folds Technical details away under the facts for an accepted model, with the resource and its conditions inside', async () => {
+    await renderPage();
 
-    // The plain facts are Overview's.
-    expect(screen.queryByRole('region', { name: 'Model details' })).toBeNull();
+    expect(
+      screen.getByRole('region', { name: 'Model details' }),
+    ).toBeInTheDocument();
     const trigger = screen.getByRole('button', { name: 'Technical details' });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('API key from')).toBeNull();
@@ -423,7 +439,7 @@ describe('ModelDetailPage', () => {
   });
 
   it('starts Technical details afresh on another model', async () => {
-    await renderPage(DETAILS);
+    await renderPage();
     await userEvent.click(
       screen.getByRole('button', { name: 'Technical details' }),
     );
@@ -654,8 +670,14 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('Context window')).toBeNull();
   });
 
-  it('lands an address the page does not have on Overview', async () => {
-    await renderPage('/customize/models/inst-1/kagent/sonnet/facts');
+  it.each([
+    [
+      'the former Details tab',
+      '/customize/models/inst-1/kagent/sonnet/details',
+    ],
+    ['any other', '/customize/models/inst-1/kagent/sonnet/facts'],
+  ])('lands %s address under the model on Overview', async (_, path) => {
+    await renderPage(path);
 
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
       'aria-selected',
@@ -663,6 +685,9 @@ describe('ModelDetailPage', () => {
     );
     expect(
       screen.getByRole('region', { name: 'Model details' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Technical details' }),
     ).toBeInTheDocument();
   });
 
@@ -679,7 +704,7 @@ describe('ModelDetailPage', () => {
   });
 
   it('keeps Edit in the header on every tab', async () => {
-    await renderPage(DETAILS);
+    await renderPage(USED_BY);
 
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
   });
@@ -694,7 +719,7 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
 
-  it('offers no Edit on a model another tool owns, and says which', async () => {
+  it('offers no Edit on a model another tool owns, and says which in the facts', async () => {
     mockUseResource.mockReturnValue({
       resource: sonnet({
         labels: { 'app.kubernetes.io/managed-by': 'Helm' },
@@ -704,7 +729,16 @@ describe('ModelDetailPage', () => {
     });
     await renderPage();
 
-    expect(screen.getByText('Managed by Helm')).toBeInTheDocument();
+    // A fact, not a banner: the owner, and why there is no Edit.
+    const facts = screen.getByRole('region', { name: 'Model details' });
+    expect(within(facts).getByText('Managed by')).toBeInTheDocument();
+    expect(within(facts).getByText('Helm')).toBeInTheDocument();
+    expect(
+      within(facts).getByText(
+        'Helm would revert edits made here, so change the model where Helm is configured.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Managed by Helm')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
 
@@ -736,7 +770,7 @@ describe('ModelDetailPage', () => {
       await renderPage();
 
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
-      expect(screen.getAllByRole('tab')).toHaveLength(4);
+      expect(screen.getAllByRole('tab')).toHaveLength(3);
       expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
       expect(
         screen.getByRole('region', { name: 'Model details' }),

@@ -18,7 +18,8 @@ export type FoldOutAlignedSectionProps = {
  * A region above a `TechnicalDetailsFoldOut`, inset as the fold-out insets
  * its title, so its content (a detail page's plain facts) lines up with it
  * instead of starting at the content's edge, left of it and of the tabs'
- * labels. The connector and workflow pages' Details tabs use it.
+ * labels. The connector and workflow pages' Details tabs and the model page's
+ * Overview use it.
  */
 export function FoldOutAlignedSection({
   'aria-label': label,

@@ -230,8 +230,8 @@ function renderAt(path: string) {
 /**
  * Waits for the model page to settle and returns what it shows: its title,
  * whether Overview says why the model is not accepted (in the controller's
- * words), whether Technical details is open on the Details tab the alert
- * links to (the model is not accepted, so it opens, GitOps card and all), and
+ * words), whether Technical details is open at its foot (the model is not
+ * accepted, so it opens on arrival, GitOps card and all), and
  * whether the gateway figure is on the Usage tab after the reads settled (it
  * must not drop away).
  */
@@ -247,7 +247,6 @@ async function settledModelPage() {
     (await screen.findAllByText('Secret kagent/kagent-openai not found'))
       .length > 0;
 
-  await userEvent.click(screen.getByRole('link', { name: 'Show conditions' }));
   const technicalDetails = (
     await screen.findByRole('button', { name: 'Technical details' })
   ).getAttribute('aria-expanded');

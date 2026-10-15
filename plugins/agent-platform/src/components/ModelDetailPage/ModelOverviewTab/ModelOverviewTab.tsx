@@ -1,12 +1,19 @@
 import { Alert, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { type Fact, FactList } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  type Fact,
+  FactList,
+  FoldOutAlignedSection,
+  TechnicalDetailsFoldOut,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { ModelServingStatus } from '../../ModelServingStatus';
+import { ModelTechnicalDetails } from '../../ModelTechnicalDetails';
 import type { ModelServedBy } from '../../ModelsTable';
 
 export type ModelOverviewTabProps = {
   modelConfig: ModelConfig;
+  installation: string;
   /** The plain facts: what it calls, where, and since when. */
   facts: Fact[];
   /** The serving layer's word on the model behind the config, where it has one. */
@@ -20,10 +27,13 @@ export type ModelOverviewTabProps = {
 /**
  * The model page's Overview tab, the page's own address: whether the model is
  * served, why it cannot be edited here where that is not just the reader's
- * permissions, then what it calls, where and since when.
+ * permissions, then what it calls, where and since when, and last the
+ * ModelConfig resource and the controller's conditions in a "Technical
+ * details" fold-out, as the agent, connector and workflow pages keep theirs.
  */
 export function ModelOverviewTab({
   modelConfig,
+  installation,
   facts,
   servedBy,
   owner,
@@ -51,13 +61,6 @@ export function ModelOverviewTab({
           </CardBody>
         </Card>
       )}
-      {owner && (
-        <Alert
-          status="info"
-          title={`Managed by ${owner}`}
-          description={`${owner} asserts this model and would revert portal edits. Change it where ${owner} is configured.`}
-        />
-      )}
       {isUnsupportedProvider && !owner && (
         <Alert
           status="info"
@@ -65,9 +68,23 @@ export function ModelOverviewTab({
           description="The form covers OpenAI-compatible, Anthropic, Gemini and Ollama models; manage this one with kubectl."
         />
       )}
-      <section aria-label="Model details">
+      <FoldOutAlignedSection aria-label="Model details">
         <FactList facts={facts} labelWidth={160} />
-      </section>
+      </FoldOutAlignedSection>
+      {/* Open on arrival while the controller has not accepted the model, as
+          the agent page does for an agent that is not ready: the conditions
+          there say why. It follows a fresh read that turns the model
+          unhealthy (the page renders from the cache first); the page keys the
+          tab per model, so it starts afresh on another. */}
+      <TechnicalDetailsFoldOut
+        defaultExpanded={modelConfig.getReadiness() !== 'accepted'}
+        followDefaultExpanded
+      >
+        <ModelTechnicalDetails
+          modelConfig={modelConfig}
+          installation={installation}
+        />
+      </TechnicalDetailsFoldOut>
     </Flex>
   );
 }

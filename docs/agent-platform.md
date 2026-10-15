@@ -275,14 +275,14 @@ the status.
 One model's page (`ModelDetailPage`) is at
 `/customize/models/<installation>/<namespace>/<name>`, routed by the app's
 Customize page; `/agent-platform/models/<installation>/<namespace>/<name>`
-redirects there. It splits into Overview (the serving status, why the model
-cannot be edited here, then the facts), Usage (`…/usage`: the gateway's 30-day
-figures and spend per day), Used by (`…/used-by`, counted in the tab: the
-agents that use it with their spend on it) and Details (`…/details`: a
-Technical details fold-out with the resource and the conditions with their
-reason and message). A model that is not accepted carries the controller's
-message in an alert above every tab, linking to Details, whose fold-out then
-opens on arrival.
+redirects there. It splits into Overview (the serving status, the facts, then
+a Technical details fold-out with the owning Helm release, the resource and
+the conditions with their reason and message), Usage (`…/usage`: the gateway's
+30-day figures and spend per day) and Used by (`…/used-by`, counted in the
+tab: the agents that use it with their spend on it). The former `…/details`
+address lands on Overview. A model that is not accepted carries the
+controller's message in an alert above every tab, and its fold-out opens on
+arrival; on Usage and Used by the alert links to it on Overview.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
 `EditModelPage` at `/agent-platform/models/edit/<installation>/<namespace>/<name>`)
@@ -317,9 +317,17 @@ the key and apiserver errors (`ConflictError` on a taken name) show inline. The
 
 **Ownership guards.** Edit and delete are withheld for CRs rendered by Helm,
 applied by a Flux Kustomization, or labelled `app.kubernetes.io/managed-by` by
-anything but the portal. A CR without markers (applied with kubectl) is
-editable. The portal labels what it creates
-`app.kubernetes.io/managed-by: giantswarm-backstage`.
+anything but the portal; the model page names the owner in a "Managed by"
+fact. A CR without markers (applied with kubectl) is editable. The portal
+labels what it creates `app.kubernetes.io/managed-by: giantswarm-backstage`.
+
+For a Helm-rendered model, Technical details name the release from the
+CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
+a Flux HelmRelease rendered it, the page reads that HelmRelease with the
+person's token and shows its chart, applied version and Ready state, linked to
+the gs deployment page (`deploymentDetailsExternalRouteRef`) when gs is
+enabled. A release Helm installed without Flux has no resource to read, so
+only its name shows.
 
 **Delete refuses while referenced.** The mutation lists the namespace's
 `Agent`s fresh and refuses while any references the model. A failed read also

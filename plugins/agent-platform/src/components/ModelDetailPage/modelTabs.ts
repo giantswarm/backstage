@@ -9,7 +9,6 @@ export const MODEL_PAGE_TABS: RouteTabSpec[] = [
   { id: 'overview', path: '', title: 'Overview' },
   { id: 'usage', path: 'usage', title: 'Usage' },
   { id: 'used-by', path: 'used-by', title: 'Used by' },
-  { id: 'details', path: 'details', title: 'Details' },
 ];
 
 /**

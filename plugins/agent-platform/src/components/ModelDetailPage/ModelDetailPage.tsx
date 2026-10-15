@@ -8,7 +8,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Flex, Link } from '@backstage/ui';
+import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
 import {
   ErrorsProvider,
   ModelConfig,
@@ -26,6 +26,7 @@ import {
   ShellPageBadgeSkeleton,
   ShellPageTitleSkeleton,
   StatusDot,
+  useFactTextVariant,
   useProvidePageHeaderActions,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -45,7 +46,6 @@ import { InstallationChip } from '../InstallationChip';
 import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
 import { ModelActionsMenu } from './ModelActionsMenu';
-import { ModelDetailsTab } from './ModelDetailsTab';
 import { ModelOverviewTab } from './ModelOverviewTab';
 import { ModelReadinessAlert } from './ModelReadinessAlert';
 import { modelPageTabs } from './modelTabs';
@@ -106,16 +106,35 @@ function ModelFrame({
   );
 }
 
-/** Overview's plain facts: what it calls, where, and since when. */
+/**
+ * The tool that owns the model, and what that means here: no Edit, since the
+ * tool would revert it. The page's header offers none, and this says why.
+ */
+function ManagedByValue({ owner }: { owner: string }) {
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant={useFactTextVariant()}>{owner}</Text>
+      <Text variant="body-small" color="secondary">
+        {owner} would revert edits made here, so change the model where {owner}{' '}
+        is configured.
+      </Text>
+    </Flex>
+  );
+}
+
+/** Overview's plain facts: what it calls, where, who owns it, and since when. */
 export function modelFacts({
   modelConfig,
   installation,
   contextWindow,
+  owner,
 }: {
   modelConfig: ModelConfig;
   installation: string;
   /** The window the context-window table names for the model, when it does. */
   contextWindow: number | undefined;
+  /** The tool that asserts the model (`modelConfigOwner`), if any. */
+  owner?: string;
 }): Fact[] {
   const created = modelConfig.getCreatedTimestamp();
   const provider = modelConfig.getProvider();
@@ -134,6 +153,12 @@ export function modelFacts({
     });
   }
   facts.push({ label: 'Environment', value: installation });
+  if (owner) {
+    facts.push({
+      label: 'Managed by',
+      value: <ManagedByValue owner={owner} />,
+    });
+  }
   if (created) {
     facts.push({
       label: 'Created',
@@ -317,8 +342,13 @@ function ModelDetailPageContent() {
       'agentPlatform.models.contextWindows',
     ),
   );
-  const facts = modelFacts({ modelConfig, installation, contextWindow });
-  const onDetails = tab.replace(/\/+$/, '') === 'details';
+  const facts = modelFacts({
+    modelConfig,
+    installation,
+    contextWindow,
+    owner,
+  });
+  const onOverview = tab.replace(/\/+$/, '') === '';
 
   return (
     <ModelFrame
@@ -339,14 +369,17 @@ function ModelDetailPageContent() {
         <ModelReadinessAlert
           modelConfig={modelConfig}
           detail={status.detail}
-          detailsHref={onDetails ? undefined : `${basePath}/details${search}`}
+          conditionsHref={onOverview ? undefined : `${basePath}${search}`}
         />
         <Routes>
           <Route
             index
             element={
               <ModelOverviewTab
+                // Technical details start afresh per model.
+                key={`${installation}/${namespace}/${name}`}
                 modelConfig={modelConfig}
+                installation={installation}
                 facts={facts}
                 servedBy={servedBy}
                 owner={owner}
@@ -376,17 +409,6 @@ function ModelDetailPageContent() {
               />
             }
           />
-          <Route
-            path="details"
-            element={
-              <ModelDetailsTab
-                // Technical details start afresh per model.
-                key={`${installation}/${namespace}/${name}`}
-                modelConfig={modelConfig}
-                installation={installation}
-              />
-            }
-          />
           {/* An address the page no longer has lands on Overview. */}
           <Route
             path="*"
@@ -401,20 +423,20 @@ function ModelDetailPageContent() {
 /**
  * One model (`<customize>/models/<installation>/<namespace>/<name>`, routed
  * by the app's Customize page), as a read view with Edit as an action, in
- * four tabs, each its own address under the model's:
+ * three tabs, each its own address under the model's:
  *
  * - **Overview** (the index): whether the serving layer serves it, why it
- *   cannot be edited here, then what it calls, where and since when.
+ *   cannot be edited here, what it calls, where and since when, then
+ *   "Technical details" with the resource and the controller's conditions.
  * - **Usage** (`usage`): the gateway's figures for the model over the last
  *   30 days and its spend per day.
  * - **Used by** (`used-by`), counted in the tab: the agents that run on it,
  *   each with what it spent on the model.
- * - **Details** (`details`): "Technical details" with the resource and the
- *   controller's conditions.
  *
- * Any other address under the model's redirects to Overview. A model the
- * controller has not accepted says why above every tab, linking to Details,
- * whose Technical details then open on arrival. **Edit** opens the Connect-a-model flow prefilled
+ * Any other address under the model's, the former `details` among them,
+ * redirects to Overview. A model the controller has not accepted says why
+ * above every tab, its Technical details open on arrival, and the other tabs
+ * link to them on Overview. **Edit** opens the Connect-a-model flow prefilled
  * (`EditModelPage`), the same way agents and skills are edited. A CR the
  * portal must not write (tool-owned, no RBAC, or a provider the form does not
  * speak) offers no Edit, and an alert says why where the reason is not just

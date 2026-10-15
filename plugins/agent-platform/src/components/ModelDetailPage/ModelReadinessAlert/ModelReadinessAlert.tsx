@@ -6,13 +6,13 @@ import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
  * tab, because it is true on every tab, as the agent page's
  * `AgentSessionBlocker` says why an agent that is not ready cannot start
  * sessions. A model the controller rejected is a danger alert; one it has
- * not reported on yet is an info alert. Elsewhere than Details it links
+ * not reported on yet is an info alert. Elsewhere than Overview it links
  * there, where Technical details open on arrival with the conditions.
  */
 export function ModelReadinessAlert({
   modelConfig,
   detail,
-  detailsHref,
+  conditionsHref,
 }: {
   modelConfig: ModelConfig;
   /**
@@ -21,10 +21,11 @@ export function ModelReadinessAlert({
    */
   detail: string | undefined;
   /**
-   * The Details tab. Absent while it is the open tab: the alert then keeps to
-   * its title, since the open Technical details below say the rest.
+   * Overview, where the conditions are. Absent while it is the open tab: the
+   * alert then keeps to its title, since the open Technical details below
+   * say the rest.
    */
-  detailsHref?: string;
+  conditionsHref?: string;
 }) {
   const readiness = modelConfig.getReadiness();
   if (readiness === 'accepted') {
@@ -45,10 +46,10 @@ export function ModelReadinessAlert({
           ? 'kagent did not accept this model'
           : 'kagent has not accepted this model yet'
       }
-      description={detailsHref ? (detail ?? fallback) : undefined}
+      description={conditionsHref ? (detail ?? fallback) : undefined}
       customActions={
-        detailsHref ? (
-          <ButtonLink size="small" variant="secondary" href={detailsHref}>
+        conditionsHref ? (
+          <ButtonLink size="small" variant="secondary" href={conditionsHref}>
             Show conditions
           </ButtonLink>
         ) : undefined
