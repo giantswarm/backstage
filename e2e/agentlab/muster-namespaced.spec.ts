@@ -6,7 +6,8 @@ import { lab } from './lab';
  * cluster-wide. The lab's developer holds only the chart's namespaced
  * `agent-platform:user` grants: the MCPServers of muster's namespace, no
  * Workflows. The section reads muster's namespace instead and shows the
- * servers, with no "Errors when trying to fetch resources" on Customize.
+ * servers, and no workflows, with no "Errors when trying to fetch resources"
+ * on Customize.
  */
 const scope = `?installation=${lab.installation}`;
 const fetchError = /Errors when trying to fetch resources/;
@@ -18,17 +19,15 @@ test('a person with only namespaced agent-platform:user grants sees the connecto
   await open(dev, `/customize/connectors/internal${scope}`, lab.users.dev);
   await connectToMuster(dev, dev.getByRole('grid'));
   await expect(
-    dev.getByRole('row', { name: /^agent-manager( |$)/ }),
+    dev.getByRole('row', { name: /^muster( |$)/ }),
     'the servers of muster’s namespace are listed',
   ).toBeVisible({ timeout: 60_000 });
   await expect(dev.getByText(fetchError)).toHaveCount(0);
 
   await open(dev, `/customize/workflows${scope}`, lab.users.dev);
   await expect(
-    dev
-      .getByRole('grid')
-      .or(dev.getByText(/workflow/i))
-      .first(),
+    dev.getByRole('tab', { name: 'Workflows (0)' }),
+    'no workflows the person may read, and no error',
   ).toBeVisible({ timeout: 60_000 });
   await expect(dev.getByText(fetchError)).toHaveCount(0);
 });
