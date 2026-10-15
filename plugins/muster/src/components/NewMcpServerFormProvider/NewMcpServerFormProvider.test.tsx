@@ -39,9 +39,9 @@ describe('NewMcpServerFormProvider', () => {
 
     expect(result.current.isComplete).toBe(false);
     expect(result.current.validationErrors).toEqual([
-      'Name is required',
+      'Enter a name for the connector.',
       'Select an installation',
-      'URL is required',
+      'Enter the URL, e.g. https://mcp.example.com/mcp.',
     ]);
   });
 
@@ -191,7 +191,7 @@ describe('NewMcpServerFormProvider', () => {
 
     expect(result.current.isComplete).toBe(false);
     expect(result.current.validationErrors).toEqual([
-      'Signing region is required for AWS SigV4',
+      'Enter the signing region for AWS SigV4, e.g. eu-central-1.',
     ]);
 
     act(() => result.current.setSigv4Region('eu-central-1'));

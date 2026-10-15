@@ -2,6 +2,7 @@ import { makeStyles } from '@material-ui/core';
 import { Alert, Text, TextAreaField } from '@backstage/ui';
 import {
   ConfirmDialog,
+  fieldErrorProps,
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/core-plugin-api';
@@ -153,14 +154,15 @@ export function AdHocServerDialog({
       description="Edit the connector."
       seed={() => JSON.stringify(toMcpServerDefinition(server), null, 2)}
       parse={parseJsonDefinition}
-      renderEditor={({ value, onChange, invalid }) => (
+      renderEditor={({ value, onChange, error, blurProps }) => (
         <TextAreaField
           label="Connector definition (JSON)"
           className={classes.editField}
           rows={12}
           value={value}
           onChange={onChange}
-          isInvalid={invalid}
+          {...blurProps}
+          {...fieldErrorProps(error)}
         />
       )}
       validateTool="core_mcpserver_validate"

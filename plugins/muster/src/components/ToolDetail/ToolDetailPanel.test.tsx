@@ -189,4 +189,56 @@ describe('ToolDetailPanel', () => {
     await screen.findByText('Echoes a message back.');
     expect(screen.getByText('Nothing is changed.')).toBeInTheDocument();
   });
+
+  describe('argument validation', () => {
+    // Earlier runs remember their arguments.
+    beforeEach(() => window.localStorage.clear());
+
+    const validated: ToolDetail = {
+      ...detail,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'What to echo' },
+          spec: { type: 'object', description: 'A JSON object' },
+        },
+        required: ['message'],
+      },
+    };
+
+    it('marks the missing argument on Run, focuses it, and runs nothing', async () => {
+      const api = makeApi();
+      api.describeTool = jest.fn(() => Promise.resolve(validated));
+      await renderPanel(api);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Run' }));
+
+      const message = screen.getByRole('textbox', { name: /^message/ });
+      expect(message).toHaveAttribute('aria-invalid', 'true');
+      expect(message).toHaveAccessibleDescription(
+        expect.stringContaining('Enter a value for message.'),
+      );
+      expect(message).toHaveFocus();
+      expect(api.callTool).not.toHaveBeenCalled();
+
+      await userEvent.type(message, 'hi');
+      expect(message).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('checks an argument when the person leaves it, not while they type', async () => {
+      const api = makeApi();
+      api.describeTool = jest.fn(() => Promise.resolve(validated));
+      await renderPanel(api);
+
+      const spec = await screen.findByRole('textbox', { name: /^spec/ });
+      await userEvent.type(spec, 'not json');
+      expect(spec).not.toHaveAttribute('aria-invalid');
+
+      await userEvent.tab();
+      expect(spec).toHaveAttribute('aria-invalid', 'true');
+      expect(spec).toHaveAccessibleDescription(
+        expect.stringContaining('Enter valid JSON'),
+      );
+    });
+  });
 });

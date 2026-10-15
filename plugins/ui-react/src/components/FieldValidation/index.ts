@@ -6,4 +6,8 @@ export {
   useFieldValidation,
   useSelectFieldError,
 } from './FieldValidation';
-export type { FieldErrorTextProps, FieldValidation } from './FieldValidation';
+export type {
+  FieldBlurProps,
+  FieldErrorTextProps,
+  FieldValidation,
+} from './FieldValidation';

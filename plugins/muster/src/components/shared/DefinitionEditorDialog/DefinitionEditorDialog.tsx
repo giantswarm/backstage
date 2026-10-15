@@ -1,4 +1,4 @@
-import { ReactNode, useRef, useState } from 'react';
+import { ReactNode, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -13,7 +13,9 @@ import {
   ALERT_MESSAGE_STYLE,
   ConfirmDialog,
   dialogDismissLock,
+  useFieldValidation,
   useOnDialogOpen,
+  type FieldBlurProps,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
@@ -25,10 +27,14 @@ export type DefinitionEditorProps = {
   value: string;
   onChange: (value: string) => void;
   /**
-   * The text did not parse: the dialog shows the parse error. A tool's
-   * refusal or a failed call (an expired session, the network) is not this.
+   * Why the text does not parse, once the field shows it: the editor shows it
+   * under itself (`fieldErrorProps`, `FieldErrorText`). A tool's refusal or a
+   * failed call (an expired session, the network) is not this; the dialog
+   * shows those above its buttons.
    */
-  invalid: boolean;
+  error?: string;
+  /** Spread onto the editor, so leaving it checks the text. */
+  blurProps: FieldBlurProps;
 };
 
 export type DefinitionEditorDialogProps = {
@@ -43,7 +49,7 @@ export type DefinitionEditorDialogProps = {
   seed: () => string;
   /**
    * Turns the editor's text into the tool arguments. Throws an `Error` whose
-   * message is shown as the dialog's error.
+   * message is shown on the editor.
    */
   parse: (value: string) => Record<string, unknown>;
   renderEditor: (props: DefinitionEditorProps) => ReactNode;
@@ -92,8 +98,23 @@ export function DefinitionEditorDialog({
   const [isDiscardOpen, setDiscardOpen] = useState(false);
   const isDirty = value !== baseline;
   const [error, setError] = useState<string | undefined>();
-  const [parseFailed, setParseFailed] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
+  // The text's own problem shows on the editor once the person leaves it or
+  // presses Validate or Save, and follows each change from then on (the
+  // `forms` skill).
+  const scope = useRef<HTMLDivElement>(null);
+  const fieldCheck = useFieldValidation(scope);
+  const parsed = useMemo(() => {
+    try {
+      return { definition: parse(value) };
+    } catch (e) {
+      return {
+        problem:
+          (e instanceof Error && e.message) ||
+          'The definition could not be parsed.',
+      };
+    }
+  }, [parse, value]);
 
   const onError = (e: Error) => setError(mutationErrorMessage(e));
   const validation = useTrackedMutation({
@@ -131,28 +152,19 @@ export function DefinitionEditorDialog({
     setBaseline(seeded);
     setDiscardOpen(false);
     setError(undefined);
-    setParseFailed(false);
     setMessage(undefined);
+    fieldCheck.reset();
   });
 
   const submit = (mutation: typeof validation) => {
-    let def: Record<string, unknown>;
-    try {
-      def = parse(value);
-    } catch (e) {
-      setError(
-        (e instanceof Error && e.message) ||
-          'The definition could not be parsed.',
-      );
-      setParseFailed(true);
-      setMessage(undefined);
+    setError(undefined);
+    setMessage(undefined);
+    if (!parsed.definition) {
+      fieldCheck.reveal();
       return;
     }
-    setError(undefined);
-    setParseFailed(false);
-    setMessage(undefined);
     submitted.current = value;
-    mutation.mutate(def);
+    mutation.mutate(parsed.definition);
   };
 
   return (
@@ -171,12 +183,17 @@ export function DefinitionEditorDialog({
     >
       <DialogHeader>{title}</DialogHeader>
       <DialogBody>
-        <Flex direction="column" gap="3">
+        <Flex direction="column" gap="3" ref={scope}>
           <Text as="p" variant="body-medium">
             {description} Validate before saving; both run as live mutations
             against installation <code>{installation}</code>.
           </Text>
-          {renderEditor({ value, onChange: setValue, invalid: parseFailed })}
+          {renderEditor({
+            value,
+            onChange: setValue,
+            error: fieldCheck.errorFor('definition', parsed.problem),
+            blurProps: fieldCheck.blurProps('definition'),
+          })}
           {error && (
             <Alert
               status="danger"

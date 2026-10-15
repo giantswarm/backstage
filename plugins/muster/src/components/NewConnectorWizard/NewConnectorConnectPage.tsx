@@ -112,6 +112,7 @@ function DetectionStatus({
 function inStepWords(message: string | undefined): string | undefined {
   return message
     ?.replace(/^URL\b/, 'Server address')
+    .replace(/^Enter the URL\b/, 'Enter the server address')
     .replace(/^Select an installation$/, 'Select an environment');
 }
 

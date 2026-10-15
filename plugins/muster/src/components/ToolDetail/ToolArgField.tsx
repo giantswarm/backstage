@@ -12,14 +12,18 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@backstage/ui';
+import { useId } from 'react';
 import AddIcon from '@material-ui/icons/Add';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
+import {
+  FieldErrorText,
+  fieldErrorProps,
+  useSelectFieldError,
+  type FieldBlurProps,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { fieldKind, FormValue, SchemaField } from '../../lib/schemaForm';
 
-function helperFor(field: SchemaField, error?: string): string | undefined {
-  if (error) {
-    return error;
-  }
+function helperFor(field: SchemaField): string | undefined {
   if (field.description) {
     return field.description;
   }
@@ -83,6 +87,10 @@ function ArrayField({
   onToggleJson: () => void;
 }) {
   const rows = Array.isArray(value) ? value : [];
+  const id = useId();
+  const labelId = `${id}-label`;
+  const errorId = `${id}-error`;
+  const descriptionId = `${id}-description`;
 
   const setRow = (index: number, next: string) => {
     const copy = [...rows];
@@ -101,7 +109,7 @@ function ArrayField({
   return (
     <Box mb="4">
       <Flex align="baseline" justify="between" mb="1">
-        <Text variant="body-medium">
+        <Text variant="body-medium" id={labelId}>
           {field.name}
           {field.required ? ' *' : ''}{' '}
           <Text variant="body-small" color="secondary">
@@ -115,14 +123,28 @@ function ArrayField({
 
       {jsonMode ? (
         <TextAreaField
+          aria-labelledby={labelId}
           rows={3}
           placeholder='["a", "b"]'
-          isInvalid={Boolean(error)}
           value={typeof value === 'string' ? value : ''}
           onChange={v => onChange(v)}
+          {...fieldErrorProps(error)}
         />
       ) : (
-        <Flex direction="column" gap="2">
+        // The rows are one field: invalid as a whole, so a blocked run
+        // focuses its first row (`focusFirstInvalidField`).
+        <Flex
+          direction="column"
+          gap="2"
+          role="group"
+          aria-labelledby={labelId}
+          aria-describedby={
+            [error && errorId, field.description && descriptionId]
+              .filter(Boolean)
+              .join(' ') || undefined
+          }
+          {...(error ? { 'data-invalid': '' } : {})}
+        >
           {rows.map((row, index) => (
             <Flex key={index} align="center" gap="2">
               <Box style={{ flexGrow: 1 }}>
@@ -158,13 +180,19 @@ function ArrayField({
         </Flex>
       )}
 
-      {(error || field.description) && (
+      {error && !jsonMode && (
+        <Box mt="1">
+          <FieldErrorText id={errorId}>{error}</FieldErrorText>
+        </Box>
+      )}
+      {field.description && (
         <Text
+          id={descriptionId}
           variant="body-small"
-          color={error ? 'danger' : 'secondary'}
+          color="secondary"
           style={{ display: 'block', marginTop: 4 }}
         >
-          {error ?? field.description}
+          {field.description}
         </Text>
       )}
     </Box>
@@ -174,7 +202,10 @@ function ArrayField({
 export interface ToolArgFieldProps {
   field: SchemaField;
   value: FormValue | undefined;
+  /** The problem to show on the field, once the form shows it. */
   error?: string;
+  /** The form's `useFieldValidation().blurProps` for this field. */
+  blurProps?: FieldBlurProps;
   jsonMode: boolean;
   onChange: (value: FormValue) => void;
   onToggleJson: () => void;
@@ -190,11 +221,13 @@ export function ToolArgField({
   field,
   value,
   error,
+  blurProps,
   jsonMode,
   onChange,
   onToggleJson,
 }: ToolArgFieldProps) {
   const kind = fieldKind(field);
+  const selectError = useSelectFieldError(kind === 'enum' ? error : undefined);
 
   if (kind === 'boolean') {
     return (
@@ -212,18 +245,20 @@ export function ToolArgField({
 
   if (kind === 'array') {
     return (
-      <ArrayField
-        field={field}
-        value={value}
-        error={error}
-        jsonMode={jsonMode}
-        onChange={onChange}
-        onToggleJson={onToggleJson}
-      />
+      <Box {...blurProps}>
+        <ArrayField
+          field={field}
+          value={value}
+          error={error}
+          jsonMode={jsonMode}
+          onChange={onChange}
+          onToggleJson={onToggleJson}
+        />
+      </Box>
     );
   }
 
-  const helperText = helperFor(field, error);
+  const helperText = helperFor(field);
   const label = `${field.name} (${field.type})`;
 
   if (kind === 'enum') {
@@ -232,7 +267,7 @@ export function ToolArgField({
     // is dropped from the call payload.
     const UNSET = '__unset__';
     return (
-      <Box mb="4">
+      <Box mb="4" {...blurProps}>
         <Select
           label={label}
           description={helperText}
@@ -249,19 +284,21 @@ export function ToolArgField({
           onSelectionChange={key =>
             onChange(key === null || key === UNSET ? '' : String(key))
           }
+          {...selectError.selectProps}
         />
+        {selectError.message}
       </Box>
     );
   }
 
   if (kind === 'number') {
     return (
-      <Box mb="4">
+      <Box mb="4" {...blurProps}>
         <NumberField
           label={label}
           description={helperText}
           isRequired={field.required}
-          isInvalid={Boolean(error)}
+          {...fieldErrorProps(error)}
           value={value === undefined || value === '' ? NaN : Number(value)}
           onChange={n => onChange(Number.isNaN(n) ? '' : String(n))}
         />
@@ -271,12 +308,12 @@ export function ToolArgField({
 
   if (kind === 'json') {
     return (
-      <Box mb="4">
+      <Box mb="4" {...blurProps}>
         <TextAreaField
           label={label}
           description={helperText}
           isRequired={field.required}
-          isInvalid={Boolean(error)}
+          {...fieldErrorProps(error)}
           rows={3}
           placeholder="{ }"
           value={(value as string | undefined) ?? ''}
@@ -287,12 +324,12 @@ export function ToolArgField({
   }
 
   return (
-    <Box mb="4">
+    <Box mb="4" {...blurProps}>
       <TextField
         label={label}
         description={helperText}
         isRequired={field.required}
-        isInvalid={Boolean(error)}
+        {...fieldErrorProps(error)}
         value={(value as string | undefined) ?? ''}
         onChange={v => onChange(v)}
       />

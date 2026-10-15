@@ -114,7 +114,7 @@ function coerceScalar(
   if (type === 'number' || type === 'integer') {
     const num = Number(text);
     if (Number.isNaN(num)) {
-      return { error: 'must be a number' };
+      return { error: 'Enter a number, e.g. 3 or 0.5.' };
     }
     return { value: num };
   }
@@ -145,14 +145,14 @@ export function coerceValue(
     if (Array.isArray(raw)) {
       const itemType = field.itemType ?? 'string';
       const out: unknown[] = [];
-      for (const row of raw) {
+      for (const [index, row] of raw.entries()) {
         const text = String(row).trim();
         if (text === '') {
           continue;
         }
         const coerced = coerceScalar(itemType, text);
         if ('error' in coerced) {
-          return { error: `item ${coerced.error}` };
+          return { error: `Item ${index + 1}: ${coerced.error}` };
         }
         out.push(coerced.value);
       }
@@ -165,11 +165,11 @@ export function coerceValue(
     try {
       const parsed = JSON.parse(text);
       if (!Array.isArray(parsed)) {
-        return { error: 'must be a JSON array' };
+        return { error: 'Enter a JSON array, e.g. ["a", "b"].' };
       }
       return { value: parsed };
     } catch {
-      return { error: 'must be valid JSON' };
+      return { error: 'Enter a JSON array, e.g. ["a", "b"].' };
     }
   }
 
@@ -184,7 +184,7 @@ export function coerceValue(
     try {
       return { value: JSON.parse(text) };
     } catch {
-      return { error: 'must be valid JSON' };
+      return { error: 'Enter valid JSON, e.g. {"key": "value"}.' };
     }
   }
   return { value: text };
@@ -220,7 +220,7 @@ export function buildArgs(
     }
     if (result.value === undefined) {
       if (field.required && field.default === undefined) {
-        errors[field.name] = 'required';
+        errors[field.name] = `Enter a value for ${field.name}.`;
       }
       continue;
     }

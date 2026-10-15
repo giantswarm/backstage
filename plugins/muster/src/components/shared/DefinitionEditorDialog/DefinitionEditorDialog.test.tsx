@@ -3,6 +3,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
+import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../../apis';
 import { MusterInstanceContext } from '../../MusterInstanceProvider';
 import { makeTestMusterInstance } from '../../MusterInstanceProvider/testInstance';
@@ -41,13 +42,20 @@ function Harness({
     description: 'Edit the thing.',
     seed: () => seedRef.current,
     parse,
-    renderEditor: ({ value, onChange, invalid }) => (
-      <textarea
-        aria-label="Definition"
-        aria-invalid={invalid}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-      />
+    renderEditor: ({ value, onChange, error, blurProps }) => (
+      <>
+        <textarea
+          aria-label="Definition"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? 'definition-error' : undefined}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          {...blurProps}
+        />
+        {error && (
+          <FieldErrorText id="definition-error">{error}</FieldErrorText>
+        )}
+      </>
     ),
     validateTool: 'core_thing_validate',
     saveTool: 'core_thing_update',
@@ -121,18 +129,34 @@ describe('DefinitionEditorDialog', () => {
     expect(retry).toHaveBeenCalled();
   });
 
-  it('shows a parse error with its line breaks and calls no tool', async () => {
+  it('shows a parse error on the editor, focuses it and calls no tool', async () => {
     const { callTool } = await renderDialog();
 
     await userEvent.clear(editor());
     await userEvent.type(editor(), 'not json');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    const error = await screen.findByText(/Invalid JSON:/);
-    expect(error.textContent).toBe('Invalid JSON:\nline two');
-    expect(error).toHaveStyle({ whiteSpace: 'pre-wrap' });
     expect(editor()).toHaveAttribute('aria-invalid', 'true');
+    expect(editor()).toHaveAccessibleDescription(
+      expect.stringContaining('Invalid JSON:'),
+    );
+    expect(editor()).toHaveFocus();
     expect(callTool).not.toHaveBeenCalled();
+
+    // Fixed, the error goes at once — no second Validate needed.
+    await userEvent.clear(editor());
+    await userEvent.type(editor(), '{{"name":"b"}');
+    expect(editor()).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('checks the text when the person leaves the editor', async () => {
+    await renderDialog();
+
+    await userEvent.type(editor(), ' broken');
+    expect(editor()).toHaveAttribute('aria-invalid', 'false');
+
+    await userEvent.tab();
+    expect(editor()).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('shows the tool error and no success message', async () => {
