@@ -36,6 +36,13 @@ jobs:
   # it; the job has no Docker of its own, so without the variable those cases
   # would not run. Under CI a test file declaring POSTGRES_18 fails when the
   # variable is missing instead of skipping.
+  #
+  # The Postgres container shares the job's 16 GB with `ci:verify`, which runs
+  # tsc, the lint and jest at once. Jest's `--maxWorkers=40%` resolves against
+  # the CPU count the container reports, which on the Docker executor is the
+  # host's, not the 8 vCPUs of xlarge: the workers alone could outgrow the
+  # memory, and the kernel killed Postgres (exit 137). JEST_MAX_WORKERS caps
+  # the jest workers to what the class holds beside tsc and the lint.
   node-build:
     resource_class: xlarge
     docker:
@@ -44,6 +51,7 @@ jobs:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: postgres
     environment:
+      JEST_MAX_WORKERS: "4"
       BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING: postgresql://postgres:postgres@localhost:5432
 
 workflows:
