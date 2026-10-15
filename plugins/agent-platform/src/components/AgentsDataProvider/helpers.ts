@@ -377,6 +377,10 @@ export function toAgentRow(
       candidate.getNamespace() === namespace &&
       candidate.getName() === harnessName,
   );
+  // The named Harness's once read, or the inline one's.
+  const harnessRuntime = harnessName
+    ? harness?.getRuntime()
+    : agent.getInlineHarnessRuntime();
   const modelConfig = resolveModelConfig(agent, modelConfigs);
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
@@ -405,7 +409,7 @@ export function toAgentRow(
     modelName: modelConfig?.getModel(),
     harness: harnessName,
     ...(harness && { harnessTitle: harnessTitle(harnessChoiceOf(harness)) }),
-    ...(harness?.getRuntime() && { harnessRuntime: harness.getRuntime() }),
+    ...(harnessRuntime && { harnessRuntime }),
     ...(modelConfig?.getProvider() && {
       modelProvider: modelConfig.getProvider(),
     }),

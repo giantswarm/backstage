@@ -350,9 +350,44 @@ describe('KagentClient against a fake controller', () => {
       expect(listed.tasks).toHaveLength(5);
       expect(listed.totalSize).toBe(5);
       // Refused at 100, 50, 25, 13, 7, 4 and 2; then read one task at a time.
-      expect(
-        fake.calls.slice(before).filter(call => call.method === 'ListTasks'),
-      ).toHaveLength(12);
+      const listCalls = (from: number) =>
+        fake.calls.slice(from).filter(call => call.method === 'ListTasks');
+      expect(listCalls(before)).toHaveLength(12);
+
+      // The next read of the session — the next poll — starts at the size
+      // that fitted instead of being refused all over again.
+      const next = fake.calls.length;
+      await client.listSessionTasks(id, USER);
+      expect(listCalls(next)).toHaveLength(5);
+    });
+
+    it('counts the images the person’s messages in a session carry', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      await client.sendMessage(
+        id,
+        AGENT,
+        {
+          messageId: 'm0',
+          text: 'look',
+          images: [
+            { mediaType: 'image/png', bytes: new Uint8Array(100) },
+            { mediaType: 'image/jpeg', bytes: new Uint8Array(50) },
+          ],
+        },
+        USER,
+      );
+      await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'and now?' },
+        USER,
+      );
+
+      expect(await client.readSessionImageUsage(id, AGENT, USER)).toEqual({
+        bytes: 150,
+        count: 2,
+      });
     });
 
     it('reads a session’s tasks through the Agent it remembers, and through a fresh read otherwise', async () => {

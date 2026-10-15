@@ -30,8 +30,9 @@ export type MessageImageType = (typeof MESSAGE_IMAGE_TYPES)[number];
 export const MESSAGE_IMAGE_MAX_COUNT = 4;
 
 /**
- * The largest image a message may carry, in bytes, after the composer has
- * scaled it down to {@link MESSAGE_IMAGE_MAX_EDGE}.
+ * The largest image a message may carry, in bytes, as the composer encodes
+ * it: scaled down to {@link MESSAGE_IMAGE_MAX_EDGE} and stripped of its
+ * metadata.
  */
 export const MESSAGE_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -57,10 +58,18 @@ export const MESSAGE_IMAGES_MAX_TOTAL_BYTES = 3 * 1024 * 1024;
 export const SESSION_IMAGES_MAX_BYTES = 16 * 1024 * 1024;
 
 /**
- * The longest side, in pixels, the composer sends an image at; a larger one is
- * scaled down first. Models scale larger images down themselves (Claude to
- * 1568 px), and Anthropic refuses images over 2000 px once a request carries
- * more than 20 — which a long session with images reaches.
+ * The most images a session may carry over all its messages: every turn sends
+ * them all, and Anthropic refuses a request with more than 100. Half that
+ * leaves room for what the agent's tools add to the conversation.
+ */
+export const SESSION_IMAGES_MAX_COUNT = 50;
+
+/**
+ * The longest side, in pixels, an image may have: the composer scales a larger
+ * one down, and the backend refuses one that was not. Models scale larger
+ * images down themselves (Claude to 1568 px), and Anthropic refuses images
+ * over 2000 px once a request carries more than 20 — which a long session with
+ * images reaches.
  */
 export const MESSAGE_IMAGE_MAX_EDGE = 2000;
 

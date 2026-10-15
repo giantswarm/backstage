@@ -144,7 +144,6 @@ describe('useSendMessage', () => {
       id: 'image-1',
       name: 'a.png',
       mediaType: 'image/png' as const,
-      data: 'iVBORw0K',
       byteSize: 6,
       previewUrl: 'data:image/png;base64,iVBORw0K',
     };

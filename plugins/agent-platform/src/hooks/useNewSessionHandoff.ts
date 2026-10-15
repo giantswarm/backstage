@@ -37,8 +37,8 @@ export const NEW_SESSION_STATE_KEY = 'newSession';
  * carries. Not in the router state: the browser serialises that into its
  * session history (Firefox writes it to disk) and caps its size, and a
  * message's images are megabytes. One slot is enough — a hand-off is read on
- * the very next render of the page it navigates to — and keeps at most one
- * message's images alive.
+ * the very next render of the page it navigates to — and it is emptied once
+ * that page has taken them.
  */
 let stashedImages: { key: string; images: ComposerImage[] } | undefined;
 
@@ -118,6 +118,9 @@ export function useNewSessionHandoff(): NewSessionHandoff | undefined {
       return;
     }
     cleared.current = true;
+    if (stashedImages && stashedImages.images === handoff.images) {
+      stashedImages = undefined;
+    }
     navigate(`${location.pathname}${location.search}`, {
       replace: true,
       state: null,

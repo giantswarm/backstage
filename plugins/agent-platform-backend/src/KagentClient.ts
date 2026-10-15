@@ -166,6 +166,13 @@ const PAGE_SIZE = 100;
  * loop forever.
  */
 const MAX_TASK_PAGES = 10;
+
+/**
+ * The most `ListTasks` calls one read makes, retries at a smaller page
+ * included. A conversation whose pages had to shrink is read as far as this
+ * goes rather than in hundreds of calls that would outlast the poll.
+ */
+const MAX_TASK_REQUESTS = 100;
 const MAX_SESSION_PAGES = 20;
 // A session has a handful of shares at most; the bound only guards the loop.
 const MAX_SHARE_PAGES = 5;
@@ -386,6 +393,12 @@ export class KagentClient {
   private system?: Client<typeof SystemService>;
   /** The Agent of each session this client has seen, by session id. */
   private readonly agents = new Map<string, AgentRef>();
+  /**
+   * The `ListTasks` page size that fitted, for each session whose task list
+   * did not fit pages of {@link PAGE_SIZE}: what its next read starts at,
+   * instead of being refused again on every poll.
+   */
+  private readonly taskPageSizes = new Map<string, number>();
 
   constructor(
     private readonly installation: KagentInstallationConfig,
@@ -497,6 +510,43 @@ export class KagentClient {
     );
     this.remember(response.session);
     return toJson(GetSessionResponseSchema, response);
+  }
+
+  /**
+   * The images the person's messages in a session already carry: the bytes
+   * and the number of the image parts in the user messages of its tasks,
+   * which every turn sends the model again. Read before a message with images
+   * is sent, to hold the session to `SESSION_IMAGES_MAX_BYTES` and
+   * `SESSION_IMAGES_MAX_COUNT`.
+   */
+  async readSessionImageUsage(
+    sessionId: string,
+    agent: AgentRef,
+    options: KagentRequestOptions,
+  ): Promise<{ bytes: number; count: number }> {
+    const { tasks } = await this.readTasks(
+      this.targetOf(sessionId, agent),
+      options,
+      { includeArtifacts: false },
+    );
+    const usage = { bytes: 0, count: 0 };
+    for (const task of tasks) {
+      for (const message of task.history) {
+        if (message.role !== Role.USER) {
+          continue;
+        }
+        for (const part of message.parts) {
+          if (
+            part.content.case === 'raw' &&
+            part.mediaType.startsWith('image/')
+          ) {
+            usage.bytes += part.content.value.length;
+            usage.count += 1;
+          }
+        }
+      }
+    }
+    return usage;
   }
 
   /**
@@ -1208,16 +1258,17 @@ export class KagentClient {
     const tasks: Task[] = [];
     let totalSize = 0;
     let pageToken = '';
-    // Halved for the rest of the read when a page is too large to answer:
-    // the controller answers at most 16 MiB at once, and a task carries the
-    // images of its message, up to `MESSAGE_IMAGES_MAX_TOTAL_BYTES` each. A
-    // conversation of a handful of turns with images fills a page of 100;
-    // a page of one always fits.
-    let pageSize = PAGE_SIZE;
+    // Halved when a page is too large to answer: the controller answers at
+    // most 16 MiB at once, and a task carries the images of its message, up
+    // to `MESSAGE_IMAGES_MAX_TOTAL_BYTES` each. A conversation of a handful
+    // of turns with images fills a page of 100. Kept for the session's next
+    // reads, so a poll is not refused before every answer.
+    let pageSize = this.taskPageSizes.get(target.contextId) ?? PAGE_SIZE;
+    let requests = 0;
     // The page bound, counted in tasks asked for so smaller pages read as far.
     for (
       let budget = MAX_TASK_PAGES * PAGE_SIZE;
-      budget > 0;
+      budget > 0 && requests < MAX_TASK_REQUESTS;
       budget -= pageSize
     ) {
       // Per-iteration copies, as in `listSessions`.
@@ -1227,7 +1278,11 @@ export class KagentClient {
         () => this.listTasksPage(target, options, extra, token, size),
         context,
       );
-      pageSize = read.pageSize;
+      requests += read.requests;
+      if (read.pageSize < pageSize) {
+        pageSize = read.pageSize;
+        this.rememberTaskPageSize(target.contextId, pageSize);
+      }
       const { response } = read;
       tasks.push(...response.tasks);
       totalSize = response.totalSize;
@@ -1253,7 +1308,7 @@ export class KagentClient {
     initialPageSize: number,
   ) {
     let pageSize = initialPageSize;
-    for (;;) {
+    for (let requests = 1; ; requests += 1) {
       try {
         const response = await this.a2aService.listTasks(
           {
@@ -1271,7 +1326,7 @@ export class KagentClient {
             timeoutMs: extra.timeoutMs ?? this.timeoutMs,
           },
         );
-        return { response, pageSize };
+        return { response, pageSize, requests };
       } catch (error) {
         if (
           pageSize === 1 ||
@@ -1372,6 +1427,17 @@ export class KagentClient {
   }
 
   /** Remember a session's Agent for the task reads that follow. */
+  private rememberTaskPageSize(sessionId: string, pageSize: number): void {
+    this.taskPageSizes.delete(sessionId);
+    if (this.taskPageSizes.size >= MAX_REMEMBERED_AGENTS) {
+      const oldest = this.taskPageSizes.keys().next().value;
+      if (oldest !== undefined) {
+        this.taskPageSizes.delete(oldest);
+      }
+    }
+    this.taskPageSizes.set(sessionId, pageSize);
+  }
+
   private remember(session: Session | undefined): AgentRef | undefined {
     const agent = session?.agent;
     if (!session?.id || !agent?.namespace || !agent.name) {

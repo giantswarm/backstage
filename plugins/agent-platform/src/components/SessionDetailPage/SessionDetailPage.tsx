@@ -59,7 +59,6 @@ import {
   AWAITING_INPUT_STATES,
   describeSessionState,
   isRuntimeLostFailureText,
-  readAttachmentPreview,
   RuntimeLoss,
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -80,6 +79,7 @@ import { sessionStateDotVar } from '../../lib/stableClassNames';
 import {
   createPolledPairing,
   fresherStreamedCopy,
+  readLastUserMessage,
   STALLED_STATE_LABEL,
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
@@ -473,17 +473,28 @@ export function SessionDetailPage() {
   // What the composer needs to know about images: whether this agent can take
   // them, and how much the conversation already carries — every turn sends
   // the model all of it, so a session has a budget of its own.
-  const composerImages = useMemo(
-    () => ({
-      unsupportedReason: imagesUnsupportedReason(agentRow),
-      sessionBytes: timeline.items.reduce(
-        (sum, item) =>
-          item.kind === 'attachment' ? sum + (item.preview.byteSize ?? 0) : sum,
-        0,
-      ),
-    }),
-    [agentRow, timeline.items],
-  );
+  // The budget counts the images the person sent, which every turn resends;
+  // a file the agent produced is not one of them.
+  const composerImages = useMemo(() => {
+    const session = { bytes: 0, count: 0 };
+    for (const item of timeline.items) {
+      if (
+        item.kind === 'attachment' &&
+        item.isUser &&
+        item.preview.kind === 'image'
+      ) {
+        session.bytes += item.preview.byteSize;
+        session.count += 1;
+      }
+    }
+    return {
+      // Not guessed while the agent is still being looked up.
+      unsupportedReason: agentRow
+        ? imagesUnsupportedReason(agentRow)
+        : 'The portal cannot tell yet whether this agent can take images: it has not read the agent. Try again in a moment.',
+      session,
+    };
+  }, [agentRow, timeline.items]);
 
   // Dispatch the session's first message, once.
   //
@@ -567,8 +578,10 @@ export function SessionDetailPage() {
         taskIndex,
         text: pending.text,
       });
-      // Its images after it, as kagent's copy will have them: same entries,
-      // previewed by the same rule, from the bytes that were sent.
+      // Its images after it, as kagent's copy will have them. Previewed from
+      // what the composer already checked and encoded: this runs on every
+      // streamed delta, and reading megabytes of base64 again each time would
+      // stall the stream.
       for (const image of pending.images ?? []) {
         items.push({
           kind: 'attachment' as const,
@@ -578,10 +591,12 @@ export function SessionDetailPage() {
           isUser: true,
           name: image.name,
           declaredType: image.mediaType,
-          preview: readAttachmentPreview({
-            base64: image.data,
-            declaredType: image.mediaType,
-          }),
+          preview: {
+            kind: 'image',
+            type: image.mediaType,
+            dataUrl: image.previewUrl,
+            byteSize: image.byteSize,
+          },
         });
       }
     }
@@ -828,16 +843,14 @@ export function SessionDetailPage() {
   const [redraft, setRedraft] = useState<{
     messageId: string;
     text: string;
+    images?: ComposerImage[];
   } | null>(null);
-  const lastUserMessageText = useMemo(() => {
-    for (let index = timeline.items.length - 1; index >= 0; index -= 1) {
-      const item = timeline.items[index];
-      if (item.kind === 'user-message') {
-        return item.text;
-      }
-    }
-    return undefined;
-  }, [timeline.items]);
+  // With the images it carried, as the composer holds them, so a message
+  // sent again or opened in a new session is the whole message.
+  const lastUserMessage = useMemo(
+    () => readLastUserMessage(timeline.items),
+    [timeline.items],
+  );
 
   /**
    * The way out of a lost runtime: a new session with the same agent, opened
@@ -856,10 +869,14 @@ export function SessionDetailPage() {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession } = creation;
-  const unansweredText = send.failed?.text ?? lastUserMessageText;
+  const unanswered = send.failed ?? lastUserMessage;
   const startNewSession = useCallback(
-    async (draft: string, images: ComposerImage[]) => {
-      const text = draft.trim() || unansweredText;
+    async (draft: string, boxImages: ComposerImage[]) => {
+      // An empty box carries the unanswered message over whole: its text and
+      // its images.
+      const isEmpty = !draft.trim() && boxImages.length === 0;
+      const text = draft.trim() || unanswered?.text;
+      const images = isEmpty ? (unanswered?.images ?? []) : boxImages;
       if (!agentRow || !text) {
         return;
       }
@@ -888,7 +905,7 @@ export function SessionDetailPage() {
         },
       });
     },
-    [agentRow, createSession, navigate, sessionDetailRoute, unansweredText],
+    [agentRow, createSession, navigate, sessionDetailRoute, unanswered],
   );
 
   const { cancelTask } = cancellation;
@@ -901,18 +918,18 @@ export function SessionDetailPage() {
    */
   const cancelTurn = useCallback(
     (taskId: string, redraftLast: boolean) => {
-      const draft = lastUserMessageText;
+      const draft = lastUserMessage;
       cancelTask(taskId)
         .then(() => {
           resetSend();
           if (redraftLast && draft) {
-            setRedraft({ messageId: `redraft:${taskId}`, text: draft });
+            setRedraft({ messageId: `redraft:${taskId}`, ...draft });
           }
         })
         // Errors surface through the hook's `error`, shown beside the composer.
         .catch(() => {});
     },
-    [cancelTask, lastUserMessageText, resetSend],
+    [cancelTask, lastUserMessage, resetSend],
   );
   const stopTurn = useMemo(() => {
     if (!runningTaskId) {

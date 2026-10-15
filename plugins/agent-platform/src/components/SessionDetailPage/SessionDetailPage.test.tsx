@@ -203,10 +203,42 @@ const PENDING_IMAGE = {
   id: 'image-1',
   name: 'shot.png',
   mediaType: 'image/png' as const,
-  data: TINY_PNG_BASE64,
   byteSize: 70,
   previewUrl: `data:image/png;base64,${TINY_PNG_BASE64}`,
 };
+
+/**
+ * The timeline with an image attached to the last message the person sent,
+ * as the poll reads one back.
+ */
+function withImageOnLastMessage(view: SessionDetailView): SessionDetailView {
+  const last = [...view.timeline.items]
+    .reverse()
+    .find(item => item.kind === 'user-message')!;
+  return {
+    ...view,
+    timeline: {
+      ...view.timeline,
+      items: [
+        ...view.timeline.items,
+        {
+          kind: 'attachment',
+          id: 'sent-image',
+          taskIndex: last.taskIndex,
+          messageId: last.messageId,
+          isUser: true,
+          name: 'shot.png',
+          preview: {
+            kind: 'image',
+            type: 'image/png',
+            dataUrl: PENDING_IMAGE.previewUrl,
+            byteSize: PENDING_IMAGE.byteSize,
+          },
+        },
+      ],
+    },
+  };
+}
 
 function idleSend(
   overrides: Partial<UseSendMessageResult> = {},
@@ -1330,6 +1362,21 @@ describe('SessionDetailPage', () => {
         );
       });
 
+      it('puts the unanswered message’s images back with its text', async () => {
+        mockUseSessionDetail.mockReturnValue(
+          withImageOnLastMessage(stalledView),
+        );
+        await render();
+
+        await userEvent.click(
+          screen.getByText('Stop the turn', { selector: 'button, button *' }),
+        );
+
+        expect(
+          await screen.findByRole('button', { name: 'Remove shot.png' }),
+        ).toBeInTheDocument();
+      });
+
       it('does not offer the cancel when the task is not known', async () => {
         mockUseSessionDetail.mockReturnValue({
           ...stalledView,
@@ -2095,6 +2142,29 @@ describe('SessionDetailPage', () => {
       ).toBeInTheDocument();
       expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
       expect(composer()).toHaveValue('Six of them are vegetarian.');
+    });
+
+    it('opens the new session on the unanswered message with its images, from an empty box', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        withImageOnLastMessage(suspectedView),
+      );
+      await render();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith(
+          '/agent-platform/sessions/gazelle/new-1',
+          {
+            state: {
+              newSession: expect.objectContaining({
+                text: lastUserMessage,
+                imagesKey: expect.any(String),
+              }),
+            },
+          },
+        );
+      });
     });
 
     it('starts a new session with the box’s text and hands the message over', async () => {

@@ -1,5 +1,6 @@
 import { readNestedTokenUsage } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { TimelineItem } from '../../lib/kagentTimeline';
+import type { ComposerImage } from '../../lib/messageImages';
 
 /**
  * The state badge's word for a turn the poll still reads as working but that
@@ -89,6 +90,44 @@ export function fresherStreamedCopy(
       streamed.text.startsWith(polled.text)
       ? { ...polled, text: streamed.text }
       : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The last message the person sent, with the images it carried as the
+ * composer holds them: what goes back into the box after a stalled turn is
+ * stopped, and into a new session after a lost runtime. Images with no
+ * preview (a type the transcript does not show) cannot be sent again, and are
+ * left out.
+ */
+export function readLastUserMessage(
+  items: readonly TimelineItem[],
+): { text: string; images: ComposerImage[] } | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind !== 'user-message') {
+      continue;
+    }
+    const images: ComposerImage[] = [];
+    for (const other of items) {
+      if (
+        other.kind === 'attachment' &&
+        other.isUser &&
+        item.messageId !== undefined &&
+        other.messageId === item.messageId &&
+        other.preview.kind === 'image'
+      ) {
+        images.push({
+          id: `sent:${other.id}`,
+          name: other.name ?? 'Image',
+          mediaType: other.preview.type,
+          byteSize: other.preview.byteSize,
+          previewUrl: other.preview.dataUrl,
+        });
+      }
+    }
+    return { text: item.text, images };
   }
   return undefined;
 }

@@ -2,10 +2,14 @@ import { InputError } from '@backstage/errors';
 import {
   MESSAGE_IMAGE_MAX_BYTES,
   MESSAGE_IMAGE_MAX_COUNT,
+  MESSAGE_IMAGE_MAX_EDGE,
   MESSAGE_IMAGE_TYPES,
   MESSAGE_IMAGES_MAX_TOTAL_BYTES,
   MessageImageType,
   normalizeBase64,
+  readImageDimensions,
+  SESSION_IMAGES_MAX_BYTES,
+  SESSION_IMAGES_MAX_COUNT,
   sniffImageType,
   SNIFF_BYTES,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -70,7 +74,8 @@ export function readMessageImages(raw: unknown): MessageImagePart[] {
     if (base64 === undefined) {
       throw new InputError(`${field}.data must be a base64 string`);
     }
-    const bytes = new Uint8Array(Buffer.from(base64, 'base64'));
+    // A Buffer is a Uint8Array already; the part takes it as it is.
+    const bytes: Uint8Array = Buffer.from(base64, 'base64');
     if (bytes.length === 0) {
       throw new InputError(`${field}.data must not be empty`);
     }
@@ -81,6 +86,17 @@ export function readMessageImages(raw: unknown): MessageImagePart[] {
     }
     if (sniffImageType(bytes.subarray(0, SNIFF_BYTES)) !== mediaType) {
       throw new InputError(`${field} is not the ${mediaType} it says it is`);
+    }
+    // The composer scales every image to this; one that was not would fail
+    // the model's request on this turn and every later one.
+    const size = readImageDimensions(base64);
+    if (!size) {
+      throw new InputError(`${field} has no readable image header`);
+    }
+    if (Math.max(size.width, size.height) > MESSAGE_IMAGE_MAX_EDGE) {
+      throw new InputError(
+        `${field} is ${size.width}×${size.height} pixels; an image can be at most ${MESSAGE_IMAGE_MAX_EDGE} pixels on its longer side`,
+      );
     }
     total += bytes.length;
     if (total > MESSAGE_IMAGES_MAX_TOTAL_BYTES) {
@@ -98,4 +114,39 @@ export function readMessageImages(raw: unknown): MessageImagePart[] {
       ...(trimmed ? { name: trimmed } : {}),
     };
   });
+}
+
+/** The images a session's messages already carry. */
+export type SessionImageUsage = { bytes: number; count: number };
+
+const MIB = 1024 * 1024;
+
+/**
+ * Refuse a message whose images would take the session past what every later
+ * turn can resend: `SESSION_IMAGES_MAX_BYTES` and `SESSION_IMAGES_MAX_COUNT`.
+ * The composer checks the same first; this is what holds for every caller.
+ * Worded for the person, since the composer shows it as the reason the
+ * message was not sent.
+ */
+export function assertSessionImageBudget(
+  usage: SessionImageUsage,
+  images: readonly MessageImagePart[],
+): void {
+  const count = usage.count + images.length;
+  const bytes =
+    usage.bytes + images.reduce((sum, image) => sum + image.bytes.length, 0);
+  if (count > SESSION_IMAGES_MAX_COUNT) {
+    throw new InputError(
+      `This session already carries ${usage.count} images, and the model is sent all of them every turn; a session can carry ${SESSION_IMAGES_MAX_COUNT}. Start a new session to send more images.`,
+    );
+  }
+  if (bytes > SESSION_IMAGES_MAX_BYTES) {
+    throw new InputError(
+      `This session already carries ${(usage.bytes / MIB).toFixed(
+        1,
+      )} MiB of images, and the model is sent all of them every turn; a session can carry ${
+        SESSION_IMAGES_MAX_BYTES / MIB
+      } MiB. Start a new session to send more images.`,
+    );
+  }
 }

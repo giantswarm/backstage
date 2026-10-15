@@ -24,10 +24,13 @@ import {
 import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { isSendKey, sendEnterKeyHint } from '../../lib/sendKey';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
-import type { ComposerImage } from '../../lib/messageImages';
+import {
+  attachedImagesProblem,
+  type ComposerImage,
+  type SessionImages,
+} from '../../lib/messageImages';
 import { DROP_LABEL, useComposerImages } from '../../hooks/useComposerImages';
 import { SendKeyHint } from '../SendKeyHint';
-import { AttachImagesButton } from '../AttachImagesButton';
 import { ComposerImageList } from '../ComposerImageList';
 
 /**
@@ -134,18 +137,18 @@ export type SessionComposerProps = {
     images?: ComposerImage[];
   } | null;
   /**
-   * Lets the box take images — pasted, dropped on it or picked with its
-   * Attach images button — and send them with the text. Absent, the box takes
+   * Lets the box take images — pasted or dropped on it — and send them with
+   * the text. Absent, the box takes
    * text only and a pasted image is left to the browser.
    */
   images?: {
     /**
      * Why the session's agent cannot take images, said when one is pasted,
-     * dropped or picked (`imagesUnsupportedReason`).
+     * or dropped (`imagesUnsupportedReason`).
      */
     unsupportedReason?: string;
-    /** Image bytes the session's messages already carry. */
-    sessionBytes?: number;
+    /** The images the session's messages already carry. */
+    session?: SessionImages;
   };
   /**
    * Receives the trimmed text and the attached images (none without
@@ -250,9 +253,10 @@ export function SessionComposer({
 }: SessionComposerProps) {
   const [value, setValue] = useState('');
   const attached = useComposerImages({
-    enabled: Boolean(imageOptions) && !disabledReason,
+    enabled: Boolean(imageOptions),
+    paused: Boolean(disabledReason),
     unsupportedReason: imageOptions?.unsupportedReason,
-    sessionBytes: imageOptions?.sessionBytes,
+    session: imageOptions?.session,
   });
   const isPhone = usePhoneLayout();
   const touch = useTouchInput();
@@ -289,9 +293,18 @@ export function SessionComposer({
     !isAgentWorking &&
     !newSessionReplacesSend &&
     // A send now would leave behind the image still being read.
-    !attached.isPreparing;
+    !attached.isPreparing &&
+    !attached.problem;
+  // A new session starts with no images behind it, so only the message's own
+  // limits apply to what goes with it.
+  const newSessionImagesProblem = attachedImagesProblem(attached.images);
   const canStartNewSession =
-    Boolean(newSession) && !isTooLong && !isDisabled && !newSession?.isStarting;
+    Boolean(newSession) &&
+    !isTooLong &&
+    !isDisabled &&
+    !newSession?.isStarting &&
+    !attached.isPreparing &&
+    !newSessionImagesProblem;
 
   useEffect(() => {
     if (autoFocus) {
@@ -406,9 +419,14 @@ export function SessionComposer({
   // conversation above it does not jump (it wraps to a line of its own on a
   // phone).
   // What is wrong with the message, said in place of the caption.
-  const problem = isTooLong
-    ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
-    : attached.notice;
+  let problem: string | undefined;
+  if (isTooLong) {
+    problem = `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
+  } else if (newSession?.replacesSend) {
+    problem = attached.notice ?? newSessionImagesProblem;
+  } else {
+    problem = attached.notice ?? attached.problem;
+  }
   const showSendKeyHint = atRest && !problem;
 
   // The card is the control while it stands; at phone width the box it
@@ -484,14 +502,6 @@ export function SessionComposer({
                     {/* Before the action, like the prototype: the chip reads as
                   context for the box, not as something that submits. */}
                     {details}
-                    {imageOptions && !newSessionReplacesSend && (
-                      <AttachImagesButton
-                        onSelect={attached.addFiles}
-                        unsupportedReason={imageOptions.unsupportedReason}
-                        onRefused={attached.showNotice}
-                        isDisabled={isDisabled}
-                      />
-                    )}
                     {showStop ? (
                       // Secondary rather than primary: stopping is not the action
                       // this box invites.
@@ -531,7 +541,7 @@ export function SessionComposer({
                 color={problem ? 'danger' : 'secondary'}
                 // Said as it appears: a refused paste or drop leaves the focus
                 // where it was, and nothing else tells a screen reader.
-                role={attached.notice && !isTooLong ? 'alert' : undefined}
+                role={problem && !isTooLong ? 'alert' : undefined}
               >
                 {problem ?? caption}
               </Text>

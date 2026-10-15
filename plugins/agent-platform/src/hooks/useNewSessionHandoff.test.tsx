@@ -60,7 +60,6 @@ describe('useNewSessionHandoff', () => {
       id: 'image-1',
       name: 'a.png',
       mediaType: 'image/png' as const,
-      data: 'iVBORw0K',
       byteSize: 6,
       previewUrl: 'data:image/png;base64,iVBORw0K',
     };
@@ -71,7 +70,14 @@ describe('useNewSessionHandoff', () => {
     });
     expect(result.current.handoff).toEqual({ ...handoff, images: [image] });
 
-    // A key that is not the last one stashed finds nothing.
+    // Taken once read: the same key finds nothing again.
+    const again = renderWithState({
+      [NEW_SESSION_STATE_KEY]: { ...handoff, imagesKey },
+    });
+    expect(again.result.current.handoff).toEqual(handoff);
+
+    // Nor does a key that is not the last one stashed.
+    stashHandoffImages([image]);
     const stale = renderWithState({
       [NEW_SESSION_STATE_KEY]: { ...handoff, imagesKey: 'another' },
     });

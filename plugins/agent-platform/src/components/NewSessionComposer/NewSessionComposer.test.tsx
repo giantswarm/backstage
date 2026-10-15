@@ -9,7 +9,7 @@ import {
 import type { AgentRow } from '../AgentsDataProvider';
 import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { pngFile } from '../../lib/__fixtures__/images';
+import { mockImageEncoding, pngFile } from '../../lib/__fixtures__/images';
 import {
   agentOptionLabel,
   isStartableAgent,
@@ -1431,6 +1431,19 @@ describe('NewSessionComposer with touch input (T22 B2)', () => {
 });
 
 describe('NewSessionComposer — images', () => {
+  // On the Go ADK runtime with an Anthropic model: one that takes images.
+  const seer = agentRow({
+    harnessRuntime: 'kagent',
+    modelProvider: 'Anthropic',
+  });
+  let encoding: ReturnType<typeof mockImageEncoding>;
+  beforeEach(() => {
+    encoding = mockImageEncoding();
+  });
+  afterEach(() => {
+    encoding.restore();
+  });
+
   function paste(files: File[]) {
     fireEvent.paste(field(), {
       clipboardData: { files, types: ['Files'], getData: () => '' },
@@ -1438,14 +1451,17 @@ describe('NewSessionComposer — images', () => {
   }
 
   it('starts with the pasted images as part of the first message', async () => {
-    renderComposer({ defaultAgent: sre, acceptsImages: true });
+    renderComposer({ agents: [seer], defaultAgent: seer, acceptsImages: true });
 
-    paste([pngFile('a.png')]);
-    expect(await screen.findByText('a.png')).toBeInTheDocument();
+    paste([pngFile('image.png')]);
+    expect(await screen.findByText('Pasted image.png')).toBeInTheDocument();
     await userEvent.type(field(), 'what is this?{Enter}');
 
-    expect(onStart).toHaveBeenCalledWith(sre, 'what is this?', [
-      expect.objectContaining({ name: 'a.png', mediaType: 'image/png' }),
+    expect(onStart).toHaveBeenCalledWith(seer, 'what is this?', [
+      expect.objectContaining({
+        name: 'Pasted image.png',
+        mediaType: 'image/png',
+      }),
     ]);
   });
 
@@ -1456,9 +1472,6 @@ describe('NewSessionComposer — images', () => {
 
     await act(async () => {});
     expect(screen.queryByText('a.png')).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Attach images' }),
-    ).not.toBeInTheDocument();
   });
 
   it('holds the start while the chosen agent cannot take the attached images', async () => {
@@ -1468,11 +1481,11 @@ describe('NewSessionComposer — images', () => {
       technicalName: 'coder',
       harnessRuntime: 'claude',
     });
-    renderComposer({ agents: [sre, coder], acceptsImages: true });
+    renderComposer({ agents: [seer, coder], acceptsImages: true });
     await userEvent.click(screen.getByRole('button', { name: /Agent/ }));
     await userEvent.click(screen.getByRole('option', { name: /^SRE Agent/ }));
-    paste([pngFile('a.png')]);
-    await screen.findByText('a.png');
+    paste([pngFile()]);
+    await screen.findByText('Pasted image.png');
 
     await userEvent.click(screen.getByRole('button', { name: /Agent/ }));
     await userEvent.click(screen.getByRole('option', { name: /^Coder/ }));
@@ -1483,7 +1496,9 @@ describe('NewSessionComposer — images', () => {
       'Coder cannot take images: its Claude Code runtime accepts text only. Remove the images, or choose another agent.',
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Remove a.png' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove Pasted image.png' }),
+    );
     await userEvent.click(startButton());
     expect(onStart).toHaveBeenCalledWith(coder, 'fix it', []);
   });

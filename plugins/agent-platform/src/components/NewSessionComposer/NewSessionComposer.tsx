@@ -52,7 +52,6 @@ import {
   imagesUnsupportedReason,
 } from '../../lib/messageImages';
 import { DROP_LABEL, useComposerImages } from '../../hooks/useComposerImages';
-import { AttachImagesButton } from '../AttachImagesButton';
 import { ComposerImageList } from '../ComposerImageList';
 
 /** Rows the textarea shows before and after it expands. */
@@ -260,7 +259,7 @@ export type NewSessionComposerProps = {
    */
   error?: string | Error;
   /**
-   * Lets the box take images — pasted, dropped on it or picked — which go
+   * Lets the box take images — pasted or dropped on it — which go
    * with the prompt as the session's first message. For the surfaces whose
    * session page sends that message (`useNewSessionHandoff`). Off, the box
    * takes text only.
@@ -689,9 +688,12 @@ export function NewSessionComposer({
   // Read for the agent chosen, so one that cannot take images says so the
   // moment an image meets it — or the moment it is chosen with images already
   // in the box, which then cannot start until they go or the agent changes.
-  const unsupportedReason = imagesUnsupportedReason(selectedAgent);
+  const unsupportedReason = selectedAgent
+    ? imagesUnsupportedReason(selectedAgent)
+    : undefined;
   const attached = useComposerImages({
-    enabled: acceptsImages && !isStarting,
+    enabled: acceptsImages,
+    paused: isStarting,
     unsupportedReason,
   });
   const imagesRefused =
@@ -706,6 +708,7 @@ export function NewSessionComposer({
     !isTooLong &&
     !isStarting &&
     !imagesRefused &&
+    !attached.problem &&
     !attached.isPreparing;
 
   const submit = () => {
@@ -763,7 +766,7 @@ export function NewSessionComposer({
   // Said in place of the caption, as the problem it is.
   const imageProblem = isTooLong
     ? undefined
-    : (imagesRefused ?? attached.notice);
+    : (imagesRefused ?? attached.notice ?? attached.problem);
 
   // A problem to fix before starting, said in place of the caption. The
   // missing agent first: an image problem waits until there is an agent to
@@ -951,14 +954,6 @@ export function NewSessionComposer({
             leading={pickerOnTop ? undefined : picker}
             trailing={
               <>
-                {acceptsImages && (
-                  <AttachImagesButton
-                    onSelect={attached.addFiles}
-                    unsupportedReason={unsupportedReason}
-                    onRefused={attached.showNotice}
-                    isDisabled={isStarting}
-                  />
-                )}
                 <ButtonIcon
                   type="submit"
                   aria-label="Start"

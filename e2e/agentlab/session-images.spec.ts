@@ -4,21 +4,68 @@ import { expect, open, openReadyAgent, test } from './fixtures';
 /**
  * Images in a session message: the home composer attaches a pasted image as a
  * removable thumbnail and refuses a dropped file that is not an image, saying
- * what it takes; a session's transcript shows an image of the person's
- * message as a thumbnail that opens at full size.
+ * what it takes, or says the agent cannot take images when its model's
+ * provider does not pass them; a session's transcript shows an image of the
+ * person's message as a thumbnail that opens at full size.
  *
- * Whether the lab agent's model takes images is the lab's to decide (its
- * Ollama model does not reach a model through kagent at all), so nothing here
- * sends an image: when the composer says the agent cannot take images, that
- * reason is what is checked. The transcript's image is added to the session's
- * conversation read, in the shape kagent records a file part.
+ * Whether the composer offers images follows the agent's ModelConfig
+ * provider, and the lab's model may be one kagent sends no images (Ollama).
+ * So the provider the portal reads is set at the browser for each test, and
+ * nothing here sends an image to a model. The transcript's image is added to
+ * the session's conversation read, in the shape kagent records a file part.
  */
 
 /** A real 1×1 PNG. */
 const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
-/** Paste a PNG named `name` into the focused field, as a screenshot tool would. */
+/**
+ * Answers every ModelConfig read with `provider` as the model's provider: what
+ * decides whether the composer offers images, whatever the lab runs.
+ */
+async function withModelProvider(page: Page, provider: string): Promise<void> {
+  await page.route(
+    url => /\/modelconfigs(\/|$)/.test(url.pathname),
+    async route => {
+      const response = await route.fetch();
+      if (!response.ok()) {
+        await route.fulfill({ response });
+        return;
+      }
+      const body = (await response.json()) as {
+        items?: { spec?: { provider?: string } }[];
+        spec?: { provider?: string };
+      };
+      for (const item of body.items ?? [body]) {
+        if (item.spec) {
+          item.spec.provider = provider;
+        }
+      }
+      await route.fulfill({ response, json: body });
+    },
+  );
+}
+
+/** Opens the home screen with the worker's agent chosen in the composer. */
+async function openHomeWithAgent(
+  page: Page,
+  labAgent: { name: string },
+): Promise<Locator> {
+  await open(page, '/');
+  await page
+    .getByRole('button', { name: /(^| )Agent$/ })
+    .first()
+    .click();
+  await page
+    .getByRole('option', { name: new RegExp(labAgent.name) })
+    .first()
+    .click();
+  const prompt = page.getByRole('textbox', { name: 'Prompt', exact: true });
+  await prompt.click();
+  return prompt;
+}
+
+/** Paste a PNG into the focused field, as a screenshot tool would. */
 async function pasteImage(page: Page, name: string): Promise<void> {
   await page.evaluate(
     ({ base64, fileName }) => {
@@ -116,36 +163,18 @@ test('the home composer attaches pasted images and refuses other files', async (
   labAgent,
 }) => {
   await openReadyAgent(admin, labAgent);
-  await open(admin, '/');
-  const prompt = admin.getByRole('textbox', { name: 'Prompt', exact: true });
-  await admin
-    .getByRole('button', { name: /(^| )Agent$/ })
-    .first()
-    .click();
-  await admin
-    .getByRole('option', { name: new RegExp(labAgent.name) })
-    .first()
-    .click();
+  await withModelProvider(admin, 'OpenAI');
+  const prompt = await openHomeWithAgent(admin, labAgent);
 
-  await prompt.click();
-  await pasteImage(admin, 'e2e-pasted.png');
-
-  const refused = admin.getByRole('alert').filter({
-    hasText: 'cannot take images',
-  });
+  // Browsers call every pasted image `image.png`; the composer names it.
+  await pasteImage(admin, 'image.png');
   const remove = admin.getByRole('button', {
-    name: 'Remove e2e-pasted.png',
+    name: 'Remove Pasted image.png',
     exact: true,
   });
-  await expect(remove.or(refused)).toBeVisible();
-  if (await refused.isVisible()) {
-    // The lab agent's runtime or model takes no images, and the composer says
-    // so instead of attaching one.
-    await expect(remove).toHaveCount(0);
-    return;
-  }
-
+  await expect(remove).toBeVisible();
   await expect(prompt, 'the paste inserted no text').toHaveValue('');
+
   await remove.click();
   await expect(remove).toHaveCount(0);
   await expect(prompt, 'the focus went back to the prompt').toBeFocused();
@@ -161,7 +190,36 @@ test('the home composer attaches pasted images and refuses other files', async (
       { exact: true },
     ),
   ).toBeVisible();
+
+  // A file let go of beside the box is refused, not opened in place of the
+  // page.
+  await dropFile(admin.locator('body'), {
+    name: 'report.pdf',
+    type: 'application/pdf',
+    text: '%PDF-1.7',
+  });
   await expect(admin, 'the drop did not open the file').toHaveURL(/\/$/);
+});
+
+test('the home composer says an agent whose model takes no images cannot take one', async ({
+  admin,
+  labAgent,
+}) => {
+  await openReadyAgent(admin, labAgent);
+  await withModelProvider(admin, 'Ollama');
+  await openHomeWithAgent(admin, labAgent);
+
+  await pasteImage(admin, 'image.png');
+
+  await expect(
+    admin.getByText(
+      `${labAgent.name} cannot take images: kagent does not pass images to Ollama models.`,
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    admin.getByRole('list', { name: 'Attached images', exact: true }),
+  ).toHaveCount(0);
 });
 
 test('an image of the person’s message shows as a thumbnail that opens at full size', async ({

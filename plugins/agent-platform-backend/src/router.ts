@@ -30,7 +30,11 @@ import {
   type SessionSharePermissionInput,
 } from './KagentClient';
 import { probeKagentGrpc } from './kagent/reachability';
-import { MessageImagePart, readMessageImages } from './messageImages';
+import {
+  assertSessionImageBudget,
+  MessageImagePart,
+  readMessageImages,
+} from './messageImages';
 import { SessionStateReader } from './sessionStates';
 import { SessionUsageReader } from './sessionUsage';
 import { createAvatarRouter } from './avatarRouter';
@@ -81,6 +85,13 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
 }
 
 /**
+ * The body limit of the message routes: the text's ~96 kB worst case plus
+ * `MESSAGE_IMAGES_MAX_TOTAL_BYTES` of images in base64, with headroom, so the
+ * limits a caller meets are the ones `readMessageBody` names.
+ */
+const MESSAGE_BODY_LIMIT = '5mb';
+
+/**
  * A required, non-empty string field from a JSON body.
  *
  * Trimmed before the emptiness check, so a field of pure whitespace is rejected
@@ -88,13 +99,6 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
  * — `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry, and a
  * malformed body is the caller's mistake, not a fault anyone can act on.
  */
-/**
- * The body limit of the message routes: the text's ~96 kB worst case plus
- * `MESSAGE_IMAGES_MAX_TOTAL_BYTES` of images in base64, with headroom, so the
- * limits a caller meets are the ones `readMessageBody` names.
- */
-const MESSAGE_BODY_LIMIT = '5mb';
-
 function readRequiredString(
   body: Record<string, unknown>,
   field: string,
@@ -203,6 +207,27 @@ function readMessageBody(req: express.Request): {
     text,
     images: readMessageImages(body.images),
   };
+}
+
+/**
+ * Hold a message with images to what the session can still carry. Costs one
+ * read of the session's tasks, so only a message that carries images pays
+ * it; a text message cannot take the session past its image budget.
+ */
+async function checkSessionImageBudget(
+  client: KagentClient,
+  sessionId: string,
+  agent: { namespace: string; name: string },
+  userToken: string | undefined,
+  images: readonly MessageImagePart[],
+): Promise<void> {
+  if (images.length === 0) {
+    return;
+  }
+  assertSessionImageBudget(
+    await client.readSessionImageUsage(sessionId, agent, { userToken }),
+    images,
+  );
 }
 
 /**
@@ -560,14 +585,13 @@ export async function createRouter(
   // once the rest of the body is counted. Too close to rely on: a message the
   // proxy considers valid would be refused with a 413 that explains nothing.
   //
-  // The two message routes take more, because a message may carry images
-  // (`MESSAGE_IMAGES_MAX_TOTAL_BYTES`, base64 in the JSON, so a third more).
-  // Their parser runs first, and the general one skips a body already read.
+  // Everything under a session's `messages` takes more — today the messages
+  // route and its streaming sibling, since `use` matches a path prefix —
+  // because a message may carry images (`MESSAGE_IMAGES_MAX_TOTAL_BYTES`,
+  // base64 in the JSON, so a third more). This parser runs first, and the
+  // general one skips a body already read.
   router.use(
-    [
-      '/kagent/sessions/:sessionId/messages',
-      '/kagent/sessions/:sessionId/messages/stream',
-    ],
+    '/kagent/sessions/:sessionId/messages',
     express.json({ limit: MESSAGE_BODY_LIMIT }),
   );
   router.use(express.json({ limit: '256kb' }));
@@ -986,13 +1010,17 @@ export async function createRouter(
 
     const { agentNamespace, agentName, messageId, text, images } =
       readMessageBody(req);
+    const sessionId = readSessionId(req);
+    const agent = { namespace: agentNamespace, name: agentName };
+    const userToken = readUserToken(req, { required: true });
+    await checkSessionImageBudget(client, sessionId, agent, userToken, images);
 
     try {
       const result = await client.sendMessage(
-        readSessionId(req),
-        { namespace: agentNamespace, name: agentName },
+        sessionId,
+        agent,
         { messageId, text, images },
-        { userToken: readUserToken(req, { required: true }) },
+        { userToken },
       );
       res.json(result);
     } catch (error) {
@@ -1026,12 +1054,21 @@ export async function createRouter(
 
       const { agentNamespace, agentName, messageId, text, images } =
         readMessageBody(req);
+      const sessionId = readSessionId(req);
+      const agent = { namespace: agentNamespace, name: agentName };
       const userToken = readUserToken(req, { required: true });
+      await checkSessionImageBudget(
+        client,
+        sessionId,
+        agent,
+        userToken,
+        images,
+      );
 
       await relayEventStream(res, logger, signal =>
         client.streamMessage(
-          readSessionId(req),
-          { namespace: agentNamespace, name: agentName },
+          sessionId,
+          agent,
           { messageId, text, images },
           { userToken },
           signal,

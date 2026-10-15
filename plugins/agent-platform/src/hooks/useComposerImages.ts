@@ -7,12 +7,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import { MESSAGE_IMAGE_MAX_COUNT } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
+  attachedImagesProblem,
   ComposerImage,
   messageImagesProblem,
-  pastedImageName,
+  PASTED_IMAGE_NAME,
   prepareImage,
+  SessionImages,
+  uniqueImageName,
 } from '../lib/messageImages';
 
 export type UseComposerImagesOptions = {
@@ -21,10 +23,16 @@ export type UseComposerImagesOptions = {
    * they would without this hook.
    */
   enabled: boolean;
+  /**
+   * The box cannot take anything right now (a session being created, a
+   * question open): a paste or drop does nothing, but a file let go of
+   * anywhere on the page is still refused instead of opened.
+   */
+  paused?: boolean;
   /** Why the agent cannot take images, said instead of attaching any. */
   unsupportedReason?: string;
-  /** Image bytes the session's messages already carry. */
-  sessionBytes?: number;
+  /** The images the session's messages already carry. */
+  session?: SessionImages;
 };
 
 /** What letting go over the box does, as the drop state says it. */
@@ -35,9 +43,11 @@ function carriesFiles(event: { dataTransfer: DataTransfer | null }): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes('Files');
 }
 
+let nextId = 0;
+
 /**
- * The images a composer attaches to its next message: pasted, dropped on the
- * box or picked, each checked and prepared (`prepareImage`) and held until the
+ * The images a composer attaches to its next message: pasted or dropped on
+ * the box, each checked and prepared (`prepareImage`) and held until the
  * message is sent.
  *
  * **A paste attaches images only when it carries no rich text.** A spreadsheet
@@ -49,24 +59,34 @@ function carriesFiles(event: { dataTransfer: DataTransfer | null }): boolean {
  * **A drop is caught only when the drag carries files**, so text dragged into
  * the box still lands in it. A file dropped anywhere else on the page would
  * make the browser leave the page to open it — the draft gone with it — so
- * while the hook is enabled, such a drop is refused page-wide.
+ * while the hook is enabled, paused or not, such a drop is refused page-wide.
  *
  * Whatever cannot be attached is said in `notice`, in words that say how to
- * fix it, until the next attempt or removal.
+ * fix it, until the person removes an image or attaches again once every
+ * image in hand has been read. What stops the images in the box from being
+ * sent as they are — more than a message carries, after a failed message's
+ * came back beside newer ones — is `problem`, which lasts until it is fixed.
  */
 export function useComposerImages({
   enabled,
+  paused = false,
   unsupportedReason,
-  sessionBytes = 0,
+  session,
 }: UseComposerImagesOptions) {
   const [images, setImages] = useState<ComposerImage[]>([]);
   // The list as the last update left it, for the checks of a batch still being
   // read: each image of a paste counts the ones attached before it.
   const current = useRef(images);
   const [notice, setNotice] = useState<string>();
+  // What the batches being read have refused so far. Collected across
+  // batches that overlap, so a slow photo finishing last does not wipe a
+  // refusal a quick drop made meanwhile.
+  const problems = useRef<string[]>([]);
+  const reading = useRef(0);
   const [preparing, setPreparing] = useState(0);
   const [isDropTarget, setDropTarget] = useState(false);
   const dragDepth = useRef(0);
+  const accepting = enabled && !paused;
 
   const update = useCallback((next: ComposerImage[]) => {
     current.current = next;
@@ -74,53 +94,66 @@ export function useComposerImages({
   }, []);
 
   const addFiles = useCallback(
-    async (files: readonly File[]) => {
-      if (!enabled || files.length === 0) {
+    async (files: readonly File[], { pasted = false } = {}) => {
+      if (!accepting || files.length === 0) {
         return;
       }
       if (unsupportedReason) {
         setNotice(unsupportedReason);
         return;
       }
-      setNotice(undefined);
+      if (reading.current === 0) {
+        problems.current = [];
+        setNotice(undefined);
+      }
+      reading.current += 1;
       setPreparing(count => count + 1);
-      const problems: string[] = [];
       try {
-        for (const [index, file] of files.entries()) {
-          const prepared = await prepareImage(
-            file,
-            pastedImageName(file.type, index),
-          );
+        for (const file of files) {
+          const name =
+            pasted || !file.name.trim() ? PASTED_IMAGE_NAME : file.name.trim();
+          const prepared = await prepareImage(file, name);
           if (prepared.kind === 'refused') {
-            problems.push(prepared.problem);
+            problems.current.push(prepared.problem);
             continue;
           }
           const problem = messageImagesProblem(
             current.current,
             prepared.image,
-            sessionBytes,
+            session,
           );
           if (problem) {
-            problems.push(problem);
+            problems.current.push(problem);
             continue;
           }
-          update([...current.current, prepared.image]);
+          nextId += 1;
+          update([
+            ...current.current,
+            {
+              ...prepared.image,
+              id: `image-${nextId}`,
+              name: uniqueImageName(prepared.image.name, current.current),
+            },
+          ]);
         }
       } catch {
-        problems.push('An image could not be read. Attach it again.');
+        problems.current.push('An image could not be read. Attach it again.');
       } finally {
+        reading.current -= 1;
         setPreparing(count => count - 1);
+        setNotice(
+          problems.current.length > 0 ? problems.current.join(' ') : undefined,
+        );
       }
-      setNotice(problems.length > 0 ? problems.join(' ') : undefined);
     },
-    [enabled, unsupportedReason, sessionBytes, update],
+    [accepting, unsupportedReason, session, update],
   );
 
   const onPaste = useCallback(
     (event: ClipboardEvent) => {
       const data = event.clipboardData;
       const files = Array.from(data?.files ?? []);
-      if (!enabled || files.length === 0) {
+      if (!accepting || files.length === 0) {
         return;
       }
       const types = Array.from(data.types);
@@ -128,54 +161,76 @@ export function useComposerImages({
         return;
       }
       event.preventDefault();
-      addFiles(files);
+      addFiles(files, { pasted: true });
     },
-    [enabled, addFiles],
+    [accepting, addFiles],
   );
 
-  const dropTargetProps = useMemo(
-    () =>
-      enabled
-        ? {
-            onDragEnter: (event: DragEvent) => {
-              if (!carriesFiles(event)) {
-                return;
-              }
-              event.preventDefault();
-              dragDepth.current += 1;
-              setDropTarget(true);
-            },
-            onDragOver: (event: DragEvent) => {
-              if (!carriesFiles(event)) {
-                return;
-              }
-              event.preventDefault();
-              event.dataTransfer.dropEffect = 'copy';
-            },
-            // Enter and leave fire for every child the pointer crosses; the
-            // depth says when it has left the box itself.
-            onDragLeave: (event: DragEvent) => {
-              if (!carriesFiles(event)) {
-                return;
-              }
-              dragDepth.current = Math.max(0, dragDepth.current - 1);
-              if (dragDepth.current === 0) {
-                setDropTarget(false);
-              }
-            },
-            onDrop: (event: DragEvent) => {
-              if (!carriesFiles(event)) {
-                return;
-              }
-              event.preventDefault();
-              dragDepth.current = 0;
-              setDropTarget(false);
-              addFiles(Array.from(event.dataTransfer.files));
-            },
+  const dropTargetProps = useMemo(() => {
+    if (!enabled) {
+      return {};
+    }
+    if (paused) {
+      // Nothing is taken while paused, but the drop is still the box's to
+      // refuse, not the browser's to open.
+      return {
+        onDragOver: (event: DragEvent) => {
+          if (carriesFiles(event)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'none';
           }
-        : {},
-    [enabled, addFiles],
-  );
+        },
+        onDrop: (event: DragEvent) => {
+          if (carriesFiles(event)) {
+            event.preventDefault();
+          }
+        },
+      };
+    }
+    return {
+      onDragEnter: (event: DragEvent) => {
+        if (!carriesFiles(event)) {
+          return;
+        }
+        event.preventDefault();
+        dragDepth.current += 1;
+        setDropTarget(true);
+      },
+      onDragOver: (event: DragEvent) => {
+        if (!carriesFiles(event)) {
+          return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      },
+      // Enter and leave fire for every child the pointer crosses; the depth
+      // says when it has left the box itself.
+      onDragLeave: (event: DragEvent) => {
+        if (!carriesFiles(event)) {
+          return;
+        }
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) {
+          setDropTarget(false);
+        }
+      },
+      onDrop: (event: DragEvent) => {
+        if (!carriesFiles(event)) {
+          return;
+        }
+        event.preventDefault();
+        dragDepth.current = 0;
+        setDropTarget(false);
+        addFiles(Array.from(event.dataTransfer.files));
+      },
+    };
+  }, [enabled, paused, addFiles]);
+
+  // A drop state left over from a drag that was paused midway.
+  if (paused && isDropTarget) {
+    dragDepth.current = 0;
+    setDropTarget(false);
+  }
 
   // A file let go of anywhere but the box: refused rather than opened by the
   // browser in place of the page. The box's own handlers prevent the default
@@ -223,9 +278,9 @@ export function useComposerImages({
   }, [update]);
 
   /**
-   * Put a failed message's images back, ahead of any attached since. Bounded
-   * by the count a message can carry; the restored ones come first, since they
-   * belong with the text that comes back with them.
+   * Put a failed message's images back, ahead of any attached since. None is
+   * dropped to make them fit: if together they are more than a message
+   * carries, `problem` says so and the person chooses which to remove.
    */
   const restore = useCallback(
     (restored: readonly ComposerImage[]) => {
@@ -233,20 +288,30 @@ export function useComposerImages({
         return;
       }
       const ids = new Set(restored.map(image => image.id));
-      update(
-        [
-          ...restored,
-          ...current.current.filter(image => !ids.has(image.id)),
-        ].slice(0, MESSAGE_IMAGE_MAX_COUNT),
-      );
+      const kept = current.current.filter(image => !ids.has(image.id));
+      const named: ComposerImage[] = [];
+      for (const image of restored) {
+        named.push({
+          ...image,
+          name: uniqueImageName(image.name, [...named, ...kept]),
+        });
+      }
+      update([...named, ...kept]);
     },
     [update],
+  );
+
+  const problem = useMemo(
+    () => attachedImagesProblem(images, session),
+    [images, session],
   );
 
   return {
     images,
     /** Why the last attempt to attach did not (fully) succeed. */
     notice,
+    /** Why the images attached cannot be sent as they are. Blocks sending. */
+    problem,
     /** Images are still being read; a send now would leave them out. */
     isPreparing: preparing > 0,
     isDropTarget,
@@ -254,9 +319,6 @@ export function useComposerImages({
     dropTargetProps,
     /** Put on the text field. */
     onPaste,
-    addFiles,
-    /** Say something about images in `notice`, e.g. why none can be attached. */
-    showNotice: setNotice,
     remove,
     clear,
     restore,

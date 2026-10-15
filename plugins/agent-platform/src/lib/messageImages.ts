@@ -7,23 +7,34 @@ import {
   MessageImage,
   MessageImageType,
   SESSION_IMAGES_MAX_BYTES,
+  SESSION_IMAGES_MAX_COUNT,
   sniffImageType,
   SNIFF_BYTES,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { runtimeLabel } from './harnesses';
 
-/** An image attached in a composer, ready to send and to show. */
-export type ComposerImage = MessageImage & {
+/**
+ * An image attached in a composer, ready to send and to show. The bytes live
+ * once, in {@link previewUrl}; {@link toMessageImages} reads them out of it.
+ */
+export type ComposerImage = {
   /** Unique within the composer, for keys and removal. */
   id: string;
-  /** The name shown and announced: the file's, or one made up for a paste. */
+  /** The name shown and announced, unique within the composer. */
   name: string;
-  /** Decoded size in bytes. */
+  /** The type the image is encoded as, which its bytes were checked to be. */
+  mediaType: MessageImageType;
+  /** Encoded size in bytes. */
   byteSize: number;
-  /** `data:` URL of the bytes as sent, typed by what the bytes are. */
+  /** `data:<mediaType>;base64,…` of the bytes as sent. */
   previewUrl: string;
 };
+
+/** The images a session's messages already carry, which the next adds to. */
+export type SessionImages = { bytes: number; count: number };
+
+const NO_SESSION_IMAGES: SessionImages = { bytes: 0, count: 0 };
 
 /**
  * The largest file the composer reads at all. A photo straight off a phone
@@ -32,8 +43,8 @@ export type ComposerImage = MessageImage & {
  */
 export const IMAGE_SOURCE_MAX_BYTES = 40 * 1024 * 1024;
 
-/** Quality for a scaled-down JPEG or WebP: no visible loss in a screenshot. */
-const SCALED_QUALITY = 0.9;
+/** Quality for a JPEG or WebP: no visible loss in a screenshot. */
+const ENCODE_QUALITY = 0.9;
 
 /** A limit as the copy names it: "3 MiB", not formatBytes' "3.0 MiB". */
 function formatLimit(bytes: number): string {
@@ -42,28 +53,37 @@ function formatLimit(bytes: number): string {
 
 const TYPE_NAMES = 'PNG, JPEG, GIF or WebP';
 
+const UNPREPARABLE =
+  'This browser cannot prepare images for sending. Use a current version of Chrome, Edge, Firefox or Safari.';
+
 export type PreparedImage =
-  | { kind: 'image'; image: ComposerImage }
+  | { kind: 'image'; image: Omit<ComposerImage, 'id'> }
   | { kind: 'refused'; problem: string };
 
-let nextId = 0;
-
 /**
- * Turn a pasted, dropped or picked file into an image a message can carry, or
+ * Turn a pasted or dropped file into an image a message can carry, or
  * say why it cannot be one.
  *
  * The type is read from the bytes, never from the file's name or its declared
- * type. A PNG, JPEG or WebP larger than {@link MESSAGE_IMAGE_MAX_EDGE} on its
- * longer side is scaled down to it in the same format; a GIF is kept as it
- * is, because drawing it would keep only its first frame. Then the size cap
- * applies to what would be sent.
+ * type. Then the image is **always drawn and encoded again**, which is what
+ * makes it safe to send:
+ *
+ * - its metadata stays behind — a photo's GPS position, device and times
+ *   would otherwise reach the model provider and the transcript, which the
+ *   session's share links show (the orientation it recorded is applied first);
+ * - its longer side is at most {@link MESSAGE_IMAGE_MAX_EDGE}, so no size that
+ *   fails a model's request reaches the conversation, which every later turn
+ *   resends.
+ *
+ * PNG, JPEG and WebP keep their format, falling back to PNG where the browser
+ * cannot encode one (WebP in older Safari). A GIF becomes a PNG of its first
+ * frame, which is all the models read of one anyway. Then the size cap applies
+ * to what would be sent.
  */
 export async function prepareImage(
   file: Blob,
-  fallbackName: string,
+  name: string,
 ): Promise<PreparedImage> {
-  const name =
-    file instanceof File && file.name.trim() ? file.name.trim() : fallbackName;
   if (file.size > IMAGE_SOURCE_MAX_BYTES) {
     return {
       kind: 'refused',
@@ -73,96 +93,99 @@ export async function prepareImage(
   const head = new Uint8Array(
     await readArrayBuffer(file.slice(0, SNIFF_BYTES)),
   );
-  const mediaType = sniffImageType(head);
-  if (!mediaType) {
+  const sniffed = sniffImageType(head);
+  if (!sniffed) {
     return {
       kind: 'refused',
       problem: `${name} is not an image the agent can take. Attach a ${TYPE_NAMES} image.`,
     };
   }
 
-  let bytes: Blob = file;
-  let scaled = false;
-  if (mediaType !== 'image/gif') {
-    const smaller = await scaleDown(file, mediaType);
-    if (smaller === 'unreadable') {
-      return {
-        kind: 'refused',
-        problem: `${name} could not be read as an image. Attach a ${TYPE_NAMES} image.`,
-      };
-    }
-    if (smaller) {
-      bytes = smaller;
-      scaled = true;
-    }
-  }
-
-  if (bytes.size > MESSAGE_IMAGE_MAX_BYTES) {
+  const encoded = await encodeAgain(file, sniffed);
+  if (encoded === 'unreadable') {
     return {
       kind: 'refused',
-      problem: `${name} is ${formatBytes(bytes.size)}${
+      problem: `${name} could not be read as an image. Attach a ${TYPE_NAMES} image.`,
+    };
+  }
+  if (encoded === 'unsupported') {
+    return { kind: 'refused', problem: UNPREPARABLE };
+  }
+
+  const { blob, mediaType, scaled } = encoded;
+  // Named for what it is sent as: a GIF sent as a PNG, a PNG called .jpg,
+  // a name without an extension.
+  const sentName = hasExtensionOf(name, mediaType)
+    ? name
+    : withExtension(name, extensionOf(mediaType));
+  if (blob.size > MESSAGE_IMAGE_MAX_BYTES) {
+    return {
+      kind: 'refused',
+      problem: `${name} is ${formatBytes(blob.size)}${
         scaled ? ' after scaling it down' : ''
-      }; an image can be at most ${formatLimit(MESSAGE_IMAGE_MAX_BYTES)}. ${
-        mediaType === 'image/gif'
-          ? 'Attach a shorter GIF, or a still of it as a PNG.'
-          : 'Crop it, or save it as a JPEG.'
-      }`,
+      }; an image can be at most ${formatLimit(
+        MESSAGE_IMAGE_MAX_BYTES,
+      )}. Crop it, or save it as a JPEG.`,
     };
   }
 
-  const previewUrl = await readDataUrl(bytes, mediaType);
-  nextId += 1;
   return {
     kind: 'image',
     image: {
-      id: `image-${nextId}`,
-      name,
+      name: sentName,
       mediaType,
-      data: previewUrl.slice(previewUrl.indexOf(',') + 1),
-      byteSize: bytes.size,
-      previewUrl,
+      byteSize: blob.size,
+      previewUrl: await readDataUrl(blob, mediaType),
     },
   };
 }
 
+type Encoded = { blob: Blob; mediaType: MessageImageType; scaled: boolean };
+
 /**
- * The image scaled down to {@link MESSAGE_IMAGE_MAX_EDGE}, `undefined` when it
- * is no larger than that (or the browser cannot scale), and `'unreadable'`
- * when the browser cannot decode it.
+ * The image drawn and encoded again, at most {@link MESSAGE_IMAGE_MAX_EDGE} on
+ * its longer side; `'unreadable'` when the browser cannot decode it and
+ * `'unsupported'` when it cannot draw or encode one at all.
  */
-async function scaleDown(
+async function encodeAgain(
   file: Blob,
-  mediaType: MessageImageType,
-): Promise<Blob | undefined | 'unreadable'> {
+  sniffed: MessageImageType,
+): Promise<Encoded | 'unreadable' | 'unsupported'> {
   if (typeof createImageBitmap !== 'function') {
-    return undefined;
+    return 'unsupported';
   }
   let bitmap: ImageBitmap;
   try {
-    bitmap = await createImageBitmap(file);
+    // `from-image` applies the orientation the metadata records, which the
+    // new encoding no longer carries.
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   } catch {
     return 'unreadable';
   }
   try {
     const longer = Math.max(bitmap.width, bitmap.height);
-    if (longer <= MESSAGE_IMAGE_MAX_EDGE) {
-      return undefined;
-    }
-    const ratio = MESSAGE_IMAGE_MAX_EDGE / longer;
+    const ratio =
+      longer > MESSAGE_IMAGE_MAX_EDGE ? MESSAGE_IMAGE_MAX_EDGE / longer : 1;
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(bitmap.width * ratio));
     canvas.height = Math.max(1, Math.round(bitmap.height * ratio));
     const context = canvas.getContext('2d');
     if (!context) {
-      return undefined;
+      return 'unsupported';
     }
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>(resolve =>
-      canvas.toBlob(resolve, mediaType, SCALED_QUALITY),
-    );
-    // A browser that cannot encode the type (WebP in old Safari) answers with
-    // a PNG or nothing; sending the original then is better than a mislabel.
-    return blob && blob.type === mediaType ? blob : undefined;
+    const wanted: MessageImageType =
+      sniffed === 'image/gif' ? 'image/png' : sniffed;
+    for (const mediaType of new Set<MessageImageType>([wanted, 'image/png'])) {
+      const blob = await new Promise<Blob | null>(resolve =>
+        canvas.toBlob(resolve, mediaType, ENCODE_QUALITY),
+      );
+      // A browser that cannot encode the type answers with a PNG or nothing.
+      if (blob && blob.type === mediaType) {
+        return { blob, mediaType, scaled: ratio < 1 };
+      }
+    }
+    return 'unsupported';
   } finally {
     bitmap.close();
   }
@@ -191,6 +214,71 @@ async function readDataUrl(
   return `data:${mediaType};base64,${url.slice(url.indexOf(',') + 1)}`;
 }
 
+function extensionOf(mediaType: MessageImageType): string {
+  return mediaType === 'image/jpeg' ? 'jpg' : mediaType.slice('image/'.length);
+}
+
+function hasExtensionOf(name: string, mediaType: MessageImageType): boolean {
+  const extension = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+  return mediaType === 'image/jpeg'
+    ? extension === 'jpg' || extension === 'jpeg'
+    : extension === mediaType.slice('image/'.length);
+}
+
+function withExtension(name: string, extension: string): string {
+  const dot = name.lastIndexOf('.');
+  return `${dot > 0 ? name.slice(0, dot) : name}.${extension}`;
+}
+
+/**
+ * `name`, or — when an attached image is already called that — the same with
+ * " (2)", " (3)", … before its extension, so each remove control is announced
+ * by a name of its own.
+ */
+export function uniqueImageName(
+  name: string,
+  taken: readonly Pick<ComposerImage, 'name'>[],
+): string {
+  const names = new Set(taken.map(image => image.name));
+  if (!names.has(name)) {
+    return name;
+  }
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot) : '';
+  for (let copy = 2; ; copy += 1) {
+    const candidate = `${stem} (${copy})${extension}`;
+    if (!names.has(candidate)) {
+      return candidate;
+    }
+  }
+}
+
+/**
+ * What a pasted image is called. Not the file's name: browsers call every
+ * pasted image `image.png`. {@link prepareImage} adds the extension of the
+ * type it is sent as.
+ */
+export const PASTED_IMAGE_NAME = 'Pasted image';
+
+function sessionBudgetProblem(
+  session: SessionImages,
+  bytes: number,
+  count: number,
+): string | undefined {
+  if (session.count + count > SESSION_IMAGES_MAX_COUNT) {
+    return `This session already carries ${session.count} images, and the model is sent all of them every turn; a session can carry ${SESSION_IMAGES_MAX_COUNT}. Start a new session to send more images.`;
+  }
+  if (session.bytes + bytes > SESSION_IMAGES_MAX_BYTES) {
+    return `This session already carries ${formatBytes(
+      session.bytes,
+    )} of images, and the model is sent all of them every turn; a session can carry ${formatLimit(
+      SESSION_IMAGES_MAX_BYTES,
+    )}. Start a new session to send more images.`;
+  }
+  return undefined;
+}
+
 /**
  * Why adding `adding` to the images already attached would break a limit of
  * the message or the session, or `undefined` when it fits.
@@ -198,7 +286,7 @@ async function readDataUrl(
 export function messageImagesProblem(
   attached: readonly Pick<ComposerImage, 'byteSize'>[],
   adding: Pick<ComposerImage, 'byteSize' | 'name'>,
-  sessionBytes = 0,
+  session: SessionImages = NO_SESSION_IMAGES,
 ): string | undefined {
   if (attached.length >= MESSAGE_IMAGE_MAX_COUNT) {
     return `A message can carry ${MESSAGE_IMAGE_MAX_COUNT} images. Remove one to attach ${adding.name}, or send it with the next message.`;
@@ -211,41 +299,95 @@ export function messageImagesProblem(
       MESSAGE_IMAGES_MAX_TOTAL_BYTES,
     )}. Send it with the next message.`;
   }
-  if (sessionBytes + total + adding.byteSize > SESSION_IMAGES_MAX_BYTES) {
-    return `This session already carries ${formatBytes(
-      sessionBytes,
-    )} of images, and the model is sent all of them every turn; a session can carry ${formatLimit(
-      SESSION_IMAGES_MAX_BYTES,
-    )}. Start a new session to send more images.`;
-  }
-  return undefined;
+  return sessionBudgetProblem(
+    session,
+    total + adding.byteSize,
+    attached.length + 1,
+  );
 }
 
 /**
- * Why the agent cannot take images, or `undefined` when it can — or when the
- * portal cannot tell, in which case the send says so if the model refuses.
+ * Why the images attached cannot be sent as they are, or `undefined` when
+ * they can. For a box whose images were not all checked together: a failed
+ * message's put back beside ones attached meanwhile, or a session that has
+ * grown since they were attached.
+ */
+export function attachedImagesProblem(
+  images: readonly Pick<ComposerImage, 'byteSize'>[],
+  session: SessionImages = NO_SESSION_IMAGES,
+): string | undefined {
+  if (images.length > MESSAGE_IMAGE_MAX_COUNT) {
+    return `${images.length} images are attached; a message can carry ${MESSAGE_IMAGE_MAX_COUNT}. Remove some, and send them with the next message.`;
+  }
+  const total = images.reduce((sum, image) => sum + image.byteSize, 0);
+  if (total > MESSAGE_IMAGES_MAX_TOTAL_BYTES) {
+    return `The images attached come to ${formatBytes(
+      total,
+    )}; a message can carry ${formatLimit(
+      MESSAGE_IMAGES_MAX_TOTAL_BYTES,
+    )}. Remove one, and send it with the next message.`;
+  }
+  return images.length > 0
+    ? sessionBudgetProblem(session, total, images.length)
+    : undefined;
+}
+
+/**
+ * The model providers whose kagent model adapter hands images to the model:
+ * the Go ADK's OpenAI adapter (OpenAI, Azure OpenAI, Foundry), its Anthropic
+ * one (Anthropic, Anthropic on Vertex AI) and ADK's own Gemini model. Its
+ * Ollama, Bedrock, Mistral and SAP AI Core adapters drop images without a
+ * word, so the agent would answer as if none was sent.
+ */
+const IMAGE_PROVIDERS: ReadonlySet<string> = new Set([
+  'Anthropic',
+  'AnthropicVertexAI',
+  'AzureOpenAI',
+  'Foundry',
+  'Gemini',
+  'GeminiVertexAI',
+  'OpenAI',
+]);
+
+const PROVIDER_LABELS: Record<string, string> = {
+  SAPAICore: 'SAP AI Core',
+};
+
+/**
+ * Why the agent cannot take images, or `undefined` when it can — as far as the
+ * portal can tell, which stops at the model: kagent records nothing about
+ * whether a given model takes images, and an OpenAI-compatible endpoint
+ * serving a text-only one refuses the turn.
  *
- * What the portal can know: kagent's Claude Code and Codex runtimes accept a
+ * What the portal does know: kagent's Claude Code and Codex runtimes accept a
  * message of exactly one text part and fail the turn otherwise, and its Go ADK
- * runtime passes images to OpenAI-compatible, Anthropic and Gemini models but
- * drops them for Ollama. Whether a given model takes images, nothing in kagent
- * records; an OpenAI-compatible endpoint serving a text-only model refuses the
- * turn.
+ * runtime passes images only to the providers in {@link IMAGE_PROVIDERS}. A
+ * runtime or provider not read yet is not guessed at: images wait until it
+ * is. A custom runtime (`byo`) is its own A2A server and is given them.
  */
 export function imagesUnsupportedReason(
-  agent:
-    Pick<AgentRow, 'name' | 'harnessRuntime' | 'modelProvider'> | undefined,
+  agent: Pick<AgentRow, 'name' | 'harnessRuntime' | 'modelProvider'>,
 ): string | undefined {
-  if (!agent) {
-    return undefined;
-  }
-  if (agent.harnessRuntime === 'claude' || agent.harnessRuntime === 'codex') {
+  const runtime = agent.harnessRuntime;
+  if (runtime === 'claude' || runtime === 'codex') {
     return `${agent.name} cannot take images: its ${runtimeLabel(
-      agent.harnessRuntime,
+      runtime,
     )} runtime accepts text only.`;
   }
-  if (agent.modelProvider === 'Ollama') {
-    return `${agent.name} cannot take images: kagent does not pass images to Ollama models.`;
+  if (runtime === 'byo') {
+    return undefined;
+  }
+  if (runtime === undefined) {
+    return `The portal cannot tell yet whether ${agent.name} can take images: it has not read the agent's runtime. Try again in a moment.`;
+  }
+  const provider = agent.modelProvider;
+  if (provider === undefined) {
+    return `The portal cannot tell yet whether ${agent.name} can take images: it has not read the agent's model. Try again in a moment.`;
+  }
+  if (!IMAGE_PROVIDERS.has(provider)) {
+    return `${agent.name} cannot take images: kagent does not pass images to ${
+      PROVIDER_LABELS[provider] ?? provider
+    } models.`;
   }
   return undefined;
 }
@@ -254,18 +396,9 @@ export function imagesUnsupportedReason(
 export function toMessageImages(
   images: readonly ComposerImage[],
 ): MessageImage[] {
-  return images.map(({ mediaType, data, name }) => ({
+  return images.map(({ mediaType, previewUrl, name }) => ({
     mediaType,
-    data,
+    data: previewUrl.slice(previewUrl.indexOf(',') + 1),
     name,
   }));
-}
-
-/** A name for a pasted image, which has none of its own. */
-export function pastedImageName(mediaType: string, index: number): string {
-  const extension =
-    mediaType === 'image/jpeg' ? 'jpg' : mediaType.replace('image/', '');
-  return `Pasted image${index > 0 ? ` ${index + 1}` : ''}.${
-    /^[a-z]+$/.test(extension) ? extension : 'png'
-  }`;
 }

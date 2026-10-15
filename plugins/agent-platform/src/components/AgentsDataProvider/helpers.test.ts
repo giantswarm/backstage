@@ -414,6 +414,13 @@ describe('toAgentRow', () => {
       ]).harnessTitle,
     ).toBe('Go coder Harness');
     expect(toAgentRow(agent, []).harnessTitle).toBeUndefined();
+    // Its runtime too, which decides whether a message may carry images.
+    expect(
+      toAgentRow(agent, [], undefined, undefined, [
+        harness('claude-go', namespace!),
+      ]).harnessRuntime,
+    ).toBe('claude');
+    expect(toAgentRow(agent, []).harnessRuntime).toBeUndefined();
   });
 
   it('carries the Harness warnings', () => {

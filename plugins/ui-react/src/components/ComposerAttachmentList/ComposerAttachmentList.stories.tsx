@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
 import { ButtonIcon, TextAreaField } from '@backstage/ui';
-import AddPhotoAlternateOutlinedIcon from '@material-ui/icons/AddPhotoAlternateOutlined';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import {
   ComposerAttachment,
@@ -55,8 +54,8 @@ const meta = {
             'What a message carries besides its text, before it is sent: a ' +
             'chip per attachment with a thumbnail, its name and a remove control.',
           whenToUse:
-            "In `ComposerFrame`'s `attachments` slot, for images pasted, dropped " +
-            'or picked into a chat-style composer. The caller owns the list and ' +
+            "In `ComposerFrame`'s `attachments` slot, for images pasted or " +
+            'dropped into a chat-style composer. The caller owns the list and ' +
             'its limits; this only shows it and reports removals.',
           migration: 'bui',
           extra:
@@ -95,19 +94,11 @@ function InAComposerDemo(args: ComposerAttachmentListProps) {
         />
       }
       trailing={
-        <>
-          <ButtonIcon
-            type="button"
-            variant="tertiary"
-            aria-label="Attach images"
-            icon={<AddPhotoAlternateOutlinedIcon />}
-          />
-          <ButtonIcon
-            type="submit"
-            aria-label="Send"
-            icon={<ArrowUpwardIcon />}
-          />
-        </>
+        <ButtonIcon
+          type="submit"
+          aria-label="Send"
+          icon={<ArrowUpwardIcon />}
+        />
       }
     />
   );
