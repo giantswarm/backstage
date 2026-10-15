@@ -85,6 +85,7 @@ import {
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
+import { useReadingAnchor } from './useReadingAnchor';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
   COLUMN_RESERVE_VAR,
@@ -709,8 +710,12 @@ export function SessionDetailPage() {
     isKnown: isToolActivityKnown,
     setShowToolActivity,
   } = useShowToolActivity();
+  // Adding or removing the work summaries around the place being read must
+  // not move it: from the compact header the switch is pressed mid-session.
+  const captureReadingAnchor = useReadingAnchor(showToolActivity);
   const changeToolActivity = useCallback(
     (show: boolean) => {
+      captureReadingAnchor();
       // A failed write puts the switch and the conversation back to the
       // stored choice, so say why rather than let it snap back.
       setShowToolActivity(show).catch((failure: Error) => {
@@ -724,7 +729,7 @@ export function SessionDetailPage() {
         });
       });
     },
-    [setShowToolActivity, toastApi],
+    [captureReadingAnchor, setShowToolActivity, toastApi],
   );
 
   const actions = useMemo(

@@ -52,6 +52,15 @@ const PHONE_GUTTER = 16;
 /** How long the compact header takes to fade in, in ms. */
 const COMPACT_HEADER_FADE_MS = 150;
 
+/**
+ * How far, in px, the content's start has to come back into view before the
+ * compact header expands again (see `useScrolledPast`). It turns compact at
+ * the top edge, so a reflow that moves the content's start a few pixels
+ * either way — the page reacting to a switch in the compact header — cannot
+ * make it flick between the two.
+ */
+const COMPACT_HEADER_HYSTERESIS = 24;
+
 /** Marks a part of the header that the compact header leaves out. */
 const EXPANDED_ONLY_ATTRIBUTE = 'data-shell-page-expanded-only';
 
@@ -101,6 +110,15 @@ const useStyles = makeStyles({
   },
   headerWithBreadcrumbs: {
     marginTop: 20,
+  },
+  // Out of the browser's scroll anchoring. The compact header is the first
+  // thing in view, so the browser would anchor on it — and when it turns
+  // back into the expanded header, which sits further up, "keep the anchor
+  // in place" scrolls the page by the difference, which puts the content's
+  // start out of view and turns it compact again: the header flickers. The
+  // spacer and the sentinel move with it, so they sit out too.
+  notAnchor: {
+    overflowAnchor: 'none',
   },
   '@keyframes compactHeaderIn': {
     from: { opacity: 0 },
@@ -585,7 +603,9 @@ export function ShellPage({
   const [sentinel, setSentinel] = useState<HTMLElement | null>(null);
   const [spacer, setSpacer] = useState<HTMLElement | null>(null);
   const [header, setHeader] = useState<HTMLElement | null>(null);
-  const isPastHeader = useScrolledPast(sentinel);
+  const isPastHeader = useScrolledPast(sentinel, {
+    hysteresis: COMPACT_HEADER_HYSTERESIS,
+  });
   const [isFocusExpandedOnly, setFocusExpandedOnly] = useState(false);
   const isCompact = compactHeader && isPastHeader && !isFocusExpandedOnly;
   useCompactHeaderLayout(header, spacer, isCompact);
@@ -609,7 +629,9 @@ export function ShellPage({
         ref={compactHeader ? setHeader : undefined}
         className={`${classes.header} ${
           hasBreadcrumbs ? classes.headerWithBreadcrumbs : ''
-        } ${isCompact ? classes.headerCompact : ''}`}
+        } ${compactHeader ? classes.notAnchor : ''} ${
+          isCompact ? classes.headerCompact : ''
+        }`}
         data-compact={isCompact ? '' : undefined}
         data-testid={compactHeader ? 'shell-page-header' : undefined}
         onFocus={onHeaderFocus}
@@ -655,7 +677,9 @@ export function ShellPage({
           </div>
         )}
       </div>
-      {compactHeader && <div ref={setSpacer} aria-hidden />}
+      {compactHeader && (
+        <div ref={setSpacer} className={classes.notAnchor} aria-hidden />
+      )}
       {tabs && tabs.length > 0 && (
         <div className={classes.tabs}>
           <RouteTabs
@@ -668,7 +692,10 @@ export function ShellPage({
         </div>
       )}
       {compactHeader && (
-        <div className={classes.contentStart} aria-hidden>
+        <div
+          className={`${classes.contentStart} ${classes.notAnchor}`}
+          aria-hidden
+        >
           <div ref={setSentinel} className={classes.contentStartSentinel} />
         </div>
       )}

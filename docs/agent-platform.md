@@ -1284,6 +1284,18 @@ leaves out. The document's `scroll-padding-top` keeps whatever is scrolled
 into view below the compact row, and its fade is off under
 `prefers-reduced-motion`.
 
+The switch stays usable mid-session: toggling it adds or removes work
+summaries above and below the place being read, so `useReadingAnchor` records
+the first entry in view that survives the toggle (a message or a turn marker,
+never a work summary) and its offset, turns the browser's scroll anchoring off
+for that change, and scrolls back by however far the entry moved, before
+paint. The header, its spacer and the sentinel are `overflow-anchor: none`:
+anchored on the sticky header, the browser would scroll the page when it turns
+back into the expanded header, which turns it compact again, a flicker. The
+compact header also expands only once the content's start is 24px back in
+view (`useScrolledPast`'s `hysteresis`), so a reflow that nudges it a few
+pixels cannot flip it.
+
 ### Timestamps are absolute here
 
 The detail page shows absolute times (`28 Jul 2026, 10:07 UTC`), because

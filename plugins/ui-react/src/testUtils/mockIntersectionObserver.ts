@@ -27,9 +27,12 @@ export type MockedIntersectionObserver = {
   observed(): Element[];
   /**
    * Tell the observers watching `target` (by default, every observed element)
-   * that it is now `position`.
+   * that it is now `position`: a named place, or the y, in px from the
+   * viewport's top, of the element's bottom edge (a negative y is above the
+   * view). Each observer answers by its own `rootMargin`'s top, so an
+   * observer whose root starts lower sees the element leave earlier.
    */
-  report(position: IntersectionPosition, target?: Element): void;
+  report(position: IntersectionPosition | number, target?: Element): void;
   /** Put back the `IntersectionObserver` there was before. */
   restore(): void;
 };
@@ -64,11 +67,18 @@ export function mockIntersectionObserver(): MockedIntersectionObserver {
 
   class FakeIntersectionObserver {
     readonly root = null;
-    readonly rootMargin = '0px';
+    readonly rootMargin: string;
     readonly thresholds = [0];
     readonly targets = new Set<Element>();
+    /** Where this observer's root starts: its `rootMargin`'s top, inverted. */
+    private readonly rootTop: number;
 
-    constructor(private readonly callback: IntersectionObserverCallback) {
+    constructor(
+      private readonly callback: IntersectionObserverCallback,
+      options?: IntersectionObserverInit,
+    ) {
+      this.rootMargin = options?.rootMargin ?? '0px';
+      this.rootTop = -(parseFloat(this.rootMargin) || 0);
       observers.add(this);
     }
 
@@ -89,18 +99,21 @@ export function mockIntersectionObserver(): MockedIntersectionObserver {
       return [];
     }
 
-    notify(position: IntersectionPosition, target?: Element) {
+    notify(position: IntersectionPosition | number, target?: Element) {
+      const y = typeof position === 'number' ? position : TOPS[position];
+      // Edge-inclusive, as the browser's: a box touching the root intersects.
+      const isIntersecting = y >= this.rootTop && y <= VIEWPORT_HEIGHT;
       const entries = [...this.targets]
         .filter(element => !target || element === target)
         .map(
           element =>
             ({
               target: element,
-              isIntersecting: position === 'in-view',
-              intersectionRatio: position === 'in-view' ? 1 : 0,
-              boundingClientRect: rect(TOPS[position]),
+              isIntersecting,
+              intersectionRatio: isIntersecting ? 1 : 0,
+              boundingClientRect: rect(y),
               intersectionRect: rect(0),
-              rootBounds: rect(0, VIEWPORT_HEIGHT),
+              rootBounds: rect(this.rootTop, VIEWPORT_HEIGHT - this.rootTop),
               time: 0,
             }) as IntersectionObserverEntry,
         );
@@ -114,7 +127,9 @@ export function mockIntersectionObserver(): MockedIntersectionObserver {
     FakeIntersectionObserver;
 
   return {
-    observed: () => [...observers].flatMap(observer => [...observer.targets]),
+    observed: () => [
+      ...new Set([...observers].flatMap(observer => [...observer.targets])),
+    ],
     report: (position, target) => {
       observers.forEach(observer => observer.notify(position, target));
     },

@@ -374,6 +374,43 @@ describe('ShellPage', () => {
       expect(header()).toHaveStyle({ position: 'sticky', top: '0px' });
     });
 
+    it('does not flick back and forth while the content start moves a few pixels', () => {
+      renderLongPage();
+
+      act(() => observer.report('above'));
+      expect(header()).toHaveAttribute('data-compact');
+
+      // A reflow nudging the content's start just back into view keeps it
+      // compact; coming properly back into view expands it.
+      act(() => observer.report(10));
+      expect(header()).toHaveAttribute('data-compact');
+      act(() => observer.report(-2));
+      act(() => observer.report(12));
+      expect(header()).toHaveAttribute('data-compact');
+      act(() => observer.report(100));
+      expect(header()).not.toHaveAttribute('data-compact');
+
+      // And expanded, a few pixels below the edge stay expanded.
+      act(() => observer.report(10));
+      expect(header()).not.toHaveAttribute('data-compact');
+    });
+
+    it('keeps the header, its spacer and the sentinel out of scroll anchoring', () => {
+      renderLongPage();
+      act(() => observer.report('above'));
+
+      // The compact header is the first thing in view: anchored on, its
+      // turning back into the expanded header would scroll the page.
+      const [sentinel] = observer.observed();
+      for (const element of [
+        header(),
+        header().nextElementSibling!,
+        sentinel.parentElement!,
+      ]) {
+        expect(element).toHaveStyle({ overflowAnchor: 'none' });
+      }
+    });
+
     it('keeps one header: one h1 and one of each action, the same elements', () => {
       renderLongPage();
       const edit = screen.getByRole('button', { name: 'Edit' });

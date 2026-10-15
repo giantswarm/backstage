@@ -9,5 +9,7 @@ view (a smaller title, the badges, the actions), without moving the content.
 `ShellPageExpandedOnly` marks what the compact row leaves out. The session
 detail page uses it, keeping the session's name, state, agent, "Show tool
 activity" (not at phone width), the pin and the actions menu in sight.
-`useScrolledPast` is a new hook, and `ui-react/testUtils` adds
+Toggling "Show tool activity" keeps the place being read where it is on
+screen.
+`useScrolledPast` is a new hook (with a `hysteresis` option), and `ui-react/testUtils` adds
 `mockIntersectionObserver`.
