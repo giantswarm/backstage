@@ -6637,7 +6637,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/plugin-signals-react@npm:^0.0.26":
+"@backstage/plugin-signals-react@backstage:^::backstage=1.55.3&npm=0.0.26, @backstage/plugin-signals-react@npm:^0.0.26":
   version: 0.0.26
   resolution: "@backstage/plugin-signals-react@npm:0.0.26"
   dependencies:
@@ -22738,6 +22738,7 @@ __metadata:
     "@backstage/plugin-search": "backstage:^"
     "@backstage/plugin-search-react": "backstage:^"
     "@backstage/plugin-signals": "backstage:^"
+    "@backstage/plugin-signals-react": "backstage:^"
     "@backstage/plugin-techdocs": "backstage:^"
     "@backstage/plugin-techdocs-module-addons-contrib": "backstage:^"
     "@backstage/plugin-techdocs-react": "backstage:^"

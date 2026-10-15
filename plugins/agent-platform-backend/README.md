@@ -82,6 +82,44 @@ still reads the 0.10 envelope. The split is **backend = transport, frontend =
 schema**, so a wire change on the line is a common-package change and never a
 backend release.
 
+### Session states are derived here
+
+`GET /kagent/session-states` is the exception to "nothing is reshaped": it
+answers one summary entry per session, computed from the session list and each
+candidate's newest task (status only), cached per caller for 15 seconds. Its
+shape is `SessionStatesResponse` in `agent-platform-common`:
+
+```json
+{
+  "evaluatedAt": 1760518800000,
+  "states": [
+    { "sessionId": "…", "state": "input-required", "changedAt": 1760518000000 },
+    {
+      "sessionId": "…",
+      "state": "failed",
+      "changedAt": 1760517000000,
+      "failureReason": "model-unavailable"
+    }
+  ],
+  "unreadable": [],
+  "skipped": 0
+}
+```
+
+- `state` is the A2A state as kagent reports it, or the instance's own state
+  when that decides (`failed`, `creating`, `deleting`).
+- `failureReason`, on a failed or rejected turn and on a failed instance only:
+  `model-unavailable`, `tool-failed`, `runtime-lost` or `other`, classified
+  from the turn's `status.message` or the instance's `Failure`
+  (`classifyFailureText` in `agent-platform-common`). Only the class leaves the
+  backend, never the text: that is the provider's raw error and may carry
+  URLs, model ids and response bodies. A text that matches no shape kagent is
+  known to produce is `other`.
+- `authServer`, on an `auth-required` session: the server it waits on a sign-in
+  for, as a short name. Reserved: no kagent runtime names one today (kagent's
+  own runtimes never enter `auth-required`, and the Python ADK's credential
+  request names no server), so it is absent.
+
 ### Sessions are not created here
 
 A session starts through agent-manager's `start_session`, which the frontend

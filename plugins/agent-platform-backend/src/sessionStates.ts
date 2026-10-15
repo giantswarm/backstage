@@ -1,10 +1,13 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import {
+  findNewestStatefulTaskIndex,
   isListableSession,
   KagentSession,
   normalizeSessionList,
   normalizeTaskList,
+  readInstanceFailureReason,
   readNewestTaskState,
+  readTaskFailureReason,
   SessionStateEntry,
   SessionStatesResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -185,8 +188,9 @@ export class SessionStateReader {
         budgetMs: this.budgetMs,
       },
       now: this.now,
-      // Status only: the newest task's state and timestamp are all this reads,
-      // and a conversation's history and artifacts are the bulk of a task.
+      // Status only: the newest task's state, timestamp and status message are
+      // all this reads, and a conversation's history and artifacts are the
+      // bulk of a task.
       read: (sessionId, timeoutMs) =>
         this.client.listSessionTasks(
           sessionId,
@@ -196,12 +200,18 @@ export class SessionStateReader {
       onPayload: (session, payload) => {
         const { tasks } = normalizeTaskList(payload);
         const newest = readNewestTaskState(tasks);
+        const index = findNewestStatefulTaskIndex(tasks);
+        // Reduced here to a class: the failure text is the provider's raw
+        // error and never leaves the backend.
+        const failureReason =
+          index === undefined ? undefined : readTaskFailureReason(tasks[index]);
         states.push({
           sessionId: session.sessionId,
           state: newest?.state.raw ?? null,
           ...(newest?.changedAt === undefined
             ? {}
             : { changedAt: newest.changedAt }),
+          ...(failureReason === undefined ? {} : { failureReason }),
         });
       },
     });
@@ -255,7 +265,8 @@ const INSTANCE_DECIDED_STATES = new Set(['failed', 'creating', 'deleting']);
 /**
  * The state entry an instance's own lifecycle state decides, or undefined when
  * its tasks have to be read. The instance's `updatedAt` is the age basis, as it
- * moves with every lifecycle change.
+ * moves with every lifecycle change. A failed instance carries its failure's
+ * class, never its message.
  */
 function instanceDecidedState(
   session: KagentSession,
@@ -268,5 +279,8 @@ function instanceDecidedState(
     sessionId: session.sessionId,
     state: session.state,
     ...(Number.isNaN(changedAt) ? {} : { changedAt }),
+    ...(session.state === 'failed'
+      ? { failureReason: readInstanceFailureReason(session.failure) }
+      : {}),
   };
 }
