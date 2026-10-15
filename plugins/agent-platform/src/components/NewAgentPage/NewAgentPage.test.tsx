@@ -247,4 +247,37 @@ describe('NewAgentPage', () => {
     await userEvent.type(name, 'Support triage');
     expect(name).not.toHaveAttribute('aria-invalid');
   });
+
+  it('checks an egress origin when the person leaves the field, not while they type', async () => {
+    await renderPage();
+    await userEvent.click(screen.getByText('More options'));
+    const egress = screen.getByLabelText(/^Extra egress origins/);
+
+    await userEvent.type(egress, 'github.com/x');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+
+    await userEvent.tab();
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+
+    // Edited from one problem into another without passing a valid value:
+    // the error stays, and follows the change.
+    await userEvent.type(egress, '{Home}https://');
+    expect(egress).toHaveValue('https://github.com/x');
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+    // The moment it is valid, the error goes.
+    await userEvent.type(egress, '{End}{Backspace}{Backspace}');
+    expect(egress).toHaveValue('https://github.com');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('says nothing about an empty Name that was only tabbed through', async () => {
+    await renderPage();
+    const name = screen.getByLabelText(/^Name/);
+
+    await userEvent.click(name);
+    await userEvent.tab();
+
+    expect(name).not.toHaveAttribute('aria-invalid');
+    expect(screen.queryByText(/Name is required/)).not.toBeInTheDocument();
+  });
 });

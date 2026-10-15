@@ -12,7 +12,6 @@ import {
 } from '@backstage/ui';
 import {
   dialogDismissLock,
-  fieldErrorProps,
   useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -66,13 +65,12 @@ export function RemoveModelBackendDialog({
   const startAnswer = useOpenGeneration(isOpen);
   const label = BACKEND_KIND_LABEL[kind];
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
+  const validation = useFieldValidation(scope, { isOpen });
 
   useEffect(() => {
     if (!isOpen) {
       setTyped('');
       setPlan(undefined);
-      validation.reset();
       write.reset();
       return;
     }
@@ -182,7 +180,7 @@ export function RemoveModelBackendDialog({
                 value={typed}
                 onChange={setTyped}
                 isDisabled={isBusy}
-                {...fieldErrorProps(validation.errorFor(typedError))}
+                {...validation.textFieldProps('typed', typedError)}
               />
             )}
           </Flex>

@@ -5,7 +5,6 @@ import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
 import {
-  fieldErrorProps,
   useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -163,9 +162,9 @@ export function NewConnectorConnectPage() {
     setTransport(detected);
   }, [registeredName, detected, state.transport, setTransport]);
 
-  // Each field shows its own problem once the person tries to proceed — not
-  // before, so the form doesn't shout about empty fields up front — and a
-  // blocked Continue moves the focus to the first one.
+  // Each field shows its own problem once the person leaves it having typed
+  // in it, or tries to proceed — not while they first type — and a blocked
+  // Continue moves the focus to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { reveal } = validation;
   const errorCount = detailsErrors.length;
@@ -216,9 +215,7 @@ export function NewConnectorConnectPage() {
           value={state.url}
           onChange={setUrl}
           placeholder="https://mcp.example.com/mcp"
-          {...fieldErrorProps(
-            validation.errorFor(inStepWords(fieldErrors.url)),
-          )}
+          {...validation.textFieldProps('url', inStepWords(fieldErrors.url))}
         />
         <DetectionStatus url={state.url} installation={state.installation} />
       </Flex>
@@ -236,8 +233,9 @@ export function NewConnectorConnectPage() {
             ? 'It cannot be changed after registration.'
             : 'Shown when giving an agent access.'
         }
-        {...fieldErrorProps(
-          validation.errorFor(fieldErrors.name ?? fieldErrors.slug),
+        {...validation.textFieldProps(
+          'name',
+          fieldErrors.name ?? fieldErrors.slug,
         )}
       />
       {!registeredName && state.slug && (
@@ -253,10 +251,10 @@ export function NewConnectorConnectPage() {
         onChange={setDescription}
         rows={2}
         placeholder="e.g. Search, read and update tickets"
-        error={validation.errorFor(fieldErrors.description)}
+        {...validation.fieldProps('description', fieldErrors.description)}
       />
 
-      {validation.shown && unanchoredErrors.length > 0 && (
+      {validation.submitted && unanchoredErrors.length > 0 && (
         <Alert
           status="danger"
           title="Fix before continuing"

@@ -292,7 +292,9 @@ export function ImportModelPage({
             : 'Search the hub, then pick a model from the results.'
         }`,
   };
-  const targetError = useSelectFieldError(validation.errorFor(errors.target));
+  const targetError = useSelectFieldError(
+    validation.errorFor('target', errors.target),
+  );
 
   const submit = async () => {
     if (errors.target || errors.model) {
@@ -398,7 +400,9 @@ export function ImportModelPage({
                 onChange={setQuery}
                 placeholder="e.g. Qwen3-14B, devstral, org/repository"
                 description="Enter repository ids or words from the name; the hub ranks by downloads."
-                {...fieldErrorProps(validation.errorFor(errors.model))}
+                // Not checked on leaving: its problem is the pick from the
+                // results, not the words typed to search.
+                {...fieldErrorProps(validation.errorFor('model', errors.model))}
               />
             </div>
             <Button

@@ -175,9 +175,11 @@ them and never invent a palette.
 - Field edges, focus rings and invalid states come from the shell's
   `--agent-shell-input-*` rules in `agent-shell.css`. Do not restyle fields per
   component.
-- Validate per field with `useFieldValidation` (`ui-react/FieldValidation`):
-  errors appear after the first blocked attempt, on the field, and focus moves
-  to the first invalid one. A summary box is only for problems no field can
+- Validation follows the [`forms`](../forms/SKILL.md) skill: a field is
+  checked when the person leaves it, a shown error follows each change until
+  it is fixed, and a blocked submit shows every error and focuses the first
+  invalid field, all through `useFieldValidation` (`ui-react/FieldValidation`).
+  Submit buttons stay enabled. A summary box is only for problems no field can
   show.
 - Mark optional fields "(optional)" consistently within a form.
 

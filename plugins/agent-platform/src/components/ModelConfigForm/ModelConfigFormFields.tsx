@@ -8,9 +8,9 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
-  fieldErrorProps,
   MoreOptions,
   SectionHeader,
+  type FieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -27,11 +27,13 @@ export type ModelConfigFormFieldsProps = {
   values: ModelConfigFormValues;
   onChange: (patch: Partial<ModelConfigFormValues>) => void;
   mode: 'create' | 'edit';
-  /**
-   * The problems to show on the fields themselves — the page passes them once
-   * a submit was blocked (`modelConfigFieldErrors`, `useFieldValidation`).
-   */
+  /** Each field's current problem (`modelConfigFieldErrors`). */
   errors?: ModelConfigFieldErrors;
+  /**
+   * The page's `useFieldValidation`, which decides when a field shows its
+   * problem: once the person leaves it, or once a submit was blocked.
+   */
+  validation: Pick<FieldValidation, 'textFieldProps'>;
   /**
    * Whether "More options" is open. The page owns it, so a blocked submit
    * can open it on a field inside.
@@ -107,6 +109,7 @@ export function ModelConfigFormFields({
   onChange,
   mode,
   errors = {},
+  validation,
   moreOptionsOpen,
   onMoreOptionsOpenChange,
   originalProvider,
@@ -117,6 +120,7 @@ export function ModelConfigFormFields({
   const hasEndpoint = providerHasEndpoint(values.provider);
   const needsKey = Boolean(PROVIDER_SECRET_KEYS[values.provider]);
   const isOllama = values.provider === 'Ollama';
+  const { textFieldProps } = validation;
   const keyCopy = apiKeyCopy({
     mode,
     provider: values.provider,
@@ -150,7 +154,7 @@ export function ModelConfigFormFields({
             value={values.displayName}
             onChange={displayName => onChange({ displayName })}
             placeholder="e.g. Sonnet 4.5"
-            {...fieldErrorProps(errors.displayName)}
+            {...textFieldProps('displayName', errors.displayName)}
           />
           {values.name && (
             <Text
@@ -208,7 +212,7 @@ export function ModelConfigFormFields({
                 isOllama ? 'e.g. qwen3:8b' : 'e.g. claude-sonnet-4-6'
               }
               description="Enter the model id as the provider names it."
-              {...fieldErrorProps(errors.model)}
+              {...textFieldProps('model', errors.model)}
             />
 
             {hasEndpoint && (
@@ -228,7 +232,7 @@ export function ModelConfigFormFields({
                     ? 'Enter the Ollama server to talk to.'
                     : 'Leave empty for the provider’s own endpoint, or set a compatible one like vLLM, llama.cpp or OpenRouter.'
                 }
-                {...fieldErrorProps(errors.endpoint)}
+                {...textFieldProps('endpoint', errors.endpoint)}
               />
             )}
           </Flex>
@@ -275,7 +279,7 @@ export function ModelConfigFormFields({
               onChange={name => onChange({ name })}
               placeholder="e.g. sonnet-4-5"
               description="Lowercase letters, numbers and hyphens. Names the resource and its key Secret."
-              {...fieldErrorProps(errors.name)}
+              {...textFieldProps('name', errors.name)}
             />
           )}
           {hasEndpoint && (

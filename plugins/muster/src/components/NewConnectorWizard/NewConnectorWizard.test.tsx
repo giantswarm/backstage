@@ -191,6 +191,23 @@ describe('shell connector wizard', () => {
       expect(address).not.toHaveAccessibleDescription(/^URL/);
     });
 
+    it('checks the address when the person leaves it, and clears the error once it is fixed', async () => {
+      await renderWizard('/agent-platform/connectors/new');
+      const address = screen.getByLabelText(/^Server address/);
+
+      await userEvent.type(address, 'mcp.example.com');
+      expect(address).not.toHaveAttribute('aria-invalid');
+
+      await userEvent.tab();
+      expect(address).toHaveAccessibleDescription(
+        expect.stringContaining('Server address must be an http(s) URL'),
+      );
+
+      await userEvent.clear(address);
+      await userEvent.type(address, 'https://mcp.example.com/mcp');
+      expect(address).not.toHaveAttribute('aria-invalid');
+    });
+
     it('shows the probe verdict as the inline "Server found" state', async () => {
       mockDetection = {
         detected: 'streamable-http',

@@ -9,7 +9,6 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
-  fieldErrorProps,
   MoreOptions,
   searchableIf,
   useFieldValidation,
@@ -283,10 +282,13 @@ export function AddModelBackendPage({
   );
   const errors = addBackendFieldErrors(installation, kind, form);
   const errorFor = (field: keyof AddBackendFieldErrors) =>
-    validation.errorFor(errors[field]);
+    validation.errorFor(field, errors[field]);
+  const checkedField = (field: keyof AddBackendFieldErrors) =>
+    validation.textFieldProps(field, errors[field]);
   const installationError = useSelectFieldError(errorFor('installation'));
   const kindError = useSelectFieldError(
     validation.errorFor(
+      'kind',
       kinds.length === 0 && !kind
         ? 'Every kind is registered on this environment already.'
         : errors.kind,
@@ -488,7 +490,7 @@ export function AddModelBackendPage({
                 description="Enter the base URL as model-manager reaches it, http(s)://host:port."
                 value={form.endpoint}
                 onChange={set('endpoint')}
-                {...fieldErrorProps(errorFor('endpoint'))}
+                {...checkedField('endpoint')}
               />
             )}
             {kind === 'kserve' && (
@@ -514,7 +516,7 @@ export function AddModelBackendPage({
                       isRequired
                       value={form.cluster}
                       onChange={set('cluster')}
-                      {...fieldErrorProps(errorFor('cluster'))}
+                      {...checkedField('cluster')}
                     />
                     <TextField
                       label="Organization"
@@ -528,7 +530,7 @@ export function AddModelBackendPage({
                       description="Enter the target apiserver URL. It must trust the environment's Dex, because every call presents your own token."
                       value={form.apiServer}
                       onChange={set('apiServer')}
-                      {...fieldErrorProps(errorFor('apiServer'))}
+                      {...checkedField('apiServer')}
                     />
                     <TextAreaField
                       label="CA bundle"
@@ -536,7 +538,7 @@ export function AddModelBackendPage({
                       description="Paste the target apiserver's CA as PEM, never credentials."
                       value={form.caBundle}
                       onChange={set('caBundle')}
-                      {...fieldErrorProps(errorFor('caBundle'))}
+                      {...checkedField('caBundle')}
                     />
                   </>
                 )}
@@ -546,7 +548,7 @@ export function AddModelBackendPage({
                   description="Enter where the InferenceServices, download Jobs and the cache live on the target."
                   value={form.servingNamespace}
                   onChange={set('servingNamespace')}
-                  {...fieldErrorProps(errorFor('servingNamespace'))}
+                  {...checkedField('servingNamespace')}
                 />
               </>
             )}
@@ -566,7 +568,7 @@ export function AddModelBackendPage({
                     description="Enter the base URL as agent pods reach it, if it differs from the endpoint."
                     value={form.agentEndpoint}
                     onChange={set('agentEndpoint')}
-                    {...fieldErrorProps(errorFor('agentEndpoint'))}
+                    {...checkedField('agentEndpoint')}
                   />
                 )}
                 {kind === 'kserve' && (

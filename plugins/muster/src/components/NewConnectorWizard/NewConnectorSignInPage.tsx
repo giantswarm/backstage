@@ -4,7 +4,6 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
-  fieldErrorProps,
   useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -192,10 +191,11 @@ export function NewConnectorSignInPage() {
     ? mutationErrorMessage(registration.error)
     : undefined;
 
-  // Each field shows its own problem once a registration was blocked, and the
-  // focus moves to the first one.
+  // Each field shows its own problem once the person leaves it having typed
+  // in it, or once a registration was blocked, and a blocked registration
+  // moves the focus to the first one (the `forms` skill).
   const validation = useFieldValidation();
-  const { reveal, errorFor } = validation;
+  const { reveal, textFieldProps } = validation;
   const authErrorCount = authErrors.length;
   const installation = state.installation;
   const authMode = state.authMode;
@@ -329,7 +329,7 @@ export function NewConnectorSignInPage() {
             }
             defaultExpanded={
               hasAdvancedAuthorizationServer(state) ||
-              (validation.shown && hasAdvancedProblem)
+              (validation.submitted && hasAdvancedProblem)
             }
           >
             <div className={classes.disclosureBody}>
@@ -344,7 +344,7 @@ export function NewConnectorSignInPage() {
                 onChange={setIssuer}
                 placeholder="https://auth.example.com"
                 description="Every setting below requires this."
-                {...fieldErrorProps(errorFor(fieldErrors.issuer))}
+                {...textFieldProps('issuer', fieldErrors.issuer)}
               />
               <TextField
                 label="Permissions to ask for (scopes)"
@@ -366,8 +366,9 @@ export function NewConnectorSignInPage() {
                 onChange={setAuthorizationEndpoint}
                 placeholder="https://github.com/login/oauth/authorize"
                 description="Set together with the token address, or leave both empty."
-                {...fieldErrorProps(
-                  errorFor(fieldErrors.authorizationEndpoint),
+                {...textFieldProps(
+                  'authorizationEndpoint',
+                  fieldErrors.authorizationEndpoint,
                 )}
               />
               <TextField
@@ -377,7 +378,7 @@ export function NewConnectorSignInPage() {
                 onChange={setTokenEndpoint}
                 placeholder="https://github.com/login/oauth/access_token"
                 description="Set together with the sign-in page address."
-                {...fieldErrorProps(errorFor(fieldErrors.tokenEndpoint))}
+                {...textFieldProps('tokenEndpoint', fieldErrors.tokenEndpoint)}
               />
               <div
                 className={classes.fieldGroup}
@@ -404,7 +405,10 @@ export function NewConnectorSignInPage() {
                   value={state.clientSecretName}
                   onChange={setClientSecretName}
                   placeholder="github-oauth-client"
-                  {...fieldErrorProps(errorFor(fieldErrors.clientSecretName))}
+                  {...textFieldProps(
+                    'clientSecretName',
+                    fieldErrors.clientSecretName,
+                  )}
                 />
                 <TextField
                   label="Secret namespace"
@@ -484,7 +488,7 @@ export function NewConnectorSignInPage() {
                 ? "Must match the region in the server's URL."
                 : authFields.sigv4.reason
             }
-            {...fieldErrorProps(errorFor(fieldErrors.sigv4Region))}
+            {...textFieldProps('sigv4Region', fieldErrors.sigv4Region)}
           />
           <TextField
             label="Signing service"
@@ -521,7 +525,7 @@ export function NewConnectorSignInPage() {
           context="Adding the connector needs a muster session."
         />
       )}
-      {validation.shown && fieldErrors.transport && (
+      {validation.submitted && fieldErrors.transport && (
         <Alert
           status="danger"
           title="Fix before continuing"

@@ -301,6 +301,17 @@ See `docs/ui.md` and the **`ui`** Claude Code skill for details — the full bui
 inventory, the MUI→bui swap table, and how to read Backstage Storybook
 component/story source without cloning the monorepo.
 
+#### Forms and field validation
+
+Forms follow the **`forms`** skill (`.claude/skills/forms/SKILL.md`): a field
+is checked when the person leaves it, never while they first type; a shown
+error clears the moment it is fixed; submit stays enabled, shows every error
+next to its field and focuses the first invalid one; errors are tied to their
+field for screen readers and say how to fix the problem. Build them with
+`useFieldValidation` from `ui-react`. **A review of a change that adds or
+changes a form, a dialog with inputs or a field's validation checks it against
+that skill's review checklist.**
+
 #### Analytics / Telemetry — keep in sync when adding pages
 
 Page views are reported via `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`,
