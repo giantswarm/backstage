@@ -1280,9 +1280,12 @@ the conversation does not move. `useScrolledPast` watches a sentinel that
 reaches from where the content starts up past the top of the document (the
 document scrolls, not a container), so even an instant jump to the top is
 seen. The header stays expanded while focus is on a part the compact row
-leaves out. The document's `scroll-padding-top` keeps whatever is scrolled
-into view below the compact row, and its fade is off under
-`prefers-reduced-motion`.
+leaves out. A `scroll-margin-top` on everything but the header keeps
+whatever is scrolled into view below the compact row, and its fade is off
+under `prefers-reduced-motion`. It is a margin on the content rather than a
+`scroll-padding-top` on the document: padding counts the stuck header's own
+top as hidden, so pressing the switch, whose input react-aria focuses on
+every press, scrolled the page to the top for a frame and back, a flicker.
 
 The switch stays usable mid-session: toggling it adds or removes work
 summaries above and below the place being read, so `useReadingAnchor` records

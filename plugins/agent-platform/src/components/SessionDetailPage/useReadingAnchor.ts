@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef } from 'react';
+import { SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * What the timeline keeps across a change that adds or removes entries: the
@@ -23,11 +24,15 @@ type ReadingAnchor = {
 
 /**
  * Where the view's readable part begins: below the compact header, whose
- * height ShellPage puts in the document's `scroll-padding-top`.
+ * height ShellPage puts on the document root while it is compact.
  */
 function visibleTop(): number {
   return (
-    parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0
+    parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR,
+      ),
+    ) || 0
   );
 }
 

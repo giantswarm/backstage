@@ -474,16 +474,41 @@ describe('ShellPage', () => {
       expect(pin).toHaveFocus();
     });
 
-    it('scroll-pads the document clear of the compact header while it is mounted', () => {
-      const { unmount } = renderLongPage();
+    it('scrolls what comes into view clear of the compact header, never the header itself', () => {
+      renderLongPage();
+      act(() => observer.report('above'));
 
-      expect(document.documentElement.style.scrollPaddingTop).toContain(
-        '--shell-page-compact-header-height',
-      );
-
-      unmount();
-
+      // A margin on the content, not padding on the document: padding would
+      // count the stuck header's own top as hidden, and focusing a control
+      // in it (react-aria focuses the switch's input on every press) would
+      // scroll the page to the top and back.
       expect(document.documentElement.style.scrollPaddingTop).toBe('');
+      expect(screen.getByText('A long conversation')).toHaveStyle({
+        scrollMarginTop:
+          'calc(var(--shell-page-compact-header-height, 0px) + 8px)',
+      });
+      expect(screen.getByRole('button', { name: 'Edit' })).toHaveStyle({
+        scrollMarginTop: '0',
+      });
+    });
+
+    it('publishes the compact header height only while it is compact', () => {
+      const { unmount } = renderLongPage();
+      const height = () =>
+        document.documentElement.style.getPropertyValue(
+          '--shell-page-compact-header-height',
+        );
+      expect(height()).toBe('');
+
+      act(() => observer.report('above'));
+      expect(height()).not.toBe('');
+
+      act(() => observer.report('in-view'));
+      expect(height()).toBe('');
+
+      act(() => observer.report('above'));
+      unmount();
+      expect(height()).toBe('');
     });
 
     it('watches nothing on a page without one', () => {

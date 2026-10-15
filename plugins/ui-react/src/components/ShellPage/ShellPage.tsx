@@ -37,8 +37,8 @@ export const SHELL_PAGE_PADDING_BOTTOM_VAR = '--shell-page-padding-bottom';
 /**
  * CSS variable, set on the document root while a page's header is compact
  * (see {@link ShellPageProps.compactHeader}): that header's height. The
- * document's `scroll-padding-top` reads it, so whatever the browser scrolls
- * into view lands below the header rather than under it.
+ * content's `scroll-margin-top` reads it, so whatever the browser scrolls into
+ * view lands below the header rather than under it.
  */
 export const SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR =
   '--shell-page-compact-header-height';
@@ -119,6 +119,21 @@ const useStyles = makeStyles({
   // spacer and the sentinel move with it, so they sit out too.
   notAnchor: {
     overflowAnchor: 'none',
+  },
+  // On a page that opts in, everything but the header: what the browser
+  // scrolls into view — a focused control, a fold-out, an anchor — lands
+  // below the compact header. A margin on the content, not a
+  // `scroll-padding-top` on the document: that would count the stuck header's
+  // own top as hidden, so focusing a control in it (react-aria focuses the
+  // switch's input on every press) would scroll the page to reveal it, toward
+  // where the header sits unstuck, at the very top, and back.
+  compactHeaderContent: {
+    '& *': {
+      scrollMarginTop: `calc(var(${SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, 0px) + 8px)`,
+    },
+    '& $header, & $header *': {
+      scrollMarginTop: 0,
+    },
   },
   '@keyframes compactHeaderIn': {
     from: { opacity: 0 },
@@ -507,10 +522,11 @@ function isExpandedOnly(element: Element, isPhone: boolean): boolean {
  * after the header the difference, so the header and the spacer take the
  * room the expanded header took. It runs before paint, so the content never
  * shows moved. The compact height goes on the document root as
- * {@link SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, which the document's
- * `scroll-padding-top` reads while the page opts in: a focused control, a
- * fold-out scrolling itself into view and an anchor all land below the
- * compact header. Without `ResizeObserver` (tests) it measures once per mode.
+ * {@link SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, which the content's
+ * `scroll-margin-top` reads: a focused control, a fold-out scrolling itself
+ * into view and an anchor all land below the compact header. Expanded, the
+ * header scrolls with the page and the variable is cleared. Without
+ * `ResizeObserver` (tests) it measures once per mode.
  */
 function useCompactHeaderLayout(
   header: HTMLElement | null,
@@ -528,6 +544,7 @@ function useCompactHeaderLayout(
       if (!isCompact) {
         expandedHeight.current = height;
         spacer.style.height = '0px';
+        root.style.removeProperty(SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR);
         return;
       }
       spacer.style.height = `${Math.max(0, expandedHeight.current - height)}px`;
@@ -542,20 +559,11 @@ function useCompactHeaderLayout(
         ? undefined
         : new ResizeObserver(measure);
     observer?.observe(header);
-    return () => observer?.disconnect();
-  }, [header, spacer, isCompact]);
-
-  useLayoutEffect(() => {
-    if (!spacer) {
-      return undefined;
-    }
-    const root = document.documentElement;
-    root.style.scrollPaddingTop = `calc(var(${SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, 0px) + 8px)`;
     return () => {
-      root.style.removeProperty('scroll-padding-top');
+      observer?.disconnect();
       root.style.removeProperty(SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR);
     };
-  }, [spacer]);
+  }, [header, spacer, isCompact]);
 }
 
 /**
@@ -622,7 +630,11 @@ export function ShellPage({
     : undefined;
 
   return (
-    <div className={classes.root}>
+    <div
+      className={`${classes.root} ${
+        compactHeader ? classes.compactHeaderContent : ''
+      }`}
+    >
       {titleParts && <ShellDocumentTitle title={titleParts} />}
       {hasBreadcrumbs && <Breadcrumbs items={breadcrumbs} />}
       <div
