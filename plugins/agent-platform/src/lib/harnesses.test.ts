@@ -103,4 +103,22 @@ describe('harnessTitle', () => {
     ).toBe('Claude Code with Go');
     expect(harnessTitle({ name: 'go', runtime: 'claude' })).toBe('Claude Code');
   });
+
+  it('names the adapter a BYO image is known to carry', () => {
+    expect(
+      harnessTitle({ name: 'omp', runtime: 'byo', imageName: 'omp-harness' }),
+    ).toBe('oh-my-pi');
+    expect(
+      harnessTitle({
+        name: 'omp',
+        runtime: 'byo',
+        imageName: 'omp-harness',
+        displayName: 'oh-my-pi (large)',
+      }),
+    ).toBe('oh-my-pi (large)');
+    expect(
+      harnessTitle({ name: 'acp', runtime: 'byo', imageName: 'acp-harness' }),
+    ).toBe('Custom image');
+    expect(harnessTitle({ name: 'acp', runtime: 'byo' })).toBe('Custom image');
+  });
 });

@@ -32,12 +32,31 @@ export function runtimeLabel(runtime: HarnessRuntime | undefined): string {
 }
 
 /**
- * What a person calls the Harness: its display name, else its runtime family.
- * Two Harnesses of one family (Claude Code with two toolchains, say) read the
- * same without a display name; the Harness name beneath tells them apart.
+ * The adapters the platform ships as BYO Harnesses, by the image's repository
+ * name: kagent has no runtime of its own for them, so `spec.byo` says nothing
+ * about what runs.
+ */
+const BYO_IMAGE_LABELS: Record<string, string> = {
+  'omp-harness': 'oh-my-pi',
+};
+
+/**
+ * What a person calls the Harness: its display name, else the adapter a BYO
+ * image is known to carry, else its runtime family. Two Harnesses of one
+ * family (Claude Code with two toolchains, say) read the same without a
+ * display name; the Harness name beneath tells them apart.
  */
 export function harnessTitle(choice: HarnessChoice): string {
-  return choice.displayName ?? runtimeLabel(choice.runtime);
+  if (choice.displayName) {
+    return choice.displayName;
+  }
+  if (choice.runtime === 'byo' && choice.imageName) {
+    const known = BYO_IMAGE_LABELS[choice.imageName];
+    if (known) {
+      return known;
+    }
+  }
+  return runtimeLabel(choice.runtime);
 }
 
 /** `gsoci.azurecr.io/giantswarm/kagent/claude-harness@sha256:…` → `claude-harness`. */
