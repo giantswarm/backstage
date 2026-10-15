@@ -3,4 +3,5 @@ export {
   ShellDocumentTitleProvider,
   shellDocumentTitle,
   shellTitleParts,
+  useShellDocumentTitleCount,
 } from './ShellDocumentTitle';

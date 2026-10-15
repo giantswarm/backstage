@@ -59,6 +59,12 @@ export type FleetSessionStatesOptions = {
    * while the tab is hidden (`refetchIntervalInBackground` defaults to false).
    */
   refetchIntervalMs?: number;
+  /**
+   * Keep polling while the tab is hidden. The Notification inbox does, on the
+   * baseline tier, so a background tab still learns that a session waits;
+   * everything else leaves a hidden tab quiet.
+   */
+  refetchIntervalInBackground?: boolean;
 };
 
 /**
@@ -93,6 +99,7 @@ export function useFleetSessionStates(
       queryKey: sessionStatesQueryKey(installation),
       queryFn: () => kagentApi.listSessionStates(installation),
       refetchInterval,
+      refetchIntervalInBackground: options?.refetchIntervalInBackground,
     })),
   });
 
