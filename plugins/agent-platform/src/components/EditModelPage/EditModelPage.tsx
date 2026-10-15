@@ -33,7 +33,7 @@ function editBlocker(
     return `This model is asserted by ${owner}, which would revert portal edits on its next run. Change it where ${owner} is configured.`;
   }
   if (!modelConfigFormValues(modelConfig)) {
-    return `The edit form covers OpenAI-compatible, Anthropic, Gemini and Ollama models, and this one uses ${modelConfig.getProvider()}. Manage it with kubectl.`;
+    return `The edit form covers OpenAI-compatible, Anthropic, Gemini, Vertex AI and Ollama models, and this one uses ${modelConfig.getProvider()}. Manage it with kubectl.`;
   }
   if (!mayUpdate) {
     return 'You do not have permission to change this model.';
