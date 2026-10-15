@@ -1,4 +1,5 @@
 import { type ReactNode, useMemo } from 'react';
+import type { RouteTabCount } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type ConnectorGroup,
   connectorGroupCounts,
@@ -6,12 +7,22 @@ import {
 import { MusterProviders } from '../MusterProviders';
 import { useMusterInstance } from '../MusterInstanceProvider';
 
-/** What the Customize screen's tab strip counts; absent while still loading. */
+/** What the Customize screen's tab strip counts; `'loading'` while loading. */
 export type MusterCustomizeCounts = {
-  connectors?: number;
+  connectors?: RouteTabCount;
   /** The Connectors tab's sub-tabs, by `ConnectorGroup`. */
-  connectorGroups?: Record<ConnectorGroup, number>;
-  workflows?: number;
+  connectorGroups?: Record<ConnectorGroup, RouteTabCount>;
+  workflows?: RouteTabCount;
+};
+
+const LOADING: Required<MusterCustomizeCounts> = {
+  connectors: 'loading',
+  connectorGroups: {
+    yours: 'loading',
+    infrastructure: 'loading',
+    internal: 'loading',
+  },
+  workflows: 'loading',
 };
 
 /**
@@ -28,7 +39,7 @@ export function useMusterCustomizeCounts(): MusterCustomizeCounts {
     [mcpServers, withMuster],
   );
   if (isLoading) {
-    return {};
+    return LOADING;
   }
   return {
     connectors:

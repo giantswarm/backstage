@@ -34,7 +34,7 @@ function CapturesNavigate() {
 }
 
 function renderAt(url: string, tabs: RouteTabSpec[] = TABS) {
-  return render(
+  const tree = (current: RouteTabSpec[]) => (
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route
@@ -42,13 +42,43 @@ function renderAt(url: string, tabs: RouteTabSpec[] = TABS) {
           element={
             <>
               <CapturesNavigate />
-              <RouteTabs tabs={tabs} search="?installation=gazelle" />
+              <RouteTabs tabs={current} search="?installation=gazelle" />
             </>
           }
         />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  const result = render(tree(tabs));
+  return {
+    ...result,
+    /** The same strip, its tabs changed: a count arriving. */
+    setTabs: (next: RouteTabSpec[]) => result.rerender(tree(next)),
+  };
+}
+
+/** The tabs with the executions count set to `count`. */
+function withCount(count: RouteTabSpec['count']): RouteTabSpec[] {
+  return TABS.map(tab => (tab.id === 'executions' ? { ...tab, count } : tab));
+}
+
+/** The CSS rules JSS injected, `@media` ones under their query. */
+function injectedRules() {
+  const byMedia = new Map<string, string[]>();
+  const plain: string[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    for (const rule of Array.from(sheet.cssRules)) {
+      if (rule instanceof CSSMediaRule) {
+        byMedia.set(rule.conditionText, [
+          ...(byMedia.get(rule.conditionText) ?? []),
+          ...Array.from(rule.cssRules).map(inner => inner.cssText),
+        ]);
+      } else {
+        plain.push(rule.cssText);
+      }
+    }
+  }
+  return { byMedia, plain };
 }
 
 /** The scroll container: the element around bui's `Tabs` root. */
@@ -145,6 +175,89 @@ describe('RouteTabs', () => {
     );
   });
 
+  // Counts arrive after the tabs: a tab must not grow when its count does,
+  // or every tab right of it moves under the pointer.
+  describe('a count', () => {
+    it('holds its place with a skeleton while loading, out of the accessible name', () => {
+      const { container } = renderAt('/workflows/deploy', withCount('loading'));
+
+      const tab = screen.getByRole('tab', { name: 'Executions' });
+      const skeleton = tab.querySelector('.bui-Skeleton');
+      expect(skeleton).not.toBeNull();
+      expect(skeleton).toHaveAttribute('aria-hidden', 'true');
+      expect(tab).toHaveTextContent(/^Executions$/);
+      // The other tabs have no count, and no slot for one.
+      expect(container.querySelectorAll('.bui-Skeleton')).toHaveLength(1);
+    });
+
+    it('takes the skeleton’s place when it arrives, read as part of the name', () => {
+      const { setTabs } = renderAt('/workflows/deploy', withCount('loading'));
+      const slot = screen
+        .getByRole('tab', { name: 'Executions' })
+        .querySelector('.bui-Skeleton')!.parentElement!;
+
+      setTabs(withCount(12));
+
+      const tab = screen.getByRole('tab', { name: 'Executions (12)' });
+      expect(tab.querySelector('.bui-Skeleton')).toBeNull();
+      // The same slot, which holds the width (below), now with the count.
+      expect(slot).toHaveTextContent('(12)');
+      expect(tab).toContainElement(slot);
+      // Title and count in one inline box: as two items of bui's flex tab,
+      // the space between them would be trimmed away.
+      expect(tab.childNodes).toHaveLength(1);
+      expect(tab.firstElementChild).toHaveTextContent(/^Executions \(12\)$/);
+    });
+
+    it('reserves a two-digit count’s width, loaded or not, at every width', () => {
+      renderAt('/workflows/deploy', withCount(3));
+      const slotClass = screen
+        .getByRole('tab', { name: 'Executions (3)' })
+        .querySelector('span > span')!.className;
+
+      const { plain } = injectedRules();
+      const rule = (selector: string) =>
+        plain.filter(text => text.startsWith(`.${slotClass}${selector} {`));
+      // A hidden `(00)` shares the count's grid cell, so the slot is never
+      // narrower than two digits; tabular figures keep 0–99 that wide.
+      expect(rule('')).toEqual([
+        expect.stringMatching(
+          /display: inline-grid;.*font-variant-numeric: tabular-nums;/,
+        ),
+      ]);
+      expect(rule('::before')).toEqual([
+        expect.stringMatching(
+          /content: "\(00\)" \/ "";.*grid-area: 1 \/ 1;.*visibility: hidden;/,
+        ),
+      ]);
+      // jsdom's CSSOM keeps the last of two `content`s: the fallback for a
+      // browser without alternative text is read off the injected text.
+      const styles = Array.from(document.querySelectorAll('style'))
+        .map(style => style.textContent)
+        .join('\n');
+      expect(styles).toMatch(
+        new RegExp(
+          `\\.${slotClass}::before \\{\\s*content: "\\(00\\)";\\s*content: "\\(00\\)" / "";`,
+        ),
+      );
+      expect(rule(' > *')).toEqual([
+        expect.stringContaining('grid-area: 1 / 1;'),
+      ]);
+    });
+
+    // Unavailable (its source failed or is off): the tab drops the slot
+    // rather than keep a blank that reads as a missing number.
+    it('leaves no slot when it could not be read', () => {
+      const { setTabs } = renderAt('/workflows/deploy', withCount('loading'));
+
+      setTabs(withCount(undefined));
+
+      const tab = screen.getByRole('tab', { name: 'Executions' });
+      expect(tab.querySelector('span')).toBeNull();
+      expect(tab).toHaveTextContent(/^Executions$/);
+    });
+  });
+
   it('selects the index only at the page itself', () => {
     renderAt('/workflows/deploy');
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
@@ -236,6 +349,23 @@ describe('RouteTabs', () => {
       });
     });
 
+    it('keeps the strip still when a count up to 99 arrives, re-centring past it', async () => {
+      layout = mockPhoneLayout();
+      const { setTabs } = renderAt(
+        '/workflows/deploy/run',
+        withCount('loading'),
+      );
+      await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+
+      setTabs(withCount(12));
+      setTabs(withCount(99));
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+
+      // Three digits outgrow the slot: the tabs' widths change.
+      setTabs(withCount(128));
+      expect(scrollTo).toHaveBeenCalledTimes(2);
+    });
+
     it('scrolls only the strip, never the page', async () => {
       layout = mockPhoneLayout();
       const scrollIntoView = jest.fn();
@@ -303,21 +433,8 @@ describe('RouteTabs', () => {
 
       // jsdom applies no media rules, so the phone rules are read from the
       // stylesheet JSS injected.
-      const phoneRules: string[] = [];
-      const desktopRules: string[] = [];
-      for (const sheet of Array.from(document.styleSheets)) {
-        for (const rule of Array.from(sheet.cssRules)) {
-          if (rule instanceof CSSMediaRule) {
-            if (rule.conditionText === PHONE_QUERY) {
-              phoneRules.push(
-                ...Array.from(rule.cssRules).map(inner => inner.cssText),
-              );
-            }
-          } else {
-            desktopRules.push(rule.cssText);
-          }
-        }
-      }
+      const { byMedia, plain: desktopRules } = injectedRules();
+      const phoneRules = byMedia.get(PHONE_QUERY) ?? [];
       const forStrip = (rules: string[], selector: string) =>
         rules.filter(text => text.startsWith(`.${stripClass}${selector} {`));
 

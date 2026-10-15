@@ -455,7 +455,7 @@ function SkillPage({
       id: 'used-by',
       path: 'used-by',
       title: 'Used by',
-      count: agentsLoading ? undefined : using.length,
+      count: agentsLoading ? 'loading' : using.length,
     },
   ];
 

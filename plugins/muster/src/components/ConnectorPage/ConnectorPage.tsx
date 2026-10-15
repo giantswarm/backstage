@@ -449,7 +449,12 @@ function ConnectorPageContent({
   }));
 
   const tabs: RouteTabSpec[] = [
-    { id: 'tools', path: '', title: 'Tools', count: tools.tools?.length },
+    {
+      id: 'tools',
+      path: '',
+      title: 'Tools',
+      count: tools.isLoading ? 'loading' : tools.tools?.length,
+    },
   ];
   for (const { capability, title, count, shown } of capabilities) {
     if (shown) {

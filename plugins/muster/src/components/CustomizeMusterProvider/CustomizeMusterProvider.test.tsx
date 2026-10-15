@@ -67,9 +67,17 @@ describe('useMusterCustomizeCounts', () => {
     });
   });
 
-  it('counts nothing while loading', () => {
+  it('says every count is still loading while muster is read', () => {
     mockInstance = makeTestMusterInstance({ isLoading: true });
     const { result } = renderHook(() => useMusterCustomizeCounts());
-    expect(result.current).toEqual({});
+    expect(result.current).toEqual({
+      connectors: 'loading',
+      connectorGroups: {
+        yours: 'loading',
+        infrastructure: 'loading',
+        internal: 'loading',
+      },
+      workflows: 'loading',
+    });
   });
 });
