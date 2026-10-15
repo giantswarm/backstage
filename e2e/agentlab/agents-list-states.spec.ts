@@ -110,16 +110,6 @@ test('an environment without kagent explains the empty list, New agent still off
     '/agent-platform/agents/new',
   );
 });
-  await expect(newAgent).toBeDisabled();
-  await expect(newAgent).toHaveAccessibleDescription(
-    `kagent is not installed on ${lab.installation}. Enable the Agent Platform on ${lab.installation} to create agents there.`,
-  );
-  // The reason is also shown, not only announced: on hover of its wrapper.
-  await newAgent.locator('..').hover();
-  await expect(page.getByRole('tooltip')).toContainText(
-    `kagent is not installed on ${lab.installation}`,
-  );
-});
 
 test('an environment that refused its inventory probe shows the gate naming it, the 403 and the context', async ({
   signInAs,
