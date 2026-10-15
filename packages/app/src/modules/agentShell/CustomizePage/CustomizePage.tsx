@@ -16,6 +16,7 @@ import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
+  type RouteTabCount,
   RouteTabs,
   ShellDocumentTitle,
   ShellPage,
@@ -266,7 +267,7 @@ function CustomizeTabContent({
     () => new URLSearchParams(location.search).get('q') ?? '',
   );
 
-  const tabCounts: Partial<Record<CustomizeTabId, number>> = {
+  const tabCounts: Partial<Record<CustomizeTabId, RouteTabCount>> = {
     ...counts,
     connectors: musterCounts.connectors,
     workflows: musterCounts.workflows,

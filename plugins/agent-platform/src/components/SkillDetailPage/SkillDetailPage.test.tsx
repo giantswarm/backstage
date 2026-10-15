@@ -36,11 +36,12 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 }));
 
 let mockRows: AgentRow[] = [];
+let mockAgentsLoading = false;
 let mockUnreachable: string[] = [];
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({
     rows: mockRows,
-    isLoading: false,
+    isLoading: mockAgentsLoading,
     unreachableInstallations: mockUnreachable,
   }),
 }));
@@ -163,6 +164,7 @@ beforeEach(() => {
   mockUpdateDialog.mockReset();
   mockCatalog = loaded;
   mockRows = [];
+  mockAgentsLoading = false;
   mockUnreachable = [];
   mockEvaluator = undefined;
   mockCreationError = null;
@@ -277,6 +279,25 @@ describe('SkillDetailPage', () => {
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
       'Overview',
     );
+  });
+
+  it('holds the Used by count’s place in the frame drawn while the catalog loads', async () => {
+    mockCatalog = { ...loaded, skills: [], isLoading: true };
+    await renderPage();
+
+    expect(
+      screen
+        .getByRole('tab', { name: 'Used by' })
+        .querySelector('[data-count="loading"]'),
+    ).not.toBeNull();
+  });
+
+  it('holds the Used by count’s place while the agents load', async () => {
+    mockAgentsLoading = true;
+    await renderPage();
+
+    const usedBy = screen.getByRole('tab', { name: 'Used by' });
+    expect(usedBy.querySelector('[data-count="loading"]')).not.toBeNull();
   });
 
   it('lists the agents using the skill on the Used by tab', async () => {
