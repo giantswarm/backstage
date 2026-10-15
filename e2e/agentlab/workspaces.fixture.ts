@@ -529,7 +529,7 @@ export async function removeLeftovers(tools: WorkspaceTools): Promise<Sweep> {
  * consent is fetched from {@link lab.workspaces.githubFakeURL} and the
  * browser follows its redirect to the callback.
  */
-async function connectToLabGitHub(tools: WorkspaceTools): Promise<void> {
+export async function connectToLabGitHub(tools: WorkspaceTools): Promise<void> {
   const { authorizationURL } = await tools.call<{ authorizationURL: string }>(
     'connect_provider',
     { provider: lab.workspaces.provider },

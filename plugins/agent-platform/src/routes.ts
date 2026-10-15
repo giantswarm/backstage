@@ -78,6 +78,28 @@ export const newSkillRouteRef = createSubRouteRef({
   parent: skillsRouteRef,
 });
 
+// The workspace pages (`/agent-platform/workspaces`); the shell's Customize ->
+// Workspaces tab lists the workspaces. A page of its own
+// beside `page:agent-platform`, like the skill pages.
+export const workspacesRouteRef = createRouteRef();
+
+// Creating a workspace (`/agent-platform/workspaces/new`), for the
+// Organization and installation in `?organization=&installation=`. One static
+// segment, never read as a workspace's three-segment path.
+export const newWorkspaceRouteRef = createSubRouteRef({
+  path: '/new',
+  parent: workspacesRouteRef,
+});
+
+// Editing one workspace
+// (`/agent-platform/workspaces/<installation>/<organization>/<name>/edit`):
+// a workspace name is unique on an installation and belongs to one
+// Organization, which scopes who may edit it.
+export const workspaceEditRouteRef = createSubRouteRef({
+  path: '/:installation/:organization/:name/edit',
+  parent: workspacesRouteRef,
+});
+
 // The shell's minimal "Profile and settings" page (`/agent-platform/profile`):
 // who is signed in, the installations the portal talks to, and Sign out. A
 // page of its own beside `page:agent-platform`, like the skill pages: it is

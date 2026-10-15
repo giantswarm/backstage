@@ -484,6 +484,24 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // The workspace editor: `/agent-platform/workspaces/new`, and
+    // `/agent-platform/workspaces/<installation>/<organization>/<name>/edit`,
+    // whose segments name a workspace and stay out of the payload. The bare
+    // path renders nothing; the list is Customize → Workspaces. Must stay above the
+    // generic '/agent-platform' cases below for the reason the profile page
+    // gives.
+    case pathname === '/agent-platform/workspaces/new':
+      payload = { page: 'Create workspace' };
+      break;
+    case pathname.startsWith('/agent-platform/workspaces/') &&
+      /\/edit\/?$/.test(pathname):
+      payload = { page: 'Edit workspace' };
+      break;
+    case pathname === '/agent-platform/workspaces' ||
+      pathname.startsWith('/agent-platform/workspaces/'):
+      payload = { page: 'Workspaces' };
+      break;
+
     // The shell's minimal "Profile and settings" page: who is signed in, with
     // sign out — the rail's profile menu links here instead of the classic
     // `/settings`. Must stay above the generic '/agent-platform' cases below,

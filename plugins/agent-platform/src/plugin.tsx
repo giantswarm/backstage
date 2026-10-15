@@ -50,6 +50,9 @@ import {
   sessionDetailRouteRef,
   sessionsRouteRef,
   skillsRouteRef,
+  workspaceEditRouteRef,
+  workspacesRouteRef,
+  newWorkspaceRouteRef,
   usageRouteRef,
 } from './routes';
 
@@ -266,6 +269,25 @@ const skillsPage = PageBlueprint.make({
   },
 });
 
+// The workspace editor (`/agent-platform/workspaces/new` and
+// `/agent-platform/workspaces/<installation>/<organization>/<name>/edit`),
+// reached from the shell's Customize -> Workspaces tab. Enabled by default
+// and shell only, like `skillsPage`.
+const workspacesPage = PageBlueprint.make({
+  name: 'workspaces',
+  if: AGENT_SHELL_ON,
+  params: {
+    path: '/agent-platform/workspaces',
+    routeRef: workspacesRouteRef,
+    noHeader: true,
+    loader: async () => {
+      const { WorkspacesRouter } =
+        await import('./components/WorkspacesRouter');
+      return <WorkspacesRouter />;
+    },
+  },
+});
+
 // The shell's minimal "Profile and settings" page (`/agent-platform/profile`):
 // who is signed in, the installations the portal talks to, and Sign out — the
 // rail's profile menu links here, so it no longer jumps into the classic
@@ -440,6 +462,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentsRedirectPage,
     modelsSubPage,
     skillsPage,
+    workspacesPage,
     profilePage,
     usageSubPage,
     createClusterAction,
@@ -462,6 +485,9 @@ export const agentPlatformPlugin = createFrontendPlugin({
     skills: skillsRouteRef,
     newSkill: newSkillRouteRef,
     profile: profileRouteRef,
+    workspaces: workspacesRouteRef,
+    newWorkspace: newWorkspaceRouteRef,
+    workspaceEdit: workspaceEditRouteRef,
     usage: usageRouteRef,
     models: modelsRouteRef,
     newModel: newModelRouteRef,

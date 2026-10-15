@@ -69,6 +69,11 @@ export const portalEvents = defineEvents({
       'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',
     attributes: { kind: ['created', 'updated'] },
   },
+  'AgentPlatform.workspaceSaved': {
+    description:
+      'A workspace, the repositories agent sessions work on, was created or its sources changed, as the signed-in person.',
+    attributes: { kind: ['created', 'updated'] },
+  },
   'AgentPlatform.clusterCreated': {
     description:
       'A workload cluster was created through cluster-manager, applied live or committed to Git.',

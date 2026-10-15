@@ -35,6 +35,7 @@ export {
 } from './components/CustomizeSkillsPanel';
 export type { CustomizeSkillsPanelProps } from './components/CustomizeSkillsPanel';
 export { CustomizeModelsPanel } from './components/CustomizeModelsPanel';
+export { CreateWorkspaceButton } from './components/CreateWorkspaceButton';
 export { CustomizeWorkspacesPanel } from './components/CustomizeWorkspacesPanel';
 export type { CustomizeWorkspacesPanelProps } from './components/CustomizeWorkspacesPanel';
 export { WorkspaceOrganizationSelect } from './components/WorkspaceOrganizationSelect';

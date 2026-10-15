@@ -53,6 +53,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeModelsPanel: mockPanel('Models'),
     CustomizeWorkspacesPanel: mockPanel('Workspaces'),
     WorkspaceOrganizationSelect: () => <p>Organization scope</p>,
+    CreateWorkspaceButton: () => <a href="/new-workspace">Create workspace</a>,
     CustomizeModelPage: () => {
       const { useParams } = jest.requireActual('react-router-dom');
       const { installation, namespace, name } = useParams();
@@ -571,8 +572,10 @@ describe('CustomizePage', () => {
       // The Organization scope beside the Environment control.
       expect(screen.getByText('Organization scope')).toBeInTheDocument();
       expect(screen.getByText('Environment for muster')).toBeInTheDocument();
-      // Created in the workspace editor, not from the header.
-      expect(screen.queryByRole('link', { name: /workspace/i })).toBeNull();
+      // Its own create action, carrying the Organization and installation.
+      expect(
+        screen.getByRole('link', { name: 'Create workspace' }),
+      ).toBeInTheDocument();
     });
 
     it('is absent from the strip where no installation has the workspace-manager', async () => {
