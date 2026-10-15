@@ -735,8 +735,14 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
 
 test.describe('models: the model cache is the cluster’s and billed while it stands (cluster-manager stubbed)', () => {
   test('the form’s cache line carries cluster-manager’s price and the standing-cost words; a kept claim shows on the Model cache card with its cost and goes with Remove cache', async ({
+    admin,
     page,
   }) => {
+    // The kept claim is read on Model hosting's Model cache tab, and Model
+    // hosting draws its tabs only where model-manager answers. Read before
+    // this page stubs muster's server list.
+    const unavailable = await modelManagerUnavailable(admin);
+    test.skip(!!unavailable, unavailable);
     const { calls } = await reachForm(page, { keptCache: 'kept' });
     // Off by default, the kept claim is named as standing and costing;
     // switched on, the price is cluster-manager's, from the dry run — the
@@ -763,12 +769,7 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     await cancelAddPool(page);
 
     // The kept claim: on Model hosting's Model cache tab, with its size, cost
-    // and since when. Model hosting draws its tabs only where model-manager
-    // answers; the read is this page's own (the worker's admin page signed in
-    // as the same person would rotate its session away), and may load `/`.
-    const unavailable = await modelManagerUnavailable(page);
-    test.skip(!!unavailable, unavailable);
-    await open(page, '/agent-platform/models/capacity');
+    // and since when.
     await page.getByRole('tab', { name: 'Model cache' }).click();
     await expect(page).toHaveURL(/\/agent-platform\/models\/cache/);
     const card = page.getByTestId('model-cache-panel');

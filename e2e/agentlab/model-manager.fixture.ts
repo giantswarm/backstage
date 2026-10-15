@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { test } from './fixtures';
+import { open, test } from './fixtures';
 import { lab } from './lab';
 import { WorkspaceTools } from './workspaces.fixture';
 
@@ -54,7 +54,7 @@ const TOOL_PREFIX = 'x_model-manager_';
  * model-manager only with `platform.modelManager` on. Read from muster's
  * server list as the signed-in admin, the list the portal reads, once per
  * worker. The first read loads `/` on the page to read the portal's tokens:
- * call it before opening the view.
+ * call it before opening the view or staging answers on the page.
  */
 export function modelManagerUnavailable(
   page: Page,
@@ -71,6 +71,9 @@ let modelManagerVerdict: Promise<string | undefined> | undefined;
 async function readModelManagerVerdict(
   page: Page,
 ): Promise<string | undefined> {
+  // Signed in again first where another context's sign-in as the admin
+  // rotated this page's session away.
+  await open(page, '/');
   const servers = await new WorkspaceTools(page, lab.users.admin).listServers();
   const server = servers.find(entry => entry.name === 'model-manager');
   if (!server) {
