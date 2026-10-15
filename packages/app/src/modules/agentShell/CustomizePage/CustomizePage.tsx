@@ -12,10 +12,9 @@ import {
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
 import type { PlatformComponent } from '@giantswarm/backstage-plugin-gs';
-import { Button, ButtonLink, Flex, SearchField } from '@backstage/ui';
+import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
-  DisabledAction,
   PageHeaderActionsProvider,
   RouteTabs,
   ShellDocumentTitle,
@@ -33,7 +32,6 @@ import {
   EnvironmentSelect,
   useCanAddSkill,
   useCustomizeData,
-  useNewAgentUnavailableReason,
   WorkflowCreateAssist,
   WorkspaceOrganizationSelect,
 } from '@giantswarm/backstage-plugin-agent-platform';
@@ -152,42 +150,20 @@ function isTabShown(
 function CreateAction({
   create,
   fullWidth,
-  unavailableReason,
 }: {
   create: NonNullable<CustomizeTab['create']>;
   fullWidth: boolean;
-  /** Why nothing can be created in scope: the action shows, disabled, with it. */
-  unavailableReason?: string;
 }) {
   const link = useRouteRef(create.routeRef);
   if (!link) {
     return null;
-  }
-  const style = fullWidth ? { width: '100%' } : undefined;
-  if (unavailableReason) {
-    return (
-      <div style={style}>
-        <DisabledAction reason={unavailableReason}>
-          {describedBy => (
-            <Button
-              variant="primary"
-              iconStart={<AddIcon />}
-              isDisabled
-              aria-describedby={describedBy}
-            >
-              {create.label}
-            </Button>
-          )}
-        </DisabledAction>
-      </div>
-    );
   }
   return (
     <ButtonLink
       href={link()}
       variant="primary"
       iconStart={<AddIcon />}
-      style={style}
+      style={fullWidth ? { width: '100%' } : undefined}
     >
       {create.label}
     </ButtonLink>
@@ -281,9 +257,6 @@ function CustomizeTabContent({
   const { counts, hasSkillRepositories, hasWorkspaces } = useCustomizeData();
   const canAddSkill = useCanAddSkill();
   const create = tab.id === 'skills' && !canAddSkill ? undefined : tab.create;
-  // The Agents tab's New agent, where every environment in scope answered
-  // without kagent: the create form would have nowhere to deploy.
-  const newAgentUnavailable = useNewAgentUnavailableReason();
   const musterCounts = useMusterCustomizeCounts();
   const location = useLocation();
   const isPhone = usePhoneLayout();
@@ -358,15 +331,7 @@ function CustomizeTabContent({
               onChange={setSearch}
             />
           </div>
-          {create && (
-            <CreateAction
-              create={create}
-              fullWidth={isPhone}
-              unavailableReason={
-                tab.id === 'agents' ? newAgentUnavailable : undefined
-              }
-            />
-          )}
+          {create && <CreateAction create={create} fullWidth={isPhone} />}
         </Flex>
         <TabPanel
           tab={tab.id}

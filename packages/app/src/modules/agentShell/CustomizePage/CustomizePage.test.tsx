@@ -17,7 +17,6 @@ import { CUSTOMIZE_TABS, CustomizePage } from './CustomizePage';
 let mockCustomizeData: Record<string, unknown>;
 let mockMusterCounts: Record<string, unknown>;
 let mockCanAddSkill = false;
-let mockNewAgentUnavailable: string | undefined;
 
 function mockPanel(name: string) {
   return (props: { search: string }) => (
@@ -49,7 +48,6 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeDataProvider: ({ children }: { children: ReactNode }) => children,
     useCustomizeData: () => mockCustomizeData,
     useCanAddSkill: () => mockCanAddSkill,
-    useNewAgentUnavailableReason: () => mockNewAgentUnavailable,
     CustomizeAgentsPanel: mockPanel('Agents'),
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
@@ -178,7 +176,6 @@ describe('CustomizePage', () => {
       workflows: 2,
     };
     mockCanAddSkill = false;
-    mockNewAgentUnavailable = undefined;
   });
 
   it('draws a tab per area with its count', async () => {
@@ -256,24 +253,6 @@ describe('CustomizePage', () => {
       );
     },
   );
-
-  it('disables New agent with the reason where no environment in scope runs kagent', async () => {
-    mockNewAgentUnavailable =
-      'kagent is not installed on dingo. Choose another environment, or enable the Agent Platform on dingo.';
-    await renderCustomize('/customize/agents');
-
-    expect(screen.queryByRole('link', { name: 'New agent' })).toBeNull();
-    const button = screen.getByRole('button', { name: 'New agent' });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription(mockNewAgentUnavailable);
-  });
-
-  it('keeps the other tabs’ create actions where kagent is missing', async () => {
-    mockNewAgentUnavailable = 'kagent is not installed on dingo.';
-    await renderCustomize('/customize/connectors');
-
-    expect(screen.getByRole('link', { name: 'Add connector' })).toBeEnabled();
-  });
 
   it('puts Add skill beside the search, as the other tabs’ create actions, where a skill can be proposed', async () => {
     mockCanAddSkill = true;

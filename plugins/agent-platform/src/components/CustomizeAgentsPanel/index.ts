@@ -1,5 +1,2 @@
-export {
-  CustomizeAgentsPanel,
-  useNewAgentUnavailableReason,
-} from './CustomizeAgentsPanel';
+export { CustomizeAgentsPanel } from './CustomizeAgentsPanel';
 export type { CustomizeAgentsPanelProps } from './CustomizeAgentsPanel';

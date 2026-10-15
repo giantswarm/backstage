@@ -27,10 +27,7 @@ export type {
   CustomizeCounts,
   CustomizeDataValue,
 } from './components/CustomizeDataProvider';
-export {
-  CustomizeAgentsPanel,
-  useNewAgentUnavailableReason,
-} from './components/CustomizeAgentsPanel';
+export { CustomizeAgentsPanel } from './components/CustomizeAgentsPanel';
 export type { CustomizeAgentsPanelProps } from './components/CustomizeAgentsPanel';
 export {
   CustomizeSkillsPanel,

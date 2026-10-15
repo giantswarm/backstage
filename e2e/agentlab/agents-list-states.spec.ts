@@ -4,8 +4,7 @@ import { lab } from './lab';
 
 /**
  * Customize › Agents explains a list that is empty or still incomplete: an
- * environment without kagent (and New agent disabled, with the reason), an
- * environment whose inventory probe was refused, and a list whose rows are in
+ * environment without kagent, an environment whose inventory probe was refused, and a list whose rows are in
  * while another environment is still being read.
  *
  * The lab runs kagent, answers its probe and is the only environment, so each
@@ -53,7 +52,7 @@ async function dropPersistedCaches(page: Page): Promise<void> {
   });
 }
 
-test('an environment without kagent explains the empty list and disables New agent with the reason', async ({
+test('an environment without kagent explains the empty list, New agent still offered', async ({
   signInAs,
 }) => {
   const page = await signInAs(lab.users.admin);
@@ -104,11 +103,13 @@ test('an environment without kagent explains the empty list and disables New age
     'the probe was answered without kagent',
   ).toBeGreaterThan(0);
 
-  await expect(
-    page.getByRole('link', { name: 'New agent' }),
-    'New agent no longer leads to a form with nowhere to deploy',
-  ).toHaveCount(0);
-  const newAgent = page.getByRole('button', { name: 'New agent' });
+  // The card under it says why nothing can be deployed there; the header's
+  // action stays a link, as decided for the shell.
+  await expect(page.getByRole('link', { name: 'New agent' })).toHaveAttribute(
+    'href',
+    '/agent-platform/agents/new',
+  );
+});
   await expect(newAgent).toBeDisabled();
   await expect(newAgent).toHaveAccessibleDescription(
     `kagent is not installed on ${lab.installation}. Enable the Agent Platform on ${lab.installation} to create agents there.`,
