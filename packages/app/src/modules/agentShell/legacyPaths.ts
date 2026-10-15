@@ -21,10 +21,6 @@ import {
  * catch-alls call it (giantswarm/giantswarm#38573, Prep 3).
  */
 
-/* eslint-disable giantswarm/no-restricted-syntax -- the old→new address table:
-   its targets are the new URL tree's paths, which no route ref defines before
-   the cut-over, and like the old tree it describes they are a snapshot. */
-
 /** The address an old one redirects to. The caller keeps the hash. */
 export type LegacyAgentPlatformTarget = {
   pathname: string;
