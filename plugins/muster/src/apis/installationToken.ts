@@ -44,9 +44,10 @@ export type MusterTokenMintFailure = 'session-expired' | 'mint-failed';
 export const MUSTER_TOKEN_MINT_ERROR_NAME = 'MusterTokenMintError';
 
 /**
- * Thrown by `MusterApiClient` before a request is sent when the token for the
- * target installation cannot be obtained. Distinct from the proxy's
- * `UnauthorizedError`, which means a token WAS sent and muster rejected it.
+ * Thrown by `MusterApiClient` when the token for the target installation cannot
+ * be obtained before a request is sent, or when muster answers that the token
+ * it got has expired. Distinct from the proxy's `UnauthorizedError`, which
+ * means muster rejected a token for any other reason.
  */
 export class MusterTokenMintError extends Error {
   readonly installation: string | undefined;
@@ -84,6 +85,24 @@ export class MusterTokenMintError extends Error {
       `Could not mint a token for muster on ${installation}: ${detail}`,
     );
   }
+}
+
+/** What the person reads when the token for a muster has lapsed. */
+export const SESSION_EXPIRED_MESSAGE = 'Your session expired, sign in again.';
+
+/**
+ * The person's token for a muster has lapsed: the portal's own one before it
+ * was sent, or the one muster answered as expired. Either way the single main
+ * re-login fixes it, never a muster-side action.
+ */
+export function sessionExpiredError(
+  installation: string | undefined,
+): MusterTokenMintError {
+  return new MusterTokenMintError(
+    installation,
+    'session-expired',
+    SESSION_EXPIRED_MESSAGE,
+  );
 }
 
 export function isMusterTokenMintError(
