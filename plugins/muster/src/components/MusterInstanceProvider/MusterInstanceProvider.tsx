@@ -90,6 +90,11 @@ export type MusterInstance = {
   workflows: MusterWorkflow[];
   isLoading: boolean;
   /**
+   * The workflows' own first read, which `isLoading` leaves out: true while
+   * it is pending with no workflows yet.
+   */
+  isLoadingWorkflows: boolean;
+  /**
    * Epoch-ms of the most recent successful MCPServer read alone (workflows
    * left out), for a caller that must know the server list postdates a write.
    */
@@ -255,6 +260,7 @@ export const MusterInstanceProvider = ({
   const {
     resources: workflows,
     errors: workflowErrors,
+    isLoading: isLoadingWorkflowsQuery,
     retry: retryWorkflows,
   } = useResources(
     clusters,
@@ -314,6 +320,11 @@ export const MusterInstanceProvider = ({
         (Boolean(activeInstallation) &&
           isLoadingServers &&
           mcpServers.length === 0),
+      isLoadingWorkflows:
+        isLoadingInstallations ||
+        (Boolean(activeInstallation) &&
+          isLoadingWorkflowsQuery &&
+          workflows.length === 0),
       mcpServersUpdatedAt,
       retry: () => {
         retryServers();
@@ -335,6 +346,7 @@ export const MusterInstanceProvider = ({
       mcpServers,
       workflows,
       isLoadingServers,
+      isLoadingWorkflowsQuery,
       mcpServersUpdatedAt,
       retryServers,
       retryWorkflows,

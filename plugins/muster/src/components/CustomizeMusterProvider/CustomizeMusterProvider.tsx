@@ -31,8 +31,13 @@ const LOADING: Required<MusterCustomizeCounts> = {
  * the active muster. Must be called inside a `CustomizeMusterProvider`.
  */
 export function useMusterCustomizeCounts(): MusterCustomizeCounts {
-  const { mcpServers, workflows, isLoading, activeInstallation } =
-    useMusterInstance();
+  const {
+    mcpServers,
+    workflows,
+    isLoading,
+    isLoadingWorkflows,
+    activeInstallation,
+  } = useMusterInstance();
   const withMuster = activeInstallation !== undefined;
   const connectorGroups = useMemo(
     () => connectorGroupCounts(mcpServers, withMuster),
@@ -47,7 +52,9 @@ export function useMusterCustomizeCounts(): MusterCustomizeCounts {
       connectorGroups.infrastructure +
       connectorGroups.internal,
     connectorGroups,
-    workflows: workflows.length,
+    // A separate read: the servers can land first, and a 0 meanwhile would
+    // jump to the real number.
+    workflows: isLoadingWorkflows ? 'loading' : workflows.length,
   };
 }
 

@@ -182,24 +182,40 @@ describe('RouteTabs', () => {
       const { container } = renderAt('/workflows/deploy', withCount('loading'));
 
       const tab = screen.getByRole('tab', { name: 'Executions' });
-      const skeleton = tab.querySelector('.bui-Skeleton');
-      expect(skeleton).not.toBeNull();
+      const slot = tab.querySelector('[data-count="loading"]');
+      expect(slot).not.toBeNull();
+      const skeleton = slot!.firstElementChild;
       expect(skeleton).toHaveAttribute('aria-hidden', 'true');
       expect(tab).toHaveTextContent(/^Executions$/);
+      // Phrasing content only: a link may not hold a `div` (bui's Skeleton).
+      expect(tab.querySelector('div')).toBeNull();
       // The other tabs have no count, and no slot for one.
-      expect(container.querySelectorAll('.bui-Skeleton')).toHaveLength(1);
+      expect(container.querySelectorAll('[data-count]')).toHaveLength(1);
+      // bui's skeleton, drawn with its tokens on that span.
+      const [skeletonRule, ...more] = injectedRules().plain.filter(text =>
+        text.startsWith(`.${skeleton!.className} {`),
+      );
+      expect(more).toEqual([]);
+      for (const declaration of [
+        'background-color: var(--bui-bg-neutral-2);',
+        'border-radius: var(--bui-radius-2);',
+        'animation: var(--bui-animate-pulse);',
+      ]) {
+        expect(skeletonRule).toContain(declaration);
+      }
     });
 
     it('takes the skeleton’s place when it arrives, read as part of the name', () => {
       const { setTabs } = renderAt('/workflows/deploy', withCount('loading'));
       const slot = screen
         .getByRole('tab', { name: 'Executions' })
-        .querySelector('.bui-Skeleton')!.parentElement!;
+        .querySelector<HTMLElement>('[data-count="loading"]')!;
 
       setTabs(withCount(12));
 
       const tab = screen.getByRole('tab', { name: 'Executions (12)' });
-      expect(tab.querySelector('.bui-Skeleton')).toBeNull();
+      expect(slot).not.toHaveAttribute('data-count');
+      expect(tab.querySelector('[aria-hidden]')).toBeNull();
       // The same slot, which holds the width (below), now with the count.
       expect(slot).toHaveTextContent('(12)');
       expect(tab).toContainElement(slot);

@@ -281,12 +281,23 @@ describe('SkillDetailPage', () => {
     );
   });
 
+  it('holds the Used by count’s place in the frame drawn while the catalog loads', async () => {
+    mockCatalog = { ...loaded, skills: [], isLoading: true };
+    await renderPage();
+
+    expect(
+      screen
+        .getByRole('tab', { name: 'Used by' })
+        .querySelector('[data-count="loading"]'),
+    ).not.toBeNull();
+  });
+
   it('holds the Used by count’s place while the agents load', async () => {
     mockAgentsLoading = true;
     await renderPage();
 
     const usedBy = screen.getByRole('tab', { name: 'Used by' });
-    expect(usedBy.querySelector('.bui-Skeleton')).not.toBeNull();
+    expect(usedBy.querySelector('[data-count="loading"]')).not.toBeNull();
   });
 
   it('lists the agents using the skill on the Used by tab', async () => {

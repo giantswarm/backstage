@@ -1,13 +1,6 @@
-import {
-  ReactNode,
-  RefObject,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useHref, useLocation, useNavigate } from 'react-router-dom';
-import { Skeleton, Tab, TabList, Tabs } from '@backstage/ui';
+import { Tab, TabList, Tabs } from '@backstage/ui';
 import { RouterProvider } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core';
 import { useSplatBasePath } from '../../hooks/useSplatBasePath';
@@ -73,6 +66,15 @@ function edgeMask(start: boolean, end: boolean) {
 /** Phone's shortest touch target, in px (WCAG 2.5.5, Apple's HIG). */
 const TOUCH_TARGET = 44;
 
+/**
+ * How many digits a count's slot holds before its tab grows: the slot's
+ * width (`classes.count`) and the strip's re-centring (`tabWidthKey`) both
+ * read it.
+ */
+const RESERVED_DIGITS = 2;
+/** The widest count the slot holds, as drawn: `(00)`. */
+const RESERVED_COUNT = `(${'0'.repeat(RESERVED_DIGITS)})`;
+
 const useStyles = makeStyles({
   // Desktop: no rules at all, the strip is bui's.
   strip: {
@@ -110,26 +112,32 @@ const useStyles = makeStyles({
       },
     },
   },
-  // A count's slot, at every width: at least as wide as `(00)`, so a count
-  // up to 99 arriving moves no tab. A hidden `(00)` and the count (or its
-  // skeleton) share one grid cell, and tabular figures make every two-digit
-  // count exactly that wide. Generated content, so the label's text and its
-  // accessible name stay `Tools (10)`.
+  // A count's slot, at every width: at least as wide as `RESERVED_COUNT`, so
+  // a count up to 99 arriving moves no tab. A hidden `(00)` and the count (or
+  // its skeleton) share one grid cell, and tabular figures make every
+  // two-digit count exactly that wide. Generated content, so the label's text
+  // and its accessible name stay `Tools (10)`.
   count: {
     display: 'inline-grid',
     fontVariantNumeric: 'tabular-nums',
     '&::before': {
       // An empty alternative text keeps it out of the accessible name where
       // `visibility` alone would not; the fallback for browsers without it.
-      fallbacks: { content: '"(00)"' },
-      content: '"(00)" / ""',
+      fallbacks: { content: `"${RESERVED_COUNT}"` },
+      content: `"${RESERVED_COUNT}" / ""`,
       gridArea: '1 / 1',
       visibility: 'hidden',
     },
     '& > *': { gridArea: '1 / 1' },
   },
+  // bui's `Skeleton` drawn on a `span`: bui's renders a `div`, which may not
+  // sit in a tab's link. Its tokens, so it looks and pulses as the rest.
   countSkeleton: {
     alignSelf: 'center',
+    height: '1em',
+    backgroundColor: 'var(--bui-bg-neutral-2)',
+    borderRadius: 'var(--bui-radius-2)',
+    animation: 'var(--bui-animate-pulse)',
   },
 });
 
@@ -286,42 +294,38 @@ function useSelectedTabInView(
 
 /**
  * What of a tab decides its width: its title, and whether it has a count and
- * how many digits past the two its slot always holds. A count up to 99
- * arriving changes nothing here.
+ * how many digits past the `RESERVED_DIGITS` its slot always holds. A count
+ * up to 99 arriving changes nothing here.
  */
 function tabWidthKey(tab: RouteTabSpec) {
   if (tab.count === undefined) {
     return tab.title;
   }
   const digits = tab.count === 'loading' ? 0 : String(tab.count).length;
-  return `${tab.title} (${'0'.repeat(Math.max(2, digits))})`;
+  return `${tab.title} (${'0'.repeat(Math.max(RESERVED_DIGITS, digits))})`;
 }
 
-function TabLabel({
-  tab,
-  classes,
-}: {
-  tab: RouteTabSpec;
-  classes: ReturnType<typeof useStyles>;
-}): ReactNode {
+function renderTabLabel(
+  tab: RouteTabSpec,
+  classes: ReturnType<typeof useStyles>,
+) {
   if (tab.count === undefined) {
     return tab.title;
   }
+  const loading = tab.count === 'loading';
   // One inline box: bui's tab is a flex container, which would trim the space
   // off a bare title before the count.
   return (
     <span>
       {tab.title}{' '}
-      <span className={classes.count}>
-        {tab.count === 'loading' ? (
+      <span
+        className={classes.count}
+        data-count={loading ? 'loading' : undefined}
+      >
+        {loading ? (
           // Out of the accessible name: the tab reads "Tools" until its
           // count arrives, then "Tools (10)".
-          <Skeleton
-            aria-hidden
-            width="100%"
-            height="1em"
-            className={classes.countSkeleton}
-          />
+          <span aria-hidden className={classes.countSkeleton} />
         ) : (
           <span>({tab.count})</span>
         )}
@@ -404,7 +408,7 @@ export function RouteTabs({
             href={tab.href}
             matchStrategy={tab.path ? 'prefix' : 'exact'}
           >
-            <TabLabel tab={tab} classes={classes} />
+            {renderTabLabel(tab, classes)}
           </Tab>
         ))}
       </TabList>

@@ -756,7 +756,9 @@ function ConnectorPageBody({
         ]}
         leading={<ConnectorTile name={key} />}
         badges={<ShellPageBadgeSkeleton />}
-        tabs={[{ id: 'tools', path: '', title: 'Tools' }]}
+        // Tools with its count's place held, so the tab keeps its width as
+        // the page and then the tools land.
+        tabs={[{ id: 'tools', path: '', title: 'Tools', count: 'loading' }]}
         tabsSearch={search}
       >
         <LoadingIndicator label="Reading the environment's connectors…" />

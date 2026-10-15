@@ -422,6 +422,17 @@ describe('ConnectorPage', () => {
     expect(screen.queryByRole('link', { name: /search_issues/ })).toBeNull();
   });
 
+  it('holds the Tools count’s place in the frame drawn while the connectors load', async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/jira?installation=gazelle`);
+
+    expect(
+      screen
+        .getByRole('tab', { name: 'Tools' })
+        .querySelector('[data-count="loading"]'),
+    ).not.toBeNull();
+  });
+
   it('holds the Tools count’s place while the tools load', async () => {
     const api = makeApi();
     let answer: (value: unknown) => void = () => {};
@@ -431,13 +442,13 @@ describe('ConnectorPage', () => {
     await renderAt(`${BASE}/jira?installation=gazelle`, { api });
 
     const tools = screen.getByRole('tab', { name: 'Tools' });
-    expect(tools.querySelector('.bui-Skeleton')).not.toBeNull();
+    expect(tools.querySelector('[data-count="loading"]')).not.toBeNull();
 
     answer({ total: 2, filtered_count: 2, truncated: false, tools: TOOLS });
     expect(await screen.findByRole('tab', { name: /^Tools \(\d+\)$/ })).toBe(
       tools,
     );
-    expect(tools.querySelector('.bui-Skeleton')).toBeNull();
+    expect(tools.querySelector('[data-count="loading"]')).toBeNull();
   });
 
   it('lists a few tools without search or filter, each a link to its page', async () => {

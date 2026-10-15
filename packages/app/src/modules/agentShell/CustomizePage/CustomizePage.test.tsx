@@ -218,7 +218,7 @@ describe('CustomizePage', () => {
       'Models',
       'Workflows',
     ]);
-    expect(document.querySelector('.bui-Skeleton')).toBeNull();
+    expect(document.querySelector('[data-count="loading"]')).toBeNull();
   });
 
   // The strip has its final width before the counts arrive, so no tab
@@ -245,7 +245,7 @@ describe('CustomizePage', () => {
 
     const loading = screen
       .getAllByRole('tab')
-      .filter(tab => tab.querySelector('.bui-Skeleton'))
+      .filter(tab => tab.querySelector('[data-count="loading"]'))
       .map(tab => tab.textContent?.trim());
     expect(loading).toEqual([
       'Agents',

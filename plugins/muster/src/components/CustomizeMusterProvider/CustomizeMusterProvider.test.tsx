@@ -54,6 +54,20 @@ describe('useMusterCustomizeCounts', () => {
     });
   });
 
+  it('holds the workflows count while their own read is pending, the servers counted', () => {
+    mockInstance = makeTestMusterInstance({
+      mcpServers: [server('github')],
+      isLoadingWorkflows: true,
+    });
+    const { result } = renderHook(() => useMusterCustomizeCounts());
+    // github, and muster itself among the internal ones.
+    expect(result.current).toEqual({
+      connectors: 2,
+      connectorGroups: { yours: 1, infrastructure: 0, internal: 1 },
+      workflows: 'loading',
+    });
+  });
+
   it('leaves muster out where no installation runs it', () => {
     mockInstance = makeTestMusterInstance({
       activeInstallation: undefined,
