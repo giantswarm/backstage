@@ -19,7 +19,7 @@ test('agent wizard: an empty Name tabbed through stays quiet until Continue', as
   await name.focus();
   await admin.keyboard.press('Tab');
   await expect(name).not.toHaveAttribute('aria-invalid', 'true');
-  await expect(admin.getByText('Name is required')).toHaveCount(0);
+  await expect(admin.getByText('Enter a name for the agent.')).toHaveCount(0);
 
   await admin.getByRole('button', { name: 'Continue' }).first().click();
   await expectWizardStep(admin, 'Details');
