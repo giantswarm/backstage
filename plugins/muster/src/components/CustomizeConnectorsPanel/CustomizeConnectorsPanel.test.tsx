@@ -654,6 +654,22 @@ describe('CustomizeConnectorsPanel', () => {
     expect(await screen.findByText('Web search')).toBeInTheDocument();
   });
 
+  it('names two connectors with the same display name by their own names', async () => {
+    mockServers = [
+      makeServer('github-org-a', { displayName: 'GitHub' }),
+      makeServer('github-org-b', { displayName: 'GitHub' }),
+    ];
+    await renderPanel();
+
+    expect(
+      await screen.findByRole('link', { name: 'github-org-a' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'github-org-b' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('GitHub')).not.toBeInTheDocument();
+  });
+
   it('searches connectors by their tools too', async () => {
     await renderPanel('pods');
 

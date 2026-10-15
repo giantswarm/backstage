@@ -2,10 +2,11 @@ import { useMemo } from 'react';
 import { useResources } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer } from '@giantswarm/backstage-plugin-muster';
 
-import type { ServerInfo } from '../lib/toolset';
+import { connectorLabels, type ServerInfo } from '../lib/toolset';
 
 /** The grouping's view of one MCPServer CR. */
 export function serverInfoOf(server: MCPServer): ServerInfo {
+  const displayName = server.getDisplayNameAnnotation();
   return {
     name: server.getName(),
     family: server.getFamily(),
@@ -13,9 +14,7 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
     toolNamePrefix: server.getToolNamePrefix(),
     state: server.getState(),
     oauth: server.getAuth()?.type === 'oauth',
-    ...(server.getDisplayNameAnnotation()
-      ? { displayName: server.getDisplayNameAnnotation() }
-      : {}),
+    ...(displayName ? { displayName } : {}),
   };
 }
 
@@ -24,6 +23,11 @@ export type MusterServers = {
   servers: ServerInfo[];
   /** The same CRs, for muster's own helpers (`serverPageResolver`). */
   resources: MCPServer[];
+  /**
+   * What people call each connector, by surface name ({@link connectorLabels}):
+   * built once per list, for the many lookups a page makes.
+   */
+  labels: ReadonlyMap<string, string>;
   isLoading: boolean;
   /** True when the CRs could not be read (no muster, no access). */
   isUnavailable: boolean;
@@ -49,10 +53,12 @@ export function useMusterServers(
   );
 
   const servers = useMemo(() => resources.map(serverInfoOf), [resources]);
+  const labels = useMemo(() => connectorLabels(servers), [servers]);
 
   return {
     servers,
     resources,
+    labels,
     isLoading: Boolean(installation) && isLoading,
     isUnavailable: errors.length > 0 && resources.length === 0,
   };

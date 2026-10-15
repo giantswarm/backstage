@@ -17,6 +17,7 @@ import { musterApiRef } from '../../apis';
 import type { ToolSummary } from '../../apis/types';
 import { newMcpServerAuthRouteRef, newMcpServerRouteRef } from '../../routes';
 import { mcpServerStateSeverity, type MCPServerState } from '../../lib/k8s';
+import { connectorDisplayNameOn } from '../../lib/serverGrouping';
 import { toolEffect } from '../../lib/toolAnnotations';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
@@ -215,11 +216,9 @@ export function NewConnectorTestPage() {
   const toolsTotal = Math.max(toolsQuery.data?.total ?? 0, tools.length);
   const partial = toolsTotal > tools.length;
 
-  const displayName =
-    cr?.getDisplayNameAnnotation() ||
-    state.name.trim() ||
-    serverName ||
-    'The connector';
+  const displayName = cr
+    ? connectorDisplayNameOn(mcpServers, installation, cr.getName())
+    : state.name.trim() || serverName || 'The connector';
 
   const onDone = useCallback(() => {
     reset();
@@ -315,6 +314,7 @@ export function NewConnectorTestPage() {
           <ServerSignIn
             noun="connector"
             serverName={serverName}
+            displayName={displayName}
             installation={installation}
           />
         </Flex>

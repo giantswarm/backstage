@@ -33,7 +33,6 @@ import { shortCommit } from '../../lib/skills';
 import {
   buildCatalogue,
   declaredToolset,
-  surfaceDisplayName,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
@@ -92,7 +91,7 @@ function CreateAgentReview() {
   // person, from the same cached queries — so what is reviewed is exactly what
   // is applied, and the "selected without a sign-in" flag is repeated here.
   const toolCatalogue = useMusterToolCatalogue(state.installation);
-  const { servers } = useMusterServers(state.installation);
+  const { servers, labels } = useMusterServers(state.installation);
   const resolution = useToolsetResolution(state.installation, state.toolset);
   const unsignedServers = useMemo(
     () =>
@@ -334,8 +333,10 @@ function CreateAgentReview() {
             </PlainRow>
           )}
           <PlainRow label="Tools">
-            {toolsetSummaryLabel(shape, declared, connector =>
-              surfaceDisplayName(connector, servers),
+            {toolsetSummaryLabel(
+              shape,
+              declared,
+              connector => labels.get(connector) ?? connector,
             )}
           </PlainRow>
         </dl>

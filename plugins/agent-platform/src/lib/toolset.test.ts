@@ -3,6 +3,7 @@ import {
   bindsGateway,
   bucketLabel,
   buildCatalogue,
+  connectorLabels,
   connectorName,
   connectorOfTool,
   catalogueInventory,
@@ -26,7 +27,6 @@ import {
   selectorProblem,
   serverOfTool,
   ServerInfo,
-  surfaceDisplayName,
   toggleSelector,
   describeToolset,
   gatewayBindings,
@@ -445,15 +445,31 @@ describe('connector display names', () => {
   ];
 
   it('names a surface by the display name its CRs agree on, else its name', () => {
-    expect(surfaceDisplayName('kubernetes', named)).toBe('Kubernetes');
-    expect(surfaceDisplayName('pro', named)).toBe('Planning');
-    expect(surfaceDisplayName('agent-manager', named)).toBe('agent-manager');
-    expect(
-      surfaceDisplayName('kubernetes', [
-        { ...SERVERS[0], displayName: 'A' },
-        { ...SERVERS[1], displayName: 'B' },
-      ]),
-    ).toBe('kubernetes');
+    const labels = connectorLabels(named);
+    expect(labels.get('kubernetes')).toBe('Kubernetes');
+    expect(labels.get('pro')).toBe('Planning');
+    expect(labels.get('agent-manager')).toBe('agent-manager');
+  });
+
+  it('names connectors that would read the same by their own names', () => {
+    const labels = connectorLabels([
+      { ...SERVERS[2], displayName: 'Manager' },
+      { ...SERVERS[3], displayName: 'Manager' },
+    ]);
+    expect(labels.get('agent-manager')).toBe('agent-manager');
+    expect(labels.get('pro')).toBe('pro');
+  });
+
+  it('sorts the catalogue by what people read', () => {
+    const [registered] = buildCatalogue(
+      [],
+      [
+        { ...SERVERS[3], name: 'zz-github', displayName: 'GitHub' },
+        { ...SERVERS[3], name: 'jira' },
+      ],
+      [],
+    );
+    expect(registered.servers.map(bucketLabel)).toEqual(['GitHub', 'jira']);
   });
 
   it('names the connector of a tool and of a usage row by its display name', () => {

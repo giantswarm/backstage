@@ -51,6 +51,7 @@ import {
   findServerRow,
   fleetManagementClusters,
   partitionServers,
+  mcpServerDisplayNames,
   ServerPageRow,
   serverRowDisplayName,
   serverRowKey,
@@ -222,11 +223,14 @@ function useCallsThisMonth(
 
 function ConnectorPageContent({
   row,
+  displayName,
   servers,
   installation,
   usedBy,
 }: {
   row: ServerPageRow;
+  /** What people call it; `serverRowKey(row)` stays what links and muster use. */
+  displayName: string;
   servers: MCPServer[];
   installation: string;
   usedBy?: ReactElement;
@@ -245,8 +249,6 @@ function ConnectorPageContent({
   const serversRoute = useRouteRef(mcpServersRouteRef);
   const search = `?installation=${encodeURIComponent(installation)}`;
   const name = serverRowKey(row);
-  // What people read; `name` stays what links, muster and the URL use.
-  const displayName = serverRowDisplayName(row);
   const members = useMemo(() => rowServers(row), [row]);
   const representativeInfo = representativeServer(row, installation);
   const representative = representativeInfo?.server;
@@ -725,33 +727,46 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   const { server: key = '' } = useParams();
   const { mcpServers } = useMusterInstance();
   const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
-  // Above every state the page can be in; the form an agent's page uses. The
-  // display name once the connector is read, its URL name until then.
+  // What people read: the display name once the connector is read (a cached
+  // row names it while it is read again), its URL name until then. `key`
+  // stays what links, muster and the URL use.
+  const shownName = useMemo(
+    () =>
+      row ? serverRowDisplayName(row, mcpServerDisplayNames(mcpServers)) : key,
+    [row, mcpServers, key],
+  );
+  // Above every state the page can be in; the form an agent's page uses.
   return (
     <>
-      <ShellDocumentTitle
-        title={[row ? serverRowDisplayName(row) : key, 'Connectors']}
+      <ShellDocumentTitle title={[shownName, 'Connectors']} />
+      <ConnectorPageBody
+        serverKey={key}
+        row={row}
+        shownName={shownName}
+        usedBy={usedBy}
       />
-      <ConnectorPageBody serverKey={key} usedBy={usedBy} />
     </>
   );
 }
 
 function ConnectorPageBody({
   serverKey: key,
+  row,
+  shownName,
   usedBy,
-}: ConnectorPageProps & { serverKey: string }) {
+}: ConnectorPageProps & {
+  serverKey: string;
+  row: ServerPageRow | undefined;
+  shownName: string;
+}) {
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const paths = useConnectorGroupPaths();
   const { search } = useLocation();
-  const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
   // The sub-tab that lists the connector: known from a cached row (or for
   // muster) even while loading; otherwise the crumb has no link rather than
   // one to a sub-tab that does not list it.
   const listPath = paths.listOf(key, row);
-  // A cached row names the connector while it is read again.
-  const shownName = row ? serverRowDisplayName(row) : key;
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, tile, badge row,
@@ -819,6 +834,7 @@ function ConnectorPageBody({
     <ConnectorPageContent
       key={`${activeInstallation}/${key}`}
       row={row}
+      displayName={shownName}
       servers={mcpServers}
       installation={activeInstallation}
       usedBy={usedBy}

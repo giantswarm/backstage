@@ -8,6 +8,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   findServerRow,
+  mcpServerDisplayNames,
   serverRowDisplayName,
   serverRowKey,
 } from '../../lib/serverGrouping';
@@ -65,7 +66,9 @@ export function ToolPage() {
   const prefixes = useMemo(() => serverPrefixInfos(mcpServers), [mcpServers]);
   const shortName = shortToolName(tool, prefixes);
   const serverKey = row ? serverRowKey(row) : key;
-  const serverName = row ? serverRowDisplayName(row) : key;
+  const serverName = row
+    ? serverRowDisplayName(row, mcpServerDisplayNames(mcpServers))
+    : key;
   // The server's tools as muster lists them for this session: the tool is
   // shown only when its server offers it on this installation, not merely
   // when its name carries the server's prefix.

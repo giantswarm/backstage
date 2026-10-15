@@ -20,6 +20,7 @@ import type {
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  connectorDisplayNames,
   TOOL_GROUPS,
   type FilterToolsResponse,
   type ToolGroupKey,
@@ -519,22 +520,16 @@ export function surfaceName(server: ServerInfo): string {
 }
 
 /**
- * What people call a server surface: the `ui.giantswarm.io/display-name` its
- * CRs agree on (for a family, the annotated members decide, and members that
- * disagree name nothing), else the surface name itself — what `server:`
- * selectors, tool prefixes and URLs keep using.
+ * What people call each server surface, keyed by its surface name: the
+ * muster plugin's one rule (`connectorDisplayNames`) — the display name its
+ * CRs agree on, unless another connector would read the same, else the
+ * surface name itself, which `server:` selectors, tool prefixes and URLs keep
+ * using. Built once per server list; look names up in it.
  */
-export function surfaceDisplayName(
-  surface: string,
-  servers: ServerInfo[],
-): string {
-  const names = new Set(
-    servers
-      .filter(server => surfaceName(server) === surface)
-      .map(server => server.displayName)
-      .filter((name): name is string => Boolean(name)),
-  );
-  return names.size === 1 ? [...names][0] : surface;
+export function connectorLabels(
+  servers: readonly ServerInfo[],
+): ReadonlyMap<string, string> {
+  return connectorDisplayNames(servers);
 }
 
 /**
@@ -571,6 +566,7 @@ export function serverOfTool(
 export function connectorOfTool(
   name: string,
   servers: ServerInfo[],
+  labels: ReadonlyMap<string, string> = connectorLabels(servers),
 ): { connector: string; tool: string } | undefined {
   let best: ServerInfo | undefined;
   for (const server of servers) {
@@ -585,7 +581,7 @@ export function connectorOfTool(
   }
   return best
     ? {
-        connector: surfaceDisplayName(surfaceName(best), servers),
+        connector: labels.get(surfaceName(best)) ?? surfaceName(best),
         tool: name.slice(best.toolNamePrefix.length + 1),
       }
     : undefined;
@@ -597,12 +593,19 @@ export function connectorOfTool(
  * segment (`agentlab-mcp-kubernetes` → `kubernetes`); the name itself when no
  * server matches.
  */
-export function connectorName(server: string, servers: ServerInfo[]): string {
+export function connectorName(
+  server: string,
+  servers: ServerInfo[],
+  labels: ReadonlyMap<string, string> = connectorLabels(servers),
+): string {
   const match = servers.find(
     candidate =>
       candidate.name === server || candidate.toolNamePrefix === `x_${server}`,
   );
-  return match ? surfaceDisplayName(surfaceName(match), servers) : server;
+  if (!match) {
+    return server;
+  }
+  return labels.get(surfaceName(match)) ?? surfaceName(match);
 }
 
 export function isCoreTool(tool: Pick<ToolSummary, 'name' | 'kind'>): boolean {
@@ -667,7 +670,7 @@ export interface ServerBucket {
   /** The surface name — `server:<name>` selects it. */
   name: string;
   /**
-   * What people call it ({@link surfaceDisplayName}); absent where it is
+   * What people call it ({@link connectorLabels}); absent where it is
    * {@link name}. Read it through {@link bucketLabel}.
    */
   displayName?: string;
@@ -760,6 +763,7 @@ export function buildCatalogue(
   const surfaceOfCr = new Map(
     servers.map(server => [server.name, surfaceName(server)] as const),
   );
+  const labels = connectorLabels(servers);
   for (const server of servers) {
     const name = surfaceName(server);
     const existing = buckets.get(name);
@@ -774,7 +778,7 @@ export function buildCatalogue(
       existing.state = worstState(existing.state, server.state);
       continue;
     }
-    const displayName = surfaceDisplayName(name, servers);
+    const displayName = labels.get(name) ?? name;
     buckets.set(name, {
       name,
       ...(displayName !== name ? { displayName } : {}),
@@ -839,7 +843,12 @@ export function buildCatalogue(
   }
 
   for (const entry of groups.values()) {
-    entry.servers.sort((a, b) => a.name.localeCompare(b.name));
+    // By what people read, as the Customize list and the rail sort.
+    entry.servers.sort(
+      (a, b) =>
+        bucketLabel(a).localeCompare(bucketLabel(b)) ||
+        a.name.localeCompare(b.name),
+    );
     for (const bucket of entry.servers) {
       bucket.tools.sort((a, b) => a.name.localeCompare(b.name));
     }

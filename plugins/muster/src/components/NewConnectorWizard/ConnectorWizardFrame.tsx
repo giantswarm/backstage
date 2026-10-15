@@ -10,6 +10,7 @@ import {
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
 } from '../../routes';
+import { connectorDisplayNameOn } from '../../lib/serverGrouping';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { withEditParam } from '../NewMcpServerEditGate';
@@ -65,17 +66,12 @@ export function ConnectorWizardFrame({
   const connectLink = useRouteRef(newMcpServerRouteRef);
   const signInLink = useRouteRef(newMcpServerAuthRouteRef);
   const closeHref = useConnectorWizardCloseHref();
-  const { registeredName } = useNewMcpServerForm();
-  const { mcpServers, activeInstallation } = useMusterInstance();
-  // What people call the connector being edited; links keep its name.
+  const { registeredName, registeredInstallation } = useNewMcpServerForm();
+  const { mcpServers } = useMusterInstance();
+  // What people call the connector being edited, on the installation it was
+  // registered on; links keep its name.
   const shownName = registeredName
-    ? (mcpServers
-        .find(
-          server =>
-            server.getName() === registeredName &&
-            server.cluster === activeInstallation,
-        )
-        ?.getDisplayName() ?? registeredName)
+    ? connectorDisplayNameOn(mcpServers, registeredInstallation, registeredName)
     : undefined;
 
   const steps: WizardStep[] = [

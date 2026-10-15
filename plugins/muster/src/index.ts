@@ -53,6 +53,12 @@ export {
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
 export {
+  connectorDisplayNames,
+  connectorNameSource,
+  mcpServerDisplayNames,
+} from './lib/serverGrouping';
+export type { ConnectorNameSource } from './lib/serverGrouping';
+export {
   CONNECTOR_GROUPS,
   connectorGroupInfo,
   connectorGroupOfPath,

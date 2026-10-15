@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
 import { useResources } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { MCPServer } from '@giantswarm/backstage-plugin-muster';
+import {
+  MCPServer,
+  mcpServerDisplayNames,
+} from '@giantswarm/backstage-plugin-muster';
 
 /** One connector as the palette lists it. */
 export type PaletteConnector = {
@@ -10,8 +13,10 @@ export type PaletteConnector = {
    */
   page: string;
   /**
-   * What the Connectors tab heads the page with: the
-   * `ui.giantswarm.io/display-name` its CRs agree on, else {@link page}.
+   * What the Connectors tab heads the page with, by the muster plugin's
+   * naming rule (`connectorDisplayNames`) over the CRs of every installation
+   * listed: the display name its CRs agree on, unless another connector would
+   * read the same, else {@link page}.
    */
   displayName: string;
   /** The installations the connector is registered on, sorted. */
@@ -42,30 +47,19 @@ export function usePaletteConnectors(
 
   const rows = useMemo(() => {
     const byPage = new Map<string, Set<string>>();
-    const namesByPage = new Map<string, Set<string>>();
     for (const server of resources) {
       const page = server.getFamily() ?? server.getName();
       const set = byPage.get(page) ?? new Set<string>();
       set.add(server.cluster);
       byPage.set(page, set);
-      const names = namesByPage.get(page) ?? new Set<string>();
-      const name = server.getDisplayNameAnnotation();
-      if (name) {
-        names.add(name);
-      }
-      namesByPage.set(page, names);
     }
+    const names = mcpServerDisplayNames(resources);
     return [...byPage.entries()]
-      .map(([page, clusters]) => {
-        // CRs that disagree (one installation renamed it) name nothing, as
-        // on the Connectors tab: the page keeps its own name.
-        const names = namesByPage.get(page)!;
-        return {
-          page,
-          displayName: names.size === 1 ? [...names][0] : page,
-          installations: [...clusters].sort(),
-        };
-      })
+      .map(([page, clusters]) => ({
+        page,
+        displayName: names.get(page) ?? page,
+        installations: [...clusters].sort(),
+      }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [resources]);
 

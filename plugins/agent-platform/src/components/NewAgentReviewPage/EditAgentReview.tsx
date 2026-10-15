@@ -28,11 +28,7 @@ import {
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
 import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
-import {
-  declaredToolset,
-  surfaceDisplayName,
-  toolsetShape,
-} from '../../lib/toolset';
+import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { shortPin } from '../AgentDetailPage/helpers';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
@@ -135,7 +131,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     [state.toolset],
   );
   const shape = toolsetShape(declared);
-  const { servers } = useMusterServers(installation);
+  const { servers, labels } = useMusterServers(installation);
   const resolution = useToolsetResolution(installation, declared);
 
   const updating = useUpdateAgent(installation);
@@ -278,8 +274,10 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <PlainRow label="Tools">
             {keepsImplicitAccess
               ? 'Every tool the gateway exposes (no toolset declared)'
-              : toolsetSummaryLabel(shape, declared, connector =>
-                  surfaceDisplayName(connector, servers),
+              : toolsetSummaryLabel(
+                  shape,
+                  declared,
+                  connector => labels.get(connector) ?? connector,
                 )}
           </PlainRow>
         </dl>

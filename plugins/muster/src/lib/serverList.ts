@@ -3,6 +3,7 @@ import { MCPServer } from './k8s';
 import {
   MUSTER_SERVER_KEY,
   ServerPageRow,
+  mcpServerDisplayNames,
   partitionServers,
   serverRowDisplayName,
   serverRowKey,
@@ -80,15 +81,20 @@ export function serverListRows(
     servers.map(s => s.getFamily()).filter((f): f is string => Boolean(f)),
   );
   const prefixes = serverPrefixInfos(servers);
+  const names = mcpServerDisplayNames(servers);
   const tools = catalogue ? toolsByServerKey(catalogue, prefixes) : undefined;
 
   return rows.map(row => {
     const id = serverRowKey(row);
     const key = serverListKey(row);
+    const shadowed =
+      row.kind === 'server' && (families.has(id) || id === MUSTER_SERVER_KEY);
     return {
       key,
       id,
-      displayName: serverRowDisplayName(row),
+      // A shadowed server's name is its family's (or muster's) page; its row
+      // keeps its own name so the two read apart.
+      displayName: shadowed ? id : serverRowDisplayName(row, names),
       row,
       tools: tools
         ? (tools.get(key) ?? []).map(tool => ({
@@ -96,8 +102,7 @@ export function serverListRows(
             shortName: shortToolName(tool.name, prefixes),
           }))
         : undefined,
-      shadowed:
-        row.kind === 'server' && (families.has(id) || id === MUSTER_SERVER_KEY),
+      shadowed,
     };
   });
 }

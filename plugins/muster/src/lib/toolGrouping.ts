@@ -1,9 +1,6 @@
 import { ToolSummary } from '../apis';
 import type { MCPServer } from './k8s';
-import {
-  familyDisplayNameAnnotation,
-  type ServerPageRow,
-} from './serverGrouping';
+import { mcpServerDisplayNames, type ServerPageRow } from './serverGrouping';
 
 /**
  * One tool-name prefix an aggregated MCP server's tools are exposed under,
@@ -16,9 +13,8 @@ export interface ServerPrefixInfo {
   serverName: string;
   family?: string;
   /**
-   * What people call the connector it belongs to: the
-   * `ui.giantswarm.io/display-name` of the server, or the one its family's
-   * members agree on. Absent where there is none.
+   * What people call the connector it belongs to, by `connectorDisplayNames`;
+   * absent where that is the connector's own name.
    */
   displayName?: string;
 }
@@ -59,21 +55,16 @@ export function matchServers(
  * when the members' instance arguments differ.
  */
 export function serverPrefixInfos(servers: MCPServer[]): ServerPrefixInfo[] {
-  const familyNames = new Map<string, string | undefined>();
+  const labels = mcpServerDisplayNames(servers);
+  const families = new Set(servers.map(server => server.getFamily()));
   const displayNameOf = (server: MCPServer): string | undefined => {
-    const family = server.getFamily();
-    if (!family) {
-      return server.getDisplayNameAnnotation();
+    const surface = server.getFamily() ?? server.getName();
+    // A singular server named like a family is named by itself, not by it.
+    if (!server.getFamily() && families.has(surface)) {
+      return undefined;
     }
-    if (!familyNames.has(family)) {
-      familyNames.set(
-        family,
-        familyDisplayNameAnnotation(
-          servers.filter(member => member.getFamily() === family),
-        ),
-      );
-    }
-    return familyNames.get(family);
+    const label = labels.get(surface);
+    return label !== surface ? label : undefined;
   };
   return servers.flatMap(server => {
     const displayName = displayNameOf(server);

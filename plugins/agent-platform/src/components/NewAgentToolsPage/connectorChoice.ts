@@ -79,7 +79,11 @@ export function connectorsOf(
 ): ServerBucket[] {
   return groups
     .flatMap(group => group.servers)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort(
+      (a, b) =>
+        bucketLabel(a).localeCompare(bucketLabel(b)) ||
+        a.name.localeCompare(b.name),
+    );
 }
 
 /**

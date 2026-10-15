@@ -11,6 +11,7 @@ import {
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
+import { connectorDisplayNameOn } from '../../lib/serverGrouping';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 
@@ -71,7 +72,9 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
     : undefined;
   const gitOpsManaged = server ? isGitOpsManaged(server) : false;
   // What people call the connector; the URL keeps its resource name.
-  const shownName = server?.getDisplayName() ?? editName;
+  const shownName = editName
+    ? connectorDisplayNameOn(mcpServers, activeInstallation, editName)
+    : undefined;
   const inSync =
     !gitOpsManaged &&
     (editName

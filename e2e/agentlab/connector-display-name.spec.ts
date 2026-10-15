@@ -1,20 +1,19 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { Page } from '@playwright/test';
 import { connectToMuster, expect, open, test } from './fixtures';
 import { lab } from './lab';
+import {
+  KUBECONFIG,
+  kubectl,
+  NEEDS_KUBECONFIG,
+  PLATFORM_NAMESPACE,
+} from './kubectl';
 
-const run = promisify(execFile);
+// The portal cannot set a connector's display name — muster's create and
+// update tools take no annotations — so the fixture is applied with
+// `kubectl`, the way an admin or a chart sets it.
 
-/**
- * The lab's admin kubeconfig, its `state/kubeconfig`. The portal cannot set a
- * connector's display name — muster's create and update tools take no
- * annotations — so the fixture is applied with `kubectl`, the way an admin or
- * a chart sets it.
- */
-const KUBECONFIG = process.env.AGENTLAB_KUBECONFIG;
 /** Where the lab's muster reads its MCPServers from. */
-const NAMESPACE = 'agent-platform';
+const NAMESPACE = PLATFORM_NAMESPACE;
 const NAME = 'e2e-display-name';
 const DISPLAY_NAME = 'E2E Display Name';
 
@@ -38,16 +37,6 @@ spec:
   suspended: true
 `;
 
-async function kubectl(args: string[], input?: string) {
-  const child = run('kubectl', ['--kubeconfig', KUBECONFIG!, ...args], {
-    encoding: 'utf8',
-  });
-  if (input !== undefined) {
-    child.child.stdin?.end(input);
-  }
-  return child;
-}
-
 const scope = `?installation=${lab.installation}`;
 
 /** A connector's row in the table: its name, then its description. */
@@ -56,10 +45,7 @@ function connectorRow(page: Page, name: string) {
 }
 
 test.describe('a connector with a display name', () => {
-  test.skip(
-    !KUBECONFIG,
-    "needs kubectl access to the lab; set AGENTLAB_KUBECONFIG to the lab's state/kubeconfig",
-  );
+  test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
 
   test.beforeAll(async () => {
     await kubectl(['apply', '-f', '-'], FIXTURE);

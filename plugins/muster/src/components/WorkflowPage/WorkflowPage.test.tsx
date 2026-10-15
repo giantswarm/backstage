@@ -55,6 +55,32 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
 });
 
 let mockWorkflows: MusterWorkflow[] = [];
+function mcpServer(
+  name: string,
+  family?: string,
+  displayName?: string,
+): MCPServer {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: {
+        name,
+        namespace: 'muster',
+        ...(displayName
+          ? { annotations: { 'ui.giantswarm.io/display-name': displayName } }
+          : {}),
+      },
+      spec: {
+        type: 'streamable-http',
+        ...(family ? { family: { name: family, instanceArg: 'mc' } } : {}),
+      },
+      status: { state: 'Connected' },
+    } as never,
+    'gazelle',
+  );
+}
+let mockServers: MCPServer[] = [mcpServer('kubernetes')];
 let mockAuthenticated = true;
 let mockRequiresAuth = true;
 jest.mock('../MusterInstanceProvider', () => ({
@@ -64,18 +90,7 @@ jest.mock('../MusterInstanceProvider', () => ({
     activeInstallation: 'gazelle',
     activeInstallationInfo: { name: 'gazelle', requiresAuth: mockRequiresAuth },
     installationInfos: [{ name: 'gazelle', requiresAuth: mockRequiresAuth }],
-    mcpServers: [
-      new MCPServer(
-        {
-          apiVersion: 'muster.giantswarm.io/v1alpha1',
-          kind: 'MCPServer',
-          metadata: { name: 'kubernetes', namespace: 'muster' },
-          spec: { type: 'streamable-http' },
-          status: { state: 'Connected' },
-        } as never,
-        'gazelle',
-      ),
-    ],
+    mcpServers: mockServers,
     workflows: mockWorkflows,
     isLoading: false,
   }),
@@ -376,6 +391,7 @@ afterAll(() => {
 
 beforeEach(() => {
   mockWorkflows = [DEPLOY];
+  mockServers = [mcpServer('kubernetes')];
   mockAuthenticated = true;
   mockRequiresAuth = true;
   // Run it remembers a run's inputs per installation and tool.
@@ -1053,6 +1069,18 @@ describe('WorkflowPage', () => {
     ).toBeInTheDocument();
     // Namespace is a row of its own, not run into the labels.
     expect(within(labels).queryByText('muster')).toBeNull();
+  });
+
+  it('names a family once, by its display name, among the connectors used', async () => {
+    mockServers = [
+      mcpServer('a-mcp-kubernetes', 'kubernetes', 'Kubernetes'),
+      mcpServer('b-mcp-kubernetes', 'kubernetes', 'Kubernetes'),
+    ];
+    await renderAt(`${BASE}/deploy/details?installation=gazelle`);
+
+    const facts = screen.getByRole('region', { name: 'Workflow details' });
+    expect(within(facts).getByText('Kubernetes')).toBeInTheDocument();
+    expect(within(facts).queryByText(/mcp-kubernetes/)).toBeNull();
   });
 
   it('links the workflows that call it as a step on Details', async () => {

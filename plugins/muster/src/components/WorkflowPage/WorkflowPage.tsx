@@ -40,7 +40,7 @@ import {
   WORKFLOW_TOOL_PREFIX,
 } from '../../lib/workflowReferences';
 import { serversOfTools, toolsOfWorkflow } from '../../lib/workflowTools';
-import { connectorNames } from '../../lib/connectorName';
+import { mcpServerDisplayNames } from '../../lib/serverGrouping';
 import {
   customizeExternalRouteRef,
   workflowDetailRouteRef,
@@ -166,13 +166,23 @@ function WorkflowPageContent({
     () => serversOfTools(stepTools, prefixes),
     [stepTools, prefixes],
   );
-  // As Customize names them: display names, a family member by its family's.
-  const connectorsUsed = useMemo(() => {
-    const names = connectorNames(connectors, mcpServers);
-    return [
-      ...new Set(connectors.map(server => names.get(server) ?? server)),
-    ].join(', ');
+  // Each MCPServer the steps call as Customize and the step lines name it: a
+  // family member by its family, whichever member a step may reach.
+  const connectorLabels = useMemo(() => {
+    const labels = mcpServerDisplayNames(mcpServers);
+    const familyOf = new Map(
+      mcpServers.map(server => [server.getName(), server.getFamily()]),
+    );
+    return new Map(
+      connectors.map(server => {
+        const surface = familyOf.get(server) ?? server;
+        return [server, labels.get(surface) ?? surface] as const;
+      }),
+    );
   }, [connectors, mcpServers]);
+  const connectorsUsed = [...new Set(connectorLabels.values())]
+    .sort()
+    .join(', ');
   const asCaller = useMemo(
     () =>
       workflowRunsAsCaller(
@@ -314,6 +324,7 @@ function WorkflowPageContent({
             element={
               <WorkflowRunTab
                 installation={installation}
+                connectorLabels={connectorLabels}
                 toolName={toolName}
                 hasSession={hasSession}
                 perUserSession={perUserSession}
