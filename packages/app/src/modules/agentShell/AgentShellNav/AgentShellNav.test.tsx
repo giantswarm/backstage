@@ -26,12 +26,13 @@ import { AgentShellNav } from './AgentShellNav';
 const mockOpenPalette = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
-  const { createRouteRef } = jest.requireActual(
+  const { createRouteRef, createSubRouteRef } = jest.requireActual(
     '@backstage/frontend-plugin-api',
   );
   const { fakeInboxPluginExports } = jest.requireActual(
     '../NotificationInbox/testing/fakeInbox',
   );
+  const sessions = createRouteRef();
   return {
     ...fakeInboxPluginExports(),
     AGENT_SHELL_FLAG: 'agent-platform-shell',
@@ -42,9 +43,10 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     }) => <>{renderTrigger(mockOpenPalette)}</>,
     agentPlatformPlugin: {
       routes: {
-        sessions: createRouteRef(),
-        sessionDetail: createRouteRef({
-          params: ['installation', 'sessionId'],
+        sessions,
+        sessionDetail: createSubRouteRef({
+          path: '/:installation/:sessionId',
+          parent: sessions,
         }),
         usage: createRouteRef(),
         agents: createRouteRef(),
@@ -123,8 +125,6 @@ async function renderNav({
         '/': homeRouteRef,
         ...(bound && {
           '/agent-platform/sessions': agentPlatformPlugin.routes.sessions,
-          '/agent-platform/sessions/:installation/:sessionId':
-            agentPlatformPlugin.routes.sessionDetail,
           '/customize': customizeRouteRef,
           '/agent-platform/usage': agentPlatformPlugin.routes.usage,
           '/agent-platform/agents': agentPlatformPlugin.routes.agents,

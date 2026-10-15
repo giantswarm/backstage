@@ -13,7 +13,7 @@ const useStyles = makeStyles({
     padding: '0 5px',
     boxSizing: 'border-box',
     borderRadius: 9,
-    background: 'var(--agent-shell-unread-badge-bg, var(--bui-fg-danger))',
+    background: 'var(--agent-shell-unread-badge-bg, var(--bui-fg-negative))',
     color: 'var(--agent-shell-unread-badge-fg, #fff)',
     // A ring in the rail's colour keeps it apart from the icon under it.
     boxShadow: '0 0 0 2px var(--agent-shell-rail-bg, var(--bui-bg-neutral-1))',

@@ -17,17 +17,19 @@ import { fakeInbox, type FakeSession } from './testing/fakeInbox';
 import { TOAST_BURST } from './useInboxInterruptions';
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
-  const { createRouteRef } = jest.requireActual(
+  const { createRouteRef, createSubRouteRef } = jest.requireActual(
     '@backstage/frontend-plugin-api',
   );
   const { fakeInboxPluginExports } = jest.requireActual('./testing/fakeInbox');
+  const sessions = createRouteRef();
   return {
     ...fakeInboxPluginExports(),
     agentPlatformPlugin: {
       routes: {
-        sessions: createRouteRef(),
-        sessionDetail: createRouteRef({
-          params: ['installation', 'sessionId'],
+        sessions,
+        sessionDetail: createSubRouteRef({
+          path: '/:installation/:sessionId',
+          parent: sessions,
         }),
         usage: createRouteRef(),
         agents: createRouteRef(),
@@ -89,8 +91,6 @@ async function renderShell({ path = '/' }: { path?: string } = {}) {
       mountedRoutes: {
         '/': homeRouteRef,
         '/agent-platform/sessions': agentPlatformPlugin.routes.sessions,
-        '/agent-platform/sessions/:installation/:sessionId':
-          agentPlatformPlugin.routes.sessionDetail,
         '/agent-platform/profile': agentPlatformPlugin.routes.profile,
       },
     },
@@ -110,7 +110,9 @@ async function openOverlay() {
 }
 
 function toastTitles() {
-  return post.mock.calls.map(([toast]) => (toast as { title: string }).title);
+  return (post.mock.calls as unknown as Array<[{ title: string }]>).map(
+    ([toast]) => toast.title,
+  );
 }
 
 const now = () => Date.now();
@@ -515,19 +517,20 @@ describe('Notification inbox', () => {
 
     function installNotification(permission: NotificationPermission) {
       shown = [];
-      requestPermission = jest.fn(async () => {
-        FakeNotification.permission = 'granted';
-        return 'granted' as NotificationPermission;
-      });
       class FakeNotification {
         static permission: NotificationPermission = permission;
-        static requestPermission = requestPermission;
+        static requestPermission: jest.Mock;
         onclick: (() => void) | null = null;
         constructor(title: string, options: NotificationOptions) {
           shown.push({ title, options });
         }
         close() {}
       }
+      requestPermission = jest.fn(async () => {
+        FakeNotification.permission = 'granted';
+        return 'granted' as NotificationPermission;
+      });
+      FakeNotification.requestPermission = requestPermission;
       Object.defineProperty(window, 'Notification', {
         configurable: true,
         value: FakeNotification,

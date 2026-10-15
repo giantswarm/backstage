@@ -26,8 +26,10 @@ session's start and its last state change; the rail and the sessions list
 order by it with one comparator (`byLastActive`). The waiting count beside
 "All sessions" opens the list filtered to those sessions. On a phone it becomes a
 bottom bar. The **Platform Portal** item appears only where the deployment also
-serves the classic portal. When an agent waits for an answer, a toast says so
-anywhere in the shell (`NeedsInputToasts`); more than three become one toast.
+serves the classic portal. The **Notification inbox** (a bell on the rail's
+Profile row, and on a phone the Profile item's menu) lists the sessions that
+need the person, with toasts, an unread count in the tab title and opt-in
+desktop notifications; see [The Notification inbox](#the-notification-inbox).
 
 ## Sessions and chat
 
@@ -1252,14 +1254,53 @@ never shows and then hides.
 conversation column, offset by `--agent-shell-mobile-bar-height` on phones, and
 the column is at least the view's height (`useDockedComposerLayout`).
 
-### Pin and needs-input toasts
+### Pin
 
 The pin toggle uses `usePinnedSessions`, the store the rail and list read.
-`NeedsInputToasts` watches the polled `session-states` (same keys, no extra
-requests) and posts a `ToastApi` toast when a session flips to waiting while
-the person is elsewhere. Nothing persists; sessions already waiting are left to
-the rail's dots, a toast closes when its session stops waiting or is opened,
-and the session on screen never raises one.
+
+### The Notification inbox
+
+The shell's inbox (`packages/app/src/modules/agentShell/NotificationInbox`) is
+mounted once per shell, around the rail, and shows nothing on classic pages.
+
+- **Bell.** On the rail's Profile row, right of the Profile trigger (above the
+  avatar when the rail is collapsed), with a red unread count. It opens an
+  overlay of about 400 px beside the rail. On a phone the bottom bar keeps its
+  five items: the Profile item carries the count, and its menu starts with
+  "Notifications (n)", which opens the overlay as a full-width sheet.
+- **Rows.** One per session at most, derived in the browser from the shell's
+  own `session-states` read through the row rule
+  (`deriveSessionNotificationRow`, agent-platform-common) with the session's
+  Notification level and origin: Waiting (any session), Failed and Turn
+  finished (portal-started sessions, the latter at All activity only). A row
+  shows the agent's Avatar and Display name, the event, the session's name,
+  its age, a failure's reason class and a state chip (Waiting, Failed,
+  Finished), newest first. Clicking a row opens the session and marks it
+  read; its ⋯ menu has "Mute this session". "Mark all read" is one write to
+  the seen marks. No text of the conversation enters a row.
+- **Read.** A row is unread until its identity is the session's seen mark in
+  the notification record. The session on screen in a visible tab counts as
+  seen. The unread count prefixes the document title through
+  `ShellDocumentTitle` (`useShellDocumentTitleCount`, ui-react).
+- **Reading.** `useNotifiableSessions` (agent-platform) reads the same query
+  keys as the rail's dots: every 10 s while the tab is visible, and on the
+  60 s baseline tier while it is hidden.
+- **Interruptions.** Rows unread at the tab's first read are catch-up: one
+  summary toast at most ("Open notifications" opens the overlay through the
+  `#notifications` hash) and no desktop notification. A row that appears, or
+  changes identity, after that is news: a toast in the visible tab ("Open
+  session"), none for the session on screen, and more than three at once are
+  one toast (the Sessions list on its Waiting filter when they all wait). A
+  toast closes once its row goes or is read, or its page is opened.
+- **Desktop notifications.** Opt-in per browser from the switch at the foot of
+  the overlay (`localStorage`); the browser's permission prompt follows that
+  click only. Raised for news while the tab does not have focus, silent, with
+  the row's identity as the `tag` so several tabs show one, and only for rows
+  still unread in the record.
+
+Each row source returns `InboxRow`s (`NotificationInbox/types.ts`); the MCP
+sign-in row and the upstream notifications store are further sources merged
+in `NotificationInboxProvider`.
 
 ### Notification level and the notification record
 
