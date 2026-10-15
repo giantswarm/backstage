@@ -64,6 +64,11 @@ export const portalEvents = defineEvents({
       "The session page's tool activity was shown or hidden, a choice kept for the person's later sessions.",
     attributes: { change: ['shown', 'hidden'] },
   },
+  'AgentPlatform.sessionNotificationLevelChanged': {
+    description:
+      "A session's notification level was set: default, all activity or muted.",
+    attributes: { level: ['default', 'all', 'muted'] },
+  },
   'AgentPlatform.skillProposed': {
     description:
       'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',

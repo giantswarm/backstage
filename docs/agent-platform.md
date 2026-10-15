@@ -1261,6 +1261,37 @@ the person is elsewhere. Nothing persists; sessions already waiting are left to
 the rail's dots, a toast closes when its session stops waiting or is opened,
 and the session on screen never raises one.
 
+### Notification level and the notification record
+
+The actions menu (on the page and on each Sessions-list row) has a
+**Notifications** submenu: Default, All activity or Muted, the current one
+ticked. Default notifies when the session waits for the person or fails; All
+activity also when a turn finishes; Muted never. The submenu opens beside the
+menu, towards the page, and over it on a phone. The composer has no control.
+
+The level lives in the person's **notification record**
+(`lib/notificationRecord.ts`, `hooks/useSessionNotificationRecord.ts`), kept in
+the `agent-platform` user-settings bucket as two keys, so the frequent writes
+never touch the rare ones:
+
+- `sessionNotificationSettings`: per `${installation}/${sessionId}`, `origin:
+'portal'` when the portal's `start_session` started it (`useCreateSession`
+  writes it on success; kagent's Session names no starting surface) and the
+  level (`all` or `muted`; absent is Default). Muting a session without an
+  entry creates one without making it portal-started; Default drops an entry
+  that held only the level.
+- `notificationSeenMarks`: per session, and per installation for its MCP
+  sign-in row, the mark of the last row the person has seen. The mark is the
+  inbox's row identity, opaque to the record. "Mark all read" is one write; the
+  newest 200 session marks are kept.
+
+Every entry carries the time it was written. The app's storage is created with
+the signals API, so a write in one tab reaches the person's other tabs, and the
+record is read again whenever a tab becomes visible. `SessionsDataProvider`
+prunes the entries of sessions that are gone, per installation, only against
+that installation's successful read (never an empty one), and only entries
+written well before the read.
+
 ### Timestamps are absolute here
 
 The detail page shows absolute times (`28 Jul 2026, 10:07 UTC`), because

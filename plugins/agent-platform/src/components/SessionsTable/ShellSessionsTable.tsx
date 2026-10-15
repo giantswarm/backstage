@@ -51,6 +51,8 @@ import { useRenameSession } from '../../hooks/useRenameSession';
 import { PinIcon } from '../PinIcon';
 import { SessionRow, sessionSearchFn } from '../SessionsDataProvider/helpers';
 import { SessionActionsMenu } from '../SessionDetailPage/SessionActionsMenu';
+import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
+import type { NotificationLevel } from '../../lib/notificationRecord';
 import { SessionRenameDialog } from '../SessionDetailPage/SessionRenameDialog';
 import {
   compareSessionRecency,
@@ -185,7 +187,7 @@ function ShellStateCell({
 }
 
 /**
- * A row's rename and delete menu.
+ * A row's rename, notifications and delete menu.
  *
  * Presses inside it, the menu's popover and dialogs included (React events
  * bubble through portals), are kept from the row, which would otherwise open
@@ -201,6 +203,19 @@ function SessionRowMenu({
   const deletion = useDeleteSession(row.installation, row.sessionId);
   const rename = useRenameSession(row.installation, row.sessionId);
   const { isUserScoped } = useKagentCapabilities(row.installation);
+  const notificationSettings = useSessionNotificationSettings();
+  const { setLevel } = notificationSettings;
+  const notificationLevel = notificationSettings.isKnown
+    ? notificationSettings.levelOf(row.installation, row.sessionId)
+    : undefined;
+  const notifications = useMemo(
+    () => ({
+      level: notificationLevel,
+      onChange: (level: NotificationLevel) =>
+        setLevel(row.installation, row.sessionId, level),
+    }),
+    [notificationLevel, setLevel, row.installation, row.sessionId],
+  );
   const [isRenameOpen, setRenameOpen] = useState(false);
   const { reset: resetRename } = rename;
   const openRename = useCallback(() => {
@@ -223,6 +238,7 @@ function SessionRowMenu({
         isUserScoped={isUserScoped}
         triggerLabel={`More actions for “${row.title}”`}
         onDeleted={onDeleted}
+        notifications={notifications}
       />
       <SessionRenameDialog
         title={row.title}

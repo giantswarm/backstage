@@ -2421,6 +2421,60 @@ describe('SessionDetailPage', () => {
       );
     });
 
+    it('sets the session’s notifications from the ⋯ menu, and keeps them across a reload', async () => {
+      // The level is kept per person, like the pin; the menu renders in the
+      // shared header, so the element the page hands over is rendered here.
+      const storage = mockApis.storage();
+      const renderHeaderMenu = () =>
+        renderInTestApp(<>{lastProvidedActions()}</>, {
+          apis: [[storageApiRef, storage]],
+          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        });
+      const openNotifications = async () => {
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Session actions' }),
+        );
+        await userEvent.click(
+          screen.getByRole('menuitem', { name: 'Notifications' }),
+        );
+        await screen.findByRole('menu', { name: 'Notifications' });
+      };
+
+      const page = await renderShell([[storageApiRef, storage]]);
+      await waitFor(() =>
+        expect(lastProvidedActions().props.notifications.level).toBe('default'),
+      );
+      const menu = await renderHeaderMenu();
+      await openNotifications();
+      expect(
+        screen.getByRole('menuitemradio', { name: 'Default' }),
+      ).toHaveAttribute('aria-checked', 'true');
+
+      await userEvent.click(
+        screen.getByRole('menuitemradio', { name: 'All activity' }),
+      );
+      await waitFor(() =>
+        expect(lastProvidedActions().props.notifications.level).toBe('all'),
+      );
+
+      // A reload: the page and its menu start afresh from the stored record.
+      menu.unmount();
+      page.unmount();
+      providedActions.mockClear();
+      await renderShell([[storageApiRef, storage]]);
+      await waitFor(() =>
+        expect(lastProvidedActions().props.notifications.level).toBe('all'),
+      );
+      await renderHeaderMenu();
+      await openNotifications();
+      expect(
+        screen.getByRole('menuitemradio', { name: 'All activity' }),
+      ).toHaveAttribute('aria-checked', 'true');
+      expect(
+        screen.getByRole('menuitemradio', { name: 'Default' }),
+      ).toHaveAttribute('aria-checked', 'false');
+    });
+
     /** The "Show tool activity" switch on the session's meta line (S9). */
     const toolActivitySwitch = () =>
       screen.getByRole('switch', { name: 'Show tool activity' });

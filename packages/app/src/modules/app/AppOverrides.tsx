@@ -45,6 +45,7 @@ import {
   gsAuthProvidersApiRef,
   SignedInConfigLoader,
 } from '@giantswarm/backstage-plugin-gs';
+import { signalApiRef } from '@backstage/plugin-signals-react';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
 import { grafanaPlugin } from '@backstage-community/plugin-grafana';
 import { SentryErrorReporter } from '../../apis/errorReporter';
@@ -144,7 +145,9 @@ export const appOverrides = createFrontendModule({
      * backend database via `@backstage/plugin-user-settings-backend`, so it
      * roams across browsers and devices; every other bucket (the classic
      * portal's starred entities, home visits, …) stays in WebStorage
-     * (localStorage) exactly as the upstream default. See `ScopedStorageApi`.
+     * (localStorage) exactly as the upstream default. With the signals API, a
+     * change written in one tab reaches the person's other tabs. See
+     * `ScopedStorageApi`.
      */
     ApiBlueprint.make({
       name: 'storage',
@@ -156,13 +159,21 @@ export const appOverrides = createFrontendModule({
             errorApi: errorApiRef,
             fetchApi: fetchApiRef,
             identityApi: identityApiRef,
+            signalApi: signalApiRef,
           },
-          factory: ({ discoveryApi, errorApi, fetchApi, identityApi }) =>
+          factory: ({
+            discoveryApi,
+            errorApi,
+            fetchApi,
+            identityApi,
+            signalApi,
+          }) =>
             ScopedStorageApi.create({
               discoveryApi,
               errorApi,
               fetchApi,
               identityApi,
+              signalApi,
             }),
         }),
     }),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   storageApiRef,
   useApi,
@@ -94,6 +94,36 @@ function readStored(
   });
 }
 
+export type StoredSettingOptions = {
+  /**
+   * Read the stored value again whenever the tab becomes visible. For values
+   * other tabs and devices write often (the notifications' seen marks): the
+   * signals API carries a change to an open tab, and this catches up a tab
+   * that was hidden, asleep or offline when it was announced.
+   */
+  rereadWhenVisible?: boolean;
+};
+
+/**
+ * Counts the times the tab became visible again, while `enabled`; 0 otherwise.
+ */
+function useVisibleAgainCount(enabled: boolean): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+    const onChange = () => {
+      if (document.visibilityState === 'visible') {
+        setCount(previous => previous + 1);
+      }
+    };
+    document.addEventListener('visibilitychange', onChange);
+    return () => document.removeEventListener('visibilitychange', onChange);
+  }, [enabled]);
+  return count;
+}
+
 /**
  * One per-user setting of the `agent-platform` bucket, read through the
  * StorageApi's subscription and written as a functional update.
@@ -105,14 +135,31 @@ function readStored(
  * across every mounted instance, and each starts from the value the previous
  * one stored.
  */
-export function useStoredSetting(key: string) {
+export function useStoredSetting(
+  key: string,
+  { rereadWhenVisible = false }: StoredSettingOptions = {},
+) {
   const storageApi = useApi(storageApiRef);
   const bucket = useMemo(() => storageApi.forBucket(BUCKET), [storageApi]);
+  const visibleAgain = useVisibleAgainCount(rereadWhenVisible);
 
   // `observe$` emits on every change (and, for UserSettingsStorage, once with
   // the fetched value on subscription); the snapshot seeds the first render.
+  // A new subscription is what reads the backend again, so a tab that became
+  // visible subscribes afresh: the bucket hands out one observable per key,
+  // hence the wrapper with an identity of its own (the shown value stays
+  // until the answer lands).
   const snapshot = useObservable(
-    useMemo(() => bucket.observe$<StoredJson>(key), [bucket, key]),
+    useMemo(
+      () => ({
+        subscribe: (
+          listener: (value: StorageValueSnapshot<StoredJson>) => void,
+        ) => bucket.observe$<StoredJson>(key).subscribe(listener),
+      }),
+      // `visibleAgain` is the trigger, not an input.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [bucket, key, visibleAgain],
+    ),
     useMemo(() => bucket.snapshot<StoredJson>(key), [bucket, key]),
   );
   const latest = useRef(snapshot);

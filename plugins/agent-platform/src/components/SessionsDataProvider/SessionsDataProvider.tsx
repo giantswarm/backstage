@@ -1,4 +1,11 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
@@ -15,6 +22,8 @@ import { sessionsQueryKey } from '../../lib/queryKeys';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
+import { useNotificationRecordPruning } from '../../hooks/useSessionNotificationRecord';
+import type { CompleteSessionsRead } from '../../lib/notificationRecord';
 import { describeReadFailure, type ReadFailure } from '../../lib/readFailure';
 import { SessionRow, sortSessionRows, toSessionRow } from './helpers';
 
@@ -327,6 +336,42 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     allInstallations.length,
     notReachableInstallations,
   ]);
+
+  // The person's notification record keeps entries per session (its origin,
+  // its Notification level, what was seen of it); an entry whose session is
+  // gone is dropped here. Only against an installation's complete, successful
+  // read: `success` (never `error`, which keeps the last data it had), and the
+  // backend walks kagent's list to its end. An installation not read, or not
+  // read successfully, keeps its entries.
+  const prune = useNotificationRecordPruning();
+  const pruneRef = useRef(prune);
+  pruneRef.current = prune;
+  const completeReads: CompleteSessionsRead[] = targets.flatMap(
+    (installation, index) => {
+      const query = sessionQueries[index];
+      return query?.status === 'success' && query.data
+        ? [
+            {
+              installation,
+              sessionIds: query.data.map(session => session.sessionId),
+              readAt: query.dataUpdatedAt,
+            },
+          ]
+        : [];
+    },
+  );
+  const completeReadsKey = completeReads
+    .map(read => `${read.installation}:${read.readAt}`)
+    .join('|');
+  useEffect(() => {
+    completeReads.forEach(read => {
+      // A failed write leaves the entries for the next read to prune.
+      pruneRef.current(read).catch(() => {});
+    });
+    // Keyed on which reads answered when: `completeReads` is derived fresh
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completeReadsKey]);
 
   return (
     <SessionsContext.Provider value={value}>

@@ -7,6 +7,7 @@ import type {
   StorageApi,
   StorageValueSnapshot,
 } from '@backstage/core-plugin-api';
+import type { SignalApi } from '@backstage/plugin-signals-react';
 import { UserSettingsStorage } from '@backstage/plugin-user-settings';
 import type { JsonValue, Observable } from '@backstage/types';
 
@@ -25,6 +26,11 @@ export const USER_SETTINGS_BUCKETS: readonly string[] = ['agent-platform'];
  * upstream default — so the classic portal keeps its behaviour and its data.
  * Nothing is migrated between the two.
  *
+ * The user-settings side is created with the signals API: the backend
+ * announces every change it stores (`user-settings` channel, the changed key),
+ * and each subscribed key is read again on that signal, so a write in one tab
+ * or on one device reaches every other open tab of the person.
+ *
  * The user-settings side degrades on its own: while the person is not signed
  * in it reads and writes WebStorage, and when the `user-settings` backend
  * route is unreachable reads resolve as "absent" (reported once through the
@@ -37,6 +43,8 @@ export class ScopedStorageApi implements StorageApi {
     errorApi: ErrorApi;
     fetchApi: FetchApi;
     identityApi: IdentityApi;
+    /** Delivers the backend's change announcements; without it a tab sees only its own writes. */
+    signalApi?: SignalApi;
     /** Overridable for tests; the agent platform's bucket by default. */
     userSettingsBuckets?: readonly string[];
   }): ScopedStorageApi {

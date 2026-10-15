@@ -47,6 +47,7 @@
     "@backstage/plugin-search": "backstage:^",
     "@backstage/plugin-search-react": "backstage:^",
     "@backstage/plugin-signals": "backstage:^",
+    "@backstage/plugin-signals-react": "backstage:^",
     "@backstage/plugin-techdocs": "backstage:^",
     "@backstage/plugin-techdocs-module-addons-contrib": "backstage:^",
     "@backstage/plugin-techdocs-react": "backstage:^",

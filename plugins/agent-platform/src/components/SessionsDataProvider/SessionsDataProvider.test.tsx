@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
+import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
 import {
   focusManager,
   QueryClient,
@@ -110,9 +111,15 @@ function renderProvider(
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   }),
+  storage: StorageApi = mockApis.storage(),
 ) {
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+    <TestApiProvider
+      apis={[
+        [kagentApiRef, kagentApi],
+        [storageApiRef, storage],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <SessionsDataProvider>{children}</SessionsDataProvider>
       </QueryClientProvider>
@@ -645,5 +652,117 @@ describe('SessionsDataProvider installation scope', () => {
     expect(result.current.installations).toEqual(['gazelle', 'golem']);
     expect(result.current.notReachableInstallations).toEqual(['golem']);
     expect(listSessions).not.toHaveBeenCalledWith('golem');
+  });
+
+  describe('the notification record', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const old = Date.now() - DAY_MS;
+
+    async function storedRecord() {
+      const storage = mockApis.storage();
+      const bucket = storage.forBucket('agent-platform');
+      await bucket.set('sessionNotificationSettings', {
+        sessions: {
+          'gazelle/abc': { origin: 'portal', at: old },
+          'gazelle/gone': { origin: 'portal', level: 'all', at: old },
+          'golem/xyz': { level: 'muted', at: old },
+        },
+      });
+      await bucket.set('notificationSeenMarks', {
+        sessions: {
+          'gazelle/abc': { mark: 'mark-abc', at: old },
+          'gazelle/gone': { mark: 'mark-gone', at: old },
+        },
+        mcpSignIn: { gazelle: { mark: 'mark-mcp', at: old } },
+      });
+      return storage;
+    }
+
+    const settingsOf = (storage: StorageApi) =>
+      storage
+        .forBucket('agent-platform')
+        .snapshot('sessionNotificationSettings').value as {
+        sessions: Record<string, unknown>;
+      };
+    const seenOf = (storage: StorageApi) =>
+      storage.forBucket('agent-platform').snapshot('notificationSeenMarks')
+        .value as {
+        sessions: Record<string, unknown>;
+        mcpSignIn: Record<string, unknown>;
+      };
+
+    it('drops the entries of sessions an installation’s successful read no longer lists', async () => {
+      listSessions.mockImplementation((installation: string) =>
+        Promise.resolve(
+          installation === 'gazelle'
+            ? [session({ id: 'gazelle/abc', sessionId: 'abc' })]
+            : [
+                session({
+                  id: 'golem/xyz',
+                  sessionId: 'xyz',
+                  installation: 'golem',
+                }),
+              ],
+        ),
+      );
+      const storage = await storedRecord();
+
+      renderProvider(undefined, storage);
+
+      await waitFor(() =>
+        expect(Object.keys(settingsOf(storage).sessions)).toEqual([
+          'gazelle/abc',
+          'golem/xyz',
+        ]),
+      );
+      await waitFor(() =>
+        expect(Object.keys(seenOf(storage).sessions)).toEqual(['gazelle/abc']),
+      );
+      // The MCP sign-in row's mark is per installation, not per session.
+      expect(seenOf(storage).mcpSignIn).toEqual({
+        gazelle: { mark: 'mark-mcp', at: old },
+      });
+    });
+
+    it('keeps the entries of an installation whose read failed', async () => {
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.reject(namedError('UpstreamError'))
+          : Promise.resolve([]),
+      );
+      const storage = await storedRecord();
+
+      const { result } = renderProvider(undefined, storage);
+
+      await waitFor(() =>
+        expect(result.current.unreachableInstallations).toEqual(['gazelle']),
+      );
+      expect(Object.keys(settingsOf(storage).sessions)).toEqual([
+        'gazelle/abc',
+        'gazelle/gone',
+        'golem/xyz',
+      ]);
+      expect(Object.keys(seenOf(storage).sessions)).toEqual([
+        'gazelle/abc',
+        'gazelle/gone',
+      ]);
+    });
+
+    it('keeps the entries of an installation that is not read at all', async () => {
+      mockKagent = { installations: ['gazelle'], isProbing: false };
+      listSessions.mockResolvedValue([
+        session({ id: 'gazelle/abc', sessionId: 'abc' }),
+      ]);
+      const storage = await storedRecord();
+
+      renderProvider(undefined, storage);
+
+      await waitFor(() =>
+        expect(Object.keys(settingsOf(storage).sessions)).toEqual([
+          'gazelle/abc',
+          'golem/xyz',
+        ]),
+      );
+    });
   });
 });
