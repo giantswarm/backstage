@@ -18,6 +18,7 @@ import {
   useInstallationScope,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { useNamespacedModelConfigs } from '../../hooks/useNamespacedModelConfigs';
 
 export type ModelConfigsContextValue = {
   /** Discovery/list still in flight across the fleet. */
@@ -133,6 +134,21 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
     { enableDiscovery: false },
   );
 
+  // A person whose kagent reads come from a namespaced RoleBinding may not
+  // list ModelConfigs cluster-wide: those installations are read again,
+  // namespace by namespace.
+  const forbiddenInstallations = Array.from(
+    new Set(
+      errors
+        .filter(
+          e =>
+            e.type !== 'incompatibility' && e.error.name === 'ForbiddenError',
+        )
+        .map(e => e.cluster),
+    ),
+  );
+  const namespaced = useNamespacedModelConfigs(forbiddenInstallations);
+
   const answeredKey = [
     ...clustersData.map(({ cluster }) => cluster),
     ...errors.map(({ cluster }) => cluster),
@@ -154,24 +170,36 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const inaccessibleInstallationsKey = inaccessibleInstallations.join(',');
 
   const value = useMemo<ModelConfigsContextValue>(() => {
-    const withModels = new Set(resources.map(mc => mc.cluster));
+    const allResources = [...resources, ...namespaced.resources];
+    const withModels = new Set(allResources.map(mc => mc.cluster));
 
     // A 404 means the api.kagent.dev API group has gone since the (hour-long)
     // inventory answered, so the cluster simply has no ModelConfigs — not a
-    // "couldn't read" failure. Only genuine failures (403 forbidden,
-    // unreachable) that produced no models are surfaced.
+    // "couldn't read" failure. Only genuine failures (403 forbidden in every
+    // namespace too, unreachable) that produced no models are surfaced.
     const unreachableInstallations = Array.from(
       new Set(errors.filter(e => !isNotFoundError(e)).map(e => e.cluster)),
-    ).filter(name => !withModels.has(name));
+    ).filter(
+      name =>
+        !withModels.has(name) &&
+        !namespaced.readInstallations.includes(name) &&
+        !namespaced.pendingInstallations.includes(name),
+    );
 
-    const answered = new Set([
-      ...settledInstallations,
-      ...clustersData.map(({ cluster }) => cluster),
-      ...errors.map(({ cluster }) => cluster),
-    ]);
+    const answered = new Set(
+      [
+        ...settledInstallations,
+        ...clustersData.map(({ cluster }) => cluster),
+        ...errors.map(({ cluster }) => cluster),
+      ].filter(name => !namespaced.pendingInstallations.includes(name)),
+    );
 
     return {
-      isLoading: isProbing || isLoading || !homeSettled,
+      isLoading:
+        isProbing ||
+        isLoading ||
+        !homeSettled ||
+        namespaced.pendingInstallations.length > 0,
       hasInstallations: allInstallations.length > 0,
       scope,
       home,
@@ -185,7 +213,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
       unreachableInstallations,
       inaccessibleInstallations,
       modelConfigsFor: (installation: string) =>
-        resources.filter(mc => mc.cluster === installation),
+        allResources.filter(mc => mc.cluster === installation),
     };
     // allInstallations/scopedInstallations/inaccessibleInstallations are
     // derived fresh each render;
@@ -193,6 +221,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     resources,
+    namespaced,
     clustersData,
     errors,
     isLoading,

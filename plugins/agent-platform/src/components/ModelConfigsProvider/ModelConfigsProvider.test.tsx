@@ -62,6 +62,19 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
     e.type !== 'incompatibility' && e.error?.name === 'NotFoundError',
 }));
 
+// The namespace-by-namespace read of the installations a cluster-wide list
+// was forbidden on; its own test is useNamespacedModelConfigs.test.tsx.
+const mockUseNamespacedModelConfigs = jest.fn();
+jest.mock('../../hooks/useNamespacedModelConfigs', () => ({
+  useNamespacedModelConfigs: (installations: string[]) =>
+    mockUseNamespacedModelConfigs(installations),
+}));
+const NOTHING_NAMESPACED = {
+  resources: [],
+  readInstallations: [],
+  pendingInstallations: [],
+};
+
 // Duck-typed stand-in for a ModelConfig instance — the provider only reads
 // `.cluster`.
 function fakeModelConfig(cluster: string) {
@@ -108,6 +121,8 @@ const renderUseModelConfigs = () =>
 describe('ModelConfigsProvider', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
+    mockUseNamespacedModelConfigs.mockReset();
+    mockUseNamespacedModelConfigs.mockReturnValue(NOTHING_NAMESPACED);
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
       installations: ['alpha', 'beta', 'gaggle'],
@@ -202,6 +217,65 @@ describe('ModelConfigsProvider', () => {
     expect(hook.current.availableInstallations).toEqual(['alpha']);
   });
 
+  it('offers the models of the namespaces a person with a namespaced RoleBinding reads', () => {
+    // alpha refuses the cluster-wide list (403); its namespaces are read one
+    // by one and answer two models.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { beta: 1 }, failed: ['alpha'] }),
+    );
+    mockUseNamespacedModelConfigs.mockReturnValue({
+      resources: [fakeModelConfig('alpha'), fakeModelConfig('alpha')],
+      readInstallations: ['alpha'],
+      pendingInstallations: [],
+    });
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(mockUseNamespacedModelConfigs).toHaveBeenLastCalledWith(['alpha']);
+    expect(hook.current.availableInstallations).toEqual(['alpha', 'beta']);
+    expect(hook.current.modelConfigsFor('alpha')).toHaveLength(2);
+    expect(hook.current.unreachableInstallations).toEqual([]);
+  });
+
+  it('does not flag an installation whose namespaces were read empty', () => {
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+    mockUseNamespacedModelConfigs.mockReturnValue({
+      ...NOTHING_NAMESPACED,
+      readInstallations: ['alpha'],
+    });
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(hook.current.unreachableInstallations).toEqual([]);
+    expect(hook.current.availableInstallations).toEqual([]);
+  });
+
+  it('keeps an installation pending while its namespaces are read', () => {
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { beta: 1, gaggle: 1 }, failed: ['alpha'] }),
+    );
+    mockUseNamespacedModelConfigs.mockReturnValue({
+      ...NOTHING_NAMESPACED,
+      pendingInstallations: ['alpha'],
+    });
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(hook.current.isLoading).toBe(true);
+    expect(hook.current.pendingInstallations).toEqual(['alpha']);
+    expect(hook.current.unreachableInstallations).toEqual([]);
+  });
+
+  it('asks no namespace when the cluster-wide read failed for another reason', () => {
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: 1 }, notFound: ['beta'] }),
+    );
+
+    renderUseModelConfigs();
+
+    expect(mockUseNamespacedModelConfigs).toHaveBeenLastCalledWith([]);
+  });
+
   it('reports loading while probes are still settling', () => {
     mockKagent = { installations: [], isProbing: true };
     mockUseResources.mockReturnValue(result({ isLoading: false }));
@@ -234,6 +308,8 @@ describe('ModelConfigsProvider', () => {
 describe('ModelConfigsProvider installation scope', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
+    mockUseNamespacedModelConfigs.mockReset();
+    mockUseNamespacedModelConfigs.mockReturnValue(NOTHING_NAMESPACED);
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
       installations: ['alpha', 'beta', 'gaggle'],
