@@ -18,6 +18,7 @@ import {
   installPersistedQueryDrop,
   KSERVE_POOL_BACKEND,
   L4_POOL_PRESETS,
+  modelManagerUnavailable,
   NO_SIZE,
   poolFitAnswer,
   stubModelManagerTools,
@@ -734,8 +735,13 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
 
 test.describe('models: the model cache is the cluster’s and billed while it stands (cluster-manager stubbed)', () => {
   test('the form’s cache line carries cluster-manager’s price and the standing-cost words; a kept claim shows on the Model cache card with its cost and goes with Remove cache', async ({
+    admin,
     page,
   }) => {
+    // The kept claim is read on Model hosting's Model cache tab, and Model
+    // hosting draws its tabs only where model-manager answers.
+    const unavailable = await modelManagerUnavailable(admin);
+    test.skip(!!unavailable, unavailable);
     const { calls } = await reachForm(page, { keptCache: 'kept' });
     // Off by default, the kept claim is named as standing and costing;
     // switched on, the price is cluster-manager's, from the dry run — the
