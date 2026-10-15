@@ -192,7 +192,7 @@ export function DefinitionEditorDialog({
             value,
             onChange: setValue,
             error: fieldCheck.errorFor('definition', parsed.problem),
-            blurProps: fieldCheck.blurProps('definition'),
+            blurProps: fieldCheck.blurProps('definition', parsed.problem),
           })}
           {error && (
             <Alert

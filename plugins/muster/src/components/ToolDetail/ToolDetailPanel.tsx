@@ -263,7 +263,11 @@ export function ToolDetailPanel({
                 field={field}
                 value={values[field.name]}
                 error={validation.errorFor(field.name, fieldErrors[field.name])}
-                blurProps={validation.blurProps(field.name, values[field.name])}
+                blurProps={validation.blurProps(
+                  field.name,
+                  fieldErrors[field.name],
+                  values[field.name],
+                )}
                 jsonMode={
                   Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
                 }
