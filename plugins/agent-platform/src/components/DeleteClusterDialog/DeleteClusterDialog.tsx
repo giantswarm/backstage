@@ -81,9 +81,10 @@ export function DeleteClusterDialog({
   // A Delete without the name typed says so on the field and focuses it, as
   // the app's other typed confirmations do (the `forms` skill).
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
+  const validation = useFieldValidation(scope, { isOpen });
   const typedError =
-    typed === name ? undefined : `Type ${name} to confirm the deletion.`;
+    // A pasted name often carries a trailing space or newline.
+    typed.trim() === name ? undefined : `Type ${name} to confirm the deletion.`;
 
   /** The dry runs, again after a refusal the person has dealt with. */
   const check = async () => {
@@ -111,7 +112,6 @@ export function DeleteClusterDialog({
       setRemoved(undefined);
       setCommitted(undefined);
       write.reset();
-      validation.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, installation, organization, name]);

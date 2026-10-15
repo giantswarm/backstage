@@ -21,6 +21,10 @@ const useStyles = makeStyles({
       fontFamily: 'monospace',
       fontSize: 12,
     },
+    // A parse error's snippet keeps its line breaks.
+    '& .bui-FieldError': {
+      whiteSpace: 'pre-wrap',
+    },
   },
 });
 

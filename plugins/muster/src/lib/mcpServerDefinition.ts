@@ -447,7 +447,7 @@ export function mcpServerDetailsProblems(
     });
   }
   if (!state.installation) {
-    problems.push({ field: 'installation', message: 'Select an installation' });
+    problems.push({ field: 'installation', message: 'Choose an environment.' });
   }
   if (!state.url.trim()) {
     problems.push({

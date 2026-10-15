@@ -133,7 +133,7 @@ function coerceScalar(
 export function coerceValue(
   field: SchemaField,
   raw: FormValue,
-): { value: unknown } | { error: string } {
+): { value: unknown } | { error: string; item?: number } {
   const kind = fieldKind(field);
   if (kind === 'boolean') {
     return { value: Boolean(raw) };
@@ -152,7 +152,7 @@ export function coerceValue(
         }
         const coerced = coerceScalar(itemType, text);
         if ('error' in coerced) {
-          return { error: `Item ${index + 1}: ${coerced.error}` };
+          return { error: `Item ${index + 1}: ${coerced.error}`, item: index };
         }
         out.push(coerced.value);
       }
@@ -193,6 +193,8 @@ export function coerceValue(
 export interface BuildArgsResult {
   args: Record<string, unknown>;
   errors: Record<string, string>;
+  /** For an array field whose error is about one item: that item's index. */
+  errorItems: Record<string, number>;
 }
 
 /**
@@ -206,6 +208,7 @@ export function buildArgs(
 ): BuildArgsResult {
   const args: Record<string, unknown> = {};
   const errors: Record<string, string> = {};
+  const errorItems: Record<string, number> = {};
 
   for (const field of fields) {
     if (fieldKind(field) === 'boolean') {
@@ -216,6 +219,9 @@ export function buildArgs(
     const result = coerceValue(field, raw);
     if ('error' in result) {
       errors[field.name] = result.error;
+      if (result.item !== undefined) {
+        errorItems[field.name] = result.item;
+      }
       continue;
     }
     if (result.value === undefined) {
@@ -227,5 +233,5 @@ export function buildArgs(
     args[field.name] = result.value;
   }
 
-  return { args, errors };
+  return { args, errors, errorItems };
 }

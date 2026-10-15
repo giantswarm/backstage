@@ -184,10 +184,11 @@ export function ToolDetailPanel({
     toolRun.run(args);
   };
 
-  const { args, errors: fieldErrors } = useMemo(
-    () => buildArgs(fields, values),
-    [fields, values],
-  );
+  const {
+    args,
+    errors: fieldErrors,
+    errorItems,
+  } = useMemo(() => buildArgs(fields, values), [fields, values]);
   const submit = () => {
     if (Object.keys(fieldErrors).length > 0) {
       validation.reveal();
@@ -263,6 +264,7 @@ export function ToolDetailPanel({
                 field={field}
                 value={values[field.name]}
                 error={validation.errorFor(field.name, fieldErrors[field.name])}
+                invalidItem={errorItems[field.name]}
                 blurProps={validation.blurProps(
                   field.name,
                   fieldErrors[field.name],

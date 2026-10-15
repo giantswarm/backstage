@@ -75,7 +75,7 @@ export function SessionRenameDialog({
 }: SessionRenameDialogProps) {
   const [value, setValue] = useState(title);
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
+  const validation = useFieldValidation(scope, { isOpen });
 
   // Seeded on the closed → open transition only, never on a `title` change.
   //
@@ -83,10 +83,7 @@ export function SessionRenameDialog({
   // dialog whenever the session is renamed elsewhere — kagent's own UI, another
   // tab, another device. Depending on it here would replace whatever the user
   // has typed, mid-sentence and with no indication anything happened.
-  useOnDialogOpen(isOpen, () => {
-    setValue(title);
-    validation.reset();
-  });
+  useOnDialogOpen(isOpen, () => setValue(title));
 
   const trimmed = value.trim();
   let nameError: string | undefined;

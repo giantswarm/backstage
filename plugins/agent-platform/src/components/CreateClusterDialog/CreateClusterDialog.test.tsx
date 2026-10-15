@@ -116,6 +116,8 @@ type Scenario = {
   commitRefused?: boolean;
   /** create_cluster refuses every call: muster's session is not connected. */
   notConnected?: boolean;
+  /** list_releases never answers. */
+  releasesPending?: boolean;
 };
 
 const NOT_FROM_GIT =
@@ -136,7 +138,7 @@ function makeMusterApi(scenario: Scenario = {}) {
             tools: ['create_cluster', 'delete_cluster', 'list_releases'],
           };
         case 'x_cluster-manager_list_releases':
-          return RELEASES;
+          return scenario.releasesPending ? new Promise(() => {}) : RELEASES;
         case 'x_cluster-manager_list_clusters':
           return { clusters: [{ name: 'taken1', namespace: 'org-acme' }] };
         case 'x_cluster-manager_create_cluster': {
@@ -262,6 +264,19 @@ describe('CreateClusterDialog', () => {
     );
     expect(writesOf(callTool)).toHaveLength(0);
     expect(screen.queryByTestId('cluster-review')).toBeNull();
+  });
+
+  it('says the providers are still being read when Review is pressed before they are', async () => {
+    const user = userEvent.setup();
+    await renderDialog({ releasesPending: true });
+    await screen.findByRole('button', { name: /Pick an organization/ });
+
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+
+    expect(
+      screen.getByText('Wait until the providers are read, then choose one.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/offers no provider/)).not.toBeInTheDocument();
   });
 
   it('checks the name when the person leaves it, not while they type', async () => {

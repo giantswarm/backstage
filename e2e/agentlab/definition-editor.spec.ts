@@ -108,9 +108,12 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
   await expect(editor).not.toHaveAttribute('aria-invalid', 'true');
   await expect(dialog.getByText(/^Invalid JSON: /)).toBeHidden();
 
-  // Not busy: Escape closes it, and it opens again on the server's definition.
+  // Not busy: Escape closes it — after "Discard changes", since the text
+  // differs from the server's — and it opens again on the server's definition.
   await admin.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  const discard = admin.getByRole('dialog', { name: 'Discard your changes?' });
+  await discard.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(dialog).toHaveCount(0);
   await editAsJson();
   await expect(editor).toHaveValue(new RegExp(`"name": "${server}"`));
   await expect(dialog.getByText(/^Invalid JSON: /)).toBeHidden();

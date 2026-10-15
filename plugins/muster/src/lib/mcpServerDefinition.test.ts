@@ -300,7 +300,7 @@ describe('validateNewMcpServerForm', () => {
   it('reports every missing field of an empty form, in form order', () => {
     expect(validateNewMcpServerForm(emptyFormState)).toEqual([
       'Enter a name for the connector.',
-      'Select an installation',
+      'Choose an environment.',
       'Enter the URL, e.g. https://mcp.example.com/mcp.',
     ]);
   });

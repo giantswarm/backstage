@@ -140,6 +140,10 @@ describe('DefinitionEditorDialog', () => {
     expect(editor()).toHaveAccessibleDescription(
       expect.stringContaining('Invalid JSON:'),
     );
+    // The parser's message keeps its line breaks.
+    const message = screen.getByText(/Invalid JSON:/);
+    expect(message.textContent).toBe('Invalid JSON:\nline two');
+    expect(message).toHaveStyle({ whiteSpace: 'pre-wrap' });
     expect(editor()).toHaveFocus();
     expect(callTool).not.toHaveBeenCalled();
 
@@ -147,6 +151,33 @@ describe('DefinitionEditorDialog', () => {
     await userEvent.clear(editor());
     await userEvent.type(editor(), '{{"name":"b"}');
     expect(editor()).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('sends a definition that parses to a falsy value, for muster to judge', async () => {
+    const { callTool } = await renderDialog();
+
+    await userEvent.clear(editor());
+    await userEvent.type(editor(), 'null');
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }));
+
+    expect(callTool).toHaveBeenCalledWith(
+      'core_thing_validate',
+      null,
+      'gazelle',
+    );
+    expect(editor()).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it("drops the last call's verdict once the text is edited", async () => {
+    await renderDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }));
+    expect(await screen.findByText('Definition is valid.')).toBeInTheDocument();
+
+    await userEvent.type(editor(), ' broken');
+    await userEvent.tab();
+
+    expect(editor()).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.queryByText('Definition is valid.')).not.toBeInTheDocument();
   });
 
   it('checks the text when the person leaves the editor', async () => {

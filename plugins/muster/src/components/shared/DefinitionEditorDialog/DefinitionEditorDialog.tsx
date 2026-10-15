@@ -103,8 +103,10 @@ export function DefinitionEditorDialog({
   // presses Validate or Save, and follows each change from then on (the
   // `forms` skill).
   const scope = useRef<HTMLDivElement>(null);
-  const fieldCheck = useFieldValidation(scope);
-  const parsed = useMemo(() => {
+  const fieldCheck = useFieldValidation(scope, { isOpen: open });
+  const parsed = useMemo<
+    { definition: Record<string, unknown> } | { problem: string }
+  >(() => {
     try {
       return { definition: parse(value) };
     } catch (e) {
@@ -115,6 +117,7 @@ export function DefinitionEditorDialog({
       };
     }
   }, [parse, value]);
+  const parseProblem = 'problem' in parsed ? parsed.problem : undefined;
 
   const onError = (e: Error) => setError(mutationErrorMessage(e));
   const validation = useTrackedMutation({
@@ -153,13 +156,14 @@ export function DefinitionEditorDialog({
     setDiscardOpen(false);
     setError(undefined);
     setMessage(undefined);
-    fieldCheck.reset();
   });
 
   const submit = (mutation: typeof validation) => {
     setError(undefined);
     setMessage(undefined);
-    if (!parsed.definition) {
+    // On the parse's verdict, not the value's truthiness: `null` or `0`
+    // parse, and muster's own answer says what is wrong with them.
+    if ('problem' in parsed) {
       fieldCheck.reveal();
       return;
     }
@@ -190,9 +194,14 @@ export function DefinitionEditorDialog({
           </Text>
           {renderEditor({
             value,
-            onChange: setValue,
-            error: fieldCheck.errorFor('definition', parsed.problem),
-            blurProps: fieldCheck.blurProps('definition', parsed.problem),
+            onChange: edited => {
+              setValue(edited);
+              // The last call's verdict was about the text before this edit.
+              setMessage(undefined);
+              setError(undefined);
+            },
+            error: fieldCheck.errorFor('definition', parseProblem),
+            blurProps: fieldCheck.blurProps('definition', parseProblem),
           })}
           {error && (
             <Alert

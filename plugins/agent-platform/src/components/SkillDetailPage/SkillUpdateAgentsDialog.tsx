@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Checkbox, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
@@ -14,8 +7,8 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   ConfirmDialog,
-  FieldErrorText,
   useFieldValidation,
+  useGroupFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -429,13 +422,7 @@ export function SkillUpdateAgentsDialog({
   const availability = useAgentManagerAvailability(installations);
   // Confirm with nothing selected says so under the list and focuses it.
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
-  const { reset: resetValidation } = validation;
-  useEffect(() => {
-    if (!isOpen) {
-      resetValidation();
-    }
-  }, [isOpen, resetValidation]);
+  const validation = useFieldValidation(scope, { isOpen });
 
   const [verdicts, setVerdicts] = useState<Record<string, UpdateVerdict>>({});
   const onVerdict = useCallback((id: string, verdict: UpdateVerdict) => {
@@ -566,10 +553,11 @@ export function SkillUpdateAgentsDialog({
   const allSelected =
     updatable.length > 0 && selected.length === updatable.length;
   const count = selected.length;
-  const selectionErrorId = `${useId()}-selection-error`;
-  const selectionError = validation.errorFor(
-    'agents',
-    count === 0 ? 'Choose at least one agent to update.' : undefined,
+  const selection = useGroupFieldError(
+    validation.errorFor(
+      'agents',
+      count === 0 ? 'Choose at least one agent to update.' : undefined,
+    ),
   );
 
   return (
@@ -636,11 +624,9 @@ export function SkillUpdateAgentsDialog({
           />
         ))}
         <div
-          role="group"
           aria-label="Agents"
-          aria-describedby={selectionError ? selectionErrorId : undefined}
           className={classes.selection}
-          {...(selectionError ? { 'data-invalid': '' } : {})}
+          {...selection.groupProps}
         >
           {updatable.length > 1 && !isDone && (
             <Checkbox
@@ -673,11 +659,7 @@ export function SkillUpdateAgentsDialog({
             )}
           </ShowMore>
         </div>
-        {selectionError && (
-          <FieldErrorText id={selectionErrorId}>
-            {selectionError}
-          </FieldErrorText>
-        )}
+        {selection.message}
         {isChecking && !isDone && (
           <Text as="p" variant="body-small" color="secondary">
             Checking which agents you can update…

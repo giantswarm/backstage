@@ -16,8 +16,8 @@ import { useId } from 'react';
 import AddIcon from '@material-ui/icons/Add';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import {
-  FieldErrorText,
   fieldErrorProps,
+  useGroupFieldError,
   useSelectFieldError,
   type FieldBlurProps,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -40,16 +40,25 @@ function ArrayItemInput({
   enumOptions,
   value,
   onChange,
+  isInvalid,
+  describedBy,
 }: {
   label: string;
   itemType?: string;
   enumOptions: { id: string; label: string }[];
   value: string;
   onChange: (next: string) => void;
+  /** This row is the one the field's error is about. */
+  isInvalid?: boolean;
+  describedBy?: string;
 }) {
+  const invalidProps = isInvalid
+    ? { isInvalid: true, 'aria-describedby': describedBy }
+    : {};
   if (enumOptions.length > 0) {
     return (
       <Select
+        {...invalidProps}
         aria-label={label}
         options={enumOptions}
         selectedKey={value || null}
@@ -60,6 +69,7 @@ function ArrayItemInput({
   if (itemType === 'number') {
     return (
       <NumberField
+        {...invalidProps}
         aria-label={label}
         value={value === '' ? NaN : Number(value)}
         onChange={n => onChange(Number.isNaN(n) ? '' : String(n))}
@@ -67,7 +77,12 @@ function ArrayItemInput({
     );
   }
   return (
-    <TextField aria-label={label} value={value} onChange={v => onChange(v)} />
+    <TextField
+      {...invalidProps}
+      aria-label={label}
+      value={value}
+      onChange={v => onChange(v)}
+    />
   );
 }
 
@@ -75,6 +90,7 @@ function ArrayField({
   field,
   value,
   error,
+  invalidItem,
   jsonMode,
   onChange,
   onToggleJson,
@@ -82,6 +98,7 @@ function ArrayField({
   field: SchemaField;
   value: FormValue | undefined;
   error?: string;
+  invalidItem?: number;
   jsonMode: boolean;
   onChange: (value: FormValue) => void;
   onToggleJson: () => void;
@@ -89,8 +106,14 @@ function ArrayField({
   const rows = Array.isArray(value) ? value : [];
   const id = useId();
   const labelId = `${id}-label`;
-  const errorId = `${id}-error`;
   const descriptionId = `${id}-description`;
+  const rowsError = useGroupFieldError(
+    jsonMode ? undefined : error,
+    field.description ? descriptionId : undefined,
+  );
+  // An error about one item marks that row, so a blocked run focuses it;
+  // otherwise the rows are invalid as a whole and the first one takes it.
+  const atRow = error && invalidItem !== undefined ? invalidItem : undefined;
 
   const setRow = (index: number, next: string) => {
     const copy = [...rows];
@@ -124,6 +147,7 @@ function ArrayField({
       {jsonMode ? (
         <TextAreaField
           aria-labelledby={labelId}
+          aria-describedby={field.description ? descriptionId : undefined}
           rows={3}
           placeholder='["a", "b"]'
           value={typeof value === 'string' ? value : ''}
@@ -131,19 +155,12 @@ function ArrayField({
           {...fieldErrorProps(error)}
         />
       ) : (
-        // The rows are one field: invalid as a whole, so a blocked run
-        // focuses its first row (`focusFirstInvalidField`).
         <Flex
           direction="column"
           gap="2"
-          role="group"
           aria-labelledby={labelId}
-          aria-describedby={
-            [error && errorId, field.description && descriptionId]
-              .filter(Boolean)
-              .join(' ') || undefined
-          }
-          {...(error ? { 'data-invalid': '' } : {})}
+          {...rowsError.groupProps}
+          {...(atRow !== undefined ? { 'data-invalid': undefined } : {})}
         >
           {rows.map((row, index) => (
             <Flex key={index} align="center" gap="2">
@@ -154,6 +171,8 @@ function ArrayField({
                   enumOptions={enumOptions}
                   value={row}
                   onChange={next => setRow(index, next)}
+                  isInvalid={index === atRow}
+                  describedBy={rowsError.messageId}
                 />
               </Box>
               <TooltipTrigger>
@@ -180,11 +199,7 @@ function ArrayField({
         </Flex>
       )}
 
-      {error && !jsonMode && (
-        <Box mt="1">
-          <FieldErrorText id={errorId}>{error}</FieldErrorText>
-        </Box>
-      )}
+      {rowsError.message && <Box mt="1">{rowsError.message}</Box>}
       {field.description && (
         <Text
           id={descriptionId}
@@ -204,6 +219,8 @@ export interface ToolArgFieldProps {
   value: FormValue | undefined;
   /** The problem to show on the field, once the form shows it. */
   error?: string;
+  /** For an array whose error is about one item: that item's index. */
+  invalidItem?: number;
   /** The form's `useFieldValidation().blurProps` for this field. */
   blurProps?: FieldBlurProps;
   jsonMode: boolean;
@@ -221,6 +238,7 @@ export function ToolArgField({
   field,
   value,
   error,
+  invalidItem,
   blurProps,
   jsonMode,
   onChange,
@@ -250,6 +268,7 @@ export function ToolArgField({
           field={field}
           value={value}
           error={error}
+          invalidItem={invalidItem}
           jsonMode={jsonMode}
           onChange={onChange}
           onToggleJson={onToggleJson}

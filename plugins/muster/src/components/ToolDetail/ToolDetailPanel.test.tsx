@@ -225,6 +225,43 @@ describe('ToolDetailPanel', () => {
       expect(message).not.toHaveAttribute('aria-invalid');
     });
 
+    it('focuses the item that is wrong in a list argument', async () => {
+      const api = makeApi();
+      api.describeTool = jest.fn(() =>
+        Promise.resolve({
+          ...detail,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              counts: { type: 'array', items: { type: 'integer' } },
+            },
+          },
+        }),
+      );
+      await renderPanel(api);
+      const add = await screen.findByRole('button', { name: 'Add item' });
+      await userEvent.click(add);
+      await userEvent.click(add);
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'counts item 1' }),
+        '3',
+      );
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'counts item 2' }),
+        'x',
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+
+      const second = screen.getByRole('textbox', { name: 'counts item 2' });
+      expect(second).toHaveFocus();
+      expect(second).toHaveAttribute('aria-invalid', 'true');
+      expect(second).toHaveAccessibleDescription(
+        expect.stringContaining('Item 2: Enter a number'),
+      );
+      expect(api.callTool).not.toHaveBeenCalled();
+    });
+
     it('checks an argument when the person leaves it, not while they type', async () => {
       const api = makeApi();
       api.describeTool = jest.fn(() => Promise.resolve(validated));

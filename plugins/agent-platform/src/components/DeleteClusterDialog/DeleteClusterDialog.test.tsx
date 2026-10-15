@@ -184,7 +184,8 @@ describe('DeleteClusterDialog', () => {
     expect(field).toHaveFocus();
     expect(writesOf(callTool)).toHaveLength(0);
 
-    await user.type(field, 'demo1');
+    // Pasted with a trailing space, as copied from a table.
+    await user.type(field, 'demo1 ');
     expect(field).not.toHaveAttribute('aria-invalid');
   });
 

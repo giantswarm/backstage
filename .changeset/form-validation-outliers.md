@@ -13,4 +13,5 @@ or showing a banner, and an error clears as soon as it is fixed. Error
 messages for empty fields now say what to enter, for example "Enter a name
 for the agent." or "Enter a value for message.".
 
-`FieldBlurProps` is exported from `ui-react`.
+`ui-react` exports `useGroupFieldError`, for a group of controls validated
+as one field.

@@ -105,15 +105,14 @@ function DetectionStatus({
 }
 
 /**
- * The shared validator words its problems for the definition's fields
- * ("URL", "installation"); this step labels them "Server address" and, in the
- * agent area, "Environment". Say them in this step's words.
+ * The shared validator words the address's problems for the definition's
+ * field ("URL"); this step labels it "Server address". Say them in this
+ * step's words.
  */
 function inStepWords(message: string | undefined): string | undefined {
   return message
     ?.replace(/^URL\b/, 'Server address')
-    .replace(/^Enter the URL\b/, 'Enter the server address')
-    .replace(/^Select an installation$/, 'Select an environment');
+    .replace(/^Enter the URL\b/, 'Enter the server address');
 }
 
 /**

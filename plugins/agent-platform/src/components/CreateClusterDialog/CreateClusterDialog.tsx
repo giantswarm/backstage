@@ -189,15 +189,13 @@ export function CreateClusterDialog({
   const parsedValues = parseValues(valuesText);
   // Each field's problem, shown once the person leaves it or presses Review.
   const errors = {
-    provider: line
-      ? undefined
-      : 'Choose a provider; the installation offers none yet.',
+    provider: line ? undefined : providerProblem(releases),
     organization: organization ? undefined : 'Choose an organization.',
     name: name ? nameProblem : 'Enter a name for the cluster.',
     values: parsedValues.problem,
   };
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
+  const validation = useFieldValidation(scope, { isOpen });
   const providerError = useSelectFieldError(
     validation.errorFor('provider', errors.provider),
   );
@@ -221,7 +219,6 @@ export function CreateClusterDialog({
       setApplied(undefined);
       setCommitted(undefined);
       write.reset();
-      validation.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -611,6 +608,20 @@ function ModeNotes({ verdicts }: { verdicts: ModeVerdicts }) {
 }
 
 /** The organization picker's placeholder: reading, nothing to pick, or pick one. */
+/** Why no provider is in effect: still reading, unreadable, or none offered. */
+function providerProblem(releases: {
+  isLoading: boolean;
+  error?: unknown;
+}): string {
+  if (releases.isLoading) {
+    return 'Wait until the providers are read, then choose one.';
+  }
+  if (releases.error) {
+    return 'The providers could not be read; see the warning above.';
+  }
+  return 'This installation offers no provider to create a cluster with.';
+}
+
 function organizationPlaceholder(loading: boolean, count: number): string {
   if (loading) {
     return 'Reading organizations…';

@@ -40,7 +40,7 @@ describe('NewMcpServerFormProvider', () => {
     expect(result.current.isComplete).toBe(false);
     expect(result.current.validationErrors).toEqual([
       'Enter a name for the connector.',
-      'Select an installation',
+      'Choose an environment.',
       'Enter the URL, e.g. https://mcp.example.com/mcp.',
     ]);
   });
