@@ -2,13 +2,13 @@ import {
   isPortalStarted,
   isSeen,
   levelOf,
-  MAX_SESSION_SEEN_MARKS,
   mcpSignInSeenMarkOf,
-  PRUNE_GRACE_MS,
+  PORTAL_STARTS_PER_INSTALLATION,
   prunedSeen,
   prunedSettings,
   readNotificationSeen,
   readNotificationSettings,
+  SEEN_MARKS_PER_INSTALLATION,
   sessionSeenMarkOf,
   withLevel,
   withPortalStarted,
@@ -241,80 +241,112 @@ describe('seen marks', () => {
     expect(withSeen(seen, [], NOW)).toBeUndefined();
   });
 
-  it(`keeps the newest ${MAX_SESSION_SEEN_MARKS} session marks`, () => {
-    const many = Array.from(
-      { length: MAX_SESSION_SEEN_MARKS + 5 },
-      (_, index) => ({
-        kind: 'session' as const,
-        installation: 'gazelle',
-        sessionId: `s${index}`,
-        mark: `m${index}`,
-      }),
-    );
-    let seen = noneSeen;
-    many.forEach((target, index) => {
-      seen = withSeen(seen, [target], NOW + index)!;
+  it(`keeps each installation’s newest ${SEEN_MARKS_PER_INSTALLATION} session marks`, () => {
+    const mark = (installation: string, index: number) => ({
+      kind: 'session' as const,
+      installation,
+      sessionId: `s${index}`,
+      mark: `m${index}`,
     });
+    // A quiet installation's few marks are older than the busy one's.
+    let seen = withSeen(noneSeen, [mark('golem', 0), mark('golem', 1)], NOW)!;
+    for (let index = 0; index < SEEN_MARKS_PER_INSTALLATION + 5; index += 1) {
+      seen = withSeen(seen, [mark('gazelle', index)], NOW + 1 + index)!;
+    }
 
-    expect(Object.keys(seen.sessions)).toHaveLength(MAX_SESSION_SEEN_MARKS);
-    expect(sessionSeenMarkOf(seen, 'gazelle', 's0')).toBeUndefined();
-    expect(sessionSeenMarkOf(seen, 'gazelle', `s${many.length - 1}`)).toBe(
-      `m${many.length - 1}`,
+    const kept = Object.keys(seen.sessions);
+    expect(kept.filter(key => key.startsWith('gazelle/'))).toHaveLength(
+      SEEN_MARKS_PER_INSTALLATION,
     );
+    expect(sessionSeenMarkOf(seen, 'gazelle', 's0')).toBeUndefined();
+    expect(sessionSeenMarkOf(seen, 'gazelle', 's44')).toBe('m44');
+    // The busy installation does not push the quiet one's marks out.
+    expect(sessionSeenMarkOf(seen, 'golem', 's0')).toBe('m0');
+    expect(sessionSeenMarkOf(seen, 'golem', 's1')).toBe('m1');
+  });
+});
+
+describe('bounding the settings', () => {
+  it(`keeps each installation’s newest ${PORTAL_STARTS_PER_INSTALLATION} portal starts, and every chosen level`, () => {
+    let settings = withLevel(empty, 'gazelle', 'muted-long-ago', 'muted', 0)!;
+    settings = withPortalStarted(settings, 'gazelle', 'all-long-ago', 1)!;
+    settings = withLevel(settings, 'gazelle', 'all-long-ago', 'all', 2)!;
+    settings = withPortalStarted(settings, 'golem', 'other', 3)!;
+    for (
+      let index = 0;
+      index < PORTAL_STARTS_PER_INSTALLATION + 3;
+      index += 1
+    ) {
+      settings = withPortalStarted(
+        settings,
+        'gazelle',
+        `s${index}`,
+        10 + index,
+      )!;
+    }
+
+    const startsOnly = Object.entries(settings.sessions).filter(
+      ([key, entry]) => key.startsWith('gazelle/') && !entry.level,
+    );
+    expect(startsOnly).toHaveLength(PORTAL_STARTS_PER_INSTALLATION);
+    expect(isPortalStarted(settings, 'gazelle', 's0')).toBe(false);
+    expect(isPortalStarted(settings, 'gazelle', 's202')).toBe(true);
+    // Chosen levels stay, however old.
+    expect(levelOf(settings, 'gazelle', 'muted-long-ago')).toBe('muted');
+    expect(levelOf(settings, 'gazelle', 'all-long-ago')).toBe('all');
+    expect(isPortalStarted(settings, 'gazelle', 'all-long-ago')).toBe(true);
+    expect(isPortalStarted(settings, 'golem', 'other')).toBe(true);
   });
 });
 
 describe('pruning', () => {
-  const longAgo = NOW - PRUNE_GRACE_MS - 1;
   const settings = readNotificationSettings({
     sessions: {
-      'gazelle/live': { origin: 'portal', at: longAgo },
-      'gazelle/gone': { origin: 'portal', at: longAgo },
-      'gazelle/just-started': { origin: 'portal', at: NOW - 1000 },
-      'golem/gone': { level: 'muted', at: longAgo },
+      'gazelle/live': { origin: 'portal', at: EARLIER },
+      'gazelle/gone': { origin: 'portal', at: EARLIER },
+      'gazelle/just-started': { origin: 'portal', at: NOW },
+      'golem/gone': { level: 'muted', at: EARLIER },
     },
   });
   const seen = readNotificationSeen({
     sessions: {
-      'gazelle/live': { mark: 'a', at: longAgo },
-      'gazelle/gone': { mark: 'b', at: longAgo },
+      'gazelle/live': { mark: 'a', at: EARLIER },
+      'gazelle/gone': { mark: 'b', at: EARLIER },
     },
-    mcpSignIn: { gazelle: { mark: 'c', at: longAgo } },
+    mcpSignIn: { gazelle: { mark: 'c', at: EARLIER } },
   });
-  const read = {
-    installation: 'gazelle',
-    sessionIds: ['live'],
-    readAt: NOW,
-  };
+  // What the record held before the read started: not `just-started`,
+  // written while the read was under way.
+  const known = new Set(['gazelle/live', 'gazelle/gone']);
+  const read = { installation: 'gazelle', known, liveSessionIds: ['live'] };
 
-  it('drops the read installation’s entries for sessions it no longer lists', () => {
+  it('drops the known entries of sessions a complete read no longer lists', () => {
     expect(prunedSettings(settings, read)).toEqual({
       sessions: {
-        'gazelle/live': { origin: 'portal', at: longAgo },
-        // Written after the read left, perhaps: kept until a later read.
-        'gazelle/just-started': { origin: 'portal', at: NOW - 1000 },
+        'gazelle/live': { origin: 'portal', at: EARLIER },
+        // Written after the read started: kept, whatever its clock says.
+        'gazelle/just-started': { origin: 'portal', at: NOW },
         // Another installation's: this read says nothing about it.
-        'golem/gone': { level: 'muted', at: longAgo },
+        'golem/gone': { level: 'muted', at: EARLIER },
       },
     });
     expect(prunedSeen(seen, read)).toEqual({
-      sessions: { 'gazelle/live': { mark: 'a', at: longAgo } },
-      mcpSignIn: { gazelle: { mark: 'c', at: longAgo } },
+      sessions: { 'gazelle/live': { mark: 'a', at: EARLIER } },
+      mcpSignIn: { gazelle: { mark: 'c', at: EARLIER } },
     });
   });
 
-  it('prunes nothing on an empty read', () => {
-    const emptyRead = { ...read, sessionIds: [] };
+  it('drops every known entry when the installation has no sessions left', () => {
+    const none = { ...read, liveSessionIds: [] };
 
-    expect(prunedSettings(settings, emptyRead)).toBeUndefined();
-    expect(prunedSeen(seen, emptyRead)).toBeUndefined();
+    expect(Object.keys(prunedSettings(settings, none)!.sessions)).toEqual([
+      'gazelle/just-started',
+      'golem/gone',
+    ]);
   });
 
   it('writes nothing when nothing is gone', () => {
-    const everything = {
-      ...read,
-      sessionIds: ['live', 'gone', 'just-started'],
-    };
+    const everything = { ...read, liveSessionIds: ['live', 'gone'] };
 
     expect(prunedSettings(settings, everything)).toBeUndefined();
     expect(prunedSeen(seen, everything)).toBeUndefined();

@@ -43,6 +43,16 @@ const NOTIFICATION_LEVEL_LABELS: ReadonlyArray<[NotificationLevel, string]> = [
   ['muted', 'Muted'],
 ];
 
+/**
+ * A session's Notification level and its setter, for the menu's Notifications
+ * submenu. `level` is undefined until the stored level has been read, and
+ * then nothing is ticked.
+ */
+export type SessionNotificationsControl = {
+  level: NotificationLevel | undefined;
+  onChange: (level: NotificationLevel) => Promise<void>;
+};
+
 const useStyles = makeStyles({
   // The tick's place, kept empty on the unticked choices so their labels
   // line up with the ticked one.
@@ -116,10 +126,7 @@ export function SessionActionsMenu({
    * then nothing is ticked. A failed write is reported here, in a toast.
    * Absent: no Notifications item.
    */
-  notifications?: {
-    level: NotificationLevel | undefined;
-    onChange: (level: NotificationLevel) => Promise<void>;
-  };
+  notifications?: SessionNotificationsControl;
 }) {
   const classes = useStyles();
   const isPhone = usePhoneLayout();

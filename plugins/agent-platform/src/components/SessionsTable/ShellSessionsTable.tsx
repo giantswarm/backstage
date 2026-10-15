@@ -52,7 +52,7 @@ import { PinIcon } from '../PinIcon';
 import { SessionRow, sessionSearchFn } from '../SessionsDataProvider/helpers';
 import { SessionActionsMenu } from '../SessionDetailPage/SessionActionsMenu';
 import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
-import type { NotificationLevel } from '../../lib/notificationRecord';
+import type { SessionNotificationsControl } from '../SessionDetailPage/SessionActionsMenu';
 import { SessionRenameDialog } from '../SessionDetailPage/SessionRenameDialog';
 import {
   compareSessionRecency,
@@ -196,26 +196,15 @@ function ShellStateCell({
 function SessionRowMenu({
   row,
   onDeleted,
+  notifications,
 }: {
   row: SessionTableRow;
   onDeleted: () => void;
+  notifications: SessionNotificationsControl;
 }) {
   const deletion = useDeleteSession(row.installation, row.sessionId);
   const rename = useRenameSession(row.installation, row.sessionId);
   const { isUserScoped } = useKagentCapabilities(row.installation);
-  const notificationSettings = useSessionNotificationSettings();
-  const { setLevel } = notificationSettings;
-  const notificationLevel = notificationSettings.isKnown
-    ? notificationSettings.levelOf(row.installation, row.sessionId)
-    : undefined;
-  const notifications = useMemo(
-    () => ({
-      level: notificationLevel,
-      onChange: (level: NotificationLevel) =>
-        setLevel(row.installation, row.sessionId, level),
-    }),
-    [notificationLevel, setLevel, row.installation, row.sessionId],
-  );
   const [isRenameOpen, setRenameOpen] = useState(false);
   const { reset: resetRename } = rename;
   const openRename = useCallback(() => {
@@ -297,17 +286,23 @@ function RowActions({
   focusAfterDelete,
   onRowDeleted,
   onTogglePin,
+  notificationsFor,
 }: {
   row: SessionTableRow;
   focusAfterDelete: (rowId: string) => string | undefined;
   onRowDeleted: (focusRowId: string | undefined) => void;
   onTogglePin: (rowId: string) => void;
+  notificationsFor: (row: SessionTableRow) => SessionNotificationsControl;
 }) {
   const focusRowId = focusAfterDelete(row.id);
   return (
     <Flex align="center" gap="1">
       <RowPinButton row={row} onToggle={onTogglePin} />
-      <SessionRowMenu row={row} onDeleted={() => onRowDeleted(focusRowId)} />
+      <SessionRowMenu
+        row={row}
+        onDeleted={() => onRowDeleted(focusRowId)}
+        notifications={notificationsFor(row)}
+      />
     </Flex>
   );
 }
@@ -322,6 +317,7 @@ function shellColumns({
   focusAfterDelete,
   onRowDeleted,
   onTogglePin,
+  notificationsFor,
 }: {
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>;
   hrefFor: (row: SessionRow) => string | undefined;
@@ -334,6 +330,7 @@ function shellColumns({
   focusAfterDelete: (rowId: string) => string | undefined;
   onRowDeleted: (focusRowId: string | undefined) => void;
   onTogglePin: (rowId: string) => void;
+  notificationsFor: (row: SessionTableRow) => SessionNotificationsControl;
 }): ShellColumn[] {
   const columns: ShellColumn[] = [
     {
@@ -440,6 +437,7 @@ function shellColumns({
             focusAfterDelete={focusAfterDelete}
             onRowDeleted={onRowDeleted}
             onTogglePin={onTogglePin}
+            notificationsFor={notificationsFor}
           />
         </Cell>
       ),
@@ -845,6 +843,19 @@ export function ShellSessionsTable({
     return () => cancelAnimationFrame(frame);
   }, [focusRequest]);
 
+  // Every row's Notifications submenu, from one reading of the record.
+  const notificationSettings = useSessionNotificationSettings();
+  const notificationsFor = useCallback(
+    (row: SessionTableRow): SessionNotificationsControl => ({
+      level: notificationSettings.isKnown
+        ? notificationSettings.levelOf(row.installation, row.sessionId)
+        : undefined,
+      onChange: level =>
+        notificationSettings.setLevel(row.installation, row.sessionId, level),
+    }),
+    [notificationSettings],
+  );
+
   const columns = useMemo(
     () =>
       shellColumns({
@@ -857,6 +868,7 @@ export function ShellSessionsTable({
         focusAfterDelete,
         onRowDeleted,
         onTogglePin: togglePin,
+        notificationsFor,
       }),
     [
       buildAvatarUrl,
@@ -868,6 +880,7 @@ export function ShellSessionsTable({
       focusAfterDelete,
       onRowDeleted,
       togglePin,
+      notificationsFor,
     ],
   );
 
@@ -996,6 +1009,7 @@ export function ShellSessionsTable({
                       focusAfterDelete={focusAfterDelete}
                       onRowDeleted={onRowDeleted}
                       onTogglePin={togglePin}
+                      notificationsFor={notificationsFor}
                     />
                   )}
                 />

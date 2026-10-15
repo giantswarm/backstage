@@ -101,7 +101,10 @@ export type SessionListDriftKind =
   // A readable 200 that held no payload where one was expected. Distinct from
   // `skipped-rows`, whose message counts dropped rows — reusing that kind for
   // "the response carried no session" reported it as though rows were lost.
-  | 'missing-payload';
+  | 'missing-payload'
+  // The backend cut the listing at its page limit: the sessions it left out
+  // still exist.
+  | 'truncated';
 
 export type SessionListDrift = {
   kind: SessionListDriftKind;
@@ -240,6 +243,15 @@ function normalizeSessionRecordList(
         message: `skipped ${skippedRows} unreadable session ${
           skippedRows === 1 ? 'row' : 'rows'
         }`,
+      },
+    };
+  }
+  if (parsed.data.truncated) {
+    return {
+      sessions,
+      drift: {
+        kind: 'truncated',
+        message: 'the listing was cut at the backend’s page limit',
       },
     };
   }

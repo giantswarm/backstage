@@ -8,8 +8,8 @@ import type {
   StorageValueSnapshot,
 } from '@backstage/core-plugin-api';
 import type { SignalApi } from '@backstage/plugin-signals-react';
-import { UserSettingsStorage } from '@backstage/plugin-user-settings';
 import type { JsonValue, Observable } from '@backstage/types';
+import { RoamingSettingsStorage } from './RoamingSettingsStorage';
 
 /**
  * The buckets kept per user in the backend
@@ -26,16 +26,17 @@ export const USER_SETTINGS_BUCKETS: readonly string[] = ['agent-platform'];
  * upstream default — so the classic portal keeps its behaviour and its data.
  * Nothing is migrated between the two.
  *
- * The user-settings side is created with the signals API: the backend
- * announces every change it stores (`user-settings` channel, the changed key),
- * and each subscribed key is read again on that signal, so a write in one tab
- * or on one device reaches every other open tab of the person.
+ * The user-settings side is `RoamingSettingsStorage`, created with the
+ * signals API: the backend announces every change it stores (`user-settings`
+ * channel, the changed key), and each subscribed key is read again on that
+ * signal, so a write in one tab or on one device reaches every other open tab
+ * of the person.
  *
- * The user-settings side degrades on its own: while the person is not signed
- * in it reads and writes WebStorage, and when the `user-settings` backend
- * route is unreachable reads resolve as "absent" (reported once through the
- * errorApi) — writes to an unreachable backend reject, which callers surface
- * like any other failed write.
+ * It degrades on its own: while the person is not signed in it reads and
+ * writes WebStorage; a read the backend does not answer is handed out as
+ * "unknown" (never as "absent", which a whole-value write would then erase
+ * the stored value with), and a write it does not take rejects, which callers
+ * surface like any other failed write.
  */
 export class ScopedStorageApi implements StorageApi {
   static create(options: {
@@ -49,9 +50,10 @@ export class ScopedStorageApi implements StorageApi {
     userSettingsBuckets?: readonly string[];
   }): ScopedStorageApi {
     const { userSettingsBuckets = USER_SETTINGS_BUCKETS, ...deps } = options;
+    const webStorage = WebStorage.create({ errorApi: deps.errorApi });
     return new ScopedStorageApi(
-      WebStorage.create({ errorApi: deps.errorApi }),
-      UserSettingsStorage.create(deps),
+      webStorage,
+      RoamingSettingsStorage.create({ ...deps, fallback: webStorage }),
       new Set(userSettingsBuckets),
     );
   }

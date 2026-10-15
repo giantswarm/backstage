@@ -10,7 +10,7 @@ import type { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
 import { useMusterPluginApi } from './useMusterPluginApi';
-import { useSessionNotificationSettings } from './useSessionNotificationRecord';
+import { usePortalStartedRecorder } from './useSessionNotificationRecord';
 
 /** What the composer submits: an agent, and the prompt to open the session with. */
 export type NewSession = {
@@ -54,7 +54,7 @@ export type UseCreateSessionOptions = {
  * taking both would let them disagree.
  *
  * A started session is recorded as **portal-started** in the person's
- * notification record (`useSessionNotificationSettings`): kagent's Session
+ * notification record (`usePortalStartedRecorder`): kagent's Session
  * names no surface that started it, so the portal says so itself, and the
  * Notification inbox reports a portal-started session's failures and
  * finished turns, which a session started from Slack reports in Slack.
@@ -69,7 +69,7 @@ export function useCreateSession(
 ) {
   const musterApi = useMusterPluginApi();
   const queryClient = useQueryClient();
-  const { markPortalStarted } = useSessionNotificationSettings();
+  const markPortalStarted = usePortalStartedRecorder();
 
   const mutation = useTrackedMutation({
     event: () => ({

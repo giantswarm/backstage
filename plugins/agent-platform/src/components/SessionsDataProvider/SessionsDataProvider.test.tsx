@@ -73,6 +73,7 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
 }));
 
 const listSessions = jest.fn();
+const listSessionsIfComplete = jest.fn();
 const listInstallations = jest.fn();
 
 /** One entry of the backend's list; reachable unless said otherwise. */
@@ -86,6 +87,7 @@ function proxied(
 
 const kagentApi = {
   listSessions,
+  listSessionsIfComplete,
   listInstallations,
   getIdentity: jest.fn(),
 } as unknown as KagentApi;
@@ -130,6 +132,11 @@ function renderProvider(
 
 beforeEach(() => {
   listSessions.mockReset();
+  listSessionsIfComplete.mockReset();
+  // A fresh complete read lists what the list read did.
+  listSessionsIfComplete.mockImplementation((installation: string) =>
+    listSessions(installation),
+  );
   listInstallations.mockReset();
   listInstallations.mockResolvedValue([proxied('gazelle'), proxied('golem')]);
   mockConfigInstallations = ['gazelle', 'golem'];
@@ -655,35 +662,36 @@ describe('SessionsDataProvider installation scope', () => {
   });
 
   describe('the notification record', () => {
-    const DAY_MS = 24 * 60 * 60 * 1000;
-    const old = Date.now() - DAY_MS;
-
     async function storedRecord() {
       const storage = mockApis.storage();
       const bucket = storage.forBucket('agent-platform');
       await bucket.set('sessionNotificationSettings', {
         sessions: {
-          'gazelle/abc': { origin: 'portal', at: old },
-          'gazelle/gone': { origin: 'portal', level: 'all', at: old },
-          'golem/xyz': { level: 'muted', at: old },
+          'gazelle/abc': { origin: 'portal', at: 1 },
+          'gazelle/gone': { origin: 'portal', level: 'all', at: 1 },
+          'golem/xyz': { level: 'muted', at: 1 },
         },
       });
       await bucket.set('notificationSeenMarks', {
         sessions: {
-          'gazelle/abc': { mark: 'mark-abc', at: old },
-          'gazelle/gone': { mark: 'mark-gone', at: old },
+          'gazelle/abc': { mark: 'mark-abc', at: 1 },
+          'gazelle/gone': { mark: 'mark-gone', at: 1 },
         },
-        mcpSignIn: { gazelle: { mark: 'mark-mcp', at: old } },
+        mcpSignIn: { gazelle: { mark: 'mark-mcp', at: 1 } },
       });
       return storage;
     }
 
-    const settingsOf = (storage: StorageApi) =>
-      storage
-        .forBucket('agent-platform')
-        .snapshot('sessionNotificationSettings').value as {
-        sessions: Record<string, unknown>;
-      };
+    const settingsKeys = (storage: StorageApi) =>
+      Object.keys(
+        (
+          storage
+            .forBucket('agent-platform')
+            .snapshot('sessionNotificationSettings').value as {
+            sessions: object;
+          }
+        ).sessions,
+      );
     const seenOf = (storage: StorageApi) =>
       storage.forBucket('agent-platform').snapshot('notificationSeenMarks')
         .value as {
@@ -691,44 +699,66 @@ describe('SessionsDataProvider installation scope', () => {
         mcpSignIn: Record<string, unknown>;
       };
 
-    it('drops the entries of sessions an installation’s successful read no longer lists', async () => {
-      listSessions.mockImplementation((installation: string) =>
-        Promise.resolve(
-          installation === 'gazelle'
-            ? [session({ id: 'gazelle/abc', sessionId: 'abc' })]
-            : [
-                session({
-                  id: 'golem/xyz',
-                  sessionId: 'xyz',
-                  installation: 'golem',
-                }),
-              ],
-        ),
+    const listing = (installation: string) =>
+      Promise.resolve(
+        installation === 'gazelle'
+          ? [session({ id: 'gazelle/abc', sessionId: 'abc' })]
+          : [
+              session({
+                id: 'golem/xyz',
+                sessionId: 'xyz',
+                installation: 'golem',
+              }),
+            ],
       );
+
+    it('drops the entries of sessions a complete read no longer lists', async () => {
+      listSessions.mockImplementation(listing);
       const storage = await storedRecord();
 
       renderProvider(undefined, storage);
 
       await waitFor(() =>
-        expect(Object.keys(settingsOf(storage).sessions)).toEqual([
-          'gazelle/abc',
-          'golem/xyz',
-        ]),
+        expect(settingsKeys(storage)).toEqual(['gazelle/abc', 'golem/xyz']),
       );
       await waitFor(() =>
         expect(Object.keys(seenOf(storage).sessions)).toEqual(['gazelle/abc']),
       );
       // The MCP sign-in row's mark is per installation, not per session.
       expect(seenOf(storage).mcpSignIn).toEqual({
-        gazelle: { mark: 'mark-mcp', at: old },
+        gazelle: { mark: 'mark-mcp', at: 1 },
       });
+      // Only the installation with something to prune is read again.
+      expect(listSessionsIfComplete).toHaveBeenCalledTimes(1);
+      expect(listSessionsIfComplete).toHaveBeenCalledWith('gazelle');
+    });
+
+    it('prunes nothing when the fresh read is not complete', async () => {
+      listSessions.mockImplementation(listing);
+      // Rows that did not parse, or a listing cut at the page limit.
+      listSessionsIfComplete.mockResolvedValue(undefined);
+      const storage = await storedRecord();
+
+      renderProvider(undefined, storage);
+
+      await waitFor(() =>
+        expect(listSessionsIfComplete).toHaveBeenCalledWith('gazelle'),
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(settingsKeys(storage)).toEqual([
+        'gazelle/abc',
+        'gazelle/gone',
+        'golem/xyz',
+      ]);
     });
 
     it('keeps the entries of an installation whose read failed', async () => {
       listSessions.mockImplementation((installation: string) =>
         installation === 'gazelle'
           ? Promise.reject(namedError('UpstreamError'))
-          : Promise.resolve([]),
+          : listing(installation),
       );
       const storage = await storedRecord();
 
@@ -737,31 +767,61 @@ describe('SessionsDataProvider installation scope', () => {
       await waitFor(() =>
         expect(result.current.unreachableInstallations).toEqual(['gazelle']),
       );
-      expect(Object.keys(settingsOf(storage).sessions)).toEqual([
+      expect(listSessionsIfComplete).not.toHaveBeenCalled();
+      expect(settingsKeys(storage)).toEqual([
         'gazelle/abc',
         'gazelle/gone',
         'golem/xyz',
-      ]);
-      expect(Object.keys(seenOf(storage).sessions)).toEqual([
-        'gazelle/abc',
-        'gazelle/gone',
       ]);
     });
 
     it('keeps the entries of an installation that is not read at all', async () => {
       mockKagent = { installations: ['gazelle'], isProbing: false };
-      listSessions.mockResolvedValue([
-        session({ id: 'gazelle/abc', sessionId: 'abc' }),
-      ]);
+      listSessions.mockImplementation(listing);
       const storage = await storedRecord();
 
       renderProvider(undefined, storage);
 
       await waitFor(() =>
-        expect(Object.keys(settingsOf(storage).sessions)).toEqual([
-          'gazelle/abc',
-          'golem/xyz',
-        ]),
+        expect(settingsKeys(storage)).toEqual(['gazelle/abc', 'golem/xyz']),
+      );
+      expect(listSessionsIfComplete).not.toHaveBeenCalledWith('golem');
+    });
+
+    it('looks again only when the sessions change, not on every refetch', async () => {
+      listSessions.mockImplementation(listing);
+      // The fresh read fails, so no interval holds the next attempt back:
+      // only a change of the listed sessions may start one.
+      listSessionsIfComplete.mockRejectedValue(namedError('UpstreamError'));
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const storage = await storedRecord();
+
+      renderProvider(queryClient, storage);
+      await waitFor(() =>
+        expect(listSessionsIfComplete).toHaveBeenCalledTimes(1),
+      );
+      await act(async () => {
+        await queryClient.refetchQueries();
+      });
+      expect(listSessions).toHaveBeenCalledTimes(4);
+      expect(listSessionsIfComplete).toHaveBeenCalledTimes(1);
+
+      // A session appears: the set changed, so the record is compared again.
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.resolve([
+              session({ id: 'gazelle/abc', sessionId: 'abc' }),
+              session({ id: 'gazelle/new', sessionId: 'new' }),
+            ])
+          : listing(installation),
+      );
+      await act(async () => {
+        await queryClient.refetchQueries();
+      });
+      await waitFor(() =>
+        expect(listSessionsIfComplete).toHaveBeenCalledTimes(2),
       );
     });
   });

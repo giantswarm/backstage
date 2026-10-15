@@ -8,8 +8,11 @@ import {
   type StorageValueSnapshot,
 } from '@backstage/core-plugin-api';
 import type { JsonValue } from '@backstage/types';
+import type { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
+  useNotificationRecordPruning,
   useNotificationSeenMarks,
+  usePortalStartedRecorder,
   useSessionNotificationRecord,
   useSessionNotificationSettings,
 } from './useSessionNotificationRecord';
@@ -44,6 +47,7 @@ function stored(storage: StorageApi, key: string) {
  */
 function backendStorage(initial: Record<string, JsonValue>) {
   const backend = new Map<string, JsonValue>(Object.entries(initial));
+  const reads = { failing: false };
   const listeners = new Map<
     string,
     Set<(snapshot: StorageValueSnapshot<JsonValue>) => void>
@@ -59,13 +63,24 @@ function backendStorage(initial: Record<string, JsonValue>) {
     snapshot: (key: string) => ({ key, presence: 'unknown' }),
     observe$: (key: string) => ({
       subscribe: (
-        listener: (snapshot: StorageValueSnapshot<JsonValue>) => void,
+        observer:
+          | ((snapshot: StorageValueSnapshot<JsonValue>) => void)
+          | { next: (snapshot: StorageValueSnapshot<JsonValue>) => void },
       ) => {
+        const listener =
+          typeof observer === 'function'
+            ? observer
+            : (snapshot: StorageValueSnapshot<JsonValue>) =>
+                observer.next(snapshot);
         const set = listeners.get(key) ?? new Set();
         set.add(listener);
         listeners.set(key, set);
-        // Answers asynchronously, as a fetch does.
-        Promise.resolve().then(() => listener(snapshotOf(key)));
+        // Answers asynchronously, as a fetch does; a failed read is unknown.
+        Promise.resolve().then(() =>
+          listener(
+            reads.failing ? { key, presence: 'unknown' } : snapshotOf(key),
+          ),
+        );
         return { unsubscribe: () => set.delete(listener) };
       },
     }),
@@ -84,6 +99,11 @@ function backendStorage(initial: Record<string, JsonValue>) {
     writeElsewhere: (key: string, value: JsonValue) => backend.set(key, value),
     /** The backend's signal for that write reaches this tab. */
     announce: emit,
+    /** Reads stop being answered (offline), or start again. */
+    failReads: (failing: boolean) => {
+      reads.failing = failing;
+    },
+    backendValue: (key: string) => backend.get(key),
   };
 }
 
@@ -198,20 +218,38 @@ describe('useSessionNotificationSettings', () => {
     await storage.forBucket(BUCKET).set(SETTINGS, {
       sessions: { 'golem/xyz': { level: 'muted', at: 1 } },
     });
-    const { result } = renderHook(() => useSessionNotificationSettings(), {
-      wrapper: wrapperFor(storage),
-    });
+    const { result } = renderHook(
+      () => ({
+        settings: useSessionNotificationSettings(),
+        markPortalStarted: usePortalStartedRecorder(),
+      }),
+      { wrapper: wrapperFor(storage) },
+    );
 
     await act(async () => {
       await result.current.markPortalStarted('gazelle', 'abc');
     });
 
     await waitFor(() =>
-      expect(result.current.isPortalStarted('gazelle', 'abc')).toBe(true),
+      expect(result.current.settings.isPortalStarted('gazelle', 'abc')).toBe(
+        true,
+      ),
     );
-    expect(result.current.levelOf('golem', 'xyz')).toBe('muted');
+    expect(result.current.settings.levelOf('golem', 'xyz')).toBe('muted');
     // Part of the session start, which reports its own event.
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('keeps its identity while nothing changes', () => {
+    const { result, rerender } = renderHook(
+      () => useSessionNotificationRecord(),
+      { wrapper: wrapperFor(mockApis.storage()) },
+    );
+    const first = result.current;
+
+    rerender();
+
+    expect(result.current).toBe(first);
   });
 
   it('applies two quick changes to different sessions without losing either', async () => {
@@ -249,6 +287,71 @@ describe('useSessionNotificationSettings', () => {
     await waitFor(() =>
       expect(result.current.levelOf('gazelle', 'abc')).toBe('muted'),
     );
+  });
+
+  it('keeps the levels and erases nothing when the tab wakes up offline', async () => {
+    const record = {
+      sessions: {
+        'gazelle/abc': { level: 'muted', at: 1 },
+        'gazelle/def': { origin: 'portal', level: 'all', at: 1 },
+      },
+    };
+    const { storage, failReads, backendValue } = backendStorage({
+      [SETTINGS]: record,
+    });
+    const { result } = renderHook(
+      () => ({
+        settings: useSessionNotificationSettings(),
+        markPortalStarted: usePortalStartedRecorder(),
+      }),
+      { wrapper: wrapperFor(storage) },
+    );
+    await waitFor(() => expect(result.current.settings.isKnown).toBe(true));
+
+    // Woken up before the network is back: the re-read is not answered.
+    failReads(true);
+    act(() => setVisibility('hidden'));
+    act(() => setVisibility('visible'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.settings.levelOf('gazelle', 'abc')).toBe('muted');
+    expect(result.current.settings.levelOf('gazelle', 'def')).toBe('all');
+    // A write needs the stored value; without it, it fails rather than
+    // replacing the record with only its own entry.
+    await act(async () => {
+      await expect(
+        result.current.settings.setLevel('gazelle', 'ghi', 'muted'),
+      ).rejects.toThrow('could not be read');
+      await expect(
+        result.current.markPortalStarted('gazelle', 'new'),
+      ).rejects.toThrow('could not be read');
+    });
+    expect(backendValue(SETTINGS)).toEqual(record);
+  });
+
+  it('builds a write on the stored value, not on what the tab last saw', async () => {
+    const { storage, writeElsewhere, backendValue } = backendStorage({});
+    const { result } = renderHook(() => useSessionNotificationSettings(), {
+      wrapper: wrapperFor(storage),
+    });
+    await waitFor(() => expect(result.current.isKnown).toBe(true));
+
+    // Another device mutes a session; this tab has not heard of it.
+    writeElsewhere(SETTINGS, {
+      sessions: { 'gazelle/abc': { level: 'muted', at: 1 } },
+    });
+    await act(async () => {
+      await result.current.setLevel('gazelle', 'def', 'all');
+    });
+
+    expect(backendValue(SETTINGS)).toEqual({
+      sessions: {
+        'gazelle/abc': { level: 'muted', at: 1 },
+        'gazelle/def': { level: 'all', at: expect.any(Number) },
+      },
+    });
   });
 
   it('reads the record again when the tab becomes visible', async () => {
@@ -378,5 +481,126 @@ describe('useSessionNotificationRecord', () => {
     expect(result.current.isPortalStarted('gazelle', 'abc')).toBe(true);
     expect(result.current.levelOf('gazelle', 'abc')).toBe('default');
     expect(result.current.sessionSeenMarkOf('gazelle', 'abc')).toBeUndefined();
+  });
+});
+
+describe('useNotificationRecordPruning', () => {
+  const session = (sessionId: string) =>
+    ({
+      id: `gazelle/${sessionId}`,
+      sessionId,
+      installation: 'gazelle',
+    }) as KagentSession;
+
+  async function storedRecord() {
+    const storage = mockApis.storage();
+    const bucket = storage.forBucket(BUCKET);
+    await bucket.set(SETTINGS, {
+      sessions: {
+        'gazelle/live': { origin: 'portal', at: 1 },
+        'gazelle/gone': { origin: 'portal', level: 'all', at: 1 },
+        'golem/elsewhere': { level: 'muted', at: 1 },
+      },
+    });
+    await bucket.set(SEEN, {
+      sessions: {
+        'gazelle/live': { mark: 'a', at: 1 },
+        'gazelle/gone': { mark: 'b', at: 1 },
+      },
+      mcpSignIn: { gazelle: { mark: 'c', at: 1 } },
+    });
+    return storage;
+  }
+
+  function renderPruning(storage: StorageApi) {
+    return renderHook(() => useNotificationRecordPruning(), {
+      wrapper: wrapperFor(storage),
+    });
+  }
+
+  it('reads nothing more while the list names every session the record does', async () => {
+    const storage = await storedRecord();
+    const readComplete = jest.fn();
+    const { result } = renderPruning(storage);
+
+    await act(async () => {
+      await expect(
+        result.current({
+          installation: 'gazelle',
+          listedSessionIds: ['live', 'gone', 'another'],
+          readComplete,
+        }),
+      ).resolves.toBe(false);
+    });
+
+    expect(readComplete).not.toHaveBeenCalled();
+  });
+
+  it('drops the entries of a session a complete read no longer lists', async () => {
+    const storage = await storedRecord();
+    const { result } = renderPruning(storage);
+
+    await act(async () => {
+      await result.current({
+        installation: 'gazelle',
+        listedSessionIds: ['live'],
+        readComplete: async () => [session('live')],
+      });
+    });
+
+    expect(stored(storage, SETTINGS)).toEqual({
+      sessions: {
+        'gazelle/live': { origin: 'portal', at: 1 },
+        'golem/elsewhere': { level: 'muted', at: 1 },
+      },
+    });
+    expect(stored(storage, SEEN)).toEqual({
+      sessions: { 'gazelle/live': { mark: 'a', at: 1 } },
+      mcpSignIn: { gazelle: { mark: 'c', at: 1 } },
+    });
+  });
+
+  it('prunes nothing when the fresh read is not complete', async () => {
+    const storage = await storedRecord();
+    const before = stored(storage, SETTINGS);
+    const { result } = renderPruning(storage);
+
+    await act(async () => {
+      await result.current({
+        installation: 'gazelle',
+        listedSessionIds: ['live'],
+        // Rows skipped, or the listing cut at the backend's page limit.
+        readComplete: async () => undefined,
+      });
+    });
+
+    expect(stored(storage, SETTINGS)).toEqual(before);
+  });
+
+  it('keeps an entry written while the read was under way', async () => {
+    const storage = await storedRecord();
+    const { result } = renderHook(
+      () => ({
+        prune: useNotificationRecordPruning(),
+        markPortalStarted: usePortalStartedRecorder(),
+      }),
+      { wrapper: wrapperFor(storage) },
+    );
+
+    await act(async () => {
+      await result.current.prune({
+        installation: 'gazelle',
+        listedSessionIds: ['live'],
+        readComplete: async () => {
+          // Started in another tab once this read had left: not listed.
+          await result.current.markPortalStarted('gazelle', 'brand-new');
+          return [session('live')];
+        },
+      });
+    });
+
+    expect(
+      Object.keys((stored(storage, SETTINGS) as { sessions: object }).sessions),
+    ).toEqual(['gazelle/live', 'golem/elsewhere', 'gazelle/brand-new']);
   });
 });

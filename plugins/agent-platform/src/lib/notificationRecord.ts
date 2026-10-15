@@ -42,8 +42,8 @@ export const NOTIFICATION_LEVELS: readonly NotificationLevel[] = [
  * here: aliases get the implicit index signature that satisfies the
  * StorageApi's `JsonValue` constraint.
  *
- * `at` is when the entry was last written (ms since the epoch), so a sessions
- * read that left before the session was started cannot prune it.
+ * `at` is when the entry was last written (ms since the epoch): which entries
+ * are the newest, when the record is bounded.
  */
 export type SessionNotificationSettings = {
   /** Present only when the portal's `start_session` started the session. */
@@ -78,21 +78,28 @@ export type SeenMarkTarget =
   | { kind: 'mcpSignIn'; installation: string; mark: string };
 
 /**
- * At most this many session seen marks are kept, the newest by write time. A
- * row exists only for the sessions the session-state reader evaluates (the 20
- * most recent per installation), so the oldest marks belong to sessions that
- * can have no row; the cap keeps the value well under the user-settings
- * backend's 100 kB request limit however long the person keeps their sessions.
+ * At most this many session seen marks are kept per installation, the newest
+ * by the time they were written. A row exists only for the sessions the
+ * session-state reader evaluates, the 20 most recent per installation. While
+ * a session stays among them, at most 19 others were among them when its mark
+ * was written, and at most 20 can join after it before it drops out: so no
+ * more than 39 other marks of its installation can be newer than a mark whose
+ * row still shows. 40 keeps every such mark; marks of sessions that dropped
+ * out can go. It also bounds the value (about 160 bytes a mark) well under
+ * the user-settings backend's 100 kB request limit.
  */
-export const MAX_SESSION_SEEN_MARKS = 200;
+export const SEEN_MARKS_PER_INSTALLATION = 40;
 
 /**
- * How old an entry must be before a sessions read that does not list its
- * session prunes it. A read can leave before a session is started and answer
- * after, and the time is the writing device's clock; pruning a deleted
- * session's entry a while later costs nothing.
+ * At most this many entries that only record a portal start are kept per
+ * installation, the newest by start. Entries with a level the person chose
+ * are always kept. An entry is about 85 bytes, so this bounds the value under
+ * the user-settings backend's 100 kB request limit for a person working on a
+ * few installations. A session started before its installation's newest 200
+ * that is still in use loses its Failed and Turn finished notifications; its
+ * Waiting ones stay.
  */
-export const PRUNE_GRACE_MS = 10 * 60 * 1000;
+export const PORTAL_STARTS_PER_INSTALLATION = 200;
 
 /** The id the session tables and rails already key a row by. */
 export function sessionKey(installation: string, sessionId: string): string {
@@ -248,14 +255,19 @@ export function withPortalStarted(
   const key = sessionKey(installation, sessionId);
   const current = settings.sessions[key];
   return {
-    sessions: {
-      ...settings.sessions,
-      [key]: {
-        origin: 'portal',
-        ...(current?.level && { level: current.level }),
-        at: now,
+    sessions: newestPerInstallation(
+      {
+        ...settings.sessions,
+        [key]: {
+          origin: 'portal',
+          ...(current?.level && { level: current.level }),
+          at: now,
+        },
       },
-    },
+      PORTAL_STARTS_PER_INSTALLATION,
+      // An entry with a level the person chose is never dropped.
+      entry => entry.level === undefined,
+    ),
   };
 }
 
@@ -287,19 +299,33 @@ export function isSeen(
     : mcpSignInSeenMarkOf(seen, target.installation) === target.mark;
 }
 
-/** The newest {@link MAX_SESSION_SEEN_MARKS} session marks. */
-function capped(
-  sessions: Record<string, StoredSeenMark>,
-): Record<string, StoredSeenMark> {
-  const entries = Object.entries(sessions);
-  if (entries.length <= MAX_SESSION_SEEN_MARKS) {
-    return sessions;
+/**
+ * `entries` with at most `limit` of each installation's droppable entries,
+ * the newest by `at`; entries `droppable` says no to are all kept.
+ */
+function newestPerInstallation<T extends { at: number }>(
+  entries: Record<string, T>,
+  limit: number,
+  droppable: (entry: T) => boolean = () => true,
+): Record<string, T> {
+  const byInstallation = new Map<string, Array<[string, T]>>();
+  for (const [key, entry] of Object.entries(entries)) {
+    if (droppable(entry)) {
+      const installation = installationOf(key);
+      byInstallation.set(installation, [
+        ...(byInstallation.get(installation) ?? []),
+        [key, entry],
+      ]);
+    }
   }
-  return Object.fromEntries(
-    entries
+  const dropped = new Set<string>();
+  for (const candidates of byInstallation.values()) {
+    candidates
       .sort(([, a], [, b]) => b.at - a.at)
-      .slice(0, MAX_SESSION_SEEN_MARKS),
-  );
+      .slice(limit)
+      .forEach(([key]) => dropped.add(key));
+  }
+  return dropped.size === 0 ? entries : without(entries, [...dropped]);
 }
 
 /**
@@ -327,45 +353,45 @@ export function withSeen(
       mcpSignIn[target.installation] = stored;
     }
   }
-  return { sessions: capped(sessions), mcpSignIn };
+  return {
+    sessions: newestPerInstallation(sessions, SEEN_MARKS_PER_INSTALLATION),
+    mcpSignIn,
+  };
+}
+
+/** The keys of `entries` that belong to `installation`. */
+export function sessionKeysOf(
+  entries: Record<string, unknown>,
+  installation: string,
+): string[] {
+  return Object.keys(entries).filter(
+    key => installationOf(key) === installation,
+  );
 }
 
 /**
- * One installation's complete, successful sessions read: every session the
- * person has there, and when it answered. Only such a read may prune.
+ * Pruning, without comparing clocks: `known` are the entry keys the record
+ * held for `installation` before a complete sessions read of it started, and
+ * `liveSessionIds` that read's sessions. An entry is written only for a
+ * session that exists (after `start_session` answered, or from a list that
+ * showed it), so a known entry's session existed when the read started: if
+ * the read does not list it, it was deleted. Entries written since are
+ * outside `known` and stay.
  */
-export type CompleteSessionsRead = {
+export type PruneInput = {
   installation: string;
-  sessionIds: readonly string[];
-  /** When the read answered (ms since the epoch). */
-  readAt: number;
+  known: ReadonlySet<string>;
+  liveSessionIds: readonly string[];
 };
 
-/**
- * The entries of `entries` the read lets go: the read's installation's
- * entries for sessions it does not list, written well before it answered.
- * An empty read prunes nothing: a list that came back empty is too often a
- * response that could not be read (the client resolves an unparseable body
- * as no sessions) to wipe an installation's entries on.
- */
 function prunable(
-  entries: Record<string, { at: number }>,
-  read: CompleteSessionsRead,
+  entries: Record<string, unknown>,
+  { installation, known, liveSessionIds }: PruneInput,
 ): string[] {
-  if (read.sessionIds.length === 0) {
-    return [];
-  }
-  const live = new Set(
-    read.sessionIds.map(id => sessionKey(read.installation, id)),
+  const live = new Set(liveSessionIds.map(id => sessionKey(installation, id)));
+  return sessionKeysOf(entries, installation).filter(
+    key => known.has(key) && !live.has(key),
   );
-  return Object.entries(entries)
-    .filter(
-      ([key, entry]) =>
-        installationOf(key) === read.installation &&
-        !live.has(key) &&
-        entry.at < read.readAt - PRUNE_GRACE_MS,
-    )
-    .map(([key]) => key);
 }
 
 function without<T>(
@@ -378,26 +404,26 @@ function without<T>(
   );
 }
 
-/** The settings without the entries `read` prunes, or undefined if none. */
+/** The settings without the entries of deleted sessions, or undefined if none. */
 export function prunedSettings(
   settings: NotificationSettingsValue,
-  read: CompleteSessionsRead,
+  input: PruneInput,
 ): NotificationSettingsValue | undefined {
-  const keys = prunable(settings.sessions, read);
+  const keys = prunable(settings.sessions, input);
   return keys.length === 0
     ? undefined
     : { sessions: without(settings.sessions, keys) };
 }
 
 /**
- * The seen marks without the session marks `read` prunes, or undefined if
- * none. The MCP sign-in marks are per installation and stay.
+ * The seen marks without the marks of deleted sessions, or undefined if none.
+ * The MCP sign-in marks are per installation and stay.
  */
 export function prunedSeen(
   seen: NotificationSeenValue,
-  read: CompleteSessionsRead,
+  input: PruneInput,
 ): NotificationSeenValue | undefined {
-  const keys = prunable(seen.sessions, read);
+  const keys = prunable(seen.sessions, input);
   return keys.length === 0
     ? undefined
     : { sessions: without(seen.sessions, keys), mcpSignIn: seen.mcpSignIn };

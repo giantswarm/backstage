@@ -22782,6 +22782,7 @@ __metadata:
     "@types/node": "npm:^24.0.0"
     "@types/react-dom": "npm:*"
     "@types/react-helmet": "npm:^6.1.0"
+    "@types/zen-observable": "npm:^0"
     cross-env: "npm:^10.0.0"
     crypto-js: "npm:^4.2.0"
     history: "npm:^5.0.0"
@@ -22790,6 +22791,7 @@ __metadata:
     react-dom: "npm:^18.0.2"
     react-helmet: "npm:6.1.0"
     react-router-dom: "npm:^6.30.2"
+    zen-observable: "npm:^0.10.0"
     zod: "npm:^4.3.6"
   languageName: unknown
   linkType: soft
