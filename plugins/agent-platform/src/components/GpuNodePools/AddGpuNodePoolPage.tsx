@@ -10,7 +10,6 @@ import {
 } from '@backstage/ui';
 import {
   countNoun,
-  fieldErrorProps,
   MoreOptions,
   searchableIf,
   useFieldValidation,
@@ -371,9 +370,11 @@ export function AddGpuNodePoolPage({
     name: poolNameError(name),
   };
   const installationError = useSelectFieldError(
-    validation.errorFor(errors.installation),
+    validation.errorFor('installation', errors.installation),
   );
-  const clusterError = useSelectFieldError(validation.errorFor(errors.cluster));
+  const clusterError = useSelectFieldError(
+    validation.errorFor('cluster', errors.cluster),
+  );
 
   // More options' one line of what it holds now.
   const moreOptionsSummary = [
@@ -631,7 +632,7 @@ export function AddGpuNodePoolPage({
               description="Use five to twenty lowercase letters, digits and dashes (gpu00, gpu-l4). The MachinePool is named <cluster>-<name>."
               value={name}
               onChange={setName}
-              {...fieldErrorProps(validation.errorFor(errors.name))}
+              {...validation.textFieldProps('name', errors.name)}
             />
             <Select
               label="Accelerator"

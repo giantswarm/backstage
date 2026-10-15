@@ -23,6 +23,7 @@ export const SHELL_SPECS = [
   'connector-display-name.spec.ts',
   'definition-editor.spec.ts',
   'first-agent.spec.ts',
+  'form-validation.spec.ts',
   'gpu-node-pool.spec.ts',
   'inventory-gate.spec.ts',
   'kagent-denial-reason.spec.ts',

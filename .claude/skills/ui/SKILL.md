@@ -121,6 +121,10 @@ right column.
 | MUI-lab `ToggleButtonGroup` | `ToggleButtonGroup` + `ToggleButton` |
 | MUI pickers | `DatePicker`, `DateRangePicker` |
 
+Form fields and their validation (when errors show, submit buttons, focus,
+wording) follow the **`forms`** skill and `useFieldValidation` from
+`ui-react`.
+
 bui `Tabs` covers both modes: in-page tabs keyed by `id`
 (`<Tab id="overview">`, with `selectedKey`/`onSelectionChange` on `Tabs`) and
 routed tabs (`href` + `matchStrategy: 'exact' | 'prefix'`, active state derived

@@ -204,17 +204,34 @@ describe('AddSkillPage', () => {
     expect(screen.getByLabelText(/Name/)).not.toHaveAttribute('aria-invalid');
   }, 30_000);
 
-  it('says what is wrong with a name while it is typed', async () => {
+  it('says what is wrong with a name once the person leaves it, and clears it as it is fixed', async () => {
     const user = userEvent.setup();
     await renderPage();
 
     const name = screen.getByLabelText(/Name/);
     await user.type(name, 'Notes');
+    // Not while it is typed.
+    expect(name).not.toHaveAttribute('aria-invalid');
 
+    await user.tab();
     expect(name).toHaveAttribute('aria-invalid', 'true');
     expect(name).toHaveAccessibleDescription(
       expect.stringContaining('lowercase letters, digits and dashes'),
     );
+
+    await user.clear(name);
+    await user.type(name, 'notes');
+    expect(name).not.toHaveAttribute('aria-invalid');
+  }, 30_000);
+
+  it('says nothing about an empty name that was only tabbed through', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByLabelText(/Name/));
+    await user.tab();
+
+    expect(screen.queryByText('Name is required')).not.toBeInTheDocument();
   }, 30_000);
 
   it('shows the opened pull request and what happens next, with Done to leave', async () => {
