@@ -331,6 +331,49 @@ export function serverRowKey(row: ServerPageRow): string {
 }
 
 /**
+ * The display name a family's members give it: the
+ * `ui.giantswarm.io/display-name` the annotated members agree on. One chart
+ * stamps them all, so they should; while a rollout is in flight only some
+ * carry it, and those decide. Members that disagree name nothing, so the
+ * family keeps its own name rather than one instance's.
+ */
+export function familyDisplayNameAnnotation(
+  servers: MCPServer[],
+): string | undefined {
+  const names = new Set(
+    servers
+      .map(server => server.getDisplayNameAnnotation())
+      .filter((name): name is string => Boolean(name)),
+  );
+  return names.size === 1 ? [...names][0] : undefined;
+}
+
+/**
+ * A row's `ui.giantswarm.io/display-name`, or undefined when it has none
+ * (and always for muster itself).
+ */
+export function serverRowDisplayNameAnnotation(
+  row: ServerPageRow,
+): string | undefined {
+  switch (row.kind) {
+    case 'family':
+      return familyDisplayNameAnnotation(row.servers);
+    case 'server':
+      return row.server.getDisplayNameAnnotation();
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * What a row is called for people: its display name, else
+ * {@link serverRowKey} -- the name its page, links and muster use.
+ */
+export function serverRowDisplayName(row: ServerPageRow): string {
+  return serverRowDisplayNameAnnotation(row) ?? serverRowKey(row);
+}
+
+/**
  * The row a server page's `:server` segment names on this installation, or
  * undefined when the installation has no such server. A family wins over a
  * singular CR of the same name: the family's page is the one every family link

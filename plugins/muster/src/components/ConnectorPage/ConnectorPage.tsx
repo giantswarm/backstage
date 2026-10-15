@@ -52,6 +52,7 @@ import {
   fleetManagementClusters,
   partitionServers,
   ServerPageRow,
+  serverRowDisplayName,
   serverRowKey,
 } from '../../lib/serverGrouping';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
@@ -244,6 +245,8 @@ function ConnectorPageContent({
   const serversRoute = useRouteRef(mcpServersRouteRef);
   const search = `?installation=${encodeURIComponent(installation)}`;
   const name = serverRowKey(row);
+  // What people read; `name` stays what links, muster and the URL use.
+  const displayName = serverRowDisplayName(row);
   const members = useMemo(() => rowServers(row), [row]);
   const representativeInfo = representativeServer(row, installation);
   const representative = representativeInfo?.server;
@@ -291,7 +294,7 @@ function ConnectorPageContent({
   // it in full. Where muster asks for a sign-in, the Tools tab's gate already
   // carries the same sentence.
   const signInParts = canSignIn
-    ? authActionParts(singular!.getName(), signIn, { noun: 'connector' })
+    ? authActionParts(displayName, signIn, { noun: 'connector' })
     : undefined;
   const ssoFailure =
     signInParts?.kind === 'sso' && !signIn.needsLogin
@@ -362,7 +365,7 @@ function ConnectorPageContent({
         onAction: () =>
           openAction({
             ...deactivate,
-            label: `Turn off "${singular.getName()}"?`,
+            label: `Turn off "${displayName}"?`,
             confirmLabel: 'Turn off',
           }),
       });
@@ -375,7 +378,7 @@ function ConnectorPageContent({
         onAction: () =>
           openAction({
             ...activate,
-            label: `Turn on "${singular.getName()}"?`,
+            label: `Turn on "${displayName}"?`,
             confirmLabel: 'Turn on',
           }),
       });
@@ -387,7 +390,7 @@ function ConnectorPageContent({
       onAction: () =>
         openAction({
           ...live.remove,
-          label: `Remove "${singular.getName()}"?`,
+          label: `Remove "${displayName}"?`,
           confirmLabel: 'Remove',
         }),
     });
@@ -421,6 +424,7 @@ function ConnectorPageContent({
         <ServerAuthActions
           noun="connector"
           serverName={singular.getName()}
+          displayName={displayName}
           installation={installation}
           oauthConfigured={singular.getAuth()?.type === 'oauth'}
           signInGate={
@@ -499,7 +503,7 @@ function ConnectorPageContent({
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Customize', href: paths.customize },
     { label: 'Connectors', href: listPath },
-    { label: name },
+    { label: displayName },
   ];
 
   const toIndex = <Navigate to={`${basePath}${search}`} replace />;
@@ -560,9 +564,9 @@ function ConnectorPageContent({
   return (
     <ConnectorPageTargetProvider target={target}>
       <ShellPage
-        title={name}
+        title={displayName}
         breadcrumbs={breadcrumbs}
-        leading={<ConnectorTile name={name} />}
+        leading={<ConnectorTile name={displayName} />}
         badges={<StatusBadge row={row} />}
         meta={
           row.kind === 'core'
@@ -683,7 +687,7 @@ function ConnectorPageContent({
                 // it, so the removal is acknowledged as the platform's other
                 // deletes are: a toast on the list it returns to.
                 toastApi.post({
-                  title: `Connector "${singular.getName()}" removed`,
+                  title: `Connector "${displayName}" removed`,
                   status: 'success',
                   timeout: TOAST_TIMEOUT_MS,
                 });
@@ -719,10 +723,15 @@ export interface ConnectorPageProps {
  */
 export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   const { server: key = '' } = useParams();
-  // Above every state the page can be in; the form an agent's page uses.
+  const { mcpServers } = useMusterInstance();
+  const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
+  // Above every state the page can be in; the form an agent's page uses. The
+  // display name once the connector is read, its URL name until then.
   return (
     <>
-      <ShellDocumentTitle title={[key, 'Connectors']} />
+      <ShellDocumentTitle
+        title={[row ? serverRowDisplayName(row) : key, 'Connectors']}
+      />
       <ConnectorPageBody serverKey={key} usedBy={usedBy} />
     </>
   );
@@ -741,6 +750,8 @@ function ConnectorPageBody({
   // muster) even while loading; otherwise the crumb has no link rather than
   // one to a sub-tab that does not list it.
   const listPath = paths.listOf(key, row);
+  // A cached row names the connector while it is read again.
+  const shownName = row ? serverRowDisplayName(row) : key;
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, tile, badge row,
@@ -748,13 +759,13 @@ function ConnectorPageBody({
     // (T95). Tools is the one tab every connector has; the rest join it.
     return (
       <ShellPage
-        title={key}
+        title={shownName}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
           { label: 'Connectors', href: listPath },
-          { label: key },
+          { label: shownName },
         ]}
-        leading={<ConnectorTile name={key} />}
+        leading={<ConnectorTile name={shownName} />}
         badges={<ShellPageBadgeSkeleton />}
         // Tools with its count's place held, so the tab keeps its width as
         // the page and then the tools land.
@@ -768,11 +779,11 @@ function ConnectorPageBody({
   if (!activeInstallation) {
     return (
       <ShellPage
-        title={key}
+        title={shownName}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
           { label: 'Connectors', href: listPath },
-          { label: key },
+          { label: shownName },
         ]}
       >
         <EmptyStateCard

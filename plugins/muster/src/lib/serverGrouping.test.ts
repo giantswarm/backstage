@@ -15,6 +15,8 @@ import {
   partitionServers,
   presenceByMc,
   selectRepresentative,
+  serverRowDisplayName,
+  serverRowDisplayNameAnnotation,
   serverRowKey,
 } from './serverGrouping';
 
@@ -27,6 +29,8 @@ function makeServer(opts: {
   toolGroup?: ToolGroup | string;
   /** `spec.suspended`: the server is deactivated. */
   suspended?: boolean;
+  /** The `ui.giantswarm.io/display-name` annotation. */
+  displayName?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -34,6 +38,13 @@ function makeServer(opts: {
       kind: 'MCPServer',
       metadata: {
         name: opts.name,
+        ...(opts.displayName
+          ? {
+              annotations: {
+                'ui.giantswarm.io/display-name': opts.displayName,
+              },
+            }
+          : {}),
         labels: {
           ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
           ...(opts.toolGroup ? { [TOOL_GROUP_LABEL]: opts.toolGroup } : {}),
@@ -519,5 +530,58 @@ describe('findServerRow', () => {
     for (const key of ['kubernetes', 'aws-root', 'muster']) {
       expect(serverRowKey(findServerRow(servers, key)!)).toBe(key);
     }
+  });
+});
+
+describe('serverRowDisplayName', () => {
+  it('names a singular server by its display name, else its name', () => {
+    const named = makeServer({ name: 'mcp-github', displayName: 'GitHub' });
+    expect(serverRowDisplayName({ kind: 'server', server: named })).toBe(
+      'GitHub',
+    );
+    const plain = makeServer({ name: 'mcp-github' });
+    expect(serverRowDisplayName({ kind: 'server', server: plain })).toBe(
+      'mcp-github',
+    );
+    expect(
+      serverRowDisplayNameAnnotation({ kind: 'server', server: plain }),
+    ).toBeUndefined();
+  });
+
+  it('names a family by the display name its annotated members agree on', () => {
+    const row: ServerRow = {
+      kind: 'family',
+      family: 'kubernetes',
+      servers: [
+        makeServer({ name: 'a', family: 'kubernetes', displayName: 'K8s' }),
+        // Not rolled out here yet: the annotated members decide.
+        makeServer({ name: 'b', family: 'kubernetes' }),
+      ],
+    };
+    expect(serverRowDisplayName(row)).toBe('K8s');
+  });
+
+  it('keeps the family name when its members disagree or none is annotated', () => {
+    expect(
+      serverRowDisplayName({
+        kind: 'family',
+        family: 'kubernetes',
+        servers: [
+          makeServer({ name: 'a', family: 'kubernetes', displayName: 'A' }),
+          makeServer({ name: 'b', family: 'kubernetes', displayName: 'B' }),
+        ],
+      }),
+    ).toBe('kubernetes');
+    expect(
+      serverRowDisplayName({
+        kind: 'family',
+        family: 'kubernetes',
+        servers: [makeServer({ name: 'a', family: 'kubernetes' })],
+      }),
+    ).toBe('kubernetes');
+  });
+
+  it('names muster itself by its key', () => {
+    expect(serverRowDisplayName({ kind: 'core' })).toBe('muster');
   });
 });

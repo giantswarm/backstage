@@ -40,6 +40,7 @@ import {
   WORKFLOW_TOOL_PREFIX,
 } from '../../lib/workflowReferences';
 import { serversOfTools, toolsOfWorkflow } from '../../lib/workflowTools';
+import { connectorNames } from '../../lib/connectorName';
 import {
   customizeExternalRouteRef,
   workflowDetailRouteRef,
@@ -165,6 +166,13 @@ function WorkflowPageContent({
     () => serversOfTools(stepTools, prefixes),
     [stepTools, prefixes],
   );
+  // As Customize names them: display names, a family member by its family's.
+  const connectorsUsed = useMemo(() => {
+    const names = connectorNames(connectors, mcpServers);
+    return [
+      ...new Set(connectors.map(server => names.get(server) ?? server)),
+    ].join(', ');
+  }, [connectors, mcpServers]);
   const asCaller = useMemo(
     () =>
       workflowRunsAsCaller(
@@ -245,7 +253,7 @@ function WorkflowPageContent({
       value: <Mono>{toolName}</Mono>,
     },
     ...(connectors.length > 0
-      ? [{ label: 'Connectors used', value: connectors.join(', ') }]
+      ? [{ label: 'Connectors used', value: connectorsUsed }]
       : []),
     { label: 'Called as a step by', value: <CalledBy workflow={workflow} /> },
   ];

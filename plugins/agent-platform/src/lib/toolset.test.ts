@@ -1,7 +1,10 @@
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
   bindsGateway,
+  bucketLabel,
   buildCatalogue,
+  connectorName,
+  connectorOfTool,
   catalogueInventory,
   countNoun,
   declaredToolset,
@@ -23,6 +26,7 @@ import {
   selectorProblem,
   serverOfTool,
   ServerInfo,
+  surfaceDisplayName,
   toggleSelector,
   describeToolset,
   gatewayBindings,
@@ -429,6 +433,46 @@ describe('serverOfTool', () => {
       'agent-manager',
     );
     expect(serverOfTool(tool('x_unknown_thing'), SERVERS)).toBeUndefined();
+  });
+});
+
+describe('connector display names', () => {
+  const named: ServerInfo[] = [
+    { ...SERVERS[0], displayName: 'Kubernetes' },
+    SERVERS[1],
+    { ...SERVERS[3], displayName: 'Planning' },
+    SERVERS[2],
+  ];
+
+  it('names a surface by the display name its CRs agree on, else its name', () => {
+    expect(surfaceDisplayName('kubernetes', named)).toBe('Kubernetes');
+    expect(surfaceDisplayName('pro', named)).toBe('Planning');
+    expect(surfaceDisplayName('agent-manager', named)).toBe('agent-manager');
+    expect(
+      surfaceDisplayName('kubernetes', [
+        { ...SERVERS[0], displayName: 'A' },
+        { ...SERVERS[1], displayName: 'B' },
+      ]),
+    ).toBe('kubernetes');
+  });
+
+  it('names the connector of a tool and of a usage row by its display name', () => {
+    expect(connectorOfTool('x_kubernetes_get_pods', named)).toEqual({
+      connector: 'Kubernetes',
+      tool: 'get_pods',
+    });
+    expect(connectorName('kubernetes-golem', named)).toBe('Kubernetes');
+    expect(connectorName('pro', named)).toBe('Planning');
+    expect(connectorName('unknown', named)).toBe('unknown');
+  });
+
+  it('labels the catalogue buckets, keeping the name selectors use', () => {
+    const buckets = buildCatalogue([], named, []).flatMap(g => g.servers);
+    const kubernetes = buckets.find(b => b.name === 'kubernetes')!;
+    expect(bucketLabel(kubernetes)).toBe('Kubernetes');
+    const manager = buckets.find(b => b.name === 'agent-manager')!;
+    expect(manager.displayName).toBeUndefined();
+    expect(bucketLabel(manager)).toBe('agent-manager');
   });
 });
 

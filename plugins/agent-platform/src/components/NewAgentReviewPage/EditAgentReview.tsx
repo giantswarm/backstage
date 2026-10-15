@@ -28,7 +28,11 @@ import {
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
 import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
-import { declaredToolset, toolsetShape } from '../../lib/toolset';
+import {
+  declaredToolset,
+  surfaceDisplayName,
+  toolsetShape,
+} from '../../lib/toolset';
 import { shortPin } from '../AgentDetailPage/helpers';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
@@ -274,7 +278,9 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <PlainRow label="Tools">
             {keepsImplicitAccess
               ? 'Every tool the gateway exposes (no toolset declared)'
-              : toolsetSummaryLabel(shape, declared)}
+              : toolsetSummaryLabel(shape, declared, connector =>
+                  surfaceDisplayName(connector, servers),
+                )}
           </PlainRow>
         </dl>
 

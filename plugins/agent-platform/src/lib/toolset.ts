@@ -509,11 +509,32 @@ export interface ServerInfo {
   state?: string;
   /** Whether the server declares per-user OAuth (`spec.auth.type: oauth`). */
   oauth: boolean;
+  /** The CR's `ui.giantswarm.io/display-name`, when one is set. */
+  displayName?: string;
 }
 
 /** The name a server surface goes by: the family for a family member, else the CR name. */
 export function surfaceName(server: ServerInfo): string {
   return server.family ?? server.name;
+}
+
+/**
+ * What people call a server surface: the `ui.giantswarm.io/display-name` its
+ * CRs agree on (for a family, the annotated members decide, and members that
+ * disagree name nothing), else the surface name itself — what `server:`
+ * selectors, tool prefixes and URLs keep using.
+ */
+export function surfaceDisplayName(
+  surface: string,
+  servers: ServerInfo[],
+): string {
+  const names = new Set(
+    servers
+      .filter(server => surfaceName(server) === surface)
+      .map(server => server.displayName)
+      .filter((name): name is string => Boolean(name)),
+  );
+  return names.size === 1 ? [...names][0] : surface;
 }
 
 /**
@@ -545,7 +566,7 @@ export function serverOfTool(
  * prefix, with the tool's own part: `x_agentlab-mcp-kubernetes_get_pods` →
  * `{ connector: 'kubernetes', tool: 'get_pods' }` for a server of the
  * kubernetes family. The connector is named as Customize names it (the family
- * for a family member). `undefined` for a name no server's prefix matches.
+ * for a family member, by its display name where it has one). `undefined` for a name no server's prefix matches.
  */
 export function connectorOfTool(
   name: string,
@@ -564,23 +585,24 @@ export function connectorOfTool(
   }
   return best
     ? {
-        connector: surfaceName(best),
+        connector: surfaceDisplayName(surfaceName(best), servers),
         tool: name.slice(best.toolNamePrefix.length + 1),
       }
     : undefined;
 }
 
 /**
- * A muster server as Customize names it — the family for a family member —
- * from its CR name or its tool-name segment (`agentlab-mcp-kubernetes` →
- * `kubernetes`); the name itself when no server matches.
+ * A muster server as Customize names it — the family for a family member, by
+ * its display name where it has one — from its CR name or its tool-name
+ * segment (`agentlab-mcp-kubernetes` → `kubernetes`); the name itself when no
+ * server matches.
  */
 export function connectorName(server: string, servers: ServerInfo[]): string {
   const match = servers.find(
     candidate =>
       candidate.name === server || candidate.toolNamePrefix === `x_${server}`,
   );
-  return match ? surfaceName(match) : server;
+  return match ? surfaceDisplayName(surfaceName(match), servers) : server;
 }
 
 export function isCoreTool(tool: Pick<ToolSummary, 'name' | 'kind'>): boolean {
@@ -644,6 +666,11 @@ export function toolGroupTitle(key: PickerGroupKey): string {
 export interface ServerBucket {
   /** The surface name — `server:<name>` selects it. */
   name: string;
+  /**
+   * What people call it ({@link surfaceDisplayName}); absent where it is
+   * {@link name}. Read it through {@link bucketLabel}.
+   */
+  displayName?: string;
   /** Whether this is a federated family (several CRs, one surface). */
   isFamily: boolean;
   tools: ToolSummary[];
@@ -655,6 +682,13 @@ export interface ServerBucket {
   state?: string;
   /** Present when muster listed tools for a server no CR describes. */
   unknownServer: boolean;
+}
+
+/** A bucket's name as people read it: its display name, else its name. */
+export function bucketLabel(
+  bucket: Pick<ServerBucket, 'name' | 'displayName'>,
+) {
+  return bucket.displayName ?? bucket.name;
 }
 
 export interface CatalogueGroup {
@@ -740,8 +774,10 @@ export function buildCatalogue(
       existing.state = worstState(existing.state, server.state);
       continue;
     }
+    const displayName = surfaceDisplayName(name, servers);
     buckets.set(name, {
       name,
+      ...(displayName !== name ? { displayName } : {}),
       isFamily: server.family !== undefined,
       tools: [],
       needsSignIn,

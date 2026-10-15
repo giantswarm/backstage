@@ -24,6 +24,7 @@ import {
   parseSelector,
   labelOfPresetSelector,
   selectorLabel,
+  surfaceDisplayName,
   toolsetHasTools,
   toolsetShape,
   unsignedServerSelectors,
@@ -273,6 +274,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
                   noun="connector"
                   key={selector}
                   serverName={name}
+                  displayName={surfaceDisplayName(name, servers)}
                   installation={installation}
                   showName
                 />

@@ -33,6 +33,7 @@ import { shortCommit } from '../../lib/skills';
 import {
   buildCatalogue,
   declaredToolset,
+  surfaceDisplayName,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
@@ -333,7 +334,9 @@ function CreateAgentReview() {
             </PlainRow>
           )}
           <PlainRow label="Tools">
-            {toolsetSummaryLabel(shape, declared)}
+            {toolsetSummaryLabel(shape, declared, connector =>
+              surfaceDisplayName(connector, servers),
+            )}
           </PlainRow>
         </dl>
 

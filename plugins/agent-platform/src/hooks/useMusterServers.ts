@@ -13,6 +13,9 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
     toolNamePrefix: server.getToolNamePrefix(),
     state: server.getState(),
     oauth: server.getAuth()?.type === 'oauth',
+    ...(server.getDisplayNameAnnotation()
+      ? { displayName: server.getDisplayNameAnnotation() }
+      : {}),
   };
 }
 

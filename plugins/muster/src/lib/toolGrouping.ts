@@ -1,6 +1,9 @@
 import { ToolSummary } from '../apis';
 import type { MCPServer } from './k8s';
-import type { ServerPageRow } from './serverGrouping';
+import {
+  familyDisplayNameAnnotation,
+  type ServerPageRow,
+} from './serverGrouping';
 
 /**
  * One tool-name prefix an aggregated MCP server's tools are exposed under,
@@ -12,6 +15,12 @@ export interface ServerPrefixInfo {
   prefix: string;
   serverName: string;
   family?: string;
+  /**
+   * What people call the connector it belongs to: the
+   * `ui.giantswarm.io/display-name` of the server, or the one its family's
+   * members agree on. Absent where there is none.
+   */
+  displayName?: string;
 }
 
 /**
@@ -50,10 +59,28 @@ export function matchServers(
  * when the members' instance arguments differ.
  */
 export function serverPrefixInfos(servers: MCPServer[]): ServerPrefixInfo[] {
+  const familyNames = new Map<string, string | undefined>();
+  const displayNameOf = (server: MCPServer): string | undefined => {
+    const family = server.getFamily();
+    if (!family) {
+      return server.getDisplayNameAnnotation();
+    }
+    if (!familyNames.has(family)) {
+      familyNames.set(
+        family,
+        familyDisplayNameAnnotation(
+          servers.filter(member => member.getFamily() === family),
+        ),
+      );
+    }
+    return familyNames.get(family);
+  };
   return servers.flatMap(server => {
+    const displayName = displayNameOf(server);
     const info = {
       serverName: server.getName(),
       family: server.getFamily(),
+      ...(displayName ? { displayName } : {}),
     };
     const own = `x_${server.getToolPrefix() ?? server.getName()}`;
     const prefix = server.getToolNamePrefix();

@@ -60,6 +60,7 @@ function makeServer(
     suspended?: boolean;
     toolGroup?: string;
     family?: string;
+    displayName?: string;
   } = {},
 ): MCPServer {
   return new MCPServer(
@@ -68,6 +69,13 @@ function makeServer(
       kind: 'MCPServer',
       metadata: {
         name,
+        ...(options.displayName
+          ? {
+              annotations: {
+                'ui.giantswarm.io/display-name': options.displayName,
+              },
+            }
+          : {}),
         labels: options.toolGroup
           ? { [TOOL_GROUP_LABEL]: options.toolGroup }
           : {},
@@ -614,6 +622,36 @@ describe('CustomizeConnectorsPanel', () => {
       'href',
       '/agent-platform/connectors/kubernetes?installation=gazelle',
     );
+  });
+
+  it('names a connector by its display name, linking by its name', async () => {
+    mockServers = [
+      makeServer('mcp-websearch', { displayName: 'Web search' }),
+      makeServer('github'),
+    ];
+    await renderPanel();
+
+    expect(
+      within(rowOf('Web search')).getByRole('link', { name: 'Web search' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/connectors/mcp-websearch?installation=gazelle',
+    );
+    expect(screen.queryByText('mcp-websearch')).not.toBeInTheDocument();
+  });
+
+  it('finds a connector by its display name and by its name', async () => {
+    mockServers = [
+      makeServer('mcp-websearch', { displayName: 'Web search' }),
+      makeServer('github'),
+    ];
+    const { unmount } = await renderPanel('web s');
+    expect(await screen.findByText('Web search')).toBeInTheDocument();
+    expect(screen.queryByText('github')).not.toBeInTheDocument();
+    unmount();
+
+    await renderPanel('mcp-web');
+    expect(await screen.findByText('Web search')).toBeInTheDocument();
   });
 
   it('searches connectors by their tools too', async () => {

@@ -100,11 +100,13 @@ export const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
 /**
  * The one-line Tools summary in words (QA R2-2): the loud labels, else each
  * preset and whole connector by name, and the rest counted, the way the Tools
- * step's grid names them. The selectors as written are in Technical details.
+ * step's grid names them (`labelOf` gives a connector's display name). The
+ * selectors as written are in Technical details.
  */
 export function toolsetSummaryLabel(
   shape: 'none' | 'full' | 'composed',
   declared: string[],
+  labelOf: (connector: string) => string = connector => connector,
 ): string {
   if (shape === 'none') {
     return 'No tools';
@@ -120,7 +122,7 @@ export function toolsetSummaryLabel(
       // Preset phrases are shared with the composer's reach line.
       parts.push(presetPhrase(parsed.name));
     } else if (parsed?.kind === 'server') {
-      parts.push(`all ${parsed.name} tools`);
+      parts.push(`all ${labelOf(parsed.name)} tools`);
     } else if (parsed?.kind === 'tool' || parsed?.kind === 'workflow') {
       counts[parsed.kind] += 1;
     } else {

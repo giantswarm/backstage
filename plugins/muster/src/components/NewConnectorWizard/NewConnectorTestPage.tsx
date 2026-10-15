@@ -215,7 +215,11 @@ export function NewConnectorTestPage() {
   const toolsTotal = Math.max(toolsQuery.data?.total ?? 0, tools.length);
   const partial = toolsTotal > tools.length;
 
-  const displayName = state.name.trim() || serverName || 'The connector';
+  const displayName =
+    cr?.getDisplayNameAnnotation() ||
+    state.name.trim() ||
+    serverName ||
+    'The connector';
 
   const onDone = useCallback(() => {
     reset();

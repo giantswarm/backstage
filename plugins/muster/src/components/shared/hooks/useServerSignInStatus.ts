@@ -18,6 +18,11 @@ export type StatusText = Required<Pick<StatusDotProps, 'tone'>> & {
 export interface UseServerSignInStatusOptions {
   /** The muster server name, as reported by `auth://status`. */
   serverName: string;
+  /**
+   * What the copy calls the server for people (its display name); the
+   * server name by default.
+   */
+  displayName?: string;
   installation?: string;
   /** The row's own state, shown while no sign-in from this tab overrides it. */
   status: StatusText;
@@ -124,13 +129,17 @@ function statusDetails(
  */
 export function useServerSignInStatus({
   serverName,
+  displayName,
   installation,
   status,
   signInGate,
   noun = 'server',
 }: UseServerSignInStatusOptions): ServerSignInStatusState {
   const state = useServerSignIn(serverName, installation, { noun });
-  const parts = authActionParts(serverName, state, { noun, signInGate });
+  const parts = authActionParts(displayName ?? serverName, state, {
+    noun,
+    signInGate,
+  });
   return {
     shown: shownStatus(status, parts, state),
     details: statusDetails(parts, state),

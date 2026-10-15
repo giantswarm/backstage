@@ -14,7 +14,7 @@ import {
   ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { countNoun, type ServerBucket } from '../../lib/toolset';
+import { bucketLabel, countNoun, type ServerBucket } from '../../lib/toolset';
 import {
   type ConnectorChoice,
   connectorState,
@@ -89,11 +89,11 @@ function ConnectorCard({
   const classes = useStyles();
   const { choice, picked } = connectorState(bucket, selected);
   const readOnlyCount = readOnlySelectors(bucket).length;
-  const name = bucket.name;
+  const name = bucketLabel(bucket);
   return (
     <div
       role="group"
-      aria-label={`Connector ${bucket.name}`}
+      aria-label={`Connector ${name}`}
       className={`${classes.card} ${choice === 'none' ? '' : classes.chosen}`}
     >
       <Flex direction="column" gap="0" className={classes.name}>
@@ -103,7 +103,7 @@ function ConnectorCard({
         </Text>
       </Flex>
       <ToggleButtonGroup
-        aria-label={`Access to ${bucket.name}`}
+        aria-label={`Access to ${name}`}
         selectionMode="single"
         isDisabled={disabled}
         selectedKeys={
@@ -166,7 +166,11 @@ export function ConnectorGrid({
     () =>
       trimmed === ''
         ? connectors
-        : connectors.filter(bucket => matchesQuery(trimmed, bucket.name)),
+        : connectors.filter(
+            bucket =>
+              matchesQuery(trimmed, bucket.name) ||
+              matchesQuery(trimmed, bucketLabel(bucket)),
+          ),
     [connectors, trimmed],
   );
 

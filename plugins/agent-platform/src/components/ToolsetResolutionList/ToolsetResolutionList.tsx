@@ -13,6 +13,7 @@ import {
 import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
 import { filterCatalogue } from '../../lib/filterCatalogue';
 import {
+  bucketLabel,
   buildCatalogue,
   CatalogueGroup,
   catalogueInventory,
@@ -144,7 +145,7 @@ function groupEntries(
             defaultExpanded={defaultExpanded}
             entries={group.servers.map(bucket => ({
               key: `${group.key}/${bucket.name}`,
-              trigger: `${bucket.name} — ${countNoun(
+              trigger: `${bucketLabel(bucket)} — ${countNoun(
                 bucket.tools.length,
                 'tool',
               )}`,

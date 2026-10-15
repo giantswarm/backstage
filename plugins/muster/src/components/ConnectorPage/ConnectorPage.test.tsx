@@ -70,6 +70,7 @@ function makeServer(opts: {
   state?: string;
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
+  displayName?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -78,6 +79,13 @@ function makeServer(opts: {
       metadata: {
         name: opts.name,
         namespace: 'muster',
+        ...(opts.displayName
+          ? {
+              annotations: {
+                'ui.giantswarm.io/display-name': opts.displayName,
+              },
+            }
+          : {}),
         creationTimestamp: '2026-08-04T10:00:00Z',
         labels: {
           ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
@@ -354,6 +362,21 @@ describe('ConnectorPage', () => {
     await renderAt(`${BASE}/jira`);
 
     await waitFor(() => expect(document.title).toBe('jira · Connectors'));
+  });
+
+  it('heads the page, its crumb and the document title with the display name', async () => {
+    mockServers = [
+      makeServer({ name: 'mcp-jira', displayName: 'Acme Jira' }),
+      ...makeServers(),
+    ];
+    await renderAt(`${BASE}/mcp-jira`);
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Acme Jira' }),
+    ).toBeInTheDocument();
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByText('Acme Jira')).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe('Acme Jira · Connectors'));
   });
 
   it('names its place under Customize without links where Customize is not bound', async () => {
@@ -776,6 +799,17 @@ describe('ConnectorPage Details tab', () => {
     expect(
       screen.getByText(/each instance's own configuration, health and/),
     ).toBeInTheDocument();
+  });
+
+  it('keeps the resource name of a connector with a display name in its technical details', async () => {
+    mockServers = [
+      makeServer({ name: 'mcp-jira', displayName: 'Acme Jira' }),
+      ...makeServers(),
+    ];
+    await renderAt(`${BASE}/mcp-jira/details`);
+    await userEvent.click(foldOut());
+
+    expect(screen.getByText('muster/mcp-jira')).toBeInTheDocument();
   });
 
   it('opens the fold-out on arrival while muster reports the connector failed', async () => {

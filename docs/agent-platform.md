@@ -121,6 +121,23 @@ each person's own account, none, or AWS request signing) and registers the
 server. Connectors managed through GitOps point to their source instead of
 being editable.
 
+A connector is named for people by the `ui.giantswarm.io/display-name`
+annotation on its MCPServer, as agents, models and harnesses are: in the
+Connectors list, its page's title, breadcrumbs and document title, the tool
+page's breadcrumb, the command palette, the agent wizard's Tools step and
+review, the agent page's tools, the reach line, the session timeline, Usage →
+Connectors and the workflow pages. Without the annotation the name is the
+family's (`spec.family.name`) or the MCPServer's own. A family takes the
+display name its annotated members agree on; members that disagree leave it
+its family name. URLs, `server:` selectors and tool names keep the technical
+name, which Technical details on the Details tab still shows, and searches
+match both names. Add connector cannot set the annotation: muster's
+`core_mcpserver_create` and `_update` take no annotations (their request
+parsing rejects unknown fields), so it is set on the MCPServer directly, for
+example in its GitOps source or with
+`kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`.
+An update through the wizard keeps it.
+
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/agent-platform/connectors/<connector>/tools/<tool>?installation=<name>`.

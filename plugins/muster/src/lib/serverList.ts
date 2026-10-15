@@ -4,6 +4,7 @@ import {
   MUSTER_SERVER_KEY,
   ServerPageRow,
   partitionServers,
+  serverRowDisplayName,
   serverRowKey,
 } from './serverGrouping';
 import {
@@ -24,8 +25,13 @@ export interface NamedTool {
 export interface ServerListRow {
   /** Unique within the list: `family:<name>`, `server:<name>` or `core`. */
   key: string;
-  /** The row's server page segment, and its name in the list. */
+  /** The row's server page segment: the name its page, links and muster use. */
   id: string;
+  /**
+   * The row's name in the list: its `ui.giantswarm.io/display-name`, else
+   * {@link id}.
+   */
+  displayName: string;
   row: ServerPageRow;
   /** The row's tools; undefined until the catalogue is read. */
   tools?: NamedTool[];
@@ -82,6 +88,7 @@ export function serverListRows(
     return {
       key,
       id,
+      displayName: serverRowDisplayName(row),
       row,
       tools: tools
         ? (tools.get(key) ?? []).map(tool => ({
@@ -96,8 +103,9 @@ export function serverListRows(
 }
 
 /**
- * The servers list for a search, sorted by name. A row stays when its name
- * matches or one of its tools does (by the rule the Tools tab filters with);
+ * The servers list for a search, sorted by the name it shows. A row stays
+ * when its name -- the display name or the one its page uses -- matches or
+ * one of its tools does (by the rule the Tools tab filters with);
  * without a catalogue -- no muster session -- only names are searched. A row
  * its name matches is a name match, whatever its tools say.
  */
@@ -108,7 +116,10 @@ export function serverListEntries(
   const q = query.trim().toLowerCase();
   return rows
     .map(({ tools, ...row }) => {
-      const nameMatch = !q || row.id.toLowerCase().includes(q);
+      const nameMatch =
+        !q ||
+        row.id.toLowerCase().includes(q) ||
+        row.displayName.toLowerCase().includes(q);
       return {
         ...row,
         toolCount: tools?.length,
@@ -121,5 +132,10 @@ export function serverListEntries(
     })
     .filter(entry => entry.nameMatch || (entry.toolMatches ?? 0) > 0)
     .map(({ nameMatch: _nameMatch, ...entry }) => entry)
-    .sort((a, b) => a.id.localeCompare(b.id) || a.key.localeCompare(b.key));
+    .sort(
+      (a, b) =>
+        a.displayName.localeCompare(b.displayName) ||
+        a.id.localeCompare(b.id) ||
+        a.key.localeCompare(b.key),
+    );
 }
