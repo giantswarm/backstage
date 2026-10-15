@@ -65,6 +65,19 @@ AGENTLAB_PORTAL_MODE=shell yarn test:e2e:agentlab --project agentlab-shell
 AGENTLAB_PORTAL_MODE=shell yarn test:e2e:agentlab --project agentlab-mobile
 ```
 
+Before every test the suite reads which portals the lab serves from the
+frontend config Backstage injects into its public `index.html`
+(`app.portals.agentPlatform`). A lab serving the classic portal only skips
+`agentlab-shell` and `agentlab-mobile` with that reason; any other mismatch
+with `AGENTLAB_PORTAL_MODE` fails at once, saying what to change.
+
+Model hosting exists only where model-manager answers (`platform.modelManager`
+in the lab's `agentlab.yaml`): without it, every Model hosting and serving spec
+skips with the reason, read once per worker from muster's server list
+(`skipWithoutModelManager` in `model-manager.fixture.ts`) — the ones that stub
+model-manager's answers at the browser too, since the portal does not draw the
+page for them. The KServe specs also skip without `platform.serving`.
+
 The chart's app-config sets `app.rootRedirect: /agent-platform`, which leads
 nowhere in `classic` mode, so run a `classic` lab's Backstage with
 `APP_CONFIG_app_rootRedirect=/` too. To switch modes without editing the chart,

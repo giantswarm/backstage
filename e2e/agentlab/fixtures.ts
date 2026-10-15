@@ -89,20 +89,24 @@ export async function servedPortalMode(
     response.ok(),
     `the lab's Backstage answers / (${response.status()})`,
   ).toBe(true);
-  const injected = /<script type="backstage\.io\/config">([\s\S]*?)<\/script>/.exec(
-    await response.text(),
-  );
+  const injected =
+    /<script type="backstage\.io\/config">([\s\S]*?)<\/script>/.exec(
+      await response.text(),
+    );
   expect(
     injected,
     "the lab's Backstage injects its frontend config into index.html",
   ).not.toBeNull();
-  const configs: { data?: { app?: { portals?: { agentPlatform?: unknown } } } }[] =
-    JSON.parse(injected![1]);
+  const configs: {
+    data?: { app?: { portals?: { agentPlatform?: unknown } } };
+  }[] = JSON.parse(injected![1]);
   const agentPlatform = configs
     .map(config => config.data?.app?.portals?.agentPlatform)
     .filter(value => value !== undefined)
     .pop();
-  return agentPlatform === true || agentPlatform === 'true' ? 'shell' : 'classic';
+  return agentPlatform === true || agentPlatform === 'true'
+    ? 'shell'
+    : 'classic';
 }
 
 /** The projects of the Agent Platform, which need a lab serving the shell. */
