@@ -14,3 +14,6 @@ why in an alert above every tab, with a link to its conditions on Details.
 
 `ConditionsList` writes each condition's status, reason and message as a
 label/value list, as the rest of the technical details are.
+
+`FoldOutAlignedSection` insets a Details tab's facts as `TechnicalDetailsFoldOut`
+insets its title; the connector, model and workflow Details tabs share it.

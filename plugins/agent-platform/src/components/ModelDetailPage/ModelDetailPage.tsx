@@ -142,13 +142,15 @@ function ModelDetailPageContent() {
   const modelEditRoute = useRouteRef(modelEditRouteRef);
   const paths = useCustomizePaths();
   const basePath = useSplatBasePath();
-  const { pathname, search } = useLocation();
+  const { search } = useLocation();
   const { config } = useSignedInConfig();
   const {
     installation = '',
     namespace = '',
     name = '',
-  } = useParams<'installation' | 'namespace' | 'name'>();
+    // The open tab's path below the model's, '' on Overview.
+    '*': tab = '',
+  } = useParams<'installation' | 'namespace' | 'name' | '*'>();
 
   const {
     resource: modelConfig,
@@ -200,9 +202,10 @@ function ModelDetailPageContent() {
   const deletion = useDeleteModelConfig(modelConfig);
 
   // Read here, above the tabs, so Overview's Used by and the Usage tab share
-  // one result.
+  // one result. Only for a model there is: the not-found and error frames
+  // never show it.
   const usage = useModelUsage(
-    installation,
+    modelConfig ? installation : undefined,
     modelConfig?.getModel(),
     modelConfig?.getDisplayName() ?? name,
   );
@@ -293,7 +296,7 @@ function ModelDetailPageContent() {
     ),
   );
   const facts = modelFacts({ modelConfig, installation, contextWindow });
-  const onDetails = pathname.replace(/\/$/, '') === `${basePath}/details`;
+  const onDetails = tab.replace(/\/+$/, '') === 'details';
 
   return (
     <ModelFrame
@@ -310,6 +313,7 @@ function ModelDetailPageContent() {
       <Flex direction="column" gap="4">
         <ModelReadinessAlert
           modelConfig={modelConfig}
+          detail={status.detail}
           detailsHref={onDetails ? undefined : `${basePath}/details${search}`}
         />
         <Routes>

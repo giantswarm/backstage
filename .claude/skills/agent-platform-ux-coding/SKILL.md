@@ -154,6 +154,8 @@ them and never invent a palette.
 - Technical detail is a fold-out in place, never a page-wide toggle, switch or
   stored "technical mode". Pages use a "Technical details" bui `Accordion`
   styled by `useSimpleAccordionStyles`, mounted only while open.
+  A Details tab's plain facts above it sit in `FoldOutAlignedSection`, which
+  lines them up with the fold-out's title.
 - The one page-wide switch is the session page's "Show tool activity" (PO,
   S9): it hides the agent's work, it does not change how detail reads. It is
   small, at the end of the header's meta line after "Started …", on by

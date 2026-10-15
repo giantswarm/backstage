@@ -1,22 +1,13 @@
 import { Flex } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   type Fact,
   FactList,
+  FoldOutAlignedSection,
   TechnicalDetailsFoldOut,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { ModelTechnicalDetails } from '../../ModelTechnicalDetails';
-
-const useStyles = makeStyles({
-  // Inset as the Technical details fold-out below insets its title (its 1px
-  // border plus bui's accordion padding), so the facts line up with it, as on
-  // the connector and workflow pages' Details tabs.
-  facts: {
-    paddingInline: 'calc(var(--bui-space-3) + 1px)',
-  },
-});
 
 export type ModelDetailsTabProps = {
   modelConfig: ModelConfig;
@@ -35,12 +26,11 @@ export function ModelDetailsTab({
   installation,
   facts,
 }: ModelDetailsTabProps) {
-  const classes = useStyles();
   return (
     <Flex direction="column" gap="5">
-      <section aria-label="Model details" className={classes.facts}>
+      <FoldOutAlignedSection aria-label="Model details">
         <FactList facts={facts} labelWidth={160} />
-      </section>
+      </FoldOutAlignedSection>
       {/* Open on arrival while the controller has not accepted the model, as
           the agent page does for an agent that is not ready: the conditions
           there say why. It follows a fresh read that turns the model

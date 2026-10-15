@@ -74,8 +74,12 @@ jest.mock('../../hooks/useDeleteModelConfig', () => ({
 
 // The gateway's figures, as the Usage screen's hook reduces them.
 let mockLlmUsage: LlmUsageView;
+let mockLlmUsageInstallations: Array<string | undefined> = [];
 jest.mock('../../hooks/useLlmUsage', () => ({
-  useLlmUsage: () => mockLlmUsage,
+  useLlmUsage: (installation: string | undefined) => {
+    mockLlmUsageInstallations.push(installation);
+    return mockLlmUsage;
+  },
 }));
 
 // The fleet's agents, as the Customize page's provider lists them.
@@ -238,6 +242,7 @@ const USAGE = '/customize/models/inst-1/kagent/sonnet/usage';
 
 describe('ModelDetailPage', () => {
   beforeEach(() => {
+    mockLlmUsageInstallations = [];
     mockMayUpdate = true;
     mockContextWindows = undefined;
     mockUseResource.mockReturnValue({
@@ -306,7 +311,8 @@ describe('ModelDetailPage', () => {
       'aria-selected',
       'true',
     );
-    // On Details the alert stays, without a link to where it already is.
+    // On Details the alert keeps to its title, without a link to where it
+    // already is: the open conditions below say the rest, once.
     expect(
       screen.getByText('kagent did not accept this model'),
     ).toBeInTheDocument();
@@ -318,7 +324,37 @@ describe('ModelDetailPage', () => {
     expect(screen.getByText('SecretNotFound')).toBeInTheDocument();
     expect(
       screen.getAllByText('Secret kagent/sonnet-key not found'),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+  });
+
+  it('says once on Details that a stale model awaits the controller', async () => {
+    const stale = sonnet();
+    stale.jsonData.metadata.generation = 2;
+    mockUseResource.mockReturnValue({
+      resource: stale,
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText('kagent has not accepted this model yet'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The controller has not reconciled the latest change yet.',
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('link', { name: 'Show conditions' }),
+    );
+
+    expect(
+      screen.getAllByText(
+        /The controller has not reconciled the latest change yet\./,
+      ),
+    ).toHaveLength(1);
   });
 
   it('says nothing about acceptance for an accepted model', async () => {
@@ -437,6 +473,35 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('Copywriter')).toBeNull();
     // The figures themselves are the Usage tab's.
     expect(screen.queryByText('Model calls')).toBeNull();
+  });
+
+  it('lists the agents without spend for a model without a model ID', async () => {
+    const unnamed = sonnet();
+    (unnamed.jsonData.spec as { model?: string }).model = undefined;
+    mockUseResource.mockReturnValue({
+      resource: unnamed,
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    const list = screen.getByRole('grid', { name: 'Agents using this model' });
+    expect(within(list).getAllByRole('row')).toHaveLength(2);
+    // Nothing in the gateway's figures can match it: no made-up zeros.
+    expect(within(list).queryByText(/\$/)).toBeNull();
+    expect(screen.queryByText(/Each agent shows its spend/)).toBeNull();
+  });
+
+  it('reads no gateway figures for a model that is not there', async () => {
+    mockUseResource.mockReturnValue({
+      resource: undefined,
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(screen.getByText('Model not found')).toBeInTheDocument();
+    expect(mockLlmUsageInstallations).not.toContain('inst-1');
   });
 
   it('lists the agents without spend where the gateway has no figures', async () => {

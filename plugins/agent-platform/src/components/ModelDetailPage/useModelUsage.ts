@@ -21,7 +21,8 @@ export type ModelUsage = {
  * read.
  */
 export function useModelUsage(
-  installation: string,
+  /** Undefined reads nothing, e.g. while there is no model to show. */
+  installation: string | undefined,
   /** The ModelConfig's `spec.model`: what the gateway's metrics are keyed by. */
   model: string | undefined,
   /** The model's name for people, the chart's series name. */
@@ -43,5 +44,7 @@ export function useModelUsage(
   } else if (gateway.isError || !gateway.usage) {
     state = 'error';
   }
-  return { slice: state === 'ready' ? slice : undefined, state };
+  // Without a model ID nothing in the gateway's figures can match it: its
+  // empty slice would read as every agent spending nothing on it.
+  return { slice: state === 'ready' && model ? slice : undefined, state };
 }

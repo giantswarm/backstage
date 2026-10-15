@@ -3,10 +3,19 @@ import { Accordion, AccordionPanel, AccordionTrigger } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useSimpleAccordionStyles } from '../SimpleAccordion';
 
+const BORDER_WIDTH = 1;
+
+/**
+ * How far the fold-out's title sits in from its edge: its border plus bui's
+ * accordion padding. Content above the fold-out that should line up with the
+ * title (`FoldOutAlignedSection`) is inset by this.
+ */
+export const TECHNICAL_DETAILS_TITLE_INSET = `calc(var(--bui-space-3) + ${BORDER_WIDTH}px)`;
+
 const useStyles = makeStyles({
   // Outlined like the create flow's review step "Technical details".
   foldOut: {
-    border: '1px solid var(--bui-border-1)',
+    border: `${BORDER_WIDTH}px solid var(--bui-border-1)`,
     borderRadius: 12,
   },
 });
@@ -20,8 +29,8 @@ export type TechnicalDetailsFoldOutProps = {
    * cache first must neither leave a reason the fresh read found folded away
    * nor keep open what a stale copy opened. Opt-in, for the model and
    * connector pages. Key the fold-out, or a parent, by the resource, so
-   * another one starts afresh: the model page keys the fold-out, the connector
-   * page its whole content. Without it, `defaultExpanded` only seeds the first
+   * another one starts afresh: the model page keys its Details tab, the
+   * connector page its whole content. Without it, `defaultExpanded` only seeds the first
    * render, as on the agent page.
    */
   followDefaultExpanded?: boolean;
