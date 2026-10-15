@@ -7,7 +7,7 @@
 export const DEFAULT_MODEL_CONFIG_NAME = 'default-model-config';
 
 /** The namespace the kagent chart puts its default ModelConfig in. */
-const DEFAULT_MODEL_CONFIG_NAMESPACE = 'kagent';
+export const DEFAULT_MODEL_CONFIG_NAMESPACE = 'kagent';
 
 /** The part of a ModelConfig the preselection reads. */
 type NamedModelConfig = {

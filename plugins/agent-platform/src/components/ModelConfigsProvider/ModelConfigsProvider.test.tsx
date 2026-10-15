@@ -62,6 +62,19 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
     e.type !== 'incompatibility' && e.error?.name === 'NotFoundError',
 }));
 
+// The namespace-by-namespace read of the installations a cluster-wide list
+// was forbidden on; its own test is useNamespacedModelConfigs.test.tsx.
+const mockUseNamespacedModelConfigs = jest.fn();
+jest.mock('../../hooks/useNamespacedModelConfigs', () => ({
+  useNamespacedModelConfigs: (installations: string[]) =>
+    mockUseNamespacedModelConfigs(installations),
+}));
+const NOTHING_NAMESPACED = {
+  resources: [],
+  pendingInstallations: [],
+  unreadInstallations: [],
+};
+
 // Duck-typed stand-in for a ModelConfig instance — the provider only reads
 // `.cluster`.
 function fakeModelConfig(cluster: string) {
@@ -108,6 +121,8 @@ const renderUseModelConfigs = () =>
 describe('ModelConfigsProvider', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
+    mockUseNamespacedModelConfigs.mockReset();
+    mockUseNamespacedModelConfigs.mockReturnValue(NOTHING_NAMESPACED);
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
       installations: ['alpha', 'beta', 'gaggle'],
@@ -192,14 +207,87 @@ describe('ModelConfigsProvider', () => {
   });
 
   it('surfaces installations that errored and produced no models', () => {
+    // gaggle refuses the cluster-wide list and every namespace too.
     mockUseResources.mockReturnValue(
       result({ succeeded: { alpha: 1 }, failed: ['gaggle'] }),
     );
+    mockUseNamespacedModelConfigs.mockReturnValue({
+      ...NOTHING_NAMESPACED,
+      unreadInstallations: ['gaggle'],
+    });
 
     const { result: hook } = renderUseModelConfigs();
 
     expect(hook.current.unreachableInstallations).toEqual(['gaggle']);
     expect(hook.current.availableInstallations).toEqual(['alpha']);
+  });
+
+  it('offers the models of the namespaces a person with a namespaced RoleBinding reads', () => {
+    // alpha refuses the cluster-wide list (403); its namespaces are read one
+    // by one and answer two models.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { beta: 1 }, failed: ['alpha'] }),
+    );
+    mockUseNamespacedModelConfigs.mockReturnValue({
+      ...NOTHING_NAMESPACED,
+      resources: [fakeModelConfig('alpha'), fakeModelConfig('alpha')],
+    });
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(mockUseNamespacedModelConfigs).toHaveBeenLastCalledWith(['alpha']);
+    expect(hook.current.availableInstallations).toEqual(['alpha', 'beta']);
+    expect(hook.current.modelConfigsFor('alpha')).toHaveLength(2);
+    expect(hook.current.unreachableInstallations).toEqual([]);
+  });
+
+  it('does not flag an installation whose namespaces were read empty', () => {
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(hook.current.unreachableInstallations).toEqual([]);
+    expect(hook.current.availableInstallations).toEqual([]);
+  });
+
+  it('flags an installation a namespace of which could not be read, models or not', () => {
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+    mockUseNamespacedModelConfigs.mockReturnValue({
+      ...NOTHING_NAMESPACED,
+      resources: [fakeModelConfig('alpha')],
+      unreadInstallations: ['alpha'],
+    });
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(hook.current.unreachableInstallations).toEqual(['alpha']);
+    expect(hook.current.availableInstallations).toEqual(['alpha']);
+  });
+
+  it('keeps an installation pending while its namespaces are read', () => {
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { beta: 1, gaggle: 1 }, failed: ['alpha'] }),
+    );
+    mockUseNamespacedModelConfigs.mockReturnValue({
+      ...NOTHING_NAMESPACED,
+      pendingInstallations: ['alpha'],
+    });
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(hook.current.isLoading).toBe(true);
+    expect(hook.current.pendingInstallations).toEqual(['alpha']);
+    expect(hook.current.unreachableInstallations).toEqual([]);
+  });
+
+  it('asks no namespace when the cluster-wide read failed for another reason', () => {
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: 1 }, notFound: ['beta'] }),
+    );
+
+    renderUseModelConfigs();
+
+    expect(mockUseNamespacedModelConfigs).toHaveBeenLastCalledWith([]);
   });
 
   it('reports loading while probes are still settling', () => {
@@ -234,6 +322,8 @@ describe('ModelConfigsProvider', () => {
 describe('ModelConfigsProvider installation scope', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
+    mockUseNamespacedModelConfigs.mockReset();
+    mockUseNamespacedModelConfigs.mockReturnValue(NOTHING_NAMESPACED);
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
       installations: ['alpha', 'beta', 'gaggle'],
@@ -259,6 +349,33 @@ describe('ModelConfigsProvider installation scope', () => {
     expect(hook.current.installations).toEqual(['alpha', 'beta', 'gaggle']);
     expect(hook.current.pendingInstallations).toEqual(['beta', 'gaggle']);
     expect(hook.current.home).toBe('alpha');
+  });
+
+  it('asks the rest only once the home’s namespaces have answered', async () => {
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+    mockUseNamespacedModelConfigs.mockReturnValue({
+      ...NOTHING_NAMESPACED,
+      pendingInstallations: ['alpha'],
+    });
+
+    const { rerender } = renderUseModelConfigs();
+    rerender();
+
+    expect(mockUseResources.mock.calls.at(-1)?.[0]).toEqual(['alpha']);
+
+    mockUseNamespacedModelConfigs.mockReturnValue({
+      ...NOTHING_NAMESPACED,
+      resources: [fakeModelConfig('alpha')],
+    });
+    rerender();
+
+    await waitFor(() =>
+      expect(mockUseResources.mock.calls.at(-1)?.[0]).toEqual([
+        'alpha',
+        'beta',
+        'gaggle',
+      ]),
+    );
   });
 
   it('narrows the read to a pinned installation', () => {
