@@ -1,6 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Select, TextField } from '@backstage/ui';
 import {
@@ -65,15 +71,13 @@ function Form({ onContinue }: { onContinue: () => void }) {
         label="Name"
         value={name}
         onChange={setName}
-        {...validation.blurProps('name')}
-        {...fieldErrorProps(validation.errorFor('name', errors.name))}
+        {...validation.textFieldProps('name', errors.name)}
       />
       <TextAreaField
         label="Notes"
         value={notes}
         onChange={setNotes}
-        {...validation.blurProps('notes')}
-        error={validation.errorFor('notes', errors.notes)}
+        {...validation.fieldProps('notes', errors.notes)}
       />
     </WizardFrame>
   );
@@ -150,21 +154,31 @@ describe('field validation', () => {
     expect(describedText(name)).toContain('Name is required');
   });
 
-  it('clears a shown error the moment it is fixed, and waits for the next leave to show a new one', async () => {
+  it('keeps a shown error in step with each change, so it clears the moment it is fixed', async () => {
     renderForm();
     const name = screen.getByRole('textbox', { name: /Name/ });
     await userEvent.type(name, '1');
     await userEvent.tab();
 
+    // Edited straight from one problem into another, then into a valid value.
+    await userEvent.type(name, '{Home}A');
+    expect(describedText(name)).toContain(
+      'Start the name with a lowercase letter',
+    );
     await userEvent.clear(name);
-    // Still wrong, so the error follows the change.
     expect(describedText(name)).toContain('Name is required');
     await userEvent.type(name, 's');
     expect(name).not.toHaveAttribute('aria-invalid');
+  });
 
-    // A new problem typed into a fixed field waits until the person leaves it.
-    await userEvent.clear(name);
-    await userEvent.type(name, '9');
+  it('keeps a new problem quiet while the person types into a field that was fine on entry', async () => {
+    renderForm();
+    const name = screen.getByRole('textbox', { name: /Name/ });
+    await userEvent.type(name, 'support');
+    await userEvent.tab();
+
+    await userEvent.click(name);
+    await userEvent.type(name, '{Home}9');
     expect(name).not.toHaveAttribute('aria-invalid');
     await userEvent.tab();
     expect(describedText(name)).toContain(
@@ -232,6 +246,129 @@ describe('field validation', () => {
     );
 
     expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useFieldValidation around other fields and presses', () => {
+  /** A required A, a B that must come with A, and an Extra that can be opened. */
+  function PairForm({ onToggle }: { onToggle?: () => void }) {
+    const [a, setA] = useState('');
+    const [b, setB] = useState('');
+    const [extra, setExtra] = useState('');
+    const [more, setMore] = useState(false);
+    const validation = useFieldValidation();
+    const errors = {
+      a: a ? undefined : 'Enter A',
+      b: a && !b ? 'Set B together with A' : undefined,
+      extra: extra ? undefined : 'Enter the extra value',
+    };
+    return (
+      <>
+        <TextField
+          label="A"
+          value={a}
+          onChange={setA}
+          {...validation.textFieldProps('a', errors.a)}
+        />
+        <TextField
+          label="B"
+          value={b}
+          onChange={setB}
+          {...validation.textFieldProps('b', errors.b)}
+        />
+        {more && (
+          <TextField
+            label="Extra"
+            value={extra}
+            onChange={setExtra}
+            {...validation.textFieldProps('extra', errors.extra)}
+          />
+        )}
+        <button
+          onClick={() => {
+            setMore(previous => !previous);
+            onToggle?.();
+          }}
+        >
+          Toggle extra
+        </button>
+        <button onClick={validation.reveal}>Save</button>
+        <button onClick={validation.reset}>Reset</button>
+      </>
+    );
+  }
+
+  const field = (name: string) =>
+    screen.getByRole('textbox', { name: new RegExp(`^${name}`) });
+
+  it('after a submit, shows a problem a field gains from another field as it arises', async () => {
+    render(<PairForm />);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(describedText(field('A'))).toContain('Enter A');
+
+    // B is never focused; its problem comes from A.
+    await userEvent.type(field('A'), 'x');
+    expect(field('A')).not.toHaveAttribute('aria-invalid');
+    expect(describedText(field('B'))).toContain('Set B together with A');
+  });
+
+  it('keeps a field that appears after a submit quiet until it is left or submitted', async () => {
+    render(<PairForm />);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Toggle extra' }));
+    expect(field('Extra')).not.toHaveAttribute('aria-invalid');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(describedText(field('Extra'))).toContain('Enter the extra value');
+  });
+
+  it('holds back a check caused by pressing a button until the press is over, so the press lands', async () => {
+    const onToggle = jest.fn();
+    const user = userEvent.setup();
+    render(<PairForm onToggle={onToggle} />);
+    await user.type(field('A'), 'x');
+    await user.clear(field('A'));
+    const toggle = screen.getByRole('button', { name: 'Toggle extra' });
+
+    await user.pointer({ keys: '[MouseLeft>]', target: toggle });
+    // The pointer is down and the field has lost the focus: no error line yet
+    // to push the button from under the pointer.
+    expect(field('A')).not.toHaveAttribute('aria-invalid');
+
+    await user.pointer({ keys: '[/MouseLeft]', target: toggle });
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(field('A')).toHaveAttribute('aria-invalid', 'true'),
+    );
+  });
+
+  it('forgets the visit of a field that unmounted while it had the focus', async () => {
+    render(<PairForm />);
+    const toggle = screen.getByRole('button', { name: 'Toggle extra' });
+    fireEvent.click(toggle);
+    await userEvent.type(field('Extra'), 'q');
+    // Closed while Extra has the focus: React calls no onBlur.
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+
+    await userEvent.click(field('Extra'));
+    await userEvent.tab();
+    expect(field('Extra')).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('drops a pending announcement when the form is reset', async () => {
+    render(<PairForm />);
+    await userEvent.type(field('A'), 'x');
+    await userEvent.clear(field('A'));
+    await userEvent.tab();
+    // Reset before the announcement goes out (a dialog closed with Cancel).
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(
+      document.querySelector('[data-field-validation-announcer]'),
+    ).toBeEmptyDOMElement();
   });
 });
 

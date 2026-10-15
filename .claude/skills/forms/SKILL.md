@@ -19,14 +19,16 @@ The rules come from giantswarm/giantswarm#38519.
 
 ## 1. When a field's error shows: "reward early, punish late"
 
-| Moment                                      | What happens                                                                                                  |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| The person types into a field for the first time | Nothing. No error for a value that is still being typed.                                                 |
-| The person leaves the field (blur)          | The field is checked, if they typed in it or it holds a value. Its error, if any, appears under it.          |
-| The person merely tabs through an empty field | Nothing. A missing required value is left to the submit, so keyboard users do not leave a trail of red.   |
-| The field shows an error and the person edits it | Re-checked on every change: the error clears the moment the value is fixed, or its message follows the value. |
-| The fixed field is edited into a new problem | Nothing until they leave it again.                                                                          |
-| Submit / Continue / Review                  | Every field is checked, every error shows, the focus moves to the first invalid field.                        |
+| Moment                                                    | What happens                                                                                                   |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| The person types into a field for the first time          | Nothing. No error for a value that is still being typed.                                                       |
+| The person leaves the field (blur)                        | The field is checked, if they typed in it or it holds a value. Its error, if any, appears under it.           |
+| The person merely tabs through an empty field             | Nothing. A missing required value is left to the submit, so keyboard users do not leave a trail of red.       |
+| The blur comes from pressing a button                     | The check waits until the press is over, so an error line cannot push the button from under the pointer.     |
+| A checked field changes                                   | Its error follows every change: it clears the moment the value is fixed, or its message follows the value.    |
+| The person types into a checked field that was fine       | A new problem waits until they leave it.                                                                       |
+| Submit / Continue / Review                                | Every field on screen is checked, every error shows, the focus moves to the first invalid field.              |
+| A field appears after a submit (a section opened later)   | It stays quiet until it is left or the next submit.                                                            |
 
 Re-checking a field in error runs on each change. Debounce (300–500 ms) only a
 check that costs something — a request, a parse of a large document; a cheap
@@ -47,7 +49,8 @@ zone says "Pick at least one zone."). An empty selection is still left to the
 submit.
 
 Cross-field rules (set both endpoints or neither, end after start) are checked
-on submit, and from then on follow each change like any shown error.
+on submit, and from then on follow each change: a field the person never
+focused shows the problem another field gives it as it arises.
 
 ## 2. Submit
 
@@ -131,11 +134,7 @@ const regionError = useSelectFieldError(
 />
 <Select {...regionError.selectProps} … />
 {regionError.message}
-<TextAreaField
-  {...validation.blurProps('notes')}
-  error={validation.errorFor('notes', errors.notes)}
-  …
-/>
+<TextAreaField {...validation.fieldProps('notes', errors.notes)} … />
 <Button
   variant="primary"
   onPress={() => (errors.name || errors.region ? validation.reveal() : submit())}
@@ -144,16 +143,17 @@ const regionError = useSelectFieldError(
 </Button>
 ```
 
-- `errorFor(field, problem)` returns the problem while the field may show it.
-  Call it on every render, also while the field is valid: that is how the hook
-  learns a field was fixed and goes quiet again.
-- `blurProps(field, value?)` goes on the field, or on a wrapper around a
-  composite field (focus moving inside the wrapper does not count as leaving).
-  It reads the value of a text input or textarea; pass `value` for anything
-  else. A selection whose only problem is "nothing picked" needs no
+- `errorFor(field, problem)` returns the problem while the field shows it.
+  Compute every problem from the form state on each render; the hook keeps no
+  copy of it.
+- `blurProps(field, problem, value?)` goes on the field, or on a wrapper
+  around a composite field (focus moving inside the wrapper does not count as
+  leaving). It reads the value of a text input or textarea; pass `value` for
+  anything else. A selection whose only problem is "nothing picked" needs no
   `blurProps`.
-- `textFieldProps(field, problem)` is both, plus `fieldErrorProps`, for a bui
-  text field.
+- `textFieldProps(field, problem)` is `blurProps` plus `fieldErrorProps`, for
+  a bui text field; `fieldProps(field, problem)` is `blurProps` plus `error`,
+  for a field component that takes one (`TextAreaField`).
 - `reveal()` is for the blocked submit. `submitted` is true from the first
   blocked submit on: use it for a banner of problems no field can show.
   `attempt` counts the blocked submits (a `key` to remount a fold-out open).

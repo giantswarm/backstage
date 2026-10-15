@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type FocusEvent,
@@ -11,15 +12,18 @@ import {
 import { makeStyles } from '@material-ui/core';
 
 /**
- * Per-field validation feedback for the create flows: when a Continue/Submit
- * is blocked, the field that is wrong says so itself — a danger edge on the
- * input (the shell's `--agent-shell-input-*` rules key on `data-invalid` /
- * `aria-invalid`), the message right under it, tied to it with
- * `aria-describedby` — and the keyboard focus moves to the first such field.
+ * Per-field validation feedback for forms (the `forms` skill): a field is
+ * checked when the person leaves it having typed in it, its error then
+ * follows each change, and a blocked Continue/Submit shows every field's
+ * error and moves the keyboard focus to the first. The field that is wrong
+ * says so itself — a danger edge on the input (the shell's
+ * `--agent-shell-input-*` rules key on `data-invalid` / `aria-invalid`), the
+ * message right under it, tied to it with `aria-describedby`.
  *
- * Three pieces, one mechanism:
- * - {@link useFieldValidation}: whether errors are shown yet, and `reveal()`
- *   for the blocked button, which also moves the focus.
+ * Four pieces, one mechanism:
+ * - {@link useFieldValidation}: which field shows its error when — its
+ *   `blurProps`/`textFieldProps`/`fieldProps` go on the fields, `reveal()` on
+ *   the blocked button, which also moves the focus.
  * - {@link fieldErrorProps}: the props that make a bui text field
  *   (`TextField`, `SearchField`, `PasswordField`, …) invalid with a message,
  *   through react-aria's own validation, so bui's built-in `FieldError`
@@ -80,40 +84,56 @@ export type FieldBlurProps = {
 
 export type FieldValidation = {
   /**
-   * `message` while `field` may show its error, else `undefined`. A field
-   * may show it once the person leaves it ({@link FieldValidation.blurProps})
-   * or tries to submit ({@link FieldValidation.reveal}); from then on the
-   * error follows every change, and it goes quiet again the moment the value
-   * is fixed, so a field the person is fixing never scolds them for a value
-   * they are still typing.
-   *
-   * Call it on every render with the field's current problem, also while it
-   * is valid: that is how the hook learns the field was fixed.
+   * `problem` while `field` shows it, else `undefined`. A field shows its
+   * problem once the person leaves it having typed in it
+   * ({@link FieldValidation.blurProps}) or once a submit covered it
+   * ({@link FieldValidation.reveal}); from then on the error follows every
+   * change, so it clears the moment the value is fixed. Only while the person
+   * types into a field that was fine when they entered it does a new problem
+   * wait until they leave it.
    */
-  errorFor: (field: string, message: string | undefined) => string | undefined;
+  errorFor: (field: string, problem: string | undefined) => string | undefined;
   /**
-   * Spread onto a text field (or a wrapper around a composite one) so leaving
-   * it checks it. Leaving marks the field only when its value is non-empty or
-   * changed while it had the focus, so a required field the person merely
-   * tabbed through stays quiet until a submit.
+   * Spread onto a field, or a wrapper around a composite one, so leaving it
+   * checks it. Leaving marks the field only when its value is non-empty or
+   * was typed in, so a required field the person merely tabbed through stays
+   * quiet until a submit.
    *
-   * The value is read from a text input or textarea that loses the focus;
-   * pass `value` for any other control (a selection, a list of inputs).
+   * Pass the field's current `problem` (as to `errorFor`). The value is read
+   * from the text input or textarea that loses the focus; pass `value` for
+   * any other control (a selection, a list of inputs).
    */
-  blurProps: (field: string, value?: unknown) => FieldBlurProps;
+  blurProps: (
+    field: string,
+    problem: string | undefined,
+    value?: unknown,
+  ) => FieldBlurProps;
   /**
-   * Both of the above for a bui text field (`TextField`, `TextAreaField`,
-   * `PasswordField`, …), with {@link fieldErrorProps}:
+   * {@link FieldValidation.blurProps} and the shown error as `error`, for a
+   * field component that takes one (`TextAreaField`):
+   * `<TextAreaField {...validation.fieldProps('notes', errors.notes)} />`.
+   */
+  fieldProps: (
+    field: string,
+    problem: string | undefined,
+    value?: unknown,
+  ) => FieldBlurProps & { error: string | undefined };
+  /**
+   * {@link FieldValidation.blurProps} with {@link fieldErrorProps}, for a bui
+   * text field (`TextField`, `TextAreaField`, `PasswordField`, …):
    * `<TextField {...validation.textFieldProps('name', errors.name)} />`.
    */
   textFieldProps: (
     field: string,
-    message: string | undefined,
+    problem: string | undefined,
+    value?: unknown,
   ) => FieldBlurProps & ReturnType<typeof fieldErrorProps>;
   /**
-   * For the blocked button: every field may show its error, and the focus
-   * moves to the first invalid one. Keep the button enabled and call this
-   * when the form has a problem; never disable the button instead.
+   * For the blocked button: every field on screen shows its error, and the
+   * focus moves to the first invalid one. Keep the button enabled and call
+   * this when the form has a problem; never disable the button instead.
+   * A field that appears later (a section the person opens after the submit)
+   * stays quiet until it is left or the next submit.
    */
   reveal: () => void;
   /** Whether a submit was tried: for a banner of problems no field can show. */
@@ -164,6 +184,7 @@ function textValue(target: EventTarget | null): string | undefined {
 
 /** A field's stay in the focus: its value on entry, and whether it was typed in. */
 type Visit = {
+  element: Element;
   before: string | undefined;
   typed: boolean;
   stop: () => void;
@@ -175,14 +196,65 @@ function staysInside(event: FocusEvent<Element>): boolean {
   return next instanceof Node && event.currentTarget.contains(next);
 }
 
+/*
+ * A pointer press in progress. A blur it causes — a click on Commit right
+ * under a field — must not change the layout before the press ends: an error
+ * line inserted above the button moves it from under the pointer, and
+ * react-aria cancels the press, so the click is lost. Such a blur's check
+ * waits until the press, and the click it makes, are over.
+ */
+let pressing = false;
+let afterPress: Array<() => void> = [];
+let pressTracked = false;
+
+function endPress() {
+  if (!pressing) {
+    return;
+  }
+  pressing = false;
+  const pending = afterPress;
+  afterPress = [];
+  // After the press's own click and press handlers have run.
+  window.setTimeout(() => pending.forEach(run => run()), 0);
+}
+
+function trackPresses() {
+  if (pressTracked || typeof document === 'undefined') {
+    return;
+  }
+  pressTracked = true;
+  document.addEventListener(
+    'pointerdown',
+    () => {
+      pressing = true;
+    },
+    true,
+  );
+  document.addEventListener('pointerup', endPress, true);
+  document.addEventListener('pointercancel', endPress, true);
+  // A press whose pointerup never arrived (released outside the window).
+  document.addEventListener('keydown', endPress, true);
+}
+
+/** Runs `check` now, or once the pointer press in progress is over. */
+function whenPressEnds(check: () => void) {
+  if (pressing) {
+    afterPress.push(check);
+  } else {
+    check();
+  }
+}
+
 let liveRegion: HTMLElement | undefined;
+let sayTimer: number | undefined;
 let clearTimer: number | undefined;
 
 /** How long an announcement stays in the live region before it is emptied. */
 const ANNOUNCEMENT_MS = 7000;
 
-/** Empties the live region, so a stale message is not read out of context. */
+/** Empties the live region and drops a pending announcement. */
 function clearAnnouncement() {
+  window.clearTimeout(sayTimer);
   window.clearTimeout(clearTimer);
   if (liveRegion) {
     liveRegion.textContent = '';
@@ -219,7 +291,7 @@ function announce(message: string) {
   // Emptied first, so the same message said twice in a row is said again.
   const region = liveRegion;
   clearAnnouncement();
-  window.setTimeout(() => {
+  sayTimer = window.setTimeout(() => {
     region.textContent = message;
     clearTimer = window.setTimeout(clearAnnouncement, ANNOUNCEMENT_MS);
   }, 50);
@@ -231,15 +303,15 @@ function announce(message: string) {
  *
  * - a field is checked when the person leaves it having typed something
  *   ({@link FieldValidation.blurProps}), never while they first type;
- * - once it shows an error, the error follows each change and clears the
- *   moment the value is fixed;
- * - `reveal()`, for the blocked submit, shows every field's error and, once
- *   they have rendered, focuses the first invalid field inside `scope` — by
- *   default the closest `WizardFrame` on the page (it carries
- *   {@link FIELD_VALIDATION_SCOPE_ATTRIBUTE}), else the whole document. A
- *   field the reveal itself uncovers (a disclosure the page opens in the same
- *   handler) is focusable by then, since the focus moves after that render
- *   commits.
+ * - from then on its error follows each change, so it clears the moment the
+ *   value is fixed; a field the person enters while it is fine keeps a new
+ *   problem to itself until they leave it;
+ * - `reveal()`, for the blocked submit, shows the error of every field on
+ *   screen and, once they have rendered, focuses the first invalid field
+ *   inside `scope` — by default the closest `WizardFrame` on the page (it
+ *   carries {@link FIELD_VALIDATION_SCOPE_ATTRIBUTE}), else the whole
+ *   document. A field the reveal itself uncovers (a disclosure the page opens
+ *   in the same handler) counts as on screen, and is focusable by then.
  *
  * In a dialog, pass a ref to an element inside the dialog's body as `scope`:
  * the dialog renders in a portal, outside any `WizardFrame`, and the page
@@ -250,18 +322,29 @@ export function useFieldValidation(
 ): FieldValidation {
   const [submitted, setSubmitted] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  // Per field: whether its error may show. A field without an entry follows
-  // `submitted`.
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  // Each field's problem as last rendered, and the visit of the field that
-  // has the focus — refs, since neither should re-render the form.
-  const problems = useRef(new Map<string, string | undefined>());
-  const visits = useRef(new Map<string, Visit>());
+  // Fields left with a value, or typed in: their errors show from then on.
+  const [checked, setChecked] = useState<Readonly<Record<string, true>>>({});
+  // The field being typed into that was fine on entry: quiet until left.
+  const [quiet, setQuiet] = useState<string>();
+  // The commit count at the last blocked submit (see `covers`).
+  const [revealedAt, setRevealedAt] = useState<number>();
 
-  const isChecked = useCallback(
-    (field: string) => checked[field] ?? submitted,
-    [checked, submitted],
-  );
+  // The hook owner's commits, and the commit before which each field first
+  // rendered: a submit covers the fields that rendered with it, not those a
+  // later change brings in. Field names only, recorded once per field.
+  const commits = useRef(0);
+  const firstSeen = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    commits.current += 1;
+  });
+
+  const visits = useRef(new Map<string, Visit>());
+  // Bumped by `reveal()` and `reset()`, so a check waiting for a press to end
+  // knows whether the form moved on meanwhile.
+  const attempts = useRef(0);
+  const generation = useRef(0);
+
+  useEffect(() => trackPresses(), []);
 
   useEffect(() => {
     if (attempt === 0) {
@@ -274,45 +357,45 @@ export function useFieldValidation(
     focusFirstInvalidField(root);
   }, [attempt, scope]);
 
-  // A checked field whose value is now fine goes quiet again, so a new
-  // problem the person types into it waits until they leave it. After every
-  // render, since the problems arrive through `errorFor` during it; it sets
-  // state only for a checked, valid field, which that unchecks, so it settles
-  // in one pass.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const fixed = Array.from(problems.current)
-      .filter(([field, problem]) => !problem && isChecked(field))
-      .map(([field]) => field);
-    if (fixed.length > 0) {
-      setChecked(previous => {
-        const next = { ...previous };
-        for (const field of fixed) {
-          next[field] = false;
-        }
-        return next;
-      });
-    }
-  });
+  const covers = useCallback(
+    (field: string) => {
+      if (!firstSeen.current.has(field)) {
+        firstSeen.current.set(field, commits.current);
+      }
+      return (
+        revealedAt !== undefined && firstSeen.current.get(field)! <= revealedAt
+      );
+    },
+    [revealedAt],
+  );
+  const isChecked = useCallback(
+    (field: string) => Boolean(checked[field]) || covers(field),
+    [checked, covers],
+  );
 
   const errorFor = useCallback(
-    (field: string, message: string | undefined) => {
-      problems.current.set(field, message);
-      return isChecked(field) ? message : undefined;
+    (field: string, problem: string | undefined) => {
+      const shows = isChecked(field) && quiet !== field;
+      return shows ? problem : undefined;
     },
-    [isChecked],
+    [isChecked, quiet],
   );
 
   const blurProps = useCallback(
-    (field: string, value?: unknown): FieldBlurProps => ({
-      onFocus: event => {
-        if (visits.current.has(field)) {
+    (field: string, problem: string | undefined, value?: unknown) => ({
+      onFocus: (event: FocusEvent<Element>) => {
+        const current = visits.current.get(field);
+        if (current?.element.isConnected) {
+          // The focus moving within a composite field.
           return;
         }
+        // A visit left behind by a field that unmounted with the focus.
+        current?.stop();
         // Typing that ends where it started (a value typed and deleted) is
         // still a change, so the field's input events are watched too.
         const element = event.currentTarget;
         const visit: Visit = {
+          element,
           before: comparable(value) ?? textValue(event.target),
           typed: false,
           stop: () => element.removeEventListener('input', onInput),
@@ -322,47 +405,78 @@ export function useFieldValidation(
         }
         element.addEventListener('input', onInput);
         visits.current.set(field, visit);
+        if (!problem && isChecked(field)) {
+          setQuiet(field);
+        }
       },
-      onBlur: event => {
+      onBlur: (event: FocusEvent<Element>) => {
         if (staysInside(event)) {
           return;
         }
-        const now = comparable(value) ?? textValue(event.target);
+        const target = event.target;
+        const now = comparable(value) ?? textValue(target);
         const visit = visits.current.get(field);
         visit?.stop();
         visits.current.delete(field);
         const changed = visit ? visit.typed || now !== visit.before : false;
-        if (!isFilled(now) && !changed) {
-          return;
-        }
-        const problem = problems.current.get(field);
-        if (problem && !isChecked(field)) {
-          announce(problem);
-        }
-        setChecked(previous =>
-          previous[field] ? previous : { ...previous, [field]: true },
-        );
+        const wasShown =
+          Boolean(problem) && isChecked(field) && quiet !== field;
+        const atAttempt = attempts.current;
+        const atGeneration = generation.current;
+        whenPressEnds(() => {
+          // The form closed or was reset meanwhile (a dialog's Cancel).
+          if (
+            generation.current !== atGeneration ||
+            (target instanceof Node && !target.isConnected)
+          ) {
+            return;
+          }
+          setQuiet(previous => (previous === field ? undefined : previous));
+          if (!isFilled(now) && !changed) {
+            return;
+          }
+          setChecked(previous =>
+            previous[field] ? previous : { ...previous, [field]: true },
+          );
+          // A submit pressed meanwhile focuses the field, which says it.
+          if (problem && !wasShown && attempts.current === atAttempt) {
+            announce(problem);
+          }
+        });
       },
     }),
-    [isChecked],
+    [isChecked, quiet],
+  );
+
+  const fieldProps = useCallback(
+    (field: string, problem: string | undefined, value?: unknown) => ({
+      ...blurProps(field, problem, value),
+      error: errorFor(field, problem),
+    }),
+    [blurProps, errorFor],
   );
 
   const textFieldProps = useCallback(
-    (field: string, message: string | undefined) => ({
-      ...blurProps(field),
-      ...fieldErrorProps(errorFor(field, message)),
+    (field: string, problem: string | undefined, value?: unknown) => ({
+      ...blurProps(field, problem, value),
+      ...fieldErrorProps(errorFor(field, problem)),
     }),
     [blurProps, errorFor],
   );
 
   const reveal = useCallback(() => {
+    attempts.current += 1;
     setSubmitted(true);
-    setChecked({});
+    setQuiet(undefined);
+    setRevealedAt(commits.current);
     setAttempt(previous => previous + 1);
   }, []);
   const reset = useCallback(() => {
+    generation.current += 1;
     setSubmitted(false);
     setChecked({});
+    setQuiet(undefined);
+    setRevealedAt(undefined);
     setAttempt(0);
     visits.current.forEach(visit => visit.stop());
     visits.current.clear();
@@ -372,6 +486,7 @@ export function useFieldValidation(
   return {
     errorFor,
     blurProps,
+    fieldProps,
     textFieldProps,
     reveal,
     submitted,
