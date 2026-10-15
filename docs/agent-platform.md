@@ -1280,6 +1280,44 @@ the person is elsewhere. Nothing persists; sessions already waiting are left to
 the rail's dots, a toast closes when its session stops waiting or is opened,
 and the session on screen never raises one.
 
+### The compact header
+
+Once everything above the conversation has scrolled out of view, the header
+turns into one compact row at the top of the view: the session's name in a
+smaller font, its state, the agent, "Show tool activity", the pin and the
+actions menu. The environment and the start date are left out
+(`ShellPageExpandedOnly`); scrolling back up restores the full header. At
+phone width the switch is left out too: beside the state and the agent it
+wraps the row to a third line over the conversation.
+
+It is `ShellPage`'s `compactHeader` option, so another long page can opt in.
+It is the same header, not a copy: the h1 (the rename button) and the actions
+stay mounted once, so focus on them survives the switch and assistive tech
+never meets them twice. Compact, the header is `position: sticky` against the
+page, and a spacer after it takes the height it gives up, set before paint, so
+the conversation does not move. `useScrolledPast` watches a sentinel that
+reaches from where the content starts up past the top of the document (the
+document scrolls, not a container), so even an instant jump to the top is
+seen. The header stays expanded while focus is on a part the compact row
+leaves out. A `scroll-margin-top` on everything but the header keeps
+whatever is scrolled into view below the compact row, and its fade is off
+under `prefers-reduced-motion`. It is a margin on the content rather than a
+`scroll-padding-top` on the document: padding counts the stuck header's own
+top as hidden, so pressing the switch, whose input react-aria focuses on
+every press, scrolled the page to the top for a frame and back, a flicker.
+
+The switch stays usable mid-session: toggling it adds or removes work
+summaries above and below the place being read, so `useReadingAnchor` records
+the first entry in view that survives the toggle (a message or a turn marker,
+never a work summary) and its offset, turns the browser's scroll anchoring off
+for that change, and scrolls back by however far the entry moved, before
+paint. The header, its spacer and the sentinel are `overflow-anchor: none`:
+anchored on the sticky header, the browser would scroll the page when it turns
+back into the expanded header, which turns it compact again, a flicker. The
+compact header also expands only once the content's start is 24px back in
+view (`useScrolledPast`'s `hysteresis`), so a reflow that nudges it a few
+pixels cannot flip it.
+
 ### Timestamps are absolute here
 
 The detail page shows absolute times (`28 Jul 2026, 10:07 UTC`), because
