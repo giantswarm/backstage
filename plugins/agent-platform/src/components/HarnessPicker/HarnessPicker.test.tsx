@@ -115,14 +115,18 @@ describe('HarnessPicker', () => {
     expect(screen.queryByText('Runtime')).not.toBeInTheDocument();
   });
 
-  it("says so when the namespace's Harnesses could not be read", async () => {
+  it("says so when the namespace's Harnesses could not be read, and keeps the platform Harness", async () => {
     mockUseResources.mockReturnValue(
       listing([], [{ cluster: 'gazelle', error: new Error('Forbidden') }]),
     );
     await render();
 
     expect(screen.getByText('Could not read the runtimes')).toBeInTheDocument();
+    expect(
+      screen.getByText(/so the agent runs on the platform Harness\.$/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 
   it("titles a card by the Harness's display name when an admin set one", async () => {
@@ -215,8 +219,9 @@ describe('HarnessPicker', () => {
 
     await user.click(codex);
     expect(formHarness).toBe('codex');
-    // A Claude Code Harness's limits are not a codex one's.
-    expect(screen.queryByText(/Budget per turn/)).not.toBeInTheDocument();
+    // Limits are a Claude Code Harness's; a codex pick shows none, not even
+    // "No limits set".
+    expect(screen.queryByRole('group', { name: 'Limits' })).toBeNull();
   });
 
   it('offers no Codex card in a namespace without a codex Harness', async () => {
@@ -233,23 +238,6 @@ describe('HarnessPicker', () => {
     expect(
       screen.queryByRole('radio', { name: /Codex/ }),
     ).not.toBeInTheDocument();
-  });
-
-  it('keeps the platform Harness for a person who may not list Harnesses', async () => {
-    mockUseResources.mockReturnValue(
-      listing(
-        [],
-        [{ cluster: 'gazelle', error: new Error('harnesses is forbidden') }],
-      ),
-    );
-    await render();
-
-    expect(screen.getByText('Could not read the runtimes')).toBeInTheDocument();
-    expect(
-      screen.getByText(/so the agent runs on the platform Harness/),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
-    expect(formHarness).toBeUndefined();
   });
 
   it('says the runtimes are loading while the list is being read', async () => {
