@@ -57,8 +57,9 @@ export interface Config {
        * An AgentInstance reports whether it is ready, suspended or failed, but
        * not whether its newest turn is working or waiting for input — that lives
        * in the instance's tasks, so the route reads each candidate's task list
-       * (status only, no history) and these are the levers on how much that may
-       * cost. Instances whose own state already answers (failed, still being
+       * (status only, no history: the newest task's state, time and, for a
+       * failed turn, its failure class) and these are the levers on how much
+       * that may cost. Instances whose own state already answers (failed, still being
        * created, being deleted) are not read. They are config rather than constants because the one
        * thing we cannot predict is how this behaves against an account far larger
        * than any measured — that wants a knob, not a release.
