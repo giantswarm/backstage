@@ -76,6 +76,7 @@ async function render(
     callTool: fake.callTool,
     listServers: fake.listServers,
     listInstallations: fake.listInstallations,
+    getAuthStatus: fake.getAuthStatus,
   } as unknown as MusterApi;
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -243,9 +244,7 @@ describe('WorkspaceEditorPage', () => {
     });
     // Source 1: github / acme, Go repositories.
     fireEvent.click(source(0).getByRole('button', { name: /Provider/ }));
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'github (github)' }),
-    );
+    fireEvent.click(await screen.findByRole('option', { name: 'GitHub' }));
     fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
       target: { value: 'acme' },
     });
@@ -255,7 +254,7 @@ describe('WorkspaceEditorPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add source' }));
     fireEvent.click(source(1).getByRole('button', { name: /Provider/ }));
     fireEvent.click(
-      await screen.findByRole('option', { name: 'gitlab-lab (gitlab)' }),
+      await screen.findByRole('option', { name: 'gitlab-lab (GitLab)' }),
     );
     fireEvent.change(source(1).getByRole('textbox', { name: /^Owner/ }), {
       target: { value: 'platform' },
@@ -346,23 +345,98 @@ describe('WorkspaceEditorPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the connect prompt in place of the owner for an unconnected provider', async () => {
+  it('asks for the provider sign-in before the form when no instance is connected', async () => {
     const fake = createWorkspaceManagerFake({
       providers: [{ ...GITLAB, connected: false }],
       repositories: LAB,
     });
     await render(fake);
 
+    const gate = within(await screen.findByTestId('workspace-editor-gate'));
     expect(
-      await screen.findByTestId('provider-connect-gitlab-lab'),
+      gate.getByText(/selects repositories from gitlab-lab \(GitLab\)/),
     ).toBeInTheDocument();
     expect(
-      source(0).getByRole('button', { name: 'Connect gitlab-lab (GitLab) ↗' }),
+      gate.getByRole('button', { name: 'Connect gitlab-lab (GitLab) ↗' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: /^Name/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Create workspace' }),
+    ).not.toBeInTheDocument();
+    expect(fake.callsOf('list_repositories')).toHaveLength(0);
+  });
+
+  it('opens the form once the provider is connected', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [{ ...GITLAB, connected: false }],
+      repositories: LAB,
+    });
+    await render(fake);
+    await screen.findByTestId('workspace-editor-gate');
+
+    const open = jest.spyOn(window, 'open').mockReturnValue(null);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Connect gitlab-lab (GitLab) ↗' }),
+    );
+    expect(
+      await screen.findByText(/Finish the sign-in in the new tab/),
+    ).toBeInTheDocument();
+    // The sign-in finishes in the other tab; focus comes back.
+    fake.providers[0] = { ...GITLAB, connected: true };
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    open.mockRestore();
+
+    expect(
+      await screen.findByRole('textbox', { name: /^Name/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('workspace-editor-gate'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the connect prompt in place of the owner for a source on an unconnected instance', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB, { ...GITLAB, connected: false }],
+      repositories: [...ACME, ...LAB],
+    });
+    await render(fake);
+
+    await screen.findByTestId('workspace-source-0');
+    fireEvent.click(source(0).getByRole('button', { name: /Provider/ }));
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'gitlab-lab (GitLab)' }),
+    );
+    expect(
+      await screen.findByTestId('provider-connect-gitlab-lab'),
     ).toBeInTheDocument();
     expect(
       source(0).queryByRole('textbox', { name: /^Owner/ }),
     ).not.toBeInTheDocument();
     expect(fake.callsOf('list_repositories')).toHaveLength(0);
+  });
+
+  it('asks for the sign-in to workspace-manager before the form', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      managerSignIn: 'auth_required',
+    });
+    await render(fake);
+
+    const gate = within(await screen.findByTestId('workspace-editor-gate'));
+    expect(
+      gate.getByText('Sign in to workspace-manager first'),
+    ).toBeInTheDocument();
+    expect(gate.getByText(/not signed in to it yet/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: /^Name/ }),
+    ).not.toBeInTheDocument();
+    expect(fake.callsOf('list_repositories')).toHaveLength(0);
+    expect(fake.callsOf('preview_workspace')).toHaveLength(0);
   });
 
   it('opens an existing workspace with its filters and saves the change', async () => {

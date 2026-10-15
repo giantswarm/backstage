@@ -10,7 +10,9 @@ import {
   WizardFrame,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
+import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import {
   useWorkspaceManagerAvailability,
   useWorkspaceManagerClient,
@@ -33,10 +35,16 @@ import {
 } from '../../lib/workspaceDraft';
 import {
   classifyWorkspaceManagerError,
+  WORKSPACE_MANAGER_SERVER,
   type PreviewRepository,
   type WorkspaceManagerError,
 } from '../../lib/workspaceManager';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import {
+  editorGate,
+  WorkspaceEditorGate,
+  type EditorGate,
+} from './WorkspaceEditorGate';
 import { WorkspacePreviewPanel } from './WorkspacePreviewPanel';
 import { WorkspaceSourceEditor } from './WorkspaceSourceEditor';
 
@@ -96,16 +104,37 @@ export type WorkspaceEditorPageProps = {
  * `preview_workspace`; Save calls `create_workspace` or `update_workspace`
  * as the person, and the manager's validation message lands on the field it
  * names. Nothing here knows one provider's conventions: the provider
- * instances come from `list_providers`.
+ * instances come from `list_providers`. A sign-in it needs first (muster's
+ * to workspace-manager, or a provider instance) shows in place of the form.
  */
-export function WorkspaceEditorPage({
+export function WorkspaceEditorPage(props: WorkspaceEditorPageProps) {
+  return useMusterPluginApi() ? (
+    <SignedInWorkspaceEditor {...props} />
+  ) : (
+    <WorkspaceEditor {...props} needsManagerSignIn={false} />
+  );
+}
+
+/** The editor, with whether muster waits for the person's sign-in to it. */
+function SignedInWorkspaceEditor(props: WorkspaceEditorPageProps) {
+  const signIn = useServerSignIn(WORKSPACE_MANAGER_SERVER, props.installation, {
+    noun: 'connector',
+  });
+  return <WorkspaceEditor {...props} needsManagerSignIn={signIn.needsLogin} />;
+}
+
+function WorkspaceEditor({
   installation,
   organization,
   name,
-}: WorkspaceEditorPageProps) {
+  needsManagerSignIn,
+}: WorkspaceEditorPageProps & { needsManagerSignIn: boolean }) {
   const isEdit = Boolean(name);
   const navigate = useNavigate();
-  const client = useWorkspaceManagerClient(installation);
+  const managerClient = useWorkspaceManagerClient(installation);
+  // Nothing is read until muster is signed in to the manager: the reads would
+  // only fail, and run once the sign-in lands.
+  const client = needsManagerSignIn ? undefined : managerClient;
   const availability = useWorkspaceManagerAvailability(installation);
   const providersQuery = useWorkspaceProviders(client);
   const providers = useMemo(
@@ -256,9 +285,10 @@ export function WorkspaceEditorPage({
     [draft, sourceOf, updateSource],
   );
 
+  const gate = editorGate({ needsManagerSignIn, providers, draft, isEdit });
   const actions = useMemo(
     () =>
-      draft ? (
+      draft && !gate ? (
         <Button
           variant="primary"
           isDisabled={save.isPending || !client}
@@ -272,7 +302,7 @@ export function WorkspaceEditorPage({
           })()}
         </Button>
       ) : null,
-    [draft, save.isPending, client, onSave, isEdit],
+    [draft, gate, save.isPending, client, onSave, isEdit],
   );
   useProvidePageHeaderActions(actions);
 
@@ -312,11 +342,15 @@ export function WorkspaceEditorPage({
       rail={previewPanel}
     >
       <EditorBody
+        gate={gate}
+        client={managerClient}
+        onRecheckProviders={() => void providersQuery.refetch()}
         availability={availability}
         isEdit={isEdit}
         isLoading={
-          providersQuery.isLoading ||
-          (!draft && (edited.isLoading || availability.isLoading))
+          !needsManagerSignIn &&
+          (providersQuery.isLoading ||
+            (!draft && (edited.isLoading || availability.isLoading)))
         }
         loadError={edited.error}
         installation={installation}
@@ -366,6 +400,9 @@ export function WorkspaceEditorPage({
 }
 
 type EditorBodyProps = {
+  gate: EditorGate | undefined;
+  client: ReturnType<typeof useWorkspaceManagerClient>;
+  onRecheckProviders: () => void;
   availability: ReturnType<typeof useWorkspaceManagerAvailability>;
   isEdit: boolean;
   isLoading: boolean;
@@ -384,6 +421,9 @@ type EditorBodyProps = {
 
 /** The form inside the frame: it reads whether the frame docks the preview. */
 function EditorBody({
+  gate,
+  client,
+  onRecheckProviders,
   availability,
   isEdit,
   isLoading,
@@ -406,6 +446,16 @@ function EditorBody({
       <EmptyStateCard
         title="Workspaces are not available here"
         description={`The installation ${installation} does not offer workspaces.`}
+      />
+    );
+  }
+  if (gate) {
+    return (
+      <WorkspaceEditorGate
+        gate={gate}
+        installation={installation}
+        client={client}
+        onRecheckProviders={onRecheckProviders}
       />
     );
   }

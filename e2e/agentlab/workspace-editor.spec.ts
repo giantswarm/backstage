@@ -62,7 +62,8 @@ async function startDraft(page: Page, name: string): Promise<void> {
     await providerSelect.click();
     await page
       .getByRole('option', {
-        name: new RegExp(`^${lab.workspaces.provider} `),
+        // "GitHub" for an instance named after its kind, else "<name> (<Kind>)".
+        name: new RegExp(`^${lab.workspaces.provider}( |$)`, 'i'),
       })
       .click();
   }
@@ -80,22 +81,19 @@ test('a member creates a workspace from a language and topic filter, previews, e
 
   try {
     await openFromTab(admin);
-    await expect(
-      admin.getByText(/There is no schedule/),
-      'the editor has no schedule field, and says how the mirrors sync',
-    ).toBeVisible({ timeout: 60_000 });
-
-    const owner = source(admin).getByRole('textbox', { name: /^Owner/ });
-    const connectPrompt = source(admin).getByTestId(
-      `provider-connect-${lab.workspaces.provider}`,
-    );
-    await startDraft(admin, name);
-    await expect(owner.or(connectPrompt)).toBeVisible({ timeout: 60_000 });
-    if (await connectPrompt.isVisible()) {
-      // Not connected yet: the prompt stands in place of the owner. Connect
-      // the way a person does, then open the editor again.
-      await expect(owner).toHaveCount(0);
-      await snapshot(admin, 'workspace-editor-connect-prompt');
+    const schedule = admin.getByText(/There is no schedule/);
+    const gate = admin.getByTestId('workspace-editor-gate');
+    await expect(schedule.or(gate)).toBeVisible({ timeout: 60_000 });
+    if (await gate.isVisible()) {
+      // Not connected yet: the editor asks for the sign-in in place of its
+      // form. Connect the way a person does, then open the editor again.
+      await expect(
+        gate.getByTestId(`provider-connect-${lab.workspaces.provider}`),
+      ).toBeVisible();
+      await expect(admin.getByRole('textbox', { name: /^Name/ })).toHaveCount(
+        0,
+      );
+      await snapshot(admin, 'workspace-editor-connect-gate');
       test.skip(
         !lab.workspaces.githubFakeURL,
         'connecting to the lab GitHub needs AGENTLAB_GITHUB_FAKE_URL (see e2e/agentlab/README.md)',
@@ -103,9 +101,15 @@ test('a member creates a workspace from a language and topic filter, previews, e
       await connectToLabGitHub(tools);
       connected = true;
       await openFromTab(admin);
-      await startDraft(admin, name);
-      await expect(connectPrompt).toHaveCount(0, { timeout: 60_000 });
     }
+    await expect(
+      schedule,
+      'the editor has no schedule field, and says how the mirrors sync',
+    ).toBeVisible({ timeout: 60_000 });
+
+    const owner = source(admin).getByRole('textbox', { name: /^Owner/ });
+    await startDraft(admin, name);
+    await expect(owner).toBeVisible({ timeout: 60_000 });
     await owner.fill(OWNER);
 
     // Go repositories tagged api or monorepo: platform-api and monorepo; the

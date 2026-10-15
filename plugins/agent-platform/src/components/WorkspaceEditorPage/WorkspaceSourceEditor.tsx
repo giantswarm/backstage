@@ -20,7 +20,10 @@ import {
 import type { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
 import { useRepositoriesPage } from '../../hooks/useWorkspaceEditor';
 import type { SourceDraft } from '../../lib/workspaceDraft';
-import type { WorkspaceProvider } from '../../lib/workspaceManager';
+import {
+  providerDisplayName,
+  type WorkspaceProvider,
+} from '../../lib/workspaceManager';
 import { ProviderConnectPrompt } from '../ProviderConnectPrompt';
 import { RepositoryPicker } from './RepositoryPicker';
 
@@ -157,7 +160,7 @@ export function WorkspaceSourceEditor({
               searchable={searchableIf(providers)}
               options={providers.map(p => ({
                 id: p.name,
-                label: `${p.name} (${p.kind})`,
+                label: providerDisplayName(p),
               }))}
               selectedKey={source.provider || null}
               onSelectionChange={key => {
@@ -171,7 +174,7 @@ export function WorkspaceSourceEditor({
             <Text variant="body-small" color="secondary">
               Provider:{' '}
               {provider
-                ? `${provider.name} (${provider.kind})`
+                ? providerDisplayName(provider)
                 : source.provider || 'none configured'}
             </Text>
           )}

@@ -24,6 +24,7 @@ export type WorkspaceManagerFake = {
   callTool: jest.Mock;
   listServers: jest.Mock;
   listInstallations: jest.Mock;
+  getAuthStatus: jest.Mock;
   calls: FakeCall[];
   callsOf: (tool: string) => Array<Record<string, any>>;
   /** Replaces the answer of a write: throw to refuse it. */
@@ -88,10 +89,13 @@ export function createWorkspaceManagerFake({
   providers,
   repositories,
   workspaces = [],
+  managerSignIn = 'connected',
 }: {
   providers: WorkspaceProvider[];
   repositories: FakeRepository[];
   workspaces?: Workspace[];
+  /** workspace-manager in the person's muster session (`auth://status`). */
+  managerSignIn?: 'connected' | 'auth_required';
 }): WorkspaceManagerFake {
   const calls: FakeCall[] = [];
   const writes: Record<string, (args: any) => unknown> = {
@@ -107,7 +111,8 @@ export function createWorkspaceManagerFake({
   };
 
   const tools: Record<string, (args: any) => unknown> = {
-    list_providers: () => ({ providers }),
+    // A copy per answer, as over the wire: a test changes `providers` between reads.
+    list_providers: () => ({ providers: providers.map(p => ({ ...p })) }),
     list_repositories: args => {
       const search = (args.search ?? '').toLowerCase();
       const ofOwner = repositories.filter(
@@ -222,11 +227,15 @@ export function createWorkspaceManagerFake({
   const listInstallations = jest.fn(async () => ({
     installations: [{ name: 'lab', requiresAuth: true }],
   }));
+  const getAuthStatus = jest.fn(async () => ({
+    servers: [{ name: 'workspace-manager', status: managerSignIn }],
+  }));
 
   return {
     callTool,
     listServers,
     listInstallations,
+    getAuthStatus,
     calls,
     callsOf: tool => calls.filter(c => c.tool === tool).map(c => c.args),
     onWrite: (tool, handler) => {
