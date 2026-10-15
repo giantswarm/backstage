@@ -119,3 +119,11 @@ export type { ConnectorPageTarget } from './components/ConnectorPage';
 export { useWorkflowPageTarget } from './components/WorkflowPage';
 export type { WorkflowPageTarget } from './components/WorkflowPage';
 export { WORKFLOW_PAGE_TABS } from './components/WorkflowPage';
+export {
+  McpAuthDialog,
+  useMcpServersAwaitingSignIn,
+} from './components/McpAuthNotice';
+export type {
+  McpAuthDialogProps,
+  McpServersAwaitingSignIn,
+} from './components/McpAuthNotice';
