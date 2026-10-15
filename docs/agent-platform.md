@@ -267,16 +267,29 @@ one `ModelConfig`, resolved incrementally.
 The Models list (`CustomizeModelsPanel`; `/agent-platform/models` redirects to
 Customize → Models) lists the fleet's ModelConfigs through
 `ModelConfigsProvider` and lets an admin create, edit and delete them. Status
-combines the `Accepted` and `ResolvedRefs` conditions into Accepted, Not
-accepted or Pending; a ModelConfig has no workload, so there is no `Ready`.
-The controller's message for Not accepted or Pending sits in a hint beside
-the status.
+combines the `Accepted` and `ResolvedRefs` conditions, named by the one that
+failed: Not accepted (`Accepted` is False: kagent rejects the settings),
+Incomplete (`ResolvedRefs` is False: it accepts them but cannot find what they
+refer to, such as the key Secret) or Pending; a ModelConfig has no workload,
+so there is no `Ready`. The controller's message sits in a hint beside the
+status.
 
 One model's page (`ModelDetailPage`) is at
 `/customize/models/<installation>/<namespace>/<name>`, routed by the app's
 Customize page; `/agent-platform/models/<installation>/<namespace>/<name>`
-redirects there. Its Technical details fold-out lists the conditions with
-their reason and message, and opens on arrival unless the model is accepted.
+redirects there. It splits into Overview (the serving status, the facts, then
+a Technical details fold-out with the owning Helm release, the resource and
+the conditions with their reason and message), Usage (`…/usage`: the gateway's
+30-day figures and spend per day) and Used by (`…/used-by`, counted in the
+tab: the agents that use it with their spend on it). The former `…/details`
+address lands on Overview. A model agents cannot use yet says why at the top
+of Overview in plain words (`modelProblem`): what is wrong and what to do,
+from the reason kagent gives on the failed condition (a missing or incomplete
+key, an endpoint address it cannot find, settings it rejects, an unsupported
+provider, with a fallback per condition), offering Edit where the person may
+edit and naming whom to ask otherwise. Reasons, condition names and the
+controller's messages stay in Technical details, which open on arrival; the
+alert's Show conditions reopens them and scrolls them into view.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
 `EditModelPage` at `/agent-platform/models/edit/<installation>/<namespace>/<name>`)
@@ -311,9 +324,17 @@ the key and apiserver errors (`ConflictError` on a taken name) show inline. The
 
 **Ownership guards.** Edit and delete are withheld for CRs rendered by Helm,
 applied by a Flux Kustomization, or labelled `app.kubernetes.io/managed-by` by
-anything but the portal. A CR without markers (applied with kubectl) is
-editable. The portal labels what it creates
-`app.kubernetes.io/managed-by: giantswarm-backstage`.
+anything but the portal; the model page names the owner in a "Managed by"
+fact. A CR without markers (applied with kubectl) is editable. The portal
+labels what it creates `app.kubernetes.io/managed-by: giantswarm-backstage`.
+
+For a Helm-rendered model, Technical details name the release from the
+CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
+a Flux HelmRelease rendered it, the page reads that HelmRelease with the
+person's token and shows its chart, applied version and Ready state, linked to
+the gs deployment page (`deploymentDetailsExternalRouteRef`) when gs is
+enabled. A release Helm installed without Flux has no resource to read, so
+only its name shows.
 
 **Delete refuses while referenced.** The mutation lists the namespace's
 `Agent`s fresh and refuses while any references the model. A failed read also

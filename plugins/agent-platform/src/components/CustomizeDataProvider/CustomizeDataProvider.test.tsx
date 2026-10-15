@@ -41,6 +41,7 @@ jest.mock('../ModelConfigsProvider', () => ({
               getEndpoint: () => undefined,
               getReadiness: () => 'accepted',
               getReadinessMessage: () => undefined,
+              getFailedCondition: () => undefined,
               isStale: () => false,
               getAnthropic: () => undefined,
               getOpenAI: () => undefined,
