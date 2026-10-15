@@ -33,6 +33,18 @@ const internalPath = `/customize/connectors/internal${scope}`;
 const KUBERNETES_FAMILY = 'kubernetes';
 
 /**
+ * What Customize · Connectors calls the lab's connectors: the display name
+ * their charts stamp (`ui.giantswarm.io/display-name`), else their name. The
+ * addresses keep the technical name.
+ */
+const SHOWN = {
+  kubernetes: 'Kubernetes',
+  agentManager: 'Agent Manager',
+  muster: 'muster',
+  fixture: 'lab-oauth-fixture',
+} as const;
+
+/**
  * Open the Details tab's fold-out. It also opens by itself while the connector
  * reads Failed, and follows a refresh that changes that until it is toggled,
  * so a click can race it: retried until it stays open.
@@ -49,7 +61,7 @@ async function openTechnicalDetails(page: Page) {
   }).toPass();
 }
 
-/** A connector's row in the table: its name, then its description. */
+/** A connector's row in the table: its shown name, then its description. */
 function connectorRow(page: Page, name: string) {
   return page.getByRole('row', { name: new RegExp(`^${name}( |$)`) });
 }
@@ -75,12 +87,12 @@ test('Customize · Connectors lists the customer’s connectors first, on their 
     'Status',
   ]);
   // The fixture carries no tool-group label: it is the customer's.
-  await expect(connectorRow(admin, 'lab-oauth-fixture')).toBeVisible();
-  for (const name of ['agent-manager', KUBERNETES_FAMILY, 'muster']) {
+  await expect(connectorRow(admin, SHOWN.fixture)).toBeVisible();
+  for (const name of [SHOWN.agentManager, SHOWN.kubernetes, SHOWN.muster]) {
     await expect(connectorRow(admin, name)).toHaveCount(0);
   }
   // The fixture asks each person to sign in, right from its row.
-  const fixture = connectorRow(admin, 'lab-oauth-fixture');
+  const fixture = connectorRow(admin, SHOWN.fixture);
   await expect(fixture).toContainText('Your own account');
   await expect(fixture.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await expect(
@@ -93,15 +105,15 @@ test('Infrastructure lists the infrastructure servers, Internal the platform’s
 }) => {
   await open(admin, infrastructurePath);
   await connectToMuster(admin, admin.getByRole('grid'));
-  await expect(connectorRow(admin, KUBERNETES_FAMILY)).toBeVisible();
-  await expect(connectorRow(admin, 'lab-oauth-fixture')).toHaveCount(0);
+  await expect(connectorRow(admin, SHOWN.kubernetes)).toBeVisible();
+  await expect(connectorRow(admin, SHOWN.fixture)).toHaveCount(0);
 
   await admin.getByRole('tab', { name: /^Internal/ }).click();
   await expect(admin).toHaveURL(
     new RegExp(`/customize/connectors/internal\\${scope}$`),
   );
-  await expect(connectorRow(admin, 'agent-manager')).toBeVisible();
-  const muster = connectorRow(admin, 'muster');
+  await expect(connectorRow(admin, SHOWN.agentManager)).toBeVisible();
+  const muster = connectorRow(admin, SHOWN.muster);
   await expect(muster).toBeVisible();
   // Its endpoint is on its page, not its row.
   await expect(
@@ -150,12 +162,12 @@ test('searching a tool name narrows the table to the connectors offering it', as
     .click();
   await expect(admin).toHaveURL(/\/customize\/connectors\/infrastructure\?/);
 
-  const kubernetes = connectorRow(admin, KUBERNETES_FAMILY);
+  const kubernetes = connectorRow(admin, SHOWN.kubernetes);
   await expect(kubernetes, 'kubernetes offers cluster_health').toBeVisible({
     timeout: 60_000,
   });
-  await expect(connectorRow(admin, 'lab-oauth-fixture')).toHaveCount(0);
-  await expect(connectorRow(admin, 'agent-manager')).toHaveCount(0);
+  await expect(connectorRow(admin, SHOWN.fixture)).toHaveCount(0);
+  await expect(connectorRow(admin, SHOWN.agentManager)).toHaveCount(0);
 
   await kubernetes.getByRole('rowheader').click();
   // Its Tools tab opens on the same search, at the tools that matched.
@@ -250,12 +262,12 @@ test("a family's row opens its connector page, with the family's tabs", async ({
 }) => {
   await open(admin, infrastructurePath);
   await connectToMuster(admin, admin.getByRole('grid'));
-  await connectorRow(admin, KUBERNETES_FAMILY).getByRole('rowheader').click();
+  await connectorRow(admin, SHOWN.kubernetes).getByRole('rowheader').click();
 
   await expect(
     admin.getByRole('heading', {
       level: 1,
-      name: KUBERNETES_FAMILY,
+      name: SHOWN.kubernetes,
       exact: true,
     }),
   ).toBeVisible();
@@ -299,7 +311,7 @@ test("muster's own connector page lists its core tools, and one opens on its pag
   test.setTimeout(120_000);
   await open(admin, internalPath);
   await connectToMuster(admin, admin.getByRole('grid'));
-  await connectorRow(admin, 'muster').getByRole('rowheader').click();
+  await connectorRow(admin, SHOWN.muster).getByRole('rowheader').click();
   await expect(admin).toHaveURL(
     new RegExp(`/agent-platform/connectors/muster\\${scope}$`),
   );
