@@ -1,8 +1,14 @@
 import { ReactNode, useCallback, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Card, CardBody, Flex, Link, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { Alert, Button, Flex, Link } from '@backstage/ui';
 import {
   ErrorsProvider,
   ModelConfig,
@@ -14,15 +20,14 @@ import {
   DateComponent,
   EmptyStateCard,
   type Fact,
-  FactsColumn,
   LoadingIndicator,
+  type RouteTabSpec,
   ShellPage,
   ShellPageBadgeSkeleton,
-  ShellPageFactsSkeleton,
   ShellPageTitleSkeleton,
   StatusDot,
-  TechnicalDetailsFoldOut,
   useProvidePageHeaderActions,
+  useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -36,26 +41,23 @@ import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
 import { modelEditRouteRef } from '../../routes';
 import { InstallationChip } from '../InstallationChip';
-import { ModelServingStatus } from '../ModelServingStatus';
-import { ModelTechnicalDetails } from '../ModelTechnicalDetails';
 import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
 import { ModelActionsMenu } from './ModelActionsMenu';
-import { ModelReadView } from './ModelReadView';
+import { ModelDetailsTab } from './ModelDetailsTab';
+import { ModelOverviewTab } from './ModelOverviewTab';
+import { ModelReadinessAlert } from './ModelReadinessAlert';
+import { MODEL_PAGE_TABS } from './modelTabs';
+import { ModelUsageTab } from './ModelUsageTab';
 import { describeContextWindow } from './modelUsage';
-
-const useStyles = makeStyles({
-  column: {
-    maxWidth: 960,
-  },
-});
+import { useModelUsage } from './useModelUsage';
 
 /**
  * The page's outer frame: the platform-standard page frame (`ShellPage`) —
  * breadcrumbs reading "Customize / Models / <model>", the
  * model's name as the h1 at the standard scale, its status, environment and
- * provider beside it, and the facts in the column beside the content. The
- * actions the page registers land in that header's slot.
+ * provider beside it, and the tabs under it. The actions the page registers
+ * land in that header's slot.
  *
  * A component of its own so every exit — loading, not found, and the model
  * itself — gets the same frame.
@@ -65,7 +67,7 @@ function ModelFrame({
   heading,
   badges,
   meta,
-  aside,
+  tabs,
   children,
 }: {
   /** The shell header's h1, and the breadcrumbs' last entry. */
@@ -74,10 +76,11 @@ function ModelFrame({
   heading?: ReactNode;
   badges?: ReactNode;
   meta?: ReactNode;
-  aside?: ReactNode;
+  tabs?: RouteTabSpec[];
   children: ReactNode;
 }) {
   const paths = useCustomizePaths();
+  const { search } = useLocation();
   return (
     <ShellPage
       title={heading ?? title}
@@ -88,14 +91,16 @@ function ModelFrame({
       ]}
       badges={badges}
       meta={meta}
-      aside={aside}
+      tabs={tabs}
+      // The tab links keep the address's query, as on the workflow page.
+      tabsSearch={search}
     >
       {children}
     </ShellPage>
   );
 }
 
-/** The facts beside the model: what it calls, where, and since when. */
+/** The Details tab's plain facts: what it calls, where, and since when. */
 export function modelFacts({
   modelConfig,
   installation,
@@ -107,7 +112,9 @@ export function modelFacts({
   contextWindow: number | undefined;
 }): Fact[] {
   const created = modelConfig.getCreatedTimestamp();
+  const provider = modelConfig.getProvider();
   const facts: Fact[] = [
+    ...(provider ? [{ label: 'Provider', value: provider }] : []),
     { label: 'Model ID', value: modelConfig.getModel() ?? '—' },
     {
       label: 'Endpoint',
@@ -124,21 +131,18 @@ export function modelFacts({
   if (created) {
     facts.push({
       label: 'Created',
-      value: (
-        <Text variant="body-small">
-          <DateComponent value={created} />
-        </Text>
-      ),
+      value: <DateComponent value={created} />,
     });
   }
   return facts;
 }
 
 function ModelDetailPageContent() {
-  const classes = useStyles();
   const navigate = useNavigate();
   const modelEditRoute = useRouteRef(modelEditRouteRef);
   const paths = useCustomizePaths();
+  const basePath = useSplatBasePath();
+  const { pathname, search } = useLocation();
   const { config } = useSignedInConfig();
   const {
     installation = '',
@@ -163,9 +167,8 @@ function ModelDetailPageContent() {
     ? !modelConfigFormValues(modelConfig)
     : false;
 
-  // The same block the Model configs list shows in its Endpoint cell: what
-  // the serving layer says about the model behind this config, and the fix
-  // where there is one. Nothing for provider defaults and external endpoints.
+  // What the serving layer says about the model behind this config, for the
+  // status badge and the Overview's serving block.
   const { servingStateFor, capabilitiesFor, backends } = useServing();
   const servingState = modelConfig
     ? servingStateFor(installation, clientLookupOf(modelConfig))
@@ -195,6 +198,14 @@ function ModelDetailPageContent() {
     );
 
   const deletion = useDeleteModelConfig(modelConfig);
+
+  // Read here, above the tabs, so Overview's Used by and the Usage tab share
+  // one result.
+  const usage = useModelUsage(
+    installation,
+    modelConfig?.getModel(),
+    modelConfig?.getDisplayName() ?? name,
+  );
 
   const isEditable =
     Boolean(modelConfig) &&
@@ -240,7 +251,7 @@ function ModelDetailPageContent() {
         title="Model"
         heading={<ShellPageTitleSkeleton label="Loading model" />}
         badges={<ShellPageBadgeSkeleton />}
-        aside={<ShellPageFactsSkeleton />}
+        tabs={MODEL_PAGE_TABS}
       >
         <LoadingIndicator label="Reading the model…" />
       </ModelFrame>
@@ -282,6 +293,7 @@ function ModelDetailPageContent() {
     ),
   );
   const facts = modelFacts({ modelConfig, installation, contextWindow });
+  const onDetails = pathname.replace(/\/$/, '') === `${basePath}/details`;
 
   return (
     <ModelFrame
@@ -293,76 +305,78 @@ function ModelDetailPageContent() {
         </>
       }
       meta={modelConfig.getProvider()}
-      aside={<FactsColumn aria-label="About this model" facts={facts} />}
+      tabs={MODEL_PAGE_TABS}
     >
-      <div className={classes.column}>
-        <Flex direction="column" gap="5">
-          {servedBy && (
-            <Card>
-              <CardBody>
-                <Flex direction="column" gap="2">
-                  <ModelServingStatus
-                    serving={servedBy}
-                    shortcut={servedBy.shortcut}
-                    variant="block"
-                  />
-                  <Text variant="body-small" color="secondary">
-                    {servedBy.message}
-                  </Text>
-                </Flex>
-              </CardBody>
-            </Card>
-          )}
-          {owner && (
-            <Alert
-              status="info"
-              title={`Managed by ${owner}`}
-              description={`${owner} asserts this model and would revert portal edits. Change it where ${owner} is configured.`}
-            />
-          )}
-          {isUnsupportedProvider && !owner && (
-            <Alert
-              status="info"
-              title={`Provider ${modelConfig.getProvider()} is not editable here`}
-              description="The form covers OpenAI-compatible, Anthropic, Gemini and Ollama models; manage this one with kubectl."
-            />
-          )}
-
-          <ModelReadView
-            installation={installation}
-            namespace={namespace}
-            name={name}
-            model={modelConfig.getModel()}
-            label={modelConfig.getDisplayName()}
+      <Flex direction="column" gap="4">
+        <ModelReadinessAlert
+          modelConfig={modelConfig}
+          detailsHref={onDetails ? undefined : `${basePath}/details${search}`}
+        />
+        <Routes>
+          <Route
+            index
+            element={
+              <ModelOverviewTab
+                modelConfig={modelConfig}
+                installation={installation}
+                namespace={namespace}
+                name={name}
+                servedBy={servedBy}
+                owner={owner}
+                isUnsupportedProvider={isUnsupportedProvider}
+                usage={usage}
+              />
+            }
           />
-
-          {/* Open on arrival while the controller has not accepted the model,
-              as the agent page does for an agent that is not ready: the
-              conditions there say why. It follows a fresh read that turns
-              the model unhealthy (the page renders from the cache first),
-              and starts afresh per model. */}
-          <TechnicalDetailsFoldOut
-            key={`${installation}/${namespace}/${name}`}
-            defaultExpanded={modelConfig.getReadiness() !== 'accepted'}
-            followDefaultExpanded
-          >
-            <ModelTechnicalDetails
-              modelConfig={modelConfig}
-              installation={installation}
-            />
-          </TechnicalDetailsFoldOut>
-        </Flex>
-      </div>
+          <Route
+            path="usage"
+            element={
+              <ModelUsageTab
+                installation={installation}
+                model={modelConfig.getModel()}
+                usage={usage}
+              />
+            }
+          />
+          <Route
+            path="details"
+            element={
+              <ModelDetailsTab
+                // Technical details start afresh per model.
+                key={`${installation}/${namespace}/${name}`}
+                modelConfig={modelConfig}
+                installation={installation}
+                facts={facts}
+              />
+            }
+          />
+          {/* An address the page no longer has lands on Overview. */}
+          <Route
+            path="*"
+            element={<Navigate to={`${basePath}${search}`} replace />}
+          />
+        </Routes>
+      </Flex>
     </ModelFrame>
   );
 }
 
 /**
  * One model (`<customize>/models/<installation>/<namespace>/<name>`, routed
- * by the app's Customize page), as a read view with Edit as an action, per the
- * prototype: what it cost and how much it was used, the agents that run on
- * it, the facts beside it, and "Technical details" with the controller's
- * conditions. **Edit** opens the Connect-a-model flow prefilled
+ * by the app's Customize page), as a read view with Edit as an action, in
+ * three tabs, each its own address under the model's:
+ *
+ * - **Overview** (the index): whether the serving layer serves it, why it
+ *   cannot be edited here, and the agents that run on it, each with what it
+ *   spent on the model.
+ * - **Usage** (`usage`): the gateway's figures for the model over the last
+ *   30 days and its spend per day.
+ * - **Details** (`details`): what it calls, where and since when, then
+ *   "Technical details" with the resource and the controller's conditions.
+ *
+ * Any other address under the model's redirects to Overview. A model the
+ * controller has not accepted says why above every tab, linking to Details,
+ * whose Technical details then open on arrival. **Edit** opens the Connect-a-model flow prefilled
  * (`EditModelPage`), the same way agents and skills are edited. A CR the
  * portal must not write (tool-owned, no RBAC, or a provider the form does not
  * speak) offers no Edit, and an alert says why where the reason is not just

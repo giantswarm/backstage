@@ -275,8 +275,13 @@ the status.
 One model's page (`ModelDetailPage`) is at
 `/customize/models/<installation>/<namespace>/<name>`, routed by the app's
 Customize page; `/agent-platform/models/<installation>/<namespace>/<name>`
-redirects there. Its Technical details fold-out lists the conditions with
-their reason and message, and opens on arrival unless the model is accepted.
+redirects there. It splits into Overview (the serving status, why the model
+cannot be edited here, and the agents that use it with their spend on it),
+Usage (`…/usage`: the gateway's 30-day figures and spend per day) and Details
+(`…/details`: the facts, then a Technical details fold-out with the resource
+and the conditions with their reason and message). A model that is not
+accepted carries the controller's message in an alert above every tab, linking
+to Details, whose fold-out then opens on arrival.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
 `EditModelPage` at `/agent-platform/models/edit/<installation>/<namespace>/<name>`)

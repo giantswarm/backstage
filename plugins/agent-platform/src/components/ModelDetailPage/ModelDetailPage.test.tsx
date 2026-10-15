@@ -52,6 +52,11 @@ jest.mock('../ServingProvider', () => ({
   }),
 }));
 
+// Avatars come from the installations' config: not what this test is about.
+jest.mock('../../hooks/useAgentAvatarUrl', () => ({
+  useAgentAvatarUrl: () => () => undefined,
+}));
+
 jest.mock('../InstallationChip', () => ({
   InstallationChip: () => null,
 }));
@@ -186,12 +191,12 @@ const agent = (name: string, technicalName: string, modelConfigId?: string) =>
     ...(modelConfigId ? { modelConfigId } : {}),
   }) as AgentRow;
 
-function renderPage() {
+function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
   return renderInTestApp(
     <PageHeaderActionsProvider>
       <Routes>
         <Route
-          path="/customize/models/:installation/:namespace/:name"
+          path="/customize/models/:installation/:namespace/:name/*"
           element={<ModelDetailPage />}
         />
         <Route
@@ -200,12 +205,12 @@ function renderPage() {
         />
       </Routes>
       {/* Another model under the same route, as the palette opens one. */}
-      <RouterLink to="/customize/models/inst-1/kagent/haiku">
+      <RouterLink to="/customize/models/inst-1/kagent/haiku/details">
         Next model
       </RouterLink>
     </PageHeaderActionsProvider>,
     {
-      initialRouteEntries: ['/customize/models/inst-1/kagent/sonnet'],
+      initialRouteEntries: [path],
       mountedRoutes: {
         '/agent-platform/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
@@ -214,6 +219,22 @@ function renderPage() {
     },
   );
 }
+
+/** A model whose key Secret the controller could not find. */
+function rejectedSonnet() {
+  const rejected = sonnet();
+  rejected.jsonData.status!.conditions![1] = {
+    type: 'ResolvedRefs',
+    status: 'False',
+    reason: 'SecretNotFound',
+    message: 'Secret kagent/sonnet-key not found',
+    lastTransitionTime: '2026-09-01T10:00:00Z',
+  };
+  return rejected;
+}
+
+const DETAILS = '/customize/models/inst-1/kagent/sonnet/details';
+const USAGE = '/customize/models/inst-1/kagent/sonnet/usage';
 
 describe('ModelDetailPage', () => {
   beforeEach(() => {
@@ -237,7 +258,7 @@ describe('ModelDetailPage', () => {
     ];
   });
 
-  it('opens as a read view with the model as the title and its status', async () => {
+  it('opens as a read view with the model as the title, its status and its tabs', async () => {
     await renderPage();
 
     expect(
@@ -245,22 +266,25 @@ describe('ModelDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      'Overview',
+      'Usage',
+      'Details',
+    ]);
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    // One column: no facts beside the content.
+    expect(screen.queryByRole('complementary')).toBeNull();
     // No form on this page at all: Edit opens the Connect-a-model flow.
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     expect(screen.queryByLabelText(/Model ID|^Model$/)).toBeNull();
   });
 
-  it('explains a model the controller did not accept in Technical details, open on arrival', async () => {
-    const rejected = sonnet();
-    rejected.jsonData.status!.conditions![1] = {
-      type: 'ResolvedRefs',
-      status: 'False',
-      reason: 'SecretNotFound',
-      message: 'Secret kagent/sonnet-key not found',
-      lastTransitionTime: '2026-09-01T10:00:00Z',
-    };
+  it('says why a model the controller did not accept, on Overview, with a link to its conditions', async () => {
     mockUseResource.mockReturnValue({
-      resource: rejected,
+      resource: rejectedSonnet(),
       isLoading: false,
       errors: [],
     });
@@ -268,17 +292,65 @@ describe('ModelDetailPage', () => {
 
     expect(screen.getByText('Not accepted')).toBeInTheDocument();
     expect(
+      screen.getByText('kagent did not accept this model'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Secret kagent/sonnet-key not found'),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('link', { name: 'Show conditions' }),
+    );
+
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    // On Details the alert stays, without a link to where it already is.
+    expect(
+      screen.getByText('kagent did not accept this model'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Show conditions' })).toBeNull();
+    expect(
       screen.getByRole('button', { name: 'Technical details' }),
     ).toHaveAttribute('aria-expanded', 'true');
     // The failing stage starts expanded, its reason and message in view.
     expect(screen.getByText('SecretNotFound')).toBeInTheDocument();
     expect(
-      screen.getByText('Secret kagent/sonnet-key not found'),
+      screen.getAllByText('Secret kagent/sonnet-key not found'),
+    ).toHaveLength(2);
+  });
+
+  it('says nothing about acceptance for an accepted model', async () => {
+    await renderPage();
+
+    expect(screen.queryByText(/accept this model/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Show conditions' })).toBeNull();
+  });
+
+  it('tells a model the controller has not reported on yet apart from a rejected one', async () => {
+    const pending = sonnet();
+    pending.jsonData.status = undefined;
+    mockUseResource.mockReturnValue({
+      resource: pending,
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText('kagent has not accepted this model yet'),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('The controller has not reported on this model yet.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Show conditions' }),
+    ).toHaveAttribute('href', DETAILS);
   });
 
   it('folds Technical details away for an accepted model, with the resource and its conditions inside', async () => {
-    await renderPage();
+    await renderPage(DETAILS);
 
     const trigger = screen.getByRole('button', { name: 'Technical details' });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -306,7 +378,7 @@ describe('ModelDetailPage', () => {
   });
 
   it('starts Technical details afresh on another model', async () => {
-    await renderPage();
+    await renderPage(DETAILS);
     await userEvent.click(
       screen.getByRole('button', { name: 'Technical details' }),
     );
@@ -321,9 +393,13 @@ describe('ModelDetailPage', () => {
     ).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it("shows the gateway's figures for the model, snapshots included", async () => {
-    await renderPage();
+  it("shows the gateway's figures for the model on Usage, snapshots included", async () => {
+    await renderPage(USAGE);
 
+    expect(screen.getByRole('tab', { name: 'Usage' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     expect(screen.getByText('$61.30')).toBeInTheDocument();
     expect(screen.getByText('21.9M')).toBeInTheDocument();
     expect(screen.getByText('8,412')).toBeInTheDocument();
@@ -333,13 +409,18 @@ describe('ModelDetailPage', () => {
       'data-legend',
       'false',
     );
+    // Used by is the Overview's.
+    expect(screen.queryByText('Used by')).toBeNull();
   });
 
-  it('lists the agents whose spec names this model, with their spend on it', async () => {
+  it('lists the agents whose spec names this model on Overview, linked, with their spend on it', async () => {
     await renderPage();
 
-    const list = screen.getByRole('list', { name: 'Agents using this model' });
-    const items = within(list).getAllByRole('listitem');
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Used by' }),
+    ).toBeInTheDocument();
+    const list = screen.getByRole('grid', { name: 'Agents using this model' });
+    const items = within(list).getAllByRole('row');
     expect(items.map(item => item.textContent)).toEqual([
       expect.stringContaining('Research Assistant'),
       expect.stringContaining('Support Triage'),
@@ -354,6 +435,22 @@ describe('ModelDetailPage', () => {
       '/agent-platform/agents/inst-1/kagent/support-triage',
     );
     expect(screen.queryByText('Copywriter')).toBeNull();
+    // The figures themselves are the Usage tab's.
+    expect(screen.queryByText('Model calls')).toBeNull();
+  });
+
+  it('lists the agents without spend where the gateway has no figures', async () => {
+    mockLlmUsage = {
+      usage: undefined,
+      isLoading: false,
+      isError: false,
+      isAvailable: false,
+    };
+    await renderPage();
+
+    const list = screen.getByRole('grid', { name: 'Agents using this model' });
+    expect(within(list).getAllByRole('row')).toHaveLength(2);
+    expect(within(list).queryByText(/\$/)).toBeNull();
   });
 
   it('shows the first 10 agents on the model, then all of them on request', async () => {
@@ -368,8 +465,8 @@ describe('ModelDetailPage', () => {
 
     const items = () =>
       within(
-        screen.getByRole('list', { name: 'Agents using this model' }),
-      ).getAllByRole('listitem');
+        screen.getByRole('grid', { name: 'Agents using this model' }),
+      ).getAllByRole('row');
     expect(items()).toHaveLength(10);
     await userEvent.click(
       screen.getByRole('button', { name: 'Show all 14 agents' }),
@@ -393,7 +490,7 @@ describe('ModelDetailPage', () => {
       isError: false,
       isAvailable: false,
     };
-    await renderPage();
+    await renderPage(USAGE);
 
     expect(
       screen.getByText(
@@ -403,24 +500,36 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('Model calls')).toBeNull();
   });
 
-  it('lists the facts beside the model, the context window where the table names it', async () => {
+  it('lists the facts on Details, the context window where the table names it', async () => {
     mockContextWindows = { 'claude-sonnet-4-5*': 200_000 };
-    await renderPage();
+    await renderPage(DETAILS);
 
-    const facts = screen.getByRole('complementary', {
-      name: 'About this model',
-    });
+    const facts = screen.getByRole('region', { name: 'Model details' });
+    expect(within(facts).getByText('Anthropic')).toBeInTheDocument();
     expect(within(facts).getByText('claude-sonnet-4-5')).toBeInTheDocument();
     expect(within(facts).getByText('Provider default')).toBeInTheDocument();
     expect(within(facts).getByText('200k tokens')).toBeInTheDocument();
+    expect(within(facts).getByText('inst-1')).toBeInTheDocument();
     // The technical name lives in Technical details › Resource, not here.
     expect(within(facts).queryByText('kagent/sonnet')).toBeNull();
   });
 
   it('leaves the context window out when the table does not name the model', async () => {
-    await renderPage();
+    await renderPage(DETAILS);
 
     expect(screen.queryByText('Context window')).toBeNull();
+  });
+
+  it('lands an address the page does not have on Overview', async () => {
+    await renderPage('/customize/models/inst-1/kagent/sonnet/facts');
+
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Used by' }),
+    ).toBeInTheDocument();
   });
 
   it('opens the Connect-a-model flow, prefilled, on Edit', async () => {
@@ -433,6 +542,12 @@ describe('ModelDetailPage', () => {
     expect(
       await screen.findByText('The Connect-a-model flow, prefilled'),
     ).toBeInTheDocument();
+  });
+
+  it('keeps Edit in the header on every tab', async () => {
+    await renderPage(DETAILS);
+
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
   });
 
   it('offers no Edit without permission to change the model', async () => {
@@ -479,27 +594,16 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
 
-  it('at phone width puts the facts first, folded under Details, and keeps Edit and the menu', async () => {
+  it('at phone width keeps Edit and the tabs, and folds no facts above the content', async () => {
     const layout = mockPhoneLayout();
     try {
       await renderPage();
 
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
-      const details = screen.getByRole('button', { name: 'Details' });
-      expect(details).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.getAllByRole('tab')).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
       expect(
-        details.compareDocumentPosition(
-          screen.getByRole('list', { name: 'Agents using this model' }),
-        ) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-      expect(
-        screen.queryByRole('complementary', { name: 'About this model' }),
-      ).toBeNull();
-      await userEvent.click(details);
-      expect(
-        within(
-          screen.getByRole('complementary', { name: 'About this model' }),
-        ).getByText('claude-sonnet-4-5'),
+        screen.getByRole('grid', { name: 'Agents using this model' }),
       ).toBeInTheDocument();
     } finally {
       layout.restore();

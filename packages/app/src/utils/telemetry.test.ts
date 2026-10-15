@@ -458,6 +458,35 @@ describe('getTelemetryPageViewPayload', () => {
       });
     });
 
+    it.each([
+      ['/customize/models/gazelle/agent-platform/gpt-4o/usage', 'usage'],
+      ['/customize/models/gazelle/agent-platform/gpt-4o/details', 'details'],
+      ['/customize/models/gazelle/agent-platform/gpt-4o/details/', 'details'],
+    ])('reports the model page tab %s as the view', (pathname, view) => {
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Model detail',
+        view,
+        path: pathname,
+      });
+    });
+
+    // Anything else under the model's address only redirects to Overview, so
+    // the URL's free text never becomes a view.
+    it.each([
+      '/customize/models/gazelle/agent-platform/gpt-4o/overview',
+      '/customize/models/gazelle/agent-platform/gpt-4o/wp-login.php',
+      '/customize/models/gazelle/agent-platform/gpt-4o/usage/extra',
+    ])(
+      'reports an unknown address under a model as a redirect: %s',
+      pathname => {
+        expect(getTelemetryPageViewPayload(pathname)).toEqual({
+          page: 'Model detail',
+          view: 'redirect',
+          path: pathname,
+        });
+      },
+    );
+
     // The old path only redirects; the page it lands on reports Model detail.
     it("counts a model's former path apart, so an old link is one Model detail", () => {
       const pathname = '/agent-platform/models/gazelle/agent-platform/gpt-4o';
@@ -659,6 +688,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/connectors/internal',
       '/customize/models',
       '/customize/models/gazelle/agent-platform/gpt-4o',
+      '/customize/models/gazelle/agent-platform/gpt-4o/usage',
+      '/customize/models/gazelle/agent-platform/gpt-4o/details',
       '/customize/workflows',
       '/installations',
       '/clusters',

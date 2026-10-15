@@ -229,10 +229,11 @@ function renderAt(path: string) {
 
 /**
  * Waits for the model page to settle and returns what it shows: its title,
- * whether its gateway figure is still on screen after the reads settled (it
- * must not drop away), and whether Technical details is open with the
- * controller's reason inside (the model is not accepted, so it opens, GitOps
- * card and all).
+ * whether Overview says why the model is not accepted (in the controller's
+ * words), whether Technical details is open on the Details tab the alert
+ * links to (the model is not accepted, so it opens, GitOps card and all), and
+ * whether the gateway figure is on the Usage tab after the reads settled (it
+ * must not drop away).
  */
 async function settledModelPage() {
   const heading = await screen.findByRole('heading', {
@@ -242,17 +243,24 @@ async function settledModelPage() {
   await waitFor(() =>
     expect(screen.queryByText(/^Reading/)).not.toBeInTheDocument(),
   );
+  const reason =
+    (await screen.findAllByText('Secret kagent/kagent-openai not found'))
+      .length > 0;
+
+  await userEvent.click(screen.getByRole('link', { name: 'Show conditions' }));
+  const technicalDetails = (
+    await screen.findByRole('button', { name: 'Technical details' })
+  ).getAttribute('aria-expanded');
+
+  await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
   await screen.findByText('$12.50');
   // A further tick: nothing replaced the figures once the reads settled.
   await new Promise(resolve => setTimeout(resolve, 50));
   return {
     title: heading.textContent,
     spend: screen.queryByText('$12.50') !== null,
-    technicalDetails: screen
-      .getByRole('button', { name: 'Technical details' })
-      .getAttribute('aria-expanded'),
-    reason:
-      screen.queryAllByText('Secret kagent/kagent-openai not found').length > 0,
+    technicalDetails,
+    reason,
   };
 }
 
