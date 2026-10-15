@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { test } from './fixtures';
 import { lab } from './lab';
 import { WorkspaceTools } from './workspaces.fixture';
 
@@ -51,10 +52,23 @@ const TOOL_PREFIX = 'x_model-manager_';
  * portal draws the serving layer where model-manager answers (or KServe's API
  * is served, which a lab has only with model-manager), and a lab runs
  * model-manager only with `platform.modelManager` on. Read from muster's
- * server list as the signed-in admin, the list the portal reads. Reading
- * the portal's tokens loads `/` on the page: call it before opening the view.
+ * server list as the signed-in admin, the list the portal reads, once per
+ * worker. The first read loads `/` on the page to read the portal's tokens:
+ * call it before opening the view.
  */
-export async function modelManagerUnavailable(
+export function modelManagerUnavailable(
+  page: Page,
+): Promise<string | undefined> {
+  modelManagerVerdict ??= readModelManagerVerdict(page).catch(error => {
+    modelManagerVerdict = undefined;
+    throw error;
+  });
+  return modelManagerVerdict;
+}
+
+let modelManagerVerdict: Promise<string | undefined> | undefined;
+
+async function readModelManagerVerdict(
   page: Page,
 ): Promise<string | undefined> {
   const servers = await new WorkspaceTools(page, lab.users.admin).listServers();
@@ -67,6 +81,21 @@ export async function modelManagerUnavailable(
   }
   return undefined;
 }
+
+/**
+ * Skips every test of the enclosing file or `describe` with the reason where
+ * the lab has no serving layer ({@link modelManagerUnavailable}): Model
+ * hosting is not drawn there, so its pages — stubbed answers or not — have
+ * nothing to prove. Call it before the scope's own `beforeEach` hooks, which
+ * open the view.
+ */
+export function skipWithoutModelManager(): void {
+  test.beforeEach(async ({ admin }) => {
+    const unavailable = await modelManagerUnavailable(admin);
+    test.skip(!!unavailable, unavailable);
+  });
+}
+
 const CALL_ROUTE = '**/api/muster/call**';
 
 /**

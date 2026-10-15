@@ -6,11 +6,12 @@ import {
   installPersistedQueryDrop,
   KSERVE_POOL_BACKEND,
   L4_POOL_PRESETS,
+  type ModelManagerStub,
   NO_SIZE,
   POOL_FIT,
   poolFitAnswer,
+  skipWithoutModelManager,
   stubModelManagerTools,
-  type ModelManagerStub,
 } from './model-manager.fixture';
 
 /**
@@ -140,6 +141,9 @@ async function stageModelManager(
 }
 
 test.describe('serving: through model-manager as the person', () => {
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
+
   test('serving a preset on a GPU pool shows check_fit’s verdict and creates the LLMInferenceService through one load_model', async ({
     admin,
   }) => {

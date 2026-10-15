@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
+import { skipWithoutModelManager } from './model-manager.fixture';
 
 /**
  * Serve model (a page of its own, `/agent-platform/models/serving/serve`)
@@ -135,6 +136,9 @@ async function stopPreset(page: Page) {
 
 test.describe.serial('Serve feedback on KServe', () => {
   test.setTimeout(10 * 60_000);
+
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
 
   // The KServe card goes with its last model, so without one the backend's
   // presence is read off Serve model's targets.
