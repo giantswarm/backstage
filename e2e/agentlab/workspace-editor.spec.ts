@@ -44,8 +44,9 @@ async function openFromTab(page: Page): Promise<void> {
 const preview = (page: Page) => page.getByTestId('workspace-preview');
 
 /**
- * Names the draft and picks the lab's GitHub: one provider instance shows as
- * text, several as a select (named "Select an option Provider").
+ * Names the draft and picks the lab's GitHub: with one provider instance
+ * there is nothing to pick, several show a select (named "Select an option
+ * Provider").
  */
 async function startDraft(page: Page, name: string): Promise<void> {
   await expect(
@@ -56,7 +57,7 @@ async function startDraft(page: Page, name: string): Promise<void> {
     name: /Provider$/,
   });
   await expect(
-    providerSelect.or(source(page).getByText(/^Provider: /)),
+    providerSelect.or(source(page).getByRole('textbox', { name: /^Owner/ })),
   ).toBeVisible({ timeout: 60_000 });
   if (await providerSelect.isVisible()) {
     await providerSelect.click();
@@ -81,9 +82,9 @@ test('a member creates a workspace from a language and topic filter, previews, e
 
   try {
     await openFromTab(admin);
-    const schedule = admin.getByText(/There is no schedule/);
+    const form = admin.getByRole('textbox', { name: /^Name/ });
     const gate = admin.getByTestId('workspace-editor-gate');
-    await expect(schedule.or(gate)).toBeVisible({ timeout: 60_000 });
+    await expect(form.or(gate)).toBeVisible({ timeout: 60_000 });
     if (await gate.isVisible()) {
       // Not connected yet: the editor asks for the sign-in in place of its
       // form. Connect the way a person does, then open the editor again.
@@ -102,10 +103,13 @@ test('a member creates a workspace from a language and topic filter, previews, e
       connected = true;
       await openFromTab(admin);
     }
+    await expect(form, 'the editor opens its form').toBeVisible({
+      timeout: 60_000,
+    });
     await expect(
-      schedule,
-      'the editor has no schedule field, and says how the mirrors sync',
-    ).toBeVisible({ timeout: 60_000 });
+      admin.getByText(/There is no schedule|nightly|weekly/i),
+      'the editor has no schedule field',
+    ).toHaveCount(0);
 
     const owner = source(admin).getByRole('textbox', { name: /^Owner/ });
     await startDraft(admin, name);

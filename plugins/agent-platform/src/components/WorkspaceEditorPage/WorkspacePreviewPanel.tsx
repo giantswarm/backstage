@@ -52,6 +52,20 @@ export type WorkspacePreviewPanelProps = {
 };
 
 /**
+ * Why a repository is in, in words: picked by name, or the language and
+ * topics it matches (`why` holds `name`, `language Go`, `topic mcp`).
+ */
+export function whyText(why: string[]): string {
+  const matches = why.filter(reason => reason !== 'name');
+  return [
+    why.includes('name') ? 'Picked by name' : undefined,
+    matches.length > 0 ? `Matches ${matches.join(', ')}` : undefined,
+  ]
+    .filter(Boolean)
+    .join('; ');
+}
+
+/**
  * What the draft selects now, as `preview_workspace` resolves it: the count,
  * the estimated size, the repositories (paged and searchable) with language,
  * topics, last push and why each is in, and what was left out. Nothing here
@@ -74,8 +88,8 @@ export function WorkspacePreviewPanel({
   if (!hasSources) {
     return (
       <Text variant="body-small" color="secondary">
-        The preview lists what the workspace selects once a source has an owner
-        and picks repositories by name or filters them.
+        Once a source has an owner and picks repositories by name, language or
+        topic, the repositories the workspace gets are listed here.
       </Text>
     );
   }
@@ -122,12 +136,13 @@ export function WorkspacePreviewPanel({
             , about {formatKiB(preview.providerSizeKiB)}
           </Text>
           <Text variant="body-small" color="secondary">
-            Estimated share: {preview.estimatedVolumeSize}
+            Estimated disk space: {preview.estimatedVolumeSize}, with room to
+            grow
             {left.length > 0 ? ` · ${left.join(' · ')}` : ''}
           </Text>
           <SearchField
             aria-label="Search the preview"
-            placeholder="Search the selected repositories"
+            placeholder="Find a repository in this list"
             size="small"
             value={search}
             onChange={onSearch}
@@ -151,9 +166,11 @@ export function WorkspacePreviewPanel({
                     </Text>
                     <Text variant="body-small" color="secondary">
                       {[
-                        repository.language,
+                        repository.language
+                          ? `Language ${repository.language}`
+                          : undefined,
                         repository.topics.length > 0
-                          ? repository.topics.join(', ')
+                          ? `Topics ${repository.topics.join(', ')}`
                           : undefined,
                         `pushed ${formatDate(repository.lastPush)}`,
                         formatKiB(repository.sizeKiB),
@@ -162,7 +179,7 @@ export function WorkspacePreviewPanel({
                         .join(' · ')}
                     </Text>
                     <Text variant="body-small" color="secondary">
-                      In by: {repository.why.join(', ')}
+                      {whyText(repository.why)}
                     </Text>
                   </Flex>
                   {canExclude(repository) && (

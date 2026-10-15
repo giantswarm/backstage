@@ -203,12 +203,25 @@ function WorkspaceEditor({
     [draft, isEdit],
   );
   const validation = useFieldValidation();
-  const errorFor = useCallback(
+  // A field the person left shows its problem at once; the rest on save.
+  const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
+  const touch = useCallback(
     (field: string) =>
-      problem?.field === field
-        ? problem.message
-        : validation.errorFor(problems[field]),
-    [problem, problems, validation],
+      setTouched(previous =>
+        previous.has(field) ? previous : new Set(previous).add(field),
+      ),
+    [],
+  );
+  const errorFor = useCallback(
+    (field: string) => {
+      if (problem?.field === field) {
+        return problem.message;
+      }
+      return touched.has(field)
+        ? problems[field]
+        : validation.errorFor(problems[field]);
+    },
+    [problem, problems, validation, touched],
   );
 
   const save = useSaveWorkspace(client);
@@ -360,6 +373,7 @@ function WorkspaceEditor({
         draft={draft}
         problem={problem}
         errorFor={errorFor}
+        touch={touch}
         update={update}
         sourceEditors={
           draft && client
@@ -385,6 +399,7 @@ function WorkspaceEditor({
                   }
                   onRecheckProviders={() => void providersQuery.refetch()}
                   errorFor={errorFor}
+                  touch={touch}
                 />
               ))
             : null
@@ -414,6 +429,8 @@ type EditorBodyProps = {
   draft: WorkspaceDraft | undefined;
   problem: SaveProblem | undefined;
   errorFor: (field: string) => string | undefined;
+  /** Marks a field the person left, so its problem shows at once. */
+  touch: (field: string) => void;
   update: (draft: WorkspaceDraft) => void;
   sourceEditors: React.ReactNode;
   providersError: unknown;
@@ -435,6 +452,7 @@ function EditorBody({
   draft,
   problem,
   errorFor,
+  touch,
   update,
   sourceEditors,
   providersError,
@@ -479,9 +497,10 @@ function EditorBody({
       <WizardStepHeading
         title={isEdit ? 'Sources and storage' : 'Name and sources'}
       >
-        A workspace is the set of repositories an agent Session works on, for
-        everyone in {organization}. The filters are applied again at every sync,
-        so a new repository that matches joins on its own.
+        Choose the source code repositories agents work on in a session, for
+        everyone in the {organization} organization. Repositories you pick by
+        language or topic are picked again at every update, so a new one that
+        matches joins on its own.
       </WizardStepHeading>
 
       {problem && !problem.field && (
@@ -499,20 +518,14 @@ function EditorBody({
         />
       )}
 
-      {isEdit ? (
-        <TextField
-          label="Name"
-          description="It cannot be changed."
-          value={draft.name}
-          isReadOnly
-        />
-      ) : (
+      {!isEdit && (
         <TextField
           label="Name"
           isRequired
           description="Lowercase letters, digits and dashes, unique on the installation, e.g. platform-mcp."
           value={draft.name}
           onChange={value => update({ ...draft, name: value })}
+          onBlur={() => touch('name')}
           {...fieldErrorProps(errorFor('name'))}
         />
       )}
@@ -534,17 +547,6 @@ function EditorBody({
 
       <Flex direction="column" gap="2">
         <Text variant="title-x-small" as="h2">
-          Sync
-        </Text>
-        <Text variant="body-small" color="secondary">
-          There is no schedule. The mirrors sync after every save, on Sync now,
-          and when a Session starts on a mirror older than the installation's
-          refresh threshold.
-        </Text>
-      </Flex>
-
-      <Flex direction="column" gap="2">
-        <Text variant="title-x-small" as="h2">
           Storage
         </Text>
         <Text
@@ -556,23 +558,22 @@ function EditorBody({
         </Text>
         <Flex gap="3" style={{ flexWrap: 'wrap' }}>
           <TextField
-            label="More headroom"
-            description="Replaces the computed headroom when larger, e.g. 8Gi."
+            label="Room to grow"
+            description="Optional. Space added on top of what the repositories need, when more than the installation's default, as a size such as 8Gi."
             value={draft.headroom}
             onChange={value => update({ ...draft, headroom: value })}
+            onBlur={() => touch('sizing.headroom')}
             {...fieldErrorProps(errorFor('sizing.headroom'))}
           />
           <TextField
-            label="Minimum size"
-            description="The smallest share the workspace gets, e.g. 20Gi."
+            label="Minimum disk space"
+            description="Optional. The workspace never gets less than this, as a size such as 20Gi."
             value={draft.minimum}
             onChange={value => update({ ...draft, minimum: value })}
+            onBlur={() => touch('sizing.minimum')}
             {...fieldErrorProps(errorFor('sizing.minimum'))}
           />
         </Flex>
-        <Text variant="body-small" color="secondary">
-          A Session inactive for 14 days is deleted with its session directory.
-        </Text>
       </Flex>
 
       {!docked && previewPanel}
@@ -590,14 +591,14 @@ function storageLine({
   estimated?: string;
 }): string {
   if (neededSize && volumeSize) {
-    return `The mirrors need ${neededSize}; the share is ${volumeSize} with its headroom.${
+    return `The repositories take ${neededSize}; the workspace has ${volumeSize} of disk space with room to grow.${
       estimated ? ` With these sources: about ${estimated}.` : ''
     }`;
   }
   if (estimated) {
-    return `Estimated share with these sources: ${estimated}. No cap; the share grows with the mirrors.`;
+    return `Estimated disk space with these sources: ${estimated}, the repositories plus room to grow. It grows with them; there is no cap.`;
   }
-  return 'The share is sized from what the mirrors need, with headroom. No cap.';
+  return 'The disk space is sized from what the repositories need, plus room to grow. There is no cap.';
 }
 
 /** The page at its address: `new?installation=&organization=`, or `…/edit`. */

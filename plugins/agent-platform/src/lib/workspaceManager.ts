@@ -371,6 +371,11 @@ const PROVIDER_KIND_NAMES: Record<string, string> = {
   bitbucket: 'Bitbucket',
 };
 
+/** A provider kind as the provider spells it ("GitHub"), else as given. */
+export function providerKindName(kind: string): string {
+  return PROVIDER_KIND_NAMES[kind.toLowerCase()] ?? kind;
+}
+
 /**
  * A provider instance as people read it: the kind's own spelling ("GitHub")
  * when the instance is named after its kind, else the instance's name with
@@ -379,8 +384,7 @@ const PROVIDER_KIND_NAMES: Record<string, string> = {
 export function providerDisplayName(
   provider: Pick<WorkspaceProvider, 'name' | 'kind'>,
 ): string {
-  const kind =
-    PROVIDER_KIND_NAMES[provider.kind.toLowerCase()] ?? provider.kind;
+  const kind = providerKindName(provider.kind);
   if (
     !provider.name ||
     provider.name.toLowerCase() === provider.kind.toLowerCase()

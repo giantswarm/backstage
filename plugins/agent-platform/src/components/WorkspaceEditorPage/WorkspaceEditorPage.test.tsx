@@ -96,6 +96,13 @@ async function render(
   );
 }
 
+async function source0Owner() {
+  return within(await screen.findByTestId('workspace-source-0')).findByRole(
+    'textbox',
+    { name: /^Owner/ },
+  );
+}
+
 function source(index: number) {
   return within(screen.getByTestId(`workspace-source-${index}`));
 }
@@ -275,7 +282,41 @@ describe('WorkspaceEditorPage', () => {
     ]);
   });
 
-  it('has no schedule field, and says how the mirrors sync', async () => {
+  it("shows a field's problem once the person leaves it, before any save", async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
+    fireEvent.change(name, { target: { value: 'Platform MCP' } });
+    expect(
+      screen.queryByText(/Use at most 63 lowercase letters/),
+    ).not.toBeInTheDocument();
+    fireEvent.blur(name);
+    expect(
+      await screen.findByText(/Use at most 63 lowercase letters/),
+    ).toBeInTheDocument();
+    // A field not yet left stays quiet.
+    expect(screen.queryByText('Owner is required')).not.toBeInTheDocument();
+  });
+
+  it('names no provider when there is only one to choose', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+
+    const owner = await source0Owner();
+    expect(owner).toHaveAccessibleDescription(
+      /The GitHub organization or user/,
+    );
+    expect(screen.queryByText(/^Provider/)).not.toBeInTheDocument();
+  });
+
+  it('has no schedule field', async () => {
     const fake = createWorkspaceManagerFake({
       providers: [GITHUB],
       repositories: ACME,
@@ -289,7 +330,7 @@ describe('WorkspaceEditorPage', () => {
     expect(
       screen.queryByRole('textbox', { name: /hour/i }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/There is no schedule/)).toBeInTheDocument();
+    expect(screen.queryByText(/There is no schedule/)).not.toBeInTheDocument();
   });
 
   it('shows no source until the provider instances are read', async () => {
@@ -465,6 +506,10 @@ describe('WorkspaceEditorPage', () => {
     });
     await render(fake, { name: 'platform-mcp' });
     await screen.findByTestId('workspace-source-0');
+    // The name cannot change, so it is the page's title, not a field.
+    expect(
+      screen.queryByRole('textbox', { name: /^Name/ }),
+    ).not.toBeInTheDocument();
 
     expect(
       await source(0).findByRole('button', { name: 'Go', pressed: true }),
