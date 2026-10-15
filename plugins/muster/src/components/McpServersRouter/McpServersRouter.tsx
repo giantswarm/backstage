@@ -37,7 +37,7 @@ const ShellReviewRedirect = () => {
  * The list itself is the Customize screen's Connectors tab, so the index sends
  * there. The wizard's static `new` segments outrank `:server`. The steps are
  * sub-routes sharing one NewMcpServerFormProvider so the composed definition
- * survives navigation across `/agent-platform/mcp-servers/new` and its step
+ * survives navigation across `/agent-platform/connectors/new` and its step
  * sub-routes — the same shape as agent creation's AgentsRouter. Mounted inside
  * MusterProviders by the sub-page, so the wizard shares its active
  * installation. Editing a registered connector runs through the same steps

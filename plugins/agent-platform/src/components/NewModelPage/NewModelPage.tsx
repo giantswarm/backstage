@@ -33,7 +33,8 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 
 import { modelsRouteRef, servingRouteRef } from '../../routes';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import { hasServingLayer, useOptionalServing } from '../ServingProvider';
 import {
   INITIAL_MODEL_CONFIG_FORM,
@@ -78,6 +79,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const modelsLink = useRouteRef(modelsRouteRef);
+  const { models: customizeModels } = useCustomizePaths();
+  const listHref = useCloseHref(customizeModels, modelsLink?.());
 
   // Every reachable installation that runs kagent is offered, home first (the
   // gs installation inventory) — deliberately not just the ones that already
@@ -171,6 +174,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     edit || installation ? undefined : 'Choose an environment.';
   const fieldErrors = modelConfigFieldErrors(values, {
     isEdit: Boolean(edit),
+    original: edit ? initialValues : undefined,
   });
   // A technical name that is only empty because the display name is: the
   // display name's own problem says it all, so More options is not opened on
@@ -191,8 +195,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   const isChanged = !edit || modelConfigFormChanged(values, initialValues);
 
   // Where Close and Cancel leave to: the model itself when editing; else the
-  // shell's Customize screen's Models tab.
-  const closeHref = edit ? edit.detailHref : `${SHELL_CUSTOMIZE_PATH}/models`;
+  // shell's Customize screen's Models tab, or, where the app binds none, the
+  // plugin's own Models address, which says the list is not available.
+  const closeHref = edit ? edit.detailHref : listHref;
 
   const onSubmit = useCallback(async () => {
     if (errorCount > 0) {
@@ -359,6 +364,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         moreOptionsOpen={moreOptionsOpen}
         onMoreOptionsOpenChange={setMoreOptionsOpen}
         originalProvider={edit?.modelConfig.getProvider()}
+        originalProjectID={edit ? initialValues.projectID : undefined}
       />
 
       {error && (

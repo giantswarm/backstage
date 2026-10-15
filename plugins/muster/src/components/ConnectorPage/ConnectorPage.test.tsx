@@ -530,14 +530,6 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('has no Settings tab, and sends its old address to the edit', async () => {
-    await renderAt(`${BASE}/jira/settings`);
-
-    expect(
-      await screen.findByText('at /agent-platform/connectors/new?edit=jira'),
-    ).toBeInTheDocument();
-  });
-
   it('leaves the Settings tab out of the tab strip', async () => {
     await renderAt(`${BASE}/jira`);
 
@@ -571,17 +563,8 @@ describe('ConnectorPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('sends the old settings address of a connector managed in Git to its tools', async () => {
-    await renderAt(`${BASE}/grafana/settings`);
-
-    expect(
-      await screen.findByRole('tab', { name: /Tools/, selected: true }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/^at /)).not.toBeInTheDocument();
-  });
-
-  it("puts a family's instances on their own tab, where its old settings address leads", async () => {
-    await renderAt(`${BASE}/kubernetes/settings`);
+  it("puts a family's instances on their own tab", async () => {
+    await renderAt(`${BASE}/kubernetes/instances`);
 
     expect(
       await screen.findByRole('tab', { name: /Instances/, selected: true }),

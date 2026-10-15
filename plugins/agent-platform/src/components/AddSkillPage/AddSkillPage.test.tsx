@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import type { SkillPullRequest } from '../../hooks/useProposeSkill';
-import { sessionsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, sessionsRouteRef } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
 import { skillCreationPrompt } from '../SkillCreationAssist';
 import { AddSkillPage, type SkillEdit } from './AddSkillPage';
@@ -84,7 +84,12 @@ function renderPage(edit?: SkillEdit) {
     <PageHeaderActionsProvider>
       <AddSkillPage edit={edit} />
     </PageHeaderActionsProvider>,
-    { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    {
+      mountedRoutes: {
+        '/agent-platform/sessions': sessionsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
+    },
   );
 }
 
