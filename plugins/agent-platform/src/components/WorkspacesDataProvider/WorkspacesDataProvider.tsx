@@ -45,8 +45,17 @@ export type WorkspacesData = {
    * without it, so also while a muster did not answer (see `failures`).
    */
   isAvailable: boolean | undefined;
-  /** The installations in scope whose muster lists the workspace-manager. */
+  /**
+   * The installations in scope whose muster lists the workspace-manager and
+   * reaches it as the person.
+   */
   installations: string[];
+  /**
+   * The installations in scope whose muster lists the workspace-manager but
+   * has no per-user sign-in in this portal: left out like an absent manager,
+   * and named so the tab can say why.
+   */
+  sharedIdentity: string[];
   /** The Organizations the person is a member of, by name. */
   organizations: string[];
   /** The scope's Organization; `undefined` while there is none. */
@@ -98,6 +107,13 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     scoped,
   );
   const installations = availability.available;
+  const sharedIdentityKey = availability.isLoading
+    ? ''
+    : availability.sharedIdentity.join(',');
+  const sharedIdentity = useMemo(
+    () => (sharedIdentityKey ? sharedIdentityKey.split(',') : []),
+    [sharedIdentityKey],
+  );
 
   const combineLists = useCallback(
     (results: UseQueryResult<WorkspaceList>[]) => ({
@@ -216,6 +232,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     () => ({
       isAvailable,
       installations,
+      sharedIdentity,
       organizations,
       organization,
       setOrganization,
@@ -237,6 +254,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       organization,
       organizations,
       setOrganization,
+      sharedIdentity,
       retry,
     ],
   );

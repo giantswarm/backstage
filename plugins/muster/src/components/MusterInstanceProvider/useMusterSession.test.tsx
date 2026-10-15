@@ -2,7 +2,12 @@ import { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
-import { MusterApi, musterApiRef, MusterTokenMintError } from '../../apis';
+import {
+  MusterApi,
+  musterApiRef,
+  MusterTokenMintError,
+  sessionExpiredError,
+} from '../../apis';
 import {
   MusterInstance,
   MusterInstanceContext,
@@ -13,6 +18,7 @@ import {
   unreachableFailure,
   useMusterSession,
 } from './useMusterSession';
+import { sessionGateCopy } from './sessionCopy';
 
 const MUSTER_401 =
   'MCP HTTP Transport Error: POSTing to endpoint (HTTP 401): {"error":"invalid_token","error_description":"Token validation failed"}';
@@ -379,6 +385,23 @@ describe('classifySessionFailure', () => {
         'golem',
       ),
     ).toEqual({ kind: 'mint-failed', message: 'Could not mint' });
+  });
+
+  it('offers the sign-in for a lapsed token, in plain words', () => {
+    const failure = classifySessionFailure(
+      sessionExpiredError('gazelle'),
+      'gazelle',
+    );
+    expect(failure).toEqual({
+      kind: 'session-expired',
+      message: 'Your session expired, sign in again.',
+    });
+    expect(
+      sessionGateCopy({ authenticated: false, pending: false, failure }),
+    ).toEqual({
+      sentence: 'Your session expired, sign in again.',
+      action: 'Sign in again',
+    });
   });
 
   it('treats an auth error from the proxy as muster rejecting the token', () => {

@@ -1,5 +1,6 @@
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
+import { modelManagerUnavailable } from './model-manager.fixture';
 
 /**
  * Models in the agent shell: the installation's `ModelConfig`s read through
@@ -11,6 +12,8 @@ import { lab } from './lab';
 test('Customize · Models lists the lab default ModelConfig and offers Connect a model', async ({
   admin,
 }) => {
+  // Read first: it loads a page of its own to read the portal's tokens.
+  const noServingLayer = await modelManagerUnavailable(admin);
   // The old address of the list lands on Customize's Models tab.
   await open(admin, '/agent-platform/models');
   await expect(admin).toHaveURL(/\/customize\/models$/);
@@ -24,10 +27,20 @@ test('Customize · Models lists the lab default ModelConfig and offers Connect a
     admin.getByRole('rowheader', { name: /^default-model-config/ }),
     'the ModelConfig the lab provisions is listed',
   ).toBeVisible();
-  // The way into Model hosting.
-  await expect(
-    admin.getByRole('link', { name: 'Model hosting' }),
-  ).toHaveAttribute('href', '/agent-platform/models/serving');
+  // The way into Model hosting, where the installation has a serving layer:
+  // a lab without model-manager has none, and the card is left out.
+  const hosting = admin.getByRole('link', { name: 'Model hosting' });
+  if (noServingLayer) {
+    await expect(
+      hosting,
+      'no serving layer: no Model hosting card',
+    ).toHaveCount(0);
+  } else {
+    await expect(hosting).toHaveAttribute(
+      'href',
+      '/agent-platform/models/serving',
+    );
+  }
 });
 
 test('the old Model configs path still resolves', async ({ admin }) => {
@@ -86,6 +99,8 @@ test('a model’s page sits under Customize, says why in Technical details, and 
 test('Model hosting’s Running models and GPU tabs render for the installation', async ({
   admin,
 }) => {
+  const unavailable = await modelManagerUnavailable(admin);
+  test.skip(!!unavailable, unavailable);
   await open(admin, '/agent-platform/models/serving');
   await expect(
     admin.getByRole('heading', { level: 1, name: 'Model hosting' }),

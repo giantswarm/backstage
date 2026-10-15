@@ -7,7 +7,7 @@ import {
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
-import { toolEffect, ToolEffect } from '../../lib/toolAnnotations';
+import { toolEffect } from '../../lib/toolAnnotations';
 import {
   serverPageResolver,
   serverPrefixInfos,
@@ -21,7 +21,7 @@ import {
   useToolDescription,
   useConnectorGroupPaths,
 } from '../shared';
-import { ToolDetailPanel } from '../ToolDetail';
+import { ToolRunPanel } from '../ToolDetail';
 import {
   representativeServer,
   useServersListHref,
@@ -34,18 +34,6 @@ const TOOL_NAME_STYLE = {
   fontFamily: 'monospace',
   overflowWrap: 'anywhere',
 } as const;
-
-/** What the Try it section says beside its Run button for a tool. */
-export function tryItNote(
-  effect: ToolEffect,
-  asCaller: boolean,
-): string | undefined {
-  const parts = [
-    asCaller ? 'Runs as you.' : undefined,
-    effect === 'reads' ? 'Nothing is changed.' : undefined,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(' ') : undefined;
-}
 
 /**
  * One tool's page, beneath the server offering it: its short and full name,
@@ -157,16 +145,11 @@ export function ToolPage() {
     );
   } else {
     body = (
-      <ToolDetailPanel
-        // A fresh form per tool and installation: remembered arguments are
-        // stored per installation, and a result must not outlive its tool.
-        key={`${activeInstallation}/${tool}`}
+      <ToolRunPanel
         name={tool}
         installation={activeInstallation}
-        note={tryItNote(
-          toolEffect({ annotations }),
-          representative ? runsAsCaller(representative) : false,
-        )}
+        effect={toolEffect({ annotations })}
+        asCaller={representative ? runsAsCaller(representative) : false}
       />
     );
   }

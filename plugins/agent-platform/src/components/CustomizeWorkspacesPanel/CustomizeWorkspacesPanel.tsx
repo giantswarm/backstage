@@ -37,17 +37,26 @@ import {
 
 import { useWorkspaceActions } from '../../hooks/useWorkspaceActions';
 import {
+  sharedIdentityReason,
+  sharedIdentityTitle,
+} from '../../lib/sharedIdentity';
+import {
   searchWorkspaces,
   sourcesLabel,
   storedLabel,
   syncState,
   type WorkspaceRow,
 } from '../../lib/workspaceList';
+import { SharedIdentityNote } from '../SharedIdentityNote';
 import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
 import { useWorkspacesData } from '../WorkspacesDataProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
+
+/** What a muster without per-user sign-in withholds, and what goes through the manager. */
+const WORKSPACES_BLOCKED = 'Workspaces cannot be used';
+const WORKSPACES_VIA = 'Workspaces are managed through workspace-manager';
 
 /**
  * Why Open, Edit and Create workspace are not offered yet: the workspace's
@@ -268,6 +277,7 @@ export function CustomizeWorkspacesPanel({
     organization,
     organizations,
     installations,
+    sharedIdentity,
     isLoading,
     failures,
     retry,
@@ -356,6 +366,13 @@ export function CustomizeWorkspacesPanel({
   if (isEverythingFailed) {
     // The alert above says why, with a way to try again.
     body = null;
+  } else if (isAvailable === false && sharedIdentity.length > 0) {
+    body = (
+      <EmptyStateCard
+        title={sharedIdentityTitle(WORKSPACES_BLOCKED, sharedIdentity)}
+        description={sharedIdentityReason(WORKSPACES_VIA, sharedIdentity)}
+      />
+    );
   } else if (isAvailable === false) {
     body = (
       <EmptyStateCard
@@ -413,6 +430,13 @@ export function CustomizeWorkspacesPanel({
         isEverything={isEverythingFailed}
         onRetry={retry}
       />
+      {isAvailable && (
+        <SharedIdentityNote
+          installations={sharedIdentity}
+          blocked={WORKSPACES_BLOCKED}
+          via={WORKSPACES_VIA}
+        />
+      )}
       {body}
     </Flex>
   );

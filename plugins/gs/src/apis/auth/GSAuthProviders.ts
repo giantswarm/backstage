@@ -1,4 +1,4 @@
-import { OAuth2, OAuth2Session } from '@backstage/core-app-api';
+import { OAuth2 } from '@backstage/core-app-api';
 import { ConfigApi, OAuthRequestApi } from '@backstage/core-plugin-api';
 import {
   AuthApi,
@@ -16,6 +16,7 @@ import {
 } from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { getOIDCScopes } from './scopes';
+import { toOAuth2Session } from './toOAuth2Session';
 import { GithubGrantAuthConnector } from './GithubGrantAuthConnector';
 import {
   LocalStorageSignInConnectorMemory,
@@ -446,29 +447,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       signInConnectorMemory: isMainProvider
         ? this.signInConnectorMemory
         : undefined,
-      sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
-        const session: OAuth2Session = {
-          ...res,
-          providerInfo: {
-            idToken: res.providerInfo.idToken,
-            accessToken: res.providerInfo.accessToken,
-            scopes: OAuth2.normalizeScopes(res.providerInfo.scope),
-            expiresAt: res.providerInfo.expiresInSeconds
-              ? new Date(Date.now() + res.providerInfo.expiresInSeconds * 1000)
-              : undefined,
-          },
-        };
-        if (backstageIdentity) {
-          session.backstageIdentity = {
-            token: backstageIdentity.token,
-            identity: backstageIdentity.identity,
-            expiresAt: backstageIdentity.expiresInSeconds
-              ? new Date(Date.now() + backstageIdentity.expiresInSeconds * 1000)
-              : undefined,
-          };
-        }
-        return session;
-      },
+      sessionTransform: toOAuth2Session,
       popupOptions: {
         size: {
           width: 600,
@@ -518,33 +497,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
             title: providerDisplayName,
             icon: GiantSwarmIcon,
           },
-          sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
-            const session: OAuth2Session = {
-              ...res,
-              providerInfo: {
-                idToken: res.providerInfo.idToken,
-                accessToken: res.providerInfo.accessToken,
-                scopes: OAuth2.normalizeScopes(res.providerInfo.scope),
-                expiresAt: res.providerInfo.expiresInSeconds
-                  ? new Date(
-                      Date.now() + res.providerInfo.expiresInSeconds * 1000,
-                    )
-                  : undefined,
-              },
-            };
-            if (backstageIdentity) {
-              session.backstageIdentity = {
-                token: backstageIdentity.token,
-                identity: backstageIdentity.identity,
-                expiresAt: backstageIdentity.expiresInSeconds
-                  ? new Date(
-                      Date.now() + backstageIdentity.expiresInSeconds * 1000,
-                    )
-                  : undefined,
-              };
-            }
-            return session;
-          },
+          sessionTransform: toOAuth2Session,
           popupOptions: {
             size: {
               width: 600,

@@ -89,6 +89,11 @@ export const portalEvents = defineEvents({
       authMode: ['none', 'own-account', 'platform-sso', 'sigv4'],
     },
   },
+  'Muster.workflowRan': {
+    description:
+      "A muster workflow was run from the Agent Platform, on its page or its tool's, and returned a result.",
+    attributes: {},
+  },
 });
 
 type PortalEvents = typeof portalEvents;

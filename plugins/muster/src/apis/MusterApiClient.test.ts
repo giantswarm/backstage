@@ -64,6 +64,16 @@ beforeEach(() => {
   __resetSignedInConfigForTests();
 });
 
+/** An unsigned JWT that expires at `exp` (seconds since the epoch). */
+function idToken(exp: number): string {
+  const b64url = (value: object) =>
+    btoa(JSON.stringify(value))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  return `${b64url({ alg: 'RS256' })}.${b64url({ exp: Math.floor(exp) })}.sig`;
+}
+
 function okResponse(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as Response;
 }
@@ -446,6 +456,79 @@ describe('MusterApiClient token selection', () => {
       installation: 'gazelle',
     });
     expect(t.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends a main-login ID token that is still valid', async () => {
+    const valid = idToken(Date.now() / 1000 + 600);
+    const t = setup({ main: { token: valid } });
+
+    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+
+    expect(t.sentHeaders()?.[HEADER]).toBe(valid);
+  });
+
+  it('never sends a main-login ID token past its exp', async () => {
+    const t = setup({ main: { token: idToken(Date.now() / 1000 - 1) } });
+
+    await expect(
+      t.client.filterTools({ installation: 'gazelle', limit: 1 }),
+    ).rejects.toMatchObject({
+      name: 'MusterTokenMintError',
+      reason: 'session-expired',
+      installation: 'gazelle',
+      message: 'Your session expired, sign in again.',
+    });
+    expect(t.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reports a main-login token that is expired after the auth API answered as a gone session to signIn', async () => {
+    const t = setup({ main: { token: idToken(Date.now() / 1000 - 1) } });
+
+    await expect(t.client.signIn('gazelle')).resolves.toBe(false);
+  });
+
+  it("turns muster's expired-token answer into the sign-in prompt, never its raw text", async () => {
+    const t = setup();
+    t.fetchMock.mockResolvedValue(
+      errorResponse(500, {
+        error: {
+          name: 'MusterToolError',
+          message:
+            'token has expired for workspace-manager, re-authenticate to refresh: token is expired',
+        },
+      }),
+    );
+
+    await expect(
+      t.client.callTool('x_workspace-manager_list_workspaces', {}, 'gazelle'),
+    ).rejects.toMatchObject({
+      name: 'MusterTokenMintError',
+      reason: 'session-expired',
+      installation: 'gazelle',
+      message: 'Your session expired, sign in again.',
+    });
+  });
+
+  it("turns muster's expired-token error line into the sign-in prompt", async () => {
+    const t = setup();
+    answerCall(
+      t.fetchMock,
+      streamResponse([
+        '{"type":"error","error":{"name":"MusterToolError","message":"ID token has expired for agent-manager, re-authenticate to refresh: token is expired"}}\n',
+      ]),
+    );
+
+    await expect(
+      t.client.callToolWithProgress(
+        'x_agent-manager_create_agent',
+        {},
+        { installation: 'gazelle', onProgress: () => {} },
+      ),
+    ).rejects.toMatchObject({
+      name: 'MusterTokenMintError',
+      reason: 'session-expired',
+      message: 'Your session expired, sign in again.',
+    });
   });
 
   it("relays muster's 401 as an UnauthorizedError carrying its message", async () => {

@@ -1,4 +1,6 @@
 import type { Page, Route } from '@playwright/test';
+import { lab } from './lab';
+import { WorkspaceTools } from './workspaces.fixture';
 
 /**
  * model-manager at the browser: the answers of `x_model-manager_<tool>` calls
@@ -43,6 +45,28 @@ export type ModelManagerStub = {
 };
 
 const TOOL_PREFIX = 'x_model-manager_';
+
+/**
+ * Why the lab cannot show Model hosting, or undefined when it can: the
+ * portal draws the serving layer where model-manager answers (or KServe's API
+ * is served, which a lab has only with model-manager), and a lab runs
+ * model-manager only with `platform.modelManager` on. Read from muster's
+ * server list as the signed-in admin, the list the portal reads. Reading
+ * the portal's tokens loads `/` on the page: call it before opening the view.
+ */
+export async function modelManagerUnavailable(
+  page: Page,
+): Promise<string | undefined> {
+  const servers = await new WorkspaceTools(page, lab.users.admin).listServers();
+  const server = servers.find(entry => entry.name === 'model-manager');
+  if (!server) {
+    return "the lab's muster serves no model-manager (platform.modelManager off): `agentlab configure --model-manager`, then `agentlab platform`";
+  }
+  if (server.state && !/^(connected|running|ready)$/i.test(server.state)) {
+    return `the lab's muster lists model-manager as ${server.state}, not connected`;
+  }
+  return undefined;
+}
 const CALL_ROUTE = '**/api/muster/call**';
 
 /**

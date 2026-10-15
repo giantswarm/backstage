@@ -50,6 +50,7 @@ import {
   ShellCustomizeRedirect,
 } from '../ShellCustomizeRedirect';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
+import { ModelHostingSharedIdentityNote } from '../ModelHostingSharedIdentity';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { isLegacyServeLink } from '../../lib/modelManagerServe';
 import { nothingCouldBeRead } from '../../lib/soleInstallation';
@@ -142,6 +143,7 @@ const HostingView = ({
   }
   return (
     <Flex direction="column" gap="5">
+      <ModelHostingSharedIdentityNote />
       {kpis && <ModelHostingKpis scope={kpis} />}
       {children}
     </Flex>
