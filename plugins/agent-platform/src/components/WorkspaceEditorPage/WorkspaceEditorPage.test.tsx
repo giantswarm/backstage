@@ -354,7 +354,7 @@ describe('WorkspaceEditorPage', () => {
 
     const gate = within(await screen.findByTestId('workspace-editor-gate'));
     expect(
-      gate.getByText(/selects repositories from gitlab-lab \(GitLab\)/),
+      gate.getByText(/reads its repositories from gitlab-lab \(GitLab\)/),
     ).toBeInTheDocument();
     expect(
       gate.getByRole('button', { name: 'Connect gitlab-lab (GitLab) ↗' }),
@@ -428,10 +428,8 @@ describe('WorkspaceEditorPage', () => {
     await render(fake);
 
     const gate = within(await screen.findByTestId('workspace-editor-gate'));
-    expect(
-      gate.getByText('Sign in to workspace-manager first'),
-    ).toBeInTheDocument();
-    expect(gate.getByText(/not signed in to it yet/)).toBeInTheDocument();
+    expect(gate.getByText('Sign in to use workspaces')).toBeInTheDocument();
+    expect(gate.getByText(/has not signed in to it yet/)).toBeInTheDocument();
     expect(
       screen.queryByRole('textbox', { name: /^Name/ }),
     ).not.toBeInTheDocument();

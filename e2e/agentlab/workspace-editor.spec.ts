@@ -93,7 +93,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
       await expect(admin.getByRole('textbox', { name: /^Name/ })).toHaveCount(
         0,
       );
-      await snapshot(admin, 'workspace-editor-connect-gate');
+      await snapshot(admin, 'workspace-editor-sign-in-gate');
       test.skip(
         !lab.workspaces.githubFakeURL,
         'connecting to the lab GitHub needs AGENTLAB_GITHUB_FAKE_URL (see e2e/agentlab/README.md)',

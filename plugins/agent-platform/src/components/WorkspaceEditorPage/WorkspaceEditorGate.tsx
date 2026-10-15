@@ -8,7 +8,7 @@ import {
   WORKSPACE_MANAGER_SERVER,
   type WorkspaceProvider,
 } from '../../lib/workspaceManager';
-import { ProviderConnectPrompt } from '../ProviderConnectPrompt';
+import { ProviderConnectAction } from '../ProviderConnectPrompt';
 
 /**
  * A sign-in the editor needs before its form is any use: the person's muster
@@ -60,53 +60,59 @@ export type WorkspaceEditorGateProps = {
   onRecheckProviders: () => void;
 };
 
-/** The sign-in the editor asks for in place of its form, and why. */
+/**
+ * The one sign-in the editor asks for in place of its form, and why. Every
+ * sign-in goes through workspace-manager: for a provider instance it is the
+ * person's own login or consent there (a GitHub authorization grant for a
+ * person already signed in through GitHub); before that, muster may still
+ * have to sign the person in to workspace-manager itself.
+ */
 export function WorkspaceEditorGate({
   gate,
   installation,
   client,
   onRecheckProviders,
 }: WorkspaceEditorGateProps) {
-  if (gate.kind === 'sign-in') {
-    return (
-      <Alert
-        status="warning"
-        title="Sign in to workspace-manager first"
-        data-testid="workspace-editor-gate"
-        description={
-          <Flex direction="column" gap="2">
-            <Text variant="body-small">
-              Workspaces are read and saved through workspace-manager, reached
-              through muster as you. Your muster session on {installation} is
-              not signed in to it yet, so the editor cannot read the
-              repositories or save. Sign in, and the editor opens here.
-            </Text>
+  const names =
+    gate.kind === 'connect'
+      ? gate.providers.map(providerDisplayName).join(' and ')
+      : undefined;
+  return (
+    <Alert
+      status="info"
+      title="Sign in to use workspaces"
+      data-testid="workspace-editor-gate"
+      description={
+        <Flex direction="column" gap="2">
+          <Text variant="body-small">
+            {names
+              ? `A workspace reads its repositories from ${names} as you, through workspace-manager with your own sign-in.`
+              : `A workspace reads its repositories as you, through workspace-manager with your own sign-in, and your session on ${installation} has not signed in to it yet.`}{' '}
+            Sign in once; the editor opens here.
+          </Text>
+          {gate.kind === 'sign-in' ? (
             <ServerSignIn
               noun="connector"
               serverName={WORKSPACE_MANAGER_SERVER}
               installation={installation}
             />
-          </Flex>
-        }
-      />
-    );
-  }
-  const names = gate.providers.map(providerDisplayName).join(' and ');
-  return (
-    <Flex direction="column" gap="3" data-testid="workspace-editor-gate">
-      <Text variant="body-medium">
-        A workspace selects repositories from {names}, read as you with your own
-        sign-in. Connect first; the editor opens here once you have.
-      </Text>
-      {client &&
-        gate.providers.map(provider => (
-          <ProviderConnectPrompt
-            key={provider.name}
-            client={client}
-            provider={provider}
-            onRecheck={onRecheckProviders}
-          />
-        ))}
-    </Flex>
+          ) : (
+            client &&
+            gate.providers.map(provider => (
+              <div
+                key={provider.name}
+                data-testid={`provider-connect-${provider.name}`}
+              >
+                <ProviderConnectAction
+                  client={client}
+                  provider={provider}
+                  onRecheck={onRecheckProviders}
+                />
+              </div>
+            ))
+          )}
+        </Flex>
+      }
+    />
   );
 }

@@ -21,11 +21,42 @@ export type ProviderConnectPromptProps = {
 
 /**
  * The inline sign-in for a provider instance the person has not connected:
- * what connecting means, and Connect, which opens the person's own sign-in
- * link (`connect_provider`) in a new tab. No token or code passes through the
- * portal; when the tab hands focus back the host's provider list is read again.
+ * what connecting means, and {@link ProviderConnectAction}.
  */
 export function ProviderConnectPrompt({
+  client,
+  provider,
+  onRecheck,
+}: ProviderConnectPromptProps) {
+  const label = providerDisplayName(provider);
+  return (
+    <Alert
+      status="info"
+      data-testid={`provider-connect-${provider.name}`}
+      title={`Connect ${label}`}
+      description={
+        <Flex direction="column" gap="2">
+          <Text variant="body-small">
+            Agents read and push to {label} as you, with your own sign-in.
+          </Text>
+          <ProviderConnectAction
+            client={client}
+            provider={provider}
+            onRecheck={onRecheck}
+          />
+        </Flex>
+      }
+    />
+  );
+}
+
+/**
+ * Connect, which opens the person's own sign-in link (`connect_provider`) at
+ * workspace-manager in a new tab, and what happens while it is open. No token
+ * or code passes through the portal; when the tab hands focus back the
+ * host's provider list is read again.
+ */
+export function ProviderConnectAction({
   client,
   provider,
   onRecheck,
@@ -67,37 +98,27 @@ export function ProviderConnectPrompt({
   }, [client, provider.name]);
 
   return (
-    <Alert
-      status="info"
-      data-testid={`provider-connect-${provider.name}`}
-      title={`Connect ${label}`}
-      description={
-        <Flex direction="column" gap="2">
-          <Text variant="body-small">
-            Agents read and push to {label} as you, with your own sign-in.
-          </Text>
-          {isWaiting && (
-            <Text variant="body-small" color="secondary">
-              Finish the sign-in in the new tab, then come back here.
-            </Text>
-          )}
-          {error && (
-            <Text variant="body-small" color="danger">
-              Could not start the sign-in: {error}
-            </Text>
-          )}
-          <div>
-            <Button
-              variant="secondary"
-              size="small"
-              isDisabled={isOpening}
-              onPress={connect}
-            >
-              {isOpening ? 'Opening…' : `Connect ${label} ↗`}
-            </Button>
-          </div>
-        </Flex>
-      }
-    />
+    <Flex direction="column" gap="2">
+      {isWaiting && (
+        <Text variant="body-small" color="secondary">
+          Finish the sign-in in the new tab, then come back here.
+        </Text>
+      )}
+      {error && (
+        <Text variant="body-small" color="danger">
+          Could not start the sign-in: {error}
+        </Text>
+      )}
+      <div>
+        <Button
+          variant="secondary"
+          size="small"
+          isDisabled={isOpening}
+          onPress={connect}
+        >
+          {isOpening ? 'Opening…' : `Connect ${label} ↗`}
+        </Button>
+      </div>
+    </Flex>
   );
 }
