@@ -14,6 +14,7 @@ export * from './ContentRow';
 export * from './CopyButton';
 export * from './FactList';
 export * from './FactsColumn';
+export * from './FoldOutAlignedSection';
 export * from './FieldValidation';
 export * from './FormFieldGrid';
 export * from './DataBar';

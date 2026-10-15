@@ -31,6 +31,8 @@ export type WorkflowRunTabProps = {
   asCaller: boolean;
   /** The connectors its steps call, by MCPServer name. */
   connectors: string[];
+  /** What people call each of {@link connectors}, where it is not its name. */
+  connectorLabels?: ReadonlyMap<string, string>;
   /**
    * The workflows a run records runs of: this one and those it runs as
    * steps, whose run records are re-read once it ends.
@@ -58,6 +60,7 @@ export function WorkflowRunTab({
   workflowTool,
   asCaller,
   connectors,
+  connectorLabels,
   recordedWorkflows,
   onRunningChange,
 }: WorkflowRunTabProps) {
@@ -102,7 +105,11 @@ export function WorkflowRunTab({
   }
 
   const authNotice = (
-    <WorkflowAuthNotice connectors={connectors} installation={installation} />
+    <WorkflowAuthNotice
+      connectors={connectors}
+      connectorLabels={connectorLabels}
+      installation={installation}
+    />
   );
   if (!tool) {
     return (

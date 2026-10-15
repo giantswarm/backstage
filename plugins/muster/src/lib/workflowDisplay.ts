@@ -49,7 +49,7 @@ export function toolDisplay(
       : tool;
     return {
       kind: 'connector',
-      connector: match.family ?? match.serverName,
+      connector: match.displayName ?? match.family ?? match.serverName,
       tool: short,
     };
   }
