@@ -411,7 +411,12 @@ test.describe('serving: the served model’s step timeline', () => {
         'pending',
       );
       await expect(step('pullingImage')).toContainText('typ. 4 min');
-      await expect(panel).toContainText('weights in the cache');
+      // The header reads as the row does (its status and the backend's
+      // reason), never a phase word of its own: the phase is the steps.
+      await expect(panel.getByText('Pending', { exact: true })).toBeVisible();
+      await expect(panel.getByTestId('served-readiness-reason')).toHaveText(
+        '· DownloadingWeights',
+      );
 
       // Stage 2 (the next poll, 10 s): weights cached, image pulled, vLLM loading.
       await expect(step('loading')).toHaveAttribute(
@@ -435,7 +440,7 @@ test.describe('serving: the served model’s step timeline', () => {
       await expect(step('ready')).toHaveAttribute('data-state', 'done', {
         timeout: POLL_TIMEOUT,
       });
-      await expect(panel).toContainText('· ready');
+      await expect(panel.getByText('Ready', { exact: true })).toBeVisible();
       await expect(panel.getByTestId('served-model-endpoint')).toHaveText(
         ENDPOINT,
       );
@@ -498,7 +503,7 @@ test.describe('serving: the served model’s step timeline', () => {
         row.getByText('Stopping', { exact: true }),
         'the row reads Stopping while the object is deleted',
       ).toBeVisible({ timeout: POLL_TIMEOUT });
-      await expect(panel).toContainText('· stopping');
+      await expect(panel.getByText('Stopping', { exact: true })).toBeVisible();
       await expect(
         panel.getByTestId('served-model-gone'),
         'and the panel says so once model-manager no longer lists it',
@@ -551,7 +556,11 @@ test.describe('serving: the served model’s step timeline', () => {
         .getByRole('button', { name: 'Show steps of model qwen3-4b-instruct' })
         .click();
       const panel = admin.getByTestId('served-model-lifecycle');
-      await expect(panel).toContainText('· failed · ImagePullBackOff');
+      // The header is the row's status; the failed step below says it failed.
+      await expect(panel.getByText('Pending', { exact: true })).toBeVisible();
+      await expect(panel.getByTestId('served-readiness-reason')).toHaveText(
+        '· ImagePullBackOff',
+      );
       const pull = panel.locator(
         '[data-testid="lifecycle-step"][data-step="pullingImage"]',
       );

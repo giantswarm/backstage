@@ -26,6 +26,7 @@ import { isGitOpsManaged } from '../../lib/gitops';
 import type { ToolEffect } from '../../lib/toolAnnotations';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { workflowEffect } from '../../lib/workflowDisplay';
+import { workflowRunKeys } from '../../lib/workflowRunKeys';
 import { workflowDetailRouteRef } from '../../routes';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
@@ -108,12 +109,8 @@ function WorkflowRows({
   // latest run, and `total` counts them all.
   const runs = useQueries({
     queries: workflows.map(workflow => ({
-      queryKey: [
-        'muster',
-        'workflow-runs',
-        installation,
-        workflow.getName(),
-      ] as const,
+      // The workflow page's own latest-run read: the same request.
+      queryKey: workflowRunKeys.latest(installation, workflow.getName()),
       queryFn: () =>
         musterApi.listExecutions({
           workflowName: workflow.getName(),
@@ -261,7 +258,7 @@ function WorkflowsTable({
   // one request however many workflows there are.
   const musterApi = useApi(musterApiRef);
   const lastRuns = useQuery({
-    queryKey: ['muster', 'workflow-last-runs', installation] as const,
+    queryKey: workflowRunKeys.lastRuns(installation),
     queryFn: () =>
       musterApi.listExecutions({ installation, limit: LAST_RUNS_WINDOW }),
     enabled: hasSession,

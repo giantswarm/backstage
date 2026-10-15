@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
+import { modelManagerUnavailable } from './model-manager.fixture';
 
 /**
  * Add model backend and Remove backend on the Serving page: model-manager's
@@ -13,6 +14,12 @@ import { lab } from './lab';
  * read the same model-manager's backend documents.
  */
 test.describe.serial('model backends', () => {
+  // The backends are model-manager's: a lab without it has none to add to.
+  test.beforeEach(async ({ admin }) => {
+    const unavailable = await modelManagerUnavailable(admin);
+    test.skip(!!unavailable, unavailable);
+  });
+
   test('Add model backend offers no kind the installation already serves', async ({
     admin,
   }) => {
@@ -129,10 +136,12 @@ async function removeBackend(
     .getByRole('textbox', { name: `Type ${kind} to confirm` })
     .fill(kind);
   await dialog.getByRole('button', { name: 'Remove backend' }).click();
-  await expect(
-    dialog.getByText(`Removed the ${label} backend as you`),
-  ).toBeVisible({
+  // Done, the dialog closes and the toast is the one confirmation.
+  await expect(dialog, 'the dialog closes once removed').toBeHidden({
     timeout: 30_000,
   });
-  await dialog.getByRole('button', { name: 'Close' }).first().click();
+  await expect(
+    page.getByText(`Removed the ${kind} backend from ${lab.installation}`),
+    'model-manager reported the removal',
+  ).toBeVisible();
 }

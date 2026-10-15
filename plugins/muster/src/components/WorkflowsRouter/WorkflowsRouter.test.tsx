@@ -44,7 +44,7 @@ function renderAt(
 }
 
 describe('WorkflowsRouter', () => {
-  it('routes a workflow to its read-only page', async () => {
+  it('routes a workflow to its page', async () => {
     await renderAt('/agent-platform/workflows/deploy');
     expect(screen.getByText('Workflow page')).toBeInTheDocument();
   });

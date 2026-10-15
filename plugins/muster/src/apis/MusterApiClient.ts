@@ -8,9 +8,16 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
-import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
+import {
+  getSignedInConfig,
+  isIdTokenExpired,
+} from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationOidcToken } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { isHomeInstallation, MusterTokenMintError } from './installationToken';
+import {
+  isHomeInstallation,
+  MusterTokenMintError,
+  sessionExpiredError,
+} from './installationToken';
 import {
   AuthStatusResponse,
   FilterCapabilitiesOptions,
@@ -80,6 +87,12 @@ const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
  * `gs.authProvider` is unset as well.
  */
 const MAIN_LOGIN_PROVIDER = 'main';
+
+/**
+ * muster's answer when the bearer the portal forwarded has lapsed: e.g.
+ * `token has expired for workspace-manager, re-authenticate to refresh: …`.
+ */
+const MUSTER_TOKEN_EXPIRED = /token has expired\b.*\bre-authenticate/i;
 
 function isStringArray(value: unknown): value is string[] {
   return (
@@ -317,7 +330,7 @@ export class MusterApiClient implements MusterApi {
       signal: options.signal,
     });
     if (!response.ok || !response.body) {
-      return this.handleResponse<unknown>(response);
+      return this.handleResponse<unknown>(response, options.installation);
     }
 
     const reader = response.body.getReader();
@@ -357,6 +370,9 @@ export class MusterApiClient implements MusterApi {
             return event.result;
           case 'error': {
             await reader.cancel();
+            if (MUSTER_TOKEN_EXPIRED.test(event.error.message)) {
+              throw sessionExpiredError(options.installation);
+            }
             const error = new Error(event.error.message);
             error.name = event.error.name;
             if (event.error.details) {
@@ -524,6 +540,11 @@ export class MusterApiClient implements MusterApi {
    *   kagent/model-manager path). Its `authProvider` config is not consulted
    *   beyond "requires a token".
    *
+   * The home token is never sent past its `exp`: the auth API refreshes the
+   * session before the ID token lapses (or, when the refresh fails, asks the
+   * person to sign in again), so a token that is still expired here means the
+   * session is gone.
+   *
    * Throws {@link MusterTokenMintError} when the token cannot be obtained, so
    * callers can tell "no token could be minted" from muster's own 401.
    */
@@ -553,6 +574,9 @@ export class MusterApiClient implements MusterApi {
           installation ? ` on ${installation}` : ''
         }.`,
       );
+    }
+    if (isIdTokenExpired(token)) {
+      throw sessionExpiredError(installation);
     }
     return token;
   }
@@ -600,7 +624,7 @@ export class MusterApiClient implements MusterApi {
     const url = await this.buildUrl(path, installation);
     const headers = await this.getAuthHeaders(installation);
     const response = await this.fetchApi.fetch(url, { headers });
-    return this.handleResponse<T>(response);
+    return this.handleResponse<T>(response, installation);
   }
 
   /**
@@ -622,7 +646,7 @@ export class MusterApiClient implements MusterApi {
       headers,
       body: JSON.stringify(body),
     });
-    return this.handleResponse<T>(response);
+    return this.handleResponse<T>(response, installation);
   }
 
   private async buildUrl(path: string, installation?: string): Promise<string> {
@@ -634,12 +658,18 @@ export class MusterApiClient implements MusterApi {
     return url.toString();
   }
 
-  private async handleResponse<T>(response: Response): Promise<T> {
+  private async handleResponse<T>(
+    response: Response,
+    installation: string | undefined,
+  ): Promise<T> {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const { message, details } =
         (errorData as { error?: { message?: string; details?: unknown } })
           ?.error ?? {};
+      if (message && MUSTER_TOKEN_EXPIRED.test(message)) {
+        throw sessionExpiredError(installation);
+      }
       const error = new Error(
         message ?? `Muster request failed with status ${response.status}`,
       );
