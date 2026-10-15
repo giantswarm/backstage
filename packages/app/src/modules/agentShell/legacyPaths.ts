@@ -1,3 +1,10 @@
+import {
+  isLegacyServeLink,
+  parseServeSeed,
+  parseSkillDetailPath,
+  serveSeedSearch,
+} from '@giantswarm/backstage-plugin-agent-platform';
+
 /**
  * Where an address of the Agent Platform's old URL tree (`/agent-platform/**`,
  * and the older `/agents/**`) lives now: one hop, straight to the final page
@@ -5,6 +12,10 @@
  * "Decisions and plan"). The old tree's own redirects — an index to its
  * Customize tab, a retired view to its successor, an unknown sub-path to the
  * nearest valid parent — are folded in, so no old address takes a second hop.
+ *
+ * Paths resolve as the old routers ranked them: an exact static route above a
+ * dynamic one, a splat last, and every static segment compared
+ * case-insensitively, as react-router does.
  *
  * Not wired up yet: the cut-over's `/agent-platform/*` and `/agents/*`
  * catch-alls call it (giantswarm/giantswarm#38573, Prep 3).
@@ -30,9 +41,14 @@ const SHELL_ROOT = 'agent-platform';
 /** The address before `/agent-platform/agents`, redirected there. */
 const OLDEST_AGENTS_ROOT = 'agents';
 
+// The old tree's tabs, steps and views, as its routers matched them. A
+// snapshot on purpose, not derived from the plugins: the cut-over rewrites
+// those routers for the new tree, while this mapping describes only the old
+// one, which no longer changes. What both trees read the same way (a skill's
+// path, Serve model's seed) comes from agent-platform instead.
 const AGENT_WIZARD_STEPS = ['skills', 'tools', 'review'];
 const AGENT_DETAIL_TABS = ['sessions', 'tools', 'usage'];
-const CONNECTOR_WIZARD_STEPS = ['auth', 'verify'];
+const CONNECTOR_WIZARD_STEPS = ['auth', 'review', 'verify'];
 const CONNECTOR_TABS = [
   'resources',
   'prompts',
@@ -55,35 +71,46 @@ function path(root: string, ...segments: (string | undefined)[]): string {
   return [root, ...segments].filter(Boolean).join('/');
 }
 
-/** Whether `segment` is one of `allowed`, so a tab or step can stay. */
-function oneOf(segment: string | undefined, allowed: string[]) {
-  return segment !== undefined && allowed.includes(segment);
+/** A static segment as the old routers compared it: case-insensitively. */
+function key(segment: string | undefined): string | undefined {
+  return segment?.toLowerCase();
+}
+
+/** The segment as one of `allowed`, so a tab or step can stay; else none. */
+function known(
+  segment: string | undefined,
+  allowed: string[],
+): string | undefined {
+  const lower = key(segment);
+  return lower !== undefined && allowed.includes(lower) ? lower : undefined;
 }
 
 /**
- * Whether a skill page's splat names a repository: `<owner>/<repo>…`, or
- * `-/<host>/<repo path>[/-/<dir…>]` outside github.com. The page sends any
- * other splat to the skill list (`parseSkillDetailPath` in agent-platform's
- * `lib/skills.ts`, mirrored here).
+ * Whether a skill page's splat names a repository; the page sent any other
+ * splat to the skill list. A malformed escape names none.
  */
 function namesSkillRepository(splat: string[]): boolean {
-  if (splat[0] === '-') {
-    const [, host, ...rest] = splat;
-    const mark = rest.indexOf('-');
-    const repoPath = mark === -1 ? rest : rest.slice(0, mark);
-    return Boolean(host) && repoPath.length > 0;
+  try {
+    return parseSkillDetailPath(splat.join('/')) !== undefined;
+  } catch {
+    return false;
   }
-  return splat.length >= 2;
 }
 
-/** The query without `names`, as `?…` or empty. */
-function searchWithout(params: URLSearchParams, ...names: string[]): string {
-  const rest = new URLSearchParams(params);
-  for (const name of names) {
-    rest.delete(name);
-  }
-  const search = rest.toString();
-  return search ? `?${search}` : '';
+/**
+ * The query without the parameters `names`, as `?…` or empty. The rest
+ * stays as it was written, its encoding included.
+ */
+function searchWithout(search: string, ...names: string[]): string {
+  const kept = search
+    .replace(/^\?/, '')
+    .split('&')
+    .filter(
+      pair =>
+        pair !== '' &&
+        !names.includes(Array.from(new URLSearchParams(pair).keys())[0]),
+    );
+  return kept.length > 0 ? `?${kept.join('&')}` : '';
 }
 
 /** The old address's `?installation=`, else the caller's default. */
@@ -100,17 +127,21 @@ function sessionsTarget(rest: string[]): string {
 
 function agentsTarget(rest: string[]): string {
   const root = '/customize/agents';
-  if (rest[0] === 'new') {
-    return path(
-      root,
-      'new',
-      oneOf(rest[1], AGENT_WIZARD_STEPS) ? rest[1] : undefined,
-    );
+  // The wizard's routes are exact, one or two segments: `new/<a>/<b>` is the
+  // detail page of an agent on an installation named `new`.
+  if (key(rest[0]) === 'new' && rest.length <= 2) {
+    return path(root, 'new', known(rest[1], AGENT_WIZARD_STEPS));
+  }
+  // The former `…/<name>/edit`, exact, outranks the edit wizard's splat:
+  // `edit/a/b/edit` edited the agent `edit/a/b`.
+  if (rest.length === 4 && key(rest[3]) === 'edit') {
+    return path(root, rest[0], rest[1], rest[2], 'edit');
   }
   // The edit wizard's static `edit` outranks the detail route's dynamic
   // installation, but only with its three segments after it: `edit/a/b` is
-  // the detail page of an installation named `edit`.
-  if (rest[0] === 'edit' && rest.length >= 4) {
+  // the detail page of an installation named `edit`. Its steps are exact;
+  // an unknown or deeper one is the edit index.
+  if (key(rest[0]) === 'edit' && rest.length >= 4) {
     const [, installation, namespace, name, step] = rest;
     return path(
       root,
@@ -118,22 +149,21 @@ function agentsTarget(rest: string[]): string {
       namespace,
       name,
       'edit',
-      oneOf(step, AGENT_WIZARD_STEPS) ? step : undefined,
+      rest.length === 5 ? known(step, AGENT_WIZARD_STEPS) : undefined,
     );
   }
   if (rest.length < 3) {
     return root;
   }
   const [installation, namespace, name, tab] = rest;
-  const agent = path(root, installation, namespace, name);
-  // The former `…/<name>/edit`.
-  if (tab === 'edit' && rest.length === 4) {
-    return `${agent}/edit`;
-  }
   // An unknown tab, or anything deeper, is the agent's Overview.
-  return rest.length === 4 && oneOf(tab, AGENT_DETAIL_TABS)
-    ? `${agent}/${tab}`
-    : agent;
+  return path(
+    root,
+    installation,
+    namespace,
+    name,
+    rest.length === 4 ? known(tab, AGENT_DETAIL_TABS) : undefined,
+  );
 }
 
 function skillsTarget(rest: string[]): string {
@@ -143,10 +173,10 @@ function skillsTarget(rest: string[]): string {
   }
   // Only the bare `new` is the add form; `new/<repo>` is a skill of an
   // owner named `new`.
-  if (rest.length === 1 && rest[0] === 'new') {
+  if (rest.length === 1 && key(rest[0]) === 'new') {
     return `${root}/new`;
   }
-  if (rest[0] === 'edit') {
+  if (key(rest[0]) === 'edit') {
     const splat = rest.slice(1);
     return namesSkillRepository(splat) ? path(root, 'edit', ...splat) : root;
   }
@@ -155,19 +185,21 @@ function skillsTarget(rest: string[]): string {
 
 function connectorsTarget(
   rest: string[],
-  params: URLSearchParams,
+  search: string,
   defaultInstallation: string,
 ): LegacyAgentPlatformTarget {
   const root = '/customize/connectors';
+  const params = new URLSearchParams(search);
   const installation = installationOf(params, defaultInstallation);
   // The list's `?installation=` is the section's scope, and stays one.
   if (rest.length === 0) {
-    return { pathname: root, search: searchWithout(params) };
+    return { pathname: root, search: searchWithout(search) };
   }
-  if (rest[0] === 'new') {
-    // The retired review step was the Sign-in step's address before.
-    const step = rest[1] === 'review' ? 'auth' : rest[1];
-    const knownStep = oneOf(step, CONNECTOR_WIZARD_STEPS) ? step : undefined;
+  // The wizard's routes are exact: `new/<anything else>` is the page of a
+  // connector named `new`. The retired review step was the Sign-in step.
+  const step = rest.length === 2 ? known(rest[1], CONNECTOR_WIZARD_STEPS) : '';
+  if (key(rest[0]) === 'new' && rest.length <= 2 && step !== undefined) {
+    const wizardStep = step === 'review' ? 'auth' : step;
     const edited = params.get('edit')?.trim();
     if (edited) {
       return {
@@ -176,124 +208,111 @@ function connectorsTarget(
           encodeURIComponent(installation),
           encodeURIComponent(edited),
           'edit',
-          knownStep,
+          wizardStep,
         ),
-        search: searchWithout(params, 'edit', 'installation'),
+        search: searchWithout(search, 'edit', 'installation'),
       };
     }
     return {
-      pathname: path(root, 'new', knownStep),
-      search: searchWithout(params),
+      pathname: path(root, 'new', wizardStep),
+      search: searchWithout(search),
     };
   }
   const [server, tab, tool] = rest;
   const connector = path(root, encodeURIComponent(installation), server);
-  const search = searchWithout(params, 'installation');
-  if (tab === 'tools' && tool && rest.length === 3) {
-    return { pathname: `${connector}/tools/${tool}`, search };
+  const kept = searchWithout(search, 'installation');
+  if (rest.length === 3 && key(tab) === 'tools') {
+    return { pathname: path(connector, 'tools', tool), search: kept };
   }
   // An unknown tab, or anything deeper, is the connector's Tools tab.
   return {
-    pathname:
-      rest.length === 2 && oneOf(tab, CONNECTOR_TABS)
-        ? `${connector}/${tab}`
-        : connector,
-    search,
+    pathname: path(
+      connector,
+      rest.length === 2 ? known(tab, CONNECTOR_TABS) : undefined,
+    ),
+    search: kept,
   };
 }
 
 function workflowsTarget(
   rest: string[],
-  params: URLSearchParams,
+  search: string,
   defaultInstallation: string,
 ): LegacyAgentPlatformTarget {
   const root = '/customize/workflows';
   if (rest.length === 0) {
-    return { pathname: root, search: searchWithout(params) };
+    return { pathname: root, search: searchWithout(search) };
   }
   const [name, tab] = rest;
-  const workflow = path(
-    root,
-    encodeURIComponent(installationOf(params, defaultInstallation)),
-    name,
+  const installation = installationOf(
+    new URLSearchParams(search),
+    defaultInstallation,
   );
   // An unknown tab, or anything deeper, is the workflow's Overview.
   return {
-    pathname:
-      rest.length === 2 && oneOf(tab, WORKFLOW_TABS)
-        ? `${workflow}/${tab}`
-        : workflow,
-    search: searchWithout(params, 'installation'),
+    pathname: path(
+      root,
+      encodeURIComponent(installation),
+      name,
+      rest.length === 2 ? known(tab, WORKFLOW_TABS) : undefined,
+    ),
+    search: searchWithout(search, 'installation'),
   };
 }
 
-function modelsTarget(
-  rest: string[],
-  params: URLSearchParams,
-): LegacyAgentPlatformTarget {
+const RUNNING_MODELS = '/customize/models/hosting';
+
+function modelsTarget(rest: string[]): string {
   const root = '/customize/models';
-  const kept = { search: searchWithout(params) };
+  const keys = rest.map(segment => segment.toLowerCase());
   // The retired `configs` view: its list, its create flow and one model.
-  if (rest[0] === 'configs' && rest.length === 1) {
-    return { pathname: root, ...kept };
-  }
-  if (rest[0] === 'configs' && rest[1] === 'new' && rest.length === 2) {
-    return { pathname: `${root}/new`, ...kept };
-  }
-  if (rest[0] === 'configs' && rest.length === 4) {
-    return { pathname: path(root, ...rest.slice(1)), ...kept };
+  if (keys[0] === 'configs') {
+    if (rest.length === 1) {
+      return root;
+    }
+    if (rest.length === 2 && keys[1] === 'new') {
+      return `${root}/new`;
+    }
+    if (rest.length === 4) {
+      return path(root, ...rest.slice(1));
+    }
   }
   // One model's former address: three segments, more than any view's.
   if (rest.length === 3) {
-    return { pathname: path(root, ...rest), ...kept };
+    return path(root, ...rest);
   }
   if (rest.length === 0) {
-    return { pathname: root, ...kept };
+    return root;
   }
-  if (rest[0] === 'new' && rest.length === 1) {
-    return { pathname: `${root}/new`, ...kept };
+  if (rest.length === 1 && keys[0] === 'new') {
+    return `${root}/new`;
   }
-  if (rest[0] === 'edit' && rest.length === 4) {
-    return { pathname: path(root, ...rest.slice(1), 'edit'), ...kept };
+  if (rest.length === 4 && keys[0] === 'edit') {
+    return path(root, ...rest.slice(1), 'edit');
   }
-  const hosting = `${root}/hosting`;
-  const flow = rest.length === 2 ? HOSTING_FLOWS[rest.join('/')] : undefined;
+  const flow = rest.length === 2 ? HOSTING_FLOWS[keys.join('/')] : undefined;
   if (flow) {
-    return { pathname: `${hosting}/${flow}`, ...kept };
+    return `${RUNNING_MODELS}/${flow}`;
   }
-  if (rest.length === 1 && (rest[0] === 'capacity' || rest[0] === 'cache')) {
-    return { pathname: `${hosting}/${rest[0]}`, ...kept };
+  if (rest.length === 1 && (keys[0] === 'capacity' || keys[0] === 'cache')) {
+    return `${RUNNING_MODELS}/${keys[0]}`;
   }
-  // Running models, and any other view, which landed there. An older
-  // release's pool link (`?serve=1&…&preset=…`) opened Serve model in
-  // place; the view forwarded it to Serve model's page, the preset read as
-  // its model.
-  if (params.get('serve') === '1') {
-    const seed = new URLSearchParams(params);
-    seed.delete('serve');
-    const preset = seed.get('preset');
-    seed.delete('preset');
-    if (preset && !seed.get('model')) {
-      seed.set('model', preset);
-    }
-    return { pathname: `${hosting}/serve`, search: searchWithout(seed) };
-  }
-  return { pathname: hosting, ...kept };
+  // Running models, where any other view landed too.
+  return RUNNING_MODELS;
 }
 
 function usageTarget(rest: string[]): string {
   if (rest.length !== 1) {
     return '/usage';
   }
-  const [view] = rest;
   // `mcp` was the first Connectors view's address. Where muster is not
   // registered, `/usage/connectors` itself shows Overview.
-  if (view === 'mcp') {
+  if (key(rest[0]) === 'mcp') {
     return '/usage/connectors';
   }
   // Overview is the bare path now, and every retired or unknown view landed
   // there.
-  return oneOf(view, USAGE_VIEWS) ? `/usage/${view}` : '/usage';
+  return path('/usage', known(rest[0], USAGE_VIEWS));
 }
 
 /**
@@ -301,8 +320,10 @@ function usageTarget(rest: string[]): string {
  * outside the old tree (`/customize/**`, `/`, the classic pages), which keeps
  * its place.
  *
- * The query is kept, except what moves into the path: a connector's, tool's
- * or workflow's `?installation=`, and a connector edit's `?edit=`.
+ * The query is kept as it was written, except what moves into the path — a
+ * connector's, tool's or workflow's `?installation=`, a connector edit's
+ * `?edit=` — and an older release's pool link to Running models
+ * (`?serve=1&…`), which becomes Serve model's seed.
  */
 export function legacyAgentPlatformTarget(
   pathname: string,
@@ -310,20 +331,19 @@ export function legacyAgentPlatformTarget(
   { defaultInstallation }: LegacyAgentPlatformTargetOptions,
 ): LegacyAgentPlatformTarget | undefined {
   const segments = pathname.split('/').filter(Boolean);
-  const params = new URLSearchParams(search);
   const kept = (target: string) => ({
     pathname: target,
-    search: searchWithout(params),
+    search: searchWithout(search),
   });
 
-  if (segments[0] === OLDEST_AGENTS_ROOT) {
+  if (key(segments[0]) === OLDEST_AGENTS_ROOT) {
     return kept(agentsTarget(segments.slice(1)));
   }
-  if (segments[0] !== SHELL_ROOT) {
+  if (key(segments[0]) !== SHELL_ROOT) {
     return undefined;
   }
   const [section, ...rest] = segments.slice(1);
-  switch (section) {
+  switch (key(section)) {
     case 'sessions':
       return kept(sessionsTarget(rest));
     case 'agents':
@@ -332,11 +352,22 @@ export function legacyAgentPlatformTarget(
       return kept(skillsTarget(rest));
     case 'connectors':
     case 'mcp-servers':
-      return connectorsTarget(rest, params, defaultInstallation);
+      return connectorsTarget(rest, search, defaultInstallation);
     case 'workflows':
-      return workflowsTarget(rest, params, defaultInstallation);
-    case 'models':
-      return modelsTarget(rest, params);
+      return workflowsTarget(rest, search, defaultInstallation);
+    case 'models': {
+      const target = modelsTarget(rest);
+      // The Running models view forwarded an older release's pool link to
+      // Serve model's page, with the link's seed.
+      const params = new URLSearchParams(search);
+      if (target === RUNNING_MODELS && isLegacyServeLink(params)) {
+        return {
+          pathname: `${RUNNING_MODELS}/serve`,
+          search: serveSeedSearch(parseServeSeed(params)),
+        };
+      }
+      return kept(target);
+    }
     case 'usage':
       return kept(usageTarget(rest));
     case 'profile':

@@ -705,9 +705,9 @@ export interface ConnectorPageProps {
  *
  * Edit opens the connector wizard pre-filled (`new?edit=<name>`), the flow
  * that added the connector, the way agents and skills are edited. Where the
- * wizard cannot edit the
- * connector — applied from Git, a family, no muster session, settings the
- * wizard cannot represent — Edit stays in place, disabled, saying why.
+ * wizard cannot edit the connector — applied from Git, a family, no muster
+ * session, settings the wizard cannot represent — Edit stays in place,
+ * disabled, saying why.
  */
 export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   const { server: key = '' } = useParams();

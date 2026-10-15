@@ -473,7 +473,6 @@ describe('legacyAgentPlatformTarget: unknown sub-paths go to the nearest valid p
       '/agent-platform/agents/alpha/kagent/sre/tools/unknown',
       '/customize/agents/alpha/kagent/sre',
     ],
-    ['/agent-platform/connectors/new/unknown', '/customize/connectors/new'],
     [
       '/agent-platform/connectors/kubernetes/tools?installation=alpha',
       '/customize/connectors/alpha/kubernetes',
@@ -483,6 +482,47 @@ describe('legacyAgentPlatformTarget: unknown sub-paths go to the nearest valid p
       '/customize/workflows/alpha/deploy-app',
     ],
     ['/agent-platform/profile/unknown', '/profile'],
+  ])('%s → %s', (old, target) => {
+    expect(targetOf(old)).toBe(target);
+  });
+});
+
+describe("legacyAgentPlatformTarget: the old routers' ranking", () => {
+  it.each<Row>([
+    // The wizards' routes are exact; a deeper `new/…` was a detail page.
+    ['/agent-platform/agents/new/skills/x', '/customize/agents/new/skills/x'],
+    ['/agent-platform/agents/new/ns/foo', '/customize/agents/new/ns/foo'],
+    // `…/<name>/edit` outranks the edit wizard's splat.
+    ['/agent-platform/agents/edit/a/b/edit', '/customize/agents/edit/a/b/edit'],
+    // `edit/a/b` is the agent `b` in namespace `a` on installation `edit`.
+    ['/agent-platform/agents/edit/a/b', '/customize/agents/edit/a/b'],
+    // An edit step with more after it is the edit index.
+    [
+      '/agent-platform/agents/edit/i/n/a/skills/extra',
+      '/customize/agents/i/n/a/edit',
+    ],
+    // `new/<not a step>` and `new/tools/<tool>` were a connector named `new`.
+    [
+      '/agent-platform/connectors/new/unknown',
+      '/customize/connectors/home/new',
+    ],
+    [
+      '/agent-platform/connectors/new/tools/search?installation=alpha',
+      '/customize/connectors/alpha/new/tools/search',
+    ],
+    ['/agent-platform/connectors/new/auth/x', '/customize/connectors/home/new'],
+    // Static segments compare case-insensitively; names keep their case.
+    ['/AGENTS', '/customize/agents'],
+    [
+      '/Agent-Platform/Agents/Alpha/kagent/SRE/Tools',
+      '/customize/agents/Alpha/kagent/SRE/tools',
+    ],
+    ['/agent-platform/models/Configs', '/customize/models'],
+    ['/agent-platform/Usage/MCP', '/usage/connectors'],
+    [
+      '/agent-platform/connectors/new/Auth?edit=github',
+      '/customize/connectors/home/github/edit/auth',
+    ],
   ])('%s → %s', (old, target) => {
     expect(targetOf(old)).toBe(target);
   });
@@ -506,6 +546,37 @@ describe('legacyAgentPlatformTarget: addresses', () => {
         '/agent-platform/connectors/new?edit=my%20server&installation=a%2Fb',
       ),
     ).toBe('/customize/connectors/a%2Fb/my%20server/edit');
+  });
+
+  it('keeps the query as it was written', () => {
+    expect(targetOf('/agent-platform?agent=alpha/kagent/sre')).toBe(
+      '/?agent=alpha/kagent/sre',
+    );
+    expect(targetOf('/agent-platform/sessions?q=a%20b+c')).toBe(
+      '/sessions?q=a%20b+c',
+    );
+    expect(
+      targetOf(
+        '/agent-platform/connectors/kubernetes?installation=alpha&q=a%20b',
+      ),
+    ).toBe('/customize/connectors/alpha/kubernetes?q=a%20b');
+  });
+
+  it("reads a pool link's seed as Serve model does", () => {
+    expect(
+      targetOf(
+        '/agent-platform/models/serving?serve=1&installation=alpha&model=%20&preset=llama&backend=unknown&extra=1',
+      ),
+    ).toBe('/customize/models/hosting/serve?installation=alpha&model=llama');
+  });
+
+  it("reads a skill's path as the skill page does", () => {
+    expect(targetOf('/agent-platform/skills/%2D/gitea.lab.local/lab')).toBe(
+      '/customize/skills/%2D/gitea.lab.local/lab',
+    );
+    expect(targetOf('/agent-platform/skills/acme/%E0%A4%A')).toBe(
+      '/customize/skills',
+    );
   });
 
   it('treats an empty ?installation= as none', () => {
