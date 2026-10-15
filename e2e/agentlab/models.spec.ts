@@ -70,15 +70,19 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
   const namespace = detail.exec(new URL(admin.url()).pathname)?.[1];
   const modelPath = `/customize/models/${lab.installation}/${namespace}/default-model-config`;
 
-  // Overview, the model's own address: the agents that run on it. One
-  // column: no facts beside the content.
+  // Overview, the model's own address: its facts in the one column, none
+  // beside the content. Used by counts the agents that run on it once they
+  // are read.
   await expect(admin.getByRole('tab')).toHaveText([
     'Overview',
     'Usage',
+    /^Used by \(\d+\)$/,
     'Details',
   ]);
   await expect(
-    admin.getByRole('heading', { level: 2, name: 'Used by', exact: true }),
+    admin
+      .getByRole('region', { name: 'Model details', exact: true })
+      .getByText('Model ID', { exact: true }),
   ).toBeVisible();
   await expect(admin.getByRole('main').getByRole('complementary')).toHaveCount(
     0,
@@ -94,13 +98,20 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
   await admin.getByRole('tab', { name: 'Usage', exact: true }).click();
   await expect(admin).toHaveURL(new RegExp(`${modelPath}/usage$`));
 
-  await admin.getByRole('tab', { name: 'Details', exact: true }).click();
-  await expect(admin).toHaveURL(new RegExp(`${modelPath}/details$`));
+  await admin.getByRole('tab', { name: /^Used by/ }).click();
+  await expect(admin).toHaveURL(new RegExp(`${modelPath}/used-by$`));
   await expect(
     admin
-      .getByRole('region', { name: 'Model details', exact: true })
-      .getByText('Model ID', { exact: true }),
+      .getByRole('grid', { name: 'Agents using this model', exact: true })
+      .or(admin.getByText('No agent runs on this model yet.', { exact: true })),
   ).toBeVisible();
+
+  await admin.getByRole('tab', { name: 'Details', exact: true }).click();
+  await expect(admin).toHaveURL(new RegExp(`${modelPath}/details$`));
+  // Only the fold-out: the facts are Overview's.
+  await expect(
+    admin.getByRole('region', { name: 'Model details', exact: true }),
+  ).toHaveCount(0);
 
   // The conditions behind the status, folded in place as on the agent page.
   // Once the read settles on Ready the fold-out is closed (it opens on

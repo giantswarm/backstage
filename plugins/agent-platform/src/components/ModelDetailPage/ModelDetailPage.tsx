@@ -40,6 +40,7 @@ import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
 import { modelEditRouteRef } from '../../routes';
+import { useAgents } from '../AgentsDataProvider';
 import { InstallationChip } from '../InstallationChip';
 import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
@@ -47,9 +48,14 @@ import { ModelActionsMenu } from './ModelActionsMenu';
 import { ModelDetailsTab } from './ModelDetailsTab';
 import { ModelOverviewTab } from './ModelOverviewTab';
 import { ModelReadinessAlert } from './ModelReadinessAlert';
-import { MODEL_PAGE_TABS } from './modelTabs';
+import { modelPageTabs } from './modelTabs';
 import { ModelUsageTab } from './ModelUsageTab';
-import { describeContextWindow } from './modelUsage';
+import { ModelUsedByTab } from './ModelUsedByTab';
+import {
+  agentsUsingModel,
+  describeContextWindow,
+  modelConfigIdOf,
+} from './modelUsage';
 import { useModelUsage } from './useModelUsage';
 
 /**
@@ -100,7 +106,7 @@ function ModelFrame({
   );
 }
 
-/** The Details tab's plain facts: what it calls, where, and since when. */
+/** Overview's plain facts: what it calls, where, and since when. */
 export function modelFacts({
   modelConfig,
   installation,
@@ -201,14 +207,30 @@ function ModelDetailPageContent() {
 
   const deletion = useDeleteModelConfig(modelConfig);
 
-  // Read here, above the tabs, so Overview's Used by and the Usage tab share
-  // one result. Only for a model there is: the not-found and error frames
+  // Read here, above the tabs, so Used by and the Usage tab share one
+  // result. Only for a model there is: the not-found and error frames
   // never show it.
   const usage = useModelUsage(
     modelConfig ? installation : undefined,
     modelConfig?.getModel(),
     modelConfig?.getDisplayName() ?? name,
   );
+
+  // The agents whose spec names this ModelConfig, for Used by and its count.
+  const {
+    rows: agentRows,
+    isLoading: agentsLoading,
+    unreachableInstallations,
+  } = useAgents();
+  const using = useMemo(
+    () =>
+      agentsUsingModel(
+        agentRows,
+        modelConfigIdOf(installation, namespace, name),
+      ),
+    [agentRows, installation, namespace, name],
+  );
+  const agentsUnreachable = unreachableInstallations.includes(installation);
 
   const isEditable =
     Boolean(modelConfig) &&
@@ -254,7 +276,7 @@ function ModelDetailPageContent() {
         title="Model"
         heading={<ShellPageTitleSkeleton label="Loading model" />}
         badges={<ShellPageBadgeSkeleton />}
-        tabs={MODEL_PAGE_TABS}
+        tabs={modelPageTabs({ usedBy: undefined, isLoading: true })}
       >
         <LoadingIndicator label="Reading the model…" />
       </ModelFrame>
@@ -308,7 +330,10 @@ function ModelDetailPageContent() {
         </>
       }
       meta={modelConfig.getProvider()}
-      tabs={MODEL_PAGE_TABS}
+      tabs={modelPageTabs({
+        usedBy: agentsUnreachable ? undefined : using.length,
+        isLoading: agentsLoading,
+      })}
     >
       <Flex direction="column" gap="4">
         <ModelReadinessAlert
@@ -322,13 +347,10 @@ function ModelDetailPageContent() {
             element={
               <ModelOverviewTab
                 modelConfig={modelConfig}
-                installation={installation}
-                namespace={namespace}
-                name={name}
+                facts={facts}
                 servedBy={servedBy}
                 owner={owner}
                 isUnsupportedProvider={isUnsupportedProvider}
-                usage={usage}
               />
             }
           />
@@ -343,6 +365,18 @@ function ModelDetailPageContent() {
             }
           />
           <Route
+            path="used-by"
+            element={
+              <ModelUsedByTab
+                installation={installation}
+                using={using}
+                isLoading={agentsLoading}
+                isUnreachable={agentsUnreachable}
+                usage={usage}
+              />
+            }
+          />
+          <Route
             path="details"
             element={
               <ModelDetailsTab
@@ -350,7 +384,6 @@ function ModelDetailPageContent() {
                 key={`${installation}/${namespace}/${name}`}
                 modelConfig={modelConfig}
                 installation={installation}
-                facts={facts}
               />
             }
           />
@@ -368,15 +401,16 @@ function ModelDetailPageContent() {
 /**
  * One model (`<customize>/models/<installation>/<namespace>/<name>`, routed
  * by the app's Customize page), as a read view with Edit as an action, in
- * three tabs, each its own address under the model's:
+ * four tabs, each its own address under the model's:
  *
  * - **Overview** (the index): whether the serving layer serves it, why it
- *   cannot be edited here, and the agents that run on it, each with what it
- *   spent on the model.
+ *   cannot be edited here, then what it calls, where and since when.
  * - **Usage** (`usage`): the gateway's figures for the model over the last
  *   30 days and its spend per day.
- * - **Details** (`details`): what it calls, where and since when, then
- *   "Technical details" with the resource and the controller's conditions.
+ * - **Used by** (`used-by`), counted in the tab: the agents that run on it,
+ *   each with what it spent on the model.
+ * - **Details** (`details`): "Technical details" with the resource and the
+ *   controller's conditions.
  *
  * Any other address under the model's redirects to Overview. A model the
  * controller has not accepted says why above every tab, linking to Details,

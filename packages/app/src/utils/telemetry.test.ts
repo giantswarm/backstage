@@ -460,6 +460,7 @@ describe('getTelemetryPageViewPayload', () => {
 
     it.each([
       ['/customize/models/gazelle/agent-platform/gpt-4o/usage', 'usage'],
+      ['/customize/models/gazelle/agent-platform/gpt-4o/used-by', 'used-by'],
       ['/customize/models/gazelle/agent-platform/gpt-4o/details', 'details'],
       ['/customize/models/gazelle/agent-platform/gpt-4o/details/', 'details'],
     ])('reports the model page tab %s as the view', (pathname, view) => {
@@ -689,6 +690,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/models',
       '/customize/models/gazelle/agent-platform/gpt-4o',
       '/customize/models/gazelle/agent-platform/gpt-4o/usage',
+      '/customize/models/gazelle/agent-platform/gpt-4o/used-by',
       '/customize/models/gazelle/agent-platform/gpt-4o/details',
       '/customize/workflows',
       '/installations',

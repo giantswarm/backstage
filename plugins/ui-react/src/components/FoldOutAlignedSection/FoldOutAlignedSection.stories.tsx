@@ -18,7 +18,7 @@ const meta = {
             "fold-out insets its title, so the region's content lines up with it.",
           whenToUse:
             "A detail page's Details tab: its plain facts in this section, " +
-            'then the `TechnicalDetailsFoldOut`. The connector, model and ' +
+            'then the `TechnicalDetailsFoldOut`. The connector and ' +
             'workflow pages use it.',
           migration: 'mixed',
         }),

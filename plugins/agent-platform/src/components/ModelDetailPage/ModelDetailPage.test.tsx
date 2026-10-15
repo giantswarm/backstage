@@ -84,11 +84,13 @@ jest.mock('../../hooks/useLlmUsage', () => ({
 
 // The fleet's agents, as the Customize page's provider lists them.
 let mockAgents: AgentRow[] = [];
+let mockAgentsLoading = false;
+let mockUnreachableInstallations: string[] = [];
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({
     rows: mockAgents,
-    isLoading: false,
-    unreachableInstallations: [],
+    isLoading: mockAgentsLoading,
+    unreachableInstallations: mockUnreachableInstallations,
   }),
 }));
 
@@ -239,6 +241,7 @@ function rejectedSonnet() {
 
 const DETAILS = '/customize/models/inst-1/kagent/sonnet/details';
 const USAGE = '/customize/models/inst-1/kagent/sonnet/usage';
+const USED_BY = '/customize/models/inst-1/kagent/sonnet/used-by';
 
 describe('ModelDetailPage', () => {
   beforeEach(() => {
@@ -256,6 +259,8 @@ describe('ModelDetailPage', () => {
       isError: false,
       isAvailable: true,
     };
+    mockAgentsLoading = false;
+    mockUnreachableInstallations = [];
     mockAgents = [
       agent('Support Triage', 'support-triage', 'inst-1/kagent/sonnet'),
       agent('Research Assistant', 'researcher', 'inst-1/kagent/sonnet'),
@@ -271,9 +276,11 @@ describe('ModelDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    // Used by counts the agents on the model, as on the skill page.
     expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
       'Overview',
       'Usage',
+      'Used by (2)',
       'Details',
     ]);
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
@@ -388,6 +395,8 @@ describe('ModelDetailPage', () => {
   it('folds Technical details away for an accepted model, with the resource and its conditions inside', async () => {
     await renderPage(DETAILS);
 
+    // The plain facts are Overview's.
+    expect(screen.queryByRole('region', { name: 'Model details' })).toBeNull();
     const trigger = screen.getByRole('button', { name: 'Technical details' });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('API key from')).toBeNull();
@@ -445,16 +454,19 @@ describe('ModelDetailPage', () => {
       'data-legend',
       'false',
     );
-    // Used by is the Overview's.
-    expect(screen.queryByText('Used by')).toBeNull();
+    // The agents are Used by's.
+    expect(
+      screen.queryByRole('grid', { name: 'Agents using this model' }),
+    ).toBeNull();
   });
 
-  it('lists the agents whose spec names this model on Overview, linked, with their spend on it', async () => {
-    await renderPage();
+  it('lists the agents whose spec names this model on Used by, linked, with their spend on it', async () => {
+    await renderPage(USED_BY);
 
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Used by' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Used by (2)' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     const list = screen.getByRole('grid', { name: 'Agents using this model' });
     const items = within(list).getAllByRole('row');
     expect(items.map(item => item.textContent)).toEqual([
@@ -471,8 +483,43 @@ describe('ModelDetailPage', () => {
       '/agent-platform/agents/inst-1/kagent/support-triage',
     );
     expect(screen.queryByText('Copywriter')).toBeNull();
+    expect(
+      screen.getByText(
+        'Each agent shows its spend on this model over the last 30 days.',
+      ),
+    ).toBeInTheDocument();
     // The figures themselves are the Usage tab's.
     expect(screen.queryByText('Model calls')).toBeNull();
+  });
+
+  it('keeps the agents off Overview', async () => {
+    await renderPage();
+
+    expect(
+      screen.queryByRole('grid', { name: 'Agents using this model' }),
+    ).toBeNull();
+    expect(screen.queryByText('No agent runs on this model yet.')).toBeNull();
+  });
+
+  it('counts no agents on Used by while they load', async () => {
+    mockAgents = [];
+    mockAgentsLoading = true;
+    await renderPage(USED_BY);
+
+    expect(screen.getByRole('tab', { name: 'Used by' })).toBeInTheDocument();
+    // Still reading: neither a count nor the claim that none use it.
+    expect(screen.queryByText('No agent runs on this model yet.')).toBeNull();
+  });
+
+  it('counts no agents on Used by where they could not be read', async () => {
+    mockAgents = [];
+    mockUnreachableInstallations = ['inst-1'];
+    await renderPage(USED_BY);
+
+    expect(screen.getByRole('tab', { name: 'Used by' })).toBeInTheDocument();
+    expect(
+      screen.getByText('The agents on inst-1 could not be read.'),
+    ).toBeInTheDocument();
   });
 
   it('lists the agents without spend for a model without a model ID', async () => {
@@ -483,7 +530,7 @@ describe('ModelDetailPage', () => {
       isLoading: false,
       errors: [],
     });
-    await renderPage();
+    await renderPage(USED_BY);
 
     const list = screen.getByRole('grid', { name: 'Agents using this model' });
     expect(within(list).getAllByRole('row')).toHaveLength(2);
@@ -511,7 +558,7 @@ describe('ModelDetailPage', () => {
       isError: false,
       isAvailable: false,
     };
-    await renderPage();
+    await renderPage(USED_BY);
 
     const list = screen.getByRole('grid', { name: 'Agents using this model' });
     expect(within(list).getAllByRole('row')).toHaveLength(2);
@@ -526,7 +573,7 @@ describe('ModelDetailPage', () => {
         'inst-1/kagent/sonnet',
       ),
     );
-    await renderPage();
+    await renderPage(USED_BY);
 
     const items = () =>
       within(
@@ -539,12 +586,15 @@ describe('ModelDetailPage', () => {
     expect(items()).toHaveLength(14);
   });
 
-  it('says so when no agent runs on the model', async () => {
+  it('says so when no agent runs on the model, and counts none', async () => {
     mockAgents = [];
-    await renderPage();
+    await renderPage(USED_BY);
 
     expect(
       screen.getByText('No agent runs on this model yet.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('tab', { name: 'Used by (0)' }),
     ).toBeInTheDocument();
   });
 
@@ -565,9 +615,9 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('Model calls')).toBeNull();
   });
 
-  it('lists the facts on Details, the context window where the table names it', async () => {
+  it('lists the facts on Overview, the context window where the table names it', async () => {
     mockContextWindows = { 'claude-sonnet-4-5*': 200_000 };
-    await renderPage(DETAILS);
+    await renderPage();
 
     const facts = screen.getByRole('region', { name: 'Model details' });
     expect(within(facts).getByText('Anthropic')).toBeInTheDocument();
@@ -580,7 +630,7 @@ describe('ModelDetailPage', () => {
   });
 
   it('leaves the context window out when the table does not name the model', async () => {
-    await renderPage(DETAILS);
+    await renderPage();
 
     expect(screen.queryByText('Context window')).toBeNull();
   });
@@ -593,7 +643,7 @@ describe('ModelDetailPage', () => {
       'true',
     );
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Used by' }),
+      screen.getByRole('region', { name: 'Model details' }),
     ).toBeInTheDocument();
   });
 
@@ -619,7 +669,9 @@ describe('ModelDetailPage', () => {
     mockMayUpdate = false;
     await renderPage();
 
-    expect(screen.getByText('Used by')).toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: 'Model details' }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
 
@@ -665,10 +717,10 @@ describe('ModelDetailPage', () => {
       await renderPage();
 
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
-      expect(screen.getAllByRole('tab')).toHaveLength(3);
+      expect(screen.getAllByRole('tab')).toHaveLength(4);
       expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
       expect(
-        screen.getByRole('grid', { name: 'Agents using this model' }),
+        screen.getByRole('region', { name: 'Model details' }),
       ).toBeInTheDocument();
     } finally {
       layout.restore();
