@@ -9,6 +9,7 @@ import {
   type TechnicalDetailsFoldOutHandle,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { isVertexAIProvider } from '../../../lib/modelConfigs';
 import type { ModelProblem } from '../../../lib/modelProblem';
 
 import { ModelServingStatus } from '../../ModelServingStatus';
@@ -76,11 +77,20 @@ export function ModelOverviewTab({
           </CardBody>
         </Card>
       )}
+      {/* Vertex AI calls leave through Substrate's egress with a token it
+          mints, not through the LLM gateway, so the gateway's spend and token
+          figures the Usage tab reads never include them. */}
+      {isVertexAIProvider(modelConfig.getProvider()) && (
+        <Text as="p" variant="body-small" color="secondary" role="note">
+          The LLM gateway does not meter Vertex AI models yet, so this model’s
+          spend and tokens are not on the Usage tab.
+        </Text>
+      )}
       {isUnsupportedProvider && !owner && (
         <Alert
           status="info"
           title={`Provider ${modelConfig.getProvider()} is not editable here`}
-          description="The form covers OpenAI-compatible, Anthropic, Gemini and Ollama models; manage this one with kubectl."
+          description="The form covers OpenAI-compatible, Anthropic, Gemini, Vertex AI and Ollama models; manage this one with kubectl."
         />
       )}
       <FoldOutAlignedSection aria-label="Model details">

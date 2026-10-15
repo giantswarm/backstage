@@ -154,6 +154,14 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
     return this.jsonData.spec?.ollama;
   }
 
+  getAnthropicVertexAI() {
+    return this.jsonData.spec?.anthropicVertexAI;
+  }
+
+  getGeminiVertexAI() {
+    return this.jsonData.spec?.geminiVertexAI;
+  }
+
   getTls() {
     return this.jsonData.spec?.tls;
   }
