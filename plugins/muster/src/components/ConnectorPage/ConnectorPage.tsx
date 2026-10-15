@@ -42,6 +42,7 @@ import {
   worstSeverity,
 } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
+import { withInstallationQuery } from '../../lib/installationLink';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
 import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
@@ -247,7 +248,7 @@ function ConnectorPageContent({
   const endpoint =
     row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
   const serversRoute = useRouteRef(mcpServersRouteRef);
-  const search = `?installation=${encodeURIComponent(installation)}`;
+  const search = withInstallationQuery('', installation) ?? '';
   const name = serverRowKey(row);
   const members = useMemo(() => rowServers(row), [row]);
   const representativeInfo = representativeServer(row, installation);

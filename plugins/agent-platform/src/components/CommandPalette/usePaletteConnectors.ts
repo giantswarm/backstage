@@ -13,10 +13,10 @@ export type PaletteConnector = {
    */
   page: string;
   /**
-   * What the Connectors tab heads the page with, by the muster plugin's
-   * naming rule (`connectorDisplayNames`) over the CRs of every installation
-   * listed: the display name its CRs agree on, unless another connector would
-   * read the same, else {@link page}.
+   * What the Connectors tab heads the page with on {@link installation}, by
+   * the muster plugin's naming rule (`mcpServerDisplayNames`) over that
+   * installation's CRs: the display name its CRs agree on, unless another
+   * connector there would read the same, else {@link page}.
    */
   displayName: string;
   /** The installation the connector is registered on. */
@@ -47,26 +47,33 @@ export function usePaletteConnectors(
   );
 
   const rows = useMemo(() => {
-    const byKey = new Map<string, { page: string; installation: string }>();
+    // Named per installation, as each installation's Connectors tab names
+    // them: the naming rule reads one installation's CRs.
+    const byInstallation = new Map<string, MCPServer[]>();
     for (const server of resources) {
-      const page = server.getFamily() ?? server.getName();
-      byKey.set(`${server.cluster}/${page}`, {
-        page,
-        installation: server.cluster,
-      });
+      const servers = byInstallation.get(server.cluster) ?? [];
+      servers.push(server);
+      byInstallation.set(server.cluster, servers);
     }
-    const names = mcpServerDisplayNames(resources);
-    return [...byKey.values()]
-      .map(({ page, installation }) => ({
-        page,
-        displayName: names.get(page) ?? page,
-        installation,
-      }))
-      .sort(
-        (a, b) =>
-          a.displayName.localeCompare(b.displayName) ||
-          a.installation.localeCompare(b.installation),
+    const list: PaletteConnector[] = [];
+    for (const [installation, servers] of byInstallation) {
+      const names = mcpServerDisplayNames(servers);
+      const pages = new Set(
+        servers.map(server => server.getFamily() ?? server.getName()),
       );
+      for (const page of pages) {
+        list.push({
+          page,
+          displayName: names.get(page) ?? page,
+          installation,
+        });
+      }
+    }
+    return list.sort(
+      (a, b) =>
+        a.displayName.localeCompare(b.displayName) ||
+        a.installation.localeCompare(b.installation),
+    );
   }, [resources]);
 
   return {

@@ -470,10 +470,11 @@ function PaletteDialog({
           id: `connector:${connector.installation}/${connector.page}`,
           title: connector.displayName,
           meta: connector.installation,
-          href: withInstallationQuery(
-            serverRoute({ server: connector.page }),
-            connector.installation,
-          ),
+          href:
+            withInstallationQuery(
+              serverRoute({ server: connector.page }),
+              connector.installation,
+            ) ?? '',
           haystack: [connector.displayName, connector.page],
         }))
       : [];
@@ -499,10 +500,11 @@ function PaletteDialog({
           title: workflow.name,
           description: workflow.description,
           meta: workflow.installation,
-          href: withInstallationQuery(
-            workflowDetailRoute({ name: workflow.name }),
-            workflow.installation,
-          ),
+          href:
+            withInstallationQuery(
+              workflowDetailRoute({ name: workflow.name }),
+              workflow.installation,
+            ) ?? '',
           haystack: [workflow.name, workflow.description],
         }))
       : [];
@@ -511,9 +513,9 @@ function PaletteDialog({
       sessions: sessionCandidates.filter(candidate => candidate.href),
       agents: agentCandidates.filter(candidate => candidate.href),
       skills: skillCandidates,
-      connectors: connectorCandidates,
+      connectors: connectorCandidates.filter(candidate => candidate.href),
       models: modelCandidates,
-      workflows: workflowCandidates,
+      workflows: workflowCandidates.filter(candidate => candidate.href),
     };
   }, [
     sessions.rows,

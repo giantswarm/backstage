@@ -483,7 +483,7 @@ function WorkflowPageBody({
     <WorkflowPageContent
       key={`${workflow.cluster}/${name}`}
       workflow={workflow}
-      installation={workflow.cluster ?? installationParam}
+      installation={workflow.cluster}
       editAction={editAction}
     />
   );

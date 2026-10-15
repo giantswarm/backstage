@@ -79,12 +79,16 @@ export function ConnectorWizardFrame({
     {
       id: 'connect',
       label: 'Connect',
-      href: connectLink && withEditParam(connectLink(), registeredName),
+      href:
+        connectLink &&
+        withEditParam(connectLink(), registeredName, registeredInstallation),
     },
     {
       id: 'signin',
       label: 'Sign-in',
-      href: signInLink && withEditParam(signInLink(), registeredName),
+      href:
+        signInLink &&
+        withEditParam(signInLink(), registeredName, registeredInstallation),
     },
     { id: 'test', label: 'Test' },
   ];

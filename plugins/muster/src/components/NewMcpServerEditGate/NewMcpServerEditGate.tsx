@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { INSTALLATION_SCOPE_SEARCH_PARAM } from '@giantswarm/backstage-plugin-gs';
 import {
   EmptyStateCard,
   LoadingIndicator,
@@ -18,14 +19,15 @@ import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 /** The query parameter naming the server a wizard run edits. */
 export const EDIT_PARAM = 'edit';
 
-/** The query parameter naming the installation the edited server is on. */
-const INSTALLATION_PARAM = 'installation';
-
 /**
- * A wizard step's path, carrying the server the run edits (if any) so a
- * reload, a shared link or the browser's history lands in the same edit.
- * The link that starts an edit names the server's installation too; the
- * steps after it leave it out, since the edit then holds it.
+ * A wizard step's path, carrying the server the run edits (if any) and its
+ * installation, so a reload, a shared link or the browser's history lands in
+ * the same edit on the same installation. The installation is the section's
+ * scope parameter, so while the edit runs the scope stays on the server's
+ * installation even where the stored scope names another.
+ *
+ * `edit` keeps `encodeURIComponent` (not `URLSearchParams`, which writes a
+ * space as `+`): both name Kubernetes resources, where the two agree.
  */
 export function withEditParam(
   path: string,
@@ -37,7 +39,9 @@ export function withEditParam(
   }
   const edit = `${path}?${EDIT_PARAM}=${encodeURIComponent(name)}`;
   return installation
-    ? `${edit}&${INSTALLATION_PARAM}=${encodeURIComponent(installation)}`
+    ? `${edit}&${INSTALLATION_SCOPE_SEARCH_PARAM}=${encodeURIComponent(
+        installation,
+      )}`
     : edit;
 }
 
@@ -50,7 +54,10 @@ export function withEditParam(
  *   installation (`?installation=`, else the active one): seed it from the
  *   active installation's server list
  *   (a progress indicator while that loads, an empty state when there is no
- *   such server or the wizard cannot edit it).
+ *   such server or the wizard cannot edit it). The scope reads the same
+ *   parameter, so the two agree unless the named installation is not one the
+ *   section can show; then an empty state says so, since the server list
+ *   read is another installation's.
  * - `?edit=<name>` for a GitOps-managed server: Git owns it, so the wizard is
  *   never offered (an empty state points back to the list, whose Edit/Remove
  *   leads to its source) — not even through a typed or shared link.
@@ -81,7 +88,14 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   // The installation the edited server is on: the one the Edit link names,
   // else the active one.
   const editInstallation =
-    searchParams.get(INSTALLATION_PARAM) ?? activeInstallation;
+    searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM) ?? activeInstallation;
+  // The link names an installation the section did not resolve to (muted,
+  // or running no muster): its servers are not the ones read here.
+  const elsewhere =
+    Boolean(editName) &&
+    !isLoadingInstallations &&
+    activeInstallation !== undefined &&
+    editInstallation !== activeInstallation;
   const { registeredName, registeredInstallation, lastSave, startEdit, reset } =
     useNewMcpServerForm();
 
@@ -126,7 +140,7 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
     }
     if (resumeSaved && registeredName) {
       navigate(
-        { search: `?${EDIT_PARAM}=${encodeURIComponent(registeredName)}` },
+        { search: withEditParam('', registeredName, registeredInstallation) },
         { replace: true },
       );
     } else if (!editName) {
@@ -137,6 +151,7 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   }, [
     activeInstallation,
     registeredName,
+    registeredInstallation,
     inSync,
     resumeSaved,
     editName,
@@ -161,7 +176,15 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   ) : undefined;
 
   let body: ReactNode;
-  if (editName && !server && !isLoading && !isLoadingInstallations) {
+  if (elsewhere) {
+    body = (
+      <EmptyStateCard
+        title="Environment not available"
+        description={`The link edits "${editName}" on ${editInstallation}, but connectors on ${editInstallation} cannot be read here. It may be turned off under Cluster access, or run no muster.`}
+        actions={backToServers}
+      />
+    );
+  } else if (editName && !server && !isLoading && !isLoadingInstallations) {
     body = (
       <EmptyStateCard
         title="Connector not found"

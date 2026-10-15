@@ -146,6 +146,7 @@ export function NewConnectorSignInPage() {
     fieldErrors,
     definition,
     registeredName,
+    registeredInstallation,
     markSaved,
   } = useNewMcpServerForm();
 
@@ -211,7 +212,7 @@ export function NewConnectorSignInPage() {
           // What was just written is the base of any further save in this run.
           markSaved(definition);
           if (testLink) {
-            navigate(withEditParam(testLink(), definition.name));
+            navigate(withEditParam(testLink(), definition.name, installation));
           }
         },
       },
@@ -247,9 +248,11 @@ export function NewConnectorSignInPage() {
 
   const onBack = useCallback(() => {
     if (connectLink) {
-      navigate(withEditParam(connectLink(), registeredName));
+      navigate(
+        withEditParam(connectLink(), registeredName, registeredInstallation),
+      );
     }
-  }, [connectLink, navigate, registeredName]);
+  }, [connectLink, navigate, registeredName, registeredInstallation]);
 
   // Guarded: when this render only redirects, pushing
   // actions into the footer slot would flash controls for an unseen page.
@@ -260,7 +263,15 @@ export function NewConnectorSignInPage() {
   if (isRedirecting) {
     return (
       <Navigate
-        to={connectLink ? withEditParam(connectLink(), registeredName) : '..'}
+        to={
+          connectLink
+            ? withEditParam(
+                connectLink(),
+                registeredName,
+                registeredInstallation,
+              )
+            : '..'
+        }
         replace
       />
     );
