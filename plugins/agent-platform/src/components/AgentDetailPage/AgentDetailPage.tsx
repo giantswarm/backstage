@@ -81,7 +81,10 @@ import { NewSessionDialog } from '../NewSessionDialog';
 import { isStartableAgent } from '../../lib/startableAgent';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { toneOfIntent } from '../../lib/customize';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import {
+  type CustomizePaths,
+  useCustomizePaths,
+} from '../../hooks/useCustomizePaths';
 import { AgentCreationProgress } from '../AgentCreationProgress';
 import { AgentActionsMenu, agentWriteMode } from './AgentActionsMenu';
 import { AgentDeleteDialog, isCommitSettled } from './AgentDeleteDialog';
@@ -131,10 +134,13 @@ function BackToAgents({ children }: { children: ReactNode }) {
  * Where an agent's page sits inside the shell: "Customize / Agents / <agent>",
  * on every tab, as on the connector and skill pages.
  */
-function agentBreadcrumbs(title: string): BreadcrumbItem[] {
+function agentBreadcrumbs(
+  title: string,
+  { customize, agents }: CustomizePaths,
+): BreadcrumbItem[] {
   return [
-    { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
-    { label: 'Agents', href: `${SHELL_CUSTOMIZE_PATH}/agents` },
+    { label: 'Customize', href: customize },
+    { label: 'Agents', href: agents },
     { label: title },
   ];
 }
@@ -159,10 +165,11 @@ function AgentFrame({
   /** The h1 instead of `title`, e.g. its skeleton while the agent is read. */
   heading?: ReactNode;
 }) {
+  const customizePaths = useCustomizePaths();
   return (
     <ShellPage
       title={heading ?? title}
-      breadcrumbs={agentBreadcrumbs(title)}
+      breadcrumbs={agentBreadcrumbs(title, customizePaths)}
       {...shellProps}
     >
       {children}

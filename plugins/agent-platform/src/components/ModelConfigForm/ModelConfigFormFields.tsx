@@ -15,13 +15,16 @@ import {
 
 import {
   isSupportedProvider,
+  isVertexAIProvider,
   MODEL_PROVIDER_OPTIONS,
   ModelConfigFieldErrors,
   ModelConfigFormValues,
   PROVIDER_SECRET_KEYS,
   providerHasEndpoint,
+  serviceAccountKeySummary,
 } from '../../lib/modelConfigs';
 import { SecretTextField } from './SecretTextField';
+import { ServiceAccountKeyField } from './ServiceAccountKeyField';
 
 export type ModelConfigFormFieldsProps = {
   values: ModelConfigFormValues;
@@ -33,7 +36,7 @@ export type ModelConfigFormFieldsProps = {
    * The page's `useFieldValidation`, which decides when a field shows its
    * problem: once the person leaves it, or once a submit was blocked.
    */
-  validation: Pick<FieldValidation, 'textFieldProps'>;
+  validation: Pick<FieldValidation, 'textFieldProps' | 'errorFor'>;
   /**
    * Whether "More options" is open. The page owns it, so a blocked submit
    * can open it on a field inside.
@@ -45,6 +48,8 @@ export type ModelConfigFormFieldsProps = {
    * an empty API key field means (see `planKeySecret`).
    */
   originalProvider?: string;
+  /** Edit only: the Vertex AI project the model has on the cluster. */
+  originalProjectID?: string;
 };
 
 function providerLabel(provider: string): string {
@@ -94,12 +99,54 @@ function apiKeyCopy({
 }
 
 /**
+ * What the service account key field says about itself. Unlike an API key it
+ * is never optional where the save would write a Secret: kagent accepts only
+ * a real key. An edit of a Vertex AI model may keep the stored key.
+ */
+function serviceAccountKeyCopy({
+  mode,
+  originalProvider,
+  originalProjectID,
+}: {
+  mode: 'create' | 'edit';
+  originalProvider: string | undefined;
+  originalProjectID: string | undefined;
+}): { description: string; isRequired: boolean; storedKeyProject?: string } {
+  const howTo =
+    'The JSON key file of a service account that can use Vertex AI. The model runs in the project of the key.';
+  if (mode === 'edit' && isVertexAIProvider(originalProvider)) {
+    return {
+      description: `${howTo} Choose a file only to replace the stored key.`,
+      isRequired: false,
+      storedKeyProject: originalProjectID || undefined,
+    };
+  }
+  return { description: howTo, isRequired: true };
+}
+
+/** The Model field's example, in the provider's own naming. */
+function modelPlaceholder(provider: ModelConfigFormValues['provider']): string {
+  switch (provider) {
+    case 'Ollama':
+      return 'e.g. qwen3:8b';
+    case 'AnthropicVertexAI':
+      return 'e.g. claude-sonnet-4-5@20250929';
+    case 'GeminiVertexAI':
+    case 'Gemini':
+      return 'e.g. gemini-2.5-pro';
+    default:
+      return 'e.g. claude-sonnet-4-6';
+  }
+}
+
+/**
  * The fields shared by the create and edit flows (`NewModelPage`). Pure
  * presentation: values and validation live with the page, which hands the
  * problems back as `errors` for each field to show under itself.
  *
  * Plain first, like the agent wizard's first step: what the model is called,
- * which provider and model, and its key. The technical name is said under the
+ * the provider and how to reach it, its key, then the model, whose id the
+ * provider decides. The technical name is said under the
  * name, with the fact that it cannot be changed (M7, like the agent wizard);
  * its override (create only) and skipping TLS verification wait under More
  * options.
@@ -113,6 +160,7 @@ export function ModelConfigFormFields({
   moreOptionsOpen,
   onMoreOptionsOpenChange,
   originalProvider,
+  originalProjectID,
 }: ModelConfigFormFieldsProps) {
   const providerOption = MODEL_PROVIDER_OPTIONS.find(
     option => option.id === values.provider,
@@ -120,7 +168,8 @@ export function ModelConfigFormFields({
   const hasEndpoint = providerHasEndpoint(values.provider);
   const needsKey = Boolean(PROVIDER_SECRET_KEYS[values.provider]);
   const isOllama = values.provider === 'Ollama';
-  const { textFieldProps } = validation;
+  const { textFieldProps, errorFor } = validation;
+  const isVertexAI = isVertexAIProvider(values.provider);
   const keyCopy = apiKeyCopy({
     mode,
     provider: values.provider,
@@ -179,12 +228,9 @@ export function ModelConfigFormFields({
         <CardBody>
           <SectionHeader
             variant="title-x-small"
-            title="Provider & model"
-            description="Choose where the model runs and which model to request there."
+            title="Provider"
+            description="Choose where the model runs."
           />
-          {/* One column, full width: Provider above Model. Side by side, the
-              provider's description (one line or three) set where the Model
-              input started, and the pair never lined up reliably. */}
           <Flex direction="column" gap="4">
             <Select
               label="Provider"
@@ -203,18 +249,6 @@ export function ModelConfigFormFields({
               }}
               description={providerOption?.description}
             />
-            <TextField
-              label="Model"
-              isRequired
-              value={values.model}
-              onChange={model => onChange({ model })}
-              placeholder={
-                isOllama ? 'e.g. qwen3:8b' : 'e.g. claude-sonnet-4-6'
-              }
-              description="Enter the model id as the provider names it."
-              {...textFieldProps('model', errors.model)}
-            />
-
             {hasEndpoint && (
               <TextField
                 label={isOllama ? 'Host' : 'Base URL'}
@@ -235,11 +269,59 @@ export function ModelConfigFormFields({
                 {...textFieldProps('endpoint', errors.endpoint)}
               />
             )}
+
+            {isVertexAI && (
+              <TextField
+                label="Location"
+                isRequired
+                value={values.location}
+                onChange={location => onChange({ location })}
+                placeholder="e.g. europe-west4"
+                description="Where Vertex AI serves the model: global, the us or eu multi-region, or a region such as europe-west4. The model must be offered there."
+                {...textFieldProps('location', errors.location)}
+              />
+            )}
           </Flex>
         </CardBody>
       </Card>
 
-      {needsKey && (
+      {isVertexAI && (
+        <Card>
+          <CardBody>
+            <SectionHeader
+              variant="title-x-small"
+              title="Service account key"
+              description="Stored as a Kubernetes Secret next to the model config; never shown again. Agents never see it: the platform exchanges it for short-lived tokens."
+            />
+            <ServiceAccountKeyField
+              value={values.apiKey}
+              // The project is the key's: kagent refuses a key of another.
+              onChange={apiKey =>
+                onChange({
+                  apiKey,
+                  projectID: apiKey
+                    ? (serviceAccountKeySummary(apiKey)?.projectID ?? '')
+                    : (originalProjectID ?? ''),
+                })
+              }
+              // A chosen file is a selection, complete once made: its
+              // problem shows at once. A missing one waits for the submit.
+              error={
+                values.apiKey
+                  ? errors.apiKey
+                  : errorFor('apiKey', errors.apiKey)
+              }
+              {...serviceAccountKeyCopy({
+                mode,
+                originalProvider,
+                originalProjectID,
+              })}
+            />
+          </CardBody>
+        </Card>
+      )}
+
+      {needsKey && !isVertexAI && (
         <Card>
           <CardBody>
             <SectionHeader
@@ -258,6 +340,21 @@ export function ModelConfigFormFields({
           </CardBody>
         </Card>
       )}
+
+      <Card>
+        <CardBody>
+          <SectionHeader variant="title-x-small" title="Model" />
+          <TextField
+            label="Model"
+            isRequired
+            value={values.model}
+            onChange={model => onChange({ model })}
+            placeholder={modelPlaceholder(values.provider)}
+            description="Enter the model id as the provider names it."
+            {...textFieldProps('model', errors.model)}
+          />
+        </CardBody>
+      </Card>
 
       {/* Edit keeps nothing here without an endpoint: the technical name is
           locked and said under the name. */}

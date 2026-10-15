@@ -7,7 +7,7 @@ import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
 import LaunchIcon from '@material-ui/icons/Launch';
 import SettingsIcon from '@material-ui/icons/Settings';
 import TuneIcon from '@material-ui/icons/Tune';
-import { customizeRouteRef } from './routes';
+import { customizeRouteRef, homeRouteRef } from './routes';
 
 type AgentShellNavItemBase = {
   id: string;
@@ -51,7 +51,7 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     id: 'new-session',
     title: 'New session',
     icon: AddCircleOutlineIcon,
-    path: '/',
+    routeRef: homeRouteRef,
     position: 'top',
   },
   {

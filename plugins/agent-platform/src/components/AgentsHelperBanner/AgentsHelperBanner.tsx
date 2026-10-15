@@ -6,8 +6,8 @@ import CloseIcon from '@material-ui/icons/Close';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useDismissedHint } from '../../hooks/useDismissedHint';
 import { useMetaAgent } from '../../hooks/useMetaAgent';
+import { useNewSessionHref } from '../../hooks/useNewSessionHref';
 import type { AvatarSize } from '../../lib/agentAvatar';
-import { newSessionHref } from '../../lib/newSessionLink';
 import { AgentAvatar } from '../AgentAvatar';
 import type { AgentRow } from '../AgentsDataProvider';
 import { isStartableAgent } from '../NewSessionComposer';
@@ -48,10 +48,12 @@ function AgentsHelperBannerContent({ agent }: { agent: AgentRow }) {
   const classes = useStyles();
   const buildAvatarUrl = useAgentAvatarUrl();
   const { dismissed, isKnown, dismiss } = useDismissedHint(HINT_ID);
+  const newSessionHref = useNewSessionHref();
 
   // Held back until the stored dismissal is known, so a banner the person
-  // already closed doesn't flash on every visit.
-  if (!isKnown || dismissed) {
+  // already closed doesn't flash on every visit. Nothing to offer where the
+  // app has no new-session screen to send the person to.
+  if (!isKnown || dismissed || !newSessionHref) {
     return null;
   }
 

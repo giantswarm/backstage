@@ -19,7 +19,7 @@ import {
   RAIL_WIDTH_STORAGE_KEY,
   RailWidthProvider,
 } from '../RailWidthProvider';
-import { customizeRouteRef } from '../routes';
+import { customizeRouteRef, homeRouteRef } from '../routes';
 import { AgentShellNav } from './AgentShellNav';
 
 const mockOpenPalette = jest.fn();
@@ -42,6 +42,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         agents: createRouteRef(),
         skills: createRouteRef(),
         models: createRouteRef(),
+        profile: createRouteRef(),
       },
     },
     RecentSessions: ({ shellRail }: { shellRail?: boolean }) => (
@@ -110,8 +111,10 @@ async function renderNav({
           }),
         ],
       ],
-      ...(bound && {
-        mountedRoutes: {
+      mountedRoutes: {
+        // The shell's home, the app's own page: always there.
+        '/': homeRouteRef,
+        ...(bound && {
           '/agent-platform/sessions': agentPlatformPlugin.routes.sessions,
           '/customize': customizeRouteRef,
           '/agent-platform/usage': agentPlatformPlugin.routes.usage,
@@ -120,8 +123,9 @@ async function renderNav({
           '/agent-platform/models': agentPlatformPlugin.routes.models,
           '/agent-platform/mcp-servers': musterPlugin.routes.mcpServers,
           '/agent-platform/workflows': musterPlugin.routes.workflows,
-        },
-      }),
+          '/agent-platform/profile': agentPlatformPlugin.routes.profile,
+        }),
+      },
     },
   );
 }

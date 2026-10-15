@@ -65,6 +65,7 @@ export {
   LEGACY_CONNECTOR_GROUP_PATHS,
 } from './lib/connectorGroups';
 export type { ConnectorGroup, ConnectorGroupInfo } from './lib/connectorGroups';
+export { withInstallationQuery } from './lib/installationLink';
 export {
   installationErrorLine,
   isMcpTransportText,

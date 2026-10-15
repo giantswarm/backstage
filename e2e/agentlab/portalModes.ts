@@ -25,6 +25,8 @@ export const SHELL_SPECS = [
   'first-agent.spec.ts',
   'form-validation.spec.ts',
   'gpu-node-pool.spec.ts',
+  'harness-codex-card.spec.ts',
+  'harness-no-limits.spec.ts',
   'inventory-gate.spec.ts',
   'kagent-denial-reason.spec.ts',
   'mcp-auth-notice.spec.ts',

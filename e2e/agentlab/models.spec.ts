@@ -1,4 +1,12 @@
-import { expect, open, test } from './fixtures';
+import type { Page } from '@playwright/test';
+import {
+  createAgentInWizard,
+  deleteAgentInPortal,
+  expect,
+  open,
+  startSessionOnReadyAgent,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 import { modelManagerUnavailable } from './model-manager.fixture';
 
@@ -165,3 +173,231 @@ test('Model hosting’s Running models and GPU tabs render for the installation'
   ).toHaveAttribute('aria-selected', 'true');
   await expect(admin.getByRole('article').first()).toBeVisible();
 });
+
+// --- Vertex AI ---------------------------------------------------------------
+
+type VertexModel = {
+  provider: 'Claude on Vertex AI' | 'Gemini on Vertex AI';
+  displayName: string;
+  model: string;
+  location: string;
+  /** A key file on disk, or the text of one. */
+  key: { file: string } | { content: string };
+};
+
+/** A service account key of the shape kagent checks, signing nothing. */
+function fakeServiceAccountKey(projectID: string): string {
+  return JSON.stringify({
+    type: 'service_account',
+    project_id: projectID,
+    private_key_id: 'e2e',
+    private_key: 'not-a-key',
+    client_email: `e2e@${projectID}.iam.gserviceaccount.com`,
+    token_uri: 'https://oauth2.googleapis.com/token',
+  });
+}
+
+/**
+ * Answers the MCP server sign-in notice with Not now whenever it shows: on a
+ * lab with an OAuth MCP server it docks over the form's footer, where Connect
+ * model is. An open select's underlay takes every click outside its listbox,
+ * so the listbox is closed first; `chooseProvider` opens it again.
+ */
+async function dismissMcpSignInNotice(page: Page) {
+  await page.addLocatorHandler(
+    page.getByRole('complementary', { name: 'MCP server sign-in' }),
+    async notice => {
+      if (await page.getByRole('listbox').isVisible()) {
+        await page.keyboard.press('Escape');
+      }
+      await notice.getByRole('button', { name: 'Not now' }).click();
+    },
+  );
+}
+
+async function chooseProvider(page: Page, provider: VertexModel['provider']) {
+  await expect(async () => {
+    await page.getByRole('button', { name: /Provider/ }).click();
+    await page
+      .getByRole('option', { name: provider })
+      .click({ timeout: 5_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
+/** Fills Connect a model for a Vertex AI model, up to the submit. */
+async function fillVertexModel(page: Page, model: VertexModel) {
+  await open(page, '/agent-platform/models/new');
+  await chooseProvider(page, model.provider);
+  await page
+    .getByRole('textbox', { name: 'Name', exact: true })
+    .fill(model.displayName);
+  await page.getByRole('textbox', { name: /^Location/ }).fill(model.location);
+  await chooseKeyFile(page, model.key);
+  await expect(keyGroup(page).getByRole('status')).toContainText('Read from');
+  await page.getByRole('textbox', { name: /^Model/ }).fill(model.model);
+}
+
+function keyGroup(page: Page) {
+  return page.getByRole('group', { name: /^Service account key/ });
+}
+
+async function chooseKeyFile(page: Page, key: VertexModel['key']) {
+  await page.getByLabel('Service account key file').setInputFiles(
+    'file' in key
+      ? key.file
+      : {
+          name: 'key.json',
+          mimeType: 'application/json',
+          buffer: Buffer.from(key.content),
+        },
+  );
+}
+
+/**
+ * Connects the model and opens its page once kagent accepted it. The page
+ * reads the ModelConfig on arrival, so it is opened again until the
+ * controller's verdict is in.
+ */
+async function connectVertexModel(page: Page, model: VertexModel) {
+  await fillVertexModel(page, model);
+  await page.getByRole('button', { name: 'Connect model' }).click();
+  await expect(page).toHaveURL(/\/customize\/models$/, { timeout: 60_000 });
+  await page
+    .getByRole('rowheader', { name: new RegExp(`^${model.displayName}`) })
+    .getByRole('link')
+    .click();
+  const modelPath = new URL(page.url()).pathname;
+  await expect
+    .poll(
+      async () => {
+        await open(page, modelPath);
+        return page
+          .getByRole('main')
+          .getByText('Ready', { exact: true })
+          .first()
+          .isVisible();
+      },
+      {
+        timeout: 90_000,
+        intervals: [5_000],
+        message: `kagent accepts ${model.displayName}: \`kubectl -n kagent get modelconfigs.api.kagent.dev -o yaml\``,
+      },
+    )
+    .toBe(true);
+  return modelPath;
+}
+
+async function deleteModelInPortal(page: Page, modelPath: string) {
+  await open(page, modelPath);
+  await page.getByRole('button', { name: 'Model actions' }).click();
+  await page.getByRole('menuitem', { name: /Delete model/ }).click();
+  await page
+    .getByRole('dialog', { name: /Delete model/ })
+    .getByRole('button', { name: 'Delete model' })
+    .click();
+  await expect(page).toHaveURL(/\/customize\/models$/, { timeout: 60_000 });
+}
+
+const vertexStamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 12);
+
+test('a Vertex AI model is checked in the form, accepted by kagent, and says the gateway does not meter it', async ({
+  admin,
+}) => {
+  const projectID = 'e2e-project-123';
+  const model: VertexModel = {
+    provider: 'Claude on Vertex AI',
+    displayName: `E2E Vertex ${vertexStamp}`,
+    model: 'claude-sonnet-4-5@20250929',
+    location: 'global',
+    key: { content: fakeServiceAccountKey(projectID) },
+  };
+  await dismissMcpSignInNotice(admin);
+
+  // kagent's own check, in the form, as soon as a file is chosen.
+  await open(admin, '/agent-platform/models/new');
+  await chooseProvider(admin, model.provider);
+  await chooseKeyFile(admin, {
+    content: JSON.stringify({ type: 'authorized_user' }),
+  });
+  await expect(
+    admin.getByText('This file is not a service account key.', {
+      exact: false,
+    }),
+  ).toBeVisible();
+
+  const modelPath = await connectVertexModel(admin, model);
+  try {
+    await expect(
+      admin.getByRole('note').filter({ hasText: 'does not meter Vertex AI' }),
+    ).toBeVisible();
+    await expect(
+      admin.getByText(/is not editable here/),
+      'the form speaks Vertex AI',
+    ).toHaveCount(0);
+  } finally {
+    await deleteModelInPortal(admin, modelPath);
+  }
+});
+
+/**
+ * A real turn on Vertex AI, through a model connected in the form with a real
+ * service account key read from its file. Runs only where the key is given:
+ *
+ *   VERTEX_SA_KEY_FILE   the JSON key (its project_id is the model's project)
+ *   VERTEX_LOCATION      default global
+ *   VERTEX_CLAUDE_MODEL  e.g. claude-sonnet-4-5@20250929; unset skips Claude
+ *   VERTEX_GEMINI_MODEL  e.g. gemini-2.5-flash; unset skips Gemini
+ */
+const vertexKeyFile = process.env.VERTEX_SA_KEY_FILE;
+const vertexTurns = [
+  {
+    provider: 'Claude on Vertex AI' as const,
+    model: process.env.VERTEX_CLAUDE_MODEL,
+    slug: 'claude',
+  },
+  {
+    provider: 'Gemini on Vertex AI' as const,
+    model: process.env.VERTEX_GEMINI_MODEL,
+    slug: 'gemini',
+  },
+];
+
+for (const turn of vertexTurns) {
+  test(`an agent on ${turn.provider} completes a turn`, async ({ admin }) => {
+    test.skip(
+      !vertexKeyFile || !turn.model,
+      'needs VERTEX_SA_KEY_FILE and the provider’s VERTEX_*_MODEL',
+    );
+    test.setTimeout(15 * 60_000);
+
+    const displayName = `E2E Vertex ${turn.slug} ${vertexStamp}`;
+    const agentName = `E2E Vertex ${turn.slug} agent ${vertexStamp}`;
+    const agentSlug = `e2e-vertex-${turn.slug}-agent-${vertexStamp}`;
+    const prompt = 'Reply with exactly the single word PONG and nothing else.';
+
+    await dismissMcpSignInNotice(admin);
+    const modelPath = await connectVertexModel(admin, {
+      provider: turn.provider,
+      displayName,
+      model: turn.model!,
+      location: process.env.VERTEX_LOCATION ?? 'global',
+      key: { file: vertexKeyFile! },
+    });
+    let detailPath: string | undefined;
+    try {
+      detailPath = await createAgentInWizard(admin, agentName, agentSlug, {
+        model: new RegExp(displayName),
+      });
+      await startSessionOnReadyAgent(admin, prompt);
+      await expect(
+        admin.getByTestId('timeline-agent-message').filter({ hasText: 'PONG' }),
+        `the agent on ${turn.provider} answers`,
+      ).toBeVisible({ timeout: 3 * 60_000 });
+    } finally {
+      if (detailPath) {
+        await deleteAgentInPortal(admin, detailPath, agentSlug);
+      }
+      await deleteModelInPortal(admin, modelPath);
+    }
+  });
+}

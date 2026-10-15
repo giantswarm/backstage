@@ -5,8 +5,11 @@ import {
   type WizardStep,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import {
   agentEditRouteRef,
+  agentsRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
@@ -14,17 +17,19 @@ import {
 } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 
 /** The create-agent wizard's steps, in order (Skills only with repositories). */
 export type AgentWizardStepId = 'details' | 'skills' | 'tools' | 'review';
 
 /**
  * Where leaving the create-agent wizard lands: the shell's Customize screen's
- * Agents tab.
+ * Agents tab. Where the app binds no Customize page, the plugin's own Agents
+ * address, which says the list is not available.
  */
 export function useAgentWizardCloseHref(): string {
-  return `${SHELL_CUSTOMIZE_PATH}/agents`;
+  const { agents } = useCustomizePaths();
+  const agentsRoute = useRouteRef(agentsRouteRef);
+  return useCloseHref(agents, agentsRoute?.());
 }
 
 /** Where each step of the agent wizard lives, as route-ref-shaped functions. */

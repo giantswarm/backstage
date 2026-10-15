@@ -1,10 +1,10 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { AgentPlatformCookieAuth } from '../AgentPlatformCookieAuth';
 import { AgentsDataProvider } from '../AgentsDataProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 import { AddSkillPage } from '../AddSkillPage';
 import { EditSkillPage } from '../EditSkillPage';
 import { SkillDetailPage } from '../SkillDetailPage';
@@ -36,7 +36,7 @@ export function SkillsRouter() {
                 <Route
                   index
                   element={
-                    <Navigate to={`${SHELL_CUSTOMIZE_PATH}/skills`} replace />
+                    <ShellCustomizeRedirect tab="skills" keepSearch={false} />
                   }
                 />
                 {/* Static `new` outranks the detail splat, so the add form
