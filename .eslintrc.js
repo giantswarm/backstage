@@ -86,10 +86,12 @@ const shellPathMessage =
   '(useCustomizePaths, useSkillPaths, useServerPageLinks…). ' +
   'giantswarm/giantswarm#38510.';
 
-// A string or template part that starts with one of the shell's URL roots.
-// `\x2F` is a `/`: esquery ends a regular expression at the first `/`, even
-// an escaped one.
-const shellPathPattern = '/^\\x2F(agent-platform|customize)(\\x2F|\\?|$)/';
+// A string, or the first part of a template, that starts with one of the
+// shell's URL roots, followed by a path, a query, a fragment or nothing. A
+// later template part follows an expression, such as a route ref's base, so
+// it is not a path written by hand. `\x2F` is a `/`: esquery ends a regular
+// expression at the first `/`, even an escaped one.
+const shellPathPattern = '/^\\x2F(agent-platform|customize)(\\x2F|\\?|#|$)/';
 
 module.exports = {
   root: true,
@@ -123,7 +125,7 @@ module.exports = {
       // other uses, so it is not checked.
       files: [
         'plugins/*/src/**/*.ts?(x)',
-        'packages/app/src/modules/agentShell/**/*.ts?(x)',
+        'packages/app/src/modules/**/*.ts?(x)',
       ],
       excludedFiles: [
         '**/*.test.ts?(x)',
@@ -143,7 +145,7 @@ module.exports = {
             message: shellPathMessage,
           },
           {
-            selector: `TemplateElement[value.raw=${shellPathPattern}]`,
+            selector: `TemplateLiteral > TemplateElement:first-child[value.raw=${shellPathPattern}]`,
             message: shellPathMessage,
           },
         ],

@@ -34,6 +34,7 @@ import {
 
 import { modelsRouteRef, servingRouteRef } from '../../routes';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import { hasServingLayer, useOptionalServing } from '../ServingProvider';
 import {
   INITIAL_MODEL_CONFIG_FORM,
@@ -79,6 +80,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   const toastApi = useApi(toastApiRef);
   const modelsLink = useRouteRef(modelsRouteRef);
   const { models: customizeModels } = useCustomizePaths();
+  const listHref = useCloseHref(customizeModels, modelsLink?.());
 
   // Every reachable installation that runs kagent is offered, home first (the
   // gs installation inventory) — deliberately not just the ones that already
@@ -194,9 +196,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // Where Close and Cancel leave to: the model itself when editing; else the
   // shell's Customize screen's Models tab, or, where the app binds none, the
   // plugin's own Models address, which says the list is not available.
-  const closeHref = edit
-    ? edit.detailHref
-    : (customizeModels ?? modelsLink?.() ?? '/');
+  const closeHref = edit ? edit.detailHref : listHref;
 
   const onSubmit = useCallback(async () => {
     if (errorCount > 0) {

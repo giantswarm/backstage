@@ -11,6 +11,7 @@ import {
   WizardFrame,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useCloseHref } from '../../hooks/useCloseHref';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
 import { useHostingFlowReturn } from '../../hooks/useHostingFlow';
 import { useServeIntents } from '../../hooks/useServeIntents';
@@ -101,7 +102,7 @@ function servingUnavailable(sharedModelManager: string[], otherwise: string) {
 /** The Serving view's path: where the serving flows return and land. */
 function useServingHref(): string {
   const servingRoute = useRouteRef(servingRouteRef);
-  return servingRoute?.() ?? '/';
+  return useCloseHref(servingRoute?.());
 }
 
 /**
@@ -319,7 +320,7 @@ export function AddGpuNodePoolRoute() {
   );
   const shared = useModelHostingSharedIdentity();
   const capacityRoute = useRouteRef(gpuCapacityRouteRef);
-  const capacityHref = capacityRoute?.() ?? '/';
+  const capacityHref = useCloseHref(capacityRoute?.());
   const closeHref = useHostingFlowReturn(capacityHref);
   const navigate = useNavigate();
   const intents = useServeIntents();

@@ -6,6 +6,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import {
   agentEditRouteRef,
   agentsRouteRef,
@@ -28,7 +29,7 @@ export type AgentWizardStepId = 'details' | 'skills' | 'tools' | 'review';
 export function useAgentWizardCloseHref(): string {
   const { agents } = useCustomizePaths();
   const agentsRoute = useRouteRef(agentsRouteRef);
-  return agents ?? agentsRoute?.() ?? '/';
+  return useCloseHref(agents, agentsRoute?.());
 }
 
 /** Where each step of the agent wizard lives, as route-ref-shaped functions. */

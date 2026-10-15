@@ -1,6 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
-import { workflowsRouteRef } from '../../routes';
+import { workflowsRouteRef } from '../../../routes';
 import { useWorkflowPageLinks } from './useWorkflowPageLinks';
 
 function Probe() {
