@@ -65,13 +65,12 @@ export function RemoveModelBackendDialog({
   const startAnswer = useOpenGeneration(isOpen);
   const label = BACKEND_KIND_LABEL[kind];
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
+  const validation = useFieldValidation(scope, { isOpen });
 
   useEffect(() => {
     if (!isOpen) {
       setTyped('');
       setPlan(undefined);
-      validation.reset();
       write.reset();
       return;
     }

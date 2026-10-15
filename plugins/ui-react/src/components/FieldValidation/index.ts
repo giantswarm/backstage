@@ -10,4 +10,5 @@ export type {
   FieldBlurProps,
   FieldErrorTextProps,
   FieldValidation,
+  FieldValidationOptions,
 } from './FieldValidation';

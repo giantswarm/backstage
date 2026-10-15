@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -256,6 +257,8 @@ describe('useFieldValidation around other fields and presses', () => {
     const [b, setB] = useState('');
     const [extra, setExtra] = useState('');
     const [more, setMore] = useState(false);
+    const [color, setColor] = useState<string>();
+    const colorProblem = color ? undefined : 'Pick a color';
     const validation = useFieldValidation();
     const errors = {
       a: a ? undefined : 'Enter A',
@@ -292,6 +295,17 @@ describe('useFieldValidation around other fields and presses', () => {
         >
           Toggle extra
         </button>
+        {/* A composite field: its list opens in a portal. */}
+        <div {...validation.blurProps('color', colorProblem, 'shown')}>
+          <Select
+            label="Color"
+            options={[{ id: 'red', label: 'Red' }]}
+            selectedKey={color ?? null}
+            onSelectionChange={key => setColor(key ? String(key) : undefined)}
+          />
+          <p>{validation.errorFor('color', colorProblem)}</p>
+        </div>
+        <button onClick={() => setA('filled')}>Fill A</button>
         <button onClick={validation.reveal}>Save</button>
         <button onClick={validation.reset}>Reset</button>
       </>
@@ -354,6 +368,56 @@ describe('useFieldValidation around other fields and presses', () => {
 
     await userEvent.click(field('Extra'));
     await userEvent.tab();
+    expect(field('Extra')).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('checks a field after a press against what the press made of it', async () => {
+    const user = userEvent.setup();
+    // An earlier test's announcement may still stand.
+    document
+      .querySelector('[data-field-validation-announcer]')
+      ?.replaceChildren();
+    render(<PairForm />);
+    await user.type(field('A'), 'x');
+    await user.clear(field('A'));
+
+    // The press fills A in: its old problem is neither shown nor said.
+    await user.click(screen.getByRole('button', { name: 'Fill A' }));
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(field('A')).toHaveValue('filled');
+    expect(field('A')).not.toHaveAttribute('aria-invalid');
+    expect(
+      document.querySelector('[data-field-validation-announcer]')
+        ?.textContent ?? '',
+    ).not.toContain('Enter A');
+  });
+
+  it('does not count opening a field’s own list as leaving the field', async () => {
+    const user = userEvent.setup();
+    render(<PairForm />);
+
+    // From the keyboard, the focus moves from the trigger into the list.
+    const trigger = screen.getByRole('button', { name: /Color/ });
+    act(() => trigger.focus());
+    expect(trigger).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(await screen.findByRole('option', { name: 'Red' })).toBeVisible();
+    expect(screen.getByRole('listbox')).toContainElement(
+      document.activeElement as HTMLElement,
+    );
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(screen.queryByText('Pick a color')).not.toBeInTheDocument();
+  });
+
+  it('treats a field shown again after a reset as new to the next submit', async () => {
+    render(<PairForm />);
+    const toggle = screen.getByRole('button', { name: 'Toggle extra' });
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(toggle);
     expect(field('Extra')).not.toHaveAttribute('aria-invalid');
   });
 

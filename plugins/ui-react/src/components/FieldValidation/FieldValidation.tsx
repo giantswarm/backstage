@@ -190,11 +190,33 @@ type Visit = {
   stop: () => void;
 };
 
-/** Whether the focus moves within `event.currentTarget` (a composite field). */
+/**
+ * Whether the focus stays with the field: it moves within
+ * `event.currentTarget` (a composite field), or into a popover it opened (a
+ * `Select`'s list, which react-aria renders in a portal, marked with
+ * `data-trigger`).
+ */
 function staysInside(event: FocusEvent<Element>): boolean {
   const next = event.relatedTarget;
-  return next instanceof Node && event.currentTarget.contains(next);
+  if (!(next instanceof Element)) {
+    return false;
+  }
+  return (
+    event.currentTarget.contains(next) ||
+    next.closest('[data-trigger]') !== null
+  );
 }
+
+/** A field's problem and value, as `blurProps` was given them. */
+type FieldState = { problem: string | undefined; value: unknown };
+
+export type FieldValidationOptions = {
+  /**
+   * For a dialog that stays mounted while closed: `false` resets the
+   * validation, so the dialog reopens without the last attempt's errors.
+   */
+  isOpen?: boolean;
+};
 
 /*
  * A pointer press in progress. A blur it causes — a click on Commit right
@@ -206,17 +228,21 @@ function staysInside(event: FocusEvent<Element>): boolean {
 let pressing = false;
 let afterPress: Array<() => void> = [];
 let pressTracked = false;
+// Between the pointer's release and the click it makes, if any.
+let clickTimer: number | undefined;
 
-function endPress() {
-  if (!pressing) {
-    return;
-  }
-  pressing = false;
+/** Runs the checks that waited for the press, after its handlers. */
+function flushAfterPress() {
+  window.clearTimeout(clickTimer);
+  clickTimer = undefined;
   const pending = afterPress;
   afterPress = [];
-  // After the press's own click and press handlers have run.
+  // After the press's own handlers and the render they cause.
   window.setTimeout(() => pending.forEach(run => run()), 0);
 }
+
+/** How long a release waits for its click before the checks run anyway. */
+const CLICK_WAIT_MS = 150;
 
 function trackPresses() {
   if (pressTracked || typeof document === 'undefined') {
@@ -230,15 +256,38 @@ function trackPresses() {
     },
     true,
   );
-  document.addEventListener('pointerup', endPress, true);
-  document.addEventListener('pointercancel', endPress, true);
+  const release = () => {
+    if (!pressing) {
+      return;
+    }
+    pressing = false;
+    // A press that makes no click (released off the button) ends here.
+    clickTimer = window.setTimeout(flushAfterPress, CLICK_WAIT_MS);
+  };
+  document.addEventListener('pointerup', release, true);
+  document.addEventListener('pointercancel', release, true);
+  // In the bubbling phase, so React's handlers for the click have run.
+  document.addEventListener('click', () => {
+    if (clickTimer !== undefined) {
+      flushAfterPress();
+    }
+  });
   // A press whose pointerup never arrived (released outside the window).
-  document.addEventListener('keydown', endPress, true);
+  document.addEventListener(
+    'keydown',
+    () => {
+      if (pressing || clickTimer !== undefined) {
+        pressing = false;
+        flushAfterPress();
+      }
+    },
+    true,
+  );
 }
 
 /** Runs `check` now, or once the pointer press in progress is over. */
 function whenPressEnds(check: () => void) {
-  if (pressing) {
+  if (pressing || clickTimer !== undefined) {
     afterPress.push(check);
   } else {
     check();
@@ -315,11 +364,14 @@ function announce(message: string) {
  *
  * In a dialog, pass a ref to an element inside the dialog's body as `scope`:
  * the dialog renders in a portal, outside any `WizardFrame`, and the page
- * behind it is not where the person is looking.
+ * behind it is not where the person is looking. Pass the dialog's `isOpen`
+ * too: closing it resets the validation, so it reopens quiet.
  */
 export function useFieldValidation(
   scope?: RefObject<HTMLElement>,
+  options: FieldValidationOptions = {},
 ): FieldValidation {
+  const { isOpen } = options;
   const [submitted, setSubmitted] = useState(false);
   const [attempt, setAttempt] = useState(0);
   // Fields left with a value, or typed in: their errors show from then on.
@@ -334,8 +386,17 @@ export function useFieldValidation(
   // later change brings in. Field names only, recorded once per field.
   const commits = useRef(0);
   const firstSeen = useRef(new Map<string, number>());
+  // Each field's problem and value as last committed, for a check that runs
+  // after a press: the press may have changed the field. Written during
+  // render into `rendered`, and taken over only once that render commits.
+  const rendered = useRef(new Map<string, FieldState>());
+  const committed = useRef(new Map<string, FieldState>());
   useLayoutEffect(() => {
     commits.current += 1;
+    rendered.current.forEach((state, field) =>
+      committed.current.set(field, state),
+    );
+    rendered.current.clear();
   });
 
   const visits = useRef(new Map<string, Visit>());
@@ -382,69 +443,74 @@ export function useFieldValidation(
   );
 
   const blurProps = useCallback(
-    (field: string, problem: string | undefined, value?: unknown) => ({
-      onFocus: (event: FocusEvent<Element>) => {
-        const current = visits.current.get(field);
-        if (current?.element.isConnected) {
-          // The focus moving within a composite field.
-          return;
-        }
-        // A visit left behind by a field that unmounted with the focus.
-        current?.stop();
-        // Typing that ends where it started (a value typed and deleted) is
-        // still a change, so the field's input events are watched too.
-        const element = event.currentTarget;
-        const visit: Visit = {
-          element,
-          before: comparable(value) ?? textValue(event.target),
-          typed: false,
-          stop: () => element.removeEventListener('input', onInput),
-        };
-        function onInput() {
-          visit.typed = true;
-        }
-        element.addEventListener('input', onInput);
-        visits.current.set(field, visit);
-        if (!problem && isChecked(field)) {
-          setQuiet(field);
-        }
-      },
-      onBlur: (event: FocusEvent<Element>) => {
-        if (staysInside(event)) {
-          return;
-        }
-        const target = event.target;
-        const now = comparable(value) ?? textValue(target);
-        const visit = visits.current.get(field);
-        visit?.stop();
-        visits.current.delete(field);
-        const changed = visit ? visit.typed || now !== visit.before : false;
-        const wasShown =
-          Boolean(problem) && isChecked(field) && quiet !== field;
-        const atAttempt = attempts.current;
-        const atGeneration = generation.current;
-        whenPressEnds(() => {
-          // The form closed or was reset meanwhile (a dialog's Cancel).
-          if (
-            generation.current !== atGeneration ||
-            (target instanceof Node && !target.isConnected)
-          ) {
+    (field: string, problem: string | undefined, value?: unknown) => {
+      rendered.current.set(field, { problem, value });
+      return {
+        onFocus: (event: FocusEvent<Element>) => {
+          const current = visits.current.get(field);
+          if (current?.element.isConnected) {
+            // The focus moving within a composite field.
             return;
           }
-          setQuiet(previous => (previous === field ? undefined : previous));
-          if (!isFilled(now) && !changed) {
+          // A visit left behind by a field that unmounted with the focus.
+          current?.stop();
+          // Typing that ends where it started (a value typed and deleted) is
+          // still a change, so the field's input events are watched too.
+          const element = event.currentTarget;
+          const visit: Visit = {
+            element,
+            before: comparable(value) ?? textValue(event.target),
+            typed: false,
+            stop: () => element.removeEventListener('input', onInput),
+          };
+          function onInput() {
+            visit.typed = true;
+          }
+          element.addEventListener('input', onInput);
+          visits.current.set(field, visit);
+          if (!problem && isChecked(field)) {
+            setQuiet(field);
+          }
+        },
+        onBlur: (event: FocusEvent<Element>) => {
+          if (staysInside(event)) {
             return;
           }
-          setChecked(previous =>
-            previous[field] ? previous : { ...previous, [field]: true },
-          );
-          // A submit pressed meanwhile focuses the field, which says it.
-          if (problem && !wasShown && attempts.current === atAttempt) {
-            announce(problem);
-          }
-        });
-      },
-    }),
+          const target = event.target;
+          const visit = visits.current.get(field);
+          visit?.stop();
+          visits.current.delete(field);
+          const wasShown =
+            Boolean(problem) && isChecked(field) && quiet !== field;
+          const atAttempt = attempts.current;
+          const atGeneration = generation.current;
+          whenPressEnds(() => {
+            // The form closed or was reset meanwhile (a dialog's Cancel).
+            if (
+              generation.current !== atGeneration ||
+              (target instanceof Node && !target.isConnected)
+            ) {
+              return;
+            }
+            // The field as it is now: a press's handler may have changed it.
+            const latest = committed.current.get(field) ?? { problem, value };
+            const now = comparable(latest.value) ?? textValue(target);
+            const changed = visit ? visit.typed || now !== visit.before : false;
+            setQuiet(previous => (previous === field ? undefined : previous));
+            if (!isFilled(now) && !changed) {
+              return;
+            }
+            setChecked(previous =>
+              previous[field] ? previous : { ...previous, [field]: true },
+            );
+            // A submit pressed meanwhile focuses the field, which says it.
+            if (latest.problem && !wasShown && attempts.current === atAttempt) {
+              announce(latest.problem);
+            }
+          });
+        },
+      };
+    },
     [isChecked, quiet],
   );
 
@@ -480,8 +546,16 @@ export function useFieldValidation(
     setAttempt(0);
     visits.current.forEach(visit => visit.stop());
     visits.current.clear();
+    // A field that renders again after a reset is new to the next submit.
+    firstSeen.current.clear();
     clearAnnouncement();
   }, []);
+
+  useEffect(() => {
+    if (isOpen === false) {
+      reset();
+    }
+  }, [isOpen, reset]);
 
   return {
     errorFor,
@@ -521,6 +595,8 @@ const useStyles = makeStyles(theme => ({
   message: {
     margin: 0,
     fontSize: '0.75rem',
+    // A message with line breaks (a parser's snippet) keeps them.
+    whiteSpace: 'pre-wrap',
     // The token bui's own FieldError reads (and the agent shell's theme
     // sets), so a hand-rolled field's message matches a bui field's exactly.
     // eslint-disable-next-line @backstage/no-deprecated-bui-tokens

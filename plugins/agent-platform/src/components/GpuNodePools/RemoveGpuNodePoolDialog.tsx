@@ -146,7 +146,7 @@ export function RemoveGpuNodePoolDialog({
   const [partial, setPartial] = useState<NodePoolWriteResult>();
   const servingRoute = useRouteRef(servingRouteRef);
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
+  const validation = useFieldValidation(scope, { isOpen });
 
   useEffect(() => {
     if (!isOpen) {
@@ -154,7 +154,6 @@ export function RemoveGpuNodePoolDialog({
       setForce(false);
       setCommitted(undefined);
       setPartial(undefined);
-      validation.reset();
       write.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
