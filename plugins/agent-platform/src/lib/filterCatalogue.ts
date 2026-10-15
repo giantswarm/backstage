@@ -1,12 +1,24 @@
 import { matchesQuery } from '@giantswarm/backstage-plugin-ui-react';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
-import { hasEntries, type CatalogueGroup } from './toolset';
+import {
+  bucketLabel,
+  hasEntries,
+  type CatalogueGroup,
+  type ServerBucket,
+} from './toolset';
 
 function toolMatches(query: string, tool: ToolSummary): boolean {
   return matchesQuery(
     query,
     `${tool.name} ${tool.summary ?? ''} ${tool.description ?? ''}`,
+  );
+}
+
+/** Whether a server's name — the one people read, or its own — matches. */
+function nameMatches(query: string, bucket: ServerBucket): boolean {
+  return (
+    matchesQuery(query, bucket.name) || matchesQuery(query, bucketLabel(bucket))
   );
 }
 
@@ -30,7 +42,7 @@ export function filterCatalogue(
     .map(group => {
       const servers = group.servers
         .map(bucket => {
-          if (matchesQuery(query, bucket.name)) {
+          if (nameMatches(query, bucket)) {
             return bucket;
           }
           return {
@@ -41,7 +53,7 @@ export function filterCatalogue(
         .filter(
           bucket =>
             bucket.tools.length > 0 ||
-            (bucket.needsSignIn && matchesQuery(query, bucket.name)),
+            (bucket.needsSignIn && nameMatches(query, bucket)),
         );
       return {
         ...group,

@@ -134,7 +134,8 @@ export function AgentUsageSection() {
     useSessionUsage(installation);
   // kagent names a connector by muster's server segment; Customize by the
   // family a server belongs to. Read the CRs to name it the same way here.
-  const { servers: musterServers } = useMusterServers(installation);
+  const { servers: musterServers, labels: musterLabels } =
+    useMusterServers(installation);
 
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
@@ -394,7 +395,7 @@ export function AgentUsageSection() {
               name:
                 entry.server === null
                   ? 'Platform tools'
-                  : connectorName(entry.server, musterServers),
+                  : connectorName(entry.server, musterServers, musterLabels),
               calls: entry.calls,
             }))}
             other={usage.otherMcpServers}

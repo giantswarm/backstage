@@ -8,6 +8,20 @@ import {
   ServerAuthStatus,
 } from '../../apis';
 import { McpAuthDialog } from './McpAuthDialog';
+import { MCPServer } from '../../lib/k8s';
+
+/** The installation's MCPServers: none, so every server keeps its name. */
+const mockServers: MCPServer[] = [];
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
+  useResources: () => ({
+    resources: mockServers,
+    errors: [],
+    queries: [],
+    isLoading: false,
+    retry: jest.fn(),
+  }),
+}));
 
 type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
 

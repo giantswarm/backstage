@@ -10,6 +10,8 @@ import {
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
 } from '../../routes';
+import { connectorDisplayNameOn } from '../../lib/serverGrouping';
+import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { withEditParam } from '../NewMcpServerEditGate';
 import { useConnectorGroupPaths, useServerPageLinks } from '../shared';
@@ -64,7 +66,13 @@ export function ConnectorWizardFrame({
   const connectLink = useRouteRef(newMcpServerRouteRef);
   const signInLink = useRouteRef(newMcpServerAuthRouteRef);
   const closeHref = useConnectorWizardCloseHref();
-  const { registeredName } = useNewMcpServerForm();
+  const { registeredName, registeredInstallation } = useNewMcpServerForm();
+  const { mcpServers } = useMusterInstance();
+  // What people call the connector being edited, on the installation it was
+  // registered on; links keep its name.
+  const shownName = registeredName
+    ? connectorDisplayNameOn(mcpServers, registeredInstallation, registeredName)
+    : undefined;
 
   const steps: WizardStep[] = [
     {
@@ -86,11 +94,11 @@ export function ConnectorWizardFrame({
       // context line and the document title.
       title={registeredName ? 'Edit connector' : 'Add connector'}
       documentTitle={
-        registeredName ? [`Edit ${registeredName}`, 'Connectors'] : undefined
+        shownName ? [`Edit ${shownName}`, 'Connectors'] : undefined
       }
       context={
-        registeredName
-          ? `Customize / Connectors / ${registeredName}`
+        shownName
+          ? `Customize / Connectors / ${shownName}`
           : 'Customize / Connectors'
       }
       steps={steps}

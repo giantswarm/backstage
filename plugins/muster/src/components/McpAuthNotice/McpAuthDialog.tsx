@@ -12,6 +12,7 @@ import {
 } from '@backstage/ui';
 import { ServerSignIn } from '../shared';
 import { useMcpServersAwaitingSignIn } from './useMcpServersAwaitingSignIn';
+import { useServerLabels } from './useServerLabels';
 
 const useStyles = makeStyles((theme: Theme) => ({
   list: {
@@ -108,6 +109,7 @@ export function McpAuthDialog({
     );
   }, [isOpen, waitingKey]);
 
+  const labelOf = useServerLabels(installation, rows);
   const remaining = rows.filter(name => waiting.includes(name)).length;
   // Servers muster connects from the portal sign-in itself (token forwarding
   // or exchange): nothing to do, said in one line.
@@ -156,7 +158,7 @@ export function McpAuthDialog({
                   {rows.map(name => (
                     <li key={name} className={classes.row}>
                       <span className={classes.label}>
-                        <span className={classes.name}>{name}</span>
+                        <span className={classes.name}>{labelOf(name)}</span>
                         {SIGN_IN_HINTS[name] && (
                           <Text variant="body-small" color="secondary">
                             {SIGN_IN_HINTS[name]}
@@ -166,6 +168,7 @@ export function McpAuthDialog({
                       {waiting.includes(name) ? (
                         <ServerSignIn
                           serverName={name}
+                          displayName={labelOf(name)}
                           installation={installation}
                         />
                       ) : (

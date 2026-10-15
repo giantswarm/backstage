@@ -31,6 +31,18 @@ describe('toolDisplay', () => {
     });
   });
 
+  it('names the connector by its display name where it has one', () => {
+    expect(
+      toolDisplay('x_jira_search_issues', [
+        { prefix: 'x_jira', serverName: 'jira', displayName: 'Acme Jira' },
+      ]),
+    ).toEqual({
+      kind: 'connector',
+      connector: 'Acme Jira',
+      tool: 'search_issues',
+    });
+  });
+
   it('names a called workflow and muster core tools', () => {
     expect(toolDisplay('workflow_cleanup', PREFIXES)).toEqual({
       kind: 'workflow',

@@ -54,6 +54,7 @@ jest.mock('../../hooks/useMusterServers', () => ({
   useMusterServers: () => ({
     servers: [],
     resources: [],
+    labels: new Map(),
     isLoading: false,
     isUnavailable: false,
   }),

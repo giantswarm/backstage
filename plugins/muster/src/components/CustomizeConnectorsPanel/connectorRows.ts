@@ -338,7 +338,7 @@ export function unsearchedToolsNotes(
     ) {
       continue;
     }
-    byReason.set(reason, [...(byReason.get(reason) ?? []), entry.id]);
+    byReason.set(reason, [...(byReason.get(reason) ?? []), entry.displayName]);
   }
   return [
     ...(catalogueNote ? [catalogueNote] : []),

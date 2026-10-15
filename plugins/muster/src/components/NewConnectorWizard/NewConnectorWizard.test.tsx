@@ -596,6 +596,26 @@ describe('shell connector wizard', () => {
       );
     });
 
+    it('names the connector by its display name in the edit frame', async () => {
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/display-name': 'Acme Jira',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/agent-platform/connectors/new?edit=jira');
+
+      expect(
+        await screen.findByText('Customize / Connectors / Acme Jira'),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(document.title).toBe('Edit Acme Jira · Connectors'),
+      );
+      // The registered name stays the CR's.
+      expect(screen.getByRole('textbox', { name: /^Name/ })).toHaveValue(
+        'jira',
+      );
+    });
+
     it('marks the invalid fields themselves on Continue, as when adding', async () => {
       await renderWizard('/agent-platform/connectors/new?edit=jira');
 

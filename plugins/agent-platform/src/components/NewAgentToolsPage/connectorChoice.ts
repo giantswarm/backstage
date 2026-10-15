@@ -4,6 +4,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import {
+  bucketLabel,
   type CatalogueGroup,
   EXCLUSIVE_PRESETS,
   MAX_INLINE_SELECTORS,
@@ -78,7 +79,11 @@ export function connectorsOf(
 ): ServerBucket[] {
   return groups
     .flatMap(group => group.servers)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort(
+      (a, b) =>
+        bucketLabel(a).localeCompare(bucketLabel(b)) ||
+        a.name.localeCompare(b.name),
+    );
 }
 
 /**
@@ -159,7 +164,9 @@ export function withConnectorChoice(
 
 /** Where a selected selector is listed on the Selected rail. */
 export type RailGroup = {
+  /** `connector:<name>` for a connector, with the name `server:` selects. */
   key: string;
+  /** What the rail heads the group with: a connector's display name. */
   title: string;
   /** A connector's *All*: `server:x`, which follows tools it adds later. */
   whole?: string;
@@ -182,10 +189,10 @@ export function railGroups(
   groups: readonly CatalogueGroup[],
 ): RailGroup[] {
   const owner = new Map<string, string>();
-  const connectorNames = new Set<string>();
+  const connectorLabels = new Map<string, string>();
   for (const group of groups) {
     for (const bucket of group.servers) {
-      connectorNames.add(bucket.name);
+      connectorLabels.set(bucket.name, bucketLabel(bucket));
       for (const tool of bucket.tools) {
         owner.set(selectorForTool(tool), bucket.name);
       }
@@ -210,8 +217,9 @@ export function railGroups(
     const parsed = parseSelector(selector);
     if (parsed?.kind === 'preset') {
       at(PRESETS_KEY, 'Access').selectors.push(selector);
-    } else if (parsed?.kind === 'server' && connectorNames.has(parsed.name)) {
-      at(`connector:${parsed.name}`, parsed.name).whole = selector;
+    } else if (parsed?.kind === 'server' && connectorLabels.has(parsed.name)) {
+      at(`connector:${parsed.name}`, connectorLabels.get(parsed.name)!).whole =
+        selector;
     } else if (parsed?.kind === 'workflow') {
       at(WORKFLOWS_KEY, 'Workflows').selectors.push(selector);
     } else {
@@ -219,7 +227,10 @@ export function railGroups(
       if (name === ADMINISTRATION_KEY) {
         at(ADMINISTRATION_KEY, 'Platform tools').selectors.push(selector);
       } else if (name) {
-        at(`connector:${name}`, name).selectors.push(selector);
+        at(
+          `connector:${name}`,
+          connectorLabels.get(name) ?? name,
+        ).selectors.push(selector);
       } else {
         at(OTHER_KEY, 'Other').selectors.push(selector);
       }

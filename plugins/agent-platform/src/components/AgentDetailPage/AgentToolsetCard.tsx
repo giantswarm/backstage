@@ -160,6 +160,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
   const {
     servers,
     resources: serverResources,
+    labels,
     isLoading: isLoadingServers,
   } = useMusterServers(installation);
   // `preset:none` is exactly "no tools"; asking muster what it resolves to
@@ -273,6 +274,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
                   noun="connector"
                   key={selector}
                   serverName={name}
+                  displayName={labels.get(name)}
                   installation={installation}
                   showName
                 />
