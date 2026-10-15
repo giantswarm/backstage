@@ -313,10 +313,6 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Connector', view: 'used-by' },
     ],
     [
-      '/agent-platform/connectors/kubernetes/settings',
-      { page: 'Connector', view: 'settings' },
-    ],
-    [
       '/agent-platform/connectors/kubernetes/tools/x_kubernetes_get_pods',
       { page: 'Connector tool' },
     ],
@@ -708,7 +704,6 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/connectors/kubernetes',
       '/agent-platform/connectors/kubernetes/details',
       '/agent-platform/connectors/kubernetes/used-by',
-      '/agent-platform/connectors/kubernetes/settings',
       '/agent-platform/connectors/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/mcp-servers',
       '/agent-platform/workflows',
