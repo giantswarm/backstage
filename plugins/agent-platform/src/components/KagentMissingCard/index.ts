@@ -1,1 +1,1 @@
-export { KagentMissingCard } from './KagentMissingCard';
+export { describeKagentMissing, KagentMissingCard } from './KagentMissingCard';

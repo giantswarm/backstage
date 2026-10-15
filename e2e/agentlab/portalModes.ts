@@ -17,6 +17,7 @@ export const SHELL_SPECS = [
   'agent-edit-commit.spec.ts',
   'agent-lifecycle.spec.ts',
   'agent-platform-navigation.spec.ts',
+  'agents-list-states.spec.ts',
   'agents-redirect.spec.ts',
   'agents.spec.ts',
   'definition-editor.spec.ts',

@@ -40,7 +40,7 @@ import {
   useAgents,
 } from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
-import { KagentMissingCard } from '../KagentMissingCard';
+import { describeKagentMissing, KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
 import { SessionsDataProvider } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
@@ -446,6 +446,21 @@ function AgentGroup({
       {list}
     </section>
   );
+}
+
+/**
+ * Why the Agents tab's New agent action is unavailable, or `undefined` while
+ * it is: every environment in scope answered without kagent, so the create
+ * form would have nowhere to deploy. The same words as the card the panel
+ * shows in place of the list. Must be called inside a `CustomizeDataProvider`.
+ */
+export function useNewAgentUnavailableReason(): string | undefined {
+  const { kagentMissing } = useAgents();
+  if (!kagentMissing) {
+    return undefined;
+  }
+  const { title, remedy } = describeKagentMissing(kagentMissing);
+  return `${title}. ${remedy}`;
 }
 
 /**
