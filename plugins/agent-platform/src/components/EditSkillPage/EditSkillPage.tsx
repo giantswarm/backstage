@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
-import { Navigate, useParams } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { useParams } from 'react-router-dom';
 import { Alert } from '@backstage/ui';
 import {
   EmptyStateCard,
@@ -8,18 +7,18 @@ import {
   WizardFrame,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillContent } from '../../hooks/useSkillContent';
+import { useSkillPaths } from '../../hooks/useSkillPaths';
 import {
   canonicalSkillId,
   canProposeSkillTo,
   isSkillContentReadable,
   parseSkillDetailPath,
-  skillDetailPath,
 } from '../../lib/skills';
-import { skillsRouteRef } from '../../routes';
 import { AddSkillPage } from '../AddSkillPage';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 
 /**
  * Edit a skill (`/agent-platform/skills/edit/<owner>/<repo>[/<skill dir>]`):
@@ -37,7 +36,8 @@ export function EditSkillPage() {
   const splat = useParams()['*'] ?? '';
   const target = parseSkillDetailPath(splat);
   const catalog = useSkillCatalog();
-  const skillsRoute = useRouteRef(skillsRouteRef);
+  const skillPaths = useSkillPaths();
+  const { skills: customizeSkills } = useCustomizePaths();
 
   const skill = useMemo(() => {
     if (!target) {
@@ -58,14 +58,11 @@ export function EditSkillPage() {
   );
 
   if (!target) {
-    return <Navigate to={`${SHELL_CUSTOMIZE_PATH}/skills`} replace />;
+    return <ShellCustomizeRedirect tab="skills" keepSearch={false} />;
   }
 
-  const detailPath = skill ? skillDetailPath(skill) : undefined;
   const skillHref =
-    skillsRoute && detailPath
-      ? `${skillsRoute()}/${detailPath}`
-      : `${SHELL_CUSTOMIZE_PATH}/skills`;
+    (skill && skillPaths.detail(skill)) ?? customizeSkills ?? '/';
 
   if (skill && content && proposable) {
     return <AddSkillPage edit={{ skill, content, skillHref }} />;

@@ -108,16 +108,36 @@ export const sessionDetailRouteRef = createSubRouteRef({
 // structural where a heading on a shared page only made it a caveat.
 export const usageRouteRef = createRouteRef();
 
+// Its views, each a sub-route (`UsageRouter`); the tab strip builds its own
+// hrefs from the splat base path, so these are for links from elsewhere.
+//
+// "Overview" (`/agent-platform/usage/overview`): the platform's health and
+// headline trends at a glance.
+export const usageOverviewRouteRef = createSubRouteRef({
+  path: '/overview',
+  parent: usageRouteRef,
+});
+
 // "Cost" (`/agent-platform/usage/cost`): the gateway metrics broken down by
 // agent and by model, plus the price-catalogue coverage that says how much the
 // cost figures understate. Overview's unpriced-models warning links here.
-//
-// The only view with a route ref: the other three (`overview`, `conversations`,
-// `technical`) are plain routes inside `UsageRouter`, because nothing links to
-// them from outside it. Add one when something does — the tab strip builds its
-// own hrefs from the splat base path either way.
 export const usageCostRouteRef = createSubRouteRef({
   path: '/cost',
+  parent: usageRouteRef,
+});
+
+// "Your sessions" (`/agent-platform/usage/conversations`): the reader's own
+// slice of the usage.
+export const usageConversationsRouteRef = createSubRouteRef({
+  path: '/conversations',
+  parent: usageRouteRef,
+});
+
+// "Connectors" (`/agent-platform/usage/connectors`): how the connectors and
+// their tools are used, the muster plugin's contributed section. Offered only
+// where muster contributes it; without, the address redirects to Overview.
+export const usageConnectorsRouteRef = createSubRouteRef({
+  path: '/connectors',
   parent: usageRouteRef,
 });
 
@@ -214,6 +234,14 @@ export const addGpuNodePoolRouteRef = createSubRouteRef({
  * Read through `useCustomizePaths` (hooks/useCustomizePaths.ts).
  */
 export const customizeExternalRouteRef = createExternalRouteRef();
+
+/**
+ * The shell's home (`/`): the new-session screen, where "New session" leads,
+ * with an agent preselected by `?agent=` (lib/newSessionLink.ts). A page of
+ * the app, which binds it in `bindRoutes` like `customize`. Unbound, the
+ * "New session" links are left out. Read through `useNewSessionHref`.
+ */
+export const newSessionExternalRouteRef = createExternalRouteRef();
 
 /**
  * muster's Connectors tab (`/agent-platform/connectors`): the connectors table,

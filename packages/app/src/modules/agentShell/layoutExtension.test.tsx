@@ -10,6 +10,7 @@ import {
   useShellScope,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { screen, waitFor } from '@testing-library/react';
+import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import { navModule } from '../nav';
 import { AGENT_SHELL_FLAG } from './predicates';
 import { agentShellModule } from './index';
@@ -17,6 +18,11 @@ import { agentShellModule } from './index';
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef } = jest.requireActual(
     '@backstage/frontend-plugin-api',
+  );
+  // The section's own root, which the real page below mounts and the classic
+  // sidebar's cross-link resolves.
+  const { agentPlatformPlugin: actual } = jest.requireActual(
+    '@giantswarm/backstage-plugin-agent-platform',
   );
   return {
     AGENT_SHELL_FLAG: 'agent-platform-shell',
@@ -27,6 +33,8 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         agents: createRouteRef(),
         skills: createRouteRef(),
         models: createRouteRef(),
+        profile: createRouteRef(),
+        root: actual.routes.root,
       },
     },
     RecentSessions: () => null,
@@ -86,6 +94,7 @@ const stubPagePlugin = createFrontendPlugin({
       name: 'agent-area',
       params: {
         path: '/agent-platform',
+        routeRef: agentPlatformPlugin.routes.root,
         noHeader: true,
         loader: async () => <StubPage testId="agent-stub-page">Agent</StubPage>,
       },

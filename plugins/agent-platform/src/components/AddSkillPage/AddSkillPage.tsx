@@ -33,7 +33,7 @@ import {
   shortCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { SkillEditFiles } from '../SkillEditFiles';
 import {
   SkillCreationAssist,
@@ -128,7 +128,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   );
   /** Configured repositories left out of the targets for not being on github.com. */
   const skippedCount = edit ? 0 : configured.length - repositories.length;
-  const closeHref = edit?.skillHref ?? `${SHELL_CUSTOMIZE_PATH}/skills`;
+  const { skills: customizeSkills } = useCustomizePaths();
+  const closeHref = edit?.skillHref ?? customizeSkills ?? '/';
 
   const [repoUrl, setRepoUrl] = useState<string | undefined>(repositories[0]);
   const [skillName, setSkillName] = useState(edit?.skill.name ?? '');

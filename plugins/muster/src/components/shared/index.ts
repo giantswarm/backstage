@@ -53,6 +53,8 @@ export type { ServerSignInState, SignInNoun } from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';
+export { useWorkflowPageLinks } from './useWorkflowPageLinks';
+export type { WorkflowPageLinks } from './useWorkflowPageLinks';
 export type {
   ServerPageLinks,
   ServerPageTab,

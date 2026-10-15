@@ -33,6 +33,7 @@ import {
   mcpServerToolRouteRef,
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
+  newMcpServerVerifyRouteRef,
   workflowDetailRouteRef,
   workflowsRouteRef,
 } from './routes';
@@ -113,6 +114,7 @@ const mcpServersRedirectPage = PageBlueprint.make({
   name: 'mcp-servers-redirect',
   if: AGENT_SHELL_ON,
   params: {
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the old address's route definition
     path: '/agent-platform/mcp-servers',
     routeRef: legacyMcpServersRouteRef,
     noHeader: true,
@@ -231,6 +233,7 @@ export const musterPlugin = createFrontendPlugin({
     mcpServerTool: mcpServerToolRouteRef,
     newMcpServer: newMcpServerRouteRef,
     newMcpServerAuth: newMcpServerAuthRouteRef,
+    newMcpServerVerify: newMcpServerVerifyRouteRef,
     workflows: workflowsRouteRef,
     workflowDetail: workflowDetailRouteRef,
   },

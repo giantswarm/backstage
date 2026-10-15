@@ -4,7 +4,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
-import { agentsRouteRef } from '../../routes';
+import { agentsRouteRef, customizeExternalRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentPage } from './NewAgentPage';
 
@@ -78,7 +78,12 @@ async function renderPage() {
         <NewAgentPage />
       </NewAgentFormProvider>
     </PageHeaderActionsProvider>,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    {
+      mountedRoutes: {
+        '/agent-platform/agents': agentsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
+    },
   );
 }
 

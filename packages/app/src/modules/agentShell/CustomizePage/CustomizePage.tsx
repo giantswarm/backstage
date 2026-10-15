@@ -210,6 +210,15 @@ function renderWorkflowCreateAssist(installation: string) {
 }
 
 /**
+ * This page's own path, through the route ref it is mounted at: it always
+ * resolves here, so links follow the app's mount and any base path.
+ */
+function useCustomizePath(): string {
+  const customizeLink = useRouteRef(customizeRouteRef);
+  return customizeLink?.() ?? '';
+}
+
+/**
  * The Connectors tab's sub-tabs (`CONNECTOR_GROUPS`): the customer's own
  * connectors at the tab's own address, those for the platform's
  * infrastructure and the platform's internal servers each at a path under it. Routed tabs like Model hosting's
@@ -221,11 +230,11 @@ function ConnectorGroupTabs({
 }: {
   counts: MusterCustomizeCounts['connectorGroups'];
 }) {
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const customize = useCustomizePath();
   const { search } = useLocation();
   return (
     <RouteTabs
-      basePath={`${customizeLink?.() ?? '/customize'}/connectors`}
+      basePath={`${customize}/connectors`}
       search={search}
       tabs={CONNECTOR_GROUPS.map(({ id, path, title }) => ({
         id,
@@ -347,11 +356,11 @@ function CustomizeTabContent({
 /** Opens the first tab, keeping the query string (the installation scope). */
 function DefaultTabRedirect() {
   const { search } = useLocation();
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const customize = useCustomizePath();
   return (
     <Navigate
       to={{
-        pathname: `${customizeLink?.() ?? '/customize'}/${DEFAULT_TAB}`,
+        pathname: `${customize}/${DEFAULT_TAB}`,
         search,
       }}
       replace
@@ -362,14 +371,12 @@ function DefaultTabRedirect() {
 /** Opens a Connectors sub-tab at its own address, keeping the query string. */
 function ConnectorsTabRedirect({ group }: { group: ConnectorGroup }) {
   const { search } = useLocation();
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const customize = useCustomizePath();
   const { path } = connectorGroupInfo(group);
   return (
     <Navigate
       to={{
-        pathname: `${customizeLink?.() ?? '/customize'}/connectors${
-          path ? `/${path}` : ''
-        }`,
+        pathname: `${customize}/connectors${path ? `/${path}` : ''}`,
         search,
       }}
       replace

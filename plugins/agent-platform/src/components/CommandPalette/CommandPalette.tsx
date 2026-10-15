@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { withInstallationQuery } from '@giantswarm/backstage-plugin-muster';
 import { ButtonIcon, Dialog, DialogHeader, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import SearchIcon from '@material-ui/icons/Search';
@@ -31,15 +32,14 @@ import {
 } from '../../hooks/useNewSessionHandoff';
 import type { ComposerImage } from '../../lib/messageImages';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { skillSource, uniqueSkills } from '../../lib/customize';
-import { skillDetailPath } from '../../lib/skills';
 import {
   agentDetailRouteRef,
   musterServersExternalRouteRef,
   musterWorkflowDetailExternalRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
-  skillsRouteRef,
 } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
 import { useAgents, type AgentRow } from '../AgentsDataProvider';
@@ -49,7 +49,6 @@ import {
 } from '../NewSessionDialog';
 import { useSessions } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { EnterKey } from '../EnterKey';
 import { Kbd } from '../Kbd';
 import {
@@ -399,9 +398,10 @@ function PaletteDialog({
 
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
-  const skillsRoute = useRouteRef(skillsRouteRef);
+  const skillPaths = useSkillPaths();
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
-  const { modelDetail: modelDetailRoute } = useCustomizePaths();
+  const customizePaths = useCustomizePaths();
+  const { modelDetail: modelDetailRoute } = customizePaths;
   const workflowDetailRoute = useRouteRef(musterWorkflowDetailExternalRouteRef);
   const sessionsRoute = useRouteRef(sessionsRouteRef);
 
@@ -448,9 +448,9 @@ function PaletteDialog({
     const skillCandidates: PaletteCandidate[] = uniqueSkills(
       skillCatalog.skills,
     ).flatMap(skill => {
-      const detailPath = skillDetailPath(skill);
-      // A skill outside github.com has no detail page to open.
-      if (!detailPath || !skillsRoute) {
+      const href = skillPaths.detail(skill);
+      // A skill whose repository has no address has no detail page to open.
+      if (!href) {
         return [];
       }
       return [
@@ -459,7 +459,7 @@ function PaletteDialog({
           title: skill.name,
           description: skill.description || undefined,
           meta: skillSource(skill),
-          href: `${skillsRoute()}/${detailPath}`,
+          href,
           haystack: [skill.name, skill.description],
         },
       ];
@@ -499,9 +499,10 @@ function PaletteDialog({
           title: workflow.name,
           description: workflow.description,
           meta: workflow.installation,
-          href: `${workflowDetailRoute({
-            name: workflow.name,
-          })}?installation=${encodeURIComponent(workflow.installation)}`,
+          href: withInstallationQuery(
+            workflowDetailRoute({ name: workflow.name }),
+            workflow.installation,
+          ),
           haystack: [workflow.name, workflow.description],
         }))
       : [];
@@ -523,7 +524,7 @@ function PaletteDialog({
     workflows.rows,
     sessionDetailRoute,
     agentDetailRoute,
-    skillsRoute,
+    skillPaths,
     serversRoute,
     modelDetailRoute,
     workflowDetailRoute,
@@ -543,8 +544,12 @@ function PaletteDialog({
         ? `${sessionsRoute()}${sessionsListSearch({ query: trimmedQuery })}`
         : undefined;
     }
+    const list = customizePaths[group];
+    if (!list) {
+      return undefined;
+    }
     const search = trimmedQuery ? `?q=${encodeURIComponent(trimmedQuery)}` : '';
-    return `${SHELL_CUSTOMIZE_PATH}/${group}${search}`;
+    return `${list}${search}`;
   };
 
   // What the arrow keys walk: the groups' rows, in order.

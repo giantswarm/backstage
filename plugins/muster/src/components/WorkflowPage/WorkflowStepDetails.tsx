@@ -1,7 +1,6 @@
 import { Fragment, ReactNode } from 'react';
 import { Box, Button, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { countNoun, PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import type { WorkflowCondition, WorkflowSubStep } from '../../lib/k8s';
 import type { ToolEffect } from '../../lib/toolAnnotations';
@@ -18,8 +17,7 @@ import {
   forEachSummary,
   StepRunOverlay,
 } from '../../lib/workflowGraph';
-import { workflowDetailRouteRef } from '../../routes';
-import { DisclosureAccordion } from '../shared';
+import { DisclosureAccordion, useWorkflowPageLinks } from '../shared';
 
 const useStyles = makeStyles({
   panel: {
@@ -89,13 +87,6 @@ const useStyles = makeStyles({
   },
 });
 
-/** `?installation=<inst>`, or nothing without one. */
-function installationSearch(installation?: string): string {
-  return installation
-    ? `?installation=${encodeURIComponent(installation)}`
-    : '';
-}
-
 /** What a step calls, in plain words — a link for a called workflow. */
 function PlainTool({
   tool,
@@ -107,19 +98,16 @@ function PlainTool({
   installation?: string;
 }) {
   const classes = useStyles();
-  const detailRoute = useRouteRef(workflowDetailRouteRef);
+  const workflowLinks = useWorkflowPageLinks();
   const display = toolDisplay(tool, prefixes);
   switch (display.kind) {
     case 'workflow': {
-      const base = detailRoute?.({ name: display.workflow });
+      const href = workflowLinks.workflow(display.workflow, installation ?? '');
       return (
         <>
           Runs the workflow{' '}
-          {base ? (
-            <Link
-              href={`${base}${installationSearch(installation)}`}
-              variant="body-medium"
-            >
+          {href ? (
+            <Link href={href} variant="body-medium">
               {display.workflow}
             </Link>
           ) : (

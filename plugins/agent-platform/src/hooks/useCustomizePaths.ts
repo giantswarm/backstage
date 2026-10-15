@@ -27,8 +27,16 @@ export function modelDetailPath(
 export type CustomizePaths = {
   /** The Customize screen. */
   customize?: string;
+  /** Its Agents tab. */
+  agents?: string;
+  /** Its Skills tab. */
+  skills?: string;
+  /** Its Connectors tab. */
+  connectors?: string;
   /** Its Models tab. */
   models?: string;
+  /** Its Workflows tab. */
+  workflows?: string;
   /** One model's page, beside the Models tab. */
   modelDetail?: (params: ModelDetailParams) => string;
 };
@@ -52,7 +60,11 @@ export function useCustomizePaths(): CustomizePaths {
         ? {}
         : {
             customize,
+            agents: `${customize}/agents`,
+            skills: `${customize}/skills`,
+            connectors: `${customize}/connectors`,
             models: `${customize}/models`,
+            workflows: `${customize}/workflows`,
             modelDetail: (params: ModelDetailParams) =>
               modelDetailPath(customize, params),
           },

@@ -4,8 +4,8 @@ import { makeStyles } from '@material-ui/core/styles';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { useNewSessionHref } from '../../hooks/useNewSessionHref';
 import type { AvatarSize } from '../../lib/agentAvatar';
-import { newSessionHref } from '../../lib/newSessionLink';
 import { recentAgentUses } from '../../lib/recentAgents';
 import { AgentAvatar } from '../AgentAvatar';
 import { useAgents } from '../AgentsDataProvider';
@@ -87,6 +87,7 @@ export function LastUsedAgents() {
   const buildAvatarUrl = useAgentAvatarUrl();
   const { rows: agents } = useAgents();
   const { rows: sessions, notUserScopedInstallations } = useSessions();
+  const newSessionHref = useNewSessionHref();
 
   const recent = useMemo(() => {
     const notMine = new Set(notUserScopedInstallations);
@@ -96,7 +97,9 @@ export function LastUsedAgents() {
     );
   }, [agents, sessions, notUserScopedInstallations]);
 
-  if (recent.length === 0) {
+  // Each card opens a new session; with no new-session screen to open, the
+  // strip has nothing to offer.
+  if (recent.length === 0 || !newSessionHref) {
     return null;
   }
 
