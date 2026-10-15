@@ -37,6 +37,7 @@ import {
 } from '../../lib/modelConfigs';
 import { contextWindowFor } from '../../lib/contextWindows';
 import { modelStatus } from '../../lib/customize';
+import { modelProblem } from '../../lib/modelProblem';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
@@ -47,7 +48,6 @@ import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
 import { ModelActionsMenu } from './ModelActionsMenu';
 import { ModelOverviewTab } from './ModelOverviewTab';
-import { ModelReadinessAlert } from './ModelReadinessAlert';
 import { modelPageTabs } from './modelTabs';
 import { ModelUsageTab } from './ModelUsageTab';
 import { ModelUsedByTab } from './ModelUsedByTab';
@@ -179,9 +179,7 @@ function ModelDetailPageContent() {
     installation = '',
     namespace = '',
     name = '',
-    // The open tab's path below the model's, '' on Overview.
-    '*': tab = '',
-  } = useParams<'installation' | 'namespace' | 'name' | '*'>();
+  } = useParams<'installation' | 'namespace' | 'name'>();
 
   const {
     resource: modelConfig,
@@ -348,7 +346,6 @@ function ModelDetailPageContent() {
     contextWindow,
     owner,
   });
-  const onOverview = tab.replace(/\/+$/, '') === '';
 
   return (
     <ModelFrame
@@ -365,57 +362,54 @@ function ModelDetailPageContent() {
         isLoading: agentsLoading,
       })}
     >
-      <Flex direction="column" gap="4">
-        <ModelReadinessAlert
-          modelConfig={modelConfig}
-          detail={status.detail}
-          conditionsHref={onOverview ? undefined : `${basePath}${search}`}
+      <Routes>
+        <Route
+          index
+          element={
+            <ModelOverviewTab
+              // Technical details start afresh per model.
+              key={`${installation}/${namespace}/${name}`}
+              modelConfig={modelConfig}
+              installation={installation}
+              facts={facts}
+              servedBy={servedBy}
+              owner={owner}
+              isUnsupportedProvider={isUnsupportedProvider}
+              problem={modelProblem(modelConfig, {
+                canEdit: isEditable && Boolean(modelEditRoute),
+                owner,
+              })}
+            />
+          }
         />
-        <Routes>
-          <Route
-            index
-            element={
-              <ModelOverviewTab
-                // Technical details start afresh per model.
-                key={`${installation}/${namespace}/${name}`}
-                modelConfig={modelConfig}
-                installation={installation}
-                facts={facts}
-                servedBy={servedBy}
-                owner={owner}
-                isUnsupportedProvider={isUnsupportedProvider}
-              />
-            }
-          />
-          <Route
-            path="usage"
-            element={
-              <ModelUsageTab
-                installation={installation}
-                model={modelConfig.getModel()}
-                usage={usage}
-              />
-            }
-          />
-          <Route
-            path="used-by"
-            element={
-              <ModelUsedByTab
-                installation={installation}
-                using={using}
-                isLoading={agentsLoading}
-                isUnreachable={agentsUnreachable}
-                usage={usage}
-              />
-            }
-          />
-          {/* An address the page no longer has lands on Overview. */}
-          <Route
-            path="*"
-            element={<Navigate to={`${basePath}${search}`} replace />}
-          />
-        </Routes>
-      </Flex>
+        <Route
+          path="usage"
+          element={
+            <ModelUsageTab
+              installation={installation}
+              model={modelConfig.getModel()}
+              usage={usage}
+            />
+          }
+        />
+        <Route
+          path="used-by"
+          element={
+            <ModelUsedByTab
+              installation={installation}
+              using={using}
+              isLoading={agentsLoading}
+              isUnreachable={agentsUnreachable}
+              usage={usage}
+            />
+          }
+        />
+        {/* An address the page no longer has lands on Overview. */}
+        <Route
+          path="*"
+          element={<Navigate to={`${basePath}${search}`} replace />}
+        />
+      </Routes>
     </ModelFrame>
   );
 }
@@ -434,9 +428,10 @@ function ModelDetailPageContent() {
  *   each with what it spent on the model.
  *
  * Any other address under the model's, the former `details` among them,
- * redirects to Overview. A model the controller has not accepted says why
- * above every tab, its Technical details open on arrival, and the other tabs
- * link to them on Overview. **Edit** opens the Connect-a-model flow prefilled
+ * redirects to Overview. A model agents cannot use yet says why at the top
+ * of Overview in plain words (`modelProblem`), from the condition that
+ * failed, and its Technical details open on arrival; the alert's Show
+ * conditions reveals them. **Edit** opens the Connect-a-model flow prefilled
  * (`EditModelPage`), the same way agents and skills are edited. A CR the
  * portal must not write (tool-owned, no RBAC, or a provider the form does not
  * speak) offers no Edit, and an alert says why where the reason is not just

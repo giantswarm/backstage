@@ -165,6 +165,20 @@ describe('modelStatus', () => {
     });
   });
 
+  it('names a failure by the condition that failed', () => {
+    expect(
+      modelStatus(
+        model({ readiness: 'notAccepted', failedCondition: 'Accepted' }),
+      ).label,
+    ).toBe('Not accepted');
+    // kagent accepted the settings but cannot find the key Secret.
+    expect(
+      modelStatus(
+        model({ readiness: 'notAccepted', failedCondition: 'ResolvedRefs' }),
+      ),
+    ).toEqual({ label: 'Incomplete', tone: 'danger' });
+  });
+
   it('says a stale model is Pending because its change is not reconciled yet', () => {
     expect(
       modelStatus(

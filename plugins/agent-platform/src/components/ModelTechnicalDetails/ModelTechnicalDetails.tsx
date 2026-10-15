@@ -62,8 +62,9 @@ function ResourceFacts({ modelConfig }: { modelConfig: ModelConfig }) {
 /**
  * What the controller makes of the model: its conditions, with their reason
  * and message, in the order it evaluates them, so the stage that failed
- * comes first and starts expanded. This is where "Not accepted" explains
- * itself (a missing key Secret, a provider config that does not resolve).
+ * comes first and starts expanded. This is where "Not accepted" and
+ * "Incomplete" explain themselves in kagent's terms (a provider config it
+ * rejects, a key Secret it cannot find).
  */
 function StatusConditions({ modelConfig }: { modelConfig: ModelConfig }) {
   const conditions = modelConfig.getConditions();

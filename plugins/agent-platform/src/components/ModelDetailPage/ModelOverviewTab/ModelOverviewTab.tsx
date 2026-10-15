@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Alert, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
@@ -5,11 +6,15 @@ import {
   FactList,
   FoldOutAlignedSection,
   TechnicalDetailsFoldOut,
+  type TechnicalDetailsFoldOutHandle,
 } from '@giantswarm/backstage-plugin-ui-react';
+
+import type { ModelProblem } from '../../../lib/modelProblem';
 
 import { ModelServingStatus } from '../../ModelServingStatus';
 import { ModelTechnicalDetails } from '../../ModelTechnicalDetails';
 import type { ModelServedBy } from '../../ModelsTable';
+import { ModelReadinessAlert } from '../ModelReadinessAlert';
 
 export type ModelOverviewTabProps = {
   modelConfig: ModelConfig;
@@ -22,11 +27,13 @@ export type ModelOverviewTabProps = {
   owner: string | undefined;
   /** Whether the form cannot speak the model's provider. */
   isUnsupportedProvider: boolean;
+  /** Why agents cannot use the model yet (`modelProblem`), if they cannot. */
+  problem: ModelProblem | undefined;
 };
 
 /**
- * The model page's Overview tab, the page's own address: whether the model is
- * served, why it cannot be edited here where that is not just the reader's
+ * The model page's Overview tab, the page's own address: why agents cannot
+ * use the model yet, where they cannot, whether it is served, why it cannot be edited here where that is not just the reader's
  * permissions, then what it calls, where and since when, and last the
  * ModelConfig resource and the controller's conditions in a "Technical
  * details" fold-out, as the agent, connector and workflow pages keep theirs.
@@ -38,9 +45,17 @@ export function ModelOverviewTab({
   servedBy,
   owner,
   isUnsupportedProvider,
+  problem,
 }: ModelOverviewTabProps) {
+  const technicalDetails = useRef<TechnicalDetailsFoldOutHandle>(null);
   return (
     <Flex direction="column" gap="5">
+      {problem && (
+        <ModelReadinessAlert
+          problem={problem}
+          onShowConditions={() => technicalDetails.current?.reveal()}
+        />
+      )}
       {/* The same block the Model configs list shows in its Endpoint cell:
           what the serving layer says about the model behind this config, and
           the fix where there is one. Nothing for provider defaults and
@@ -77,6 +92,7 @@ export function ModelOverviewTab({
           unhealthy (the page renders from the cache first); the page keys the
           tab per model, so it starts afresh on another. */}
       <TechnicalDetailsFoldOut
+        ref={technicalDetails}
         defaultExpanded={modelConfig.getReadiness() !== 'accepted'}
         followDefaultExpanded
       >

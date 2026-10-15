@@ -239,7 +239,6 @@ function rejectedSonnet() {
   return rejected;
 }
 
-const OVERVIEW = '/customize/models/inst-1/kagent/sonnet';
 const USAGE = '/customize/models/inst-1/kagent/sonnet/usage';
 const USED_BY = '/customize/models/inst-1/kagent/sonnet/used-by';
 
@@ -293,9 +292,64 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByLabelText(/Model ID|^Model$/)).toBeNull();
   });
 
-  it('says why a model the controller did not accept, with its conditions open at the foot of Overview', async () => {
+  it('says in plain words why agents cannot use a model whose key kagent cannot find, though it accepted the settings', async () => {
+    // Accepted is True; only ResolvedRefs failed.
     mockUseResource.mockReturnValue({
       resource: rejectedSonnet(),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    // Named by the condition that failed, not "Not accepted".
+    expect(screen.getByText('Incomplete')).toBeInTheDocument();
+    expect(screen.queryByText('Not accepted')).toBeNull();
+    expect(
+      screen.getByText('Agents cannot use this model'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The API key it needs cannot be found. Enter the key again with Edit.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/accept this model/)).toBeNull();
+    // kagent's own words stay in Technical details, open below, once.
+    expect(
+      screen.getByRole('button', { name: 'Technical details' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('SecretNotFound')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Secret kagent/sonnet-key not found'),
+    ).toHaveLength(1);
+  });
+
+  it('names whom to ask about a missing key when the person cannot edit the model', async () => {
+    mockMayUpdate = false;
+    mockUseResource.mockReturnValue({
+      resource: rejectedSonnet(),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        'The API key it needs cannot be found. Ask your platform team to add the key.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('calls a model whose settings kagent rejected Not accepted', async () => {
+    const invalid = sonnet();
+    invalid.jsonData.status!.conditions![0] = {
+      type: 'Accepted',
+      status: 'False',
+      reason: 'InvalidProviderConfig',
+      message: 'anthropic model config is required',
+      lastTransitionTime: '2026-09-01T10:00:00Z',
+    };
+    mockUseResource.mockReturnValue({
+      resource: invalid,
       isLoading: false,
       errors: [],
     });
@@ -303,22 +357,40 @@ describe('ModelDetailPage', () => {
 
     expect(screen.getByText('Not accepted')).toBeInTheDocument();
     expect(
-      screen.getByText('kagent did not accept this model'),
+      screen.getByText(
+        'Its settings are incomplete for its provider. Complete them with Edit.',
+      ),
     ).toBeInTheDocument();
-    // On Overview the alert keeps to its title, without a link to where it
-    // already is: the open conditions below say the rest, once.
-    expect(screen.queryByRole('link', { name: 'Show conditions' })).toBeNull();
+  });
+
+  it('opens Technical details and scrolls to them on Show conditions', async () => {
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    mockUseResource.mockReturnValue({
+      resource: rejectedSonnet(),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+    const technical = screen.getByRole('button', {
+      name: 'Technical details',
+    });
+    // Folded away by the person after arriving.
+    await userEvent.click(technical);
+    expect(technical).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show conditions' }),
+    );
+
     expect(
       screen.getByRole('button', { name: 'Technical details' }),
     ).toHaveAttribute('aria-expanded', 'true');
-    // The failing stage starts expanded, its reason and message in view.
     expect(screen.getByText('SecretNotFound')).toBeInTheDocument();
-    expect(
-      screen.getAllByText('Secret kagent/sonnet-key not found'),
-    ).toHaveLength(1);
+    expect(scrollIntoView).toHaveBeenCalled();
   });
 
-  it('says why on the other tabs too, with a link to the conditions on Overview', async () => {
+  it('says why on Overview only', async () => {
     mockUseResource.mockReturnValue({
       resource: rejectedSonnet(),
       isLoading: false,
@@ -326,67 +398,43 @@ describe('ModelDetailPage', () => {
     });
     await renderPage(USAGE);
 
+    // The badge still says so on every tab.
+    expect(screen.getByText('Incomplete')).toBeInTheDocument();
+    expect(screen.queryByText('Agents cannot use this model')).toBeNull();
     expect(
-      screen.getByText('kagent did not accept this model'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Secret kagent/sonnet-key not found'),
-    ).toBeInTheDocument();
-
-    await userEvent.click(
-      screen.getByRole('link', { name: 'Show conditions' }),
-    );
-
-    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(
-      screen.getByRole('button', { name: 'Technical details' }),
-    ).toHaveAttribute('aria-expanded', 'true');
-    expect(
-      screen.getAllByText('Secret kagent/sonnet-key not found'),
-    ).toHaveLength(1);
+      screen.queryByRole('button', { name: 'Show conditions' }),
+    ).toBeNull();
   });
 
-  it('says once on Overview that a stale model awaits the controller', async () => {
-    const stale = sonnet();
+  it('says kagent has not checked the latest change of a stale model yet', async () => {
+    const stale = rejectedSonnet();
     stale.jsonData.metadata.generation = 2;
     mockUseResource.mockReturnValue({
       resource: stale,
       isLoading: false,
       errors: [],
     });
-    await renderPage(USED_BY);
-
-    expect(
-      screen.getByText('kagent has not accepted this model yet'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'The controller has not reconciled the latest change yet.',
-      ),
-    ).toBeInTheDocument();
-
-    await userEvent.click(
-      screen.getByRole('link', { name: 'Show conditions' }),
-    );
-
-    expect(
-      screen.getAllByText(
-        /The controller has not reconciled the latest change yet\./,
-      ),
-    ).toHaveLength(1);
-  });
-
-  it('says nothing about acceptance for an accepted model', async () => {
     await renderPage();
 
-    expect(screen.queryByText(/accept this model/)).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Show conditions' })).toBeNull();
+    expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(
+      screen.getByText('kagent has not checked the latest change yet'),
+    ).toBeInTheDocument();
+    // Not the previous spec's failure.
+    expect(screen.queryByText('Agents cannot use this model')).toBeNull();
   });
 
-  it('tells a model the controller has not reported on yet apart from a rejected one', async () => {
+  it('says nothing for an accepted model', async () => {
+    await renderPage();
+
+    expect(screen.queryByText('Agents cannot use this model')).toBeNull();
+    expect(screen.queryByText(/kagent has not checked/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Show conditions' }),
+    ).toBeNull();
+  });
+
+  it('tells a model kagent has not checked yet apart from a failing one', async () => {
     const pending = sonnet();
     pending.jsonData.status = undefined;
     mockUseResource.mockReturnValue({
@@ -394,17 +442,16 @@ describe('ModelDetailPage', () => {
       isLoading: false,
       errors: [],
     });
-    await renderPage(USAGE);
+    await renderPage();
 
     expect(
-      screen.getByText('kagent has not accepted this model yet'),
+      screen.getByText('kagent has not checked this model yet'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('The controller has not reported on this model yet.'),
+      screen.getByText(
+        'Agents may not be able to use it until then. Check back in a moment.',
+      ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'Show conditions' }),
-    ).toHaveAttribute('href', OVERVIEW);
   });
 
   it('folds Technical details away under the facts for an accepted model, with the resource and its conditions inside', async () => {

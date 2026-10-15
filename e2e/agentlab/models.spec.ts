@@ -86,12 +86,15 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
   await expect(admin.getByRole('main').getByRole('complementary')).toHaveCount(
     0,
   );
-  // The lab's model works, so nothing says it is not accepted.
+  // The lab's model works, so nothing says agents cannot use it.
   await expect(
     admin.getByRole('main').getByText('Ready', { exact: true }).first(),
   ).toBeVisible();
   await expect(
-    admin.getByRole('link', { name: 'Show conditions', exact: true }),
+    admin.getByText('Agents cannot use this model', { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    admin.getByRole('button', { name: 'Show conditions', exact: true }),
   ).toHaveCount(0);
 
   // The conditions behind the status, folded in place at Overview's foot as
