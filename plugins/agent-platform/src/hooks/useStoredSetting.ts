@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   storageApiRef,
   useApi,
@@ -6,7 +6,6 @@ import {
   type StorageValueSnapshot,
 } from '@backstage/core-plugin-api';
 import { QueryClient } from '@tanstack/react-query';
-import useObservable from 'react-use/esm/useObservable';
 
 /** What a StorageApi bucket stores. */
 export type StoredJson = Parameters<StorageApi['set']>[1];
@@ -25,35 +24,28 @@ const BUCKET = 'agent-platform';
 /** How long a write waits for the stored value before it gives up. */
 const READ_TIMEOUT_MS = 10_000;
 
-/**
- * The writes to one setting: queued, and the value the newest of them stored
- * until the bucket's subscription has caught up with it.
- */
-type Slot = {
-  tail: Promise<unknown>;
-  pending: number;
-  written?: { value: unknown };
-};
+/** The queue of writes to one setting. */
+const queues = new WeakMap<StorageApi, Map<string, Promise<unknown>>>();
 
-const slots = new WeakMap<StorageApi, Map<string, Slot>>();
+function tailOf(storageApi: StorageApi, key: string): Promise<unknown> {
+  return queues.get(storageApi)?.get(key) ?? Promise.resolve();
+}
 
-function slotOf(storageApi: StorageApi, key: string): Slot {
-  let byKey = slots.get(storageApi);
+function setTail(storageApi: StorageApi, key: string, tail: Promise<unknown>) {
+  let byKey = queues.get(storageApi);
   if (!byKey) {
     byKey = new Map();
-    slots.set(storageApi, byKey);
+    queues.set(storageApi, byKey);
   }
-  let slot = byKey.get(key);
-  if (!slot) {
-    slot = { tail: Promise.resolve(), pending: 0 };
-    byKey.set(key, slot);
-  }
-  return slot;
+  byKey.set(key, tail);
 }
 
 /**
- * The stored value when the caller has not seen one yet: `UserSettingsStorage`
- * answers `snapshot` with "unknown" and reads through its subscription.
+ * The value stored now. A storage that knows it synchronously (browser
+ * storage, in tests and signed out) answers from its snapshot; the app's
+ * user-settings storage answers `snapshot` with "unknown", and a subscription
+ * reads the backend afresh. A read the backend did not answer ("unknown")
+ * rejects: a write built on it would replace the stored value.
  */
 function readStored(
   bucket: StorageApi,
@@ -80,18 +72,67 @@ function readStored(
       // subscription is assigned.
       queueMicrotask(() => state.subscription?.unsubscribe());
     };
-    state.timer = setTimeout(
-      () =>
-        settle(() =>
-          reject(new Error('The stored setting could not be read.')),
-        ),
-      READ_TIMEOUT_MS,
-    );
+    const unreadable = () =>
+      reject(new Error('The stored setting could not be read.'));
+    state.timer = setTimeout(() => settle(unreadable), READ_TIMEOUT_MS);
     state.subscription = bucket.observe$<StoredJson>(key).subscribe({
-      next: value => settle(() => resolve(value)),
+      next: value =>
+        settle(() =>
+          value.presence === 'unknown' ? unreadable() : resolve(value),
+        ),
       error: error => settle(() => reject(error)),
     });
   });
+}
+
+/**
+ * Applies `apply` to the value stored now and stores what it returns; nothing
+ * is written when it returns undefined. Resolves with `apply`'s result.
+ *
+ * Every write reads the stored value first, never a value a component holds:
+ * the storage writes one whole value per key, last write wins, so a write
+ * built on a stale or a failed read (a tab that just woke up, offline) would
+ * replace what other tabs and devices stored since. Writes to one key are
+ * queued across the app, so quick changes in one tab each start from the one
+ * before (R2-5). Two tabs writing within one read-and-write still race; the
+ * backend offers no compare-and-set.
+ */
+function updateStoredSetting<R>(
+  storageApi: StorageApi,
+  key: string,
+  apply: (current: unknown) => { value: StoredJson; result: R } | undefined,
+): Promise<R | undefined> {
+  const bucket = storageApi.forBucket(BUCKET);
+  const run = async (): Promise<R | undefined> => {
+    const stored = await readStored(bucket, key);
+    const change = apply(
+      stored.presence === 'present' ? stored.value : undefined,
+    );
+    if (!change) {
+      return undefined;
+    }
+    await bucket.set(key, change.value);
+    return change.result;
+  };
+  const done = tailOf(storageApi, key).then(run);
+  // The queue goes on whether or not this write failed.
+  setTail(
+    storageApi,
+    key,
+    done.catch(() => {}),
+  );
+  return done;
+}
+
+/** Writes to one setting of the `agent-platform` bucket, without reading it. */
+export function useStoredSettingUpdate(key: string) {
+  const storageApi = useApi(storageApiRef);
+  return useCallback(
+    <R>(
+      apply: (current: unknown) => { value: StoredJson; result: R } | undefined,
+    ) => updateStoredSetting(storageApi, key, apply),
+    [storageApi, key],
+  );
 }
 
 export type StoredSettingOptions = {
@@ -126,14 +167,12 @@ function useVisibleAgainCount(enabled: boolean): number {
 
 /**
  * One per-user setting of the `agent-platform` bucket, read through the
- * StorageApi's subscription and written as a functional update.
+ * StorageApi's subscription and written as a functional update
+ * (`updateStoredSetting`: each write reads the stored value first).
  *
- * The update runs against the latest stored value, never the render's
- * snapshot (R2-5): with the app's `UserSettingsStorage` a change is emitted
- * only once its PUT returns, so a second toggle inside that round trip, built
- * from the snapshot, would overwrite the first. Writes to one key are queued
- * across every mounted instance, and each starts from the value the previous
- * one stored.
+ * A read the backend did not answer arrives as "unknown"; once a value is
+ * known it stays shown until a read answers, so a tab that wakes up offline
+ * keeps what it had rather than showing everything as unset.
  */
 export function useStoredSetting(
   key: string,
@@ -143,81 +182,27 @@ export function useStoredSetting(
   const bucket = useMemo(() => storageApi.forBucket(BUCKET), [storageApi]);
   const visibleAgain = useVisibleAgainCount(rereadWhenVisible);
 
-  // `observe$` emits on every change (and, for UserSettingsStorage, once with
-  // the fetched value on subscription); the snapshot seeds the first render.
-  // A new subscription is what reads the backend again, so a tab that became
-  // visible subscribes afresh: the bucket hands out one observable per key,
-  // hence the wrapper with an identity of its own (the shown value stays
-  // until the answer lands).
-  const snapshot = useObservable(
-    useMemo(
-      () => ({
-        subscribe: (
-          listener: (value: StorageValueSnapshot<StoredJson>) => void,
-        ) => bucket.observe$<StoredJson>(key).subscribe(listener),
-      }),
-      // `visibleAgain` is the trigger, not an input.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [bucket, key, visibleAgain],
-    ),
-    useMemo(() => bucket.snapshot<StoredJson>(key), [bucket, key]),
+  const [snapshot, setSnapshot] = useState(() =>
+    bucket.snapshot<StoredJson>(key),
   );
-  const latest = useRef(snapshot);
-  latest.current = snapshot;
 
-  // Once the subscription has delivered a value with no write in flight, it
-  // is the newer truth: another tab or device may have written since.
+  // `observe$` emits on every change (and, for the app's user-settings
+  // storage, with a fresh read on subscription). A new subscription is what
+  // reads the backend again, so a tab that became visible subscribes afresh.
   useEffect(() => {
-    const slot = slotOf(storageApi, key);
-    if (slot.pending === 0) {
-      slot.written = undefined;
-    }
-  }, [storageApi, key, snapshot]);
+    const subscription = bucket
+      .observe$<StoredJson>(key)
+      .subscribe(next =>
+        setSnapshot(previous =>
+          next.presence === 'unknown' && previous.presence !== 'unknown'
+            ? previous
+            : next,
+        ),
+      );
+    return () => subscription.unsubscribe();
+  }, [bucket, key, visibleAgain]);
 
-  /**
-   * Applies `apply` to the current value and stores what it returns; nothing
-   * is written when it returns undefined. Resolves with `apply`'s result.
-   */
-  const update = useCallback(
-    <R>(
-      apply: (current: unknown) => { value: StoredJson; result: R } | undefined,
-    ): Promise<R | undefined> => {
-      const slot = slotOf(storageApi, key);
-      const run = async (): Promise<R | undefined> => {
-        let current: unknown;
-        if (slot.written) {
-          current = slot.written.value;
-        } else {
-          const seen =
-            latest.current.presence === 'unknown'
-              ? await readStored(bucket, key)
-              : latest.current;
-          current = seen.presence === 'present' ? seen.value : undefined;
-        }
-        const change = apply(current);
-        if (!change) {
-          return undefined;
-        }
-        slot.written = { value: change.value };
-        try {
-          await bucket.set(key, change.value);
-        } catch (error) {
-          // Not stored: the next write starts from what the bucket says.
-          slot.written = undefined;
-          throw error;
-        }
-        return change.result;
-      };
-      slot.pending += 1;
-      const done = slot.tail.then(run).finally(() => {
-        slot.pending -= 1;
-      });
-      // The queue goes on whether or not this write failed.
-      slot.tail = done.catch(() => {});
-      return done;
-    },
-    [storageApi, bucket, key],
-  );
+  const update = useStoredSettingUpdate(key);
 
   return { snapshot, update };
 }

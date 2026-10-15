@@ -1282,15 +1282,35 @@ never touch the rare ones:
   that held only the level.
 - `notificationSeenMarks`: per session, and per installation for its MCP
   sign-in row, the mark of the last row the person has seen. The mark is the
-  inbox's row identity, opaque to the record. "Mark all read" is one write; the
-  newest 200 session marks are kept.
+  inbox's row identity, opaque to the record. "Mark all read" is one write.
 
-Every entry carries the time it was written. The app's storage is created with
-the signals API, so a write in one tab reaches the person's other tabs, and the
-record is read again whenever a tab becomes visible. `SessionsDataProvider`
-prunes the entries of sessions that are gone, per installation, only against
-that installation's successful read (never an empty one), and only entries
-written well before the read.
+Both keys are bounded per installation, under the user-settings backend's
+100 kB request limit: the newest 40 seen marks (a row exists only for the 20
+sessions the session-state reader evaluates, so no mark of a row still shown is
+older than 39 others), and the newest 200 entries that only record a portal
+start (a level the person chose is always kept).
+
+The storage writes one whole value per key, last write wins, so the app's
+user-settings storage is our own `RoamingSettingsStorage`
+(`packages/app/src/modules/app`), not upstream's `UserSettingsStorage`: a read
+the backend does not answer is "unknown", never "absent", and no read is
+cached. Every write reads the key first (`useStoredSetting`) and refuses to
+write on a read that was not answered, so a tab that wakes up offline erases
+nothing. A shown value stays until a read answers. The storage is created with
+the signals API, so a write in one tab reaches the person's other tabs, and
+the record is read again whenever a tab becomes visible. Two tabs writing the
+same key within one read-and-write still race: the backend has no
+compare-and-set.
+
+`SessionsDataProvider` prunes the entries of sessions that are gone, one
+installation at a time, when its set of sessions changes and the record names
+a session the list does not. It reads the record, then the installation's
+sessions afresh through `listSessionsIfComplete`, which answers only for a
+complete read (no row skipped, the listing not cut at the backend's 20-page
+limit, which the backend flags as `truncated`). Only entries that were in the
+record before that read started, and that it does not list, are dropped: no
+clock decides. The fresh read happens at most once per installation every 10
+minutes.
 
 ### The compact header
 

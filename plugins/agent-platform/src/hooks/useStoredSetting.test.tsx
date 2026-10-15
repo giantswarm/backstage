@@ -137,4 +137,68 @@ describe('useStoredSetting', () => {
 
     await waitFor(() => expect(bucket.snapshot(KEY).value).toEqual(['a', 'b']));
   });
+
+  it('refuses to write when the stored value could not be read', async () => {
+    // The app's user-settings storage hands out a read the backend did not
+    // answer as unknown. A write built on it would replace the stored value.
+    const inner = mockApis.storage().forBucket(BUCKET);
+    await inner.set(KEY, ['a', 'b']);
+    const bucket = {
+      forBucket: () => bucket,
+      snapshot: (key: string) => ({ key, presence: 'unknown' }),
+      observe$: (key: string) => ({
+        subscribe: (
+          observer:
+            ((value: unknown) => void) | { next: (value: unknown) => void },
+        ) => {
+          const next =
+            typeof observer === 'function' ? observer : observer.next;
+          next({ key, presence: 'unknown' });
+          return { unsubscribe: () => {} };
+        },
+      }),
+      remove: (key: string) => inner.remove(key),
+      set: jest.fn((key: string, value: never) => inner.set(key, value)),
+    } as unknown as StorageApi;
+    const { result } = renderWith(bucket);
+
+    await act(async () => {
+      await expect(result.current.update(append('c'))).rejects.toThrow(
+        'could not be read',
+      );
+    });
+
+    expect(bucket.set).not.toHaveBeenCalled();
+    expect(inner.snapshot(KEY).value).toEqual(['a', 'b']);
+  });
+
+  it('keeps showing a known value when a later read is not answered', async () => {
+    const listeners: Array<(value: unknown) => void> = [];
+    const bucket = {
+      forBucket: () => bucket,
+      snapshot: (key: string) => ({ key, presence: 'unknown' }),
+      observe$: () => ({
+        subscribe: (observer: (value: unknown) => void) => {
+          listeners.push(observer);
+          return { unsubscribe: () => {} };
+        },
+      }),
+    } as unknown as StorageApi;
+    const { result } = renderWith(bucket);
+
+    act(() =>
+      listeners.forEach(next =>
+        next({ key: KEY, presence: 'present', value: ['a'] }),
+      ),
+    );
+    act(() =>
+      listeners.forEach(next => next({ key: KEY, presence: 'unknown' })),
+    );
+
+    expect(result.current.snapshot).toEqual({
+      key: KEY,
+      presence: 'present',
+      value: ['a'],
+    });
+  });
 });

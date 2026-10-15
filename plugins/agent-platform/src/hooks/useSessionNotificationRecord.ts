@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import type { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   isPortalStarted as isPortalStartedIn,
@@ -12,15 +13,20 @@ import {
   prunedSettings,
   readNotificationSeen,
   readNotificationSettings,
+  sessionKey,
+  sessionKeysOf,
   sessionSeenMarkOf as sessionSeenMarkOfIn,
   withLevel,
   withPortalStarted,
   withSeen,
-  type CompleteSessionsRead,
   type NotificationLevel,
   type SeenMarkTarget,
 } from '../lib/notificationRecord';
-import { storedSettingWriteClient, useStoredSetting } from './useStoredSetting';
+import {
+  storedSettingWriteClient,
+  useStoredSetting,
+  useStoredSettingUpdate,
+} from './useStoredSetting';
 
 /** Both keys are read again whenever the tab becomes visible. */
 const RECORD_OPTIONS = { rereadWhenVisible: true };
@@ -36,7 +42,8 @@ type SessionRef = { installation: string; sessionId: string };
  *
  * `isKnown` stays false until the stored value has been read: until then
  * every session reads as `default` and not portal-started, which a caller
- * that acts on the difference (the inbox) should wait out.
+ * that acts on the difference (the inbox) should wait out. Mount it once per
+ * surface (a list passes what it needs to its rows), not once per row.
  */
 export function useSessionNotificationSettings() {
   const { snapshot, update } = useStoredSetting(
@@ -90,7 +97,37 @@ export function useSessionNotificationSettings() {
     storedSettingWriteClient,
   );
 
-  const { mutateAsync: writePortalStarted } = useTrackedMutation(
+  /**
+   * Sets a session's level. `default` unmutes, and drops the entry of a
+   * session the portal did not start; muting a session without an entry
+   * creates one without making it portal-started.
+   */
+  const setLevel = useCallback(
+    async (
+      installation: string,
+      sessionId: string,
+      level: NotificationLevel,
+    ) => {
+      await writeLevel({ installation, sessionId, level });
+    },
+    [writeLevel],
+  );
+
+  const isKnown = snapshot.presence !== 'unknown';
+  return useMemo(
+    () => ({ isKnown, levelOf, isPortalStarted, setLevel }),
+    [isKnown, levelOf, isPortalStarted, setLevel],
+  );
+}
+
+/**
+ * Records that the portal's `start_session` started a session, without
+ * reading or watching the record: for `useCreateSession`, on every surface
+ * that starts a session.
+ */
+export function usePortalStartedRecorder() {
+  const update = useStoredSettingUpdate(NOTIFICATION_SETTINGS_KEY);
+  const { mutateAsync } = useTrackedMutation(
     {
       mutationFn: ({ installation, sessionId }: SessionRef) =>
         update<true>(current => {
@@ -108,38 +145,12 @@ export function useSessionNotificationSettings() {
     },
     storedSettingWriteClient,
   );
-
-  /**
-   * Sets a session's level. `default` unmutes, and drops the entry of a
-   * session the portal did not start; muting a session without an entry
-   * creates one without making it portal-started.
-   */
-  const setLevel = useCallback(
-    async (
-      installation: string,
-      sessionId: string,
-      level: NotificationLevel,
-    ) => {
-      await writeLevel({ installation, sessionId, level });
-    },
-    [writeLevel],
-  );
-
-  /** Records that the portal's `start_session` started the session. */
-  const markPortalStarted = useCallback(
+  return useCallback(
     async (installation: string, sessionId: string) => {
-      await writePortalStarted({ installation, sessionId });
+      await mutateAsync({ installation, sessionId });
     },
-    [writePortalStarted],
+    [mutateAsync],
   );
-
-  return {
-    isKnown: snapshot.presence !== 'unknown',
-    levelOf,
-    isPortalStarted,
-    setLevel,
-    markPortalStarted,
-  };
 }
 
 /**
@@ -214,14 +225,25 @@ export function useNotificationSeenMarks() {
     [mutateAsync],
   );
 
-  return {
-    isKnown: snapshot.presence !== 'unknown',
-    sessionSeenMarkOf,
-    mcpSignInSeenMarkOf,
-    isSeen,
-    markSeen,
-    markManySeen,
-  };
+  const isKnown = snapshot.presence !== 'unknown';
+  return useMemo(
+    () => ({
+      isKnown,
+      sessionSeenMarkOf,
+      mcpSignInSeenMarkOf,
+      isSeen,
+      markSeen,
+      markManySeen,
+    }),
+    [
+      isKnown,
+      sessionSeenMarkOf,
+      mcpSignInSeenMarkOf,
+      isSeen,
+      markSeen,
+      markManySeen,
+    ],
+  );
 }
 
 /**
@@ -242,29 +264,87 @@ export function useSessionNotificationRecord() {
   );
 }
 
+/** One installation to prune the record for. */
+export type PruneRequest = {
+  installation: string;
+  /** The sessions a list already read lists there: what to compare with. */
+  listedSessionIds: readonly string[];
+  /**
+   * Reads the installation's sessions afresh, resolving undefined unless the
+   * read is complete (`KagentApi.listSessionsIfComplete`).
+   */
+  readComplete: () => Promise<readonly KagentSession[] | undefined>;
+};
+
 /**
- * Drops the record's entries for sessions that no longer exist, against one
- * installation's **complete, successful** sessions read (a failed or partial
- * read must never be passed). Both keys are written only when something is
- * pruned.
+ * Drops the record's entries for sessions that no longer exist, one
+ * installation at a time; resolves whether a complete read was made.
+ *
+ * Nothing is written, and no session is read, unless the record holds an
+ * entry for a session `listedSessionIds` does not list. Then the record is
+ * read, the installation's sessions are read completely after it, and only
+ * the entries that were in the record before that read and that it does not
+ * list are dropped (see `PruneInput`): no clock decides, and a read that is
+ * not complete prunes nothing.
  */
 export function useNotificationRecordPruning() {
-  const { update: updateSettings } = useStoredSetting(
-    NOTIFICATION_SETTINGS_KEY,
-  );
-  const { update: updateSeen } = useStoredSetting(NOTIFICATION_SEEN_KEY);
+  const updateSettings = useStoredSettingUpdate(NOTIFICATION_SETTINGS_KEY);
+  const updateSeen = useStoredSettingUpdate(NOTIFICATION_SEEN_KEY);
 
   const { mutateAsync } = useTrackedMutation(
     {
-      mutationFn: async (read: CompleteSessionsRead) => {
+      mutationFn: async ({
+        installation,
+        listedSessionIds,
+        readComplete,
+      }: PruneRequest) => {
+        // What the record holds for the installation, read fresh; nothing is
+        // written.
+        const knownSettings = new Set<string>();
+        const knownSeen = new Set<string>();
+        await updateSettings(current => {
+          const { sessions } = readNotificationSettings(current);
+          sessionKeysOf(sessions, installation).forEach(key =>
+            knownSettings.add(key),
+          );
+          return undefined;
+        });
+        await updateSeen(current => {
+          const { sessions } = readNotificationSeen(current);
+          sessionKeysOf(sessions, installation).forEach(key =>
+            knownSeen.add(key),
+          );
+          return undefined;
+        });
+        const listed = new Set(
+          listedSessionIds.map(id => sessionKey(installation, id)),
+        );
+        if (![...knownSettings, ...knownSeen].some(key => !listed.has(key))) {
+          return false;
+        }
+
+        const live = await readComplete();
+        if (!live) {
+          return true;
+        }
+        const liveSessionIds = live.map(session => session.sessionId);
         await updateSettings<true>(current => {
-          const next = prunedSettings(readNotificationSettings(current), read);
+          const next = prunedSettings(readNotificationSettings(current), {
+            installation,
+            known: knownSettings,
+            liveSessionIds,
+          });
           return next && { value: next, result: true };
         });
         await updateSeen<true>(current => {
-          const next = prunedSeen(readNotificationSeen(current), read);
+          const next = prunedSeen(readNotificationSeen(current), {
+            installation,
+            known: knownSeen,
+            liveSessionIds,
+          });
           return next && { value: next, result: true };
         });
+        return true;
       },
       event: null,
       untrackedReason:
@@ -274,9 +354,7 @@ export function useNotificationRecordPruning() {
   );
 
   return useCallback(
-    async (read: CompleteSessionsRead) => {
-      await mutateAsync(read);
-    },
+    (request: PruneRequest): Promise<boolean> => mutateAsync(request),
     [mutateAsync],
   );
 }
