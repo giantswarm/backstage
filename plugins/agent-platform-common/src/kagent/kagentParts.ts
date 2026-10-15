@@ -275,6 +275,40 @@ export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
   );
 }
 
+/** The prompt a usage bag measured, for the context indicator. */
+export type ContextReading = {
+  /** The bag's prompt tokens. */
+  promptTokens: number;
+  /**
+   * How many model calls the bag covers. ADK writes one bag per model call
+   * (one per LLM response event), so its count is 1 and `promptTokens` is
+   * that call's context. The claude Harness writes one bag per turn — the
+   * Claude Agent SDK's cumulative result — and says how many calls it sums in
+   * `numTurns`; `promptTokens` is then a sum, not any one call's context.
+   */
+  calls: number;
+};
+
+/**
+ * The prompt a message's usage bag measured and how many model calls it
+ * covers — see {@link ContextReading}. `undefined` when the bag counts no
+ * prompt tokens.
+ */
+export function readContextReading(
+  metadata: unknown,
+): ContextReading | undefined {
+  const bag = readKagentMetadata(metadata, 'usage_metadata', carriesTokenUsage);
+  const promptTokens = tokenUsageOf(bag)?.prompt ?? 0;
+  if (!bag || promptTokens <= 0) {
+    return undefined;
+  }
+  const calls = asNumber(bag.numTurns);
+  return {
+    promptTokens,
+    calls: Number.isInteger(calls) && calls > 1 ? calls : 1,
+  };
+}
+
 /**
  * A delegated agent's own usage, which rides inside the tool *response* rather
  * than in message metadata.

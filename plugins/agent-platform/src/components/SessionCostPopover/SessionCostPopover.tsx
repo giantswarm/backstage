@@ -2,7 +2,10 @@ import { ReactNode } from 'react';
 import { Button, DialogTrigger, Popover, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
-import type { TokenUsage } from '@giantswarm/backstage-plugin-agent-platform-common';
+import type {
+  ContextReading,
+  TokenUsage,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { contextWindowFor, contextUsage } from '../../lib/contextWindows';
 import {
@@ -69,6 +72,12 @@ const useStyles = makeStyles(theme => ({
     height: '100%',
     background: `var(--bui-accent-bg, ${theme.palette.primary.main})`,
   },
+  hint: {
+    fontSize: '0.75rem',
+    lineHeight: 1.45,
+    color: `var(--bui-fg-secondary, ${theme.palette.text.secondary})`,
+    marginBottom: theme.spacing(0.75),
+  },
   footnote: {
     fontSize: '0.75rem',
     lineHeight: 1.45,
@@ -125,8 +134,8 @@ export type SessionCostPopoverProps = {
   model?: string;
   /** Session totals from the timeline. */
   tokens: TokenUsage;
-  /** The newest turn's own usage — the context numerator. */
-  lastTurnTokens?: TokenUsage;
+  /** The newest usage reading — the context numerator; see `SessionTimeline.context`. */
+  context?: ContextReading;
   /** The session's turn count. */
   taskCount: number;
   /** Estimated session cost in USD; undefined when no rate could be derived. */
@@ -146,10 +155,14 @@ export type SessionCostPopoverProps = {
  * - **Reported cost** appears only when the agent's runtime reported one per
  *   turn (the claude Harness does, ADK does not) — absent means not reported,
  *   never zero.
- * - **Context used** is the newest turn's prompt tokens against the model's context
- *   window from app-config (`agentPlatform.models.contextWindows`). A model
- *   the table does not name shows the raw token count instead of a share —
- *   claiming a percentage of an unknown window would be invented precision.
+ * - **Context used** is the newest model call's prompt tokens against the
+ *   model's context window from app-config
+ *   (`agentPlatform.models.contextWindows`). A model the table does not name
+ *   shows the raw token count instead of a share — claiming a percentage of
+ *   an unknown window would be invented precision — and so does a count above
+ *   the configured window, with a line saying the window looks too small. A
+ *   runtime that reports only turn totals (the claude Harness) has no
+ *   per-call figure, so its context reads "Not reported".
  *
  * Costs show in the installation's configured currency
  * (`gs.installations.<name>.currency`), USD otherwise.
@@ -158,7 +171,7 @@ export function SessionCostPopover({
   installation,
   model,
   tokens,
-  lastTurnTokens,
+  context: contextReading,
   taskCount,
   estimatedCostUsd,
   costBasis,
@@ -171,7 +184,7 @@ export function SessionCostPopover({
     'agentPlatform.models.contextWindows',
   );
   const context = contextUsage(
-    lastTurnTokens?.prompt ?? 0,
+    contextReading,
     contextWindowFor(model, windows),
   );
 
@@ -184,7 +197,9 @@ export function SessionCostPopover({
   let contextValue: ReactNode = '—';
   // What the chip shows of the context, said for a screen reader.
   let contextLabel = '';
-  if (context.percent !== undefined && context.windowTokens !== undefined) {
+  // Shown only when the configured window is evidently wrong.
+  let windowHint: string | undefined;
+  if (context.kind === 'share') {
     contextChip = (
       <span className={classes.context}>
         <ContextRing percent={context.percent} />
@@ -195,7 +210,9 @@ export function SessionCostPopover({
       context.windowTokens,
     )} · ${formatPercent(context.percent)}`;
     contextLabel = `, ${formatPercent(context.percent)} of context used`;
-  } else if (context.usedTokens > 0) {
+  } else if (context.kind === 'tokens' || context.kind === 'over-window') {
+    // Above the configured window the count stands, without a share of a
+    // window it contradicts.
     contextChip = (
       <span className={classes.context}>
         {formatTokens(context.usedTokens)} ctx
@@ -203,6 +220,13 @@ export function SessionCostPopover({
     );
     contextValue = `${formatTokens(context.usedTokens)} tokens`;
     contextLabel = `, ${formatTokens(context.usedTokens)} tokens of context`;
+    if (context.kind === 'over-window') {
+      windowHint = `Above the ${formatTokens(
+        context.windowTokens,
+      )} context window configured for this model, so that setting looks too small.`;
+    }
+  } else if (context.kind === 'unmeasured') {
+    contextValue = 'Not reported';
   }
 
   return (
@@ -252,7 +276,8 @@ export function SessionCostPopover({
           />
           <Row label="Turns" value={formatCount(taskCount)} />
           <Row label="Context used" value={contextValue} />
-          {context.percent !== undefined && (
+          {windowHint && <div className={classes.hint}>{windowHint}</div>}
+          {context.kind === 'share' && (
             <div
               className={classes.bar}
               role="img"

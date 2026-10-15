@@ -74,6 +74,7 @@ import tasksApprovalJson from './kagent/__fixtures__/tasks.approval.json';
 import tasksAskUserPendingJson from './kagent/__fixtures__/tasks.ask-user-pending.json';
 import tasksAskUserJson from './kagent/__fixtures__/tasks.ask-user.json';
 import tasksClaudeHarnessJson from './kagent/__fixtures__/tasks.claude-harness-1.1.json';
+import tasksKagent4a91c273Json from './kagent/__fixtures__/tasks.kagent-4a91c273.json';
 import tasksBareArrayJson from './kagent/__fixtures__/tasks.bare-array.json';
 import tasksDataNotArrayJson from './kagent/__fixtures__/tasks.data-not-array.json';
 import tasksEmptyNoDataJson from './kagent/__fixtures__/tasks.empty-no-data.json';
@@ -128,6 +129,8 @@ export const tasksAskUser: TaskEnvelopeFixture =
 export const tasksBareArray: unknown = tasksBareArrayJson as unknown;
 /** `ListTasksResponse` of a completed claude Harness turn on kagent 1.1. */
 export const tasksClaudeHarness: unknown = tasksClaudeHarnessJson as unknown;
+/** A kagent API v2 (ADK runtime) task list, one usage bag per model call. */
+export const tasksKagent4a91c273: unknown = tasksKagent4a91c273Json as unknown;
 /**
  * {@link tasksClaudeHarness} with its turn ended `TASK_STATE_FAILED` instead,
  * keeping the status message and the usage on it. Derived, not recorded: it

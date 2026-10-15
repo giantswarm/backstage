@@ -4,6 +4,7 @@ import {
   isFunctionCallPart,
   isInternalToolName,
   MUSTER_PROXY_LABEL,
+  readContextReading,
   readNestedTokenUsage,
   readTokenUsage,
   unwrapProxiedCall,
@@ -54,6 +55,54 @@ describe('unwrapProxiedCall', () => {
     const call = { name: 'x_prometheus_execute_query', args: { query: 'up' } };
 
     expect(unwrapProxiedCall(call)).toBe(call);
+  });
+});
+
+describe('readContextReading', () => {
+  it('reads an ADK bag as one call', () => {
+    expect(
+      readContextReading({
+        'kagent.dev/a2a/usage': {
+          promptTokenCount: 2_900,
+          candidatesTokenCount: 58,
+        },
+      }),
+    ).toEqual({ promptTokens: 2_900, calls: 1 });
+  });
+
+  it('reads a legacy-prefixed bag', () => {
+    expect(
+      readContextReading({ adk_usage_metadata: { promptTokenCount: 760 } }),
+    ).toEqual({ promptTokens: 760, calls: 1 });
+  });
+
+  it('reads a claude Harness turn total with its call count', () => {
+    expect(
+      readContextReading({
+        'kagent.dev/a2a/usage': {
+          promptTokenCount: 70_958,
+          candidatesTokenCount: 380,
+          numTurns: 4,
+        },
+      }),
+    ).toEqual({ promptTokens: 70_958, calls: 4 });
+  });
+
+  it('treats a nonsensical call count as one call', () => {
+    expect(
+      readContextReading({
+        'kagent.dev/a2a/usage': { promptTokenCount: 100, numTurns: 2.5 },
+      }),
+    ).toEqual({ promptTokens: 100, calls: 1 });
+  });
+
+  it('reads nothing from a bag without prompt tokens', () => {
+    expect(
+      readContextReading({
+        'kagent.dev/a2a/usage': { candidatesTokenCount: 58 },
+      }),
+    ).toBeUndefined();
+    expect(readContextReading(undefined)).toBeUndefined();
   });
 });
 

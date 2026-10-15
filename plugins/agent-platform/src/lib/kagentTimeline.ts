@@ -4,6 +4,7 @@ import {
   AttachmentPreview,
   ASK_USER_TOOL_NAME,
   claimEndedTurnUsage,
+  ContextReading,
   CONFIRMATION_TOOL_NAME,
   historyWithPendingPrompt,
   isAgentToolName,
@@ -21,6 +22,7 @@ import {
   readMessageText,
   readAttachment,
   readAttachmentPreview,
+  readContextReading,
   readNestedTokenUsage,
   readPartText,
   readTokenUsage,
@@ -158,14 +160,16 @@ export type SessionTimeline = {
   /** Total usage across the session, message-level plus delegated agents. */
   tokens: TokenUsage;
   /**
-   * The newest turn's own usage — the closest measurement of the model's
-   * current context that exists, since its `prompt` count is what the turn's
-   * model calls were sent. Summed over the turn's calls (kagent records no
-   * per-call usage) and **excluding** delegated agents' nested usage, which
-   * belongs to their own context. Undefined when no turn reported any usage —
-   * a session that never ran, or whose newest turns are still working.
+   * The context the model was last sent, for the context indicator: the
+   * newest usage bag of the newest turn that reported one, with how many model
+   * calls it covers. ADK writes a bag per model call, so this is the newest
+   * call's prompt — the context itself. The claude Harness writes one bag per
+   * turn summed over its calls (`calls` > 1), which is no single call's
+   * context. Delegated agents' nested usage is excluded: it belongs to their
+   * own context. Undefined when no turn reported any usage — a session that
+   * never ran, or whose newest turns are still working.
    */
-  lastTurnTokens?: TokenUsage;
+  context?: ContextReading;
   /**
    * History entries that failed to parse at all — genuine data loss, safe for the
    * UI to report as "N messages could not be read".
@@ -310,7 +314,7 @@ function readTurnEnding(
 export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
   const items: TimelineItem[] = [];
   let tokens = EMPTY_USAGE;
-  let lastTurnTokens: TokenUsage | undefined;
+  let context: ContextReading | undefined;
   let skippedMessages = 0;
 
   // kagent repeats a message under the same `messageId` — reliably for the user's
@@ -343,10 +347,10 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     // when a tool is used repeatedly.
     const openCalls: OpenCall[] = [];
 
-    // This turn's own usage, for `lastTurnTokens`. Message-level bags and the
+    // This turn's newest usage bag, for `context`. Message-level bags and the
     // ended-turn claim only — a delegated agent's nested usage is another
     // session's context, so it counts toward the session total but not here.
-    let taskUsage = EMPTY_USAGE;
+    let taskContext: ContextReading | undefined;
 
     entries.forEach((entry, entryIndex) => {
       const parsed = parseHistoryEntry(entry);
@@ -384,7 +388,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       if (!isUser) {
         const usage = readTokenUsage(message.metadata);
         tokens = addTokenUsage(tokens, usage);
-        taskUsage = addTokenUsage(taskUsage, usage);
+        taskContext = readContextReading(message.metadata) ?? taskContext;
       }
 
       const parts = Array.isArray(message.parts) ? message.parts : [];
@@ -682,12 +686,15 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     // After the ending: it reads the reason against the ids rendered so far.
     const endedUsage = claimEndedTurnUsage(status, seenMessageIds);
     tokens = addTokenUsage(tokens, endedUsage);
-    taskUsage = addTokenUsage(taskUsage, endedUsage);
+    if (endedUsage) {
+      taskContext =
+        readContextReading(status?.message?.metadata) ?? taskContext;
+    }
 
     // The newest turn with a prompt count wins: a turn still working has not
-    // reported usage yet, and must not zero out the last real measurement.
-    if (taskUsage.prompt > 0) {
-      lastTurnTokens = taskUsage;
+    // reported usage yet, and must not erase the last real measurement.
+    if (taskContext) {
+      context = taskContext;
     }
   });
 
@@ -695,7 +702,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     items,
     tokens,
     skippedMessages,
-    ...(lastTurnTokens && { lastTurnTokens }),
+    ...(context && { context }),
   };
 }
 

@@ -35,7 +35,7 @@ const baseProps: SessionCostPopoverProps = {
   installation: 'gazelle',
   model: 'claude-sonnet-4-5',
   tokens: { total: 18200, prompt: 15600, completion: 2600 },
-  lastTurnTokens: { total: 26600, prompt: 24000, completion: 2600 },
+  context: { promptTokens: 24000, calls: 1 },
   taskCount: 3,
   estimatedCostUsd: 0.21,
   costBasis: 'Estimated: an observed rate.',
@@ -98,7 +98,7 @@ describe('SessionCostPopover', () => {
   it('reads “—” rather than $0.00 when no rate could be derived', async () => {
     // Zero spend and unpriced spend are different facts.
     publishConfig();
-    await render({ estimatedCostUsd: undefined, lastTurnTokens: undefined });
+    await render({ estimatedCostUsd: undefined, context: undefined });
 
     const dialog = await open();
 
@@ -113,7 +113,7 @@ describe('SessionCostPopover', () => {
 
     const dialog = await open();
 
-    // 24k of the newest turn against the 200k window.
+    // 24k of the newest call against the 200k window.
     expect(within(dialog).getByText('Context used')).toBeInTheDocument();
     expect(
       within(dialog).getByText('24.0k of 200.0k · 12%'),
@@ -139,6 +139,52 @@ describe('SessionCostPopover', () => {
     // The count without a share: claiming a percentage of an unknown window
     // would be invented precision.
     expect(within(dialog).getByText('24.0k tokens')).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('img', { name: /Context/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the raw count, not a capped share, above the configured window', async () => {
+    // A model cannot be sent more than its window, so a count above the
+    // configured one means the table is wrong. "969.0k of 200.0k · 100%"
+    // contradicted itself; the count stands and the window is called out.
+    publishConfig({ contextWindows: { 'claude-*': 200000 } });
+    await render({ context: { promptTokens: 969000, calls: 1 } });
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Session cost and context: $0.210, 969.0k tokens of context',
+      }),
+    ).toBeInTheDocument();
+
+    const dialog = await open();
+
+    expect(within(dialog).getByText('969.0k tokens')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        'Above the 200.0k context window configured for this model, so that setting looks too small.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/%/)).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('img', { name: /Context/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('claims no context from a turn total summed over several calls', async () => {
+    // The claude Harness reports one bag per turn, summed over its calls.
+    publishConfig({ contextWindows: { 'claude-*': 200000 } });
+    await render({ context: { promptTokens: 70958, calls: 4 } });
+
+    expect(
+      screen.getByRole('button', { name: 'Session cost and context: $0.210' }),
+    ).toBeInTheDocument();
+
+    const dialog = await open();
+
+    const row = within(dialog).getByText('Context used')
+      .parentElement as HTMLElement;
+    expect(within(row).getByText('Not reported')).toBeInTheDocument();
     expect(
       within(dialog).queryByRole('img', { name: /Context/ }),
     ).not.toBeInTheDocument();

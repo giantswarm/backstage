@@ -1079,7 +1079,7 @@ export function SessionDetailPage() {
       installation={row.installation}
       model={row.agentModel}
       tokens={timeline.tokens}
-      lastTurnTokens={timeline.lastTurnTokens}
+      context={timeline.context}
       taskCount={taskCount}
       estimatedCostUsd={estimatedCostUsd}
       costBasis={describeCostBasis({

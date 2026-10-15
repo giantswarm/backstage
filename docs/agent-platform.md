@@ -1198,13 +1198,20 @@ Costs use `gs.installations.<name>.currency`, USD otherwise.
 context, so a 4-turn session reached 1.4M prompt tokens across 14 calls. There
 is no combined total, because input and output are priced differently.
 
-**Context used is the newest turn's prompt tokens against a configured window.** No
-platform component reports a hosted model's context window, so the denominator
-is `agentPlatform.models.contextWindows` (model-name patterns with `*`, the most
-specific match wins, served through the signed-in config). An unmatched model
-shows its raw token count. The numerator is `buildTimeline`'s
-`lastTurnTokens.prompt`, summed over the newest reporting turn's calls and
-excluding delegated usage, so it is approximate.
+**Context used is the newest model call's prompt tokens against a configured
+window.** No platform component reports a hosted model's context window, so
+the denominator is `agentPlatform.models.contextWindows` (model-name patterns
+with `*`, the most specific match wins, served through the signed-in config).
+An unmatched model shows its raw token count. The numerator is
+`buildTimeline`'s `context`: the newest usage bag of the newest turn that
+reported one, excluding delegated usage. ADK writes a bag per model call, so
+that is the context the model was last sent. A turn's bags must not be summed:
+each call re-sends the whole context, and the sum over a long turn runs to
+several times the window. The claude Harness writes one bag per turn, summed
+over its calls (`numTurns`), so no call's context is known and the row reads
+"Not reported". A count above the configured window means the window is wrong,
+so the popover shows the raw count with a line saying so, never a share capped
+at 100%.
 
 Some sessions' `adk_usage_metadata` has only `promptTokenCount` and
 `candidatesTokenCount`; the total is then derived. A reported total wins,

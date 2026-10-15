@@ -14,6 +14,7 @@ import {
   tasksClaudeHarnessFailed as claudeHarnessFailed,
   tasksEmptyNoData as emptyNoData,
   tasksFailed as failed,
+  tasksKagent4a91c273 as kagent4a91c273,
   tasksMalformed as malformed,
   tasksV099 as kagentPrefixed,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
@@ -137,30 +138,35 @@ describe('buildTimeline', () => {
     });
   });
 
-  it("reports the newest turn's own usage, without delegated usage", () => {
-    // The context indicator's numerator: what this turn's model calls were sent.
+  it("reads the context from the newest turn's newest call, without delegated usage", () => {
+    // The context indicator's numerator: what the newest model call was sent.
     // The fixture's newest task is still working and has reported nothing, so
-    // the last *measured* turn is the first — and the subagent's 3100 tokens
-    // are its own session's context, so they are not in it.
-    const { lastTurnTokens } = timelineFor(kagentPrefixed);
-
-    expect(lastTurnTokens).toEqual({
-      total: 1420 + 890,
-      prompt: 1180 + 760,
-      completion: 240 + 130,
+    // the last *measured* turn is the first; its newest bag is 760 — and the
+    // subagent's 2600 are its own session's context, so they are not in it.
+    expect(timelineFor(kagentPrefixed).context).toEqual({
+      promptTokens: 760,
+      calls: 1,
     });
   });
 
-  it('reports no last-turn usage when no turn reported any', () => {
-    expect(timelineFor(askUserPending).lastTurnTokens).toBeUndefined();
+  it("takes an ADK turn's newest call, not the sum of its calls", () => {
+    // ADK writes one bag per model call, each re-sending the growing context
+    // (2900, 3802, 5358 here). Summing them — 12k — is what once showed a
+    // session's context as several times the model's window.
+    expect(timelineFor(kagent4a91c273).context).toEqual({
+      promptTokens: 5358,
+      calls: 1,
+    });
   });
 
-  it("reads a claude Harness turn's usage as the newest turn's", () => {
-    expect(timelineFor(claudeHarness).lastTurnTokens).toEqual({
-      total: 71338,
-      prompt: 70958,
-      completion: 380,
-      costUsd: 0.13148115,
+  it('reports no context when no turn reported any usage', () => {
+    expect(timelineFor(askUserPending).context).toBeUndefined();
+  });
+
+  it("marks a claude Harness turn's usage as a sum over its calls", () => {
+    expect(timelineFor(claudeHarness).context).toEqual({
+      promptTokens: 70958,
+      calls: 4,
     });
   });
 
