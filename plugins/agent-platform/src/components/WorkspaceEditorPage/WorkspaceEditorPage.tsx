@@ -349,7 +349,9 @@ function WorkspaceEditor({
         isEdit={isEdit}
         isLoading={
           !needsManagerSignIn &&
-          (providersQuery.isLoading ||
+          // Until the provider instances are read, the gate cannot tell
+          // whether the form is any use.
+          ((!providersQuery.data && !providersQuery.error) ||
             (!draft && (edited.isLoading || availability.isLoading)))
         }
         loadError={edited.error}

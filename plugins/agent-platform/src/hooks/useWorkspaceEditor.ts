@@ -51,8 +51,8 @@ export function useDebouncedValue<T>(value: T, delayMs: number): T {
 
 /**
  * The installation's provider instances with the person's connection to each.
- * Read again when the window regains focus, so a sign-in finished in another
- * tab shows without a reload.
+ * Read again on every open of the editor and when the window regains focus,
+ * so a sign-in finished elsewhere or in another tab shows without a reload.
  */
 export function useWorkspaceProviders(
   client: WorkspaceManagerClient | undefined,
@@ -61,6 +61,7 @@ export function useWorkspaceProviders(
     queryKey: editorKey(client?.installation ?? '', 'providers'),
     enabled: Boolean(client),
     queryFn: () => client!.listProviders(),
+    refetchOnMount: 'always',
     refetchOnWindowFocus: true,
     retry: false,
   });
