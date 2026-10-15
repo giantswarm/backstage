@@ -68,11 +68,7 @@ export type { NodeInterface } from './Node';
 export { Pod } from './Pod';
 export type { PodContainerStatus, PodInterface, PodPendingState } from './Pod';
 export { Harness, harnessRuntimeOf } from './Harness';
-export type {
-  ClaudeHarnessLimits,
-  HarnessInterface,
-  HarnessRuntime,
-} from './Harness';
+export type { HarnessInterface, HarnessRuntime } from './Harness';
 export { FluxInstance } from './FluxInstance';
 export {
   FLUX_OPERATOR_RECONCILE_ANNOTATION,
