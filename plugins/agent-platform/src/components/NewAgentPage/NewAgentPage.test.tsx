@@ -253,14 +253,20 @@ describe('NewAgentPage', () => {
     await userEvent.click(screen.getByText('More options'));
     const egress = screen.getByLabelText(/^Extra egress origins/);
 
-    await userEvent.type(egress, 'github.com');
+    await userEvent.type(egress, 'github.com/x');
     expect(egress).not.toHaveAttribute('aria-invalid');
 
     await userEvent.tab();
     expect(egress).toHaveAttribute('aria-invalid', 'true');
 
-    await userEvent.clear(egress);
-    await userEvent.type(egress, 'https://github.com:443');
+    // Edited from one problem into another without passing a valid value:
+    // the error stays, and follows the change.
+    await userEvent.type(egress, '{Home}https://');
+    expect(egress).toHaveValue('https://github.com/x');
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+    // The moment it is valid, the error goes.
+    await userEvent.type(egress, '{End}{Backspace}{Backspace}');
+    expect(egress).toHaveValue('https://github.com');
     expect(egress).not.toHaveAttribute('aria-invalid');
   });
 

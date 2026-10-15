@@ -172,7 +172,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     description.trim() !== edit.content.description.trim() ||
     instructions.trim() !== edit.content.instructions.trim();
   const validation = useFieldValidation();
-  const { reveal, blurProps, errorFor, textFieldProps } = validation;
+  const { reveal, errorFor, fieldProps, textFieldProps } = validation;
   const repositoryError = useSelectFieldError(
     errorFor('repository', fieldErrors.repository),
   );
@@ -385,8 +385,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             rows={10}
             value={instructions}
             onChange={setInstructions}
-            {...blurProps('instructions')}
-            error={errorFor('instructions', fieldErrors.instructions)}
+            {...fieldProps('instructions', fieldErrors.instructions)}
           />
           {edit && (
             <SkillEditFiles

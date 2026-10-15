@@ -72,7 +72,7 @@ function NewAgentPageContent() {
   // not shout about half-typed values — and a blocked Continue moves the focus
   // to the first one (the `forms` skill).
   const validation = useFieldValidation();
-  const { blurProps, errorFor, textFieldProps } = validation;
+  const { errorFor, fieldProps, textFieldProps } = validation;
   // "More options" holds the technical knobs (model, runtime, technical name,
   // extra egress), collapsed: their defaults fit most agents. The shared
   // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
@@ -305,8 +305,7 @@ function NewAgentPageContent() {
               'https://github.com:443\nhttps://*.githubusercontent.com'
             }
             description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. Use one http(s) origin per line; a leading * matches one host label."
-            {...blurProps('egress')}
-            error={errorFor('egress', fieldErrors.egress)}
+            {...fieldProps('egress', fieldErrors.egress)}
           />
         </MoreOptions>
       </Flex>

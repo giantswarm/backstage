@@ -252,8 +252,7 @@ export function NewConnectorConnectPage() {
         onChange={setDescription}
         rows={2}
         placeholder="e.g. Search, read and update tickets"
-        {...validation.blurProps('description')}
-        error={validation.errorFor('description', fieldErrors.description)}
+        {...validation.fieldProps('description', fieldErrors.description)}
       />
 
       {validation.submitted && unanchoredErrors.length > 0 && (

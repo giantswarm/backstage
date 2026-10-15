@@ -5,7 +5,6 @@ import { TextAreaField } from '../TextAreaField';
 import {
   FieldErrorText,
   FIELD_VALIDATION_SCOPE_ATTRIBUTE,
-  fieldErrorProps,
   useFieldValidation,
   useSelectFieldError,
 } from './FieldValidation';
@@ -63,15 +62,13 @@ function Form() {
         description="Lowercase letters, numbers and hyphens."
         value={name}
         onChange={setName}
-        {...validation.blurProps('name')}
-        {...fieldErrorProps(validation.errorFor('name', errors.name))}
+        {...validation.textFieldProps('name', errors.name)}
       />
       <TextAreaField
         label="Notes"
         value={notes}
         onChange={setNotes}
-        {...validation.blurProps('notes')}
-        error={validation.errorFor('notes', errors.notes)}
+        {...validation.fieldProps('notes', errors.notes)}
       />
       <Flex>
         <Button
@@ -95,7 +92,7 @@ const meta = {
       description: {
         component: componentDocs({
           summary:
-            'Field errors that appear when a person leaves a field they typed in, or tries to submit — never while they first type: `useFieldValidation` holds that state per field, keeps a shown error in step with each change until it is fixed, and focuses the first invalid field on a blocked submit; `fieldErrorProps` and `useSelectFieldError` put a message on a bui field, and `FieldErrorText` renders one for a field bui does not cover. The rules are in the `forms` skill.',
+            'Field errors that appear when a person leaves a field they typed in, or tries to submit — never while they first type: `useFieldValidation` holds that state per field, keeps a shown error in step with each change so it clears the moment it is fixed, and focuses the first invalid field on a blocked submit; its `textFieldProps` and `fieldProps` wire a field, `fieldErrorProps` and `useSelectFieldError` put a message on a bui field, and `FieldErrorText` renders one for a field bui does not cover. The rules are in the `forms` skill.',
           whenToUse:
             'In any create or edit form with required or validated fields. Type "1" in Name and press Tab to see the error appear on leaving; type a letter to see it clear. Tab through an empty field: it stays quiet. Press Continue with the form empty to see every error appear and the focus move to the first one.',
           migration: 'mui-v4',
