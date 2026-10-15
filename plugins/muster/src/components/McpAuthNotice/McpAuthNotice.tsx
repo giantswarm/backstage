@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { makeStyles, Theme } from '@material-ui/core';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
+import { WIZARD_FOOTER_HEIGHT_VAR } from '@giantswarm/backstage-plugin-ui-react';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { McpAuthDialog } from './McpAuthDialog';
 import { useServerLabels } from './useServerLabels';
@@ -17,21 +18,34 @@ export const HIDDEN_NOTICE_STORAGE_KEY = 'muster.mcpAuthNotice.hidden';
 /** How many server names the notice spells out before "and n more". */
 const NAMED_SERVERS = 3;
 
+/**
+ * What is docked at the bottom of the view under the notice, which it stands
+ * clear of: the shell's mobile bottom bar, a WizardFrame's footer (Continue,
+ * Create) and the session page's docked composer (Send). Each is published as
+ * a CSS variable on the document root while it is there, 0px otherwise.
+ */
+const DOCKED_BELOW = [
+  'var(--agent-shell-mobile-bar-height, 0px)',
+  `var(${WIZARD_FOOTER_HEIGHT_VAR}, 0px)`,
+  'var(--session-dock-height, 0px)',
+].join(' + ');
+
 const useStyles = makeStyles((theme: Theme) => ({
   // Fixed in the bottom right corner, over the page and under every dialog:
   // seen on every page without moving the page's own layout, classic and
-  // agent shell alike.
+  // agent shell alike. Lifted above whatever is docked at the bottom, so it
+  // never covers (or takes the clicks of) a page's primary action.
   root: {
     position: 'fixed',
     right: theme.spacing(3),
-    bottom: theme.spacing(3),
+    bottom: `calc(${theme.spacing(3)}px + ${DOCKED_BELOW})`,
     zIndex: theme.zIndex.snackbar,
     width: 'min(400px, calc(100vw - 32px))',
     boxShadow: theme.shadows[6],
     borderRadius: 'var(--bui-radius-3, 8px)',
     [theme.breakpoints.down('xs')]: {
       right: 16,
-      bottom: 16,
+      bottom: `calc(16px + ${DOCKED_BELOW})`,
     },
   },
 }));
