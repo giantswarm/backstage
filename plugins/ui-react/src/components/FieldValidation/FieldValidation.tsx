@@ -176,6 +176,18 @@ function staysInside(event: FocusEvent<Element>): boolean {
 }
 
 let liveRegion: HTMLElement | undefined;
+let clearTimer: number | undefined;
+
+/** How long an announcement stays in the live region before it is emptied. */
+const ANNOUNCEMENT_MS = 7000;
+
+/** Empties the live region, so a stale message is not read out of context. */
+function clearAnnouncement() {
+  window.clearTimeout(clearTimer);
+  if (liveRegion) {
+    liveRegion.textContent = '';
+  }
+}
 
 /**
  * Says `message` through a polite live region: a field's error that appears
@@ -190,6 +202,10 @@ function announce(message: string) {
     liveRegion = document.createElement('div');
     liveRegion.setAttribute('aria-live', 'polite');
     liveRegion.setAttribute('data-field-validation-announcer', '');
+    // react-aria's modal dialogs hide everything outside them from screen
+    // readers, except a live announcer marked so: a dialog's field errors
+    // are announced too.
+    liveRegion.setAttribute('data-live-announcer', 'true');
     Object.assign(liveRegion.style, {
       position: 'absolute',
       width: '1px',
@@ -202,9 +218,10 @@ function announce(message: string) {
   }
   // Emptied first, so the same message said twice in a row is said again.
   const region = liveRegion;
-  region.textContent = '';
+  clearAnnouncement();
   window.setTimeout(() => {
     region.textContent = message;
+    clearTimer = window.setTimeout(clearAnnouncement, ANNOUNCEMENT_MS);
   }, 50);
 }
 
@@ -349,6 +366,7 @@ export function useFieldValidation(
     setAttempt(0);
     visits.current.forEach(visit => visit.stop());
     visits.current.clear();
+    clearAnnouncement();
   }, []);
 
   return {
