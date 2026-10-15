@@ -23,10 +23,10 @@ import {
   canonicalSkillId,
   canProposeSkillTo,
   repoSlug,
-  skillDetailPath,
 } from '../../lib/skills';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
-import { newSkillRouteRef, skillsRouteRef } from '../../routes';
+import { useSkillPaths } from '../../hooks/useSkillPaths';
+import { newSkillRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
 import { ShowMore } from '../ShowMore';
@@ -234,7 +234,7 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const classes = useStyles();
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
-  const skillsRoute = useRouteRef(skillsRouteRef);
+  const skillPaths = useSkillPaths();
   // The add form's target repositories: the github.com entries of the same
   // signed-in-config list the catalog is discovered from — skills are
   // proposed as GitHub pull requests, and the endpoint refuses any other
@@ -276,19 +276,17 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     () =>
       ranked.map(skill => {
         const id = canonicalSkillId(skill);
-        const detailPath = skillDetailPath(skill);
+        const href = skillPaths.detail(skill);
         return {
           id,
           name: skill.name,
           ...(skill.description ? { description: skill.description } : {}),
           source: skillSource(skill),
           ...(agentsLoading ? {} : { usedBy: usedByLabel(usage.get(id) ?? 0) }),
-          ...(skillsRoute && detailPath
-            ? { href: `${skillsRoute()}/${detailPath}` }
-            : {}),
+          ...(href ? { href } : {}),
         };
       }),
-    [ranked, agentsLoading, usage, skillsRoute],
+    [ranked, agentsLoading, usage, skillPaths],
   );
 
   const anyListed = skillCatalog.skills.length > 0;

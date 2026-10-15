@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 import { Box, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import {
@@ -14,6 +15,7 @@ import SearchIcon from '@material-ui/icons/Search';
 import { LogoIcon } from '../../nav/LogoIcon';
 import { usePortals } from '../agentArea';
 import { agentShellNavItems, SEARCH_FOLLOWS } from '../navItems';
+import { homeRouteRef } from '../routes';
 import { RailFrame } from './RailFrame';
 import { RailItem } from './RailItem';
 import { type RailLayout, useBarItemStyles } from './railLayout';
@@ -216,6 +218,7 @@ function AgentShellRail() {
   const classes = useStyles();
   const { isPinned, toggleSidebarPinState, isMobile } = useSidebarPinState();
   const portals = usePortals();
+  const homeRoute = useRouteRef(homeRouteRef);
   // A cross-link into the other portal only while the deployment serves it.
   const items = agentShellNavItems.filter(
     item => !item.crossLinkTo || portals[item.crossLinkTo],
@@ -293,7 +296,7 @@ function AgentShellRail() {
             pr={compact ? undefined : '1'}
           >
             <Link
-              href="/"
+              href={homeRoute?.()}
               aria-label="Agent Platform"
               className={
                 compact
