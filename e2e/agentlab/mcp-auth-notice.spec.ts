@@ -109,6 +109,12 @@ test('the notice stands clear of the wizard footer: Continue takes the click whi
   await signOutOfFixture(admin);
 
   await open(admin, '/agent-platform/agents/new');
+  // The worker keeps one page: a Not now earlier in the run hid the notice
+  // for this browser session.
+  await admin.evaluate(() =>
+    window.sessionStorage.removeItem('muster.mcpAuthNotice.hidden'),
+  );
+  await open(admin, '/agent-platform/agents/new');
   const notice = admin.getByRole('complementary', {
     name: 'MCP server sign-in',
   });
@@ -120,7 +126,10 @@ test('the notice stands clear of the wizard footer: Continue takes the click whi
     instructions: 'You are a probe.',
   });
 
-  const footer = admin.getByRole('contentinfo');
+  // The wizard's footer: inside the shell's <main>, so no contentinfo landmark.
+  const footer = admin
+    .locator('footer')
+    .filter({ has: admin.getByRole('button', { name: 'Continue' }) });
   const noticeBox = await notice.boundingBox();
   const footerBox = await footer.boundingBox();
   expect(
