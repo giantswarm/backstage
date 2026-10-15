@@ -21,6 +21,11 @@ import {
  * catch-alls call it (giantswarm/giantswarm#38573, Prep 3).
  */
 
+/* eslint-disable giantswarm/no-restricted-syntax -- the redirect table of
+   the old addresses: it writes the new tree's paths by hand on purpose, a
+   snapshot like the old tree's tabs below, and runs outside React, where no
+   route ref resolves. */
+
 /** The address an old one redirects to. The caller keeps the hash. */
 export type LegacyAgentPlatformTarget = {
   pathname: string;
