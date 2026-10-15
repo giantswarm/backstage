@@ -35,7 +35,10 @@ import { useCancelTask } from '../../hooks/useCancelTask';
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
-import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
+import {
+  isAnswerNotTakenError,
+  useAnswerConfirmation,
+} from '../../hooks/useAnswerConfirmation';
 import {
   NEW_SESSION_STATE_KEY,
   stashHandoffImages,
@@ -83,6 +86,7 @@ import {
   STALLED_STATE_LABEL,
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
+import { AnswerNotTakenNotice } from './AnswerNotTakenNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
@@ -434,6 +438,34 @@ export function SessionDetailPage() {
     );
     return cause ? { reported: false, cause, attempts: 1 } : undefined;
   }, [conversationRuntimeLoss, send.error, confirmation.error]);
+
+  /**
+   * The answer kagent did not take: the agent could not resume, and the
+   * question it answered is still open (`useAnswerConfirmation`). Terminal like
+   * a reported runtime loss — the card goes, the composer offers the new
+   * session — but only while that question stands: a resume that lands late
+   * moves the task on, and the page follows it.
+   */
+  const answerNotTaken =
+    isAnswerNotTakenError(confirmation.error) && Boolean(pendingConfirmation);
+  /** Nothing more can happen in this session; the way on is a new one. */
+  const cannotContinue = Boolean(runtimeLoss?.reported) || answerNotTaken;
+  /** The answer that was not taken, as a draft for the message box. */
+  const failedAnswer = confirmation.failed;
+  const answerDraft = useMemo<{
+    messageId: string;
+    text: string;
+    images?: ComposerImage[];
+  } | null>(
+    () =>
+      answerNotTaken && failedAnswer?.text
+        ? {
+            messageId: `answer:${failedAnswer.messageId}`,
+            text: failedAnswer.text,
+          }
+        : null,
+    [answerNotTaken, failedAnswer],
+  );
 
   /**
    * The agent, as a row the create path takes — the same join the composer
@@ -871,7 +903,7 @@ export function SessionDetailPage() {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession } = creation;
-  const unanswered = send.failed ?? lastUserMessage;
+  const unanswered = send.failed ?? answerDraft ?? lastUserMessage;
   const startNewSession = useCallback(
     async (draft: string, boxImages: ComposerImage[]) => {
       // An empty box carries the unanswered message over whole: its text and
@@ -1167,20 +1199,20 @@ export function SessionDetailPage() {
     // — up to 10 s behind — still says. Until the next poll the composer below
     // stands in with "working", which is what the stream says is happening.
     //
-    // Not while kagent has reported the runtime lost: an answer would run into
-    // the same lost runtime, so the question is left where it is and the way
-    // out takes the card's place.
+    // Not while kagent has reported the runtime lost, nor once it did not take
+    // an answer: another answer would go the same way, so the question is left
+    // where it is and the way out takes the card's place.
     const isConfirming =
       Boolean(pendingConfirmation && agent) &&
       !answerDispatched &&
-      !runtimeLoss?.reported;
+      !cannotContinue;
     // The way out, offered under the box: a second button while the loss is
     // only suspected, the only one once kagent has reported it. Needs the agent
     // as a row to create against; without one the notice says where else to go.
     // Withheld where agent-manager cannot start a session as the person (the
     // notice gives the row's `sessionBlocker`), and while that is still read.
     const offersNewSession = Boolean(
-      runtimeLoss &&
+      (runtimeLoss || answerNotTaken) &&
       agentRow &&
       !agentRow.sessionBlocker &&
       !agentRow.isSessionPending &&
@@ -1198,6 +1230,15 @@ export function SessionDetailPage() {
             agentName={row.agentName || undefined}
             offersNewSession={offersNewSession}
             newSessionBlocker={agentRow?.sessionBlocker}
+            startError={creation.error?.message}
+          />
+        )}
+        {!runtimeLoss && answerNotTaken && (
+          <AnswerNotTakenNotice
+            agentName={row.agentName || undefined}
+            offersNewSession={offersNewSession}
+            newSessionBlocker={agentRow?.sessionBlocker}
+            hasDraft={Boolean(answerDraft)}
             startError={creation.error?.message}
           />
         )}
@@ -1270,7 +1311,9 @@ export function SessionDetailPage() {
           // On failure the optimistic copy is dropped, so this is the only place the
           // user's text still exists. After a stalled turn was cancelled, the
           // message it never answered comes back the same way.
-          restore={send.failed ?? redraft}
+          // An answer kagent did not take comes here too, as the draft of the
+          // new session the notice above points at.
+          restore={send.failed ?? redraft ?? answerDraft}
           onStop={isConfirming ? undefined : stopTurn}
           isStopping={cancellation.isCancelling}
           details={costChip}
@@ -1284,8 +1327,8 @@ export function SessionDetailPage() {
                     startNewSession(draft, images).catch(() => {});
                   },
                   isStarting: creation.isCreating,
-                  replacesSend: runtimeLoss!.reported,
-                  caption: runtimeLoss!.reported ? (
+                  replacesSend: cannotContinue,
+                  caption: cannotContinue ? (
                     <>
                       This session cannot continue; your message starts a new
                       one with the same agent.{' '}

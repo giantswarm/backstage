@@ -8,7 +8,12 @@ import {
 } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
-import { useAnswerConfirmation } from './useAnswerConfirmation';
+import {
+  ANSWER_TAKEN_POLL_MS,
+  ANSWER_TAKEN_WAIT_MS,
+  isAnswerNotTakenError,
+  useAnswerConfirmation,
+} from './useAnswerConfirmation';
 
 const streamAnswer = jest.fn();
 const listSessionTasks = jest.fn();
@@ -288,23 +293,166 @@ describe('useAnswerConfirmation', () => {
       expect(listSessionTasks).not.toHaveBeenCalled();
     });
 
-    it('follows a resumed turn still running before its first event through the poll', async () => {
-      // The streaming route's 202: the client resolves with no events. The
-      // backend reports the turn still running, so this is the page's
-      // "following" state — not a failure.
-      streamAnswer.mockResolvedValue(undefined);
+    describe('an answer whose stream says nothing', () => {
+      // The streaming route's 202, or a stream that ends without an event: a
+      // resumed turn still running before its first event, or an answer kagent
+      // never took. Only the session's history tells them apart.
 
-      const { result, invalidateQueries } = renderWith(agent);
-
-      await act(async () => {
-        await result.current.answer({ taskId: 'task-1', decision: 'approve' });
+      /** The answered task as a read returns it, in `state`, with `history`. */
+      const answeredTask = (state: string, history: unknown[] = []) => ({
+        id: 'task-1',
+        status: { state },
+        history,
+      });
+      /** The answer's own message, as the history holds it once taken. */
+      const sentAnswer = () => ({
+        messageId: streamAnswer.mock.calls[0][3].messageId,
       });
 
-      expect(result.current.error).toBeNull();
-      expect(result.current.failed).toBeNull();
-      expect(result.current.isStreamLost).toBe(true);
-      expect(listSessionTasks).not.toHaveBeenCalled();
-      expect(invalidationFor(invalidateQueries, TASKS_KEY)).toBeDefined();
+      beforeEach(() => {
+        streamAnswer.mockResolvedValue(undefined);
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('follows the turn through the poll once the history has the answer', async () => {
+        listSessionTasks.mockImplementation(async () => [
+          answeredTask('input-required', [sentAnswer()]),
+        ]);
+        const { result, invalidateQueries } = renderWith(agent);
+
+        await act(async () => {
+          await result.current.answer({
+            taskId: 'task-1',
+            decision: 'approve',
+          });
+        });
+
+        expect(result.current.error).toBeNull();
+        expect(result.current.failed).toBeNull();
+        // The page's "following" state, not a failure.
+        expect(result.current.isStreamLost).toBe(true);
+        expect(listSessionTasks).toHaveBeenCalledTimes(1);
+        expect(invalidationFor(invalidateQueries, TASKS_KEY)).toBeDefined();
+      });
+
+      it('follows the turn once the answered task has moved on', async () => {
+        listSessionTasks.mockResolvedValue([answeredTask('working')]);
+        const { result } = renderWith(agent);
+
+        await act(async () => {
+          await result.current.answer({
+            taskId: 'task-1',
+            decision: 'approve',
+          });
+        });
+
+        expect(result.current.error).toBeNull();
+        expect(listSessionTasks).toHaveBeenCalledTimes(1);
+      });
+
+      it('leaves a read that does not show the task to the poll', async () => {
+        // Cannot tell: not grounds for calling the session dead.
+        listSessionTasks.mockResolvedValue([]);
+        const { result } = renderWith(agent);
+
+        await act(async () => {
+          await result.current.answer({
+            taskId: 'task-1',
+            decision: 'approve',
+          });
+        });
+
+        expect(result.current.error).toBeNull();
+      });
+
+      it('reports an answer kagent did not take, instead of resolving silently', async () => {
+        // The observed case: a three-day-old session took the answer with a
+        // 202, and its task kept waiting with no answer in its history. The
+        // button came back and nothing else happened.
+        jest.useFakeTimers();
+        listSessionTasks.mockResolvedValue([answeredTask('input-required')]);
+        const { result } = renderWith(agent);
+
+        let outcome: Promise<unknown> = Promise.resolve();
+        act(() => {
+          outcome = result.current
+            .answer({
+              taskId: 'task-1',
+              decision: 'approve',
+              answers: [['Activity-gated']],
+              text: 'Activity-gated',
+            })
+            .catch(error => error);
+        });
+        await waitFor(() => expect(listSessionTasks).toHaveBeenCalled());
+        expect(result.current.isAnswering).toBe(true);
+
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(
+            ANSWER_TAKEN_WAIT_MS + ANSWER_TAKEN_POLL_MS,
+          );
+        });
+
+        expect(isAnswerNotTakenError(await outcome)).toBe(true);
+        await waitFor(() => {
+          expect(isAnswerNotTakenError(result.current.error)).toBe(true);
+          // Handed back, so the page can keep the person's words.
+          expect(result.current.failed?.text).toBe('Activity-gated');
+          expect(result.current.isAnswering).toBe(false);
+        });
+        expect(listSessionTasks).toHaveBeenCalledTimes(
+          ANSWER_TAKEN_WAIT_MS / ANSWER_TAKEN_POLL_MS + 1,
+        );
+      });
+
+      it('counts an answer that lands late as taken', async () => {
+        jest.useFakeTimers();
+        listSessionTasks
+          .mockResolvedValueOnce([answeredTask('input-required')])
+          .mockResolvedValueOnce([answeredTask('input-required')])
+          .mockImplementation(async () => [
+            answeredTask('working', [sentAnswer()]),
+          ]);
+        const { result } = renderWith(agent);
+
+        let outcome: Promise<unknown> = Promise.resolve();
+        act(() => {
+          outcome = result.current
+            .answer({ taskId: 'task-1', decision: 'approve' })
+            .catch(error => error);
+        });
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(ANSWER_TAKEN_WAIT_MS);
+        });
+
+        expect(await outcome).toBeUndefined();
+        expect(listSessionTasks).toHaveBeenCalledTimes(3);
+        expect(result.current.error).toBeNull();
+      });
+
+      it('does not call the session dead when every read failed', async () => {
+        jest.useFakeTimers();
+        listSessionTasks.mockRejectedValue(new Error('kagent is unreachable'));
+        const { result } = renderWith(agent);
+
+        let outcome: Promise<unknown> = Promise.resolve();
+        act(() => {
+          outcome = result.current
+            .answer({ taskId: 'task-1', decision: 'approve' })
+            .catch(error => error);
+        });
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(
+            ANSWER_TAKEN_WAIT_MS + ANSWER_TAKEN_POLL_MS,
+          );
+        });
+
+        expect(await outcome).toBeUndefined();
+        expect(result.current.error).toBeNull();
+      });
     });
 
     it('verifies a transport failure before any event against the history', async () => {

@@ -128,6 +128,8 @@ jest.mock('../../hooks/useSendMessage', () => ({
 const mockAnswer = jest.fn();
 const mockUseAnswerConfirmation = jest.fn<UseAnswerConfirmationResult, []>();
 jest.mock('../../hooks/useAnswerConfirmation', () => ({
+  // The real error classifier, so the page reads the hook's errors as it will.
+  ...jest.requireActual('../../hooks/useAnswerConfirmation'),
   useAnswerConfirmation: () => mockUseAnswerConfirmation(),
 }));
 
@@ -2342,6 +2344,136 @@ describe('SessionDetailPage', () => {
     });
   });
 
+  describe('an answer kagent did not take', () => {
+    // `useAnswerConfirmation` rejects with this once a silent answer (a 202,
+    // an empty stream) never reached the task: the agent could not resume,
+    // and the question is still open.
+    const notTaken = () => {
+      const error = new Error(
+        'kagent did not take the answer: the agent could not resume, and the question is still open.',
+      );
+      error.name = 'AnswerNotTakenError';
+      return error;
+    };
+    const question = 'Who exactly is the audience?';
+    const waitingView: SessionDetailView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: awaitingInput,
+      currentTaskId: 'task-2',
+      pendingConfirmation: {
+        taskId: 'task-2',
+        asks: 'input',
+        toolName: 'ask_user',
+        questions: [{ question, multiple: false }],
+      },
+    };
+    const failedAnswer = {
+      messageId: 'answer-1',
+      taskId: 'task-2',
+      decision: 'approve' as const,
+      answers: [['Cyclists']],
+      text: 'Cyclists',
+    };
+    const composer = () => screen.getByRole('textbox', { name: 'Message' });
+    const startButton = () =>
+      screen.getByRole('button', {
+        name: 'Start a new session with Issue tracker',
+      });
+
+    it('replaces the question card with the error, offers no retry and keeps the answer', async () => {
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({ error: notTaken(), failed: failedAnswer }),
+      );
+      await render();
+
+      expect(
+        screen.getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /the question is still open and this session cannot continue/,
+        ),
+      ).toBeInTheDocument();
+      // No card, so nothing invites sending the answer again.
+      expect(
+        screen.queryByRole('form', { name: 'Question from the agent' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send answer' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send' }),
+      ).not.toBeInTheDocument();
+      // The answer waits in the box, for the new session that takes Send's
+      // place.
+      expect(composer()).toBeEnabled();
+      expect(composer()).toHaveValue('Cyclists');
+      expect(startButton()).toBeInTheDocument();
+      expect(
+        screen.getByText(/Your answer is in the message box below/),
+      ).toBeInTheDocument();
+      // kagent marked nothing, so the page does not claim a lost runtime.
+      expect(screen.queryByText('Runtime lost')).not.toBeInTheDocument();
+    });
+
+    it('starts the new session with the answer', async () => {
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({ error: notTaken(), failed: failedAnswer }),
+      );
+      await render();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalledWith(
+          expect.objectContaining({ prompt: 'Cyclists' }),
+        );
+      });
+      expect(mockAnswer).not.toHaveBeenCalled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps the card and its retry for any other failure', async () => {
+      // A refused or lost request can go through on a second try.
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: new Error('The streaming send failed with status 502.'),
+          failed: failedAnswer,
+        }),
+      );
+      await render();
+
+      expect(screen.getByText('Answer not sent')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Send answer' })).toBeEnabled();
+      expect(
+        screen.queryByText('Could not resume this session'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('lets go of the error once the question is no longer open', async () => {
+      // A resume that lands late moves the task on; the page follows it.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: true,
+      });
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({ error: notTaken(), failed: failedAnswer }),
+      );
+      await render();
+
+      expect(
+        screen.queryByText('Could not resume this session'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Start a new session/ }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('the header', () => {
     const renderShell = render;
 
@@ -2589,6 +2721,45 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(screen.getByRole('textbox', { name: 'Message' })).toBeDisabled();
+    });
+
+    it('unfolds the composer with the answer kagent did not take, under the error', async () => {
+      // The question card is what folds the composer at phone width; with the
+      // card gone, the box holding the answer and the new-session button stay
+      // in the dock under the notice.
+      layout = mockPhoneLayout();
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      const notTaken = new Error('kagent did not take the answer.');
+      notTaken.name = 'AnswerNotTakenError';
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: notTaken,
+          failed: {
+            messageId: 'answer-1',
+            taskId: 'task-1',
+            decision: 'approve',
+            answers: [['prod']],
+            text: 'prod',
+          },
+        }),
+      );
+      await render();
+
+      const dock = screen.getByTestId('session-dock');
+      expect(
+        within(dock).getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(
+        within(dock).queryByTestId('composer-folded'),
+      ).not.toBeInTheDocument();
+      expect(
+        within(dock).getByRole('textbox', { name: 'Message' }),
+      ).toHaveValue('prod');
+      expect(
+        within(dock).getByRole('button', {
+          name: 'Start a new session with Issue tracker',
+        }),
+      ).toBeInTheDocument();
     });
 
     it('says the button starts the new session on touch, not Enter', async () => {

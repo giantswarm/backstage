@@ -1696,6 +1696,32 @@ sent choices first.
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.
 
+#### An answer kagent does not take
+
+The streaming answer route answers `202 pending` when the resumed turn sends no
+event within the request timeout (`timeoutMs`, 10 s): an approved tool can run
+that long before the agent speaks. kagent answers the same way when it cannot
+resume the session at all, and the answer then never reaches the task. Observed
+on a session left waiting for three days: the task stayed `input-required`
+with no answer in its history, and the session carried no failure.
+
+So an answer whose stream says nothing (a 202, or a stream that ends without an
+event) is checked against the history (`useAnswerConfirmation`,
+`ANSWER_TAKEN_WAIT_MS` 15 s, read every 3 s). It counts as taken once it is in
+a task's history or the answered task has left `input-required`. A read that
+does not show the task, or a wait whose reads all failed, cannot tell and
+leaves the turn to the poll. A task still waiting without the answer at the end
+of the wait fails the answer with `AnswerNotTakenError`.
+
+While the question stands, the page treats that as the end of the session, as
+it does a reported runtime loss: "Could not resume this session" replaces the
+answer card, the answer's text moves into the message box, and the new-session
+button takes Send's place. No retry is offered, because a second answer goes
+the same way. Any other answer failure (a refusal, a 5xx, a lost connection)
+keeps the card with "Answer not sent" and its retry. kagent marks nothing, so
+the session keeps its "Waiting for you" state in the list and the rail, and a
+reload shows the card again.
+
 ### Starting a session
 
 A session starts from a **composer** with a prompt and an agent; there is no
