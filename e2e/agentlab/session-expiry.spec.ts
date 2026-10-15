@@ -48,9 +48,15 @@ async function openSignedInWithClock(
   return { context, page };
 }
 
-/** Moves to the other Connectors sub-tab in the app, so the page asks muster again without a reload. */
-async function switchSubTab(page: Page, name: RegExp) {
-  await page.getByRole('tab', { name }).click();
+/**
+ * Opens a connector's page from the Internal sub-tab in the app, without a
+ * reload: the page asks muster for that connector's tools, a query no earlier
+ * view has cached.
+ */
+async function openConnectorInApp(page: Page, name: string) {
+  await page.getByRole('tab', { name: /^Internal/ }).click();
+  await page.getByRole('link', { name, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/${name}`));
 }
 
 test('an ID token near its exp is refreshed before it is forwarded to muster', async ({
@@ -73,8 +79,7 @@ test('an ID token near its exp is refreshed before it is forwarded to muster', a
   skew = lifetime - 120_000;
   await page.clock.fastForward(skew);
   const before = sent.length;
-  await switchSubTab(page, /^Internal/);
-  await expect(page).toHaveURL(/\/customize\/connectors\/internal/);
+  await openConnectorInApp(page, 'workspace-manager');
   await expect.poll(() => sent.length).toBeGreaterThan(before);
 
   const after = sent.slice(before);
@@ -103,7 +108,7 @@ test('a tab past the token’s lifetime offers Sign in again, never the raw must
   skew = jwtExp(first) - Date.now() + 120_000;
   await page.clock.fastForward(skew);
   const before = sent.length;
-  await switchSubTab(page, /^Internal/);
+  await openConnectorInApp(page, 'workspace-manager');
 
   await expect(page.getByText(EXPIRED_COPY).first()).toBeVisible({
     timeout: 60_000,
@@ -112,6 +117,10 @@ test('a tab past the token’s lifetime offers Sign in again, never the raw must
     page.getByRole('button', { name: 'Sign in again' }).first(),
   ).toBeVisible();
   await expect(page.getByText(/token has expired/i)).toHaveCount(0);
+  await test.info().attach('sign-in-again', {
+    body: await page.screenshot(),
+    contentType: 'image/png',
+  });
   for (const { token, at } of sent.slice(before)) {
     expect(jwtExp(token), 'no expired token reaches muster').toBeGreaterThan(
       at,
