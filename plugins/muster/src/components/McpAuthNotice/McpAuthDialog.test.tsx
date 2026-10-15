@@ -106,6 +106,10 @@ describe('McpAuthDialog', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(list).toHaveTextContent('workspace-manager');
     expect(list).not.toHaveTextContent('cluster-manager');
+    // Its sign-in is the Git provider connection itself, and the row says so.
+    expect(list).toHaveTextContent(
+      'Connects your GitHub or GitLab account, whichever this installation uses.',
+    );
   });
 
   it('says so when nothing waits', async () => {

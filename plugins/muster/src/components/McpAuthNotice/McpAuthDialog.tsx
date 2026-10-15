@@ -35,12 +35,30 @@ const useStyles = makeStyles((theme: Theme) => ({
       paddingBottom: 0,
     },
   },
+  label: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.25),
+    minWidth: 0,
+    flex: '1 1 220px',
+  },
   name: {
     fontFamily: theme.typography.fontFamily,
     fontWeight: 600,
     fontSize: '0.875rem',
   },
 }));
+
+/**
+ * What signing in to a platform server means, where its name does not say:
+ * workspace-manager is its own authorization server and hands the sign-in to
+ * the Git provider the installation configures, so its sign-in is the
+ * GitHub grant or the GitLab login the workspaces use.
+ */
+const SIGN_IN_HINTS: Record<string, string> = {
+  'workspace-manager':
+    'Connects your GitHub or GitLab account, whichever this installation uses. Workspaces read and push repositories as you; no separate GitHub connection is needed.',
+};
 
 export type McpAuthDialogProps = {
   isOpen: boolean;
@@ -137,7 +155,14 @@ export function McpAuthDialog({
                 <ul className={classes.list} aria-label="MCP servers">
                   {rows.map(name => (
                     <li key={name} className={classes.row}>
-                      <span className={classes.name}>{name}</span>
+                      <span className={classes.label}>
+                        <span className={classes.name}>{name}</span>
+                        {SIGN_IN_HINTS[name] && (
+                          <Text variant="body-small" color="secondary">
+                            {SIGN_IN_HINTS[name]}
+                          </Text>
+                        )}
+                      </span>
                       {waiting.includes(name) ? (
                         <ServerSignIn
                           serverName={name}
