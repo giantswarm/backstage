@@ -487,11 +487,19 @@ export async function connectToMuster(page: Page, ready: Locator) {
  * agent-manager's dry run on Review, then Create agent. Resolves on the agent's
  * detail page and returns its path; from then on the agent exists and the
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
+ *
+ * `options.harness` picks that Runtime card under More options instead of the
+ * platform Harness; `options.onStep` runs on Details (once the pick is made)
+ * and on Review (once the dry run completed), before each Continue or Create.
  */
 export async function createAgentInWizard(
   page: Page,
   agentName: string,
   agentSlug: string,
+  options: {
+    harness?: RegExp;
+    onStep?: (step: 'Details' | 'Review') => Promise<void>;
+  } = {},
 ): Promise<string> {
   // --- Step 1: Details -----------------------------------------------------
   await open(page, '/agent-platform/agents/new');
@@ -518,6 +526,13 @@ export async function createAgentInWizard(
     .getByRole('radiogroup', { name: 'Model' })
     .getByRole('radio', { name: /default-model-config/ })
     .check();
+  if (options.harness) {
+    await page
+      .getByRole('radiogroup', { name: 'Runtime' })
+      .getByRole('radio', { name: options.harness })
+      .click();
+  }
+  await options.onStep?.('Details');
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
   // --- Step 2: Skills (none) -----------------------------------------------
@@ -549,6 +564,7 @@ export async function createAgentInWizard(
     deploy,
     'the dry run through agent-manager completed and Create is offered',
   ).toBeEnabled({ timeout: 90_000 });
+  await options.onStep?.('Review');
   await deploy.click();
 
   // The review page hands the agent to its detail page, which reports the
