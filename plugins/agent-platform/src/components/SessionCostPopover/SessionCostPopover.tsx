@@ -73,9 +73,6 @@ const useStyles = makeStyles(theme => ({
     background: `var(--bui-accent-bg, ${theme.palette.primary.main})`,
   },
   hint: {
-    fontSize: '0.75rem',
-    lineHeight: 1.45,
-    color: `var(--bui-fg-secondary, ${theme.palette.text.secondary})`,
     marginBottom: theme.spacing(0.75),
   },
   footnote: {
@@ -155,14 +152,14 @@ export type SessionCostPopoverProps = {
  * - **Reported cost** appears only when the agent's runtime reported one per
  *   turn (the claude Harness does, ADK does not) — absent means not reported,
  *   never zero.
- * - **Context used** is the newest model call's prompt tokens against the
- *   model's context window from app-config
- *   (`agentPlatform.models.contextWindows`). A model the table does not name
+ * - **Context used** is the newest turn's largest model call (prompt plus
+ *   output; see `SessionTimeline.context`) against the model's context window
+ *   from app-config (`agentPlatform.models.contextWindows`). A model the table does not name
  *   shows the raw token count instead of a share — claiming a percentage of
  *   an unknown window would be invented precision — and so does a count above
- *   the configured window, with a line saying the window looks too small. A
- *   runtime that reports only turn totals (the claude Harness) has no
- *   per-call figure, so its context reads "Not reported".
+ *   the configured window; a line under the row says which. A runtime that
+ *   reports only turn totals (the claude Harness) has no per-call figure, so
+ *   its context reads "Not reported".
  *
  * Costs show in the installation's configured currency
  * (`gs.installations.<name>.currency`), USD otherwise.
@@ -197,7 +194,7 @@ export function SessionCostPopover({
   let contextValue: ReactNode = '—';
   // What the chip shows of the context, said for a screen reader.
   let contextLabel = '';
-  // Shown only when the configured window is evidently wrong.
+  // Why no share shows beside a raw count.
   let windowHint: string | undefined;
   if (context.kind === 'share') {
     contextChip = (
@@ -220,11 +217,15 @@ export function SessionCostPopover({
     );
     contextValue = `${formatTokens(context.usedTokens)} tokens`;
     contextLabel = `, ${formatTokens(context.usedTokens)} tokens of context`;
-    if (context.kind === 'over-window') {
-      windowHint = `Above the ${formatTokens(
-        context.windowTokens,
-      )} context window configured for this model, so that setting looks too small.`;
-    }
+    // No catch-all window: a model the table does not name (a release newer
+    // than the table, say) shows its count and says why there is no share,
+    // rather than a share of a window it may not have.
+    windowHint =
+      context.kind === 'over-window'
+        ? `Above the ${formatTokens(
+            context.windowTokens,
+          )} context window configured for this model: the setting may be too small, or the turn ran on another model.`
+        : 'No context window is configured for this model, so no share is shown.';
   } else if (context.kind === 'unmeasured') {
     contextValue = 'Not reported';
   }
@@ -276,7 +277,16 @@ export function SessionCostPopover({
           />
           <Row label="Turns" value={formatCount(taskCount)} />
           <Row label="Context used" value={contextValue} />
-          {windowHint && <div className={classes.hint}>{windowHint}</div>}
+          {windowHint && (
+            <Text
+              as="p"
+              variant="body-x-small"
+              color="secondary"
+              className={classes.hint}
+            >
+              {windowHint}
+            </Text>
+          )}
           {context.kind === 'share' && (
             <div
               className={classes.bar}

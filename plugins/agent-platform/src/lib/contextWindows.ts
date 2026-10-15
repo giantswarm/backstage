@@ -67,9 +67,9 @@ export type ContextUsage =
   /** No turn has reported usage yet. */
   | { kind: 'none' }
   /**
-   * The runtime reports only a turn total summed over several model calls (the
-   * claude Harness), which is no single call's context: there is nothing to
-   * show as context without inventing it.
+   * The runtime reports only a turn total summed over several model calls, or
+   * one whose call count it did not say (the claude Harness), which is no
+   * single call's context: there is nothing to show without inventing it.
    */
   | { kind: 'unmeasured' }
   /** The table names no window for the model: the raw count only. */
@@ -77,10 +77,11 @@ export type ContextUsage =
   /** The share of the window, 0–100. */
   | { kind: 'share'; usedTokens: number; windowTokens: number; percent: number }
   /**
-   * The model was sent more than the configured window. A model cannot take
-   * more than its window, so the configured window is evidently wrong — too
-   * small, or matched by a pattern meant for another model. The raw count
-   * stands, and no share is claimed.
+   * A call counted more than the configured window. No call can exceed its
+   * model's window, so the window does not fit the call: the setting is too
+   * small, or matched by a pattern meant for another model, or the turn ran on
+   * a model the agent has since left (the window is looked up for the agent's
+   * current model). The raw count stands, and no share is claimed.
    */
   | { kind: 'over-window'; usedTokens: number; windowTokens: number };
 
@@ -95,10 +96,10 @@ export function contextUsage(
   if (!reading) {
     return { kind: 'none' };
   }
-  if (reading.calls > 1) {
+  if (!reading.perCall) {
     return { kind: 'unmeasured' };
   }
-  const usedTokens = reading.promptTokens;
+  const usedTokens = reading.tokens;
   if (!Number.isFinite(usedTokens) || usedTokens <= 0) {
     return { kind: 'none' };
   }

@@ -35,7 +35,7 @@ const baseProps: SessionCostPopoverProps = {
   installation: 'gazelle',
   model: 'claude-sonnet-4-5',
   tokens: { total: 18200, prompt: 15600, completion: 2600 },
-  context: { promptTokens: 24000, calls: 1 },
+  context: { tokens: 24000, perCall: true },
   taskCount: 3,
   estimatedCostUsd: 0.21,
   costBasis: 'Estimated: an observed rate.',
@@ -139,6 +139,13 @@ describe('SessionCostPopover', () => {
     // The count without a share: claiming a percentage of an unknown window
     // would be invented precision.
     expect(within(dialog).getByText('24.0k tokens')).toBeInTheDocument();
+    // And says why, so an unnamed model (a newer release, say) reads as
+    // unconfigured rather than broken.
+    expect(
+      within(dialog).getByText(
+        'No context window is configured for this model, so no share is shown.',
+      ),
+    ).toBeInTheDocument();
     expect(
       within(dialog).queryByRole('img', { name: /Context/ }),
     ).not.toBeInTheDocument();
@@ -149,7 +156,7 @@ describe('SessionCostPopover', () => {
     // configured one means the table is wrong. "969.0k of 200.0k · 100%"
     // contradicted itself; the count stands and the window is called out.
     publishConfig({ contextWindows: { 'claude-*': 200000 } });
-    await render({ context: { promptTokens: 969000, calls: 1 } });
+    await render({ context: { tokens: 969000, perCall: true } });
 
     expect(
       screen.getByRole('button', {
@@ -162,7 +169,7 @@ describe('SessionCostPopover', () => {
     expect(within(dialog).getByText('969.0k tokens')).toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        'Above the 200.0k context window configured for this model, so that setting looks too small.',
+        'Above the 200.0k context window configured for this model: the setting may be too small, or the turn ran on another model.',
       ),
     ).toBeInTheDocument();
     expect(within(dialog).queryByText(/%/)).not.toBeInTheDocument();
@@ -174,7 +181,7 @@ describe('SessionCostPopover', () => {
   it('claims no context from a turn total summed over several calls', async () => {
     // The claude Harness reports one bag per turn, summed over its calls.
     publishConfig({ contextWindows: { 'claude-*': 200000 } });
-    await render({ context: { promptTokens: 70958, calls: 4 } });
+    await render({ context: { tokens: 71338, perCall: false } });
 
     expect(
       screen.getByRole('button', { name: 'Session cost and context: $0.210' }),

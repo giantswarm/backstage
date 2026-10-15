@@ -389,9 +389,11 @@ agentPlatform:
       'example-model-*': 128000
 ```
 
-When a session's context is larger than the configured window, the window is
-evidently wrong, so the popover shows the raw count and says the configured
-window looks too small, instead of a share.
+A model the table does not name, such as a Claude release newer than the
+table, shows its raw count with a line saying no window is configured for it.
+When a session's context is larger than the configured window, the popover
+shows the raw count and says the setting may be too small (or that the turn
+ran on another model), instead of a share.
 
 ## User settings: pins, favorites, dismissals
 

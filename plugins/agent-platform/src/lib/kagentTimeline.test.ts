@@ -138,35 +138,84 @@ describe('buildTimeline', () => {
     });
   });
 
-  it("reads the context from the newest turn's newest call, without delegated usage", () => {
-    // The context indicator's numerator: what the newest model call was sent.
-    // The fixture's newest task is still working and has reported nothing, so
-    // the last *measured* turn is the first; its newest bag is 760 — and the
-    // subagent's 2600 are its own session's context, so they are not in it.
+  it("reads the context from the newest turn's largest call, without delegated usage", () => {
+    // The context indicator's numerator. The fixture's newest task is still
+    // working and has reported nothing, so the last *measured* turn is the
+    // first; its calls counted 1420 and 890 — and the subagent's 3100 are its
+    // own session's context, so they are not in it.
     expect(timelineFor(kagentPrefixed).context).toEqual({
-      promptTokens: 760,
-      calls: 1,
+      tokens: 1420,
+      perCall: true,
     });
   });
 
-  it("takes an ADK turn's newest call, not the sum of its calls", () => {
+  it("takes an ADK turn's largest call, not the sum of its calls", () => {
     // ADK writes one bag per model call, each re-sending the growing context
-    // (2900, 3802, 5358 here). Summing them — 12k — is what once showed a
-    // session's context as several times the model's window.
+    // (2958, 3885, 5362 here, prompt plus output). Summing them — 12k — is
+    // what once showed a session's context as several times the window.
     expect(timelineFor(kagent4a91c273).context).toEqual({
-      promptTokens: 5358,
-      calls: 1,
+      tokens: 5362,
+      perCall: true,
     });
+  });
+
+  /** One ADK turn whose agent messages carry the given usage bags, in order. */
+  function adkTurn(id: string, bags: Record<string, unknown>[]): A2aTaskWire {
+    return {
+      id,
+      kind: 'task',
+      status: { state: 'completed', timestamp: '2026-10-15T10:00:00Z' },
+      history: bags.map((bag, index) => ({
+        kind: 'message',
+        messageId: `${id}-${index}`,
+        role: 'agent',
+        parts: [{ kind: 'text', text: `call ${index}` }],
+        metadata: { 'kagent.dev/a2a/usage': bag },
+      })),
+    } as A2aTaskWire;
+  }
+
+  it('is not undercut by a smaller call after the largest', () => {
+    // A summarizer or sub-agent call recorded late in the turn.
+    const turn = adkTurn('t', [
+      { promptTokenCount: 400_000, candidatesTokenCount: 2_000 },
+      { promptTokenCount: 1_000, candidatesTokenCount: 200 },
+    ]);
+
+    expect(buildTimeline([turn]).context).toEqual({
+      tokens: 402_000,
+      perCall: true,
+    });
+  });
+
+  it('counts a bag that reports only a total', () => {
+    const turn = adkTurn('t', [
+      { promptTokenCount: 2_900 },
+      { promptTokenCount: 3_802 },
+      { totalTokenCount: 6_000 },
+    ]);
+
+    expect(buildTimeline([turn]).context).toEqual({
+      tokens: 6_000,
+      perCall: true,
+    });
+  });
+
+  it("replaces the previous turn's reading with the newest turn's", () => {
+    const first = adkTurn('first', [{ promptTokenCount: 90_000 }]);
+    const second = adkTurn('second', [{ promptTokenCount: 30_000 }]);
+
+    expect(buildTimeline([first, second]).context?.tokens).toBe(30_000);
   });
 
   it('reports no context when no turn reported any usage', () => {
     expect(timelineFor(askUserPending).context).toBeUndefined();
   });
 
-  it("marks a claude Harness turn's usage as a sum over its calls", () => {
+  it("marks a claude Harness turn's total as not one call's", () => {
     expect(timelineFor(claudeHarness).context).toEqual({
-      promptTokens: 70958,
-      calls: 4,
+      tokens: 71338,
+      perCall: false,
     });
   });
 

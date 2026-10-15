@@ -1198,20 +1198,32 @@ Costs use `gs.installations.<name>.currency`, USD otherwise.
 context, so a 4-turn session reached 1.4M prompt tokens across 14 calls. There
 is no combined total, because input and output are priced differently.
 
-**Context used is the newest model call's prompt tokens against a configured
+**Context used is the newest turn's largest model call against a configured
 window.** No platform component reports a hosted model's context window, so
 the denominator is `agentPlatform.models.contextWindows` (model-name patterns
 with `*`, the most specific match wins, served through the signed-in config).
-An unmatched model shows its raw token count. The numerator is
-`buildTimeline`'s `context`: the newest usage bag of the newest turn that
-reported one, excluding delegated usage. ADK writes a bag per model call, so
-that is the context the model was last sent. A turn's bags must not be summed:
-each call re-sends the whole context, and the sum over a long turn runs to
-several times the window. The claude Harness writes one bag per turn, summed
-over its calls (`numTurns`), so no call's context is known and the row reads
-"Not reported". A count above the configured window means the window is wrong,
-so the popover shows the raw count with a line saying so, never a share capped
-at 100%.
+The numerator is `buildTimeline`'s `context`, read by `readUsageReport`:
+
+- ADK writes a usage bag per model call. A call's figure is its reported
+  total, else prompt plus output: the output is in the context from then on,
+  and both must fit the window.
+- A turn's figure is its largest call, never the sum of its calls. Each call
+  re-sends the whole context, so the sum over a long turn runs to several
+  times the window. The largest call is the newest root-agent call, and a small
+  auxiliary or sub-agent call recorded later in the turn cannot undercut it. A
+  compaction mid-turn keeps the pre-compaction size until the next turn.
+- The newest turn with a figure wins as soon as its first call reports, so the
+  indicator moves mid-turn on the API v2 line. Delegated agents' nested usage is
+  excluded.
+- The claude Harness writes one bag per turn, summed over its calls
+  (`numTurns`, with `costUsd`). Only a bag with `numTurns` exactly 1 is one
+  call's; any other, a missing or malformed count included, reads "Not
+  reported".
+
+No share shows beside a raw count, and a line under the row says why: the
+table names no window for the model, or the call was larger than the
+configured window (the setting may be too small, or the turn ran on a model the
+agent has since left). The share is never capped at 100%.
 
 Some sessions' `adk_usage_metadata` has only `promptTokenCount` and
 `candidatesTokenCount`; the total is then derived. A reported total wins,

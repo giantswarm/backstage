@@ -3,7 +3,7 @@ import {
   addTokenUsage,
   AttachmentPreview,
   ASK_USER_TOOL_NAME,
-  claimEndedTurnUsage,
+  claimEndedTurnMessage,
   ContextReading,
   CONFIRMATION_TOOL_NAME,
   historyWithPendingPrompt,
@@ -22,10 +22,9 @@ import {
   readMessageText,
   readAttachment,
   readAttachmentPreview,
-  readContextReading,
+  readUsageReport,
   readNestedTokenUsage,
   readPartText,
-  readTokenUsage,
   readTurnStatus,
   TokenUsage,
   TurnStatus,
@@ -160,14 +159,17 @@ export type SessionTimeline = {
   /** Total usage across the session, message-level plus delegated agents. */
   tokens: TokenUsage;
   /**
-   * The context the model was last sent, for the context indicator: the
-   * newest usage bag of the newest turn that reported one, with how many model
-   * calls it covers. ADK writes a bag per model call, so this is the newest
-   * call's prompt — the context itself. The claude Harness writes one bag per
-   * turn summed over its calls (`calls` > 1), which is no single call's
-   * context. Delegated agents' nested usage is excluded: it belongs to their
-   * own context. Undefined when no turn reported any usage — a session that
-   * never ran, or whose newest turns are still working.
+   * The context indicator's reading: the largest model call of the newest turn
+   * that reported usage. A turn's context only grows from call to call, so its
+   * largest call is its newest root-agent call — and, unlike the newest bag,
+   * it cannot be undercut by a small auxiliary or sub-agent call recorded in
+   * the same turn, or by a bag that counts no tokens. (A compaction mid-turn
+   * is the exception: the figure stays at the pre-compaction size until the
+   * next turn.) Calls are never summed: each re-sends the whole context.
+   * When any bag of the turn is a total over several calls (the claude
+   * Harness), the turn's reading is that bag, `perCall: false` — no call's
+   * context is known. Delegated agents' nested usage is excluded: it belongs
+   * to their own context. Undefined when no turn reported any usage.
    */
   context?: ContextReading;
   /**
@@ -180,6 +182,27 @@ export type SessionTimeline = {
    */
   skippedMessages: number;
 };
+
+/**
+ * One turn's context reading so far, given its next bag's: the larger of two
+ * per-call readings, and a turn total (not per call) over anything, since a
+ * turn that reports a total measures no call on its own.
+ */
+function foldContext(
+  turn: ContextReading | undefined,
+  next: ContextReading | undefined,
+): ContextReading | undefined {
+  if (!next || next.tokens <= 0) {
+    return turn;
+  }
+  if (!turn || !next.perCall) {
+    return next;
+  }
+  if (!turn.perCall) {
+    return turn;
+  }
+  return next.tokens > turn.tokens ? next : turn;
+}
 
 /** A `tool-call`/`agent-call` item still waiting for its response. */
 type OpenCall = { callId: string; itemIndex: number };
@@ -347,7 +370,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     // when a tool is used repeatedly.
     const openCalls: OpenCall[] = [];
 
-    // This turn's newest usage bag, for `context`. Message-level bags and the
+    // This turn's reading, for `context`. Message-level bags and the
     // ended-turn claim only — a delegated agent's nested usage is another
     // session's context, so it counts toward the session total but not here.
     let taskContext: ContextReading | undefined;
@@ -386,9 +409,9 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       // tokens to the agent's reply, and a user message carrying a usage bag
       // (some do) would double count the same turn.
       if (!isUser) {
-        const usage = readTokenUsage(message.metadata);
-        tokens = addTokenUsage(tokens, usage);
-        taskContext = readContextReading(message.metadata) ?? taskContext;
+        const report = readUsageReport(message.metadata);
+        tokens = addTokenUsage(tokens, report?.usage);
+        taskContext = foldContext(taskContext, report?.context);
       }
 
       const parts = Array.isArray(message.parts) ? message.parts : [];
@@ -684,15 +707,16 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       });
     }
     // After the ending: it reads the reason against the ids rendered so far.
-    const endedUsage = claimEndedTurnUsage(status, seenMessageIds);
-    tokens = addTokenUsage(tokens, endedUsage);
-    if (endedUsage) {
-      taskContext =
-        readContextReading(status?.message?.metadata) ?? taskContext;
-    }
+    const endedReport = readUsageReport(
+      claimEndedTurnMessage(status, seenMessageIds)?.metadata,
+    );
+    tokens = addTokenUsage(tokens, endedReport?.usage);
+    taskContext = foldContext(taskContext, endedReport?.context);
 
-    // The newest turn with a prompt count wins: a turn still working has not
-    // reported usage yet, and must not erase the last real measurement.
+    // The newest turn with a reading wins, as soon as its first call reports:
+    // on the API v2 line ADK's per-call bags arrive on artifacts while the turn
+    // is still working, so the indicator moves mid-turn. A turn that has
+    // reported nothing yet keeps the previous turn's reading.
     if (taskContext) {
       context = taskContext;
     }
