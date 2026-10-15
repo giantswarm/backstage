@@ -501,14 +501,30 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('No agent runs on this model yet.')).toBeNull();
   });
 
-  it('counts no agents on Used by while they load', async () => {
+  it('holds the Used by count’s place while the agents load', async () => {
     mockAgents = [];
     mockAgentsLoading = true;
     await renderPage(USED_BY);
 
-    expect(screen.getByRole('tab', { name: 'Used by' })).toBeInTheDocument();
-    // Still reading: neither a count nor the claim that none use it.
+    const usedBy = screen.getByRole('tab', { name: 'Used by' });
+    expect(usedBy.querySelector('[data-count="loading"]')).not.toBeNull();
+    // Still reading: not the claim that none use it.
     expect(screen.queryByText('No agent runs on this model yet.')).toBeNull();
+  });
+
+  it('holds the Used by count’s place in the frame drawn while the model loads', async () => {
+    mockUseResource.mockReturnValue({
+      resource: undefined,
+      isLoading: true,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen
+        .getByRole('tab', { name: 'Used by' })
+        .querySelector('[data-count="loading"]'),
+    ).not.toBeNull();
   });
 
   it('counts no agents on Used by where they could not be read', async () => {
@@ -516,7 +532,10 @@ describe('ModelDetailPage', () => {
     mockUnreachableInstallations = ['inst-1'];
     await renderPage(USED_BY);
 
-    expect(screen.getByRole('tab', { name: 'Used by' })).toBeInTheDocument();
+    const usedBy = screen.getByRole('tab', { name: 'Used by' });
+    // No count, and no placeholder waiting for one.
+    expect(usedBy).toHaveTextContent(/^Used by$/);
+    expect(usedBy.querySelector('[data-count="loading"]')).toBeNull();
     expect(
       screen.getByText('The agents on inst-1 could not be read.'),
     ).toBeInTheDocument();

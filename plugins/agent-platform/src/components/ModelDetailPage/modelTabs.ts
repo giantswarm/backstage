@@ -14,8 +14,8 @@ export const MODEL_PAGE_TABS: RouteTabSpec[] = [
 
 /**
  * The tabs with Used by's count, the number of agents running on the model,
- * as the skill page counts its Used by tab. No count while the agents load,
- * or where they could not be read.
+ * as the skill page counts its Used by tab: its place held while the agents
+ * load, so the strip keeps its width, and none where they could not be read.
  */
 export function modelPageTabs({
   usedBy,
@@ -28,7 +28,7 @@ export function modelPageTabs({
 }): RouteTabSpec[] {
   return MODEL_PAGE_TABS.map(tab =>
     tab.id === 'used-by'
-      ? { ...tab, count: isLoading ? undefined : usedBy }
+      ? { ...tab, count: isLoading ? 'loading' : usedBy }
       : tab,
   );
 }
