@@ -56,6 +56,10 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 }));
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
+  // The real module underneath: the namespaced read's module pulls in the
+  // muster plugin, whose resource classes extend this library's KubeObject at
+  // import time.
+  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   ModelConfig: class {},
   useResources: (...args: unknown[]) => mockUseResources(...args),
   isNotFoundError: (e: { type?: string; error?: { name?: string } }) =>
@@ -63,12 +67,31 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 }));
 
 // The namespace-by-namespace read of the installations a cluster-wide list
-// was forbidden on; its own test is useNamespacedModelConfigs.test.tsx.
+// was forbidden on; its own test is useNamespacedResources.test.tsx. The stub
+// answers with models, pending and unread installations; every other
+// installation asked was read (an empty list when it has no models).
 const mockUseNamespacedModelConfigs = jest.fn();
-jest.mock('../../hooks/useNamespacedModelConfigs', () => ({
-  useNamespacedModelConfigs: (installations: string[]) =>
-    mockUseNamespacedModelConfigs(installations),
-}));
+jest.mock('../../hooks/useNamespacedResources', () => {
+  const actual = jest.requireActual('../../hooks/useNamespacedResources');
+  return {
+    useNamespacedFallback: (base: never) => {
+      const forbidden: string[] = actual.forbiddenInstallationsOf(
+        (base as { errors: unknown[] }).errors,
+      );
+      const namespaced = mockUseNamespacedModelConfigs(forbidden);
+      return actual.mergeNamespaced(base, {
+        ...namespaced,
+        clustersData: forbidden
+          .filter(
+            name =>
+              !namespaced.pendingInstallations.includes(name) &&
+              !namespaced.unreadInstallations.includes(name),
+          )
+          .map(cluster => ({ cluster, data: [] })),
+      });
+    },
+  };
+});
 const NOTHING_NAMESPACED = {
   resources: [],
   pendingInstallations: [],
@@ -251,6 +274,8 @@ describe('ModelConfigsProvider', () => {
   });
 
   it('flags an installation a namespace of which could not be read, models or not', () => {
+    // A failed namespace leaves the installation unread, as a failed
+    // cluster-wide list would: its other namespaces' models are not offered.
     mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
     mockUseNamespacedModelConfigs.mockReturnValue({
       ...NOTHING_NAMESPACED,
@@ -261,7 +286,7 @@ describe('ModelConfigsProvider', () => {
     const { result: hook } = renderUseModelConfigs();
 
     expect(hook.current.unreachableInstallations).toEqual(['alpha']);
-    expect(hook.current.availableInstallations).toEqual(['alpha']);
+    expect(hook.current.availableInstallations).toEqual([]);
   });
 
   it('keeps an installation pending while its namespaces are read', () => {
