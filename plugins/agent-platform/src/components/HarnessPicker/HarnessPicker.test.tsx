@@ -26,7 +26,7 @@ jest.mock('../../hooks/useAgentManager', () => ({
 
 function harness(
   name: string,
-  runtime: 'kagent' | 'claude',
+  runtime: 'kagent' | 'claude' | 'codex',
   {
     namespace = 'kagent',
     displayName = undefined as string | undefined,
@@ -194,6 +194,61 @@ describe('HarnessPicker', () => {
 
     // Back to the platform Harness is no pick at all.
     await user.click(screen.getByRole('radio', { name: /Harness kagent/ }));
+    expect(formHarness).toBeUndefined();
+  });
+
+  it('offers a Codex card where the namespace holds a codex Harness, and records its pick', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('claude', 'claude'),
+        harness('codex', 'codex'),
+      ]),
+    );
+    const user = userEvent.setup();
+    await render();
+
+    const codex = screen.getByRole('radio', { name: 'Codex, Harness codex' });
+    expect(codex).toHaveTextContent('Codex');
+    expect(codex).toHaveTextContent('codex-harness');
+    expect(codex).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(codex);
+    expect(formHarness).toBe('codex');
+    // A Claude Code Harness's limits are not a codex one's.
+    expect(screen.queryByText(/Budget per turn/)).not.toBeInTheDocument();
+  });
+
+  it('offers no Codex card in a namespace without a codex Harness', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('claude', 'claude'),
+        harness('codex', 'codex', { namespace: 'other' }),
+      ]),
+    );
+    await render();
+
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    expect(
+      screen.queryByRole('radio', { name: /Codex/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the platform Harness for a person who may not list Harnesses', async () => {
+    mockUseResources.mockReturnValue(
+      listing(
+        [],
+        [{ cluster: 'gazelle', error: new Error('harnesses is forbidden') }],
+      ),
+    );
+    await render();
+
+    expect(screen.getByText('Could not read the runtimes')).toBeInTheDocument();
+    expect(
+      screen.getByText(/so the agent runs on the platform Harness/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(formHarness).toBeUndefined();
   });
 
