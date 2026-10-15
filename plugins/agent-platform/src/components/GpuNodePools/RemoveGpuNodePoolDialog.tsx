@@ -4,7 +4,6 @@ import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   ConfirmDialog,
-  fieldErrorProps,
   useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -309,7 +308,7 @@ export function RemoveGpuNodePoolDialog({
           value={typed}
           onChange={setTyped}
           isRequired
-          {...fieldErrorProps(validation.errorFor(typedError))}
+          {...validation.textFieldProps('typed', typedError)}
         />
         {canCommit && (
           <Flex direction="column" gap="2">

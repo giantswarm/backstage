@@ -1,4 +1,4 @@
-import { useId, type ChangeEvent } from 'react';
+import { useId, type ChangeEvent, type FocusEvent } from 'react';
 import { FieldLabel } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
@@ -50,6 +50,9 @@ export type SecretTextFieldProps = {
   isDisabled?: boolean;
   /** Marks the field invalid and says why, right under it. */
   error?: string;
+  /** For `useFieldValidation`'s `blurProps`. */
+  onFocus?: (event: FocusEvent<Element>) => void;
+  onBlur?: (event: FocusEvent<Element>) => void;
 };
 
 /** A masked, never-autofilled input for values that must not be shown. */
@@ -65,6 +68,8 @@ export function SecretTextField(props: SecretTextFieldProps) {
     placeholder,
     isDisabled = false,
     error,
+    onFocus,
+    onBlur,
   } = props;
   const errorId = `${id}-error`;
   const descriptionId = `${id}-description`;
@@ -98,6 +103,8 @@ export function SecretTextField(props: SecretTextFieldProps) {
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
           onChange(e.target.value)
         }
+        onFocus={onFocus}
+        onBlur={onBlur}
       />
       {error && <FieldErrorText id={errorId}>{error}</FieldErrorText>}
     </div>

@@ -22,6 +22,7 @@ export const SHELL_SPECS = [
   'agents.spec.ts',
   'definition-editor.spec.ts',
   'first-agent.spec.ts',
+  'form-validation.spec.ts',
   'gpu-node-pool.spec.ts',
   'inventory-gate.spec.ts',
   'kagent-denial-reason.spec.ts',

@@ -247,4 +247,31 @@ describe('NewAgentPage', () => {
     await userEvent.type(name, 'Support triage');
     expect(name).not.toHaveAttribute('aria-invalid');
   });
+
+  it('checks an egress origin when the person leaves the field, not while they type', async () => {
+    await renderPage();
+    await userEvent.click(screen.getByText('More options'));
+    const egress = screen.getByLabelText(/^Extra egress origins/);
+
+    await userEvent.type(egress, 'github.com');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+
+    await userEvent.tab();
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+
+    await userEvent.clear(egress);
+    await userEvent.type(egress, 'https://github.com:443');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('says nothing about an empty Name that was only tabbed through', async () => {
+    await renderPage();
+    const name = screen.getByLabelText(/^Name/);
+
+    await userEvent.click(name);
+    await userEvent.tab();
+
+    expect(name).not.toHaveAttribute('aria-invalid');
+    expect(screen.queryByText(/Name is required/)).not.toBeInTheDocument();
+  });
 });

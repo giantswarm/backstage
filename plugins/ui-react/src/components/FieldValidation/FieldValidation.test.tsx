@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Select, TextField } from '@backstage/ui';
 import {
@@ -16,6 +16,15 @@ import {
   useSelectFieldError,
 } from './FieldValidation';
 
+function nameProblem(name: string): string | undefined {
+  if (!name.trim()) {
+    return 'Name is required';
+  }
+  return /^[a-z]/.test(name)
+    ? undefined
+    : 'Start the name with a lowercase letter';
+}
+
 function Form({ onContinue }: { onContinue: () => void }) {
   const [region, setRegion] = useState<string | undefined>();
   const [name, setName] = useState('');
@@ -23,11 +32,13 @@ function Form({ onContinue }: { onContinue: () => void }) {
   const validation = useFieldValidation();
   const errors = {
     region: region ? undefined : 'Select a region',
-    name: name.trim() ? undefined : 'Name is required',
+    name: nameProblem(name),
     notes: notes.trim() ? undefined : 'Notes are required',
   };
   const isValid = !errors.region && !errors.name && !errors.notes;
-  const regionError = useSelectFieldError(validation.errorFor(errors.region));
+  const regionError = useSelectFieldError(
+    validation.errorFor('region', errors.region),
+  );
   const { reveal } = validation;
   const actions = useMemo(
     () => (
@@ -54,13 +65,15 @@ function Form({ onContinue }: { onContinue: () => void }) {
         label="Name"
         value={name}
         onChange={setName}
-        {...fieldErrorProps(validation.errorFor(errors.name))}
+        {...validation.blurProps('name')}
+        {...fieldErrorProps(validation.errorFor('name', errors.name))}
       />
       <TextAreaField
         label="Notes"
         value={notes}
         onChange={setNotes}
-        error={validation.errorFor(errors.notes)}
+        {...validation.blurProps('notes')}
+        error={validation.errorFor('notes', errors.notes)}
       />
     </WizardFrame>
   );
@@ -95,6 +108,70 @@ describe('field validation', () => {
     );
   });
 
+  it('says nothing about a required field that was only tabbed through', async () => {
+    renderForm();
+
+    await userEvent.click(screen.getByRole('textbox', { name: /Name/ }));
+    await userEvent.tab();
+
+    expect(screen.queryByText('Name is required')).not.toBeInTheDocument();
+  });
+
+  it('checks a field once the person leaves it, not while they type', async () => {
+    renderForm();
+    const name = screen.getByRole('textbox', { name: /Name/ });
+
+    await userEvent.type(name, '1');
+    expect(
+      screen.queryByText('Start the name with a lowercase letter'),
+    ).not.toBeInTheDocument();
+
+    await userEvent.tab();
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(describedText(name)).toContain(
+      'Start the name with a lowercase letter',
+    );
+    // Said aloud too: the focus, and the screen reader, are on the next field.
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-field-validation-announcer]'),
+      ).toHaveTextContent('Start the name with a lowercase letter'),
+    );
+  });
+
+  it('flags a field the person emptied on leaving it', async () => {
+    renderForm();
+    const name = screen.getByRole('textbox', { name: /Name/ });
+
+    await userEvent.type(name, 'a');
+    await userEvent.clear(name);
+    await userEvent.tab();
+
+    expect(describedText(name)).toContain('Name is required');
+  });
+
+  it('clears a shown error the moment it is fixed, and waits for the next leave to show a new one', async () => {
+    renderForm();
+    const name = screen.getByRole('textbox', { name: /Name/ });
+    await userEvent.type(name, '1');
+    await userEvent.tab();
+
+    await userEvent.clear(name);
+    // Still wrong, so the error follows the change.
+    expect(describedText(name)).toContain('Name is required');
+    await userEvent.type(name, 's');
+    expect(name).not.toHaveAttribute('aria-invalid');
+
+    // A new problem typed into a fixed field waits until the person leaves it.
+    await userEvent.clear(name);
+    await userEvent.type(name, '9');
+    expect(name).not.toHaveAttribute('aria-invalid');
+    await userEvent.tab();
+    expect(describedText(name)).toContain(
+      'Start the name with a lowercase letter',
+    );
+  });
+
   it('marks each invalid field with its message and focuses the first one', async () => {
     const { onContinue } = renderForm();
 
@@ -125,7 +202,7 @@ describe('field validation', () => {
 
     await userEvent.type(
       screen.getByRole('textbox', { name: /Name/ }),
-      'Support',
+      'support',
     );
     expect(screen.queryByText('Name is required')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /Name/ })).not.toHaveAttribute(
@@ -172,7 +249,10 @@ describe('useFieldValidation in a scope of its own', () => {
             value={name}
             onChange={setName}
             {...fieldErrorProps(
-              validation.errorFor(name ? undefined : 'Name is required'),
+              validation.errorFor(
+                'name',
+                name ? undefined : 'Name is required',
+              ),
             )}
           />
         </div>

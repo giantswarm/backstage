@@ -11,7 +11,6 @@ import {
 } from '@backstage/ui';
 import {
   EmptyStateCard,
-  fieldErrorProps,
   searchableIf,
   TextAreaField,
   useFieldValidation,
@@ -147,9 +146,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     }
   }, [repoUrl, repositories]);
 
-  // Each field's problem, shown on the field itself once a submit was
-  // blocked; a name that breaks the folder rule says so while it is typed.
-  const nameInvalid = skillName.length > 0 && !SKILL_NAME_RE.test(skillName);
+  // Each field's problem, shown on the field itself once the person leaves
+  // it having typed in it, or once a submit was blocked (the `forms` skill).
   const fieldErrors = {
     repository: repoUrl ? undefined : 'Choose a repository',
     name: (() => {
@@ -159,9 +157,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
       if (!skillName) {
         return 'Name is required';
       }
-      return nameInvalid
-        ? 'Use lowercase letters, digits and dashes, e.g. ticket-triage'
-        : undefined;
+      return SKILL_NAME_RE.test(skillName)
+        ? undefined
+        : 'Use lowercase letters, digits and dashes, e.g. ticket-triage';
     })(),
     description: description.trim() ? undefined : 'Description is required',
     instructions: instructions.trim() ? undefined : 'Instructions are required',
@@ -174,9 +172,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     description.trim() !== edit.content.description.trim() ||
     instructions.trim() !== edit.content.instructions.trim();
   const validation = useFieldValidation();
-  const { reveal } = validation;
+  const { reveal, blurProps, errorFor, textFieldProps } = validation;
   const repositoryError = useSelectFieldError(
-    validation.errorFor(fieldErrors.repository),
+    errorFor('repository', fieldErrors.repository),
   );
 
   const onSubmit = useCallback(async () => {
@@ -368,11 +366,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
               description="Use lowercase letters, digits and dashes, e.g. ticket-triage."
               value={skillName}
               onChange={setSkillName}
-              {...fieldErrorProps(
-                nameInvalid
-                  ? fieldErrors.name
-                  : validation.errorFor(fieldErrors.name),
-              )}
+              {...textFieldProps('name', fieldErrors.name)}
             />
           )}
           <TextField
@@ -381,7 +375,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             description="Write one sentence on when an agent should reach for it."
             value={description}
             onChange={setDescription}
-            {...fieldErrorProps(validation.errorFor(fieldErrors.description))}
+            {...textFieldProps('description', fieldErrors.description)}
           />
           <TextAreaField
             label="Instructions"
@@ -391,7 +385,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             rows={10}
             value={instructions}
             onChange={setInstructions}
-            error={validation.errorFor(fieldErrors.instructions)}
+            {...blurProps('instructions')}
+            error={errorFor('instructions', fieldErrors.instructions)}
           />
           {edit && (
             <SkillEditFiles

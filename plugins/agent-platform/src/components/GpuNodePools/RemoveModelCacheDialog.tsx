@@ -141,7 +141,10 @@ export function RemoveModelCacheDialog({
     claim: claim.name,
   };
 
+  // A box left unticked says nothing until Remove: the one thing to check is
+  // whether it is ticked, and leaving it unticked is not a mistake yet.
   const acknowledgeError = validation.errorFor(
+    'acknowledge',
     acknowledged
       ? undefined
       : 'Acknowledge that the cached weights go with the cache.',
