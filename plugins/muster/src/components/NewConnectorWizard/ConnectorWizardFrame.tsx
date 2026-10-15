@@ -32,8 +32,9 @@ export function useConnectorWizardCloseHref(): string {
   const pageLinks = useServerPageLinks();
   const { registeredName, registeredInstallation, lastSave } =
     useNewMcpServerForm();
+  // Set together, so both are there for an edit.
   const editedPage =
-    registeredName && lastSave !== 'create'
+    registeredName && registeredInstallation && lastSave !== 'create'
       ? pageLinks.server(registeredName, registeredInstallation)
       : undefined;
   if (editedPage) {

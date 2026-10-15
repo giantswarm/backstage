@@ -35,7 +35,7 @@ export interface ServerPageLinks {
    */
   server: (
     server: string,
-    installation: string | undefined,
+    installation: string,
     options?: { tab?: ServerPageTab } & ToolsListView,
   ) => string | undefined;
   /**
@@ -45,7 +45,7 @@ export interface ServerPageLinks {
   tool: (
     server: string,
     tool: string,
-    installation: string | undefined,
+    installation: string,
     options?: ToolsListView,
   ) => string | undefined;
 }

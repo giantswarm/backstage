@@ -125,7 +125,7 @@ function WorkflowPageContent({
   editAction,
 }: {
   workflow: MusterWorkflow;
-  installation?: string;
+  installation: string;
 } & WorkflowPageProps) {
   const paths = useCustomizePaths();
   const basePath = useSplatBasePath();

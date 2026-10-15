@@ -299,7 +299,7 @@ function StepCard({
 export interface WorkflowStepListProps {
   graph: WorkflowGraph;
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
   /** The latest run's outcome per step key, when a run is known. */
   overlayOf: (key: string) => StepRunOverlay | undefined;
   /** What each step's tool does, by step key, where the catalogue says. */
