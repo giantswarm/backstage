@@ -44,6 +44,22 @@ async function openFromTab(page: Page): Promise<void> {
 const preview = (page: Page) => page.getByTestId('workspace-preview');
 
 /**
+ * Presses the wizard's primary action. The portal-wide notice of MCP servers
+ * waiting for a sign-in sits over the footer while the lab's OAuth fixture is
+ * signed out; a person puts it away with Not now first.
+ */
+async function pressPrimary(page: Page, name: string): Promise<void> {
+  const notice = page.getByRole('complementary', {
+    name: 'MCP server sign-in',
+  });
+  if (await notice.isVisible()) {
+    await notice.getByRole('button', { name: 'Not now' }).click();
+    await expect(notice).toHaveCount(0);
+  }
+  await page.getByRole('button', { name }).click();
+}
+
+/**
  * Names the draft and picks the lab's GitHub: with one provider instance
  * there is nothing to pick, several show a select (named "Select an option
  * Provider").
@@ -57,7 +73,9 @@ async function startDraft(page: Page, name: string): Promise<void> {
     name: /Provider$/,
   });
   await expect(
-    providerSelect.or(source(page).getByRole('textbox', { name: /^Owner/ })),
+    providerSelect
+      .or(source(page).getByRole('textbox', { name: /^Owner/ }))
+      .first(),
   ).toBeVisible({ timeout: 60_000 });
   if (await providerSelect.isVisible()) {
     await providerSelect.click();
@@ -157,7 +175,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
     );
     await expect(preview(admin)).toContainText('1 excluded');
 
-    await admin.getByRole('button', { name: 'Create workspace' }).click();
+    await pressPrimary(admin, 'Create workspace');
     await expect(admin).toHaveURL(/\/customize\/workspaces/, {
       timeout: 60_000,
     });
@@ -195,7 +213,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
     await expect(
       preview(admin).getByText(`${OWNER}/monorepo`, { exact: true }),
     ).toBeVisible({ timeout: 60_000 });
-    await admin.getByRole('button', { name: 'Save changes' }).click();
+    await pressPrimary(admin, 'Save changes');
     await expect(admin).toHaveURL(/\/customize\//, {
       timeout: 60_000,
     });
