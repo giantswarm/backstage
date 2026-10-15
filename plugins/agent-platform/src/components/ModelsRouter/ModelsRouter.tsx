@@ -45,10 +45,7 @@ import {
   ModelHostingKpis,
   type ModelHostingKpisScope,
 } from '../ModelHostingKpis';
-import {
-  SHELL_CUSTOMIZE_PATH,
-  ShellCustomizeRedirect,
-} from '../ShellCustomizeRedirect';
+import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
 import { ModelHostingSharedIdentityNote } from '../ModelHostingSharedIdentity';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -202,13 +199,14 @@ const ShellModelHosting = () => {
     unreadable: serving.unreachableInstallations ?? [],
   });
   const legacyServeLink = isLegacyServeLink(new URLSearchParams(search));
+  const { customize, models } = useCustomizePaths();
 
   return (
     <ShellPage
       title="Model hosting"
       breadcrumbs={[
-        { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
-        { label: 'Models', href: `${SHELL_CUSTOMIZE_PATH}/models` },
+        { label: 'Customize', href: customize },
+        { label: 'Models', href: models },
         { label: 'Model hosting' },
       ]}
       description="Run models on your own GPUs, so data stays in your clusters."

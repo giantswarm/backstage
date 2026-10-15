@@ -1,6 +1,5 @@
 import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
@@ -26,13 +25,12 @@ import {
   canonicalSkillId,
   repoSlug,
   sameCommit,
-  skillDetailPath,
   type DiscoveredSkill,
 } from '../../lib/skills';
 import { bindsGateway } from '../../lib/toolset';
 import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
-import { skillsRouteRef } from '../../routes';
+import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
@@ -106,14 +104,12 @@ function SkillCard({
   discovered?: DiscoveredSkill;
 }) {
   const classes = useStyles();
-  const skillsRoute = useRouteRef(skillsRouteRef);
+  const skillPaths = useSkillPaths();
   const label = discovered?.name || skillLabel(skill);
-  const detailPath =
-    skill.source === 'git'
-      ? skillDetailPath({ repoUrl: skill.url, path: skill.path ?? '' })
-      : undefined;
   const href =
-    skillsRoute && detailPath ? `${skillsRoute()}/${detailPath}` : undefined;
+    skill.source === 'git'
+      ? skillPaths.detail({ repoUrl: skill.url, path: skill.path ?? '' })
+      : undefined;
   const from = skill.source === 'git' ? repoSlug(skill.url) : skill.url;
   // Behind the catalog's head of the skill's branch — the comparison Skill ›
   // Used by makes, from the catalog this page has read already: no read of

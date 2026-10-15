@@ -9,9 +9,11 @@ import {
   NavContentBlueprint,
   NavContentNavItems,
 } from '@backstage/plugin-app-react';
+import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { aiChatDrawerApiRef } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { fireEvent, screen } from '@testing-library/react';
+import { homeRouteRef } from '../agentShell/routes';
 import { SidebarContent } from './Sidebar';
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
@@ -27,6 +29,8 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         agents: createRouteRef(),
         skills: createRouteRef(),
         models: createRouteRef(),
+        root: createRouteRef(),
+        profile: createRouteRef(),
       },
     },
     RecentSessions: () => <div data-testid="recent-sessions" />,
@@ -116,6 +120,10 @@ async function renderSidebar({
       apis: [
         mockApis.featureFlags({ initialStates: { [AGENT_SHELL_FLAG]: flag } }),
       ],
+      mountedRoutes: {
+        '/': homeRouteRef,
+        '/agent-platform': agentPlatformPlugin.routes.root,
+      },
     },
   );
 }

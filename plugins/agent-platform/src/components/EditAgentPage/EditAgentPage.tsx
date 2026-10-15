@@ -14,6 +14,7 @@ import {
   useAgentManagerInfo,
 } from '../../hooks/useAgentManager';
 import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { formStateOfAgent } from '../../lib/agentEdit';
 import type { AgentManagerAgent, WriteMode } from '../../lib/agentManager';
@@ -85,6 +86,7 @@ export function EditAgentPage() {
   const { installation = '', namespace = '', name = '' } = useParams();
   const agentDetailLink = useRouteRef(agentDetailRouteRef);
   const detailHref = agentDetailLink?.({ installation, namespace, name });
+  const closeHref = useCloseHref(detailHref);
 
   // Feature detection, the same as the create flow's and the detail page's:
   // edits go through agent-manager, reached through the installation's muster.
@@ -205,7 +207,7 @@ export function EditAgentPage() {
       title="Edit agent"
       documentTitle={[`Edit ${shownName}`, 'Agents']}
       context={`Customize / Agents / ${shownName}`}
-      closeHref={detailHref ?? '/'}
+      closeHref={closeHref}
     >
       {body}
     </WizardFrame>

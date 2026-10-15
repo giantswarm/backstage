@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Navigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert } from '@backstage/ui';
 import {
@@ -8,18 +8,20 @@ import {
   WizardFrame,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillContent } from '../../hooks/useSkillContent';
+import { useSkillPaths } from '../../hooks/useSkillPaths';
 import {
   canonicalSkillId,
   canProposeSkillTo,
   isSkillContentReadable,
   parseSkillDetailPath,
-  skillDetailPath,
 } from '../../lib/skills';
 import { skillsRouteRef } from '../../routes';
 import { AddSkillPage } from '../AddSkillPage';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 
 /**
  * Edit a skill (`/agent-platform/skills/edit/<owner>/<repo>[/<skill dir>]`):
@@ -37,6 +39,8 @@ export function EditSkillPage() {
   const splat = useParams()['*'] ?? '';
   const target = parseSkillDetailPath(splat);
   const catalog = useSkillCatalog();
+  const skillPaths = useSkillPaths();
+  const { skills: customizeSkills } = useCustomizePaths();
   const skillsRoute = useRouteRef(skillsRouteRef);
 
   const skill = useMemo(() => {
@@ -57,15 +61,15 @@ export function EditSkillPage() {
     readable && proposable ? skill : undefined,
   );
 
-  if (!target) {
-    return <Navigate to={`${SHELL_CUSTOMIZE_PATH}/skills`} replace />;
-  }
+  const skillHref = useCloseHref(
+    skill && skillPaths.detail(skill),
+    customizeSkills,
+    skillsRoute?.(),
+  );
 
-  const detailPath = skill ? skillDetailPath(skill) : undefined;
-  const skillHref =
-    skillsRoute && detailPath
-      ? `${skillsRoute()}/${detailPath}`
-      : `${SHELL_CUSTOMIZE_PATH}/skills`;
+  if (!target) {
+    return <ShellCustomizeRedirect tab="skills" keepSearch={false} />;
+  }
 
   if (skill && content && proposable) {
     return <AddSkillPage edit={{ skill, content, skillHref }} />;

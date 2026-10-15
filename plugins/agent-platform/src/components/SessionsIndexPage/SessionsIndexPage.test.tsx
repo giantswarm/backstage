@@ -2,7 +2,11 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { useState, type ReactNode } from 'react';
 
-import { agentsRouteRef, sessionsRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  newSessionExternalRouteRef,
+  sessionsRouteRef,
+} from '../../routes';
 import type { SessionsContextValue } from '../SessionsDataProvider';
 import { SessionsIndexPage } from './SessionsIndexPage';
 
@@ -107,6 +111,7 @@ function Rerenderable() {
 async function renderRerenderable() {
   return renderInTestApp(<Rerenderable />, {
     mountedRoutes: {
+      '/': newSessionExternalRouteRef,
       '/agent-platform/sessions': sessionsRouteRef,
       '/agent-platform/agents': agentsRouteRef,
     },
@@ -116,6 +121,7 @@ async function renderRerenderable() {
 async function render() {
   return renderInTestApp(<SessionsIndexPage />, {
     mountedRoutes: {
+      '/': newSessionExternalRouteRef,
       '/agent-platform/sessions': sessionsRouteRef,
       // The Agents tab: the first-run state links into its create flow.
       '/agent-platform/agents': agentsRouteRef,
