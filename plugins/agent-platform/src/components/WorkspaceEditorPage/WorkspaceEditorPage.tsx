@@ -571,8 +571,7 @@ function EditorBody({
           />
         </Flex>
         <Text variant="body-small" color="secondary">
-          Session directories are cleaned up 30 days after their Session's last
-          turn.
+          A Session inactive for 14 days is deleted with its session directory.
         </Text>
       </Flex>
 
