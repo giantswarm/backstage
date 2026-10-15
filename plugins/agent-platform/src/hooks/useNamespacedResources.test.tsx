@@ -4,9 +4,14 @@ import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  Agent,
+  ModelConfig,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
   agentNamespacesOf,
-  useNamespacedModelConfigs,
-} from './useNamespacedModelConfigs';
+  mergeNamespaced,
+  useNamespacedResources,
+} from './useNamespacedResources';
 
 const mockFetchResourceList = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -83,7 +88,7 @@ function renderNamespaced(installations: string[]) {
   );
   return {
     queryClient,
-    ...renderHook(() => useNamespacedModelConfigs(installations), {
+    ...renderHook(() => useNamespacedResources(installations, ModelConfig), {
       wrapper,
     }),
   };
@@ -107,7 +112,7 @@ describe('agentNamespacesOf', () => {
   });
 });
 
-describe('useNamespacedModelConfigs', () => {
+describe('useNamespacedResources', () => {
   beforeEach(() => {
     mockFetchResourceList.mockReset();
     mockGetInfo.mockReset();
@@ -130,6 +135,12 @@ describe('useNamespacedModelConfigs', () => {
     expect(
       result.current.resources.map(mc => [mc.cluster, mc.getNamespace()]),
     ).toEqual([['gazelle', 'kagent']]);
+    expect(result.current.clustersData).toEqual([
+      {
+        cluster: 'gazelle',
+        data: [modelConfigJson('default-model-config', 'kagent')],
+      },
+    ]);
     expect(listedNamespaces()).toEqual(['kagent', 'team-a']);
   });
 
@@ -149,8 +160,11 @@ describe('useNamespacedModelConfigs', () => {
 
     const { result } = renderNamespaced(['gazelle']);
 
-    await waitFor(() => expect(result.current.resources).toHaveLength(1));
+    await waitFor(() =>
+      expect(listedNamespaces()).toEqual(['kagent', 'team-a']),
+    );
     expect(result.current.pendingInstallations).toEqual(['gazelle']);
+    expect(result.current.resources).toEqual([]);
 
     answerTeamA([modelConfigJson('team-model', 'team-a')]);
     await waitFor(() =>
@@ -171,7 +185,8 @@ describe('useNamespacedModelConfigs', () => {
       expect(result.current.pendingInstallations).toEqual([]),
     );
     expect(result.current.unreadInstallations).toEqual(['gazelle']);
-    expect(result.current.resources).toHaveLength(1);
+    expect(result.current.resources).toEqual([]);
+    expect(result.current.clustersData).toEqual([]);
   });
 
   it('leaves an installation unread when every namespace refuses', async () => {
@@ -224,5 +239,122 @@ describe('useNamespacedModelConfigs', () => {
     expect(list.queryKey.at(-1)).toBe(
       '/apis/api.kagent.dev/v1alpha3/namespaces/kagent/modelconfigs/',
     );
+  });
+});
+
+describe('useNamespacedResources for Agents', () => {
+  beforeEach(() => {
+    mockFetchResourceList.mockReset();
+    mockGetInfo.mockReset();
+    mockMusterApi = {};
+    mockPresence = 'available';
+  });
+
+  it('lists the Agents of the namespaces the person may read, with their refetch interval', async () => {
+    mockGetInfo.mockResolvedValue({
+      namespaces: { default: 'kagent', managed: ['team-a'] },
+    });
+    mockFetchResourceList.mockImplementation(
+      async ({ namespace }: { namespace: string }) => {
+        if (namespace !== 'kagent') {
+          throw named('ForbiddenError', 'agents is forbidden');
+        }
+        return [
+          {
+            apiVersion: 'api.kagent.dev/v1alpha2',
+            kind: 'Agent',
+            metadata: { name: 'helper', namespace: 'kagent' },
+            spec: {},
+          },
+        ];
+      },
+    );
+    const refetchInterval = jest.fn(() => 30_000);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <TestApiProvider apis={[[kubernetesApiRef, {}]]}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+
+    const { result } = renderHook(
+      () =>
+        useNamespacedResources(['gazelle'], Agent, {
+          enableDiscovery: false,
+          refetchInterval,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(result.current.pendingInstallations).toEqual([]),
+    );
+    expect(
+      result.current.resources.map(agent => [
+        agent.cluster,
+        agent.getNamespace(),
+        agent.getName(),
+      ]),
+    ).toEqual([['gazelle', 'kagent', 'helper']]);
+    expect(refetchInterval).toHaveBeenCalled();
+  });
+});
+
+describe('mergeNamespaced', () => {
+  const forbidden = (cluster: string) => ({
+    cluster,
+    error: named('ForbiddenError', 'forbidden'),
+    retry: () => {},
+  });
+  const base = {
+    resources: [{ cluster: 'beta' }],
+    clustersData: [{ cluster: 'beta', data: [] }],
+    errors: [
+      forbidden('alpha'),
+      forbidden('gamma'),
+      forbidden('delta'),
+      { cluster: 'epsilon', error: new Error('timeout'), retry: () => {} },
+    ],
+    isLoading: false,
+  };
+
+  it('answers a read installation with its namespaces, keeps a pending one quiet and an unread one failed', () => {
+    const merged = mergeNamespaced(base, {
+      resources: [{ cluster: 'alpha' }, { cluster: 'delta' }],
+      clustersData: [{ cluster: 'alpha', data: [] }],
+      pendingInstallations: ['gamma'],
+      unreadInstallations: ['delta'],
+    });
+
+    expect(merged.clustersData.map(({ cluster }) => cluster)).toEqual([
+      'beta',
+      'alpha',
+    ]);
+    expect(merged.resources).toEqual([
+      { cluster: 'beta' },
+      { cluster: 'alpha' },
+    ]);
+    expect(merged.errors.map(({ cluster }) => cluster)).toEqual([
+      'delta',
+      'epsilon',
+    ]);
+    expect(merged.isLoading).toBe(true);
+  });
+
+  it('passes a result without refusals through', () => {
+    const plain = { ...base, errors: [base.errors[3]] };
+
+    expect(
+      mergeNamespaced(plain, {
+        resources: [],
+        clustersData: [],
+        pendingInstallations: [],
+        unreadInstallations: [],
+      }),
+    ).toEqual(plain);
   });
 });

@@ -109,6 +109,45 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
   };
 });
 
+// The namespace-by-namespace read of the installations a cluster-wide list
+// was refused on (its own test is useNamespacedResources.test.tsx): an
+// installation named here is read with these agents, and with empty Harness
+// and RemoteMCPServer lists; one marked pending has not answered yet; any
+// other refused installation is refused in every namespace too.
+type MockNamespacedAgents = { agents: unknown[]; data: unknown[] };
+let mockNamespacedRead: Record<string, MockNamespacedAgents | 'pending'> = {};
+jest.mock('../../hooks/useNamespacedResources', () => {
+  const actual = jest.requireActual('../../hooks/useNamespacedResources');
+  return {
+    useNamespacedFallback: (base: { errors: unknown[] }, Resource: unknown) => {
+      const { Agent } = jest.requireMock(
+        '@giantswarm/backstage-plugin-kubernetes-react',
+      );
+      const forbidden: string[] = actual.forbiddenInstallationsOf(base.errors);
+      const answer = (cluster: string) => mockNamespacedRead[cluster];
+      const readOf = (cluster: string) =>
+        answer(cluster) as MockNamespacedAgents;
+      const read = forbidden.filter(
+        cluster => answer(cluster) && answer(cluster) !== 'pending',
+      );
+      const agentsRead = Resource === Agent;
+      return actual.mergeNamespaced(base, {
+        resources: agentsRead
+          ? read.flatMap(cluster => readOf(cluster).agents)
+          : [],
+        clustersData: read.map(cluster => ({
+          cluster,
+          data: agentsRead ? readOf(cluster).data : [],
+        })),
+        pendingInstallations: forbidden.filter(
+          cluster => answer(cluster) === 'pending',
+        ),
+        unreadInstallations: forbidden.filter(cluster => !answer(cluster)),
+      });
+    },
+  };
+});
+
 type AgentSpec = {
   name: string;
   resourceVersion?: string;
@@ -195,6 +234,7 @@ describe('AgentsDataProvider', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     mockUseResources.mockReset();
+    mockNamespacedRead = {};
     mockAgentManagerPresence = {};
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
@@ -491,11 +531,67 @@ describe('AgentsDataProvider', () => {
     );
     expect(hook.current.rows).toHaveLength(1);
   });
+
+  it('lists the agents of a person with a namespaced RoleBinding instead of "couldn’t read"', async () => {
+    // alpha refuses the cluster-wide lists (403); its agent namespaces are
+    // read one by one.
+    mockKagent = { installations: ['alpha'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+    mockNamespacedRead = {
+      alpha: {
+        agents: [fakeAgent('alpha', { name: 'a1' })],
+        data: [{ metadata: { name: 'a1', resourceVersion: '1' } }],
+      },
+    };
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+    expect(hook.current.rows[0].technicalName).toBe('a1');
+    expect(hook.current.unreachableInstallations).toEqual([]);
+    expect(hook.current.isLoading).toBe(false);
+    expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('keeps a namespaced read loading, never "couldn’t read", until its namespaces answer', async () => {
+    mockKagent = { installations: ['alpha'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+    mockNamespacedRead = { alpha: 'pending' };
+
+    const { result: hook, rerender } = renderUseAgents();
+
+    expect(hook.current.isLoading).toBe(true);
+    expect(hook.current.unreachableInstallations).toEqual([]);
+
+    mockNamespacedRead = {
+      alpha: {
+        agents: [fakeAgent('alpha', { name: 'a1' })],
+        data: [{ metadata: { name: 'a1', resourceVersion: '1' } }],
+      },
+    };
+    rerender();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+    expect(hook.current.unreachableInstallations).toEqual([]);
+  });
+
+  it('still says "couldn’t read" when every namespace refuses too', async () => {
+    mockKagent = { installations: ['alpha'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual(['alpha']),
+    );
+    expect(hook.current.rows).toHaveLength(0);
+  });
 });
 
 describe('AgentsDataProvider installation scope', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
+    mockNamespacedRead = {};
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
       installations: ['alpha', 'beta', 'gaggle'],
