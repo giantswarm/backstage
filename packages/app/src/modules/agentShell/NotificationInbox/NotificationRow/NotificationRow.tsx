@@ -1,0 +1,172 @@
+import { useEffect, useState } from 'react';
+import { ButtonIcon, Menu, MenuItem, MenuTrigger, Text } from '@backstage/ui';
+import { Link as AriaLink } from 'react-aria-components';
+import { makeStyles } from '@material-ui/core/styles';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
+import { AgentAvatar } from '@giantswarm/backstage-plugin-agent-platform';
+import {
+  getRelativeDate,
+  StatusDot,
+} from '@giantswarm/backstage-plugin-ui-react';
+import type { InboxRow } from '../types';
+
+/** How often a row's age is told again while the overlay is open. */
+const AGE_TICK_MS = 30_000;
+
+const useStyles = makeStyles({
+  row: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--bui-space-1)',
+    borderRadius: 'var(--bui-radius-2)',
+    '&:hover': {
+      background: 'var(--agent-shell-rail-item-hover, var(--bui-bg-neutral-2))',
+    },
+  },
+  unread: {
+    background: 'var(--bui-bg-neutral-2)',
+  },
+  link: {
+    flex: '1 1 auto',
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--bui-space-3)',
+    // 44px and up under a thumb: two lines of text and the padding.
+    padding: 'var(--bui-space-2) var(--bui-space-1) var(--bui-space-2) 14px',
+    color: 'var(--bui-fg-primary)',
+    textDecoration: 'none',
+    borderRadius: 'var(--bui-radius-2)',
+    cursor: 'pointer',
+    outline: 'none',
+    '&[data-focus-visible]': {
+      boxShadow: 'inset 0 0 0 2px var(--bui-ring)',
+    },
+  },
+  unreadDot: {
+    position: 'absolute',
+    left: 4,
+    top: '50%',
+    width: 6,
+    height: 6,
+    marginTop: -3,
+    borderRadius: '50%',
+    background: 'var(--bui-fg-primary)',
+  },
+  avatar: {
+    flex: '0 0 auto',
+  },
+  text: {
+    flex: '1 1 auto',
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  chip: {
+    flex: '0 0 auto',
+    '& .bui-Text': {
+      fontSize: 'var(--bui-font-size-2)',
+    },
+  },
+  menu: {
+    flex: '0 0 auto',
+    marginRight: 'var(--bui-space-1)',
+  },
+});
+
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), AGE_TICK_MS);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
+
+/**
+ * One row of the Notification inbox: the agent's Avatar, what happened, the
+ * session's name, how long ago and a state chip, with its own ⋯ menu.
+ * Clicking it opens what it is about; `onOpen` marks it read.
+ */
+export function NotificationRow({
+  row,
+  onOpen,
+}: {
+  row: InboxRow;
+  onOpen: () => void;
+}) {
+  const classes = useStyles();
+  const now = useNow();
+  const meta = [
+    row.context,
+    row.at === undefined
+      ? undefined
+      : getRelativeDate(new Date(row.at), new Date(now)),
+    row.detail,
+  ].filter(Boolean);
+
+  return (
+    <li
+      className={row.unread ? `${classes.row} ${classes.unread}` : classes.row}
+      data-unread={row.unread ? 'true' : undefined}
+    >
+      {row.unread && <span aria-hidden="true" className={classes.unreadDot} />}
+      <AriaLink
+        href={row.href}
+        onPress={onOpen}
+        className={classes.link}
+        aria-label={row.unread ? `Unread: ${row.title}` : undefined}
+      >
+        {row.avatar && (
+          <AgentAvatar
+            size="small"
+            purpose="decoration"
+            name={row.avatar.name}
+            src={row.avatar.src ?? ''}
+            className={classes.avatar}
+          />
+        )}
+        <span className={classes.text}>
+          <Text
+            as="span"
+            variant="body-small"
+            weight={row.unread ? 'bold' : 'regular'}
+          >
+            {row.title}
+          </Text>
+          {meta.length > 0 && (
+            <Text as="span" variant="body-x-small" color="secondary" truncate>
+              {meta.join(' · ')}
+            </Text>
+          )}
+        </span>
+        {row.state && (
+          <span className={classes.chip}>
+            <StatusDot tone={row.state.tone} label={row.state.label} size={6} />
+          </span>
+        )}
+      </AriaLink>
+      {row.actions && row.actions.length > 0 && (
+        <span className={classes.menu}>
+          <MenuTrigger>
+            <ButtonIcon
+              variant="tertiary"
+              size="small"
+              icon={<MoreVertIcon fontSize="small" />}
+              aria-label={`More actions for ${row.title}`}
+            />
+            <Menu placement="bottom end">
+              {row.actions.map(action => (
+                <MenuItem key={action.id} onAction={action.onAction}>
+                  {action.label}
+                </MenuItem>
+              ))}
+            </Menu>
+          </MenuTrigger>
+        </span>
+      )}
+    </li>
+  );
+}

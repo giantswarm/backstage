@@ -44,9 +44,8 @@ function words(row: SessionNotificationRow, agent: string) {
   switch (row.kind) {
     case 'waiting': {
       if (row.waitingFor === 'sign-in') {
-        const title = row.authServer
-          ? `${agent} needs your sign-in to ${row.authServer}`
-          : `${agent} needs your sign-in`;
+        // No runtime names the server it waits for, so the row cannot.
+        const title = `${agent} needs your sign-in`;
         return { title, announce: title };
       }
       return {

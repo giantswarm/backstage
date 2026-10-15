@@ -1,1 +1,1 @@
-export { UnreadBadge } from './UnreadBadge';
+export { UnreadBadge, withUnreadCount } from './UnreadBadge';
