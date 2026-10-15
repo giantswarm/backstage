@@ -1,12 +1,16 @@
 import { useMemo } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   mockDesktopLayout,
   MockedLayout,
   mockPhoneLayout,
 } from '../../testUtils/mockPhoneLayout';
+import {
+  mockIntersectionObserver,
+  type MockedIntersectionObserver,
+} from '../../testUtils/mockIntersectionObserver';
 import {
   PageHeaderActionsProvider,
   useProvidePageHeaderActions,
@@ -288,6 +292,147 @@ describe('ShellPage', () => {
       ).toBeInTheDocument();
       // Title line, badge row and three facts' caption and value.
       expect(container.querySelectorAll('.bui-Skeleton')).toHaveLength(8);
+    });
+  });
+
+  describe('with a compact header', () => {
+    let observer: MockedIntersectionObserver;
+    beforeEach(() => {
+      observer = mockIntersectionObserver();
+    });
+    afterEach(() => observer.restore());
+
+    const compactBar = () => screen.queryByTestId('shell-page-compact-header');
+
+    function renderLongPage() {
+      return renderAt(
+        '/connectors/jira',
+        <ShellPage
+          title={<button>Jira</button>}
+          documentTitle="Jira"
+          breadcrumbs={[{ label: 'Connectors', href: '/connectors' }]}
+          badges={
+            <>
+              <span>Connected</span>
+              <span>on gazelle</span>
+            </>
+          }
+          actions={<button>Edit</button>}
+          menu={<button>More actions</button>}
+          compactHeader={{ title: 'Jira', badges: <span>Connected</span> }}
+        >
+          <RegistersAction label="Pin" />
+          <p>A long conversation</p>
+        </ShellPage>,
+      );
+    }
+
+    it('holds no second copy of the header while the header is in view', () => {
+      renderLongPage();
+
+      expect(compactBar()).not.toBeInTheDocument();
+      act(() => observer.report('in-view'));
+      expect(compactBar()).not.toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(1);
+    });
+
+    it('watches where the content starts, after the header', () => {
+      renderLongPage();
+
+      const [marker] = observer.observed();
+      expect(marker).toBeDefined();
+      expect(
+        screen
+          .getByRole('heading', { level: 1 })
+          .compareDocumentPosition(marker) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        marker.compareDocumentPosition(
+          screen.getByText('A long conversation'),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('shows the title, its badges and every action once the header is above the view', () => {
+      renderLongPage();
+
+      act(() => observer.report('above'));
+
+      const bar = compactBar()!;
+      expect(bar).toHaveAttribute('data-shown');
+      expect(within(bar).getByText('Jira')).toBeInTheDocument();
+      expect(within(bar).getByText('Connected')).toBeInTheDocument();
+      // The page's own actions, the registered ones, then the menu.
+      expect(
+        within(bar)
+          .getAllByRole('button')
+          .map(button => button.textContent),
+      ).toEqual(['Edit', 'Pin', 'More actions']);
+      // Only what the page chose for the bar.
+      expect(within(bar).queryByText('on gazelle')).not.toBeInTheDocument();
+    });
+
+    it('hangs from an anchor of no height, so the content does not move when it shows', () => {
+      renderLongPage();
+
+      act(() => observer.report('above'));
+
+      expect(compactBar()!.parentElement).toHaveStyle({
+        position: 'sticky',
+        top: '0px',
+        height: '0px',
+      });
+    });
+
+    it('is not a second heading', () => {
+      renderLongPage();
+
+      act(() => observer.report('above'));
+
+      expect(within(compactBar()!).queryByRole('heading')).toBeNull();
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    });
+
+    it('hides again, kept mounted, once the header is back in view', () => {
+      renderLongPage();
+      act(() => observer.report('above'));
+
+      act(() => observer.report('in-view'));
+
+      expect(compactBar()).toBeInTheDocument();
+      expect(compactBar()).not.toHaveAttribute('data-shown');
+    });
+
+    it('stays hidden while the content start is still below the view', () => {
+      renderLongPage();
+
+      act(() => observer.report('below'));
+
+      expect(compactBar()).not.toBeInTheDocument();
+    });
+
+    it('defaults its title to the page title', () => {
+      renderAt(
+        '/connectors/jira',
+        <ShellPage title="Jira" compactHeader={{}}>
+          <p>Content</p>
+        </ShellPage>,
+      );
+
+      act(() => observer.report('above'));
+
+      expect(within(compactBar()!).getByText('Jira')).toBeInTheDocument();
+    });
+
+    it('watches nothing on a page without one', () => {
+      renderAt(
+        '/connectors/jira',
+        <ShellPage title="Jira">
+          <p>Content</p>
+        </ShellPage>,
+      );
+
+      expect(observer.observed()).toHaveLength(0);
     });
   });
 });

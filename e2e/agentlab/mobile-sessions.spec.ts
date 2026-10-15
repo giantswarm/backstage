@@ -5,6 +5,7 @@ import {
   expectNoHorizontalScroll,
   open,
   openReadyAgent,
+  sessionActionsButton,
   test,
 } from './fixtures';
 
@@ -22,9 +23,12 @@ function toolActivitySwitch(page: Page): Locator {
   return page.getByRole('switch', { name: 'Show tool activity', exact: true });
 }
 
-/** Its label, the part a person presses. */
+/**
+ * Its label, the part a person presses. The full header's: the compact
+ * header repeats the switch after it in the document (hidden at phone width).
+ */
 function toolActivityLabel(page: Page): Locator {
-  return page.getByText('Show tool activity', { exact: true });
+  return page.getByText('Show tool activity', { exact: true }).first();
 }
 
 /** Turns the switch back on, if the page shows it at all. */
@@ -38,10 +42,10 @@ async function restoreToolActivity(page: Page): Promise<void> {
 
 /**
  * Answers the open session's conversation read with one tool call and its
- * result added to the newest turn, as the artifacts kagent records them. The
- * rest of the read is the lab's own.
+ * result added to the newest turn, as the artifacts kagent records them, then
+ * `more` artifacts. The rest of the read is the lab's own.
  */
-async function withToolCall(page: Page): Promise<void> {
+async function withToolCall(page: Page, more: unknown[] = []): Promise<void> {
   const sessionId = new URL(page.url()).pathname.split('/').pop();
   await page.route(
     url => url.pathname.endsWith(`/kagent/sessions/${sessionId}/tasks`),
@@ -80,6 +84,7 @@ async function withToolCall(page: Page): Promise<void> {
               },
             ],
           },
+          ...more,
         ];
       }
       await route.fulfill({ response, json: body });
@@ -87,8 +92,29 @@ async function withToolCall(page: Page): Promise<void> {
   );
 }
 
+/** An agent reply several screens long, as a text artifact. */
+const longReply = {
+  artifactId: 'e2e-long-reply',
+  parts: [
+    {
+      text: Array.from(
+        { length: 30 },
+        (_, index) =>
+          `Paragraph ${index + 1} of a reply longer than the screen.`,
+      ).join('\n\n'),
+    },
+  ],
+};
+
+/** Where `locator` starts in the document, whatever the scroll. */
+function documentTop(locator: Locator): Promise<number> {
+  return locator.evaluate(
+    element => element.getBoundingClientRect().top + window.scrollY,
+  );
+}
+
 async function deleteCurrentSession(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Session actions' }).click();
+  await sessionActionsButton(page).click();
   await page.getByRole('menuitem', { name: /Delete session/ }).click();
   const dialog = page.getByRole('dialog', { name: /Delete session/ });
   await expect(dialog).toBeVisible();
@@ -195,6 +221,60 @@ test('a session starts from the home screen with a two-line message, its compose
       admin,
       'the session page with tool activity hidden',
     );
+
+    // The compact header (ShellPage's `compactHeader`): with a reply longer
+    // than the screen the header scrolls away, and a bar keeps the session's
+    // name, state and agent, the pin and the menu at the top of the view,
+    // with the composer still docked at the bottom. It hangs over the
+    // conversation, so nothing under it moves when it appears.
+    await withToolCall(admin, [longReply]);
+    await admin.reload();
+    await expect(admin.getByText('Paragraph 30 of a reply')).toBeVisible({
+      timeout: 60_000,
+    });
+    const compactHeader = admin.getByTestId('shell-page-compact-header');
+    const heading = admin.getByRole('heading', { level: 1 });
+    const firstMessage = admin.getByTestId('timeline-user-message').first();
+
+    await admin.evaluate(() => window.scrollTo(0, 0));
+    await expect(heading).toBeInViewport();
+    await expect(compactHeader).toBeHidden();
+    const messageTop = await documentTop(firstMessage);
+
+    await admin.evaluate(() =>
+      window.scrollTo(0, document.documentElement.scrollHeight),
+    );
+    await expect(heading).not.toBeInViewport();
+    await expect(compactHeader).toBeVisible();
+    expect((await compactHeader.boundingBox())!.y, 'at the top').toBeCloseTo(
+      0,
+      0,
+    );
+    await expect(
+      compactHeader.getByRole('button', { name: 'Session actions' }),
+    ).toBeVisible();
+    await expect(
+      compactHeader.getByRole('button', { name: /^(Pin|Unpin) session$/ }),
+    ).toBeVisible();
+    // Not a second h1, and the switch stays with the full header on a phone.
+    await expect(compactHeader.getByRole('heading')).toHaveCount(0);
+    await expect(compactHeader.getByRole('switch')).toHaveCount(0);
+    expect(await documentTop(firstMessage), 'the conversation moved').toBe(
+      messageTop,
+    );
+    await expectClearOfBottomBar(
+      admin,
+      message,
+      'the session composer under the compact header',
+    );
+    await expectNoHorizontalScroll(
+      admin,
+      'the session page with the compact header',
+    );
+
+    await admin.evaluate(() => window.scrollTo(0, 0));
+    await expect(compactHeader).toBeHidden();
+    await expect(heading).toBeInViewport();
   } finally {
     // The choice is the admin's for every session and every later spec, so
     // it goes back on whatever failed above.

@@ -26,6 +26,7 @@ import {
 import { SessionDetailPage } from './SessionDetailPage';
 import {
   mockDesktopLayout,
+  mockIntersectionObserver,
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
@@ -2419,6 +2420,40 @@ describe('SessionDetailPage', () => {
       await waitFor(() =>
         expect(lastProvidedActions().props.pin.isPinned).toBe(true),
       );
+    });
+
+    it('keeps the name, the state and the agent in sight once the header scrolls away', async () => {
+      // ShellPage's compact header, at the top of the view while the
+      // conversation is read. Where the session runs and when it started stay
+      // in the full header.
+      const observer = mockIntersectionObserver();
+      try {
+        await renderShell();
+
+        act(() => observer.report('above'));
+
+        const bar = screen.getByTestId('shell-page-compact-header');
+        expect(bar).toHaveAttribute('data-shown');
+        expect(within(bar).getByText('Which GitHub issues...')).toBeVisible();
+        // The name, not a second rename button and not a second h1.
+        expect(
+          within(bar).queryByRole('button', { name: /Rename/ }),
+        ).toBeNull();
+        expect(within(bar).queryByRole('heading')).toBeNull();
+        expect(within(bar).getByText('Working')).toBeInTheDocument();
+        expect(
+          within(bar).getByRole('link', { name: 'Issue tracker' }),
+        ).toBeInTheDocument();
+        expect(
+          within(bar).getByRole('switch', { name: 'Show tool activity' }),
+        ).toBeChecked();
+        expect(
+          within(bar).queryByTestId('installation-chip'),
+        ).not.toBeInTheDocument();
+        expect(within(bar).queryByText(/^Started/)).not.toBeInTheDocument();
+      } finally {
+        observer.restore();
+      }
     });
 
     /** The "Show tool activity" switch on the session's meta line (S9). */

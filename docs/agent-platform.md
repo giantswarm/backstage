@@ -1261,6 +1261,26 @@ the person is elsewhere. Nothing persists; sessions already waiting are left to
 the rail's dots, a toast closes when its session stops waiting or is opened,
 and the session on screen never raises one.
 
+### The compact header
+
+Once everything above the conversation has scrolled out of view, a one-row bar
+stays at the top of the view: the session's name in a smaller font (plain
+text, not a second h1 or rename button), its state, the agent, "Show tool
+activity", the pin and the actions menu. The environment and the start date
+stay in the full header; scrolling back up brings it back. At phone width the
+switch stays in the full header too: beside the state and the agent it wraps
+the bar to a third line over the conversation.
+
+It is `ShellPage`'s `compactHeader` option, so another long page can opt in.
+An `IntersectionObserver` watches a marker where the content starts (the
+document scrolls, not a container), and the bar hangs from a sticky anchor of
+no height, so it appearing moves nothing; the docked composer stays at the
+bottom. The bar mounts the first time it shows and then hides with
+`visibility`, so its controls leave the focus order while hidden, and its
+fade is off under `prefers-reduced-motion`. It repeats the header's actions, so
+e2e locators for them take the full header's (`sessionActionsButton` in the
+agentlab fixtures).
+
 ### Timestamps are absolute here
 
 The detail page shows absolute times (`28 Jul 2026, 10:07 UTC`), because

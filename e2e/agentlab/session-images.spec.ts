@@ -1,5 +1,11 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, open, openReadyAgent, test } from './fixtures';
+import {
+  expect,
+  open,
+  openReadyAgent,
+  sessionActionsButton,
+  test,
+} from './fixtures';
 
 /**
  * Images in a session message: the home composer attaches a pasted image as a
@@ -135,7 +141,7 @@ async function withImageInFirstMessage(page: Page): Promise<void> {
 }
 
 async function deleteCurrentSession(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Session actions' }).click();
+  await sessionActionsButton(page).click();
   await page.getByRole('menuitem', { name: /Delete session/ }).click();
   const dialog = page.getByRole('dialog', { name: /Delete session/ });
   await expect(dialog).toBeVisible();

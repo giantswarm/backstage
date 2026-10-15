@@ -720,6 +720,15 @@ export async function startSessionOnReadyAgent(
 }
 
 /**
+ * The session page's "Session actions" menu button, in its full header. Once
+ * the header has scrolled out of view the compact header repeats it at the
+ * top of the view, after the header in the document; both open the same menu.
+ */
+export function sessionActionsButton(page: Page): Locator {
+  return page.getByRole('button', { name: 'Session actions' }).first();
+}
+
+/**
  * The page does not scroll sideways: nothing reaches past the viewport's right
  * edge (the phone promise, T22). On a failure the message names the widest
  * offenders — the outermost elements past the edge, by tag, class and text —

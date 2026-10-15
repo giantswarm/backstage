@@ -256,3 +256,75 @@ export const WithLeading: Story = {
     aside: undefined,
   },
 };
+
+/** A long conversation's worth of content to scroll through. */
+function LongConversation() {
+  return (
+    <Flex direction="column" gap="4">
+      {Array.from({ length: 40 }, (_, index) => (
+        <Text key={index} as="p">
+          {index % 2 === 0
+            ? `You: question ${index / 2 + 1} about the ingress controller.`
+            : `Agent: the answer to question ${
+                (index + 1) / 2
+              }, after reading the pod logs and the recent events.`}
+        </Text>
+      ))}
+    </Flex>
+  );
+}
+
+/**
+ * A long page read top to bottom, as a session is: scroll down, and once the
+ * header is out of view a one-row bar with a smaller title, the state and
+ * the actions stays at the top. It hangs over the content, so the content
+ * does not move when it appears; scrolling back up brings the full header
+ * back. At phone width a long title takes the bar's first row and the badges
+ * go under it.
+ */
+export const WithCompactHeader: Story = {
+  args: {
+    title:
+      'Investigate why the ingress controller on the staging cluster keeps restarting',
+    breadcrumbs: [
+      { label: 'Sessions', href: '#sessions' },
+      { label: 'Session' },
+    ],
+    badges: (
+      <>
+        <StatusDot tone="success" label="Completed" />
+        <Text variant="body-medium">Kubernetes assistant</Text>
+        <Text variant="body-medium" color="secondary">
+          on gazelle
+        </Text>
+      </>
+    ),
+    meta: 'Started 14 Oct 2026, 09:12',
+    actions: undefined,
+    menu: (
+      <>
+        <ButtonIcon
+          variant="tertiary"
+          icon={<BookmarkBorderIcon />}
+          aria-label="Pin session"
+        />
+        <ButtonIcon
+          variant="tertiary"
+          icon={<MoreVertIcon />}
+          aria-label="Session actions"
+        />
+      </>
+    ),
+    tabs: undefined,
+    aside: undefined,
+    compactHeader: {
+      badges: (
+        <>
+          <StatusDot tone="success" label="Completed" />
+          <Text variant="body-medium">Kubernetes assistant</Text>
+        </>
+      ),
+    },
+    children: <LongConversation />,
+  },
+};

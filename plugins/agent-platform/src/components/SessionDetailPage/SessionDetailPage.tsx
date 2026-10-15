@@ -20,9 +20,11 @@ import {
   DateComponent,
   EmptyStateCard,
   LoadingIndicator,
+  PHONE_MEDIA,
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
   ShellPageBadgeSkeleton,
+  type ShellPageCompactHeader,
   ShellPageTitleSkeleton,
   StatusDot,
   TOUCH_MEDIA,
@@ -140,6 +142,14 @@ const useStyles = makeStyles(theme => ({
       },
     },
   },
+  // The switch in the compact header: left to the full header at phone
+  // width (see the page's `compactHeader`).
+  compactToolActivity: {
+    display: 'contents',
+    [PHONE_MEDIA]: {
+      display: 'none',
+    },
+  },
   // One readable column, like any chat surface: full-bleed prose is hard to
   // scan, and the conversation is what this page is for.
   //
@@ -252,6 +262,7 @@ function Shell({
   documentTitle,
   badges,
   meta,
+  compactHeader,
   children,
 }: {
   /** The shell header's h1; the exits leave it to the fallback "Session". */
@@ -262,6 +273,8 @@ function Shell({
   badges?: ReactNode;
   /** Muted text at the end of that row: when the session started. */
   meta?: ReactNode;
+  /** The bar that stands in for the header once it has scrolled away. */
+  compactHeader?: ShellPageCompactHeader;
   children: ReactNode;
 }) {
   const sessionsRoute = useRouteRef(sessionsRouteRef);
@@ -280,6 +293,7 @@ function Shell({
       ]}
       badges={badges}
       meta={meta}
+      compactHeader={compactHeader}
     >
       {children}
     </ShellPage>
@@ -1399,44 +1413,39 @@ export function SessionDetailPage() {
     </>
   );
 
-  const agentIdentity = (
-    <>
-      {row.agentName && (
-        <Flex align="center" gap="2">
-          <AgentAvatar
-            size="small"
-            purpose="decoration"
-            name={row.agentName}
-            src={avatarUrl ?? ''}
-          />
-          {/* core-components' `Link`, which routes client-side — a bui
-              link would reload the page. */}
-          {agentHref ? (
-            <Link to={agentHref}>
-              {/* bui `Text` sets its own colour, which would leave a
-                  link that doesn't look like one; `inherit` hands it back
-                  to the anchor. `as="span"`: Text renders a <p> by
-                  default. */}
-              <Text
-                as="span"
-                variant="body-medium"
-                style={{ color: 'inherit' }}
-              >
-                {row.agentName}
-              </Text>
-            </Link>
-          ) : (
-            <Text variant="body-medium">{row.agentName}</Text>
-          )}
-        </Flex>
+  const agentLink = row.agentName && (
+    <Flex align="center" gap="2">
+      <AgentAvatar
+        size="small"
+        purpose="decoration"
+        name={row.agentName}
+        src={avatarUrl ?? ''}
+      />
+      {/* core-components' `Link`, which routes client-side — a bui
+          link would reload the page. */}
+      {agentHref ? (
+        <Link to={agentHref}>
+          {/* bui `Text` sets its own colour, which would leave a
+              link that doesn't look like one; `inherit` hands it back
+              to the anchor. `as="span"`: Text renders a <p> by
+              default. */}
+          <Text as="span" variant="body-medium" style={{ color: 'inherit' }}>
+            {row.agentName}
+          </Text>
+        </Link>
+      ) : (
+        <Text variant="body-medium">{row.agentName}</Text>
       )}
-      <Flex align="center" gap="1">
-        <Text variant="body-medium" color="secondary">
-          on
-        </Text>
-        <InstallationChip installation={row.installation} />
-      </Flex>
-    </>
+    </Flex>
+  );
+
+  const environment = (
+    <Flex align="center" gap="1">
+      <Text variant="body-medium" color="secondary">
+        on
+      </Text>
+      <InstallationChip installation={row.installation} />
+    </Flex>
   );
 
   /* Absolute, not relative: the list keeps the relative form, where scanning
@@ -1464,6 +1473,27 @@ export function SessionDetailPage() {
     />
   );
 
+  /* The header once it has scrolled away (ShellPage's compact header): the
+     name, the state and the agent stay in sight while reading, with the pin,
+     the menu and the switch. Where the session runs and when it started are
+     left to the full header — read once, not while reading. At phone width
+     the switch is left to it too: beside the state and the agent it wraps
+     the bar to a third line over the conversation. */
+  const compactHeader = {
+    title: sessionTitle,
+    badges: (
+      <>
+        {stateBadges}
+        {agentLink}
+        {toolActivitySwitch && (
+          <span className={classes.compactToolActivity}>
+            {toolActivitySwitch}
+          </span>
+        )}
+      </>
+    ),
+  };
+
   return (
     <Shell
       title={titleButton}
@@ -1471,11 +1501,13 @@ export function SessionDetailPage() {
       badges={
         <>
           {stateBadges}
-          {agentIdentity}
+          {agentLink}
+          {environment}
           {startedMeta}
           {toolActivitySwitch}
         </>
       }
+      compactHeader={compactHeader}
     >
       <Flex
         ref={setColumnElement}

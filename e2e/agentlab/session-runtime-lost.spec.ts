@@ -2,6 +2,7 @@ import {
   expect,
   open,
   openReadyAgent,
+  sessionActionsButton,
   startSessionButton,
   test,
 } from './fixtures';
@@ -211,7 +212,7 @@ class LostRuntimeStubs {
 
 /** Deletes the session on screen through its actions menu — the portal's own path. */
 async function deleteCurrentSession(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Session actions' }).click();
+  await sessionActionsButton(page).click();
   await page.getByRole('menuitem', { name: /Delete session/ }).click();
   const dialog = page.getByRole('dialog', { name: /Delete session/ });
   await expect(dialog).toBeVisible();
