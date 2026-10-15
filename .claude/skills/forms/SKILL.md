@@ -117,7 +117,7 @@ field's problem as a plain value computed from the form state on every render;
 the hook only decides when it shows.
 
 ```tsx
-const validation = useFieldValidation(); // in a dialog: useFieldValidation(scopeRef)
+const validation = useFieldValidation(); // in a dialog: useFieldValidation(scopeRef, { isOpen })
 const errors = {
   name: name.trim() ? undefined : 'Enter a name',
   region: region ? undefined : 'Choose a region',
@@ -157,11 +157,13 @@ const regionError = useSelectFieldError(
 - `reveal()` is for the blocked submit. `submitted` is true from the first
   blocked submit on: use it for a banner of problems no field can show.
   `attempt` counts the blocked submits (a `key` to remount a fold-out open).
-- `reset()` for a dialog that stays mounted while closed, when it closes.
+- In a dialog, pass `{ isOpen }`: closing it resets the validation, so it
+  reopens quiet. `reset()` does the same by hand (after a successful add that
+  keeps the form open, for example).
 - A field whose problem is not about what was typed into it (a search box
   whose problem is "pick a result") gets `errorFor` but no `blurProps`.
 - Field components that render their own input take `error`, `onFocus` and
-  `onBlur` (`TextAreaField`, `SecretTextField`) and pass them through.
+  `onBlur` (`TextAreaField`) and pass them through.
 
 Tests (Testing Library): typing alone shows nothing; `userEvent.tab()` out of a
 typed field shows the error; tabbing through an empty required field shows

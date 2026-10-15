@@ -106,14 +106,13 @@ export function RemoveModelCacheDialog({
   const [partial, setPartial] = useState<NodePoolWriteResult>();
   const servingRoute = useRouteRef(servingRouteRef);
   const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
+  const validation = useFieldValidation(scope, { isOpen });
   const acknowledgeErrorId = `${useId()}-error`;
 
   useEffect(() => {
     if (!isOpen) {
       setAcknowledged(false);
       setPartial(undefined);
-      validation.reset();
       write.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
