@@ -72,7 +72,7 @@ test('every page names a server waiting for the sign-in, and its dialog signs in
     'Connected',
     { timeout: 60_000 },
   );
-  await dialog.getByRole('button', { name: /^(Done|Close)$/ }).click();
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(
     notice.filter({ hasText: FIXTURE }),
     'the fixture no longer waits',
