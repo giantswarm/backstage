@@ -3,6 +3,7 @@ import { expect, open, test } from './fixtures';
 import {
   dropPersistedQueriesOnNextLoad,
   installPersistedQueryDrop,
+  skipWithoutModelManager,
   stubModelManagerTools,
 } from './model-manager.fixture';
 
@@ -104,6 +105,9 @@ const models = {
     },
   ],
 };
+
+// Model hosting is drawn only where model-manager answers.
+skipWithoutModelManager();
 
 test('a served model whose predictor pod waits reads Pending · Unschedulable, the scheduler’s text in its hint', async ({
   admin,
