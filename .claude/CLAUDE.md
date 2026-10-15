@@ -320,7 +320,7 @@ ref the app binds in `packages/app/src/App.tsx`, or a helper built on one
 (`useCustomizePaths`, `useSkillPaths`, `useNewSessionHref` in agent-platform;
 `useServerPageLinks`, `useWorkflowPageLinks` in muster). The ESLint rule
 `giantswarm/no-restricted-syntax` fails CI on such a literal in
-`plugins/*/src` and `packages/app/src/modules/agentShell`; a route definition
+`plugins/*/src` and `packages/app/src/modules`; a route definition
 carries a disable comment with its reason. The shell's URLs are moving
 (giantswarm/giantswarm#38510), and this keeps that move to the route
 definitions.
