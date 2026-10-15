@@ -137,7 +137,7 @@ export function NotificationRow({
             {row.title}
           </Text>
           {meta.length > 0 && (
-            <Text as="span" variant="body-x-small" color="secondary" truncate>
+            <Text as="span" variant="body-x-small" color="secondary">
               {meta.join(' · ')}
             </Text>
           )}
