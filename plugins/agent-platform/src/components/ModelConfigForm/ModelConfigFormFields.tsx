@@ -15,6 +15,7 @@ import {
 
 import {
   isSupportedProvider,
+  isVertexAIProvider,
   MODEL_PROVIDER_OPTIONS,
   ModelConfigFieldErrors,
   ModelConfigFormValues,
@@ -22,6 +23,7 @@ import {
   providerHasEndpoint,
 } from '../../lib/modelConfigs';
 import { SecretTextField } from './SecretTextField';
+import { ServiceAccountKeyField } from './ServiceAccountKeyField';
 
 export type ModelConfigFormFieldsProps = {
   values: ModelConfigFormValues;
@@ -94,6 +96,46 @@ function apiKeyCopy({
 }
 
 /**
+ * What the service account key field says about itself. Unlike an API key it
+ * is never optional where the save would write a Secret: kagent accepts only
+ * a real key. An edit that keeps the provider family and project may leave it
+ * empty to keep the stored key.
+ */
+function serviceAccountKeyCopy({
+  mode,
+  originalProvider,
+}: {
+  mode: 'create' | 'edit';
+  originalProvider: string | undefined;
+}): { placeholder: string; description: string; isRequired: boolean } {
+  const howTo =
+    'Paste the JSON key of a service account that can use Vertex AI in this project, or choose the key file.';
+  if (mode === 'edit' && isVertexAIProvider(originalProvider)) {
+    return {
+      placeholder: 'Leave empty to keep the current key',
+      description: `Enter a key only to replace the stored one. ${howTo}`,
+      isRequired: false,
+    };
+  }
+  return { placeholder: '', description: howTo, isRequired: true };
+}
+
+/** The Model field's example, in the provider's own naming. */
+function modelPlaceholder(provider: ModelConfigFormValues['provider']): string {
+  switch (provider) {
+    case 'Ollama':
+      return 'e.g. qwen3:8b';
+    case 'AnthropicVertexAI':
+      return 'e.g. claude-sonnet-4-5@20250929';
+    case 'GeminiVertexAI':
+    case 'Gemini':
+      return 'e.g. gemini-2.5-pro';
+    default:
+      return 'e.g. claude-sonnet-4-6';
+  }
+}
+
+/**
  * The fields shared by the create and edit flows (`NewModelPage`). Pure
  * presentation: values and validation live with the page, which hands the
  * problems back as `errors` for each field to show under itself.
@@ -121,6 +163,7 @@ export function ModelConfigFormFields({
   const needsKey = Boolean(PROVIDER_SECRET_KEYS[values.provider]);
   const isOllama = values.provider === 'Ollama';
   const { textFieldProps } = validation;
+  const isVertexAI = isVertexAIProvider(values.provider);
   const keyCopy = apiKeyCopy({
     mode,
     provider: values.provider,
@@ -208,9 +251,7 @@ export function ModelConfigFormFields({
               isRequired
               value={values.model}
               onChange={model => onChange({ model })}
-              placeholder={
-                isOllama ? 'e.g. qwen3:8b' : 'e.g. claude-sonnet-4-6'
-              }
+              placeholder={modelPlaceholder(values.provider)}
               description="Enter the model id as the provider names it."
               {...textFieldProps('model', errors.model)}
             />
@@ -235,11 +276,52 @@ export function ModelConfigFormFields({
                 {...textFieldProps('endpoint', errors.endpoint)}
               />
             )}
+
+            {isVertexAI && (
+              <>
+                <TextField
+                  label="Project ID"
+                  isRequired
+                  value={values.projectID}
+                  onChange={projectID => onChange({ projectID })}
+                  placeholder="e.g. my-project-123"
+                  description="The Google Cloud project the model runs in, as its ID, not its name."
+                  {...textFieldProps('projectID', errors.projectID)}
+                />
+                <TextField
+                  label="Location"
+                  isRequired
+                  value={values.location}
+                  onChange={location => onChange({ location })}
+                  placeholder="e.g. europe-west4"
+                  description="Where Vertex AI serves the model: global, the us or eu multi-region, or a region such as europe-west4. The model must be offered there."
+                  {...textFieldProps('location', errors.location)}
+                />
+              </>
+            )}
           </Flex>
         </CardBody>
       </Card>
 
-      {needsKey && (
+      {isVertexAI && (
+        <Card>
+          <CardBody>
+            <SectionHeader
+              variant="title-x-small"
+              title="Service account key"
+              description="Stored as a Kubernetes Secret next to the model config; never shown again. Agents never see it: the platform exchanges it for short-lived tokens."
+            />
+            <ServiceAccountKeyField
+              value={values.apiKey}
+              onChange={apiKey => onChange({ apiKey })}
+              error={errors.apiKey}
+              {...serviceAccountKeyCopy({ mode, originalProvider })}
+            />
+          </CardBody>
+        </Card>
+      )}
+
+      {needsKey && !isVertexAI && (
         <Card>
           <CardBody>
             <SectionHeader

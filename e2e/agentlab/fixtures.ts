@@ -483,7 +483,9 @@ export async function connectToMuster(page: Page, ready: Locator) {
 
 /**
  * Creates an agent in the New agent wizard the way a person does, as the
- * page's user: Details (no skills, no tools, the lab's default ModelConfig),
+ * page's user: Details (no skills, no tools, the lab's default ModelConfig
+ * unless `model` names another: the model radio's name, which is the
+ * model's display name where it has one),
  * agent-manager's dry run on Review, then Create agent. Resolves on the agent's
  * detail page and returns its path; from then on the agent exists and the
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
@@ -498,6 +500,7 @@ export async function createAgentInWizard(
   agentSlug: string,
   options: {
     harness?: RegExp;
+    model?: string | RegExp;
     onStep?: (step: 'Details' | 'Review') => Promise<void>;
   } = {},
 ): Promise<string> {
@@ -524,7 +527,7 @@ export async function createAgentInWizard(
     .fill('You are a test agent. Answer with exactly what you are asked for.');
   await page
     .getByRole('radiogroup', { name: 'Model' })
-    .getByRole('radio', { name: /default-model-config/ })
+    .getByRole('radio', { name: options.model ?? /default-model-config/ })
     .check();
   if (options.harness) {
     await page

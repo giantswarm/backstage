@@ -351,6 +351,160 @@ describe('NewModelPage · editing a model', () => {
   });
 });
 
+describe('NewModelPage · Vertex AI', () => {
+  const serviceAccountKey = (projectID: string) =>
+    JSON.stringify({
+      type: 'service_account',
+      project_id: projectID,
+      private_key:
+        '-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n',
+      client_email: `kagent@${projectID}.iam.gserviceaccount.com`,
+      token_uri: 'https://oauth2.googleapis.com/token',
+    });
+  const keyField = () => screen.getByLabelText(/^Service account key(?! file)/);
+
+  async function chooseProvider(name: string) {
+    await userEvent.click(screen.getByRole('button', { name: /Provider/ }));
+    await userEvent.click(await screen.findByRole('option', { name }));
+  }
+
+  it('asks for project, location and a service account key instead of an endpoint', async () => {
+    await renderPage();
+    await chooseProvider('Claude on Vertex AI');
+
+    expect(screen.getByRole('textbox', { name: /^Project ID/ })).toBeVisible();
+    expect(screen.getByRole('textbox', { name: /^Location/ })).toBeVisible();
+    expect(keyField()).toHaveAttribute('type', 'password');
+    expect(screen.queryByLabelText(/^API key/)).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /^Base URL/ })).toBeNull();
+    expect(
+      screen.queryByRole('switch', {
+        name: /Skip TLS certificate verification/,
+      }),
+    ).toBeNull();
+  });
+
+  it('shows a key of another project on the key field and saves once it matches', async () => {
+    await renderPage();
+    await chooseProvider('Gemini on Vertex AI');
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Gemini Pro');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Model/ }),
+      'gemini-2.5-pro',
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Project ID/ }),
+      'my-project-123',
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Location/ }),
+      'europe-west4',
+    );
+    await userEvent.click(keyField());
+    await userEvent.paste(serviceAccountKey('other-project'));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Connect model' }),
+    );
+
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(keyField()).toHaveAttribute('aria-invalid', 'true');
+    expect(keyField()).toHaveAccessibleDescription(
+      expect.stringContaining(
+        'This key belongs to project other-project, not my-project-123',
+      ),
+    );
+    expect(keyField()).toHaveFocus();
+
+    await userEvent.clear(keyField());
+    await userEvent.paste(serviceAccountKey('my-project-123'));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Connect model' }),
+    );
+
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(mockSave.mock.calls[0][0].values).toEqual(
+      expect.objectContaining({
+        provider: 'GeminiVertexAI',
+        name: 'gemini-pro',
+        projectID: 'my-project-123',
+        location: 'europe-west4',
+        apiKey: serviceAccountKey('my-project-123'),
+      }),
+    );
+  });
+
+  it('reads the key from the file Google Cloud downloads', async () => {
+    await renderPage();
+    await chooseProvider('Claude on Vertex AI');
+
+    const key = serviceAccountKey('my-project-123');
+    await userEvent.upload(
+      screen.getByLabelText('Service account key file'),
+      new File([key], 'my-project-123-abc.json', { type: 'application/json' }),
+    );
+
+    await waitFor(() => expect(keyField()).toHaveValue(key));
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Read from my-project-123-abc.json',
+    );
+  });
+
+  it('keeps the stored key on an edit, and asks for one when the project changes', async () => {
+    const modelConfig = new ModelConfig(
+      {
+        apiVersion: 'api.kagent.dev/v1alpha3',
+        kind: 'ModelConfig',
+        metadata: { name: 'sonnet', namespace: 'kagent' },
+        spec: {
+          provider: 'AnthropicVertexAI',
+          model: 'claude-sonnet-4-5@20250929',
+          apiKeySecret: 'kagent-sonnet',
+          apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
+          anthropicVertexAI: {
+            projectID: 'my-project-123',
+            location: 'europe-west4',
+          },
+        },
+      } as ModelConfigInterface,
+      'inst-1',
+    );
+    await renderPage({
+      installation: 'inst-1',
+      modelConfig,
+      detailHref: '/customize/models/inst-1/kagent/sonnet',
+    });
+
+    expect(keyField()).toHaveAttribute(
+      'placeholder',
+      'Leave empty to keep the current key',
+    );
+    const location = screen.getByRole('textbox', { name: /^Location/ });
+    expect(location).toHaveValue('europe-west4');
+
+    const projectID = screen.getByRole('textbox', { name: /^Project ID/ });
+    await userEvent.clear(projectID);
+    await userEvent.type(projectID, 'new-project');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(keyField()).toHaveAccessibleDescription(
+      expect.stringContaining('Enter a key from the new project'),
+    );
+
+    await userEvent.clear(projectID);
+    await userEvent.type(projectID, 'my-project-123');
+    await userEvent.clear(location);
+    await userEvent.type(location, 'global');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(mockSave.mock.calls[0][0].values).toEqual(
+      expect.objectContaining({ location: 'global', apiKey: '' }),
+    );
+  });
+});
+
 describe('NewModelPage · the environment select at scale', () => {
   const openEnvironments = async () =>
     userEvent.click(screen.getByRole('button', { name: /Environment/ }));
