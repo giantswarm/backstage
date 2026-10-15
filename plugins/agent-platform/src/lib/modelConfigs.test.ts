@@ -531,8 +531,7 @@ describe('Vertex AI', () => {
       type: 'service_account',
       project_id: 'my-project-123',
       private_key_id: 'abc',
-      private_key:
-        '-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n',
+      private_key: 'not-a-key',
       client_email: 'kagent@my-project-123.iam.gserviceaccount.com',
       token_uri: 'https://oauth2.googleapis.com/token',
       ...overrides,

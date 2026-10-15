@@ -357,8 +357,7 @@ describe('NewModelPage · Vertex AI', () => {
       {
         type: 'service_account',
         project_id: projectID,
-        private_key:
-          '-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n',
+        private_key: 'not-a-key',
         client_email: `kagent@${projectID}.iam.gserviceaccount.com`,
         token_uri: 'https://oauth2.googleapis.com/token',
       },
@@ -425,7 +424,7 @@ describe('NewModelPage · Vertex AI', () => {
       'Service account kagent@my-project-123.iam.gserviceaccount.com',
     );
     expect(status).toHaveTextContent('Project my-project-123');
-    expect(status).not.toHaveTextContent('PRIVATE KEY');
+    expect(status).not.toHaveTextContent('not-a-key');
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Connect model' }),

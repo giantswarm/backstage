@@ -191,8 +191,7 @@ function fakeServiceAccountKey(projectID: string): string {
     type: 'service_account',
     project_id: projectID,
     private_key_id: 'e2e',
-    private_key:
-      '-----BEGIN PRIVATE KEY-----\nnot-a-key\n-----END PRIVATE KEY-----\n',
+    private_key: 'not-a-key',
     client_email: `e2e@${projectID}.iam.gserviceaccount.com`,
     token_uri: 'https://oauth2.googleapis.com/token',
   });
