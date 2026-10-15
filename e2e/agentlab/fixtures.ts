@@ -387,7 +387,9 @@ export async function open(
   const chrome = portalChrome(page);
   const card = page.getByRole('button', { name: 'Sign In' });
   await expect(chrome.or(card).first()).toBeAttached();
-  if (await card.isVisible()) {
+  // Signed out only without the portal's chrome: a signed-in page has its own
+  // "Sign in" buttons too (the MCP server sign-in notice and its dialog).
+  if ((await chrome.count()) === 0 && (await card.isVisible())) {
     await signIn(page, user);
     await page.goto(path);
   }

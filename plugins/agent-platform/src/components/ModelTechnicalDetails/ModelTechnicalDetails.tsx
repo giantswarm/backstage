@@ -14,6 +14,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { STALE_MODEL_DETAIL } from '../../lib/customize';
+import { ModelHelmReleaseCard } from './ModelHelmReleaseCard';
 
 /**
  * The resource behind the model, in the terms of the people who run the
@@ -61,8 +62,9 @@ function ResourceFacts({ modelConfig }: { modelConfig: ModelConfig }) {
 /**
  * What the controller makes of the model: its conditions, with their reason
  * and message, in the order it evaluates them, so the stage that failed
- * comes first and starts expanded. This is where "Not accepted" explains
- * itself (a missing key Secret, a provider config that does not resolve).
+ * comes first and starts expanded. This is where "Not accepted" and
+ * "Incomplete" explain themselves in kagent's terms (a provider config it
+ * rejects, a key Secret it cannot find).
  */
 function StatusConditions({ modelConfig }: { modelConfig: ModelConfig }) {
   const conditions = modelConfig.getConditions();
@@ -102,8 +104,9 @@ export type ModelTechnicalDetailsProps = {
 
 /**
  * The model as a Kubernetes resource, inside the page's "Technical details"
- * fold-out, as on the agent page: where it came from (GitOps), what it is
- * called in the cluster, and the controller's conditions. Needs an
+ * fold-out, as on the agent page: where it came from (GitOps, the Helm
+ * release that renders it), what it is called in the cluster, and the
+ * controller's conditions. Needs an
  * `ErrorsProvider` above it, for the GitOps card (`ModelDetailPage` mounts
  * one).
  */
@@ -118,6 +121,10 @@ export function ModelTechnicalDetails({
       {isGitOpsManaged(modelConfig) && (
         <GitOpsCard resource={modelConfig} installationName={installation} />
       )}
+      <ModelHelmReleaseCard
+        modelConfig={modelConfig}
+        installation={installation}
+      />
       <ResourceFacts modelConfig={modelConfig} />
       <StatusConditions modelConfig={modelConfig} />
     </Flex>

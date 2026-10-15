@@ -131,7 +131,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     [state.toolset],
   );
   const shape = toolsetShape(declared);
-  const { servers } = useMusterServers(installation);
+  const { servers, labels } = useMusterServers(installation);
   const resolution = useToolsetResolution(installation, declared);
 
   const updating = useUpdateAgent(installation);
@@ -274,7 +274,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <PlainRow label="Tools">
             {keepsImplicitAccess
               ? 'Every tool the gateway exposes (no toolset declared)'
-              : toolsetSummaryLabel(shape, declared)}
+              : toolsetSummaryLabel(
+                  shape,
+                  declared,
+                  connector => labels.get(connector) ?? connector,
+                )}
           </PlainRow>
         </dl>
 

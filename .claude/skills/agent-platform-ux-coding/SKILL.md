@@ -158,6 +158,9 @@ them and never invent a palette.
 - Technical detail is a fold-out in place, never a page-wide toggle, switch or
   stored "technical mode". Pages use a "Technical details" bui `Accordion`
   styled by `useSimpleAccordionStyles`, mounted only while open.
+  Plain facts directly above it (a Details tab's, the model page's Overview)
+  sit in `FoldOutAlignedSection`, which lines them up with the fold-out's
+  title.
 - The one page-wide switch is the session page's "Show tool activity" (PO,
   S9): it hides the agent's work, it does not change how detail reads. It is
   small, at the end of the header's meta line after "Started …", on by
@@ -228,6 +231,7 @@ them and never invent a palette.
 | Gateway-priced money           | **Spend** ("Est. spend" when converted); every tile says whose                                                                            | Cost, Spend (estimated)                                |
 | Token-based estimate           | **Est. cost**                                                                                                                             | Estimated cost                                         |
 | Runtime-reported money         | **Reported cost**                                                                                                                         |                                                        |
+| ModelConfig verdict            | `modelStatus`: Not accepted (`Accepted` False), Incomplete (`ResolvedRefs` False), Pending                                                | "Not accepted" for a missing key                       |
 | Served-model readiness         | `SERVED_MODEL_READINESS` labels: Ready, Not serving, Pending, Idle                                                                        | Serving already, Not running, Available (on Customize) |
 | A session with no turn running | **Idle**                                                                                                                                  | Finished                                               |
 | Starting from an agent         | **Start a session** ("New session" stays the nav, home and Sessions entry); the agent page's header button alone reads **Use this agent** | Use this agent anywhere else                           |

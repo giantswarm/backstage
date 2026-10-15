@@ -1,21 +1,12 @@
 import { Flex } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
 import {
   type Fact,
   FactList,
+  FoldOutAlignedSection,
   Mono,
   TechnicalDetailsFoldOut,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MusterWorkflow } from '../../../lib/k8s';
-
-const useStyles = makeStyles({
-  // Inset as the Technical details fold-out below insets its title (its 1px
-  // border plus bui's accordion padding), so the facts line up with it, as on
-  // the connector page's Details tab.
-  facts: {
-    paddingInline: 'calc(var(--bui-space-3) + 1px)',
-  },
-});
 
 /** Identifiers one per line, each as someone would retype it. */
 function MonoLines({ values }: { values: string[] }) {
@@ -75,12 +66,11 @@ export function WorkflowDetailsTab({
   workflow,
   facts,
 }: WorkflowDetailsTabProps) {
-  const classes = useStyles();
   return (
     <Flex direction="column" gap="5">
-      <section aria-label="Workflow details" className={classes.facts}>
+      <FoldOutAlignedSection aria-label="Workflow details">
         <FactList facts={facts} labelWidth={160} />
-      </section>
+      </FoldOutAlignedSection>
       <TechnicalDetailsFoldOut defaultExpanded={false}>
         <WorkflowTechnicalDetails workflow={workflow} />
       </TechnicalDetailsFoldOut>

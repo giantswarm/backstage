@@ -6,7 +6,12 @@ import {
   LoadingIndicator,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
+import {
+  findServerRow,
+  mcpServerDisplayNames,
+  serverRowDisplayName,
+  serverRowKey,
+} from '../../lib/serverGrouping';
 import { toolEffect } from '../../lib/toolAnnotations';
 import {
   serverPageResolver,
@@ -61,6 +66,9 @@ export function ToolPage() {
   const prefixes = useMemo(() => serverPrefixInfos(mcpServers), [mcpServers]);
   const shortName = shortToolName(tool, prefixes);
   const serverKey = row ? serverRowKey(row) : key;
+  const serverName = row
+    ? serverRowDisplayName(row, mcpServerDisplayNames(mcpServers))
+    : key;
   // The server's tools as muster lists them for this session: the tool is
   // shown only when its server offers it on this installation, not merely
   // when its name carries the server's prefix.
@@ -137,7 +145,9 @@ export function ToolPage() {
         actions={
           serverHref ? (
             <Link href={serverHref}>
-              {row ? `Back to the tools of ${serverKey}` : 'Back to connectors'}
+              {row
+                ? `Back to the tools of ${serverName}`
+                : 'Back to connectors'}
             </Link>
           ) : undefined
         }
@@ -174,7 +184,7 @@ export function ToolPage() {
         },
         // No "Tools" crumb: Tools is the connector page's index, so it
         // would repeat the connector's own link.
-        { label: serverKey, href: toolsHref },
+        { label: serverName, href: toolsHref },
         { label: shortName },
       ]}
       badges={

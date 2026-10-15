@@ -1,12 +1,22 @@
 import { MCPServer } from './k8s';
 import { connectorNames } from './connectorName';
 
-function server(name: string, family?: string): MCPServer {
+function server(
+  name: string,
+  family?: string,
+  displayName?: string,
+): MCPServer {
   return new MCPServer(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'MCPServer',
-      metadata: { name, namespace: 'muster' },
+      metadata: {
+        name,
+        namespace: 'muster',
+        ...(displayName
+          ? { annotations: { 'ui.giantswarm.io/display-name': displayName } }
+          : {}),
+      },
       spec: family ? { family: { name: family } } : {},
     } as never,
     'gazelle',
@@ -30,5 +40,29 @@ describe('connectorNames', () => {
       [server('k8s-a', 'kubernetes'), server('k8s-b', 'kubernetes')],
     );
     expect([...names.values()]).toEqual(['k8s-a', 'k8s-b']);
+  });
+
+  it('names a connector by its display name, a member by its family’s', () => {
+    const names = connectorNames(
+      ['mcp-github', 'k8s-a', 'unknown'],
+      [
+        server('mcp-github', undefined, 'GitHub'),
+        server('k8s-a', 'kubernetes', 'Kubernetes'),
+      ],
+    );
+    expect(names.get('mcp-github')).toBe('GitHub');
+    expect(names.get('k8s-a')).toBe('Kubernetes');
+    expect(names.get('unknown')).toBe('unknown');
+  });
+
+  it('keeps the own names of two connectors with the same display name', () => {
+    const names = connectorNames(
+      ['github-a', 'github-b'],
+      [
+        server('github-a', undefined, 'GitHub'),
+        server('github-b', undefined, 'GitHub'),
+      ],
+    );
+    expect([...names.values()]).toEqual(['github-a', 'github-b']);
   });
 });

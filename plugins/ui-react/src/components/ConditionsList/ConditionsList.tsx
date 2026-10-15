@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { Box, Flex, Text } from '@backstage/ui';
 import { ConditionMessage } from '../display/ConditionMessage';
 import { DateComponent } from '../DateComponent';
+import { type Fact, FactList } from '../FactList';
 import { SimpleAccordion, type SimpleAccordionProps } from '../SimpleAccordion';
 import { StatusLabel, StatusLabelIntent } from '../StatusLabel';
 
@@ -116,6 +117,21 @@ function sortConditions(
   });
 }
 
+/** A condition's status, reason and message, as label/value pairs. */
+function conditionFacts(condition: ConditionLike): Fact[] {
+  const facts: Fact[] = [{ label: 'Status', value: condition.status }];
+  if (condition.reason) {
+    facts.push({ label: 'Reason', value: condition.reason });
+  }
+  if (condition.message) {
+    facts.push({
+      label: 'Message',
+      value: <ConditionMessage message={condition.message} />,
+    });
+  }
+  return facts;
+}
+
 /**
  * A resource's status conditions, verbatim, as a list of collapsible entries —
  * the "why is this thing not working" view.
@@ -179,26 +195,13 @@ export const ConditionsList = ({
             }
           >
             <Flex direction="column" gap="2" pb="2">
-              <Flex align="center" gap="2">
-                <Text variant="body-small" color="secondary">
-                  Status
-                </Text>
-                <Text variant="body-small">{condition.status}</Text>
-                {condition.reason && (
-                  <>
-                    <Text variant="body-small" color="secondary">
-                      Reason
-                    </Text>
-                    <Text variant="body-small">{condition.reason}</Text>
-                  </>
-                )}
-              </Flex>
-
-              {condition.message && (
-                <Box>
-                  <ConditionMessage message={condition.message} />
-                </Box>
-              )}
+              {/* A label/value list, as every other technical detail: each
+                  label beside its value, or above it at phone width. */}
+              <FactList
+                facts={conditionFacts(condition)}
+                labelWidth={120}
+                maxWidth={null}
+              />
 
               {actions && <Box>{actions}</Box>}
             </Flex>

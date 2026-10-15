@@ -332,10 +332,12 @@ export function SessionDetailPage() {
   const { isUserScoped } = useKagentCapabilities(installation);
   // Tool calls name their connector as Customize does (UX review M2), from
   // the installation's MCPServer CRs.
-  const { servers: musterServers } = useMusterServers(installation);
+  const { servers: musterServers, labels: connectorLabelsOf } =
+    useMusterServers(installation);
   const connectorOf = useCallback(
-    (toolName: string) => connectorOfTool(toolName, musterServers),
-    [musterServers],
+    (toolName: string) =>
+      connectorOfTool(toolName, musterServers, connectorLabelsOf),
+    [musterServers, connectorLabelsOf],
   );
 
   // The prompt this session was started with, if the user arrived here by

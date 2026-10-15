@@ -1,8 +1,8 @@
 import { Flex } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
 import {
   type Fact,
   FactList,
+  FoldOutAlignedSection,
   TechnicalDetailsFoldOut,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer } from '../../../lib/k8s';
@@ -11,16 +11,6 @@ import {
   ConnectorTechnicalDetails,
   technicalDetailsOpenByDefault,
 } from '../ConnectorTechnicalDetails';
-
-const useStyles = makeStyles({
-  // Inset as the Technical details fold-out below insets its title (its 1px
-  // border plus bui's accordion padding), so the facts line up with it
-  // instead of starting at the content's edge, left of it and of the tabs'
-  // labels.
-  facts: {
-    paddingInline: 'calc(var(--bui-space-3) + 1px)',
-  },
-});
 
 export type ConnectorDetailsTabProps = {
   row: ServerPageRow;
@@ -42,13 +32,12 @@ export function ConnectorDetailsTab({
   representative,
   installation,
 }: ConnectorDetailsTabProps) {
-  const classes = useStyles();
   return (
     <Flex direction="column" gap="5">
       {facts.length > 0 && (
-        <section aria-label="Connector details" className={classes.facts}>
+        <FoldOutAlignedSection aria-label="Connector details">
           <FactList facts={facts} labelWidth={160} />
-        </section>
+        </FoldOutAlignedSection>
       )}
       {representative && (
         <TechnicalDetailsFoldOut

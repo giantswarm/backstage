@@ -65,9 +65,13 @@ function entryLabel(selector: string, group: RailGroup): string {
   if (preset !== undefined) {
     return presetLabel(preset);
   }
+  // The prefix muster gives the tools is the connector's name, which the key
+  // carries; the title is what people call it.
   return railToolLabel(
     selector,
-    group.key.startsWith('connector:') ? group.title : undefined,
+    group.key.startsWith('connector:')
+      ? group.key.slice('connector:'.length)
+      : undefined,
   );
 }
 

@@ -1,3 +1,4 @@
+import { ModelConfigConditionType } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   countNoun,
   matchesQuery,
@@ -119,11 +120,18 @@ export const STALE_MODEL_DETAIL =
  * review M14). A model nothing here serves (a provider's) is Ready once
  * accepted. A verdict short of accepted carries the controller's message
  * (which Secret is missing, say) as its detail.
+ *
+ * A failure is named by the condition that failed: "Not accepted" when kagent
+ * rejects the settings (`Accepted`), "Incomplete" when it accepts them but
+ * cannot find what they refer to, such as the key Secret (`ResolvedRefs`).
  */
 export function modelStatus(row: ModelRow): CustomizeStatus {
   if (row.readiness === 'notAccepted') {
     return {
-      label: 'Not accepted',
+      label:
+        row.failedCondition === ModelConfigConditionType.ResolvedRefs
+          ? 'Incomplete'
+          : 'Not accepted',
       tone: 'danger',
       detail: row.readinessMessage,
     };
