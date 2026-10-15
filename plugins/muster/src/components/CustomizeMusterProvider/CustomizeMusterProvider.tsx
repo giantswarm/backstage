@@ -1,4 +1,5 @@
 import { type ReactNode, useMemo } from 'react';
+import type { RouteTabCount } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type ConnectorGroup,
   connectorGroupCounts,
@@ -6,12 +7,22 @@ import {
 import { MusterProviders } from '../MusterProviders';
 import { useMusterInstance } from '../MusterInstanceProvider';
 
-/** What the Customize screen's tab strip counts; absent while still loading. */
+/** What the Customize screen's tab strip counts; `'loading'` while loading. */
 export type MusterCustomizeCounts = {
-  connectors?: number;
+  connectors?: RouteTabCount;
   /** The Connectors tab's sub-tabs, by `ConnectorGroup`. */
-  connectorGroups?: Record<ConnectorGroup, number>;
-  workflows?: number;
+  connectorGroups?: Record<ConnectorGroup, RouteTabCount>;
+  workflows?: RouteTabCount;
+};
+
+const LOADING: Required<MusterCustomizeCounts> = {
+  connectors: 'loading',
+  connectorGroups: {
+    yours: 'loading',
+    infrastructure: 'loading',
+    internal: 'loading',
+  },
+  workflows: 'loading',
 };
 
 /**
@@ -20,15 +31,20 @@ export type MusterCustomizeCounts = {
  * the active muster. Must be called inside a `CustomizeMusterProvider`.
  */
 export function useMusterCustomizeCounts(): MusterCustomizeCounts {
-  const { mcpServers, workflows, isLoading, activeInstallation } =
-    useMusterInstance();
+  const {
+    mcpServers,
+    workflows,
+    isLoading,
+    isLoadingWorkflows,
+    activeInstallation,
+  } = useMusterInstance();
   const withMuster = activeInstallation !== undefined;
   const connectorGroups = useMemo(
     () => connectorGroupCounts(mcpServers, withMuster),
     [mcpServers, withMuster],
   );
   if (isLoading) {
-    return {};
+    return LOADING;
   }
   return {
     connectors:
@@ -36,7 +52,9 @@ export function useMusterCustomizeCounts(): MusterCustomizeCounts {
       connectorGroups.infrastructure +
       connectorGroups.internal,
     connectorGroups,
-    workflows: workflows.length,
+    // A separate read: the servers can land first, and a 0 meanwhile would
+    // jump to the real number.
+    workflows: isLoadingWorkflows ? 'loading' : workflows.length,
   };
 }
 

@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import type { RouteTabCount } from '@giantswarm/backstage-plugin-ui-react';
 import {
   useSkillCatalog,
   type SkillCatalog,
@@ -15,12 +16,15 @@ import {
   WorkspacesDataProvider,
 } from '../WorkspacesDataProvider';
 
-/** What the Customize screen's tab strip counts; absent while still loading. */
+/**
+ * What the Customize screen's tab strip counts: `'loading'` while still being
+ * read, absent when it could not be.
+ */
 export type CustomizeCounts = {
-  agents?: number;
-  skills?: number;
-  models?: number;
-  workspaces?: number;
+  agents?: RouteTabCount;
+  skills?: RouteTabCount;
+  models?: RouteTabCount;
+  workspaces?: RouteTabCount;
 };
 
 export type CustomizeDataValue = {
@@ -41,16 +45,17 @@ export type CustomizeDataValue = {
 };
 
 /**
- * The skills the Skills tab lists, each once; unknown while loading and when
- * no repository could be read.
+ * The skills the Skills tab lists, each once; unknown when no repository could
+ * be read.
  */
-function skillCountOf(catalog: SkillCatalog): number | undefined {
+function skillCountOf(catalog: SkillCatalog): RouteTabCount | undefined {
+  if (catalog.isLoading) {
+    return 'loading';
+  }
   const unreadable =
     catalog.skills.length === 0 &&
     (catalog.error !== null || catalog.failedRepositories.length > 0);
-  return catalog.isLoading || unreadable
-    ? undefined
-    : uniqueSkills(catalog.skills).length;
+  return unreadable ? undefined : uniqueSkills(catalog.skills).length;
 }
 
 const CustomizeDataContext = createContext<CustomizeDataValue | undefined>(
@@ -113,15 +118,15 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CustomizeDataValue>(
     () => ({
       counts: {
-        agents: agents.isLoading ? undefined : agents.rows.length,
+        agents: agents.isLoading ? 'loading' : agents.rows.length,
         models:
           modelsLoading && modelRows.length === 0
-            ? undefined
+            ? 'loading'
             : modelRows.length,
         skills: skillCountOf(skillCatalog),
         workspaces:
           workspacesLoading && workspaceCount === 0
-            ? undefined
+            ? 'loading'
             : workspaceCount,
       },
       hasWorkspaces,

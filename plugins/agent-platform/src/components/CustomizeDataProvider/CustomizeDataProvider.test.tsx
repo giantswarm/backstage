@@ -133,11 +133,18 @@ describe('CustomizeDataProvider', () => {
     expect(read().counts.skills).toBeUndefined();
   });
 
-  it('leaves out the counts still loading', () => {
+  it('marks the counts still loading, for the strip to hold their place', () => {
     mockAgentsLoading = true;
     mockModelsLoading = true;
     mockSkillsLoading = true;
     mockWorkspacesLoading = true;
-    expect(read()).toEqual({ counts: {} });
+    expect(read()).toEqual({
+      counts: {
+        agents: 'loading',
+        models: 'loading',
+        skills: 'loading',
+        workspaces: 'loading',
+      },
+    });
   });
 });

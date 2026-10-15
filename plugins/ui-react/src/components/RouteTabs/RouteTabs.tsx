@@ -10,13 +10,21 @@ import {
   usePhoneLayout,
 } from '../../utils/breakpoints';
 
+/** A tab's count, or `'loading'` while the page is still reading it. */
+export type RouteTabCount = number | 'loading';
+
 export interface RouteTabSpec {
   id: string;
   /** The tab's path segment below the page; empty for the page's index. */
   path: string;
   title: string;
-  /** Shown after the title, as `Tools (10)`; absent is not zero. */
-  count?: number;
+  /**
+   * Shown after the title, as `Tools (10)`. `'loading'` draws a skeleton in
+   * its place, as wide as a two-digit count, so the tab has its final width
+   * before the count arrives. Absent is not zero: the tab has no count, or it
+   * could not be read.
+   */
+  count?: RouteTabCount;
 }
 
 export interface RouteTabsProps {
@@ -58,6 +66,15 @@ function edgeMask(start: boolean, end: boolean) {
 /** Phone's shortest touch target, in px (WCAG 2.5.5, Apple's HIG). */
 const TOUCH_TARGET = 44;
 
+/**
+ * How many digits a count's slot holds before its tab grows: the slot's
+ * width (`classes.count`) and the strip's re-centring (`tabWidthKey`) both
+ * read it.
+ */
+const RESERVED_DIGITS = 2;
+/** The widest count the slot holds, as drawn: `(00)`. */
+const RESERVED_COUNT = `(${'0'.repeat(RESERVED_DIGITS)})`;
+
 const useStyles = makeStyles({
   // Desktop: no rules at all, the strip is bui's.
   strip: {
@@ -94,6 +111,33 @@ const useStyles = makeStyles({
         '&:focus-visible': { outlineOffset: -2 },
       },
     },
+  },
+  // A count's slot, at every width: at least as wide as `RESERVED_COUNT`, so
+  // a count up to 99 arriving moves no tab. A hidden `(00)` and the count (or
+  // its skeleton) share one grid cell, and tabular figures make every
+  // two-digit count exactly that wide. Generated content, so the label's text
+  // and its accessible name stay `Tools (10)`.
+  count: {
+    display: 'inline-grid',
+    fontVariantNumeric: 'tabular-nums',
+    '&::before': {
+      // An empty alternative text keeps it out of the accessible name where
+      // `visibility` alone would not; the fallback for browsers without it.
+      fallbacks: { content: `"${RESERVED_COUNT}"` },
+      content: `"${RESERVED_COUNT}" / ""`,
+      gridArea: '1 / 1',
+      visibility: 'hidden',
+    },
+    '& > *': { gridArea: '1 / 1' },
+  },
+  // bui's `Skeleton` drawn on a `span`: bui's renders a `div`, which may not
+  // sit in a tab's link. Its tokens, so it looks and pulses as the rest.
+  countSkeleton: {
+    alignSelf: 'center',
+    height: '1em',
+    backgroundColor: 'var(--bui-bg-neutral-2)',
+    borderRadius: 'var(--bui-radius-2)',
+    animation: 'var(--bui-animate-pulse)',
   },
 });
 
@@ -132,7 +176,7 @@ const NO_OVERFLOW: Overflow = { start: false, end: false };
 /**
  * Whether the strip has tabs scrolled off before and after its visible part,
  * live: on scroll, and when the strip or its tabs change size (a rotation, a
- * count arriving).
+ * tab appearing, a count past 99).
  */
 function useOverflow(ref: RefObject<HTMLElement>, enabled: boolean): Overflow {
   const [overflow, setOverflow] = useState(NO_OVERFLOW);
@@ -160,8 +204,8 @@ function useOverflow(ref: RefObject<HTMLElement>, enabled: boolean): Overflow {
         ? undefined
         : new ResizeObserver(update);
     resizeObserver?.observe(strip);
-    // The tab list grows with its labels (counts arriving), but react-aria
-    // draws it a commit after the strip mounts: watch for it.
+    // The tab list grows with its tabs (one appearing, a count past 99), but
+    // react-aria draws it a commit after the strip mounts: watch for it.
     let observedTabList: Element | null = null;
     const observeTabList = () => {
       const tabList = strip.querySelector('.bui-TabList');
@@ -190,13 +234,13 @@ function useOverflow(ref: RefObject<HTMLElement>, enabled: boolean): Overflow {
 /**
  * Scrolls the selected tab to the middle of the strip (clamped at its ends),
  * so both neighbours show: when the strip mounts — at once — and when the
- * selection changes or its labels do (counts arriving) — smoothly, unless the
- * user asked for reduced motion. Only the strip scrolls, never the page.
+ * selection changes or the tabs' widths do (`tabWidthKey`) — smoothly, unless
+ * the user asked for reduced motion. Only the strip scrolls, never the page.
  */
 function useSelectedTabInView(
   ref: RefObject<HTMLElement>,
   selected: number,
-  labels: string,
+  widths: string,
   enabled: boolean,
 ) {
   const reduceMotion = useMediaQueryMatch('(prefers-reduced-motion: reduce)');
@@ -245,11 +289,49 @@ function useSelectedTabInView(
     return () => observer.disconnect();
     // `reduceMotion` only picks the next scroll's behavior.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, selected, labels, enabled]);
+  }, [ref, selected, widths, enabled]);
 }
 
-function tabLabel(tab: RouteTabSpec) {
-  return tab.count === undefined ? tab.title : `${tab.title} (${tab.count})`;
+/**
+ * What of a tab decides its width: its title, and whether it has a count and
+ * how many digits past the `RESERVED_DIGITS` its slot always holds. A count
+ * up to 99 arriving changes nothing here.
+ */
+function tabWidthKey(tab: RouteTabSpec) {
+  if (tab.count === undefined) {
+    return tab.title;
+  }
+  const digits = tab.count === 'loading' ? 0 : String(tab.count).length;
+  return `${tab.title} (${'0'.repeat(Math.max(RESERVED_DIGITS, digits))})`;
+}
+
+function renderTabLabel(
+  tab: RouteTabSpec,
+  classes: ReturnType<typeof useStyles>,
+) {
+  if (tab.count === undefined) {
+    return tab.title;
+  }
+  const loading = tab.count === 'loading';
+  // One inline box: bui's tab is a flex container, which would trim the space
+  // off a bare title before the count.
+  return (
+    <span>
+      {tab.title}{' '}
+      <span
+        className={classes.count}
+        data-count={loading ? 'loading' : undefined}
+      >
+        {loading ? (
+          // Out of the accessible name: the tab reads "Tools" until its
+          // count arrives, then "Tools (10)".
+          <span aria-hidden className={classes.countSkeleton} />
+        ) : (
+          <span>({tab.count})</span>
+        )}
+      </span>
+    </span>
+  );
 }
 
 /**
@@ -262,6 +344,10 @@ function tabLabel(tab: RouteTabSpec) {
  * empty selected key), hrefs are absolute (a relative one appends inside a splat
  * route), and the index matches exactly (its href is a prefix of every other
  * tab's).
+ *
+ * A tab with a count keeps its width as the count arrives: a skeleton holds a
+ * two-digit count's place while it loads (`count: 'loading'`), and a count up
+ * to 99 fits that place, so the tabs right of it never move under a pointer.
  *
  * At phone width the strip scrolls sideways instead of wrapping or squeezing
  * (Customize has six tabs with counts): one row of 44px-tall tabs, the selected
@@ -308,7 +394,7 @@ export function RouteTabs({
   useSelectedTabInView(
     stripRef,
     selected,
-    tabs.map(tabLabel).join('\n'),
+    tabs.map(tabWidthKey).join('\n'),
     isPhone,
   );
 
@@ -322,7 +408,7 @@ export function RouteTabs({
             href={tab.href}
             matchStrategy={tab.path ? 'prefix' : 'exact'}
           >
-            {tabLabel(tab)}
+            {renderTabLabel(tab, classes)}
           </Tab>
         ))}
       </TabList>

@@ -117,6 +117,10 @@ them and never invent a palette.
   pages render their loading frame in the final geometry with
   `ShellPageTitleSkeleton`, `ShellPageBadgeSkeleton` and
   `ShellPageFactsSkeleton`, so nothing moves when data lands.
+- A tab's count (`RouteTabSpec.count`, through `ShellPage`'s `tabs`) is
+  `'loading'` while it is read, never left out: the tab draws a two-digit
+  skeleton and keeps its width when the count lands. Leave the count out only
+  when it cannot be read.
 - Show loading only while there is no data (`!data && isLoading`). The
   persisted query cache reports `isLoading` during its restore, and cached
   data must render from the first commit.
