@@ -207,7 +207,7 @@ describe('CustomizePage', () => {
     expect(screen.queryByText(/^Models panel/)).toBeNull();
   });
 
-  it('leaves a count out until it is known', async () => {
+  it('leaves out a count that could not be read', async () => {
     mockCustomizeData = { ...mockCustomizeData, counts: { skills: 71 } };
     mockMusterCounts = {};
     await renderCustomize('/customize/agents');
@@ -219,6 +219,45 @@ describe('CustomizePage', () => {
       'Models',
       'Workflows',
     ]);
+    expect(document.querySelector('[data-count="loading"]')).toBeNull();
+  });
+
+  // The strip has its final width before the counts arrive, so no tab
+  // moves under the pointer when they do.
+  it('holds the place of each count still loading, the sub-tabs’ too', async () => {
+    mockCustomizeData = {
+      ...mockCustomizeData,
+      counts: {
+        agents: 'loading',
+        skills: 71,
+        models: 'loading',
+      },
+    };
+    mockMusterCounts = {
+      connectors: 'loading',
+      connectorGroups: {
+        yours: 'loading',
+        infrastructure: 'loading',
+        internal: 'loading',
+      },
+      workflows: 'loading',
+    };
+    await renderCustomize('/customize/connectors');
+
+    const loading = screen
+      .getAllByRole('tab')
+      .filter(tab => tab.querySelector('[data-count="loading"]'))
+      .map(tab => tab.textContent?.trim());
+    expect(loading).toEqual([
+      'Agents',
+      'Connectors',
+      'Models',
+      'Workflows',
+      'Your connectors',
+      'Infrastructure',
+      'Internal',
+    ]);
+    expect(screen.getByRole('tab', { name: 'Skills (71)' })).toBeVisible();
   });
 
   it.each([

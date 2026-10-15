@@ -25,6 +25,7 @@ export const SHELL_SPECS = [
   'gpu-node-pool.spec.ts',
   'inventory-gate.spec.ts',
   'kagent-denial-reason.spec.ts',
+  'mcp-auth-notice.spec.ts',
   'mcp-server-auth-modes.spec.ts',
   'mcp-servers.spec.ts',
   'model-backends.spec.ts',

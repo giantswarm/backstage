@@ -7,6 +7,11 @@ import {
 import { STALE_MODEL_DETAIL } from '../../lib/customize';
 import { ModelTechnicalDetails } from './ModelTechnicalDetails';
 
+// The Helm release card reads its HelmRelease; it has its own tests.
+jest.mock('./ModelHelmReleaseCard', () => ({
+  ModelHelmReleaseCard: () => null,
+}));
+
 function modelConfig(
   status: ModelConfigInterface['status'],
   generation = 2,

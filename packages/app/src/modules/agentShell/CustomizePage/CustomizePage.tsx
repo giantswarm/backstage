@@ -16,6 +16,7 @@ import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
+  type RouteTabCount,
   RouteTabs,
   ShellDocumentTitle,
   ShellPage,
@@ -268,7 +269,7 @@ function CustomizeTabContent({
     () => new URLSearchParams(location.search).get('q') ?? '',
   );
 
-  const tabCounts: Partial<Record<CustomizeTabId, number>> = {
+  const tabCounts: Partial<Record<CustomizeTabId, RouteTabCount>> = {
     ...counts,
     connectors: musterCounts.connectors,
     workflows: musterCounts.workflows,
@@ -463,7 +464,8 @@ function CustomizeScreen() {
 /**
  * The shell's Customize page: a tab per area at `/customize/:tab`, with
  * `/customize` opening the first, and one model's page beside the Models tab
- * (`/customize/models/<installation>/<namespace>/<name>`). The model's page
+ * (`/customize/models/<installation>/<namespace>/<name>`, its tabs under
+ * it). The model's page
  * is outside the screen's providers: it mounts only the agent-platform data
  * it reads (`CustomizeModelPage`), not the skill catalogue or muster, whose
  * errors panel would otherwise sit above it. Both share one query client, so
@@ -477,7 +479,7 @@ export function CustomizePage() {
       <ShellDocumentTitle title="Customize" />
       <Routes>
         <Route
-          path="models/:installation/:namespace/:name"
+          path="models/:installation/:namespace/:name/*"
           element={<CustomizeModelPage />}
         />
         <Route path="*" element={<CustomizeScreen />} />

@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
+import { skipWithoutModelManager } from './model-manager.fixture';
 
 /**
  * Serve model's Nodes field (a page of its own,
@@ -161,6 +162,9 @@ async function openServePage(page: Page) {
 
 test.describe.serial('Serve on the ticked nodes', () => {
   test.setTimeout(10 * 60_000);
+
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
 
   test.beforeEach(async ({ admin }) => {
     await addNodesToInventory(admin);

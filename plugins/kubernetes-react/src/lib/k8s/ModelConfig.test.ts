@@ -93,6 +93,49 @@ describe('ModelConfig', () => {
     });
   });
 
+  describe('failed condition', () => {
+    it('is ResolvedRefs when only the references fail and Accepted holds', () => {
+      const modelConfig = makeModelConfig([
+        condition('Accepted', 'True'),
+        condition('ResolvedRefs', 'False', 'secret kagent/key not found'),
+      ]);
+      expect(modelConfig.getReadiness()).toBe('notAccepted');
+      expect(modelConfig.getFailedCondition()?.type).toBe('ResolvedRefs');
+    });
+
+    it('is Accepted first when both fail, whatever order they were written in', () => {
+      const modelConfig = makeModelConfig([
+        condition('ResolvedRefs', 'False'),
+        condition('Accepted', 'False'),
+      ]);
+      expect(modelConfig.getFailedCondition()?.type).toBe('Accepted');
+    });
+
+    it('falls back to a condition the controller may add later', () => {
+      const modelConfig = makeModelConfig([
+        condition('Accepted', 'True'),
+        condition('ResolvedRefs', 'True'),
+        condition('Reachable', 'False'),
+      ]);
+      expect(modelConfig.getFailedCondition()?.type).toBe('Reachable');
+    });
+
+    it('is none while nothing failed, or the conditions describe an older spec', () => {
+      expect(
+        makeModelConfig([
+          condition('Accepted', 'True'),
+          condition('ResolvedRefs', 'Unknown'),
+        ]).getFailedCondition(),
+      ).toBeUndefined();
+      expect(
+        makeModelConfig([condition('ResolvedRefs', 'False')], {
+          generation: 2,
+          observedGeneration: 1,
+        }).getFailedCondition(),
+      ).toBeUndefined();
+    });
+  });
+
   describe('conditions', () => {
     it('lists the conditions as the controller wrote them', () => {
       const conditions = [

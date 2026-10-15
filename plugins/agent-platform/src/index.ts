@@ -41,6 +41,7 @@ export type { CustomizeWorkspacesPanelProps } from './components/CustomizeWorksp
 export { WorkspaceOrganizationSelect } from './components/WorkspaceOrganizationSelect';
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
 export { CustomizeModelPage } from './components/CustomizeModelPage';
+export { MODEL_PAGE_TABS } from './components/ModelDetailPage';
 export { WorkflowCreateAssist } from './components/WorkflowCreateAssist';
 export type { WorkflowCreateAssistProps } from './components/WorkflowCreateAssist';
 export { EnvironmentSelect } from './components/EnvironmentSelect';

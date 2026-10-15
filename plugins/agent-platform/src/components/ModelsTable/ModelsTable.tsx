@@ -90,6 +90,11 @@ export type ModelRow = {
   /** The controller's own explanation, for the status tooltip. */
   readinessMessage?: string;
   /**
+   * The type of the condition that failed (`getFailedCondition`), e.g.
+   * `ResolvedRefs` while `Accepted` holds: what the status label names.
+   */
+  failedCondition?: string;
+  /**
    * The controller has not reconciled the latest change yet, so
    * `readinessMessage` describes the previous spec (see `modelStatus`).
    */
@@ -103,6 +108,7 @@ export function toModelRow(
   servedBy?: ModelServedBy,
 ): ModelRow {
   const isStale = modelConfig.isStale();
+  const failedCondition = modelConfig.getFailedCondition()?.type;
   return {
     id: `${modelConfig.cluster}/${modelConfig.getNamespace() ?? ''}/${modelConfig.getName()}`,
     installation: modelConfig.cluster,
@@ -114,6 +120,7 @@ export function toModelRow(
     endpoint: modelConfig.getEndpoint() ?? '',
     readiness: modelConfig.getReadiness(),
     readinessMessage: modelConfig.getReadinessMessage(),
+    ...(failedCondition ? { failedCondition } : {}),
     ...(isStale ? { isStale } : {}),
     ...(servedBy ? { servedBy } : {}),
   };

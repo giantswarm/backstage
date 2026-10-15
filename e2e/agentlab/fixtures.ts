@@ -4,9 +4,11 @@ import { join } from 'node:path';
 import {
   test as base,
   expect,
+  type APIRequestContext,
   type BrowserContext,
   type Locator,
   type Page,
+  type TestInfo,
 } from '@playwright/test';
 import {
   contextOptionsFor,
@@ -72,18 +74,65 @@ export function portalChrome(page: Page): Locator {
 }
 
 /**
- * Fails at once, with what to change, when the lab serves other portals than
- * `AGENTLAB_PORTAL_MODE` says — rather than letting every spec fail on a
- * missing route or the other chrome. `page` is signed in and on `/`, which is
- * the shell's new-session screen exactly when the lab serves the shell.
+ * Which portals the lab's Backstage serves, from the app config it publishes
+ * before sign-in: the frontend config `app-backend` injects into `index.html`
+ * (`<script type="backstage.io/config">`), the one the app reads at start.
+ * `app.portals.agentPlatform` on is the shell; the last config that sets it
+ * wins, as in Backstage's `ConfigReader.fromConfigs`. A fresh browser context
+ * carries no person's opt-in flag, so this is what the suite's pages render.
  */
-async function expectLabPortalMode(page: Page): Promise<void> {
-  const rail = page.getByRole('navigation', { name: 'Main', exact: true });
-  const served: PortalMode = (await rail.count()) > 0 ? 'shell' : 'classic';
+export async function servedPortalMode(
+  request: APIRequestContext,
+): Promise<PortalMode> {
+  const response = await request.get('/');
+  expect(
+    response.ok(),
+    `the lab's Backstage answers / (${response.status()})`,
+  ).toBe(true);
+  const injected =
+    /<script type="backstage\.io\/config">([\s\S]*?)<\/script>/.exec(
+      await response.text(),
+    );
+  expect(
+    injected,
+    "the lab's Backstage injects its frontend config into index.html",
+  ).not.toBeNull();
+  const configs: {
+    data?: { app?: { portals?: { agentPlatform?: unknown } } };
+  }[] = JSON.parse(injected![1]);
+  const agentPlatform = configs
+    .map(config => config.data?.app?.portals?.agentPlatform)
+    .filter(value => value !== undefined)
+    .pop();
+  return agentPlatform === true || agentPlatform === 'true'
+    ? 'shell'
+    : 'classic';
+}
+
+/** The projects of the Agent Platform, which need a lab serving the shell. */
+const SHELL_PROJECTS = ['agentlab-shell', 'agentlab-mobile'];
+
+/**
+ * Settles, before a test, whether the lab serves the portals
+ * `AGENTLAB_PORTAL_MODE` says. A classic-only lab skips the Agent Platform's
+ * projects with the reason — there is nothing of the shell to prove there; any
+ * other mismatch fails at once with what to change, rather than letting every
+ * spec fail on a missing route or the other chrome.
+ */
+function expectLabPortalMode(served: PortalMode, testInfo: TestInfo): void {
+  if (served === lab.portalMode) {
+    return;
+  }
+  const classicOnly =
+    "the lab's Backstage serves the classic portal only (app.portals.agentPlatform off): run it with APP_CONFIG_app_portals_agentPlatform=true for the Agent Platform's specs (see e2e/agentlab/README.md)";
+  testInfo.skip(
+    served === 'classic' && SHELL_PROJECTS.includes(testInfo.project.name),
+    classicOnly,
+  );
   expect(
     served,
     lab.portalMode === 'shell'
-      ? 'AGENTLAB_PORTAL_MODE=shell, but the lab serves the classic portal only: run its Backstage with APP_CONFIG_app_portals_agentPlatform=true (see e2e/agentlab/README.md)'
+      ? `AGENTLAB_PORTAL_MODE=shell, but ${classicOnly}`
       : 'the lab serves the agent shell: set AGENTLAB_PORTAL_MODE=shell (the Agent Platform specs need it), or switch the lab back to the classic portal',
   ).toBe(lab.portalMode);
 }
@@ -143,6 +192,8 @@ type WorkerFixtures = {
    * per worker, no copies, is the shape that stays signed in.
    */
   adminPage: Page;
+  /** Which portals the lab serves, read once per worker ({@link servedPortalMode}). */
+  servedPortal: PortalMode;
   /**
    * An agent of the worker's own on the lab, created as the admin in the New
    * agent wizard (agent-manager's `create_agent` through muster) the first
@@ -165,6 +216,11 @@ export interface LabAgent {
 }
 
 type TestFixtures = {
+  /**
+   * Run before every test (auto): whether the lab serves the portals
+   * `AGENTLAB_PORTAL_MODE` says ({@link expectLabPortalMode}).
+   */
+  labPortalMode: void;
   /** The worker's admin page; an uncaught page error during the test fails it. */
   admin: Page;
   /**
@@ -197,6 +253,29 @@ function labAgentFailureFile(outputDir: string): string {
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   variant: ['desktop', { scope: 'worker', option: true }],
 
+  servedPortal: [
+    async ({ playwright }, use) => {
+      const request = await playwright.request.newContext({
+        baseURL: lab.baseURL,
+        ignoreHTTPSErrors: true,
+      });
+      try {
+        await use(await servedPortalMode(request));
+      } finally {
+        await request.dispose();
+      }
+    },
+    { scope: 'worker' },
+  ],
+
+  labPortalMode: [
+    async ({ servedPortal }, use, testInfo) => {
+      expectLabPortalMode(servedPortal, testInfo);
+      await use();
+    },
+    { auto: true },
+  ],
+
   adminPage: [
     async ({ browser, variant }, use) => {
       const context = await browser.newContext(contextOptionsFor(variant));
@@ -211,7 +290,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         [PERSISTED_QUERY_CACHES, DROP_CACHES_FLAG] as const,
       );
       await signIn(page, lab.users.admin);
-      await expectLabPortalMode(page);
       await use(page);
       await context.close();
     },

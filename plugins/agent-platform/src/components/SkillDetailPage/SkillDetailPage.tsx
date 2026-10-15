@@ -455,7 +455,7 @@ function SkillPage({
       id: 'used-by',
       path: 'used-by',
       title: 'Used by',
-      count: agentsLoading ? undefined : using.length,
+      count: agentsLoading ? 'loading' : using.length,
     },
   ];
 
@@ -671,7 +671,14 @@ export function SkillDetailPage() {
         badges={<ShellPageBadgeSkeleton />}
         tabs={[
           { id: 'overview', path: '', title: 'Overview' },
-          { id: 'used-by', path: 'used-by', title: 'Used by' },
+          // Its count's place held from the first paint, as the loaded
+          // page's while the agents load.
+          {
+            id: 'used-by',
+            path: 'used-by',
+            title: 'Used by',
+            count: 'loading',
+          },
         ]}
         tabsBasePath={tab ? own.slice(0, own.lastIndexOf('/')) : own}
       >

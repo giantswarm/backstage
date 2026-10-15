@@ -193,6 +193,30 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
   }
 
   /**
+   * The condition that failed (`False`): the first in the order the
+   * controller evaluates them, so `ResolvedRefs` when only the references
+   * fail and `Accepted` holds, then any other the controller may add.
+   * `undefined` when none has failed, including while the status is stale,
+   * since its conditions then describe the previous spec.
+   */
+  getFailedCondition(): ModelConfigCondition | undefined {
+    if (this.isStale()) {
+      return undefined;
+    }
+    const conditions = this.getConditions();
+    const known = READINESS_CONDITIONS.map(type =>
+      conditions.find(condition => condition.type === type),
+    );
+    return [
+      ...known,
+      ...conditions.filter(
+        condition =>
+          !(READINESS_CONDITIONS as readonly string[]).includes(condition.type),
+      ),
+    ].find(condition => condition?.status === 'False');
+  }
+
+  /**
    * The controller's explanation for a readiness short of `accepted`: the
    * message of the first condition that is `False` (e.g. which Secret could
    * not be found), since that is why it is `notAccepted`; otherwise of the
