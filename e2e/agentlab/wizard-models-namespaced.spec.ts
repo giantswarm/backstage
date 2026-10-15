@@ -1,4 +1,10 @@
-import { expect, expectWizardStep, open, test } from './fixtures';
+import {
+  expect,
+  expectWizardStep,
+  open,
+  openWizardMoreOptions,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -15,6 +21,11 @@ test('a person with a namespaced kagent RoleBinding picks a model in the New age
   await open(dev, '/agent-platform/agents/new', lab.users.dev);
   await expectWizardStep(dev, 'Details');
 
+  await expect(
+    dev.getByText('Runs on default-model-config'),
+    'the platform default is preselected from the kagent namespace',
+  ).toBeVisible({ timeout: 60_000 });
+  await openWizardMoreOptions(dev);
   const models = dev.getByRole('radiogroup', { name: 'Model' });
   const platformDefault = models.getByRole('radio', {
     name: /default-model-config/,
@@ -27,7 +38,7 @@ test('a person with a namespaced kagent RoleBinding picks a model in the New age
   await expect(platformDefault).toBeChecked();
 
   await expect(
-    dev.getByText(/^Could not read/),
-    'no environment reads as unreadable',
+    dev.getByText(/^Could not read (models|\d+ environments?)$/),
+    'neither the models nor an environment read as unreadable',
   ).toHaveCount(0);
 });
