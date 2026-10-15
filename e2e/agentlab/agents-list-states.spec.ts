@@ -95,9 +95,15 @@ test('an environment without kagent explains the empty list, New agent still off
       `Agents run on environments with kagent. Enable the Agent Platform on ${lab.installation} to create agents there.`,
     ),
   ).toBeVisible();
-  await expect(
-    page.getByRole('link', { name: 'Go to Installations' }),
-  ).toBeVisible();
+  // The card links to Installations only where the gs Installations page is
+  // installed; the agent-platform chart's portal switches it off, and the
+  // card then offers no dead link.
+  const installationsLink = page.getByRole('link', {
+    name: 'Go to Installations',
+  });
+  if ((await installationsLink.count()) > 0) {
+    await expect(installationsLink).toHaveAttribute('href', '/installations');
+  }
   expect(
     stripped.length,
     'the probe was answered without kagent',
