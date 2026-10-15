@@ -3,9 +3,11 @@
 '@giantswarm/backstage-plugin-agent-platform': minor
 ---
 
-`ShellPage` takes a `compactHeader`: once everything above the content has
-scrolled out of view, a one-row bar with a smaller title, chosen badges and
-the header's actions stays at the top of the view. The session detail page
-uses it, with the session's name, state, agent, "Show tool activity" (not at
-phone width), the pin and the actions menu. `ui-react/testUtils` adds
+`ShellPage` takes `compactHeader`: once everything above the content has
+scrolled out of view, the header turns into one compact row at the top of the
+view (a smaller title, the badges, the actions), without moving the content.
+`ShellPageExpandedOnly` marks what the compact row leaves out. The session
+detail page uses it, keeping the session's name, state, agent, "Show tool
+activity" (not at phone width), the pin and the actions menu in sight.
+`useScrolledPast` is a new hook, and `ui-react/testUtils` adds
 `mockIntersectionObserver`.

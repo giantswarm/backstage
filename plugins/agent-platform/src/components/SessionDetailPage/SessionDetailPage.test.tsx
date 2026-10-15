@@ -2423,34 +2423,33 @@ describe('SessionDetailPage', () => {
     });
 
     it('keeps the name, the state and the agent in sight once the header scrolls away', async () => {
-      // ShellPage's compact header, at the top of the view while the
-      // conversation is read. Where the session runs and when it started stay
-      // in the full header.
+      // ShellPage's compact header: the same header, at the top of the view
+      // while the conversation is read. Where the session runs and when it
+      // started stay out of it.
       const observer = mockIntersectionObserver();
       try {
         await renderShell();
 
         act(() => observer.report('above'));
 
-        const bar = screen.getByTestId('shell-page-compact-header');
-        expect(bar).toHaveAttribute('data-shown');
-        expect(within(bar).getByText('Which GitHub issues...')).toBeVisible();
-        // The name, not a second rename button and not a second h1.
+        const header = screen.getByTestId('shell-page-header');
+        expect(header).toHaveAttribute('data-compact');
+        // Still the one h1, its rename button and nothing twice.
+        expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
         expect(
-          within(bar).queryByRole('button', { name: /Rename/ }),
-        ).toBeNull();
-        expect(within(bar).queryByRole('heading')).toBeNull();
-        expect(within(bar).getByText('Working')).toBeInTheDocument();
+          within(header).getByRole('button', {
+            name: 'Rename session "Which GitHub issues..."',
+          }),
+        ).toBeVisible();
+        expect(within(header).getByText('Working')).toBeVisible();
         expect(
-          within(bar).getByRole('link', { name: 'Issue tracker' }),
-        ).toBeInTheDocument();
+          within(header).getByRole('link', { name: 'Issue tracker' }),
+        ).toBeVisible();
         expect(
-          within(bar).getByRole('switch', { name: 'Show tool activity' }),
-        ).toBeChecked();
-        expect(
-          within(bar).queryByTestId('installation-chip'),
-        ).not.toBeInTheDocument();
-        expect(within(bar).queryByText(/^Started/)).not.toBeInTheDocument();
+          screen.getAllByRole('switch', { name: 'Show tool activity' }),
+        ).toHaveLength(1);
+        expect(screen.getByTestId('installation-chip')).not.toBeVisible();
+        expect(screen.getByText(/^Started/)).not.toBeVisible();
       } finally {
         observer.restore();
       }
@@ -2464,8 +2463,10 @@ describe('SessionDetailPage', () => {
       await renderShell();
 
       const started = screen.getByText(/^Started/);
-      // The badge row under the title holds both, in that order.
-      expect(started.parentElement).toContainElement(toolActivitySwitch());
+      // The header holds both, the switch after the start.
+      const header = screen.getByTestId('shell-page-header');
+      expect(header).toContainElement(started);
+      expect(header).toContainElement(toolActivitySwitch());
       expect(
         started.compareDocumentPosition(toolActivitySwitch()) &
           Node.DOCUMENT_POSITION_FOLLOWING,

@@ -1263,23 +1263,26 @@ and the session on screen never raises one.
 
 ### The compact header
 
-Once everything above the conversation has scrolled out of view, a one-row bar
-stays at the top of the view: the session's name in a smaller font (plain
-text, not a second h1 or rename button), its state, the agent, "Show tool
-activity", the pin and the actions menu. The environment and the start date
-stay in the full header; scrolling back up brings it back. At phone width the
-switch stays in the full header too: beside the state and the agent it wraps
-the bar to a third line over the conversation.
+Once everything above the conversation has scrolled out of view, the header
+turns into one compact row at the top of the view: the session's name in a
+smaller font, its state, the agent, "Show tool activity", the pin and the
+actions menu. The environment and the start date are left out
+(`ShellPageExpandedOnly`); scrolling back up restores the full header. At
+phone width the switch is left out too: beside the state and the agent it
+wraps the row to a third line over the conversation.
 
 It is `ShellPage`'s `compactHeader` option, so another long page can opt in.
-An `IntersectionObserver` watches a marker where the content starts (the
-document scrolls, not a container), and the bar hangs from a sticky anchor of
-no height, so it appearing moves nothing; the docked composer stays at the
-bottom. The bar mounts the first time it shows and then hides with
-`visibility`, so its controls leave the focus order while hidden, and its
-fade is off under `prefers-reduced-motion`. It repeats the header's actions, so
-e2e locators for them take the full header's (`sessionActionsButton` in the
-agentlab fixtures).
+It is the same header, not a copy: the h1 (the rename button) and the actions
+stay mounted once, so focus on them survives the switch and assistive tech
+never meets them twice. Compact, the header is `position: sticky` against the
+page, and a spacer after it takes the height it gives up, set before paint, so
+the conversation does not move. `useScrolledPast` watches a sentinel that
+reaches from where the content starts up past the top of the document (the
+document scrolls, not a container), so even an instant jump to the top is
+seen. The header stays expanded while focus is on a part the compact row
+leaves out. The document's `scroll-padding-top` keeps whatever is scrolled
+into view below the compact row, and its fade is off under
+`prefers-reduced-motion`.
 
 ### Timestamps are absolute here
 

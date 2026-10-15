@@ -18,6 +18,7 @@ import {
 import {
   ShellPage,
   ShellPageBadgeSkeleton,
+  ShellPageExpandedOnly,
   ShellPageFactsSkeleton,
   ShellPageTitleSkeleton,
 } from './ShellPage';
@@ -302,7 +303,7 @@ describe('ShellPage', () => {
     });
     afterEach(() => observer.restore());
 
-    const compactBar = () => screen.queryByTestId('shell-page-compact-header');
+    const header = () => screen.getByTestId('shell-page-header');
 
     function renderLongPage() {
       return renderAt(
@@ -314,12 +315,20 @@ describe('ShellPage', () => {
           badges={
             <>
               <span>Connected</span>
-              <span>on gazelle</span>
+              <ShellPageExpandedOnly>
+                <span>on gazelle</span>
+                <button>gazelle</button>
+              </ShellPageExpandedOnly>
+              <ShellPageExpandedOnly onlyAtPhoneWidth>
+                <span>Phone-only detail</span>
+              </ShellPageExpandedOnly>
             </>
           }
+          meta="Search, read and update tickets"
+          description="A connector to the support desk."
           actions={<button>Edit</button>}
           menu={<button>More actions</button>}
-          compactHeader={{ title: 'Jira', badges: <span>Connected</span> }}
+          compactHeader
         >
           <RegistersAction label="Pin" />
           <p>A long conversation</p>
@@ -327,101 +336,117 @@ describe('ShellPage', () => {
       );
     }
 
-    it('holds no second copy of the header while the header is in view', () => {
+    it('is expanded while the content start is in view or below it', () => {
       renderLongPage();
 
-      expect(compactBar()).not.toBeInTheDocument();
+      expect(header()).not.toHaveAttribute('data-compact');
       act(() => observer.report('in-view'));
-      expect(compactBar()).not.toBeInTheDocument();
-      expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(1);
+      expect(header()).not.toHaveAttribute('data-compact');
+      act(() => observer.report('below'));
+      expect(header()).not.toHaveAttribute('data-compact');
     });
 
-    it('watches where the content starts, after the header', () => {
+    it('watches a sentinel that ends where the content starts', () => {
       renderLongPage();
 
-      const [marker] = observer.observed();
-      expect(marker).toBeDefined();
+      const [sentinel] = observer.observed();
+      expect(sentinel).toBeDefined();
       expect(
         screen
           .getByRole('heading', { level: 1 })
-          .compareDocumentPosition(marker) & Node.DOCUMENT_POSITION_FOLLOWING,
+          .compareDocumentPosition(sentinel) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       expect(
-        marker.compareDocumentPosition(
+        sentinel.compareDocumentPosition(
           screen.getByText('A long conversation'),
         ) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
+      // Reaching up from there, so it cannot pass the view unseen.
+      expect(sentinel).toHaveStyle({ position: 'absolute', bottom: '0px' });
     });
 
-    it('shows the title, its badges and every action once the header is above the view', () => {
+    it('turns compact and sticky once the content start is above the view', () => {
       renderLongPage();
 
       act(() => observer.report('above'));
 
-      const bar = compactBar()!;
-      expect(bar).toHaveAttribute('data-shown');
-      expect(within(bar).getByText('Jira')).toBeInTheDocument();
-      expect(within(bar).getByText('Connected')).toBeInTheDocument();
-      // The page's own actions, the registered ones, then the menu.
+      expect(header()).toHaveAttribute('data-compact');
+      expect(header()).toHaveStyle({ position: 'sticky', top: '0px' });
+    });
+
+    it('keeps one header: one h1 and one of each action, the same elements', () => {
+      renderLongPage();
+      const edit = screen.getByRole('button', { name: 'Edit' });
+      const heading = screen.getByRole('heading', { level: 1 });
+
+      act(() => observer.report('above'));
+
+      expect(screen.getAllByRole('heading', { level: 1 })).toEqual([heading]);
+      expect(screen.getAllByRole('button', { name: 'Edit' })).toEqual([edit]);
+      expect(screen.getAllByRole('button', { name: 'Pin' })).toHaveLength(1);
       expect(
-        within(bar)
-          .getAllByRole('button')
-          .map(button => button.textContent),
-      ).toEqual(['Edit', 'Pin', 'More actions']);
-      // Only what the page chose for the bar.
-      expect(within(bar).queryByText('on gazelle')).not.toBeInTheDocument();
+        screen.getAllByRole('button', { name: 'More actions' }),
+      ).toHaveLength(1);
     });
 
-    it('hangs from an anchor of no height, so the content does not move when it shows', () => {
+    it('leaves out the description, the meta text and the expanded-only parts', () => {
       renderLongPage();
 
       act(() => observer.report('above'));
 
-      expect(compactBar()!.parentElement).toHaveStyle({
-        position: 'sticky',
-        top: '0px',
-        height: '0px',
-      });
+      expect(screen.getByText('Connected')).toBeVisible();
+      expect(screen.getByText('on gazelle')).not.toBeVisible();
+      expect(
+        screen.queryByRole('button', { name: 'gazelle' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText('A connector to the support desk.'),
+      ).not.toBeVisible();
+      expect(
+        screen.getByText('Search, read and update tickets'),
+      ).not.toBeVisible();
+      // Phone-only parts stay at desktop width.
+      expect(screen.getByText('Phone-only detail')).toBeVisible();
     });
 
-    it('is not a second heading', () => {
+    it('stays expanded while focus is on a part the compact row leaves out', () => {
       renderLongPage();
+      const gazelle = screen.getByRole('button', { name: 'gazelle' });
+      act(() => gazelle.focus());
 
       act(() => observer.report('above'));
 
-      expect(within(compactBar()!).queryByRole('heading')).toBeNull();
-      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(header()).not.toHaveAttribute('data-compact');
+      expect(gazelle).toHaveFocus();
+
+      act(() => screen.getByRole('button', { name: 'Edit' }).focus());
+
+      expect(header()).toHaveAttribute('data-compact');
     });
 
-    it('hides again, kept mounted, once the header is back in view', () => {
+    it('keeps focus on an action as the header turns compact and back', () => {
       renderLongPage();
+      const pin = screen.getByRole('button', { name: 'Pin' });
+      act(() => pin.focus());
+
       act(() => observer.report('above'));
+      expect(pin).toHaveFocus();
 
       act(() => observer.report('in-view'));
-
-      expect(compactBar()).toBeInTheDocument();
-      expect(compactBar()).not.toHaveAttribute('data-shown');
+      expect(header()).not.toHaveAttribute('data-compact');
+      expect(pin).toHaveFocus();
     });
 
-    it('stays hidden while the content start is still below the view', () => {
-      renderLongPage();
+    it('scroll-pads the document clear of the compact header while it is mounted', () => {
+      const { unmount } = renderLongPage();
 
-      act(() => observer.report('below'));
-
-      expect(compactBar()).not.toBeInTheDocument();
-    });
-
-    it('defaults its title to the page title', () => {
-      renderAt(
-        '/connectors/jira',
-        <ShellPage title="Jira" compactHeader={{}}>
-          <p>Content</p>
-        </ShellPage>,
+      expect(document.documentElement.style.scrollPaddingTop).toContain(
+        '--shell-page-compact-header-height',
       );
 
-      act(() => observer.report('above'));
+      unmount();
 
-      expect(within(compactBar()!).getByText('Jira')).toBeInTheDocument();
+      expect(document.documentElement.style.scrollPaddingTop).toBe('');
     });
 
     it('watches nothing on a page without one', () => {
@@ -433,6 +458,8 @@ describe('ShellPage', () => {
       );
 
       expect(observer.observed()).toHaveLength(0);
+      expect(screen.queryByTestId('shell-page-header')).not.toBeInTheDocument();
+      expect(document.documentElement.style.scrollPaddingTop).toBe('');
     });
   });
 });

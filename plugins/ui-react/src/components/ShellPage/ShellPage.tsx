@@ -1,4 +1,10 @@
-import { type ReactNode, useLayoutEffect, useState } from 'react';
+import {
+  type FocusEvent,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Accordion,
   AccordionPanel,
@@ -17,7 +23,7 @@ import {
 import { RouteTabs, RouteTabSpec } from '../RouteTabs';
 import { ShellDocumentTitle, shellTitleParts } from '../ShellDocumentTitle';
 import { useSimpleAccordionStyles } from '../SimpleAccordion';
-import { useScrolledPast } from './useScrolledPast';
+import { useScrolledPast } from '../../hooks/useScrolledPast';
 
 /**
  * CSS variable, set on the page's root: the room the page leaves under its
@@ -29,10 +35,10 @@ import { useScrolledPast } from './useScrolledPast';
 export const SHELL_PAGE_PADDING_BOTTOM_VAR = '--shell-page-padding-bottom';
 
 /**
- * CSS variable, set on the page's root while it has a compact header: that
- * bar's height. What the browser scrolls into view in the content — a
- * focused link, a fold-out opened from the keyboard — keeps this much
- * scroll margin, so it lands below the bar rather than under it.
+ * CSS variable, set on the document root while a page's header is compact
+ * (see {@link ShellPageProps.compactHeader}): that header's height. The
+ * document's `scroll-padding-top` reads it, so whatever the browser scrolls
+ * into view lands below the header rather than under it.
  */
 export const SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR =
   '--shell-page-compact-header-height';
@@ -43,8 +49,11 @@ const GUTTER = 48;
 /** The page's side gutter at phone width, in px. */
 const PHONE_GUTTER = 16;
 
-/** How long the compact header takes to fade in or out, in ms. */
+/** How long the compact header takes to fade in, in ms. */
 const COMPACT_HEADER_FADE_MS = 150;
+
+/** Marks a part of the header that the compact header leaves out. */
+const EXPANDED_ONLY_ATTRIBUTE = 'data-shell-page-expanded-only';
 
 /**
  * The width, in px, the title's column claims beside the header's actions
@@ -93,6 +102,99 @@ const useStyles = makeStyles({
   headerWithBreadcrumbs: {
     marginTop: 20,
   },
+  '@keyframes compactHeaderIn': {
+    from: { opacity: 0 },
+    to: { opacity: 1 },
+  },
+  // The same header, once everything above the content has scrolled out of
+  // view: one row at the top of the view, stuck there by `sticky` against the
+  // page's root. Its title, badges and actions are the expanded header's own
+  // elements — nothing is mounted twice — restyled: a 16px title on one line,
+  // without the leading mark, the description, the meta text and the parts
+  // the page marks `ShellPageExpandedOnly`. The height it gives up stays in
+  // the flow as the spacer after it (`useCompactHeaderLayout`), so the
+  // content does not move. Through the gutters to the page's edges, so the
+  // content scrolls under a bar as wide as the page; above the docked
+  // composer (`zIndex: 1`), which it can meet on a short screen.
+  headerCompact: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 2,
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    marginInline: -GUTTER,
+    paddingInline: GUTTER,
+    paddingBlock: 8,
+    backgroundColor: 'var(--bui-bg-app)',
+    borderBottom: '1px solid var(--bui-border-1)',
+    animation: `$compactHeaderIn ${COMPACT_HEADER_FADE_MS}ms ease`,
+    '@media (prefers-reduced-motion: reduce)': {
+      animation: 'none',
+    },
+    [`& $leading, & $description, & $meta, & [${EXPANDED_ONLY_ATTRIBUTE}="always"]`]:
+      {
+        display: 'none',
+      },
+    [PHONE_MEDIA]: {
+      marginInline: -PHONE_GUTTER,
+      paddingInline: PHONE_GUTTER,
+      [`& [${EXPANDED_ONLY_ATTRIBUTE}]`]: {
+        display: 'none',
+      },
+    },
+    // The title and the badges share the row while they fit; a title too
+    // long for that takes the row and truncates, and the badges go under it.
+    '& $titles': {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      columnGap: 12,
+      rowGap: 2,
+      flexBasis: 0,
+    },
+    '& $title': {
+      maxWidth: '100%',
+      fontSize: 'var(--bui-font-size-4)',
+      lineHeight: 1.4,
+      letterSpacing: 'normal',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+    // A title that is a control (the session's rename button) truncates too.
+    '& $title > *': {
+      maxWidth: '100%',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      verticalAlign: 'top',
+    },
+    '& $badges': {
+      minWidth: 0,
+    },
+    '& $actions': {
+      alignItems: 'center',
+      flex: 'none',
+    },
+  },
+  // Where the content starts, for `useScrolledPast`: a box that reaches from
+  // there far up past the top of the document, so it intersects the view
+  // whenever the view is above the content's start, however it got there.
+  contentStart: {
+    position: 'relative',
+    height: 0,
+  },
+  contentStartSentinel: {
+    position: 'absolute',
+    left: 0,
+    bottom: 0,
+    width: 1,
+    height: 100000,
+    pointerEvents: 'none',
+  },
+  expandedOnly: {
+    display: 'contents',
+  },
   leading: {
     flex: 'none',
   },
@@ -115,6 +217,7 @@ const useStyles = makeStyles({
     color: 'var(--bui-fg-primary)',
     overflowWrap: 'anywhere',
   },
+  meta: {},
   badges: {
     display: 'flex',
     alignItems: 'center',
@@ -149,98 +252,6 @@ const useStyles = makeStyles({
     [PHONE_MEDIA]: {
       marginInline: -PHONE_GUTTER,
       paddingInline: PHONE_GUTTER,
-    },
-  },
-  // The compact header's anchor: sticky at the top of the view and of no
-  // height, so the bar hangs over the content instead of taking room in the
-  // flow — showing and hiding it moves nothing under it. Above the docked
-  // composer (`zIndex: 1`), which the bar can meet on a short screen.
-  compactHeaderAnchor: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 2,
-    height: 0,
-  },
-  '@keyframes compactHeaderIn': {
-    from: { opacity: 0 },
-    to: { opacity: 1 },
-  },
-  // One row: the title, the badges the page chose for the bar, and the
-  // actions. Through the gutters to the page's edges, so the content scrolls
-  // under a bar as wide as the page. Mounted the first time it shows, then
-  // hidden with `visibility` rather than unmounted: its controls leave the
-  // focus order and the accessibility tree, and a dialog opened from one of
-  // them outlives a scroll.
-  compactHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    columnGap: 16,
-    marginInline: -GUTTER,
-    paddingInline: GUTTER,
-    paddingBlock: 8,
-    backgroundColor: 'var(--bui-bg-app)',
-    borderBottom: '1px solid var(--bui-border-1)',
-    visibility: 'hidden',
-    opacity: 0,
-    // Fades out, then turns `visibility` off, so the bar is never focusable
-    // while invisible. Fades in by an animation, which also runs when the
-    // bar mounts already shown.
-    transition: `opacity ${COMPACT_HEADER_FADE_MS}ms ease, visibility 0s linear ${COMPACT_HEADER_FADE_MS}ms`,
-    '&[data-shown]': {
-      visibility: 'visible',
-      opacity: 1,
-      transition: 'none',
-      animation: `$compactHeaderIn ${COMPACT_HEADER_FADE_MS}ms ease`,
-    },
-    '@media (prefers-reduced-motion: reduce)': {
-      '&, &[data-shown]': {
-        transition: 'none',
-        animation: 'none',
-      },
-    },
-    [PHONE_MEDIA]: {
-      marginInline: -PHONE_GUTTER,
-      paddingInline: PHONE_GUTTER,
-    },
-  },
-  // The title and the badges share the row while they fit; a title too long
-  // for that takes the row and truncates, and the badges go under it.
-  compactTitles: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    columnGap: 12,
-    rowGap: 2,
-    minWidth: 0,
-  },
-  compactTitle: {
-    minWidth: 0,
-    maxWidth: '100%',
-    fontSize: 'var(--bui-font-size-4)',
-    fontWeight: 500,
-    lineHeight: 1.4,
-    color: 'var(--bui-fg-primary)',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  compactBadges: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    columnGap: 8,
-  },
-  compactActions: {
-    display: 'flex',
-    alignItems: 'center',
-    flex: 'none',
-    gap: 8,
-  },
-  // What the browser scrolls into view lands below the compact header.
-  bodyUnderCompactHeader: {
-    '& :is(a, button, input, select, textarea, [tabindex])': {
-      scrollMarginTop: `calc(var(${SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, 0px) + 8px)`,
     },
   },
   body: {
@@ -278,24 +289,6 @@ const useStyles = makeStyles({
     marginTop: 32,
   },
 });
-
-/**
- * A compact copy of the page's header for {@link ShellPageProps.compactHeader}.
- */
-export interface ShellPageCompactHeader {
-  /**
-   * The bar's title, in a smaller font and on one line. Defaults to the
-   * page's `title`; give it when that is not plain text (the session's
-   * rename button), so the bar does not repeat a control.
-   */
-  title?: ReactNode;
-  /**
-   * What the bar shows beside its title — what still matters while reading
-   * the content, such as its state and owner — rather than the whole badge
-   * row: the header is out of sight, not gone.
-   */
-  badges?: ReactNode;
-}
 
 export interface ShellPageProps {
   /** The page's h1. */
@@ -347,17 +340,38 @@ export interface ShellPageProps {
   footer?: ReactNode;
   /**
    * For a long page that is read top to bottom, such as a conversation: once
-   * everything above the content has scrolled out of view, a one-row bar
-   * stays at the top of the view with a smaller title, these badges and the
-   * header's actions; scrolling back up brings the full header back. The bar
-   * hangs over the content rather than taking room, so it appearing moves
-   * nothing. It renders the actions a second time, so an action that owns
-   * state (a dialog) must keep it per instance or above the page.
-   *
-   * Not a heading: the h1 stays the page's only one.
+   * everything above the content has scrolled out of view, the header turns
+   * into one compact row that stays at the top of the view — a smaller
+   * title, the badges, the actions — and scrolling back up restores it. It
+   * is the same header, so its h1 and actions stay mounted once; the room it
+   * gives up stays in the flow, so the content does not move. Wrap what the
+   * compact row leaves out (where, since when) in `ShellPageExpandedOnly`.
    */
-  compactHeader?: ShellPageCompactHeader;
+  compactHeader?: boolean;
   children?: ReactNode;
+}
+
+/**
+ * A part of the header's badge row that the compact header leaves out — at
+ * every width, or with `onlyAtPhoneWidth` only at phone width, where the row
+ * has the least room. See {@link ShellPageProps.compactHeader}.
+ */
+export function ShellPageExpandedOnly({
+  onlyAtPhoneWidth = false,
+  children,
+}: {
+  onlyAtPhoneWidth?: boolean;
+  children: ReactNode;
+}) {
+  const classes = useStyles();
+  return (
+    <span
+      className={classes.expandedOnly}
+      {...{ [EXPANDED_ONLY_ATTRIBUTE]: onlyAtPhoneWidth ? 'phone' : 'always' }}
+    >
+      {children}
+    </span>
+  );
 }
 
 /**
@@ -458,24 +472,50 @@ function AsideFoldOut({
   );
 }
 
+/** Whether `element` sits in a part the compact header leaves out. */
+function isExpandedOnly(element: Element, isPhone: boolean): boolean {
+  const part = element.closest(`[${EXPANDED_ONLY_ATTRIBUTE}]`);
+  if (!part) {
+    return false;
+  }
+  return isPhone || part.getAttribute(EXPANDED_ONLY_ATTRIBUTE) === 'always';
+}
+
 /**
- * Publishes the compact header's height on the page's root as
- * {@link SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}. It is one row or two (a long
- * title puts the badges under it), so it is measured rather than assumed.
- * Without `ResizeObserver` (tests) it measures once.
+ * Keeps the content in place while the header is compact, and the compact
+ * header clear of what the browser scrolls into view.
+ *
+ * Expanded, it remembers the header's height. Compact, it gives the spacer
+ * after the header the difference, so the header and the spacer take the
+ * room the expanded header took. It runs before paint, so the content never
+ * shows moved. The compact height goes on the document root as
+ * {@link SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, which the document's
+ * `scroll-padding-top` reads while the page opts in: a focused control, a
+ * fold-out scrolling itself into view and an anchor all land below the
+ * compact header. Without `ResizeObserver` (tests) it measures once per mode.
  */
-function useCompactHeaderHeight(
-  root: HTMLElement | null,
-  bar: HTMLElement | null,
+function useCompactHeaderLayout(
+  header: HTMLElement | null,
+  spacer: HTMLElement | null,
+  isCompact: boolean,
 ): void {
+  const expandedHeight = useRef(0);
   useLayoutEffect(() => {
-    if (!root || !bar) {
+    if (!header || !spacer) {
       return undefined;
     }
+    const root = document.documentElement;
     const measure = () => {
+      const height = header.offsetHeight;
+      if (!isCompact) {
+        expandedHeight.current = height;
+        spacer.style.height = '0px';
+        return;
+      }
+      spacer.style.height = `${Math.max(0, expandedHeight.current - height)}px`;
       root.style.setProperty(
         SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR,
-        `${Math.ceil(bar.offsetHeight)}px`,
+        `${Math.ceil(height)}px`,
       );
     };
     measure();
@@ -483,12 +523,21 @@ function useCompactHeaderHeight(
       typeof ResizeObserver === 'undefined'
         ? undefined
         : new ResizeObserver(measure);
-    observer?.observe(bar);
+    observer?.observe(header);
+    return () => observer?.disconnect();
+  }, [header, spacer, isCompact]);
+
+  useLayoutEffect(() => {
+    if (!spacer) {
+      return undefined;
+    }
+    const root = document.documentElement;
+    root.style.scrollPaddingTop = `calc(var(${SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, 0px) + 8px)`;
     return () => {
-      observer?.disconnect();
+      root.style.removeProperty('scroll-padding-top');
       root.style.removeProperty(SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR);
     };
-  }, [root, bar]);
+  }, [spacer]);
 }
 
 /**
@@ -519,7 +568,7 @@ export function ShellPage({
   aside,
   asideLabel = 'Details',
   footer,
-  compactHeader,
+  compactHeader = false,
   children,
 }: ShellPageProps) {
   const classes = useStyles();
@@ -530,31 +579,41 @@ export function ShellPage({
   const hasActions = Boolean(actions || slotActions || menu);
   const titleParts = documentTitle ?? shellTitleParts(title, breadcrumbs);
 
-  // Where the content starts: once it is above the view, so is everything
-  // the full header shows.
-  const [contentStart, setContentStart] = useState<HTMLElement | null>(null);
-  const isCompactHeaderShown = useScrolledPast(
-    compactHeader ? contentStart : null,
-  );
-  const [root, setRoot] = useState<HTMLElement | null>(null);
-  const [compactBar, setCompactBar] = useState<HTMLElement | null>(null);
-  useCompactHeaderHeight(root, compactBar);
-  const compactTitle = compactHeader?.title ?? title;
-  // Mounted the first time it shows (so a page read without scrolling holds
-  // one copy of its header), then kept.
-  const [isCompactHeaderMounted, setCompactHeaderMounted] = useState(false);
-  if (isCompactHeaderShown && !isCompactHeaderMounted) {
-    setCompactHeaderMounted(true);
-  }
+  // Compact once the content's start is above the view — unless focus is on
+  // a part the compact header leaves out, which would drop it to the body.
+  // The sentinel and the spacer exist only on a page that opts in.
+  const [sentinel, setSentinel] = useState<HTMLElement | null>(null);
+  const [spacer, setSpacer] = useState<HTMLElement | null>(null);
+  const [header, setHeader] = useState<HTMLElement | null>(null);
+  const isPastHeader = useScrolledPast(sentinel);
+  const [isFocusExpandedOnly, setFocusExpandedOnly] = useState(false);
+  const isCompact = compactHeader && isPastHeader && !isFocusExpandedOnly;
+  useCompactHeaderLayout(header, spacer, isCompact);
+  const onHeaderFocus = compactHeader
+    ? (event: FocusEvent<HTMLElement>) =>
+        setFocusExpandedOnly(isExpandedOnly(event.target, isPhone))
+    : undefined;
+  const onHeaderBlur = compactHeader
+    ? (event: FocusEvent<HTMLElement>) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setFocusExpandedOnly(false);
+        }
+      }
+    : undefined;
 
   return (
-    <div ref={setRoot} className={classes.root}>
+    <div className={classes.root}>
       {titleParts && <ShellDocumentTitle title={titleParts} />}
       {hasBreadcrumbs && <Breadcrumbs items={breadcrumbs} />}
       <div
+        ref={compactHeader ? setHeader : undefined}
         className={`${classes.header} ${
           hasBreadcrumbs ? classes.headerWithBreadcrumbs : ''
-        }`}
+        } ${isCompact ? classes.headerCompact : ''}`}
+        data-compact={isCompact ? '' : undefined}
+        data-testid={compactHeader ? 'shell-page-header' : undefined}
+        onFocus={onHeaderFocus}
+        onBlur={onHeaderBlur}
       >
         {leading && <div className={classes.leading}>{leading}</div>}
         <div
@@ -567,7 +626,11 @@ export function ShellPage({
             <div className={classes.badges}>
               {badges}
               {meta && (
-                <Text variant="body-small" color="secondary">
+                <Text
+                  variant="body-small"
+                  color="secondary"
+                  className={classes.meta}
+                >
                   {meta}
                 </Text>
               )}
@@ -592,6 +655,7 @@ export function ShellPage({
           </div>
         )}
       </div>
+      {compactHeader && <div ref={setSpacer} aria-hidden />}
       {tabs && tabs.length > 0 && (
         <div className={classes.tabs}>
           <RouteTabs
@@ -604,50 +668,11 @@ export function ShellPage({
         </div>
       )}
       {compactHeader && (
-        <>
-          <div ref={setContentStart} aria-hidden />
-          <div className={classes.compactHeaderAnchor}>
-            {isCompactHeaderMounted && (
-              <div
-                ref={setCompactBar}
-                className={classes.compactHeader}
-                data-shown={isCompactHeaderShown ? '' : undefined}
-                data-testid="shell-page-compact-header"
-              >
-                <div className={classes.compactTitles}>
-                  <span
-                    className={classes.compactTitle}
-                    title={
-                      typeof compactTitle === 'string'
-                        ? compactTitle
-                        : undefined
-                    }
-                  >
-                    {compactTitle}
-                  </span>
-                  {compactHeader.badges && (
-                    <div className={classes.compactBadges}>
-                      {compactHeader.badges}
-                    </div>
-                  )}
-                </div>
-                {hasActions && (
-                  <div className={classes.compactActions}>
-                    {actions}
-                    {slotActions}
-                    {menu}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </>
+        <div className={classes.contentStart} aria-hidden>
+          <div ref={setSentinel} className={classes.contentStartSentinel} />
+        </div>
       )}
-      <div
-        className={`${classes.body} ${
-          compactHeader ? classes.bodyUnderCompactHeader : ''
-        }`}
-      >
+      <div className={classes.body}>
         {aside && isPhone && (
           <AsideFoldOut label={asideLabel}>{aside}</AsideFoldOut>
         )}

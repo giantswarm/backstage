@@ -5,7 +5,6 @@ import {
   expectNoHorizontalScroll,
   open,
   openReadyAgent,
-  sessionActionsButton,
   test,
 } from './fixtures';
 
@@ -23,12 +22,9 @@ function toolActivitySwitch(page: Page): Locator {
   return page.getByRole('switch', { name: 'Show tool activity', exact: true });
 }
 
-/**
- * Its label, the part a person presses. The full header's: the compact
- * header repeats the switch after it in the document (hidden at phone width).
- */
+/** Its label, the part a person presses. */
 function toolActivityLabel(page: Page): Locator {
-  return page.getByText('Show tool activity', { exact: true }).first();
+  return page.getByText('Show tool activity', { exact: true });
 }
 
 /** Turns the switch back on, if the page shows it at all. */
@@ -114,7 +110,7 @@ function documentTop(locator: Locator): Promise<number> {
 }
 
 async function deleteCurrentSession(page: Page): Promise<void> {
-  await sessionActionsButton(page).click();
+  await page.getByRole('button', { name: 'Session actions' }).click();
   await page.getByRole('menuitem', { name: /Delete session/ }).click();
   const dialog = page.getByRole('dialog', { name: /Delete session/ });
   await expect(dialog).toBeVisible();
@@ -223,45 +219,55 @@ test('a session starts from the home screen with a two-line message, its compose
     );
 
     // The compact header (ShellPage's `compactHeader`): with a reply longer
-    // than the screen the header scrolls away, and a bar keeps the session's
-    // name, state and agent, the pin and the menu at the top of the view,
-    // with the composer still docked at the bottom. It hangs over the
-    // conversation, so nothing under it moves when it appears.
+    // than the screen, once the header has scrolled away it turns into one
+    // row at the top of the view — the session's name, state and agent, the
+    // pin and the menu — with the composer still docked at the bottom. It is
+    // the same header, and the room it gives up stays in the flow, so the
+    // conversation does not move when it turns compact or back.
     await withToolCall(admin, [longReply]);
     await admin.reload();
     await expect(admin.getByText('Paragraph 30 of a reply')).toBeVisible({
       timeout: 60_000,
     });
-    const compactHeader = admin.getByTestId('shell-page-compact-header');
+    const header = admin.getByTestId('shell-page-header');
     const heading = admin.getByRole('heading', { level: 1 });
     const firstMessage = admin.getByTestId('timeline-user-message').first();
+    // The page opens at the end of the conversation (a layout effect, then
+    // once more a frame later): wait for that before scrolling anywhere.
+    await expect(header).toHaveAttribute('data-compact', '');
+    const compactTop = await documentTop(firstMessage);
 
     await admin.evaluate(() => window.scrollTo(0, 0));
+    await expect(header).not.toHaveAttribute('data-compact');
     await expect(heading).toBeInViewport();
-    await expect(compactHeader).toBeHidden();
-    const messageTop = await documentTop(firstMessage);
+    expect(
+      await documentTop(firstMessage),
+      'the conversation moved as the header expanded',
+    ).toBeCloseTo(compactTop, 0);
 
     await admin.evaluate(() =>
       window.scrollTo(0, document.documentElement.scrollHeight),
     );
-    await expect(heading).not.toBeInViewport();
-    await expect(compactHeader).toBeVisible();
-    expect((await compactHeader.boundingBox())!.y, 'at the top').toBeCloseTo(
-      0,
-      0,
-    );
+    await expect(header).toHaveAttribute('data-compact', '');
+    expect(
+      await documentTop(firstMessage),
+      'the conversation moved as the header turned compact',
+    ).toBeCloseTo(compactTop, 0);
+    expect((await header.boundingBox())!.y, 'at the top').toBeCloseTo(0, 0);
+    await expect(heading).toBeInViewport();
     await expect(
-      compactHeader.getByRole('button', { name: 'Session actions' }),
+      header.getByRole('button', { name: 'Session actions' }),
     ).toBeVisible();
     await expect(
-      compactHeader.getByRole('button', { name: /^(Pin|Unpin) session$/ }),
+      header.getByRole('button', { name: /^(Pin|Unpin) session$/ }),
     ).toBeVisible();
-    // Not a second h1, and the switch stays with the full header on a phone.
-    await expect(compactHeader.getByRole('heading')).toHaveCount(0);
-    await expect(compactHeader.getByRole('switch')).toHaveCount(0);
-    expect(await documentTop(firstMessage), 'the conversation moved').toBe(
-      messageTop,
-    );
+    // One of each: the compact row is the header, not a copy of it.
+    await expect(
+      admin.getByRole('button', { name: 'Session actions' }),
+    ).toHaveCount(1);
+    // Where the session runs, and at phone width the switch, stay out.
+    await expect(header.getByTestId('installation-chip')).toBeHidden();
+    await expect(header.getByRole('switch')).toHaveCount(0);
     await expectClearOfBottomBar(
       admin,
       message,
@@ -273,8 +279,7 @@ test('a session starts from the home screen with a two-line message, its compose
     );
 
     await admin.evaluate(() => window.scrollTo(0, 0));
-    await expect(compactHeader).toBeHidden();
-    await expect(heading).toBeInViewport();
+    await expect(header).not.toHaveAttribute('data-compact');
   } finally {
     // The choice is the admin's for every session and every later spec, so
     // it goes back on whatever failed above.

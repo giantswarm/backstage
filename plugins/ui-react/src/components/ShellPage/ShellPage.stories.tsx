@@ -12,7 +12,7 @@ import {
 } from '../PageHeaderActions';
 import { StatusDot } from '../StatusDot';
 import { usePhoneLayout } from '../../utils/breakpoints';
-import { ShellPage } from './ShellPage';
+import { ShellPage, ShellPageExpandedOnly } from './ShellPage';
 import { componentDocs } from '../../storybook/docs';
 
 const meta = {
@@ -275,12 +275,14 @@ function LongConversation() {
 }
 
 /**
- * A long page read top to bottom, as a session is: scroll down, and once the
- * header is out of view a one-row bar with a smaller title, the state and
- * the actions stays at the top. It hangs over the content, so the content
- * does not move when it appears; scrolling back up brings the full header
- * back. At phone width a long title takes the bar's first row and the badges
- * go under it.
+ * A long page read top to bottom, as a session is: scroll down, and once
+ * everything above the content is out of view the header turns into one
+ * compact row at the top of the view — a smaller title, the state, the agent
+ * and the actions. The installation and the start time are marked
+ * `ShellPageExpandedOnly`, so the compact row leaves them out. It is the same
+ * header, and the room it gives up stays in the flow: the content does not
+ * move. Scrolling back up restores it. At phone width a long title takes the
+ * compact row's first line and the badges go under it.
  */
 export const WithCompactHeader: Story = {
   args: {
@@ -294,12 +296,17 @@ export const WithCompactHeader: Story = {
       <>
         <StatusDot tone="success" label="Completed" />
         <Text variant="body-medium">Kubernetes assistant</Text>
-        <Text variant="body-medium" color="secondary">
-          on gazelle
-        </Text>
+        <ShellPageExpandedOnly>
+          <Text variant="body-medium" color="secondary">
+            on gazelle
+          </Text>
+          <Text variant="body-small" color="secondary">
+            Started 14 Oct 2026, 09:12
+          </Text>
+        </ShellPageExpandedOnly>
       </>
     ),
-    meta: 'Started 14 Oct 2026, 09:12',
+    meta: undefined,
     actions: undefined,
     menu: (
       <>
@@ -317,14 +324,7 @@ export const WithCompactHeader: Story = {
     ),
     tabs: undefined,
     aside: undefined,
-    compactHeader: {
-      badges: (
-        <>
-          <StatusDot tone="success" label="Completed" />
-          <Text variant="body-medium">Kubernetes assistant</Text>
-        </>
-      ),
-    },
+    compactHeader: true,
     children: <LongConversation />,
   },
 };
