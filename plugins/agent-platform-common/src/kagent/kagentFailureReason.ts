@@ -1,12 +1,11 @@
 import type { KagentSession } from './kagentSessions';
-import { readMessageText } from './kagentParts';
 import {
   isRuntimeLostFailureText,
   isRuntimeLostReason,
+  readFailedTaskReason,
 } from './kagentRuntimeLost';
-import { FAILED_STATES } from './kagentSessionState';
+import { describeSessionState, FAILED_STATES } from './kagentSessionState';
 import { A2aTaskWire } from './kagentTaskSchema';
-import { readTurnStatus } from './kagentTurnStatus';
 
 /**
  * Why a session failed, as a short class rather than the provider's words.
@@ -16,8 +15,10 @@ import { readTurnStatus } from './kagentTurnStatus';
  * is one of these, for a notification to say "the model was unavailable"
  * without quoting anything (agent session notifications, story 40):
  *
- * - `model-unavailable`: the model provider refused or failed the request (an
- *   unknown model, an overloaded or rate-limited provider, a missing key);
+ * - `model-unavailable`: the model cannot be had (an unknown model, a
+ *   refused key, an overloaded, rate-limited or failing provider, a missing
+ *   key). Not a request the provider rejected as wrong, such as a
+ *   conversation that outgrew the context window: that is `other`;
  * - `tool-failed`: a tool server the agent depends on could not be reached
  *   or listed (an MCP server, a remote agent used as a tool);
  * - `runtime-lost`: the session's runtime is gone and the session cannot go on
@@ -47,22 +48,56 @@ const TOOL_FAILED_TEXTS: RegExp[] = [
 ];
 
 /**
- * The model provider failed the request. kagent's model clients prefix their
- * errors by provider; the Claude Harness passes Claude Code's `API Error: <n>`
- * through; the Python ADK raises LiteLLM's typed errors; Gemini answers
- * `Error <n>, Message: …`.
+ * The words of a model provider's error, by source: kagent's model clients
+ * prefix their errors by provider, the Claude Harness passes Claude Code's
+ * `API Error: <n>` through, and Gemini answers `Error <n>, Message: …`. They
+ * say who answered, not why: the same prefixes carry a prompt that outgrew the
+ * context window, so they count only together with one of the
+ * {@link UNAVAILABLE_SIGNALS}.
  */
-const MODEL_UNAVAILABLE_TEXTS: RegExp[] = [
+const MODEL_PROVIDER_TEXTS: RegExp[] = [
   /\bOpenAI (chat completion|responses) request failed\b/i,
   /\banthropic API error\b/i,
-  /\bSAP AI Core (request failed|requires)\b/i,
-  /\bno running orchestration deployment found in SAP AI Core\b/i,
+  /\bSAP AI Core request failed\b/i,
   /\boperation error Bedrock Runtime\b/i,
+  /\bAPI Error: \d{3}\b/,
+  /^Error \d{3}, Message: /m,
+];
+
+/**
+ * A provider's answer that means the model cannot be had right now or by
+ * this agent: unauthorised, forbidden, not found, timed out, rate-limited, or
+ * the provider failing. A 400 is not one: the request was wrong, not the
+ * model unavailable.
+ */
+const UNAVAILABLE_SIGNALS: RegExp[] = [
+  /\b(401|403|404|408|429|5\d\d)\b/,
+  /\b(Unauthorized|Forbidden|Not Found|Too Many Requests|Service Unavailable|Bad Gateway|Gateway Timeout|Overloaded|ThrottlingException)\b/i,
+];
+
+/**
+ * The model is unavailable whoever says so: a missing provider key or
+ * endpoint, an SAP AI Core without a deployment, LiteLLM's typed errors for
+ * unavailability (the Python ADK), or the providers' own error codes for it.
+ */
+const MODEL_UNAVAILABLE_TEXTS: RegExp[] = [
   /\b[A-Z_]+_(API_KEY|ENDPOINT|DEPLOYMENT) environment variable is not set\b/,
-  /\bAPI Error: [45]\d\d\b/,
-  /\blitellm\.\w+Error\b/,
-  /^Error [45]\d\d, Message: /m,
+  /\bSAP AI Core requires\b/,
+  /\bno running orchestration deployment found in SAP AI Core\b/i,
+  /\blitellm\.(RateLimit|NotFound|Authentication|PermissionDenied|ServiceUnavailable|InternalServer|APIConnection|Timeout)Error\b/,
   /\b(model_not_found|overloaded_error|rate_limit_error|RESOURCE_EXHAUSTED)\b/,
+];
+
+/**
+ * The request was wrong rather than the model unavailable: the conversation
+ * outgrew the context window, or the provider refused the content. These are
+ * `other` whatever else the text says, since the way out is a new session or
+ * a different request, not waiting for the model.
+ */
+const REQUEST_REJECTED_TEXTS: RegExp[] = [
+  /\b(context_length_exceeded|ContextWindowExceeded\w*|content_policy\w*|ContentPolicyViolation\w*)\b/,
+  /\b(prompt|input) is too long\b/i,
+  /\bmaximum context length\b/i,
 ];
 
 /**
@@ -82,7 +117,14 @@ export function classifyFailureText(
   if (TOOL_FAILED_TEXTS.some(pattern => pattern.test(text))) {
     return 'tool-failed';
   }
-  if (MODEL_UNAVAILABLE_TEXTS.some(pattern => pattern.test(text))) {
+  if (REQUEST_REJECTED_TEXTS.some(pattern => pattern.test(text))) {
+    return 'other';
+  }
+  if (
+    MODEL_UNAVAILABLE_TEXTS.some(pattern => pattern.test(text)) ||
+    (MODEL_PROVIDER_TEXTS.some(pattern => pattern.test(text)) &&
+      UNAVAILABLE_SIGNALS.some(pattern => pattern.test(text)))
+  ) {
     return 'model-unavailable';
   }
   return 'other';
@@ -90,21 +132,18 @@ export function classifyFailureText(
 
 /**
  * The failure class of a turn that failed (`failed` or `rejected`), from its
- * `status.message`; `undefined` for a turn that did not fail. A failed turn
- * with no readable message is `other`.
+ * `status.message`, read as the session page reads it (`readFailedTaskReason`);
+ * `undefined` for a turn that did not fail. A failed turn with no readable
+ * message is `other`.
  */
 export function readTaskFailureReason(
   task: A2aTaskWire,
 ): SessionFailureReason | undefined {
-  const status = readTurnStatus(task);
-  if (!status || !FAILED_STATES.has(status.state)) {
+  const state = describeSessionState(task.status?.state)?.key;
+  if (!state || !FAILED_STATES.has(state)) {
     return undefined;
   }
-  if (status.message) {
-    return classifyFailureText(readMessageText(status.message));
-  }
-  const raw = task.status?.message;
-  return classifyFailureText(typeof raw === 'string' ? raw : undefined);
+  return classifyFailureText(readFailedTaskReason(task));
 }
 
 /**

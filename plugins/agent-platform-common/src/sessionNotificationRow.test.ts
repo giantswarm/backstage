@@ -91,6 +91,56 @@ describe('deriveSessionNotificationRow', () => {
       expect(kindOf(state, level, portal)).toBe(kind);
     });
 
+    describe('a session whose runtime is lost', () => {
+      function lostKindOf(
+        state: string | null,
+        level: NotificationLevel | undefined,
+        portalStarted: boolean,
+      ) {
+        return deriveSessionNotificationRow({
+          installation: 'lab',
+          state: entry(state, { failureReason: 'runtime-lost' }),
+          level,
+          portalStarted,
+        })?.kind;
+      }
+
+      // kagent keeps such a session READY, so its newest turn's state is
+      // whatever it was when the runtime went: often a question that can
+      // now never be answered.
+      it.each<
+        [
+          string | null,
+          NotificationLevel | undefined,
+          boolean,
+          SessionNotificationRowKind | undefined,
+        ]
+      >([
+        ['input-required', 'default', true, 'failed'],
+        ['auth-required', 'default', true, 'failed'],
+        ['completed', 'all', true, 'failed'],
+        ['failed', 'default', true, 'failed'],
+        [null, 'default', true, 'failed'],
+        ['input-required', 'muted', true, undefined],
+        // Started from Slack: not even a Waiting row for a wait that cannot
+        // be answered.
+        ['input-required', 'default', false, undefined],
+        ['input-required', 'all', false, undefined],
+      ])('%s at %s (portal-started: %s) → %s', (state, level, portal, kind) => {
+        expect(lostKindOf(state, level, portal)).toBe(kind);
+      });
+
+      it('says why', () => {
+        expect(
+          deriveSessionNotificationRow({
+            installation: 'lab',
+            state: entry('input-required', { failureReason: 'runtime-lost' }),
+            portalStarted: true,
+          }),
+        ).toMatchObject({ kind: 'failed', reason: 'runtime-lost' });
+      });
+    });
+
     it('reads the state the way the rail does, case and v1 spelling alike', () => {
       expect(kindOf('Input-Required', 'default', false)).toBe('waiting');
       expect(kindOf('TASK_STATE_AUTH_REQUIRED', 'default', false)).toBe(
@@ -119,20 +169,17 @@ describe('deriveSessionNotificationRow', () => {
       expect(
         deriveSessionNotificationRow({
           installation: 'lab',
-          state: entry('auth-required', { authServer: 'kubernetes' }),
+          state: entry('auth-required'),
           portalStarted: false,
         }),
-      ).toMatchObject({ waitingFor: 'sign-in', authServer: 'kubernetes' });
-    });
-
-    it('names a server only for a sign-in wait', () => {
-      const row = deriveSessionNotificationRow({
+      ).toEqual({
+        id: `lab:s1:waiting:${CHANGED_AT}`,
         installation: 'lab',
-        state: entry('input-required', { authServer: 'kubernetes' }),
-        portalStarted: false,
+        sessionId: 's1',
+        kind: 'waiting',
+        changedAt: CHANGED_AT,
+        waitingFor: 'sign-in',
       });
-
-      expect(row).not.toHaveProperty('authServer');
     });
 
     it('gives a failed row its reason, other when the read has none', () => {

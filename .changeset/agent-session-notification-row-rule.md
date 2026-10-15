@@ -6,9 +6,8 @@
 The session-states read gives a failed session a short failure class
 (`failureReason`: `model-unavailable`, `tool-failed`, `runtime-lost` or
 `other`), classified on the backend from the turn's or the instance's failure
-text, which never leaves the backend. It also reserves `authServer` for the
-server an `auth-required` session waits on a sign-in for, which no kagent
-runtime names yet.
+text, which never leaves the backend. A session kagent marked as having lost
+its runtime is `runtime-lost` whatever its newest turn's state.
 
 `agent-platform-common` exports the row rule of agent session notifications:
 `deriveSessionNotificationRow` takes one session's state, its Notification

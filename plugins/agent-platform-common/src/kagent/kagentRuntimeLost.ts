@@ -100,8 +100,13 @@ export function isRuntimeLostFailureText(text: string | undefined): boolean {
   return RUNTIME_LOST_TEXTS.some(pattern => pattern.test(text));
 }
 
-/** The reason a failed task carries, when it carries a readable one. */
-function readFailedTaskReason(task: A2aTaskWire): string | undefined {
+/**
+ * The reason a failed task carries, when it carries a readable one: the text
+ * of its `status.message`, read as an A2A message. A bare string there is not
+ * read, as everywhere else `status.message` is (see `TurnStatus.raw`). Does
+ * not check that the task failed.
+ */
+export function readFailedTaskReason(task: A2aTaskWire): string | undefined {
   const raw = task.status?.message;
   if (!raw || typeof raw !== 'object') {
     return undefined;
