@@ -255,6 +255,16 @@ export const musterServersExternalRouteRef = createExternalRouteRef({
 });
 
 /**
+ * A connector's page in muster's plugin (`/agent-platform/connectors/<server>`),
+ * read with `?installation=`. `server` is the page segment: the family name
+ * for a server family, the CR name for a singular server.
+ */
+export const musterServerExternalRouteRef = createExternalRouteRef({
+  params: ['server'],
+  defaultTarget: 'muster.mcpServer',
+});
+
+/**
  * A tool's page beneath the MCP server offering it
  * (`/agent-platform/connectors/<server>/tools/<tool>`), where the tool can be
  * inspected and run. `server` is the server page segment (the family name for

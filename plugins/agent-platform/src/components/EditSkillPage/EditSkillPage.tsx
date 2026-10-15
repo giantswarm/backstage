@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert } from '@backstage/ui';
 import {
   EmptyStateCard,
@@ -8,6 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillContent } from '../../hooks/useSkillContent';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
@@ -17,6 +19,7 @@ import {
   isSkillContentReadable,
   parseSkillDetailPath,
 } from '../../lib/skills';
+import { skillsRouteRef } from '../../routes';
 import { AddSkillPage } from '../AddSkillPage';
 import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 
@@ -38,6 +41,7 @@ export function EditSkillPage() {
   const catalog = useSkillCatalog();
   const skillPaths = useSkillPaths();
   const { skills: customizeSkills } = useCustomizePaths();
+  const skillsRoute = useRouteRef(skillsRouteRef);
 
   const skill = useMemo(() => {
     if (!target) {
@@ -57,12 +61,15 @@ export function EditSkillPage() {
     readable && proposable ? skill : undefined,
   );
 
+  const skillHref = useCloseHref(
+    skill && skillPaths.detail(skill),
+    customizeSkills,
+    skillsRoute?.(),
+  );
+
   if (!target) {
     return <ShellCustomizeRedirect tab="skills" keepSearch={false} />;
   }
-
-  const skillHref =
-    (skill && skillPaths.detail(skill)) ?? customizeSkills ?? '/';
 
   if (skill && content && proposable) {
     return <AddSkillPage edit={{ skill, content, skillHref }} />;

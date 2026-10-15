@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { withInstallationQuery } from '../../lib/installationLink';
-import { workflowDetailRouteRef } from '../../routes';
+import { withInstallationQuery } from '../../../lib/installationLink';
+import { workflowDetailRouteRef } from '../../../routes';
 
 export interface WorkflowPageLinks {
   /** A workflow's page, its Overview, on the installation it runs on. */

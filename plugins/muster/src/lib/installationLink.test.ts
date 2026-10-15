@@ -7,9 +7,15 @@ describe('withInstallationQuery', () => {
     );
   });
 
-  it('encodes the installation', () => {
-    expect(withInstallationQuery('/workflows/deploy', 'a b&c')).toBe(
-      '/workflows/deploy?installation=a%20b%26c',
+  it('puts further parameters after the installation', () => {
+    expect(
+      withInstallationQuery('/connectors', 'lab', { q: 'get pods', x: '' }),
+    ).toBe('/connectors?installation=lab&q=get+pods');
+  });
+
+  it('encodes the values', () => {
+    expect(withInstallationQuery('/workflows/deploy', 'a&b')).toBe(
+      '/workflows/deploy?installation=a%26b',
     );
   });
 

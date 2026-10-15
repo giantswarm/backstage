@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -34,6 +35,8 @@ import {
   type DiscoveredSkill,
 } from '../../lib/skills';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
+import { skillsRouteRef } from '../../routes';
 import { SkillEditFiles } from '../SkillEditFiles';
 import {
   SkillCreationAssist,
@@ -129,7 +132,12 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   /** Configured repositories left out of the targets for not being on github.com. */
   const skippedCount = edit ? 0 : configured.length - repositories.length;
   const { skills: customizeSkills } = useCustomizePaths();
-  const closeHref = edit?.skillHref ?? customizeSkills ?? '/';
+  const skillsRoute = useRouteRef(skillsRouteRef);
+  const closeHref = useCloseHref(
+    edit?.skillHref,
+    customizeSkills,
+    skillsRoute?.(),
+  );
 
   const [repoUrl, setRepoUrl] = useState<string | undefined>(repositories[0]);
   const [skillName, setSkillName] = useState(edit?.skill.name ?? '');

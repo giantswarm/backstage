@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import type { AgentRow } from '../components/AgentsDataProvider';
@@ -15,9 +15,10 @@ export function useNewSessionHref():
   ((agent?: Pick<AgentRow, 'id'>) => string) | undefined {
   const homeRoute = useRouteRef(newSessionExternalRouteRef);
   const home = homeRoute?.();
-  const href = useCallback(
-    (agent?: Pick<AgentRow, 'id'>) => newSessionHref(home ?? '', agent),
-    [home],
-  );
-  return home === undefined ? undefined : href;
+  return useMemo(() => {
+    if (home === undefined) {
+      return undefined;
+    }
+    return (agent?: Pick<AgentRow, 'id'>) => newSessionHref(home, agent);
+  }, [home]);
 }

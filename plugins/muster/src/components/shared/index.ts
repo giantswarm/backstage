@@ -37,8 +37,12 @@ export {
   SignInStatusText,
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
-export { useConnectorGroupPaths, useServerSignInStatus } from './hooks';
-export type { ConnectorGroupPaths } from './hooks';
+export {
+  useConnectorGroupPaths,
+  useServerSignInStatus,
+  useWorkflowPageLinks,
+} from './hooks';
+export type { ConnectorGroupPaths, WorkflowPageLinks } from './hooks';
 export type {
   ServerSignInStatusState,
   StatusText,
@@ -53,8 +57,6 @@ export type { ServerSignInState, SignInNoun } from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';
-export { useWorkflowPageLinks } from './useWorkflowPageLinks';
-export type { WorkflowPageLinks } from './useWorkflowPageLinks';
 export type {
   ServerPageLinks,
   ServerPageTab,

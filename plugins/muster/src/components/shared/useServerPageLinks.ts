@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { withInstallationQuery } from '../../lib/installationLink';
 import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
 
 /**
@@ -7,17 +8,6 @@ import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
  * to it names no tab.
  */
 export type ServerPageTab = 'instances' | 'resources' | 'prompts' | 'details';
-
-function withQuery(path: string, query: Record<string, string | undefined>) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (value) {
-      params.set(key, value);
-    }
-  }
-  const search = params.toString();
-  return search ? `${path}?${search}` : path;
-}
 
 /**
  * The Tools tab's search and "What it does" filter, as an address carries
@@ -67,19 +57,25 @@ export function useServerPageLinks(): ServerPageLinks {
           return undefined;
         }
         const base = serverRoute({ server });
-        return withQuery(options.tab ? `${base}/${options.tab}` : base, {
-          installation,
-          q: options.q,
-          effect: options.effect?.join(','),
-        });
+        return withInstallationQuery(
+          options.tab ? `${base}/${options.tab}` : base,
+          installation ?? '',
+          {
+            q: options.q,
+            effect: options.effect?.join(','),
+          },
+        );
       },
       tool: (server, tool, installation, options = {}) =>
         toolRoute
-          ? withQuery(toolRoute({ server, tool }), {
-              installation,
-              q: options.q,
-              effect: options.effect?.join(','),
-            })
+          ? withInstallationQuery(
+              toolRoute({ server, tool }),
+              installation ?? '',
+              {
+                q: options.q,
+                effect: options.effect?.join(','),
+              },
+            )
           : undefined,
     }),
     [serverRoute, toolRoute],

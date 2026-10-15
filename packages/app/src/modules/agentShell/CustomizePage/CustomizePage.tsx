@@ -210,12 +210,16 @@ function renderWorkflowCreateAssist(installation: string) {
 }
 
 /**
- * This page's own path, through the route ref it is mounted at: it always
- * resolves here, so links follow the app's mount and any base path.
+ * This page's own path, through the route ref it is mounted at, so links
+ * follow the app's mount and any base path. It always resolves on this page;
+ * rendered anywhere else, it fails loudly rather than link to a guess.
  */
 function useCustomizePath(): string {
   const customizeLink = useRouteRef(customizeRouteRef);
-  return customizeLink?.() ?? '';
+  if (!customizeLink) {
+    throw new Error('The Customize page is not mounted at customizeRouteRef');
+  }
+  return customizeLink();
 }
 
 /**

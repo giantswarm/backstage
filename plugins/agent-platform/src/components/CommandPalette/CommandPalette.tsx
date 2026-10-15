@@ -36,7 +36,7 @@ import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { skillSource, uniqueSkills } from '../../lib/customize';
 import {
   agentDetailRouteRef,
-  musterServersExternalRouteRef,
+  musterServerExternalRouteRef,
   musterWorkflowDetailExternalRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
@@ -399,7 +399,7 @@ function PaletteDialog({
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const skillPaths = useSkillPaths();
-  const serversRoute = useRouteRef(musterServersExternalRouteRef);
+  const serverRoute = useRouteRef(musterServerExternalRouteRef);
   const customizePaths = useCustomizePaths();
   const { modelDetail: modelDetailRoute } = customizePaths;
   const workflowDetailRoute = useRouteRef(musterWorkflowDetailExternalRouteRef);
@@ -465,7 +465,7 @@ function PaletteDialog({
       ];
     });
 
-    const connectorCandidates: PaletteCandidate[] = serversRoute
+    const connectorCandidates: PaletteCandidate[] = serverRoute
       ? connectors.rows.map(connector => ({
           id: `connector:${connector.page}`,
           title: connector.displayName,
@@ -473,7 +473,7 @@ function PaletteDialog({
             connector.installations.length > 1
               ? `${connector.installations.length} environments`
               : connector.installations[0],
-          href: `${serversRoute()}/${encodeURIComponent(connector.page)}`,
+          href: serverRoute({ server: connector.page }),
           haystack: [connector.displayName, connector.page],
         }))
       : [];
@@ -525,7 +525,7 @@ function PaletteDialog({
     sessionDetailRoute,
     agentDetailRoute,
     skillPaths,
-    serversRoute,
+    serverRoute,
     modelDetailRoute,
     workflowDetailRoute,
   ]);

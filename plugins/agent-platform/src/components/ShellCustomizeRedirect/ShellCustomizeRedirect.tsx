@@ -23,8 +23,8 @@ export function ShellCustomizeRedirect({
   keepSearch = true,
 }: ShellCustomizeRedirectProps) {
   const { search } = useLocation();
-  const { customize } = useCustomizePaths();
-  if (!customize) {
+  const target = useCustomizePaths()[tab];
+  if (!target) {
     return (
       <EmptyStateCard
         title="Not available"
@@ -35,7 +35,7 @@ export function ShellCustomizeRedirect({
   return (
     <Navigate
       to={{
-        pathname: `${customize}/${tab}`,
+        pathname: target,
         search: keepSearch ? search : undefined,
       }}
       replace
