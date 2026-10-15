@@ -4,6 +4,7 @@ import { Alert, Button, Flex, Text } from '@backstage/ui';
 import type { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
 import {
   classifyWorkspaceManagerError,
+  providerDisplayName,
   type WorkspaceProvider,
 } from '../../lib/workspaceManager';
 
@@ -32,6 +33,7 @@ export function ProviderConnectPrompt({
   const [isOpening, setIsOpening] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const label = providerDisplayName(provider);
 
   useEffect(() => {
     if (!isWaiting) {
@@ -68,13 +70,11 @@ export function ProviderConnectPrompt({
     <Alert
       status="info"
       data-testid={`provider-connect-${provider.name}`}
-      title={`Connect ${provider.name}`}
+      title={`Connect ${label}`}
       description={
         <Flex direction="column" gap="2">
           <Text variant="body-small">
-            Agents read and push to {provider.name} ({provider.kind}) as you,
-            with your own sign-in. Connect once; this form keeps what you
-            entered.
+            Agents read and push to {label} as you, with your own sign-in.
           </Text>
           {isWaiting && (
             <Text variant="body-small" color="secondary">
@@ -93,7 +93,7 @@ export function ProviderConnectPrompt({
               isDisabled={isOpening}
               onPress={connect}
             >
-              {isOpening ? 'Opening…' : `Connect ${provider.name} ↗`}
+              {isOpening ? 'Opening…' : `Connect ${label} ↗`}
             </Button>
           </div>
         </Flex>

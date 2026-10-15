@@ -2,6 +2,7 @@ import {
   WorkspaceManagerError,
   authorizationError,
   classifyWorkspaceManagerError,
+  providerDisplayName,
   workspaceManagerToolName,
   type WorkspaceAuthorization,
 } from './workspaceManager';
@@ -144,5 +145,26 @@ describe('authorizationError', () => {
         url: 'https://workspaces.example.com/connect/github',
       },
     ]);
+  });
+});
+
+describe('providerDisplayName', () => {
+  it('spells an instance named after its kind the way the provider does', () => {
+    expect(providerDisplayName({ name: 'github', kind: 'github' })).toBe(
+      'GitHub',
+    );
+    expect(providerDisplayName({ name: 'gitlab', kind: 'gitlab' })).toBe(
+      'GitLab',
+    );
+  });
+
+  it('keeps an instance name of its own beside the kind', () => {
+    expect(providerDisplayName({ name: 'gitlab-lab', kind: 'gitlab' })).toBe(
+      'gitlab-lab (GitLab)',
+    );
+  });
+
+  it('falls back to the kind as given for an unknown one', () => {
+    expect(providerDisplayName({ name: 'forge', kind: 'forge' })).toBe('forge');
   });
 });

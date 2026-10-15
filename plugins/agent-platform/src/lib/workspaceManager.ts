@@ -364,6 +364,32 @@ export type WorkspaceProvider = {
   connectURL: string;
 };
 
+const PROVIDER_KIND_NAMES: Record<string, string> = {
+  github: 'GitHub',
+  gitlab: 'GitLab',
+  gitea: 'Gitea',
+  bitbucket: 'Bitbucket',
+};
+
+/**
+ * A provider instance as people read it: the kind's own spelling ("GitHub")
+ * when the instance is named after its kind, else the instance's name with
+ * that spelling ("github-enterprise (GitHub)").
+ */
+export function providerDisplayName(
+  provider: Pick<WorkspaceProvider, 'name' | 'kind'>,
+): string {
+  const kind =
+    PROVIDER_KIND_NAMES[provider.kind.toLowerCase()] ?? provider.kind;
+  if (
+    !provider.name ||
+    provider.name.toLowerCase() === provider.kind.toLowerCase()
+  ) {
+    return kind;
+  }
+  return kind ? `${provider.name} (${kind})` : provider.name;
+}
+
 /** `connect_provider`: the person's own sign-in link, valid for minutes. */
 export type ConnectProviderResult = {
   provider: string;

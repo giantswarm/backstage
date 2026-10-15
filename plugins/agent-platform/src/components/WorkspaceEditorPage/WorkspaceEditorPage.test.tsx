@@ -357,6 +357,9 @@ describe('WorkspaceEditorPage', () => {
       await screen.findByTestId('provider-connect-gitlab-lab'),
     ).toBeInTheDocument();
     expect(
+      source(0).getByRole('button', { name: 'Connect gitlab-lab (GitLab) ↗' }),
+    ).toBeInTheDocument();
+    expect(
       source(0).queryByRole('textbox', { name: /^Owner/ }),
     ).not.toBeInTheDocument();
     expect(fake.callsOf('list_repositories')).toHaveLength(0);
