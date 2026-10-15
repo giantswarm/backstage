@@ -7,6 +7,7 @@ export const agentShellCustomizePage = PageBlueprint.make({
   if: agentShellOn,
   params: {
     noHeader: true,
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the Customize page's route definition
     path: '/customize',
     routeRef: customizeRouteRef,
     loader: async () => {

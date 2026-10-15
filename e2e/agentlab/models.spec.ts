@@ -200,22 +200,34 @@ function fakeServiceAccountKey(projectID: string): string {
 /**
  * Answers the MCP server sign-in notice with Not now whenever it shows: on a
  * lab with an OAuth MCP server it docks over the form's footer, where Connect
- * model is.
+ * model is. An open select's underlay takes every click outside its listbox,
+ * so the listbox is closed first; `chooseProvider` opens it again.
  */
 async function dismissMcpSignInNotice(page: Page) {
   await page.addLocatorHandler(
     page.getByRole('complementary', { name: 'MCP server sign-in' }),
     async notice => {
+      if (await page.getByRole('listbox').isVisible()) {
+        await page.keyboard.press('Escape');
+      }
       await notice.getByRole('button', { name: 'Not now' }).click();
     },
   );
 }
 
+async function chooseProvider(page: Page, provider: VertexModel['provider']) {
+  await expect(async () => {
+    await page.getByRole('button', { name: /Provider/ }).click();
+    await page
+      .getByRole('option', { name: provider })
+      .click({ timeout: 5_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
 /** Fills Connect a model for a Vertex AI model, up to the submit. */
 async function fillVertexModel(page: Page, model: VertexModel) {
   await open(page, '/agent-platform/models/new');
-  await page.getByRole('button', { name: /Provider/ }).click();
-  await page.getByRole('option', { name: model.provider }).click();
+  await chooseProvider(page, model.provider);
   await page
     .getByRole('textbox', { name: 'Name', exact: true })
     .fill(model.displayName);
@@ -303,8 +315,7 @@ test('a Vertex AI model is checked in the form, accepted by kagent, and says the
 
   // kagent's own check, in the form, as soon as a file is chosen.
   await open(admin, '/agent-platform/models/new');
-  await admin.getByRole('button', { name: /Provider/ }).click();
-  await admin.getByRole('option', { name: model.provider }).click();
+  await chooseProvider(admin, model.provider);
   await chooseKeyFile(admin, {
     content: JSON.stringify({ type: 'authorized_user' }),
   });

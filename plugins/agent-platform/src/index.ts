@@ -50,6 +50,13 @@ export { WorkspaceOrganizationSelect } from './components/WorkspaceOrganizationS
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
 export { CustomizeModelPage } from './components/CustomizeModelPage';
 export { MODEL_PAGE_TABS } from './components/ModelDetailPage';
+export { parseSkillDetailPath } from './lib/skills';
+export {
+  isLegacyServeLink,
+  parseServeSeed,
+  serveSeedSearch,
+} from './lib/modelManagerServe';
+export type { ServeSeed } from './lib/modelManagerServe';
 export { WorkflowCreateAssist } from './components/WorkflowCreateAssist';
 export type { WorkflowCreateAssistProps } from './components/WorkflowCreateAssist';
 export { EnvironmentSelect } from './components/EnvironmentSelect';

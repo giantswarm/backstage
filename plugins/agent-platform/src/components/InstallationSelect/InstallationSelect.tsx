@@ -10,6 +10,7 @@ import {
   useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
+import { withInstallationQuery } from '@giantswarm/backstage-plugin-muster';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
@@ -82,7 +83,7 @@ function AgentManagerUnknownNote({
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
   const signInHref = serversRoute
     ? (installation: string) =>
-        `${serversRoute()}?installation=${encodeURIComponent(installation)}`
+        withInstallationQuery(serversRoute(), installation)
     : undefined;
   if (installations.length === 0) {
     return null;

@@ -1,6 +1,6 @@
 import { ReactNode, useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
+import { useApi } from '@backstage/frontend-plugin-api';
 import { Cell, CellText, ColumnConfig, Flex, Table } from '@backstage/ui';
 import {
   type CatalogFacet,
@@ -27,11 +27,10 @@ import type { ToolEffect } from '../../lib/toolAnnotations';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { workflowEffect } from '../../lib/workflowDisplay';
 import { workflowRunKeys } from '../../lib/workflowRunKeys';
-import { workflowDetailRouteRef } from '../../routes';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
-import { SessionGate, useToolCatalogue } from '../shared';
+import { SessionGate, useToolCatalogue, useWorkflowPageLinks } from '../shared';
 import { EffectBadge } from '../shared';
 import {
   LAST_RUN_LABELS,
@@ -98,12 +97,9 @@ function WorkflowRows({
   tools: ToolSummary[] | undefined;
 }) {
   const musterApi = useApi(musterApiRef);
-  const detailRoute = useRouteRef(workflowDetailRouteRef);
+  const workflowLinks = useWorkflowPageLinks();
   const isPhone = usePhoneLayout();
-  const hrefOf = (row: Row) =>
-    detailRoute
-      ? `${detailRoute({ name: row.name })}?installation=${encodeURIComponent(installation)}`
-      : undefined;
+  const hrefOf = (row: Row) => workflowLinks.workflow(row.name, installation);
 
   // muster lists executions newest first, so one per workflow gives the
   // latest run, and `total` counts them all.

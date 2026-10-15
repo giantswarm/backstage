@@ -23,6 +23,7 @@ import {
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
   ShellPageBadgeSkeleton,
+  ShellPageExpandedOnly,
   ShellPageTitleSkeleton,
   StatusDot,
   TOUCH_MEDIA,
@@ -86,6 +87,7 @@ import {
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import type { NotificationLevel } from '../../lib/notificationRecord';
 import { SessionActionsMenu } from './SessionActionsMenu';
+import { useReadingAnchor } from './useReadingAnchor';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
   COLUMN_RESERVE_VAR,
@@ -254,6 +256,7 @@ function Shell({
   documentTitle,
   badges,
   meta,
+  compactHeader,
   children,
 }: {
   /** The shell header's h1; the exits leave it to the fallback "Session". */
@@ -264,6 +267,8 @@ function Shell({
   badges?: ReactNode;
   /** Muted text at the end of that row: when the session started. */
   meta?: ReactNode;
+  /** Whether the header turns compact once it has scrolled away. */
+  compactHeader?: boolean;
   children: ReactNode;
 }) {
   const sessionsRoute = useRouteRef(sessionsRouteRef);
@@ -282,6 +287,7 @@ function Shell({
       ]}
       badges={badges}
       meta={meta}
+      compactHeader={compactHeader}
     >
       {children}
     </ShellPage>
@@ -722,8 +728,12 @@ export function SessionDetailPage() {
     isKnown: isToolActivityKnown,
     setShowToolActivity,
   } = useShowToolActivity();
+  // Adding or removing the work summaries around the place being read must
+  // not move it: from the compact header the switch is pressed mid-session.
+  const captureReadingAnchor = useReadingAnchor(showToolActivity);
   const changeToolActivity = useCallback(
     (show: boolean) => {
+      captureReadingAnchor();
       // A failed write puts the switch and the conversation back to the
       // stored choice, so say why rather than let it snap back.
       setShowToolActivity(show).catch((failure: Error) => {
@@ -737,7 +747,7 @@ export function SessionDetailPage() {
         });
       });
     },
-    [setShowToolActivity, toastApi],
+    [captureReadingAnchor, setShowToolActivity, toastApi],
   );
 
   const actions = useMemo(
@@ -1427,44 +1437,39 @@ export function SessionDetailPage() {
     </>
   );
 
-  const agentIdentity = (
-    <>
-      {row.agentName && (
-        <Flex align="center" gap="2">
-          <AgentAvatar
-            size="small"
-            purpose="decoration"
-            name={row.agentName}
-            src={avatarUrl ?? ''}
-          />
-          {/* core-components' `Link`, which routes client-side — a bui
-              link would reload the page. */}
-          {agentHref ? (
-            <Link to={agentHref}>
-              {/* bui `Text` sets its own colour, which would leave a
-                  link that doesn't look like one; `inherit` hands it back
-                  to the anchor. `as="span"`: Text renders a <p> by
-                  default. */}
-              <Text
-                as="span"
-                variant="body-medium"
-                style={{ color: 'inherit' }}
-              >
-                {row.agentName}
-              </Text>
-            </Link>
-          ) : (
-            <Text variant="body-medium">{row.agentName}</Text>
-          )}
-        </Flex>
+  const agentLink = row.agentName && (
+    <Flex align="center" gap="2">
+      <AgentAvatar
+        size="small"
+        purpose="decoration"
+        name={row.agentName}
+        src={avatarUrl ?? ''}
+      />
+      {/* core-components' `Link`, which routes client-side — a bui
+          link would reload the page. */}
+      {agentHref ? (
+        <Link to={agentHref}>
+          {/* bui `Text` sets its own colour, which would leave a
+              link that doesn't look like one; `inherit` hands it back
+              to the anchor. `as="span"`: Text renders a <p> by
+              default. */}
+          <Text as="span" variant="body-medium" style={{ color: 'inherit' }}>
+            {row.agentName}
+          </Text>
+        </Link>
+      ) : (
+        <Text variant="body-medium">{row.agentName}</Text>
       )}
-      <Flex align="center" gap="1">
-        <Text variant="body-medium" color="secondary">
-          on
-        </Text>
-        <InstallationChip installation={row.installation} />
-      </Flex>
-    </>
+    </Flex>
+  );
+
+  const environment = (
+    <Flex align="center" gap="1">
+      <Text variant="body-medium" color="secondary">
+        on
+      </Text>
+      <InstallationChip installation={row.installation} />
+    </Flex>
   );
 
   /* Absolute, not relative: the list keeps the relative form, where scanning
@@ -1499,11 +1504,26 @@ export function SessionDetailPage() {
       badges={
         <>
           {stateBadges}
-          {agentIdentity}
-          {startedMeta}
-          {toolActivitySwitch}
+          {agentLink}
+          {/* The header once it has scrolled away (ShellPage's
+              `compactHeader`) keeps the name, the state, the agent, the
+              switch, the pin and the menu in sight while reading. Where the
+              session runs and when it started are read once, not while
+              reading. At phone width the switch is left out too: beside the
+              state and the agent it wraps the compact row to a third line
+              over the conversation. */}
+          <ShellPageExpandedOnly>
+            {environment}
+            {startedMeta}
+          </ShellPageExpandedOnly>
+          {toolActivitySwitch && (
+            <ShellPageExpandedOnly onlyAtPhoneWidth>
+              {toolActivitySwitch}
+            </ShellPageExpandedOnly>
+          )}
         </>
       }
+      compactHeader
     >
       <Flex
         ref={setColumnElement}
