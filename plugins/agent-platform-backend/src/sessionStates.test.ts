@@ -682,11 +682,14 @@ describe('SessionStateReader — what counts as a shortfall', () => {
         ]);
       });
 
-      it('classifies a failed instance by its recorded failure, not its message', async () => {
+      it('reports a runtime kagent marked lost on a READY session, whatever its newest turn says', async () => {
+        // The contract fixture (session.runtime-lost.json): kagent keeps the
+        // session READY, so its tasks are still read, and the newest turn is
+        // often the question it can now never get an answer to.
         listSessions.mockResolvedValue({
           sessions: [
             session('lost', {
-              state: 'RUNTIME_STATE_FAILED',
+              state: 'RUNTIME_STATE_READY',
               failure: {
                 reason: 'RUNTIME_LOST',
                 message: 'runtime lost: node ip-10-0-1-2 is gone',
@@ -694,19 +697,40 @@ describe('SessionStateReader — what counts as a shortfall', () => {
             }),
           ],
         });
+        listSessionTasks.mockResolvedValue(
+          tasks('TASK_STATE_INPUT_REQUIRED', '2026-09-11T01:00:00Z'),
+        );
 
         const result = await reader().read('tok');
 
-        expect(listSessionTasks).not.toHaveBeenCalled();
         expect(result.states).toEqual([
           {
             sessionId: 'lost',
-            state: 'failed',
+            state: 'input-required',
             changedAt: Date.parse('2026-09-11T01:00:00Z'),
             failureReason: 'runtime-lost',
           },
         ]);
         expect(JSON.stringify(result)).not.toContain('ip-10-0-1-2');
+      });
+
+      it('lets the runtime-lost mark win over a failed turn’s own reason', async () => {
+        listSessions.mockResolvedValue({
+          sessions: [
+            session('lost', {
+              state: 'RUNTIME_STATE_READY',
+              failure: { reason: 'RUNTIME_LOST' },
+            }),
+          ],
+        });
+        listSessionTasks.mockResolvedValue(failedTask(providerError));
+
+        const result = await reader().read('tok');
+
+        expect(result.states[0]).toMatchObject({
+          state: 'failed',
+          failureReason: 'runtime-lost',
+        });
       });
     });
   });

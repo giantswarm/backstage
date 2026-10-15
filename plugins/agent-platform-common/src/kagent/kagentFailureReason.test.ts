@@ -42,7 +42,7 @@ describe('classifyFailureText', () => {
     ['OPENAI_API_KEY environment variable is not set'],
     ['AZURE_OPENAI_ENDPOINT environment variable is not set'],
     [
-      'operation error Bedrock Runtime: Converse, https response error StatusCode: 400',
+      'operation error Bedrock Runtime: Converse, https response error StatusCode: 429, ThrottlingException',
     ],
     // the Claude Harness passes Claude Code's own words through
     ['API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}'],
@@ -51,6 +51,8 @@ describe('classifyFailureText', () => {
     // Gemini on Vertex AI
     ['Error 404, Message: Publisher Model `gemini-9` was not found'],
     ['{"code": "model_not_found"}'],
+    ['anthropic API error: 401 Unauthorized invalid x-api-key'],
+    ['litellm.ServiceUnavailableError: the model is overloaded'],
   ])('reads %s as model-unavailable', text => {
     expect(classifyFailureText(text)).toBe('model-unavailable');
   });
@@ -82,6 +84,25 @@ describe('classifyFailureText', () => {
     ['the tool returned an error: permission denied'],
     // A status code alone says nothing about who answered it.
     ['request failed with 503'],
+    // The request was wrong, not the model unavailable: a new session or a
+    // different request is the way out, not waiting for the model.
+    [
+      'OpenAI chat completion request failed: 400 Bad Request {"code": "context_length_exceeded"}',
+    ],
+    [
+      'anthropic API error: 400 invalid_request_error: prompt is too long: 210000 tokens > 200000 maximum',
+    ],
+    ['API Error: 400 {"type":"invalid_request_error"}'],
+    [
+      'OpenAI chat completion request failed: 404 maximum context length is 128000 tokens',
+    ],
+    ['litellm.ContextWindowExceededError: input is too long'],
+    ['litellm.BadRequestError: invalid tool schema'],
+    ['litellm.ContentPolicyViolationError: refused'],
+    ['Error 400, Message: Request contains an invalid argument.'],
+    [
+      'operation error Bedrock Runtime: Converse, StatusCode: 400, ValidationException: Input is too long',
+    ],
     [''],
     [undefined],
   ])('reads %s as other', text => {
@@ -105,17 +126,15 @@ describe('readTaskFailureReason', () => {
   it('classifies a rejected turn like a failed one', () => {
     expect(
       readTaskFailureReason(
-        task('rejected', textMessage('anthropic API error: 400')),
+        task('rejected', textMessage('anthropic API error: 503')),
       ),
     ).toBe('model-unavailable');
   });
 
-  it('reads a bare string message', () => {
+  it('does not read a bare string message, as the session page does not', () => {
     expect(
-      readTaskFailureReason(
-        task('failed', 'failed to list MCP tools for x: 1'),
-      ),
-    ).toBe('tool-failed');
+      readTaskFailureReason(task('failed', 'runtime lost: node is gone')),
+    ).toBe('other');
   });
 
   it('calls a failed turn without a message other', () => {

@@ -1,7 +1,7 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import {
-  findNewestStatefulTaskIndex,
   isListableSession,
+  isRuntimeLostReason,
   KagentSession,
   normalizeSessionList,
   normalizeTaskList,
@@ -200,11 +200,13 @@ export class SessionStateReader {
       onPayload: (session, payload) => {
         const { tasks } = normalizeTaskList(payload);
         const newest = readNewestTaskState(tasks);
-        const index = findNewestStatefulTaskIndex(tasks);
         // Reduced here to a class: the failure text is the provider's raw
-        // error and never leaves the backend.
-        const failureReason =
-          index === undefined ? undefined : readTaskFailureReason(tasks[index]);
+        // error and never leaves the backend. A runtime kagent marked lost
+        // wins over whatever the newest turn says: kagent keeps such a
+        // session READY, often on a question that can now never be answered.
+        const failureReason = isRuntimeLostReason(session.failure?.reason)
+          ? 'runtime-lost'
+          : newest && readTaskFailureReason(tasks[newest.index]);
         states.push({
           sessionId: session.sessionId,
           state: newest?.state.raw ?? null,

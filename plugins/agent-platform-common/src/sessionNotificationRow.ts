@@ -31,6 +31,10 @@ export type SessionNotificationRowIdentity = {
   /**
    * Epoch ms the state last changed; absent when nothing in the conversation
    * says. Rows without it cannot tell two waits of the same kind apart.
+   *
+   * For a session whose instance failed, this is the instance's `updatedAt`:
+   * nothing on the wire dates the failure itself. A later write to that
+   * instance (a rename, say) moves it, and the Failed row comes back unread.
    */
   changedAt?: number;
 };
@@ -48,8 +52,6 @@ export type SessionNotificationRow = SessionNotificationRowIdentity & {
         kind: 'waiting';
         /** `input`: a question or a confirmation; `sign-in`: `auth-required`. */
         waitingFor: 'input' | 'sign-in';
-        /** The server a `sign-in` wait is for, when the read names one. */
-        authServer?: string;
       }
     | {
         kind: 'failed';
@@ -92,6 +94,9 @@ export function sessionNotificationRowId(
  * rules live.
  *
  * - Muted: no row.
+ * - Runtime lost (`failureReason: 'runtime-lost'`, whatever the state): a
+ *   Failed row, for a portal-started session. Such a session cannot go on, so
+ *   a question it was waiting on can never be answered and is no Waiting row.
  * - Waiting (`input-required`, `auth-required`): a Waiting row, for any
  *   session of the person's, wherever it was started.
  * - Failed (`failed`, `rejected`, or a failed instance): a Failed row, for a
@@ -113,11 +118,6 @@ export function deriveSessionNotificationRow(
   if (level === 'muted') {
     return undefined;
   }
-  const state = describeSessionState(entry.state ?? undefined);
-  if (!state) {
-    return undefined;
-  }
-
   const identity = (kind: SessionNotificationRowKind) => {
     const base: SessionNotificationRowIdentity = {
       installation,
@@ -128,26 +128,26 @@ export function deriveSessionNotificationRow(
     return { ...base, id: sessionNotificationRowId(base) };
   };
 
-  if (AWAITING_INPUT_STATES.has(state.key)) {
-    const signIn = state.key === 'auth-required';
+  const runtimeLost = entry.failureReason === 'runtime-lost';
+  const state = describeSessionState(entry.state ?? undefined);
+  if (!runtimeLost && state && AWAITING_INPUT_STATES.has(state.key)) {
     return {
       ...identity('waiting'),
       kind: 'waiting',
-      waitingFor: signIn ? 'sign-in' : 'input',
-      ...(signIn && entry.authServer ? { authServer: entry.authServer } : {}),
+      waitingFor: state.key === 'auth-required' ? 'sign-in' : 'input',
     };
   }
   if (!portalStarted) {
     return undefined;
   }
-  if (FAILED_STATES.has(state.key)) {
+  if (runtimeLost || (state && FAILED_STATES.has(state.key))) {
     return {
       ...identity('failed'),
       kind: 'failed',
       reason: entry.failureReason ?? 'other',
     };
   }
-  if (state.key === 'completed' && level === 'all') {
+  if (state?.key === 'completed' && level === 'all') {
     return { ...identity('turn-finished'), kind: 'turn-finished' };
   }
   return undefined;

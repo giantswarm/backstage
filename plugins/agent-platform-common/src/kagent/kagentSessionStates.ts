@@ -26,20 +26,12 @@ export type SessionStateEntry = {
   /** Epoch ms the state last moved, when anything in the conversation says. */
   changedAt?: number;
   /**
-   * The server an `auth-required` session waits on a sign-in for, as a short
-   * name, when kagent names one. Absent otherwise.
-   *
-   * No kagent producer names one today: kagent's own runtimes never enter
-   * `auth-required`, and the Python ADK's credential request carries an auth
-   * scheme but no server. So this stays absent until one does, and a reader
-   * says "needs your sign-in" without a server.
-   */
-  authServer?: string;
-  /**
-   * Why a failed session (`failed`, `rejected`, or a failed instance) failed,
-   * as a short class read from the task's or the instance's failure text on
-   * the backend. The text itself never crosses the wire. Absent on any other
-   * state.
+   * Why the session failed, as a short class the backend reads from the
+   * failure text; the text itself never crosses the wire. Present on a failed
+   * or rejected newest turn, on a failed instance, and on a session kagent
+   * marked as having lost its runtime — whatever its newest turn's `state`
+   * says, since such a session cannot go on (`runtime-lost`). Absent
+   * otherwise.
    */
   failureReason?: SessionFailureReason;
 };
@@ -70,21 +62,8 @@ const sessionStateEntrySchema = z.looseObject({
   sessionId: z.string(),
   state: z.string().nullable().optional(),
   changedAt: z.number().optional(),
-  authServer: z.unknown().optional(),
   failureReason: z.unknown().optional(),
 });
-
-/**
- * What an `authServer` may look like: a short name, so a reader can put it in
- * a sentence. Anything else is dropped rather than shown.
- */
-const AUTH_SERVER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
-
-function readAuthServer(value: unknown): string | undefined {
-  return typeof value === 'string' && AUTH_SERVER_PATTERN.test(value)
-    ? value
-    : undefined;
-}
 
 /**
  * A known class as itself; any other present value as `other`, so a class a
@@ -127,7 +106,6 @@ export function normalizeSessionStates(raw: unknown): SessionStatesResponse {
     if (!entry.success || !entry.data.sessionId) {
       continue;
     }
-    const authServer = readAuthServer(entry.data.authServer);
     const failureReason = readFailureReason(entry.data.failureReason);
     states.push({
       sessionId: entry.data.sessionId,
@@ -135,7 +113,6 @@ export function normalizeSessionStates(raw: unknown): SessionStatesResponse {
       ...(entry.data.changedAt === undefined
         ? {}
         : { changedAt: entry.data.changedAt }),
-      ...(authServer === undefined ? {} : { authServer }),
       ...(failureReason === undefined ? {} : { failureReason }),
     });
   }

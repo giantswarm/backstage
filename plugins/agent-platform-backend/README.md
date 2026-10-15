@@ -108,17 +108,18 @@ shape is `SessionStatesResponse` in `agent-platform-common`:
 
 - `state` is the A2A state as kagent reports it, or the instance's own state
   when that decides (`failed`, `creating`, `deleting`).
-- `failureReason`, on a failed or rejected turn and on a failed instance only:
-  `model-unavailable`, `tool-failed`, `runtime-lost` or `other`, classified
-  from the turn's `status.message` or the instance's `Failure`
-  (`classifyFailureText` in `agent-platform-common`). Only the class leaves the
+- `failureReason`: `model-unavailable`, `tool-failed`, `runtime-lost` or
+  `other`. Present on a failed or rejected newest turn (from its
+  `status.message`), on a failed instance (from its `Failure`), and on any
+  session kagent marked `RUNTIME_LOST` (`runtime-lost`, whatever its newest
+  turn's `state`: kagent keeps such a session READY). Classified by
+  `classifyFailureText` in `agent-platform-common`. Only the class leaves the
   backend, never the text: that is the provider's raw error and may carry
-  URLs, model ids and response bodies. A text that matches no shape kagent is
-  known to produce is `other`.
-- `authServer`, on an `auth-required` session: the server it waits on a sign-in
-  for, as a short name. Reserved: no kagent runtime names one today (kagent's
-  own runtimes never enter `auth-required`, and the Python ADK's credential
-  request names no server), so it is absent.
+  URLs, model ids and response bodies. `model-unavailable` means the model
+  cannot be had (unknown, refused, rate-limited, failing); a request the
+  provider rejected as wrong, such as a conversation that outgrew the context
+  window, is `other`, as is any text that matches no shape kagent is known to
+  produce.
 
 ### Sessions are not created here
 

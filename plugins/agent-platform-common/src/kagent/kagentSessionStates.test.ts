@@ -52,17 +52,25 @@ describe('normalizeSessionStates', () => {
     expect(states.map(s => s.sessionId)).toEqual(['good', 'also-good']);
   });
 
-  it('reads the auth server and the failure reason', () => {
+  it('reads the failure reason', () => {
     const { states } = normalizeSessionStates({
       states: [
-        { sessionId: 'a', state: 'auth-required', authServer: 'kubernetes' },
-        { sessionId: 'b', state: 'failed', failureReason: 'tool-failed' },
+        { sessionId: 'a', state: 'failed', failureReason: 'tool-failed' },
+        {
+          sessionId: 'b',
+          state: 'input-required',
+          failureReason: 'runtime-lost',
+        },
       ],
     });
 
     expect(states).toEqual([
-      { sessionId: 'a', state: 'auth-required', authServer: 'kubernetes' },
-      { sessionId: 'b', state: 'failed', failureReason: 'tool-failed' },
+      { sessionId: 'a', state: 'failed', failureReason: 'tool-failed' },
+      {
+        sessionId: 'b',
+        state: 'input-required',
+        failureReason: 'runtime-lost',
+      },
     ]);
   });
 
@@ -75,19 +83,6 @@ describe('normalizeSessionStates', () => {
     expect(states).toEqual([
       { sessionId: 'a', state: 'failed', failureReason: 'other' },
     ]);
-  });
-
-  it.each([
-    ['a sentence', 'please sign in to kubernetes'],
-    ['an empty string', ''],
-    ['a number', 42],
-    ['an over-long name', 'k'.repeat(64)],
-  ])('drops an auth server that is %s', (_, authServer) => {
-    const { states } = normalizeSessionStates({
-      states: [{ sessionId: 'a', state: 'auth-required', authServer }],
-    });
-
-    expect(states).toEqual([{ sessionId: 'a', state: 'auth-required' }]);
   });
 
   it('passes unknown future fields through without complaint', () => {
