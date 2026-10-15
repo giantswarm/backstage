@@ -149,10 +149,13 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   );
   const namespaced = useNamespacedModelConfigs(forbiddenInstallations);
 
+  // An installation read namespace by namespace has answered once all its
+  // namespaces have, so the home's namespaces land before the rest is asked.
   const answeredKey = [
     ...clustersData.map(({ cluster }) => cluster),
     ...errors.map(({ cluster }) => cluster),
   ]
+    .filter(name => !namespaced.pendingInstallations.includes(name))
     .sort()
     .join(',');
   useEffect(() => {
@@ -168,6 +171,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const allInstallationsKey = allInstallations.join(',');
   const scopedInstallationsKey = scopedInstallations.join(',');
   const inaccessibleInstallationsKey = inaccessibleInstallations.join(',');
+  const forbiddenInstallationsKey = forbiddenInstallations.join(',');
 
   const value = useMemo<ModelConfigsContextValue>(() => {
     const allResources = [...resources, ...namespaced.resources];
@@ -175,15 +179,15 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
 
     // A 404 means the api.kagent.dev API group has gone since the (hour-long)
     // inventory answered, so the cluster simply has no ModelConfigs — not a
-    // "couldn't read" failure. Only genuine failures (403 forbidden in every
-    // namespace too, unreachable) that produced no models are surfaced.
+    // "couldn't read" failure. Only genuine failures (unreachable) that
+    // produced no models are surfaced; an installation read namespace by
+    // namespace is surfaced when a namespace failed or every one refused.
     const unreachableInstallations = Array.from(
       new Set(errors.filter(e => !isNotFoundError(e)).map(e => e.cluster)),
-    ).filter(
-      name =>
-        !withModels.has(name) &&
-        !namespaced.readInstallations.includes(name) &&
-        !namespaced.pendingInstallations.includes(name),
+    ).filter(name =>
+      forbiddenInstallations.includes(name)
+        ? namespaced.unreadInstallations.includes(name)
+        : !withModels.has(name),
     );
 
     const answered = new Set(
@@ -222,6 +226,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   }, [
     resources,
     namespaced,
+    forbiddenInstallationsKey,
     clustersData,
     errors,
     isLoading,
