@@ -740,8 +740,16 @@ export function clusterAnswer(
   mode: LifecycleMode,
 ) {
   const name = `${CLUSTER.name}-${pool}`;
+  // Not Ready for as many reads as a `phases` pool says `creating`: the shell
+  // reads `list_clusters` more than once per poll (the panel and the KPI
+  // tiles), so a single read would be gone before the row draws it.
   const poolReleases = [
-    { name, namespace: CLUSTER.namespace, chartVersion: '0.3.1', ready: n > 1 },
+    {
+      name,
+      namespace: CLUSTER.namespace,
+      chartVersion: '0.3.1',
+      ready: n > CREATING_READS,
+    },
   ];
   const operatorReady = n >= 3;
   const servingReady = n >= SETTLED_READ;

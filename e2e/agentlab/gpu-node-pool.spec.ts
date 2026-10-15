@@ -655,7 +655,7 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
     await expect(cache).not.toBeChecked();
     // Off by default: what a cold start costs, and that switching on creates a billed claim.
     await expect(page.getByTestId('cache-consequence')).toContainText(
-      'about 90 s more',
+      'a cold start takes about 90 s longer',
     );
     await expect(page.getByTestId('cache-consequence')).toContainText(
       'Switching it on creates a cache claim, a volume billed every month it exists',

@@ -58,6 +58,9 @@ async function deleteCurrentSession(page: Page): Promise<void> {
  */
 const STATE_LABELS = ['Waiting for you', 'Working', 'Idle', 'Failed'];
 
+/** The shell's lists show search and filters only past this many rows (ui-react's `SEARCH_MIN`). */
+const SEARCH_MIN = 8;
+
 test('a session started in the portal reports its state on the list', async ({
   admin,
   labAgent,
@@ -122,11 +125,24 @@ test('a session started in the portal reports its state on the list', async ({
     // --- Narrowing by it -------------------------------------------------
     // The shell lists sessions per day, newest first, and brings what needs a
     // person forward with the State dropdown (the one filter style), not a
-    // sortable column.
-    await expect(
-      admin.getByRole('button', { name: /Filter by state/ }),
-      'the list offers the State filter',
-    ).toBeVisible();
+    // sortable column. Like every list, it offers search and filters only
+    // past `SEARCH_MIN` (8) rows: a short list is read, not filtered.
+    const sessionRows = await admin
+      .getByRole('row')
+      .filter({ has: admin.locator('a[href*="/agent-platform/sessions/"]') })
+      .count();
+    const stateFilter = admin.getByRole('button', { name: /Filter by state/ });
+    if (sessionRows > SEARCH_MIN) {
+      await expect(
+        stateFilter,
+        'a list past SEARCH_MIN rows offers the State filter',
+      ).toBeVisible();
+    } else {
+      await expect(
+        stateFilter,
+        'a list of SEARCH_MIN rows or fewer offers no filters',
+      ).toHaveCount(0);
+    }
   } catch (error) {
     failure = error;
   }
@@ -229,7 +245,7 @@ test('the list distinguishes the three ways a state can be missing', async ({
     'a read that failed is unknown, which is not the same as terminal',
   ).toContainText('Unknown');
   await expect(
-    unknown.getByTitle(/not the same as finished/),
+    unknown.getByTitle(/not the same as idle/),
     'and says so on hover',
   ).toBeVisible();
 
