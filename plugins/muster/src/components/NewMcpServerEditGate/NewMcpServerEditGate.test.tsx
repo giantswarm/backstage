@@ -128,6 +128,31 @@ describe('NewMcpServerEditGate', () => {
     );
   });
 
+  it('seeds the wizard from the installation the link names', async () => {
+    await renderSection(
+      '/agent-platform/connectors/new?edit=miro&installation=gazelle',
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Edit connector' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Server address/)).toHaveValue(
+      'https://mcp.miro.com/',
+    );
+  });
+
+  it('reads the installation from the link before the active one', async () => {
+    await renderSection(
+      '/agent-platform/connectors/new?edit=miro&installation=golem',
+    );
+
+    // gazelle is active and has a miro too; the link names golem's.
+    expect(
+      await screen.findByText('There is no connector "miro" on golem.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Server address/)).not.toBeInTheDocument();
+  });
+
   it('never opens the wizard for a GitOps-managed server, even by link', async () => {
     await renderSection('/agent-platform/connectors/new?edit=github');
 
@@ -199,5 +224,11 @@ describe('withEditParam', () => {
       '/servers/new/auth?edit=my%20server',
     );
     expect(withEditParam('/servers/new', undefined)).toBe('/servers/new');
+  });
+
+  it('names the installation on the link that starts an edit', () => {
+    expect(withEditParam('/servers/new', 'my server', 'gazelle')).toBe(
+      '/servers/new?edit=my%20server&installation=gazelle',
+    );
   });
 });

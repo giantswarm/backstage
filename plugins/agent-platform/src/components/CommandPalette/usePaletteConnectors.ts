@@ -19,8 +19,8 @@ export type PaletteConnector = {
    * read the same, else {@link page}.
    */
   displayName: string;
-  /** The installations the connector is registered on, sorted. */
-  installations: string[];
+  /** The installation the connector is registered on. */
+  installation: string;
 };
 
 export type PaletteConnectors = {
@@ -32,8 +32,9 @@ export type PaletteConnectors = {
  * The connectors across the given installations, read as MCPServer CRs
  * through the Backstage kubernetes proxy like {@link useMusterServers} — no
  * muster session needed, so the palette can search them without a sign-in
- * hop. A server family registered on several installations is one row, the
- * same way the Connectors tab shows one page for it.
+ * hop. One row per connector and installation, like agents, models and
+ * workflows: a server family is one row on each installation it is
+ * registered on, never one per family instance.
  */
 export function usePaletteConnectors(
   installations: string[],
@@ -46,21 +47,26 @@ export function usePaletteConnectors(
   );
 
   const rows = useMemo(() => {
-    const byPage = new Map<string, Set<string>>();
+    const byKey = new Map<string, { page: string; installation: string }>();
     for (const server of resources) {
       const page = server.getFamily() ?? server.getName();
-      const set = byPage.get(page) ?? new Set<string>();
-      set.add(server.cluster);
-      byPage.set(page, set);
+      byKey.set(`${server.cluster}/${page}`, {
+        page,
+        installation: server.cluster,
+      });
     }
     const names = mcpServerDisplayNames(resources);
-    return [...byPage.entries()]
-      .map(([page, clusters]) => ({
+    return [...byKey.values()]
+      .map(({ page, installation }) => ({
         page,
         displayName: names.get(page) ?? page,
-        installations: [...clusters].sort(),
+        installation,
       }))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+      .sort(
+        (a, b) =>
+          a.displayName.localeCompare(b.displayName) ||
+          a.installation.localeCompare(b.installation),
+      );
   }, [resources]);
 
   return {

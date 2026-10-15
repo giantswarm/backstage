@@ -467,13 +467,13 @@ function PaletteDialog({
 
     const connectorCandidates: PaletteCandidate[] = serverRoute
       ? connectors.rows.map(connector => ({
-          id: `connector:${connector.page}`,
+          id: `connector:${connector.installation}/${connector.page}`,
           title: connector.displayName,
-          meta:
-            connector.installations.length > 1
-              ? `${connector.installations.length} environments`
-              : connector.installations[0],
-          href: serverRoute({ server: connector.page }),
+          meta: connector.installation,
+          href: withInstallationQuery(
+            serverRoute({ server: connector.page }),
+            connector.installation,
+          ),
           haystack: [connector.displayName, connector.page],
         }))
       : [];

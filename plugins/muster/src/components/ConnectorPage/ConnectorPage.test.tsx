@@ -526,7 +526,9 @@ describe('ConnectorPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
     expect(
-      await screen.findByText('at /agent-platform/connectors/new?edit=jira'),
+      await screen.findByText(
+        'at /agent-platform/connectors/new?edit=jira&installation=gazelle',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -534,7 +536,9 @@ describe('ConnectorPage', () => {
     await renderAt(`${BASE}/jira/settings`);
 
     expect(
-      await screen.findByText('at /agent-platform/connectors/new?edit=jira'),
+      await screen.findByText(
+        'at /agent-platform/connectors/new?edit=jira&installation=gazelle',
+      ),
     ).toBeInTheDocument();
   });
 

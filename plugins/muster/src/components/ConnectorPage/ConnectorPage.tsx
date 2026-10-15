@@ -308,13 +308,14 @@ function ConnectorPageContent({
     singular!.getAuth()?.type === 'oauth' &&
     signIn.isConnected;
 
-  // Edit opens the connector wizard on this connector (`?edit=`), the flow
-  // that added it; the wizard's edit gate seeds it from the server list.
+  // Edit opens the connector wizard on this connector (`?edit=` and its
+  // `&installation=`), the flow that added it; the wizard's edit gate seeds
+  // it from the server list.
   const editBlock = connectorEditBlock(row, authenticated);
   const newConnectorRoute = useRouteRef(newMcpServerRouteRef);
   const editHref =
     singular && !editBlock && newConnectorRoute
-      ? withEditParam(newConnectorRoute(), singular.getName())
+      ? withEditParam(newConnectorRoute(), singular.getName(), installation)
       : undefined;
   const gitOpsManaged = singular ? isGitOpsManaged(singular) : false;
 
@@ -717,7 +718,8 @@ export interface ConnectorPageProps {
  * Details with its facts and technical details. `:server` names a server, a server family or
  * muster itself on the installation the section's scope selects.
  *
- * Edit opens the connector wizard pre-filled (`new?edit=<name>`), the flow
+ * Edit opens the connector wizard pre-filled
+ * (`new?edit=<name>&installation=<inst>`), the flow
  * that added the connector, the way agents and skills are edited; the old
  * `settings` tab address redirects there. Where the wizard cannot edit the
  * connector — applied from Git, a family, no muster session, settings the
