@@ -148,8 +148,12 @@ export function WorkspaceEditorPage({
     { page: previewPage, search: previewSearch },
   );
 
+  // Only the person's edits count: the loaded workspace and the one provider
+  // chosen for them leave nothing to discard.
+  const [isDirty, setIsDirty] = useState(false);
   const update = useCallback((next: WorkspaceDraft) => {
     setDraft(next);
+    setIsDirty(true);
     setProblem(undefined);
     setPreviewPage(1);
   }, []);
@@ -303,7 +307,7 @@ export function WorkspaceEditorPage({
       documentTitle={[title, 'Workspaces']}
       context={`Customize / Workspaces / ${organization}`}
       closeHref={closeHref}
-      confirmDiscard={Boolean(draft)}
+      confirmDiscard={isDirty}
       width="wide"
       rail={previewPanel}
     >

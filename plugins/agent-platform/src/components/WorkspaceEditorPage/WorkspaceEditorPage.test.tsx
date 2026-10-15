@@ -325,6 +325,27 @@ describe('WorkspaceEditorPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('asks before discarding only once the person has edited the draft', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
+    const close = screen.getByRole('link', { name: 'Close' });
+
+    fireEvent.click(close);
+    expect(
+      screen.queryByRole('dialog', { name: /Discard your changes/ }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(name, { target: { value: 'platform-mcp' } });
+    fireEvent.click(close);
+    expect(
+      await screen.findByRole('dialog', { name: /Discard your changes/ }),
+    ).toBeInTheDocument();
+  });
+
   it('shows the connect prompt in place of the owner for an unconnected provider', async () => {
     const fake = createWorkspaceManagerFake({
       providers: [{ ...GITLAB, connected: false }],
