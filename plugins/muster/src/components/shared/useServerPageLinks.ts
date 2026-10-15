@@ -59,7 +59,7 @@ export function useServerPageLinks(): ServerPageLinks {
         const base = serverRoute({ server });
         return withInstallationQuery(
           options.tab ? `${base}/${options.tab}` : base,
-          installation ?? '',
+          installation,
           {
             q: options.q,
             effect: options.effect?.join(','),
@@ -68,14 +68,10 @@ export function useServerPageLinks(): ServerPageLinks {
       },
       tool: (server, tool, installation, options = {}) =>
         toolRoute
-          ? withInstallationQuery(
-              toolRoute({ server, tool }),
-              installation ?? '',
-              {
-                q: options.q,
-                effect: options.effect?.join(','),
-              },
-            )
+          ? withInstallationQuery(toolRoute({ server, tool }), installation, {
+              q: options.q,
+              effect: options.effect?.join(','),
+            })
           : undefined,
     }),
     [serverRoute, toolRoute],
