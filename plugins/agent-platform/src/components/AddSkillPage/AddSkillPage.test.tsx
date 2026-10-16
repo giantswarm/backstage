@@ -3,7 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import type { SkillPullRequest } from '../../hooks/useProposeSkill';
-import { customizeExternalRouteRef, sessionsRouteRef } from '../../routes';
+import {
+  customizeExternalRouteRef,
+  sessionsRouteRef,
+  skillsRouteRef,
+} from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
 import { skillCreationPrompt } from '../SkillCreationAssist';
 import { AddSkillPage, type SkillEdit } from './AddSkillPage';
@@ -86,8 +90,9 @@ function renderPage(edit?: SkillEdit) {
     </PageHeaderActionsProvider>,
     {
       mountedRoutes: {
-        '/agent-platform/sessions': sessionsRouteRef,
+        '/sessions': sessionsRouteRef,
         '/customize': customizeExternalRouteRef,
+        '/customize/skills': skillsRouteRef,
       },
     },
   );
@@ -111,7 +116,7 @@ const edit: SkillEdit = {
     description: 'How to triage.',
     instructions: 'Classify, prioritise, route.',
   },
-  skillHref: '/agent-platform/skills/giantswarm/skills/support/ticket-triage',
+  skillHref: '/customize/skills/giantswarm/skills/support/ticket-triage',
 };
 
 beforeEach(() => {

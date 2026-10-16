@@ -24,10 +24,7 @@ test('a workflow reads as a list of steps that take a tap, the page never scroll
   // this pins what survives it — the page, its steps in order as cards a
   // swipe scrolls past (no canvas to pan at phone width), a step that takes
   // a tap, and no sideways page scroll.
-  await open(
-    admin,
-    `/agent-platform/workflows/${WORKFLOW}?installation=${lab.installation}`,
-  );
+  await open(admin, `/customize/workflows/${lab.installation}/${WORKFLOW}`);
   await expect(
     admin.getByRole('heading', { level: 1, name: WORKFLOW }),
   ).toBeVisible();
@@ -48,10 +45,7 @@ test('a workflow runs from its Run it tab on a phone, form and result never scro
   admin,
 }) => {
   test.setTimeout(150_000);
-  await open(
-    admin,
-    `/agent-platform/workflows/${WORKFLOW}/run?installation=${lab.installation}`,
-  );
+  await open(admin, `/customize/workflows/${lab.installation}/${WORKFLOW}/run`);
   const run = admin
     .getByRole('main')
     .getByRole('button', { name: 'Run', exact: true });

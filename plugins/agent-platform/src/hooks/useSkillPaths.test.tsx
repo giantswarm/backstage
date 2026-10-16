@@ -22,14 +22,14 @@ function Probe() {
 describe('useSkillPaths', () => {
   it('builds the detail and edit hrefs under the skills route', async () => {
     await renderInTestApp(<Probe />, {
-      mountedRoutes: { '/agent-platform/skills': skillsRouteRef },
+      mountedRoutes: { '/customize/skills': skillsRouteRef },
     });
 
     expect(screen.getByTestId('detail')).toHaveTextContent(
-      '/agent-platform/skills/acme/skills/triage',
+      '/customize/skills/acme/skills/triage',
     );
     expect(screen.getByTestId('edit')).toHaveTextContent(
-      '/agent-platform/skills/edit/acme/skills/triage',
+      '/customize/skills/edit/acme/skills/triage',
     );
     expect(screen.getByTestId('unaddressable')).toHaveTextContent('undefined');
   });

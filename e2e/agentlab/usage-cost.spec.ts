@@ -87,7 +87,7 @@ test.describe('Usage → Cost, by agent', () => {
   }) => {
     await answerGatewayVectors(admin);
     try {
-      await open(admin, '/agent-platform/usage/cost');
+      await open(admin, '/usage/cost');
 
       // The portal queries the lab's Prometheus only where the lab runs one
       // (`platform.observability`); without it the page says so instead.

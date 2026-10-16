@@ -124,15 +124,15 @@ async function renderNav({
         // The shell's home, the app's own page: always there.
         '/': homeRouteRef,
         ...(bound && {
-          '/agent-platform/sessions': agentPlatformPlugin.routes.sessions,
+          '/sessions': agentPlatformPlugin.routes.sessions,
           '/customize': customizeRouteRef,
-          '/agent-platform/usage': agentPlatformPlugin.routes.usage,
-          '/agent-platform/agents': agentPlatformPlugin.routes.agents,
-          '/agent-platform/skills': agentPlatformPlugin.routes.skills,
-          '/agent-platform/models': agentPlatformPlugin.routes.models,
-          '/agent-platform/mcp-servers': musterPlugin.routes.mcpServers,
-          '/agent-platform/workflows': musterPlugin.routes.workflows,
-          '/agent-platform/profile': agentPlatformPlugin.routes.profile,
+          '/usage': agentPlatformPlugin.routes.usage,
+          '/customize/agents': agentPlatformPlugin.routes.agents,
+          '/customize/skills': agentPlatformPlugin.routes.skills,
+          '/customize/models': agentPlatformPlugin.routes.models,
+          '/customize/connectors': musterPlugin.routes.mcpServers,
+          '/customize/workflows': musterPlugin.routes.workflows,
+          '/profile': agentPlatformPlugin.routes.profile,
         }),
       },
     },
@@ -162,7 +162,7 @@ describe('AgentShellNav', () => {
       ['Agent Platform', '/'],
       ['New session', '/'],
       ['Customize', '/customize'],
-      ['Usage', '/agent-platform/usage'],
+      ['Usage', '/usage'],
       ['Platform Portal', '/clusters'],
     ]);
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
@@ -200,7 +200,7 @@ describe('AgentShellNav', () => {
 
     expect(railLinks()).toEqual([
       ['New session', '/'],
-      ['Sessions', '/agent-platform/sessions'],
+      ['Sessions', '/sessions'],
       ['Customize', '/customize'],
     ]);
     expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
@@ -312,7 +312,7 @@ describe('AgentShellNav', () => {
       ]);
       // Usage stays in the shell; the cross-link leaves it in a new tab.
       const usage = within(menu).getByRole('menuitem', { name: 'Usage' });
-      expect(usage).toHaveAttribute('href', '/agent-platform/usage');
+      expect(usage).toHaveAttribute('href', '/usage');
       expect(usage).not.toHaveAttribute('target');
       const portal = within(menu).getByRole('menuitem', {
         name: 'Platform Portal',
@@ -351,7 +351,7 @@ describe('AgentShellNav', () => {
       ).toBeNull();
     });
 
-    it.each(['/agent-platform/usage/cost', '/agent-platform/profile'])(
+    it.each(['/usage/cost', '/profile'])(
       'marks Profile current on %s, a page only its menu leads to',
       async path => {
         await renderNav({ isMobile: true, path });
@@ -551,7 +551,7 @@ describe('AgentShellNav', () => {
       ['Agent Platform', '/'],
       ['New session', '/'],
       ['Customize', '/customize'],
-      ['Usage', '/agent-platform/usage'],
+      ['Usage', '/usage'],
     ]);
     expect(
       screen.queryByRole('link', { name: 'Platform Portal' }),
@@ -616,7 +616,7 @@ describe('AgentShellNav', () => {
   });
 
   it('highlights the item of the current location', async () => {
-    await renderNav({ path: '/agent-platform/usage/cost' });
+    await renderNav({ path: '/usage/cost' });
 
     expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute(
       'aria-current',
@@ -628,11 +628,11 @@ describe('AgentShellNav', () => {
   });
 
   it.each([
-    '/agent-platform/agents/gazelle/kagent/sre',
-    '/agent-platform/skills/giantswarm/agent-skills/triage',
-    '/agent-platform/models/serving',
-    '/agent-platform/mcp-servers',
-    '/agent-platform/workflows/deploy',
+    '/customize/agents/gazelle/kagent/sre',
+    '/customize/skills/giantswarm/agent-skills/triage',
+    '/customize/models/hosting',
+    '/customize/connectors/gazelle/kubernetes',
+    '/customize/workflows/gazelle/deploy',
     '/customize/connectors',
   ])('makes Customize the current item on %s', async path => {
     await renderNav({ path });
@@ -896,7 +896,7 @@ describe('AgentShellNav', () => {
     // The shell's own profile page, same tab — not the classic /settings.
     expect(
       within(menu).getByRole('menuitem', { name: 'Profile and settings' }),
-    ).toHaveAttribute('href', '/agent-platform/profile');
+    ).toHaveAttribute('href', '/profile');
     const help = within(menu).getByRole('menuitem', {
       name: 'Help and feedback',
     });

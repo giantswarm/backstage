@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
@@ -10,11 +9,10 @@ import {
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newMcpServerAuthRouteRef } from '../../routes';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
-import { withEditParam } from '../NewMcpServerEditGate';
+import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
 import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
@@ -127,7 +125,7 @@ function inStepWords(message: string | undefined): string | undefined {
  */
 export function NewConnectorConnectPage() {
   const navigate = useNavigate();
-  const signInLink = useRouteRef(newMcpServerAuthRouteRef);
+  const wizardLinks = useConnectorWizardLinks();
   const { activeInstallation } = useMusterInstance();
   const {
     state,
@@ -174,15 +172,17 @@ export function NewConnectorConnectPage() {
       reveal();
       return;
     }
-    if (signInLink) {
-      navigate(
-        withEditParam(signInLink(), registeredName, registeredInstallation),
-      );
+    const signIn = wizardLinks('auth', {
+      name: registeredName,
+      installation: registeredInstallation,
+    });
+    if (signIn) {
+      navigate(signIn);
     }
   }, [
     errorCount,
     reveal,
-    signInLink,
+    wizardLinks,
     navigate,
     registeredName,
     registeredInstallation,

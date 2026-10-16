@@ -266,7 +266,7 @@ async function renderTools(
     </TestApiProvider>,
     // ServerTools links each tool to its page, so the route the link resolves
     // against has to be mounted.
-    { mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef } },
+    { mountedRoutes: { '/customize/connectors': mcpServersRouteRef } },
   );
 }
 
@@ -282,14 +282,11 @@ describe('ServerTools', () => {
     const link = await screen.findByRole('link', { name: 'list_buckets' });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/connectors/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
+      '/customize/connectors/gazelle/aws-root/tools/x_aws-root_list_buckets',
     );
     expect(
       screen.getByRole('link', { name: 'Open the server’s tools' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/connectors/aws-root?installation=gazelle',
-    );
+    ).toHaveAttribute('href', '/customize/connectors/gazelle/aws-root');
   });
 });
 

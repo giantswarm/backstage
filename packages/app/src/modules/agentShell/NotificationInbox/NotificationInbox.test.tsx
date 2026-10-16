@@ -61,7 +61,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 const close = jest.fn();
 const post = jest.fn(() => ({ close }));
 
-const SESSION_PATH = '/agent-platform/sessions/gazelle';
+const SESSION_PATH = '/sessions/gazelle';
 
 function Location() {
   const { pathname, search } = useLocation();
@@ -95,8 +95,8 @@ async function renderShell({ path = '/' }: { path?: string } = {}) {
       apis: [[toastApiRef, { post }]],
       mountedRoutes: {
         '/': homeRouteRef,
-        '/agent-platform/sessions': agentPlatformPlugin.routes.sessions,
-        '/agent-platform/profile': agentPlatformPlugin.routes.profile,
+        '/sessions': agentPlatformPlugin.routes.sessions,
+        '/profile': agentPlatformPlugin.routes.profile,
       },
     },
   );
@@ -520,7 +520,7 @@ describe('Notification inbox', () => {
           links: [
             {
               label: 'Show waiting sessions',
-              href: '/agent-platform/sessions?state=waiting',
+              href: '/sessions?state=waiting',
             },
           ],
         }),

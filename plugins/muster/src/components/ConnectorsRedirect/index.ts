@@ -1,1 +1,0 @@
-export { ConnectorsRedirect } from './ConnectorsRedirect';

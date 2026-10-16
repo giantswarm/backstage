@@ -23,7 +23,7 @@ const hint = /appears here once an environment runs model-manager/;
 
 function renderHint(mounted = true) {
   return renderInTestApp(<ModelHostingHint />, {
-    mountedRoutes: mounted ? { '/agent-platform/models': modelsRouteRef } : {},
+    mountedRoutes: mounted ? { '/customize/models': modelsRouteRef } : {},
   });
 }
 

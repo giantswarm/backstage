@@ -32,10 +32,11 @@ import { UsageScopeBar } from './UsageScopeBar';
 // for the selected span directly.
 type UsageView = { path: string; title: string };
 
-const OVERVIEW: UsageView = { path: 'overview', title: 'Overview' };
+// Overview is the page's bare path.
+const OVERVIEW: UsageView = { path: '', title: 'Overview' };
 const COST: UsageView = { path: 'cost', title: 'Cost' };
 const CONNECTORS: UsageView = { path: 'connectors', title: 'Connectors' };
-const SESSIONS: UsageView = { path: 'conversations', title: 'Your sessions' };
+const SESSIONS: UsageView = { path: 'your-sessions', title: 'Your sessions' };
 
 /**
  * The views on offer. Connectors only when a plugin contributed its content —
@@ -56,32 +57,29 @@ function hasSectionsIn(sections: ReactNode[] | undefined): boolean {
 const USAGE_DESCRIPTION =
   'See what agents cost, how much they are used and how healthy the platform is.';
 
-/** Sends the tab index to the first view, keeping the query string. */
-const IndexRedirect = () => {
-  const { search } = useLocation();
-  return <Navigate to={{ pathname: 'overview', search }} replace />;
-};
-
 /**
- * The old single-page Usage tab lived at `/agent-platform/usage` with no
- * sub-routes, so nothing needs redirecting — the index handles the one URL
- * that ever existed; `/usage/mcp` (the first Connectors tab's address) now
- * lands on Connectors, `/usage/technical` (the Technical details view) on
- * Overview, and the catch-all handles a guess or a typo.
- *
- * The routed views.
+ * The routed views, Overview at the page's bare path. The old tree's
+ * addresses (`/agent-platform/usage/overview`, the retired `mcp` and
+ * `technical`) redirect in the app's mapping of old addresses; an unknown
+ * view here lands on Overview, the nearest valid parent.
  */
 const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
   const basePath = useSplatBasePath();
   const { search } = useLocation();
   const hasConnectors = hasSectionsIn(sections);
   const redirectTo = (view: UsageView) => (
-    <Navigate to={{ pathname: `${basePath}/${view.path}`, search }} replace />
+    <Navigate
+      to={{
+        pathname: view.path ? `${basePath}/${view.path}` : basePath,
+        search,
+      }}
+      replace
+    />
   );
 
   return (
     <Routes>
-      <Route path="overview" element={<UsageOverviewPage />} />
+      <Route index element={<UsageOverviewPage />} />
       <Route path="cost" element={<UsageCostPage />} />
       <Route
         path="connectors"
@@ -96,22 +94,13 @@ const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
           )
         }
       />
-      <Route path="conversations" element={<UsageConversationsPage />} />
-      {/* Retired addresses, so a bookmark lands on their content rather than
-          on a 404: `mcp` was the first Connectors tab, `technical` the
-          Technical details view whose figures now live on Overview. */}
-      <Route
-        path="mcp"
-        element={redirectTo(hasConnectors ? CONNECTORS : OVERVIEW)}
-      />
-      <Route path="technical" element={redirectTo(OVERVIEW)} />
+      <Route path="your-sessions" element={<UsageConversationsPage />} />
       {/* Anything else lands on Overview rather than on the tab strip over
-          an empty page with no tab active — which is what
-          `/agent-platform/usage/sessions` did, a likely guess given the tab
-          reads "Your sessions" while the path is `conversations`. Absolute,
-          from the splat base path, for the reason the tab hrefs are: a
-          relative target inside a splat route resolves against the whole
-          current pathname and would append rather than replace. */}
+          an empty page with no tab active — `/usage/sessions` is a likely
+          guess for "Your sessions". Absolute, from the splat base path, for the
+          reason the tab hrefs are: a relative target inside a splat route
+          resolves against the whole current pathname and would append
+          rather than replace. */}
       <Route path="*" element={redirectTo(OVERVIEW)} />
     </Routes>
   );
@@ -127,9 +116,10 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
   const { search, pathname } = useLocation();
   const views = usageViews(hasSectionsIn(sections));
   // The open view names the document: "Cost · Usage · Agent Platform".
-  const openView = views.find(view =>
-    new RegExp(`/${view.path}/?$`).test(pathname),
-  );
+  const openView =
+    views.find(
+      view => view.path && new RegExp(`/${view.path}/?$`).test(pathname),
+    ) ?? OVERVIEW;
 
   return (
     <ShellPage
@@ -138,7 +128,7 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
       description={USAGE_DESCRIPTION}
       actions={<UsageScopeBar />}
       tabs={views.map(view => ({
-        id: view.path,
+        id: view.path || 'overview',
         path: view.path,
         title: view.title,
       }))}
@@ -169,16 +159,12 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
  * `sections` is the `sections` extension input (the muster plugin's connector
  * tool-call section); it is the Connectors view's content, and that view is
  * offered only when it holds something.
- *
- * The index redirect is a sibling of the views, not a route inside them, so the
- * tab strip never renders for a location that is about to change.
  */
 export const UsageRouter = ({ sections }: { sections?: ReactNode[] }) => (
   <QueryClientProvider>
     <ModelConfigsProvider>
       <AgentsDataProvider>
         <Routes>
-          <Route index element={<IndexRedirect />} />
           <Route path="*" element={<UsageViews sections={sections} />} />
         </Routes>
       </AgentsDataProvider>

@@ -86,11 +86,13 @@ async function offerAbsentCluster(page: Page, name: string): Promise<void> {
 }
 
 /** GPU pools, where Add GPU node pool returns to — with the pool's lifecycle panel open after a complete Deploy. */
-const CAPACITY_VIEW = /\/agent-platform\/models\/capacity\/?$/;
+const CAPACITY_VIEW = /\/customize\/models\/hosting\/capacity\/?$/;
 
 /** Add GPU node pool is a page of its own: its h1, its URL, its first step. */
 async function expectAddPoolPage(page: Page): Promise<void> {
-  await expect(page).toHaveURL(/\/agent-platform\/models\/capacity\/add-pool/);
+  await expect(page).toHaveURL(
+    /\/customize\/models\/hosting\/capacity\/add-pool/,
+  );
   await expect(
     page.getByRole('heading', { level: 1, name: 'Add GPU node pool' }),
   ).toBeVisible();
@@ -99,7 +101,7 @@ async function expectAddPoolPage(page: Page): Promise<void> {
 
 /** Serve model is a page of its own too, reached from the lifecycle panel's links with the pool in its query. */
 async function expectServePage(page: Page): Promise<void> {
-  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/serve\?/);
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/serve\?/);
   await expect(
     page.getByRole('heading', { level: 1, name: 'Serve model' }),
   ).toBeVisible({ timeout: 30_000 });
@@ -108,7 +110,7 @@ async function expectServePage(page: Page): Promise<void> {
 /** Serve model's Cancel: a lifecycle panel link carries no view to return to, so it lands on Running models. */
 async function cancelServe(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Cancel' }).click();
-  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/?$/);
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/?$/);
 }
 
 /** Cancel — a link in the page's footer — returns to GPU pools, where the flow was opened. */
@@ -127,7 +129,7 @@ test.describe('models: GPU node pools', () => {
     page,
   }) => {
     await signIn(page, lab.users.admin);
-    await open(page, '/agent-platform/models/capacity');
+    await open(page, '/customize/models/hosting/capacity');
 
     const panel = page.getByTestId('gpu-node-pools-panel');
     await expect(panel).toBeVisible();
@@ -150,7 +152,7 @@ test.describe('models: GPU node pools', () => {
     page,
   }) => {
     await signIn(page, lab.users.admin);
-    await open(page, '/agent-platform/models/capacity');
+    await open(page, '/customize/models/hosting/capacity');
 
     await page
       .getByRole('button', { name: 'Add GPU node pool' })
@@ -178,7 +180,7 @@ test.describe('models: GPU node pools', () => {
   }) => {
     await signIn(page, lab.users.admin);
     await offerAbsentCluster(page, 'nosuchcluster');
-    await open(page, '/agent-platform/models/capacity');
+    await open(page, '/customize/models/hosting/capacity');
 
     await page
       .getByRole('button', { name: 'Add GPU node pool' })
@@ -262,7 +264,7 @@ async function reachForm(page: Page, options: StubOptions = {}) {
   await signIn(page, lab.users.admin);
   await dropPersistedQueries(page);
   const calls = await stubClusterManager(page, options);
-  await open(page, '/agent-platform/models/capacity');
+  await open(page, '/customize/models/hosting/capacity');
 
   // The header's button; a lab without a serving layer offers it once more
   // in the page's empty state.
@@ -781,7 +783,7 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     // The kept claim: on Model hosting's Model cache tab, with its size, cost
     // and since when.
     await page.getByRole('tab', { name: 'Model cache' }).click();
-    await expect(page).toHaveURL(/\/agent-platform\/models\/cache/);
+    await expect(page).toHaveURL(/\/customize\/models\/hosting\/cache/);
     const card = page.getByTestId('model-cache-panel');
     await expect(card).toContainText('Standing: $27.37/month across 1 claim', {
       timeout: 60_000,
@@ -913,7 +915,7 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       );
     }
     const href = (await serve.getAttribute('href')) ?? '';
-    expect(href).toContain('/agent-platform/models/serving/serve?');
+    expect(href).toContain('/customize/models/hosting/serve?');
     // The page's own query, not the dialog-era `?serve=1` link.
     expect(href).not.toContain('serve=1');
     expect(href).toContain(`installation=${lab.installation}`);
@@ -1480,7 +1482,7 @@ test.describe('models: GPU node pool serve intent — the preset chosen on the f
       name: 'Serve Qwen3 8B FP8 manually',
     });
     const href = (await link.getAttribute('href')) ?? '';
-    expect(href).toContain('/agent-platform/models/serving/serve?');
+    expect(href).toContain('/customize/models/hosting/serve?');
     expect(href).toContain('model=qwen3-8b-fp8');
     await link.click();
     await expectServePage(page);
@@ -1496,7 +1498,7 @@ test.describe('models: GPU node pool serve intent — the preset chosen on the f
 
     // Back on the pool: Try serving again asks model-manager once more, and
     // the second load is accepted.
-    await open(page, '/agent-platform/models/capacity');
+    await open(page, '/customize/models/hosting/capacity');
     const reopened = await reopenPanel(page);
     await reopened.getByRole('button', { name: 'Try serving again' }).click();
     await expect
@@ -1524,7 +1526,7 @@ async function reachRemove(page: Page, options: StubOptions = {}) {
     existingPool: 'gpu-e2e',
     ...options,
   });
-  await open(page, '/agent-platform/models/capacity');
+  await open(page, '/customize/models/hosting/capacity');
   const row = page.getByRole('row', { name: /wc1-gpu-e2e/ });
   await expect(row).toContainText('ready · 0 nodes', { timeout: 60_000 });
   await row.getByRole('button', { name: 'Remove pool wc1-gpu-e2e' }).click();
@@ -1587,7 +1589,7 @@ test.describe('models: GPU node pool Remove — Removing until gone, the refusal
     );
     await expect(
       refused.getByRole('link', { name: /qwen3-4b-instruct/ }),
-    ).toHaveAttribute('href', /\/agent-platform\/models\/serving/);
+    ).toHaveAttribute('href', /\/customize\/models\/hosting/);
     await expect(refused).toContainText(
       'Karpenter removes an empty node about 10 minutes after its last pod',
     );

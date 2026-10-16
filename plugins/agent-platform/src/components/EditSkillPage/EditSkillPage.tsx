@@ -24,7 +24,7 @@ import { AddSkillPage } from '../AddSkillPage';
 import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 
 /**
- * Edit a skill (`/agent-platform/skills/edit/<owner>/<repo>[/<skill dir>]`):
+ * Edit a skill (`/customize/skills/edit/<owner>/<repo>[/<skill dir>]`):
  * the add-skill flow, prefilled. The skill is found in the discovered catalog
  * (like its detail page), its SKILL.md read at the commit the catalog pinned
  * (`GET /agent-skills/content`), and then `AddSkillPage` takes over in edit

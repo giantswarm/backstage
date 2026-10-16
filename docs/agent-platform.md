@@ -1,7 +1,8 @@
 # Agent Platform
 
 The **Agent Platform shell** is the portal's UI for working with agents. It
-serves `/`, `/agent-platform/**` and `/customize/**` and is built from the
+serves `/`, `/sessions`, `/usage`, `/profile` and `/customize/**` and is built
+from the
 `agent-platform` plugin (`@giantswarm/backstage-plugin-agent-platform`), the
 `muster` plugin and the app's `agentShell` module
 (`packages/app/src/modules/agentShell`). Agents run on kagent; the portal talks
@@ -37,7 +38,7 @@ desktop notifications; see [The Notification inbox](#the-notification-inbox).
 so there is no environment choice; the last-used agent is preselected. The
 Slack banner appears only where `agentPlatform.integrations.slack` is on.
 
-The session view (`/agent-platform/sessions/<installation>/<id>`) collapses a
+The session view (`/sessions/<installation>/<id>`) collapses a
 turn's tool calls into one expandable line, takes answers to the agent's
 permission requests and questions in a card on the chat bar, and stops a
 running turn. Its cost chip shows an estimated cost, the runtime-reported cost
@@ -45,7 +46,7 @@ where there is one, tokens and how full the context window is. Pins follow the
 person across browsers. A lost runtime is explained in place, with a way to a
 fresh session on the same agent.
 
-The sessions list (`/agent-platform/sessions`) offers search once a list has
+The sessions list (`/sessions`) offers search once a list has
 more than eight entries, the rule every list in the shell follows. Sessions are
 always the person's own: kagent answers only for the caller.
 
@@ -61,7 +62,7 @@ Favorites follow the person across browsers. A `generalInformation` meta-agent
 adds a helper banner. Each agent's Harness, and a Harness filter, appear only
 when the agents run on more than one Harness.
 
-**New agent** (`/agent-platform/agents/new`) is a wizard: Details, Skills,
+**New agent** (`/customize/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
 configured; every skill is pinned to a commit. An `agentManagement` meta-agent
 adds a helper that drafts the instructions in a side chat; the form changes
@@ -146,15 +147,16 @@ An update through the wizard keeps it.
 
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
-`/agent-platform/connectors/<connector>/tools/<tool>?installation=<name>`.
+`/customize/connectors/<installation>/<connector>/tools/<tool>`.
 That page shows what the tool does (Reads or Changes things), its description
 under "What it’s for", its input schema (folded),
 a form that runs the tool through muster, and the result, in one column with
 no facts beside it. The tool's address carries the tab's search and filter
 (`q`, `effect`), so the breadcrumb back keeps them; the browser's Back also
 restores how far the list was paged. Addresses under the old
-`/agent-platform/mcp-servers/` prefix redirect to the same path under
-`/agent-platform/connectors/`.
+`/agent-platform/connectors/` and `/agent-platform/mcp-servers/` prefixes
+redirect, in one hop, to the same page under `/customize/connectors/`, the
+installation moved from `?installation=` into the path.
 
 A connector's page ends with a Details tab: sign-in, health, calls this month
 and when it was added, then a Technical details fold-out with the GitOps
@@ -179,7 +181,7 @@ and Git do. A workflow's page splits into Overview, Run it, Usage (its run
 statistics) and Details tabs; its ⋮ menu shows the Workflow CR as YAML and,
 where Flux reconciles the workflow, where in Git to change it.
 
-Run it (`/agent-platform/workflows/<name>/run?installation=<name>`) runs the
+Run it (`/customize/workflows/<installation>/<name>/run`) runs the
 workflow as a tool's page runs a tool: muster exposes each workflow as the
 tool `workflow_<name>`, and the tab shows that tool's input form and result,
 and remembers the last inputs per installation, shared with the tool's own
@@ -203,7 +205,7 @@ not held: the app's router has no navigation blocker.
 
 ## Usage
 
-`/agent-platform/usage` reports over 7, 30 (the default) or 90 days:
+`/usage` reports over 7, 30 (the default) or 90 days:
 
 - **Overview** — platform health and trends from the LLM gateway.
 - **Cost** — spend from the gateway, by agent and model.
@@ -225,7 +227,7 @@ only when the records reach back before it.
 
 ## Profile and settings
 
-`/agent-platform/profile` shows who is signed in and the environments the portal
+`/profile` shows who is signed in and the environments the portal
 talks to. Other settings stay in the classic settings.
 
 ---
@@ -236,15 +238,15 @@ A wizard (`AgentWizardFrame`, bui). The portal composes nothing: the review is
 agent-manager's dry run and the deploy is agent-manager's `create_agent`, both
 called through the installation's muster as the signed-in person.
 
-1. **Details** — `/agent-platform/agents/new` (`NewAgentPage`). The installation
+1. **Details** — `/customize/agents/new` (`NewAgentPage`). The installation
    select renders nothing on a single-installation portal. **More options**
    holds the model, the runtime, the technical name and extra egress origins.
    `CreateAgentAssist` appears when an `agentManagement` meta-agent resolves.
-2. **Skills** — `/agent-platform/agents/new/skills` (`NewAgentSkillsPage`); see
+2. **Skills** — `/customize/agents/new/skills` (`NewAgentSkillsPage`); see
    "Skill discovery".
-3. **Tools** — `/agent-platform/agents/new/tools` (`NewAgentToolsPage`): the
+3. **Tools** — `/customize/agents/new/tools` (`NewAgentToolsPage`): the
    selectors that bound which gateway tools the agent can use.
-4. **Review** — `/agent-platform/agents/new/review` (`NewAgentReviewPage`):
+4. **Review** — `/customize/agents/new/review` (`NewAgentReviewPage`):
    `validate_agent`, **Create agent** through `create_agent`, a pull-request
    variant where agent-manager reports the `commit` capability, and an "Install
    manually instead" fallback from the same values.
@@ -256,7 +258,7 @@ Without `agentPlatform.skills.repositories` the Skills step is skipped, and a
 deep link to it redirects onward. `hasRepositories` comes from config alone, so
 the decision costs no request.
 
-Editing (`/agent-platform/agents/edit/<installation>/<namespace>/<name>`) is the
+Editing (`/customize/agents/<installation>/<namespace>/<name>/edit`) is the
 same wizard, prefilled, ending in an `update_agent` dry run (see "Editing an
 agent").
 
@@ -287,8 +289,8 @@ one `ModelConfig`, resolved incrementally.
 
 ### Model management (the Models tab)
 
-The Models list (`CustomizeModelsPanel`; `/agent-platform/models` redirects to
-Customize → Models) lists the fleet's ModelConfigs through
+The Models list (`CustomizeModelsPanel`, Customize → Models at
+`/customize/models`) lists the fleet's ModelConfigs through
 `ModelConfigsProvider` and lets an admin create, edit and delete them. Status
 combines the `Accepted` and `ResolvedRefs` conditions, named by the one that
 failed: Not accepted (`Accepted` is False: kagent rejects the settings),
@@ -298,9 +300,10 @@ so there is no `Ready`. The controller's message sits in a hint beside the
 status.
 
 One model's page (`ModelDetailPage`) is at
-`/customize/models/<installation>/<namespace>/<name>`, routed by the app's
-Customize page; `/agent-platform/models/<installation>/<namespace>/<name>`
-redirects there. It splits into Overview (the serving status, the facts, then
+`/customize/models/<installation>/<namespace>/<name>`, routed by the Models
+tab's router (`ModelsRouter`); the old
+`/agent-platform/models/<installation>/<namespace>/<name>` redirects there. It
+splits into Overview (the serving status, the facts, then
 a Technical details fold-out with the owning Helm release, the resource and
 the conditions with their reason and message), Usage (`…/usage`: the gateway's
 30-day figures and spend per day) and Used by (`…/used-by`, counted in the
@@ -315,7 +318,7 @@ controller's messages stay in Technical details, which open on arrival; the
 alert's Show conditions reopens them and scrolls them into view.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
-`EditModelPage` at `/agent-platform/models/edit/<installation>/<namespace>/<name>`)
+`EditModelPage` at `/customize/models/<installation>/<namespace>/<name>/edit`)
 supports **OpenAI** (every OpenAI-compatible endpoint: vLLM, llama.cpp,
 OpenRouter), **Anthropic**, **Gemini** and **Ollama**, with a per-provider
 endpoint (`spec.openAI.baseUrl`, `spec.anthropic.baseUrl`, `spec.ollama.host`)
@@ -393,8 +396,8 @@ a GPU panel, presets or fit check is therefore ordinary state. Optional columns
 (Size, Memory, Features, Node, GPUs) appear only when rows carry the data.
 Header actions are in `ModelHostingActions`, headline figures in
 `ModelHostingKpis`. Each create flow is a page of its own
-(`HostingFlowRoutes`): `serving/serve`, `serving/import`, `serving/pull`,
-`serving/add-backend` and `capacity/add-pool` under `/agent-platform/models`.
+(`HostingFlowRoutes`): `serve`, `import`, `pull`, `add-backend` and
+`capacity/add-pool` under `/customize/models/hosting`.
 Serve model reads its seed (`installation`, `backend`, `cluster`, `pool`,
 `model`) from the query.
 
@@ -546,8 +549,8 @@ repositories are separate platform work).
 ### Adding, editing and evaluating a skill
 
 Skills change only through pull requests. `AddSkillPage`
-(`/agent-platform/skills/new`) and `EditSkillPage`
-(`/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`) call gs-backend's
+(`/customize/skills/new`) and `EditSkillPage`
+(`/customize/skills/edit/<owner>/<repo>[/<dir>]`) call gs-backend's
 `POST /agent-skills/pull-request` with the person's GitHub token
 (`useProposeSkill`). The route accepts github.com repositories only, and
 `canProposeSkillTo` (`lib/skills.ts`) mirrors that check in the UI.
@@ -761,7 +764,7 @@ load.
 
 ## The Sessions tab
 
-`/agent-platform/sessions` lists the person's kagent sessions across the fleet
+`/sessions` lists the person's kagent sessions across the fleet
 (`SessionsTable`); a session starts on the shell's start screen (see "Starting
 a session"). Renaming and deleting are described below.
 
@@ -957,7 +960,7 @@ normalisation.
 
 ## The session detail page
 
-`/agent-platform/sessions/<installation>/<id>` shows one session. The
+`/sessions/<installation>/<id>` shows one session. The
 installation is in the path because kagent ids are unique only within one.
 
 ### Two reads
@@ -2057,9 +2060,9 @@ offers "Recent" first and favorites second.
 
 ## The agents list
 
-The list is Customize → Agents (`CustomizeAgentsPanel`;
-`/agent-platform/agents` redirects there, and the short `/agents` and anything
-below it redirect to `/agent-platform/agents`), showing 25 rows at a time; its
+The list is Customize → Agents (`CustomizeAgentsPanel`, `/customize/agents`;
+the old `/agent-platform/agents` and the short `/agents`, with anything below
+them, redirect to the same place under it), showing 25 rows at a time; its
 search matches name, technical name, description and model.
 
 The list reads kagent **API v2** objects only (`api.kagent.dev/v1alpha3`). This
@@ -2119,7 +2122,7 @@ reads as empty. Chat reachability is the sessions side's
 
 ## The agent detail page
 
-`/agent-platform/agents/<installation>/<namespace>/<name>`; all three segments
+`/customize/agents/<installation>/<namespace>/<name>`; all three segments
 are the agent's identity.
 
 Each tab is its own URL, in a `ShellPage`:
@@ -2264,7 +2267,7 @@ need its providers.
 ### Editing an agent
 
 Editing **is the create wizard**, prefilled.
-`/agent-platform/agents/edit/<installation>/<namespace>/<name>` (`EditAgentPage`,
+`/customize/agents/<installation>/<namespace>/<name>/edit` (`EditAgentPage`,
 steps `…/skills`, `…/tools`, `…/review`) reads
 **`x_agent-manager_get_agent`**, agent-manager's availability, the commit
 capability for git-applied agents and the skill catalog, then mounts the
@@ -2371,21 +2374,22 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 
 ## The Usage tab
 
-`/agent-platform/usage` has routed tabs; `/usage` and the old `usage/mcp` and
-`usage/technical` paths redirect to Overview. `UsageScopeBar` sets the
+`/usage` has routed tabs, Overview at the bare path; an unknown view redirects
+to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
+`technical`) redirect to their view. `UsageScopeBar` sets the
 environment and the window (7, 30 or 90 days, in `?window=`,
 `lib/usageWindow.ts`).
 
-| View          | Path                  | Source                          | Whose            |
-| ------------- | --------------------- | ------------------------------- | ---------------- |
-| Overview      | `usage/overview`      | agentgateway metrics, via Mimir | everyone's       |
-| Cost          | `usage/cost`          | agentgateway metrics, via Mimir | everyone's       |
-| Your sessions | `usage/conversations` | kagent's stored conversations   | the caller's own |
+| View          | Path                   | Source                          | Whose            |
+| ------------- | ---------------------- | ------------------------------- | ---------------- |
+| Overview      | `/usage`               | agentgateway metrics, via Mimir | everyone's       |
+| Cost          | `/usage/cost`          | agentgateway metrics, via Mimir | everyone's       |
+| Your sessions | `/usage/your-sessions` | kagent's stored conversations   | the caller's own |
 
 The tabs separate _whose_ usage each view reports; a sentence in a description
-was too easy to skip. The path is `conversations`, not `sessions`, so it is not
-mistaken for `/agent-platform/sessions` in URLs and telemetry, and stays
-scope-neutral (see [It can only ever be personal](#it-can-only-ever-be-personal)).
+was too easy to skip. The path is the tab's label, `your-sessions`, so it is
+not mistaken for `/sessions`; telemetry keeps reporting it as the `conversations`
+view (see [It can only ever be personal](#it-can-only-ever-be-personal)).
 
 ### Where each number comes from
 
@@ -2662,17 +2666,18 @@ muster's Overview section resolves servers exactly from `mcpserver_name`.
 
 ### The MCP section is contributed, not imported
 
-muster attaches it with `createExtension` to `sub-page:agent-platform/usage`,
-input `sections` (declared with `SubPageBlueprint.makeWithOverrides` and
+muster attaches it with `createExtension` to `page:agent-platform/usage`,
+input `sections` (declared with `PageBlueprint.makeWithOverrides` and
 `createExtensionInput`); sections render at the bottom of Overview. This is the
-mechanism muster uses for its Connectors and Workflows tabs on
-`page:agent-platform`. An import would load muster's bundle where muster is off
-and leave nothing to disable. The id contract is commented on both ends. A
-second contributor should promote this to a blueprint exported from an `alpha`
-entry point, as in `plugins/flux-react/src/alpha/blueprints/`.
+mechanism muster uses for its Connectors and Workflows tabs on the app's
+Customize page (`page:app/agent-shell-customize`, input `pages`). An import
+would load muster's bundle where muster is off and leave nothing to disable.
+The id contract is commented on both ends. A second contributor should promote
+this to a blueprint exported from an `alpha` entry point, as in
+`plugins/flux-react/src/alpha/blueprints/`.
 
-Tab order is `AGENT_PLATFORM_TAB_ORDER` (`lib/tabOrder.ts`), because attach
-order cannot interleave two plugins' tabs; unknown tabs sort before Usage.
+The Customize page orders its tabs itself (`CUSTOMIZE_TAB_IDS`), because
+attach order cannot interleave two plugins' tabs.
 
 ### What it cannot show
 

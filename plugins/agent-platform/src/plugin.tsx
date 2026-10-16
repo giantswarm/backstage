@@ -14,9 +14,6 @@ import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
-import AndroidIcon from '@material-ui/icons/Android';
-import { orderTabs } from './lib/tabOrder';
-import { AgentPlatformPageRoutes } from './components/AgentPlatformPageRoutes';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import { AGENT_SHELL_ON } from '@giantswarm/backstage-plugin-agent-platform-common';
 
@@ -37,6 +34,7 @@ import {
   gpuCapacityRouteRef,
   importModelRouteRef,
   modelCacheRouteRef,
+  modelDetailRouteRef,
   modelEditRouteRef,
   installationsExternalRouteRef,
   modelsRouteRef,
@@ -62,72 +60,33 @@ import {
   usageConnectorsRouteRef,
   usageConversationsRouteRef,
   usageCostRouteRef,
-  usageOverviewRouteRef,
   usageRouteRef,
 } from './routes';
 
-// The Agent Platform section: the sub-pages attached here (agent-platform's
-// own and the muster plugin's "Connectors" and "Workflows") routed inside the
-// agent shell, which draws the navigation between them (its rail), so the page
-// has no header and no tab strip of its own; each sub-page titles itself.
-//
-// Shell only (`if: AGENT_SHELL_ON`): the Agent Platform exists in the agent
-// shell and nowhere else. Where the shell is not available
-// (`app.portals.agentPlatform` off and no personal opt-in) the page is not
-// mounted at all — no route, no classic sidebar item, no classic-chrome
-// rendering — so the classic portal carries nothing of the Agent Platform.
-// Where it is, `/agent-platform/**` always renders in the shell (the app's
-// layout picks the shell for the agent area) and the classic sidebar only
-// links here. The predicate is evaluated once, at app start, like the shell's
-// own extensions.
-//
-// Enabled by default, like the skills and profile pages below: `if` already
-// gates it, so `app.portals.agentPlatform` alone switches the Agent Platform
-// on, and a deployment that replaces `app.extensions` wholesale does not drop
-// it. `page:agent-platform: false` still turns it off.
-//
-// The page sorts its sub-pages by `AGENT_PLATFORM_TAB_ORDER`
-// (lib/tabOrder.ts): Sessions · Agents · Models · Connectors · Workflows ·
-// Usage. Attach order alone cannot interleave two plugins' sub-pages, and an
-// extension a deployment names in its own `app.extensions` attaches first. The
-// first one is where a bare `/agent-platform` lands.
-const agentPlatformPage = PageBlueprint.makeWithOverrides({
-  if: AGENT_SHELL_ON,
-  factory(originalFactory, { inputs }) {
-    const title = 'Agent Platform';
-    const pages = orderTabs(inputs.pages, page => page.node.spec.id);
-    return originalFactory({
-      title,
-      icon: <AndroidIcon />,
-      // eslint-disable-next-line giantswarm/no-restricted-syntax -- the section's route definition
-      path: '/agent-platform',
-      routeRef: rootRouteRef,
-      noHeader: true,
-      loader: async () => (
-        <AgentPlatformPageRoutes
-          pageTitle={title}
-          pages={pages.map(page => ({
-            path: page.get(coreExtensionData.routePath),
-            title: page.get(coreExtensionData.title),
-            element: page.get(coreExtensionData.reactElement),
-          }))}
-        />
-      ),
-    });
-  },
-});
+/**
+ * The id of the app's Customize page (`/customize`), which the Agents, Skills
+ * and Models tabs attach to — the way upstream's
+ * `catalog-unprocessed-entities` attaches to `page:devtools`, and muster's
+ * Connectors and Workflows tabs attach to the same page. The page routes each
+ * tab's bare path to its own list screen and everything deeper to the tab's
+ * router here, so these routers hold the detail, create and edit pages,
+ * never the lists. Attached in code rather than in `app.extensions`, which
+ * deployments replace wholesale.
+ */
+const CUSTOMIZE_PAGE = 'page:app/agent-shell-customize';
 
-// The "Agents" tab. Its content is the agent list, one agent's details
-// (`/agent-platform/agents/<installation>/<namespace>/<name>`) and the create
-// flow (`/agent-platform/agents/new`, `.../new/skills`, `.../new/tools` and
-// `.../new/review`),
-// all driven by an internal react-router in AgentsRouter.
+// The Customize screen's "Agents" tab. Its content is one agent's page
+// (`/customize/agents/<installation>/<namespace>/<name>`), its edit
+// (`…/<name>/edit`) and the create flow (`/customize/agents/new`,
+// `…/new/skills`, `…/new/tools` and `…/new/review`), all driven by an
+// internal react-router in AgentsRouter.
 //
-// Wrapped, like the Sessions tab, in the backend's cookie auth: both render
+// Wrapped, like the Sessions page, in the backend's cookie auth: both render
 // agent avatars, `<img>` loads through the agent-platform backend that the
 // browser's user cookie authenticates (see AgentPlatformCookieAuth).
 const agentsSubPage = SubPageBlueprint.make({
   name: 'agents',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
   params: {
     path: 'agents',
     title: 'Agents',
@@ -148,105 +107,29 @@ const agentsSubPage = SubPageBlueprint.make({
   },
 });
 
-// `/agents` (and `/agents/*`): the short path people, briefs and old links use
-// for the Agents tab, redirected to the same place under it (AgentsRedirect).
-// A plain route on the app's router rather than a PageBlueprint, which would
-// wrap the redirect in a page header. Enabled by default, unlike the section:
-// where the section is disabled the redirect has no target and `/agents`
-// stays the not-found page.
-const agentsRedirectPage = createExtension({
-  kind: 'page',
-  name: 'agents-redirect',
-  attachTo: { id: 'app/routes', input: 'routes' },
-  output: [coreExtensionData.routePath, coreExtensionData.reactElement],
-  factory({ node }) {
-    return [
-      coreExtensionData.routePath('/agents'),
-      coreExtensionData.reactElement(
-        ExtensionBoundary.lazy(node, async () => {
-          const { AgentsRedirect } =
-            await import('./components/AgentsRedirect');
-          return <AgentsRedirect />;
-        }),
-      ),
-    ];
-  },
-});
-
-// The "Sessions" tab. Read-only list of the signed-in user's kagent chat
-// sessions across the fleet, via the agent-platform-backend kagent proxy.
-//
-// The first tab (see `agentPlatformPage`), and the first tab is what a bare
-// `/agent-platform` lands on: the section is opened to pick a conversation
-// back up far more often than to look at the fleet's agents. Moving it also moves that landing page, so
-// `getTelemetryPageViewPayload` names the bare path "Sessions index".
-const sessionsSubPage = SubPageBlueprint.make({
-  name: 'sessions',
+// The Customize screen's "Skills" tab: one skill's page
+// (`/customize/skills/<owner>/<repo>[/<dir>]`), its edit and the add form.
+const skillsSubPage = SubPageBlueprint.make({
+  name: 'skills',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
   params: {
-    path: 'sessions',
-    title: 'Sessions',
-    routeRef: sessionsRouteRef,
+    path: 'skills',
+    title: 'Skills',
+    routeRef: skillsRouteRef,
     loader: async () => {
-      const [{ SessionsRouter }, { AgentPlatformCookieAuth }] =
-        await Promise.all([
-          import('./components/SessionsRouter'),
-          import('./components/AgentPlatformCookieAuth'),
-        ]);
-      return (
-        <AgentPlatformCookieAuth>
-          <SessionsRouter />
-        </AgentPlatformCookieAuth>
-      );
+      const { SkillsRouter } = await import('./components/SkillsRouter');
+      return <SkillsRouter />;
     },
   },
 });
 
-// The "Usage" tab: an Overview of the platform's health and headline trends
-// (every caller), the Cost view (every caller's money), the Connectors view
-// (every caller's tool calls to the connectors, from muster's Prometheus
-// metrics, contributed by the muster plugin through the `sections` input
-// below), and your own agent usage (personal, derived from kagent's stored
-// conversations).
-//
-// The last tab of the row, after muster's MCP Servers and Workflows (see
-// `agentPlatformPage`).
-//
-// `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
-// list/tree filter inputs — so muster can attach its section by node id
-// (`sub-page:agent-platform/usage`, input `sections`) without either plugin
-// depending on the other, exactly as it already attaches its "MCP Servers" tab
-// to `page:agent-platform`. An empty `sections` (muster not registered) means
-// no Connectors view is offered.
-const usageSubPage = SubPageBlueprint.makeWithOverrides({
-  name: 'usage',
-  inputs: {
-    sections: createExtensionInput([coreExtensionData.reactElement]),
-  },
-  factory(originalFactory, { inputs }) {
-    return originalFactory({
-      path: 'usage',
-      title: 'Usage',
-      routeRef: usageRouteRef,
-      loader: async () => {
-        const { UsageRouter } = await import('./components/UsageRouter');
-        // Passed as the array rather than wrapped in a fragment: the router
-        // has to know whether anything was contributed at all, so it offers
-        // the Connectors view only when something was.
-        const sections = inputs.sections.map(section =>
-          section.get(coreExtensionData.reactElement),
-        );
-        return <UsageRouter sections={sections} />;
-      },
-    });
-  },
-});
-
-// The "Models" tab: the kagent ModelConfigs agents run on — list, create,
-// edit, delete — and the serving layer beneath them, as a second-level tab row
-// (Model configs, Serving, GPU capacity) driven by ModelsRouter. A
-// platform-admin capability, placed after the tabs everyone uses.
+// The Customize screen's "Models" tab: one model's page
+// (`/customize/models/<installation>/<namespace>/<name>`), its edit, the
+// create flow and Model hosting (`/customize/models/hosting/…`), the serving
+// layer beneath the models, driven by ModelsRouter.
 const modelsSubPage = SubPageBlueprint.make({
   name: 'models',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
   params: {
     path: 'models',
     title: 'Models',
@@ -258,44 +141,108 @@ const modelsSubPage = SubPageBlueprint.make({
   },
 });
 
-// One skill's detail page (`/agent-platform/skills/<owner>/<repo>[/<dir>]`),
-// linked from the shell's Customize → Skills tab the way a connector row links
-// to `/agent-platform/connectors/<name>`. The bare path redirects there.
+// The rail's Sessions (`/sessions`): the signed-in user's kagent chat sessions
+// across the fleet, via the agent-platform-backend kagent proxy, and one
+// session's page.
 //
-// Enabled by default on purpose, like muster's mcp-servers redirect page:
-// deployments replace `app.extensions` wholesale, so an opt-in entry would
-// silently drop the page. Shell only, like the section itself (see
-// `agentPlatformPage`): without the shell it is not routed.
-const skillsPage = PageBlueprint.make({
-  name: 'skills',
+// Shell only (`if: AGENT_SHELL_ON`), like every page of the Agent Platform:
+// it exists in the agent shell and nowhere else. Where the shell is not
+// available (`app.portals.agentPlatform` off and no personal opt-in) the page
+// is not mounted at all — no route, no classic-chrome rendering — so the
+// classic portal carries nothing of the Agent Platform. The predicate is
+// evaluated once, at app start, like the shell's own extensions.
+//
+// Enabled by default, like every page here: `if` already gates it, and an
+// opt-in entry would be silently dropped by a deployment that replaces
+// `app.extensions` wholesale.
+const sessionsPage = PageBlueprint.make({
+  name: 'sessions',
   if: AGENT_SHELL_ON,
   params: {
-    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the skill pages' route definition
-    path: '/agent-platform/skills',
-    routeRef: skillsRouteRef,
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the Sessions page's route definition
+    path: '/sessions',
+    routeRef: sessionsRouteRef,
     noHeader: true,
     loader: async () => {
-      const { SkillsRouter } = await import('./components/SkillsRouter');
-      return <SkillsRouter />;
+      const [
+        { SessionsRouter },
+        { AgentPlatformCookieAuth },
+        { ShellPageRoot },
+      ] = await Promise.all([
+        import('./components/SessionsRouter'),
+        import('./components/AgentPlatformCookieAuth'),
+        import('./components/ShellPageRoot'),
+      ]);
+      return (
+        <ShellPageRoot title="Sessions">
+          <AgentPlatformCookieAuth>
+            <SessionsRouter />
+          </AgentPlatformCookieAuth>
+        </ShellPageRoot>
+      );
     },
   },
 });
 
-// The shell's minimal "Profile and settings" page (`/agent-platform/profile`):
-// who is signed in, the installations the portal talks to, and Sign out — the
-// rail's profile menu links here, so it no longer jumps into the classic
-// Settings chrome. The classic `/settings` remains reachable through the
-// page's explicit "All portal settings" link.
+// The rail's Usage (`/usage`): an Overview of the platform's health and
+// headline trends (every caller, the bare path), the Cost view (every
+// caller's money), the Connectors view (every caller's tool calls to the
+// connectors, from muster's Prometheus metrics, contributed by the muster
+// plugin through the `sections` input below), and your own agent usage
+// (personal, derived from kagent's stored conversations).
 //
-// Enabled by default for the same reason as `skillsPage` above: deployments
-// replace `app.extensions` wholesale, and an opt-in entry would silently drop
-// the page the shell's profile menu links to. Shell only, like `skillsPage`.
+// `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
+// list/tree filter inputs — so muster can attach its section by node id
+// (`page:agent-platform/usage`, input `sections`) without either plugin
+// depending on the other, exactly as it attaches its Connectors tab to the
+// Customize page. An empty `sections` (muster not registered) means no
+// Connectors view is offered. Shell only and enabled by default, like
+// `sessionsPage`.
+const usagePage = PageBlueprint.makeWithOverrides({
+  name: 'usage',
+  if: AGENT_SHELL_ON,
+  inputs: {
+    sections: createExtensionInput([coreExtensionData.reactElement]),
+  },
+  factory(originalFactory, { inputs }) {
+    return originalFactory({
+      // eslint-disable-next-line giantswarm/no-restricted-syntax -- the Usage page's route definition
+      path: '/usage',
+      routeRef: usageRouteRef,
+      noHeader: true,
+      loader: async () => {
+        const [{ UsageRouter }, { ShellPageRoot }] = await Promise.all([
+          import('./components/UsageRouter'),
+          import('./components/ShellPageRoot'),
+        ]);
+        // Passed as the array rather than wrapped in a fragment: the router
+        // has to know whether anything was contributed at all, so it offers
+        // the Connectors view only when something was.
+        const sections = inputs.sections.map(section =>
+          section.get(coreExtensionData.reactElement),
+        );
+        return (
+          <ShellPageRoot title="Usage">
+            <UsageRouter sections={sections} />
+          </ShellPageRoot>
+        );
+      },
+    });
+  },
+});
+
+// The shell's minimal "Profile and settings" page (`/profile`): who is signed
+// in, the installations the portal talks to, and Sign out — the rail's
+// profile menu links here, so it no longer jumps into the classic Settings
+// chrome. The classic `/settings` remains reachable through the page's
+// explicit "All portal settings" link. Shell only and enabled by default,
+// like `sessionsPage`.
 const profilePage = PageBlueprint.make({
   name: 'profile',
   if: AGENT_SHELL_ON,
   params: {
     // eslint-disable-next-line giantswarm/no-restricted-syntax -- the profile page's route definition
-    path: '/agent-platform/profile',
+    path: '/profile',
     routeRef: profileRouteRef,
     noHeader: true,
     loader: async () => {
@@ -450,14 +397,12 @@ const workflowEditAssist = createExtension({
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
   extensions: [
-    agentPlatformPage,
-    sessionsSubPage,
-    agentsSubPage,
-    agentsRedirectPage,
-    modelsSubPage,
-    skillsPage,
+    sessionsPage,
+    usagePage,
     profilePage,
-    usageSubPage,
+    agentsSubPage,
+    skillsSubPage,
+    modelsSubPage,
     createClusterAction,
     deleteClusterAction,
     connectorUsedBy,
@@ -480,12 +425,12 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newSkill: newSkillRouteRef,
     profile: profileRouteRef,
     usage: usageRouteRef,
-    usageOverview: usageOverviewRouteRef,
     usageCost: usageCostRouteRef,
     usageConversations: usageConversationsRouteRef,
     usageConnectors: usageConnectorsRouteRef,
     models: modelsRouteRef,
     newModel: newModelRouteRef,
+    modelDetail: modelDetailRouteRef,
     modelEdit: modelEditRouteRef,
     serving: servingRouteRef,
     serveModel: serveModelRouteRef,

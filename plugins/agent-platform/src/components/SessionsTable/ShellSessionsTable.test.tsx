@@ -135,7 +135,7 @@ async function renderShell(
   sessionRows: SessionRow[] = rows,
   sessionStates: FleetSessionStatesView = states,
   storage: StorageApi = mockApis.storage(),
-  path = '/agent-platform/sessions',
+  path = '/sessions',
 ) {
   return renderInTestApp(
     <SessionsTable
@@ -146,7 +146,7 @@ async function renderShell(
     {
       apis: [[storageApiRef, storage]],
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      mountedRoutes: { '/sessions': sessionsRouteRef },
     },
   );
 }
@@ -406,7 +406,7 @@ describe('SessionsTable in the shell layout', () => {
       rows,
       states,
       mockApis.storage(),
-      '/agent-platform/sessions?state=waiting',
+      '/sessions?state=waiting',
     );
 
     expect(dropdown('state')).toHaveTextContent('Waiting for you');
@@ -421,7 +421,7 @@ describe('SessionsTable in the shell layout', () => {
       filterable,
       states,
       mockApis.storage(),
-      '/agent-platform/sessions?q=release',
+      '/sessions?q=release',
     );
 
     expect(
@@ -438,7 +438,7 @@ describe('SessionsTable in the shell layout', () => {
       filterable,
       states,
       mockApis.storage(),
-      '/agent-platform/sessions?state=bogus',
+      '/sessions?state=bogus',
     );
 
     expect(dropdown('state')).toHaveTextContent('StateAll');
@@ -802,7 +802,7 @@ describe('SessionsTable in the shell layout', () => {
 
     it('moves focus to the next row', async () => {
       await renderInTestApp(<DeletingList initial={rows} />, {
-        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        mountedRoutes: { '/sessions': sessionsRouteRef },
       });
 
       await deleteRow('Release notes');
@@ -819,7 +819,7 @@ describe('SessionsTable in the shell layout', () => {
 
     it('moves focus to the row before when the last row goes', async () => {
       await renderInTestApp(<DeletingList initial={rows} />, {
-        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        mountedRoutes: { '/sessions': sessionsRouteRef },
       });
 
       await deleteRow('Untimed');
@@ -843,9 +843,7 @@ describe('SessionsTable in the shell layout', () => {
         'Release Writer',
       ),
     );
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/b',
-    );
+    expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/b');
   });
 
   describe('at phone width (T22 B1)', () => {
@@ -879,7 +877,7 @@ describe('SessionsTable in the shell layout', () => {
       const today = dayList('Today');
       expect(
         within(today).getByRole('link', { name: 'Triage this week' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions/gazelle/a');
+      ).toHaveAttribute('href', '/sessions/gazelle/a');
       const row = within(today).getByRole('listitem');
       expect(within(row).getByText('Support Triage')).toBeInTheDocument();
       expect(within(row).getByText('Waiting for you')).toBeInTheDocument();

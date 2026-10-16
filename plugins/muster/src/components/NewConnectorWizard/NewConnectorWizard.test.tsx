@@ -21,6 +21,13 @@ jest.setTimeout(30_000);
 /** Registered servers of the active installation, per test. */
 let mockMcpServers: MCPServer[] = [];
 
+// The muster providers, whose instance the mock below stands for.
+jest.mock('../MusterSubPage', () => ({
+  MusterSubPage: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
     installations: ['gazelle'],
@@ -80,7 +87,7 @@ function renderWizard(path: string) {
         <PageHeaderActionsProvider>
           <Routes>
             <Route
-              path="/agent-platform/connectors/*"
+              path="/customize/connectors/*"
               element={<McpServersRouter />}
             />
           </Routes>
@@ -89,14 +96,14 @@ function renderWizard(path: string) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+      mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
     },
   );
 }
 
 /** Fills the Connect step and continues to Sign-in. */
 async function renderSignInStep() {
-  const result = await renderWizard('/agent-platform/connectors/new');
+  const result = await renderWizard('/customize/connectors/new');
   await userEvent.type(
     screen.getByLabelText(/^Server address/),
     'https://jira.example.com/mcp',
@@ -130,7 +137,7 @@ describe('shell connector wizard', () => {
 
   describe('Connect step', () => {
     it('renders the in-content wizard frame with the three steps', async () => {
-      await renderWizard('/agent-platform/connectors/new');
+      await renderWizard('/customize/connectors/new');
 
       expect(
         screen.getByRole('heading', { level: 1, name: 'Add connector' }),
@@ -148,7 +155,7 @@ describe('shell connector wizard', () => {
     });
 
     it('marks the invalid fields themselves on Continue instead of moving on', async () => {
-      await renderWizard('/agent-platform/connectors/new');
+      await renderWizard('/customize/connectors/new');
 
       await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
@@ -176,7 +183,7 @@ describe('shell connector wizard', () => {
     // Live round L5: the field is labelled "Server address", so its problems
     // say so — not the validator's "URL".
     it('words the address problems after the field label', async () => {
-      await renderWizard('/agent-platform/connectors/new');
+      await renderWizard('/customize/connectors/new');
 
       await userEvent.type(
         screen.getByLabelText(/^Server address/),
@@ -192,7 +199,7 @@ describe('shell connector wizard', () => {
     });
 
     it('checks the address when the person leaves it, and clears the error once it is fixed', async () => {
-      await renderWizard('/agent-platform/connectors/new');
+      await renderWizard('/customize/connectors/new');
       const address = screen.getByLabelText(/^Server address/);
 
       await userEvent.type(address, 'mcp.example.com');
@@ -220,7 +227,7 @@ describe('shell connector wizard', () => {
           serverName: 'Jira MCP',
         },
       };
-      await renderWizard('/agent-platform/connectors/new');
+      await renderWizard('/customize/connectors/new');
       await userEvent.type(
         screen.getByLabelText(/^Server address/),
         'https://jira.example.com/mcp',
@@ -243,7 +250,7 @@ describe('shell connector wizard', () => {
           requiresAuth: false,
         },
       };
-      await renderWizard('/agent-platform/connectors/new');
+      await renderWizard('/customize/connectors/new');
       await userEvent.type(
         screen.getByLabelText(/^Server address/),
         'https://jira.example.com/mcp',
@@ -256,7 +263,7 @@ describe('shell connector wizard', () => {
     });
 
     it('sends a sign-in deep link back while the connection details are incomplete', async () => {
-      await renderWizard('/agent-platform/connectors/new/auth');
+      await renderWizard('/customize/connectors/new/auth');
 
       expect(await screen.findByText('Connect an app')).toBeInTheDocument();
       expect(
@@ -576,7 +583,7 @@ describe('shell connector wizard', () => {
     });
 
     it('opens the same wizard pre-filled, titled as an edit of the connector', async () => {
-      await renderWizard('/agent-platform/connectors/new?edit=jira');
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
 
       expect(
         await screen.findByRole('heading', {
@@ -609,7 +616,7 @@ describe('shell connector wizard', () => {
       // Leaving goes back to the connector's page, where Edit was pressed.
       expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
         'href',
-        '/agent-platform/connectors/jira?installation=gazelle',
+        '/customize/connectors/gazelle/jira',
       );
     });
 
@@ -619,7 +626,7 @@ describe('shell connector wizard', () => {
         'ui.giantswarm.io/display-name': 'Acme Jira',
       };
       mockMcpServers = [server];
-      await renderWizard('/agent-platform/connectors/new?edit=jira');
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
 
       expect(
         await screen.findByText('Customize / Connectors / Acme Jira'),
@@ -634,7 +641,7 @@ describe('shell connector wizard', () => {
     });
 
     it('marks the invalid fields themselves on Continue, as when adding', async () => {
-      await renderWizard('/agent-platform/connectors/new?edit=jira');
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
 
       const address = await screen.findByLabelText(/^Server address/);
       await userEvent.clear(address);
@@ -651,7 +658,7 @@ describe('shell connector wizard', () => {
     });
 
     it('saves the changes as an update of the connector, never a second one', async () => {
-      await renderWizard('/agent-platform/connectors/new?edit=jira');
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
 
       const address = await screen.findByLabelText(/^Server address/);
       await userEvent.clear(address);
@@ -687,17 +694,17 @@ describe('shell connector wizard', () => {
       expect(toolCalls('core_mcpserver_create')).toEqual([]);
       expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
         'href',
-        '/agent-platform/connectors/jira?installation=gazelle',
+        '/customize/connectors/gazelle/jira',
       );
     });
   });
 
   it('closes a new registration to the connectors list', async () => {
-    await renderWizard('/agent-platform/connectors/new');
+    await renderWizard('/customize/connectors/new');
 
     expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
       'href',
-      '/agent-platform/connectors',
+      '/customize/connectors',
     );
   });
 });

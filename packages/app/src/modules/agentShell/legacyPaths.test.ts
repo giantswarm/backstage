@@ -1,4 +1,7 @@
-import { legacyAgentPlatformTarget } from './legacyPaths';
+import {
+  legacyAgentPlatformTarget,
+  legacyTargetNeedsInstallation,
+} from './legacyPaths';
 
 /**
  * Where `address` (path and query) redirects to, as one string, or undefined
@@ -319,7 +322,7 @@ describe('legacyAgentPlatformTarget: the inventory', () => {
       ],
       ['/agent-platform/usage/overview?window=7d', '/usage?window=7d'],
       ['/agent-platform/usage/cost?window=90d', '/usage/cost?window=90d'],
-      ['/agent-platform/usage/conversations', '/usage/conversations'],
+      ['/agent-platform/usage/conversations', '/usage/your-sessions'],
       ['/agent-platform/usage/connectors', '/usage/connectors'],
       ['/agent-platform/usage/mcp', '/usage/connectors'],
       ['/agent-platform/usage/technical', '/usage'],
@@ -583,6 +586,52 @@ describe('legacyAgentPlatformTarget: addresses', () => {
     expect(targetOf('/agent-platform/workflows/deploy-app?installation=')).toBe(
       '/customize/workflows/home/deploy-app',
     );
+  });
+
+  // No default installation (no installation runs muster): a page or an
+  // edit whose link named none cannot be addressed, so it lands on its list
+  // rather than on an address with a segment missing.
+  it.each<Row>([
+    [
+      '/agent-platform/connectors/jira/tools/foo?q=x',
+      '/customize/connectors?q=x',
+    ],
+    ['/agent-platform/connectors/jira', '/customize/connectors'],
+    ['/agent-platform/connectors/new?edit=jira', '/customize/connectors'],
+    ['/agent-platform/connectors/new', '/customize/connectors/new'],
+    ['/agent-platform/workflows/deploy/run', '/customize/workflows'],
+    [
+      '/agent-platform/workflows/deploy/run?installation=golem',
+      '/customize/workflows/golem/deploy/run',
+    ],
+  ])('without a default installation, sends %s to %s', (old, target) => {
+    const [pathname, query] = old.split('?');
+    const result = legacyAgentPlatformTarget(
+      pathname,
+      query === undefined ? '' : `?${query}`,
+    );
+    expect(result && `${result.pathname}${result.search}`).toBe(target);
+  });
+
+  it.each<[string, boolean]>([
+    ['/agent-platform/connectors/jira', true],
+    ['/agent-platform/connectors/jira/tools/foo', true],
+    ['/agent-platform/connectors/new?edit=jira', true],
+    ['/agent-platform/workflows/deploy', true],
+    ['/agent-platform/connectors/jira?installation=golem', false],
+    ['/agent-platform/connectors', false],
+    ['/agent-platform/connectors/new', false],
+    ['/agent-platform/workflows', false],
+    ['/agent-platform/sessions', false],
+    ['/agents/new', false],
+  ])('says whether %s needs the default installation: %s', (old, needs) => {
+    const [pathname, query] = old.split('?');
+    expect(
+      legacyTargetNeedsInstallation(
+        pathname,
+        query === undefined ? '' : `?${query}`,
+      ),
+    ).toBe(needs);
   });
 
   it('leaves the hash to the caller', () => {

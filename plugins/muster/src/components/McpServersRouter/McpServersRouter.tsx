@@ -1,9 +1,7 @@
 import type { ReactElement } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newMcpServerAuthRouteRef } from '../../routes';
 import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
 import { NewMcpServerEditGate } from '../NewMcpServerEditGate';
 import {
@@ -12,37 +10,85 @@ import {
   NewConnectorTestPage,
 } from '../NewConnectorWizard';
 import { ConnectorPage } from '../ConnectorPage';
-import { CustomizeTabRedirect } from '../CustomizeTabRedirect';
+import { MusterSubPage } from '../MusterSubPage';
+import { RouteRefRedirect } from '../RouteRefRedirect';
+import { mcpServersRouteRef } from '../../routes';
 import { ToolPage } from '../ToolPage';
 
-/**
- * The wizard has no review step — step 2's "Add connector" registers
- * directly — so the old review address sends to the Sign-in step, keeping
- * old links (and an in-flight edit's `?edit=`) working.
- */
-const ShellReviewRedirect = () => {
-  const signInLink = useRouteRef(newMcpServerAuthRouteRef);
-  const { search } = useLocation();
-  return (
-    <Navigate
-      to={signInLink ? { pathname: signInLink(), search } : '..'}
-      replace
+const CONTEXT =
+  'The connectors of an environment are read through its Kubernetes API.';
+
+/** An unknown address under the tab: the nearest valid parent, the list. */
+const listRedirect = <RouteRefRedirect routeRef={mcpServersRouteRef} />;
+
+/** The wizard's steps, for a new connector or (`edit`) a registered one. */
+const wizardSteps = (
+  <>
+    {/* The prototype's three-step wizard (Connect / Sign-in / Test). */}
+    <Route
+      index
+      element={
+        <NewMcpServerEditGate step="connect">
+          <NewConnectorConnectPage />
+        </NewMcpServerEditGate>
+      }
     />
-  );
-};
+    <Route
+      path="auth"
+      element={
+        <NewMcpServerEditGate step="auth">
+          <NewConnectorSignInPage />
+        </NewMcpServerEditGate>
+      }
+    />
+    <Route
+      path="verify"
+      element={
+        <NewMcpServerEditGate step="verify">
+          <NewConnectorTestPage />
+        </NewMcpServerEditGate>
+      }
+    />
+    {/* An unknown step: the wizard's first, its nearest valid parent. */}
+    <Route path="*" element={<Navigate to="." replace />} />
+  </>
+);
 
 /**
- * Routing within the Agent Platform's Connectors sub-page: a page per
- * connector (and per tool beneath it) and the registration wizard's steps.
- * The list itself is the Customize screen's Connectors tab, so the index sends
- * there. The wizard's static `new` segments outrank `:server`. The steps are
- * sub-routes sharing one NewMcpServerFormProvider so the composed definition
- * survives navigation across `/agent-platform/connectors/new` and its step
- * sub-routes — the same shape as agent creation's AgentsRouter. Mounted inside
- * MusterProviders by the sub-page, so the wizard shares its active
- * installation. Editing a registered connector runs through the same steps
- * with `?edit=<name>` (see NewMcpServerEditGate), so the routes — and their
- * telemetry page names — are the same for both.
+ * Everything under `<installation>/`: a connector's page, a tool's page
+ * beneath it and the connector's edit, inside the muster providers pinned to
+ * that installation, so each reads its connector there whatever the
+ * section's scope.
+ */
+function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
+  const { installation = '' } = useParams();
+  return (
+    <MusterSubPage context={CONTEXT} installation={installation}>
+      <Routes>
+        <Route path=":server/tools/:tool" element={<ToolPage />} />
+        <Route path=":server/edit/*">{wizardSteps}</Route>
+        <Route path=":server/*" element={<ConnectorPage usedBy={usedBy} />} />
+        {/* An installation alone names no page. */}
+        <Route path="*" element={listRedirect} />
+      </Routes>
+    </MusterSubPage>
+  );
+}
+
+/**
+ * Routing within the Customize screen's Connectors tab (`/customize/connectors`,
+ * whose bare path and sub-tabs are the Customize screen's own): a page per
+ * connector at `<installation>/<server>` (and per tool beneath it), the
+ * registration wizard at `new[/auth|/verify]` and a connector's edit, the same
+ * wizard prefilled, at `<installation>/<server>/edit[/auth|/verify]`. The
+ * static `new` outranks an installation, so `new` is a reserved word here.
+ *
+ * Both wizards share one NewMcpServerFormProvider, above the muster
+ * providers, so the composed definition survives navigation across the steps
+ * — and a registration that becomes an edit once saved (the browser's Back
+ * from Test) keeps it. The registration's steps sit in the providers that
+ * follow the section's scope, where the connector is created; everything
+ * under an installation in providers pinned to it.
  *
  * A connector's route renders the connector page, whose Used by tab is the
  * `usedBy` element another plugin attaches.
@@ -54,35 +100,19 @@ export const McpServersRouter = ({ usedBy }: { usedBy?: ReactElement }) => {
     // The wizard leads with Company login, as the design does.
     <NewMcpServerFormProvider initialAuthMode="platform-sso">
       <Routes>
-        <Route index element={<CustomizeTabRedirect tab="connectors" />} />
-        {/* The prototype's three-step wizard (Connect / Sign-in / Test). */}
         <Route
-          path="new"
+          path="new/*"
           element={
-            <NewMcpServerEditGate>
-              <NewConnectorConnectPage />
-            </NewMcpServerEditGate>
+            <MusterSubPage context={CONTEXT}>
+              <Routes>{wizardSteps}</Routes>
+            </MusterSubPage>
           }
         />
         <Route
-          path="new/auth"
-          element={
-            <NewMcpServerEditGate>
-              <NewConnectorSignInPage />
-            </NewMcpServerEditGate>
-          }
+          path=":installation/*"
+          element={<InstallationRoutes usedBy={usedBy} />}
         />
-        <Route path="new/review" element={<ShellReviewRedirect />} />
-        <Route
-          path="new/verify"
-          element={
-            <NewMcpServerEditGate>
-              <NewConnectorTestPage />
-            </NewMcpServerEditGate>
-          }
-        />
-        <Route path=":server/tools/:tool" element={<ToolPage />} />
-        <Route path=":server/*" element={<ConnectorPage usedBy={usedBy} />} />
+        <Route path="*" element={listRedirect} />
       </Routes>
     </NewMcpServerFormProvider>
   );

@@ -19,7 +19,7 @@ const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useLocation: () => ({
-    pathname: '/agent-platform/agents/gazelle/kagent/pr-reviewer',
+    pathname: '/customize/agents/gazelle/kagent/pr-reviewer',
     search: '',
     state: mockLocationState,
   }),
@@ -106,7 +106,7 @@ describe('AgentCreationProgress', () => {
     // The router state is consumed once so a Back navigation does not replay it.
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
-        pathname: '/agent-platform/agents/gazelle/kagent/pr-reviewer',
+        pathname: '/customize/agents/gazelle/kagent/pr-reviewer',
       }),
       expect.objectContaining({ replace: true }),
     );

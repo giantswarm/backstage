@@ -56,7 +56,7 @@ async function dropInventoryCacheOnNextLoad(page: Page): Promise<void> {
  * confirm is cancelled, and a DELETE would fail the test.
  */
 
-const SERVING = '/agent-platform/models/serving';
+const SERVING = '/customize/models/hosting';
 const NAME = 'qwen3-4b-instruct';
 const NAMESPACE = 'model-serving';
 const MODEL = 'Qwen/Qwen3-4B-Instruct-2507';

@@ -12,7 +12,6 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { withInstallationQuery } from '@giantswarm/backstage-plugin-muster';
 import { ButtonIcon, Dialog, DialogHeader, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import SearchIcon from '@material-ui/icons/Search';
@@ -470,11 +469,10 @@ function PaletteDialog({
           id: `connector:${connector.installation}/${connector.page}`,
           title: connector.displayName,
           meta: connector.installation,
-          href:
-            withInstallationQuery(
-              serverRoute({ server: connector.page }),
-              connector.installation,
-            ) ?? '',
+          href: serverRoute({
+            installation: connector.installation,
+            server: connector.page,
+          }),
           haystack: [connector.displayName, connector.page],
         }))
       : [];
@@ -500,11 +498,10 @@ function PaletteDialog({
           title: workflow.name,
           description: workflow.description,
           meta: workflow.installation,
-          href:
-            withInstallationQuery(
-              workflowDetailRoute({ name: workflow.name }),
-              workflow.installation,
-            ) ?? '',
+          href: workflowDetailRoute({
+            installation: workflow.installation,
+            name: workflow.name,
+          }),
           haystack: [workflow.name, workflow.description],
         }))
       : [];

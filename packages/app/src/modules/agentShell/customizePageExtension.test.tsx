@@ -1,4 +1,11 @@
-import { FeatureFlagState } from '@backstage/frontend-plugin-api';
+import {
+  createFrontendPlugin,
+  createRouteRef as createTabRouteRef,
+  createSubRouteRef,
+  FeatureFlagState,
+  SubPageBlueprint,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import { navModule } from '../nav';
@@ -18,7 +25,6 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         agents: createRouteRef(),
         skills: createRouteRef(),
         models: createRouteRef(),
-        root: createRouteRef(),
         profile: createRouteRef(),
       },
     },
@@ -48,14 +54,65 @@ jest.mock('@backstage/plugin-user-settings', () => ({
   Settings: () => null,
 }));
 
+// The page, reduced to what this extension hands it: each attached sub-page
+// routed below its path.
 jest.mock('./CustomizePage', () => ({
-  CustomizePage: () => <div data-testid="customize-page" />,
+  CustomizePage: ({
+    pages = [],
+  }: {
+    pages?: { path: string; element: JSX.Element }[];
+  }) => {
+    const { Route, Routes } = jest.requireActual('react-router-dom');
+    return (
+      <div data-testid="customize-page">
+        <Routes>
+          {pages.map(page => (
+            <Route
+              key={page.path}
+              path={`${page.path}/*`}
+              element={page.element}
+            />
+          ))}
+          <Route path="*" element={null} />
+        </Routes>
+      </div>
+    );
+  },
 }));
 
-function renderCustomize(flag: FeatureFlagState) {
+// A plugin's tab, attached to the Customize page by its id, as
+// agent-platform's and muster's are.
+const gadgetsRouteRef = createTabRouteRef();
+const gadgetRouteRef = createSubRouteRef({
+  path: '/:name',
+  parent: gadgetsRouteRef,
+});
+
+function Gadgets() {
+  const gadget = useRouteRef(gadgetRouteRef);
+  return <p>{`Gadgets sub-page, linking ${gadget?.({ name: 'g1' })}`}</p>;
+}
+
+const gadgetsPlugin = createFrontendPlugin({
+  pluginId: 'gadgets',
+  extensions: [
+    SubPageBlueprint.make({
+      name: 'gadgets',
+      attachTo: { id: 'page:app/agent-shell-customize', input: 'pages' },
+      params: {
+        path: 'gadgets',
+        title: 'Gadgets',
+        routeRef: gadgetsRouteRef,
+        loader: async () => <Gadgets />,
+      },
+    }),
+  ],
+});
+
+function renderCustomize(flag: FeatureFlagState, path = '/customize') {
   return renderTestApp({
-    features: [navModule, agentShellModule],
-    initialRouteEntries: ['/customize'],
+    features: [navModule, agentShellModule, gadgetsPlugin],
+    initialRouteEntries: [path],
     apis: [
       mockApis.featureFlags({ initialStates: { [AGENT_SHELL_FLAG]: flag } }),
     ],
@@ -74,6 +131,31 @@ describe('the page at /customize', () => {
       'href',
       '/customize',
     );
+  });
+
+  it("routes an attached tab's pages below its path, its route refs resolving there", async () => {
+    renderCustomize(FeatureFlagState.Active, '/customize/gadgets/g1');
+
+    expect(
+      await screen.findByText(
+        'Gadgets sub-page, linking /customize/gadgets/g1',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('customize-page')).toContainElement(
+      screen.getByText(/^Gadgets sub-page/),
+    );
+  });
+
+  it('says so when an attached sub-page names no tab', async () => {
+    // `gadgets` is no Customize tab: the real page leaves it unrouted.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    renderCustomize(FeatureFlagState.Active);
+
+    await screen.findByTestId('customize-page');
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('sub-page:gadgets/gadgets (path "gadgets")'),
+    );
+    warn.mockRestore();
   });
 
   it('is not found while the flag is off', async () => {

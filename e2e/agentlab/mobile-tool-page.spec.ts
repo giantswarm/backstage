@@ -15,13 +15,14 @@ import { lab } from './lab';
  * family.
  */
 
-const scope = `?installation=${lab.installation}`;
+/** The lab installation's connector pages. */
+const connectors = `/customize/connectors/${lab.installation}`;
 
 test("a connector's tools are rows that open a page of their own, where a tool runs, the page never scrolling sideways", async ({
   admin,
 }) => {
   test.setTimeout(120_000);
-  await open(admin, `/agent-platform/connectors/kubernetes${scope}`);
+  await open(admin, `${connectors}/kubernetes`);
   const list = admin.getByRole('list', { name: 'Tools', exact: true });
   await connectToMuster(admin, list);
   await expect(
@@ -29,10 +30,7 @@ test("a connector's tools are rows that open a page of their own, where a tool r
   ).toBeVisible({ timeout: 60_000 });
   await expectNoHorizontalScroll(admin, "a connector's Tools tab");
 
-  await open(
-    admin,
-    `/agent-platform/connectors/muster/tools/core_mcpserver_list${scope}`,
-  );
+  await open(admin, `${connectors}/muster/tools/core_mcpserver_list`);
   await expect(
     admin.getByRole('heading', { level: 1, name: 'mcpserver_list' }),
   ).toBeVisible();

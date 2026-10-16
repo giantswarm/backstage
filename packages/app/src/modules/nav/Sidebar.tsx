@@ -14,13 +14,13 @@ import {
   NavContentComponentProps,
 } from '@backstage/plugin-app-react';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
-import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import type { Portals } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { useLocation } from 'react-router-dom';
 import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
 import { AgentShellNav } from '../agentShell/AgentShellNav';
 import { isAgentArea, usePortals } from '../agentShell/agentArea';
+import { homeRouteRef } from '../agentShell/routes';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import AndroidIcon from '@material-ui/icons/Android';
 import FolderIcon from '@material-ui/icons/Folder';
@@ -98,7 +98,9 @@ function CreateSidebarItem({ fallback }: { fallback?: string }) {
  * section's root route; nothing while that page is not mounted.
  */
 function AgentPlatformSidebarItem({ newTab }: { newTab: boolean }) {
-  const rootLink = useRouteRef(agentPlatformPlugin.routes.root);
+  // The Agent Platform's address is the shell's home, the new-session screen
+  // (`/`), where the old `/agent-platform` redirects too.
+  const rootLink = useRouteRef(homeRouteRef);
   if (!rootLink) {
     return null;
   }

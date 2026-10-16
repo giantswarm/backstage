@@ -22,6 +22,13 @@ jest.setTimeout(30_000);
 /** Registered servers of the active installation, per test. */
 let mockMcpServers: MCPServer[] = [];
 
+// The muster providers, whose instance the mock below stands for.
+jest.mock('../MusterSubPage', () => ({
+  MusterSubPage: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
     installations: ['gazelle'],
@@ -72,7 +79,7 @@ function renderWizard(path: string) {
         <PageHeaderActionsProvider>
           <Routes>
             <Route
-              path="/agent-platform/connectors/*"
+              path="/customize/connectors/*"
               element={<McpServersRouter />}
             />
           </Routes>
@@ -81,14 +88,14 @@ function renderWizard(path: string) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+      mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
     },
   );
 }
 
 /** Walks the real flow to a registered connector so the Test step has one. */
 async function renderTestStep() {
-  const result = await renderWizard('/agent-platform/connectors/new');
+  const result = await renderWizard('/customize/connectors/new');
   await userEvent.type(
     screen.getByLabelText(/^Server address/),
     'https://jira.example.com/mcp',
@@ -136,7 +143,7 @@ describe('NewConnectorTestPage', () => {
   });
 
   it('sends a deep link with nothing registered back to the Connect step', async () => {
-    await renderWizard('/agent-platform/connectors/new/verify');
+    await renderWizard('/customize/connectors/new/verify');
 
     expect(await screen.findByText('Connect an app')).toBeInTheDocument();
     expect(screen.queryByText('Test the connection')).not.toBeInTheDocument();

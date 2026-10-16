@@ -27,7 +27,7 @@ test('the roster lists the agent with its model, under Customize · Agents', asy
   labAgent,
 }) => {
   test.setTimeout(rosterWait + 60_000);
-  // The old address lands on Customize's Agents tab.
+  // The old address lands on Customize's Agents tab, in one hop.
   await open(admin, '/agent-platform/agents');
   await expect(admin).toHaveURL(/\/customize\/agents$/);
   await expect(
@@ -53,7 +53,7 @@ test('the roster lists the agent with its model, under Customize · Agents', asy
   ).toHaveCount(0);
   await expect(admin.getByRole('link', { name: 'New agent' })).toHaveAttribute(
     'href',
-    '/agent-platform/agents/new',
+    '/customize/agents/new',
   );
 });
 
@@ -121,7 +121,7 @@ test('the New agent wizard opens on Details, derives the technical name and list
 }) => {
   await open(admin, '/customize/agents');
   await admin.getByRole('link', { name: 'New agent' }).click();
-  await expect(admin).toHaveURL(/\/agent-platform\/agents\/new$/);
+  await expect(admin).toHaveURL(/\/customize\/agents\/new$/);
   await expectWizardStep(admin, 'Details');
   await expect(
     admin.getByRole('heading', { name: 'Describe your agent' }),
