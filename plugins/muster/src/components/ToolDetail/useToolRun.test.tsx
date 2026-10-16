@@ -57,12 +57,30 @@ describe('useToolRun', () => {
     );
   });
 
-  it('reports no event for any other tool', async () => {
+  it('reports any other tool’s run as a tool’s, without its name or inputs', async () => {
     const callTool = jest.fn(async () => ({ echoed: 'hi' }));
     const { result } = setup('core_echo', callTool);
 
     act(() => result.current.run({ message: 'hi' }));
     await waitFor(() => expect(result.current.lastResult).toBeDefined());
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'Muster.toolRan',
+        subject: 'Muster.toolRan',
+        attributes: {},
+      }),
+    );
+  });
+
+  it('reports nothing for a failed tool run', async () => {
+    const callTool = jest.fn(async () => {
+      throw new Error('tool core_echo is not available');
+    });
+    const { result } = setup('core_echo', callTool);
+
+    act(() => result.current.run({}));
+    await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 

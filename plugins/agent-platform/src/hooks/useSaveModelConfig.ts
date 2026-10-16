@@ -60,8 +60,12 @@ export function useSaveModelConfig() {
   const queryClient = useQueryClient();
 
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason: 'Model configuration is not a tracked portal action yet.',
+    event: (_data, { original }) => ({
+      name: original
+        ? 'AgentPlatform.modelUpdated'
+        : 'AgentPlatform.modelCreated',
+      attributes: {},
+    }),
     mutationFn: async ({
       installation,
       values,

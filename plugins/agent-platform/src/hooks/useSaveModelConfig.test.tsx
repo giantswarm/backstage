@@ -1,7 +1,8 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   ModelConfig,
@@ -30,6 +31,8 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 
 const CLUSTER = 'gazelle';
 
+const analyticsApi = mockApis.analytics.mock();
+
 function values(
   overrides: Partial<ModelConfigFormValues> = {},
 ): ModelConfigFormValues {
@@ -56,7 +59,12 @@ function makeModelConfig(spec: ModelConfigInterface['spec']): ModelConfig {
 
 function setup() {
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[kubernetesApiRef, { proxy: jest.fn() }]]}>
+    <TestApiProvider
+      apis={[
+        [kubernetesApiRef, { proxy: jest.fn() }],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider
         client={
           new QueryClient({ defaultOptions: { mutations: { retry: false } } })
@@ -71,6 +79,7 @@ function setup() {
 }
 
 beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
   mockCreateResource.mockReset();
   mockCreateResource.mockResolvedValue(undefined);
   mockPatchResource.mockReset();
@@ -120,6 +129,14 @@ describe('useSaveModelConfig', () => {
       }),
     });
     expect(secretCall).toBeDefined();
+    // Reported without the model's name, provider or endpoint.
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.modelCreated',
+        attributes: {},
+      }),
+    );
   });
 
   it('replaces an existing secret in place', async () => {
@@ -187,6 +204,13 @@ describe('useSaveModelConfig', () => {
         patch: expect.objectContaining({
           spec: expect.objectContaining({ model: 'qwen3-32b' }),
         }),
+      }),
+    );
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.modelUpdated',
+        attributes: {},
       }),
     );
   });
@@ -312,5 +336,6 @@ describe('useSaveModelConfig', () => {
     // The mutation's error state reaches React on a later tick than the
     // rejection does, so poll for it instead of asserting right away.
     await waitFor(() => expect(result.current.error).toBe(conflict));
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 });

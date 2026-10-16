@@ -87,8 +87,7 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
   };
 
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason: 'Model configuration is not a tracked portal action yet.',
+    event: () => ({ name: 'AgentPlatform.modelDeleted', attributes: {} }),
     mutationFn: async () => {
       if (!modelConfig || !name) {
         throw new Error(

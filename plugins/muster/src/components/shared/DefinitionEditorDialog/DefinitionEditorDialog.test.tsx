@@ -2,7 +2,12 @@ import { useState } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import {
+  mockApis,
+  renderInTestApp,
+  TestApiProvider,
+} from '@backstage/test-utils';
 import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../../apis';
 import { MusterInstanceContext } from '../../MusterInstanceProvider';
@@ -11,6 +16,10 @@ import {
   DefinitionEditorDialog,
   DefinitionEditorDialogProps,
 } from './DefinitionEditorDialog';
+
+const analyticsApi = mockApis.analytics.mock();
+
+beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
 
 function parseJson(value: string): Record<string, unknown> {
   try {
@@ -59,7 +68,7 @@ function Harness({
     ),
     validateTool: 'core_thing_validate',
     saveTool: 'core_thing_update',
-    saveUntrackedReason: 'A test.',
+    saveEvent: { name: 'Muster.mcpServerUpdated', attributes: {} },
     savedMessage: 'Saved the thing.',
   };
   return (
@@ -83,7 +92,12 @@ async function renderDialog(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, { callTool }]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, { callTool }],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <MusterInstanceContext.Provider
           value={makeTestMusterInstance({ retry })}
@@ -113,9 +127,10 @@ describe('DefinitionEditorDialog', () => {
       'gazelle',
     );
     expect(retry).not.toHaveBeenCalled();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
-  it('saves with the save tool and refetches the reads', async () => {
+  it('saves with the save tool, refetches the reads and reports the save', async () => {
     const { callTool, retry } = await renderDialog();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -127,6 +142,13 @@ describe('DefinitionEditorDialog', () => {
       'gazelle',
     );
     expect(retry).toHaveBeenCalled();
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'Muster.mcpServerUpdated',
+        attributes: {},
+      }),
+    );
   });
 
   it('shows a parse error on the editor, focuses it and calls no tool', async () => {

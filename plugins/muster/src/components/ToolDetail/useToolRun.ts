@@ -26,9 +26,9 @@ export type ToolRun = {
 };
 
 /**
- * Runs one tool through muster's `call_tool` proxy, and reports the run
- * where it is a tracked action: every way of running a tool goes through
- * here, the tool page's form and a workflow's Run it tab. The state lives
+ * Runs one tool through muster's `call_tool` proxy, and reports each run
+ * that returned: every way of running a tool goes through here, the tool
+ * page's form and a workflow's Run it tab. The state lives
  * with the caller, so a page that keeps it above its tabs keeps a run in
  * flight, and its result, across a tab switch.
  *
@@ -55,12 +55,13 @@ export function useToolRun(
 
   const mutation = useTrackedMutation({
     // muster runs a workflow as its `workflow_<name>` tool, so a run of one
-    // is reported, without its inputs, however it was started. Any other
-    // tool call is a probe from the explorer, and its arguments free text.
+    // is reported as a workflow's however it was started; any other tool's
+    // as a tool's. Neither carries the tool's name or its arguments: both
+    // are the installation's own, and the arguments free text.
     event: () =>
       name.startsWith(WORKFLOW_TOOL_PREFIX)
         ? { name: 'Muster.workflowRan', attributes: {} }
-        : null,
+        : { name: 'Muster.toolRan', attributes: {} },
     mutationFn: async (args: Record<string, unknown>) => {
       const startedAt = performance.now();
       const result = await musterApi.callTool(name, args, installation);

@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import {
+  mockApis,
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
@@ -16,6 +18,10 @@ import {
   OAUTH_SIGN_IN_GATE,
   serverLiveActions,
 } from './serverActions';
+
+const analyticsApi = mockApis.analytics.mock();
+
+beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
 
 function makeServer(options: {
   state?: MCPServerState;
@@ -51,6 +57,29 @@ describe('serverLiveActions', () => {
       tool: 'core_mcpserver_delete',
       args: { name: 'miro' },
       destructive: true,
+    });
+  });
+
+  it("reports each action by what it did, never the server's name", () => {
+    const active = serverLiveActions(makeServer({ state: 'Connected' }));
+    const suspended = serverLiveActions(
+      makeServer({ state: 'Disconnected', suspended: true }),
+    );
+    expect(active.deactivate?.event).toEqual({
+      name: 'Muster.mcpServerConnectionChanged',
+      attributes: { change: 'deactivated' },
+    });
+    expect(active.reconnect?.event).toEqual({
+      name: 'Muster.mcpServerConnectionChanged',
+      attributes: { change: 'reconnected' },
+    });
+    expect(suspended.activate?.event).toEqual({
+      name: 'Muster.mcpServerConnectionChanged',
+      attributes: { change: 'activated' },
+    });
+    expect(active.remove.event).toEqual({
+      name: 'Muster.mcpServerDeleted',
+      attributes: {},
     });
   });
 
@@ -137,7 +166,12 @@ async function renderDialog(
   });
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, { callTool }]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, { callTool }],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <MusterInstanceContext.Provider
           value={makeTestMusterInstance({ retry })}
@@ -189,6 +223,13 @@ describe('ConfirmActionDialog', () => {
     expect(onDone).toHaveBeenCalledWith(
       expect.objectContaining({ tool: 'core_service_stop' }),
     );
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'Muster.mcpServerConnectionChanged',
+        attributes: { change: 'deactivated' },
+      }),
+    );
   });
 
   it("opens the next action fresh, not on the last one's result", async () => {
@@ -233,5 +274,6 @@ describe('ConfirmActionDialog', () => {
     expect(await screen.findByText('boom')).toBeInTheDocument();
     expect(retry).not.toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 });

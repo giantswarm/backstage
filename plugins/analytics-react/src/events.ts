@@ -32,6 +32,11 @@ export const portalEvents = defineEvents({
       change: ['edited', 'skillsRefreshed'],
     },
   },
+  'AgentPlatform.agentDeleted': {
+    description:
+      'An agent was deleted in the Agent Platform, live or committed to Git as a pull request.',
+    attributes: { mode: ['apply', 'commit'] },
+  },
   'AgentPlatform.sessionStarted': {
     description: 'A session with an agent was started.',
     attributes: {
@@ -83,6 +88,21 @@ export const portalEvents = defineEvents({
       'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',
     attributes: { kind: ['created', 'updated'] },
   },
+  'AgentPlatform.modelCreated': {
+    description:
+      'A model an agent can use (a kagent ModelConfig) was created in the Agent Platform.',
+    attributes: {},
+  },
+  'AgentPlatform.modelUpdated': {
+    description:
+      "A model's configuration (a kagent ModelConfig) was changed in the Agent Platform.",
+    attributes: {},
+  },
+  'AgentPlatform.modelDeleted': {
+    description:
+      'A model (a kagent ModelConfig) was deleted in the Agent Platform.',
+    attributes: {},
+  },
   'AgentPlatform.clusterCreated': {
     description:
       'A workload cluster was created through cluster-manager, applied live or committed to Git.',
@@ -103,9 +123,28 @@ export const portalEvents = defineEvents({
       authMode: ['none', 'own-account', 'platform-sso', 'sigv4'],
     },
   },
+  'Muster.mcpServerUpdated': {
+    description:
+      "An MCP server's definition was edited in muster, on its page.",
+    attributes: {},
+  },
+  'Muster.mcpServerConnectionChanged': {
+    description:
+      'An MCP server was activated, deactivated or reconnected in muster, on its page.',
+    attributes: { change: ['activated', 'deactivated', 'reconnected'] },
+  },
+  'Muster.mcpServerDeleted': {
+    description: 'An MCP server was deleted from muster, on its page.',
+    attributes: {},
+  },
   'Muster.workflowRan': {
     description:
       "A muster workflow was run from the Agent Platform, on its page or its tool's, and returned a result.",
+    attributes: {},
+  },
+  'Muster.toolRan': {
+    description:
+      'A muster tool other than a workflow was run from its page in the Agent Platform and returned a result.',
     attributes: {},
   },
 });

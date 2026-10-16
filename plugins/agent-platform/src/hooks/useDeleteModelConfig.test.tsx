@@ -1,7 +1,8 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   ModelConfig,
@@ -26,6 +27,8 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 
 const CLUSTER = 'gazelle';
 const NAMESPACE = 'kagent';
+
+const analyticsApi = mockApis.analytics.mock();
 
 function makeModelConfig({
   labels,
@@ -90,7 +93,12 @@ function setup({
   });
 
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[kubernetesApiRef, { proxy: jest.fn() }]]}>
+    <TestApiProvider
+      apis={[
+        [kubernetesApiRef, { proxy: jest.fn() }],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider
         client={
           new QueryClient({ defaultOptions: { mutations: { retry: false } } })
@@ -105,6 +113,7 @@ function setup({
 }
 
 beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
   mockUseSelfSubjectAccessReview.mockReset();
   mockDeleteResource.mockReset();
   mockDeleteResource.mockResolvedValue(undefined);
@@ -183,6 +192,14 @@ describe('useDeleteModelConfig', () => {
         gvk: expect.objectContaining({ plural: 'secrets', isCore: true }),
       }),
     );
+    // Reported without the model's name.
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.modelDeleted',
+        attributes: {},
+      }),
+    );
   });
 
   it('leaves a foreign key secret alone', async () => {
@@ -212,6 +229,7 @@ describe('useDeleteModelConfig', () => {
     });
 
     expect(mockDeleteResource).not.toHaveBeenCalled();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('ignores agents on other models', async () => {

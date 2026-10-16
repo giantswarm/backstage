@@ -78,16 +78,18 @@ export function useAgentDeletion(
   }, [queryClient, installation]);
 
   const deletion = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'Agent deletion is not a tracked portal action yet; agentCreated measures adoption.',
+    event: () => ({
+      name: 'AgentPlatform.agentDeleted',
+      attributes: { mode: 'apply' },
+    }),
     mutationFn: () => requireClient().deleteAgent(namespace, name),
     onSuccess: () => invalidateReads(),
   });
   const commitMutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'Agent deletion is not a tracked portal action yet; agentCreated measures adoption.',
+    event: () => ({
+      name: 'AgentPlatform.agentDeleted',
+      attributes: { mode: 'commit' },
+    }),
     mutationFn: () => requireClient().commitDeleteAgent(namespace, name),
   });
 

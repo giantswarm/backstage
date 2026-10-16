@@ -6,7 +6,10 @@ import {
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import {
+  useTrackedMutation,
+  type PortalEvent,
+} from '@giantswarm/backstage-plugin-analytics-react';
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
@@ -41,6 +44,8 @@ export type LiveAction = {
    * action and "Confirm" otherwise.
    */
   confirmLabel?: string;
+  /** What the action reports once muster carried it out. */
+  event: PortalEvent;
 };
 
 /**
@@ -66,9 +71,7 @@ export function ConfirmActionDialog({
   const musterApi = useApi(musterApiRef);
   const refresh = useMusterMutationRefresh(server.cluster);
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'Server lifecycle changes and deletion are not a tracked portal action yet.',
+    event: (_result, live) => live.event,
     mutationFn: (live: LiveAction) =>
       musterApi.callTool(live.tool, live.args, server.cluster),
     onSuccess: (_result, live) => {
@@ -171,7 +174,7 @@ export function AdHocServerDialog({
       )}
       validateTool="core_mcpserver_validate"
       saveTool="core_mcpserver_update"
-      saveUntrackedReason="An edit of a server, not an addition."
+      saveEvent={{ name: 'Muster.mcpServerUpdated', attributes: {} }}
       savedMessage="Saved."
     />
   );
@@ -212,6 +215,7 @@ export function serverLiveActions(server: MCPServer): {
     tool: 'core_mcpserver_delete',
     args: { name },
     destructive: true,
+    event: { name: 'Muster.mcpServerDeleted', attributes: {} },
   };
   if (server.getSuspended()) {
     return {
@@ -220,6 +224,10 @@ export function serverLiveActions(server: MCPServer): {
         tool: 'core_service_start',
         args: { name },
         description: 'muster connects it again and keeps it connected.',
+        event: {
+          name: 'Muster.mcpServerConnectionChanged',
+          attributes: { change: 'activated' },
+        },
       },
       remove,
     };
@@ -231,6 +239,10 @@ export function serverLiveActions(server: MCPServer): {
       args: { name },
       description:
         'muster disconnects it and keeps it off until it is activated again.',
+      event: {
+        name: 'Muster.mcpServerConnectionChanged',
+        attributes: { change: 'deactivated' },
+      },
     },
     reconnect: {
       label: `Reconnect ${name}`,
@@ -238,6 +250,10 @@ export function serverLiveActions(server: MCPServer): {
       args: { name },
       description:
         'muster opens a fresh session to it and re-runs tool discovery.',
+      event: {
+        name: 'Muster.mcpServerConnectionChanged',
+        attributes: { change: 'reconnected' },
+      },
     },
     reconnectGate: oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined,
     remove,
