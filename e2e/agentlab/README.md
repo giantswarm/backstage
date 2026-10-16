@@ -18,6 +18,7 @@ yarn test:e2e:agentlab
 yarn test:e2e:agentlab --grep-invert lifecycle   # the pages only, ~1 min
 yarn test:e2e:agentlab -g 'MCP servers'          # one spec
 yarn test:e2e:agentlab --headed                  # watch it
+AGENTLAB_E2E_ORDER=shuffle yarn test:e2e:agentlab # spec files in a random order
 yarn playwright show-report e2e-test-report/agentlab
 ```
 
@@ -31,6 +32,7 @@ yarn playwright show-report e2e-test-report/agentlab
 | `AGENTLAB_KIND_NODE`              | `<cluster>-control-plane`            | the kind node `serve-node-choice.spec.ts` serves on, for a lab whose node is named otherwise                                                                                             |
 | `AGENTLAB_E2E_WORKERS`            | `1`                                  | parallel workers, each with one sign-in                                                                                                                                                  |
 | `AGENTLAB_E2E_RUN`                | the run's start, base 36             | the run id the [workspace fixtures](#workspaces) name their workspaces with (`e2e-ws-<run>-…`); letters and digits only                                                                  |
+| `AGENTLAB_E2E_ORDER`              | `default`                            | the order of the spec files: `default` (by path), `shuffle` (a random order; the run prints its seed) or `shuffle:<seed>` (that order again) — see [Order](#order)                       |
 | `AGENTLAB_KUBECONFIG`             | unset                                | the lab's `state/kubeconfig`, for `deployment-uninstall.spec.ts`, `deployment-auto-upgrades.spec.ts` and `connector-display-name.spec.ts`, which also need `kubectl`; skipped without it |
 | `AGENTLAB_SLASH_BRANCH`           | the checkout's branch                | a pushed branch with a slash in its name for `slash-branch.spec.ts`, which reads its template fixture from it on GitHub; skipped on a branch without one                                 |
 | `AGENTLAB_WORKSPACE_ORGANIZATION` | `lab`                                | the Organization the lab gives the workspace-manager, which the [workspace fixtures](#workspaces) create in                                                                              |
@@ -218,6 +220,16 @@ AGENTLAB_GITHUB_FAKE_URL="https://127.0.0.1:$(docker port agentlab-lab-github 80
 ```
 
 The smoke test's first-sync time is an annotation in the report.
+
+## Order
+
+Every spec creates what it needs and removes it again, so the files pass in
+any order. `AGENTLAB_E2E_ORDER=shuffle` checks that: it runs a project's spec
+files in a random order and prints `replay with AGENTLAB_E2E_ORDER=shuffle:<seed>`,
+which runs that order again. The worker and its admin page are the default
+run's. The order is written as stubs into `.cache/e2e-agentlab-order/`, one
+per spec, which import the specs; the report shows each test at its spec's
+path (`order.ts`).
 
 ## How it signs in
 
