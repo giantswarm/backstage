@@ -404,7 +404,7 @@ describe('SessionComposer', () => {
     renderComposer({
       details: <span data-testid="details-chip" />,
       newSession: {
-        label: 'Start a new session with this agent',
+        label: 'Continue in a new session',
         onStart: jest.fn(),
         replacesSend: true,
         caption: 'This session cannot continue.',
@@ -583,13 +583,13 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
 describe('SessionComposer — the way out of a lost runtime', () => {
   const onStart = jest.fn();
   const newSession = {
-    label: 'Start a new session with Grill master',
+    label: 'Continue in a new session',
     onStart,
     caption: 'Sending again retries the runtime.',
   };
   const startButton = () =>
     screen.getByRole('button', {
-      name: 'Start a new session with Grill master',
+      name: 'Continue in a new session',
     });
 
   beforeEach(() => {
@@ -660,7 +660,7 @@ describe('SessionComposer — the way out of a lost runtime', () => {
     ).not.toBeInTheDocument();
     expect(field()).toHaveAttribute(
       'placeholder',
-      'Start a new session with this message…',
+      'Add a message for the new session…',
     );
 
     await userEvent.type(field(), 'six of them are vegetarian{Enter}');
@@ -682,7 +682,7 @@ describe('SessionComposer — the way out of a lost runtime', () => {
     renderComposer();
 
     expect(
-      screen.queryByRole('button', { name: /Start a new session/ }),
+      screen.queryByRole('button', { name: /Continue in a new session/ }),
     ).not.toBeInTheDocument();
   });
 });
@@ -808,7 +808,7 @@ describe('SessionComposer send-key hint', () => {
       'the runtime is lost',
       {
         newSession: {
-          label: 'Start a new session',
+          label: 'Continue in a new session',
           onStart: jest.fn(),
           caption: 'This session cannot continue.',
         },
@@ -1120,7 +1120,7 @@ describe('SessionComposer — images', () => {
     renderComposer({
       images: {},
       newSession: {
-        label: 'Start a new session with Coder',
+        label: 'Continue in a new session',
         onStart,
         replacesSend: true,
         caption: 'This session cannot continue.',
@@ -1129,7 +1129,7 @@ describe('SessionComposer — images', () => {
 
     paste([pngFile()]);
     const start = screen.getByRole('button', {
-      name: 'Start a new session with Coder',
+      name: 'Continue in a new session',
     });
     expect(start).toBeDisabled();
 

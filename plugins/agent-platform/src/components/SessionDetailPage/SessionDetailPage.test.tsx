@@ -2130,7 +2130,7 @@ describe('SessionDetailPage', () => {
     const composer = () => screen.getByRole('textbox', { name: 'Message' });
     const startButton = () =>
       screen.getByRole('button', {
-        name: 'Start a new session with Issue tracker',
+        name: 'Continue in a new session',
       });
     /** The message that never got its answer — the last one the person sent. */
     const lastUserMessage = [...timeline.items]
@@ -2234,7 +2234,7 @@ describe('SessionDetailPage', () => {
 
       expect(
         screen.getByText(
-          /start a new session with Issue tracker from the message box below\. Its first message holds this conversation \(\d+ messages?\), with tools named but not their results, and the text in the box\./,
+          /choose Continue in a new session under the message box\. Its first message holds this conversation \(\d+ messages?\), with tools named but not their results, and the text in the box\./,
         ),
       ).toBeInTheDocument();
 
@@ -2289,7 +2289,7 @@ describe('SessionDetailPage', () => {
 
       expect(
         screen.queryByRole('button', {
-          name: 'Start a new session with Issue tracker',
+          name: 'Continue in a new session',
         }),
       ).not.toBeInTheDocument();
       expect(
@@ -2476,7 +2476,7 @@ describe('SessionDetailPage', () => {
 
       expect(
         screen.getByText(
-          /Start a new session with Issue tracker from the message box below to carry on\. Its first message holds this conversation \(\d+ messages?\), with tools named but not their results, and the text in the box\./,
+          /To carry on with Issue tracker, choose Continue in a new session under the message box\. Its first message holds this conversation \(\d+ messages?\), with tools named but not their results, and the text in the box\./,
         ),
       ).toBeInTheDocument();
 
@@ -2642,7 +2642,7 @@ describe('SessionDetailPage', () => {
         screen.queryByText(/runtime could not be brought back/),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /Start a new session/ }),
+        screen.queryByRole('button', { name: /Continue in a new session/ }),
       ).not.toBeInTheDocument();
     });
   });
@@ -2700,7 +2700,7 @@ describe('SessionDetailPage', () => {
 
       await userEvent.click(
         screen.getByRole('button', {
-          name: 'Start a new session with Issue tracker',
+          name: 'Continue in a new session',
         }),
       );
 
@@ -2762,7 +2762,7 @@ describe('SessionDetailPage', () => {
     const composer = () => screen.getByRole('textbox', { name: 'Message' });
     const startButton = () =>
       screen.getByRole('button', {
-        name: 'Start a new session with Issue tracker',
+        name: 'Continue in a new session',
       });
 
     it('replaces the question card with the error, offers no retry and shows the answer', async () => {
@@ -2899,7 +2899,7 @@ describe('SessionDetailPage', () => {
         screen.getByText('This session cannot continue.'),
       ).toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /Start a new session/ }),
+        screen.queryByRole('button', { name: /Continue in a new session/ }),
       ).not.toBeInTheDocument();
       expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
       expect(
@@ -3019,7 +3019,7 @@ describe('SessionDetailPage', () => {
         screen.queryByText('Could not resume this session'),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /Start a new session/ }),
+        screen.queryByRole('button', { name: /Continue in a new session/ }),
       ).not.toBeInTheDocument();
       expect(composer()).toHaveValue('');
     });
@@ -3483,7 +3483,7 @@ describe('SessionDetailPage', () => {
       ).toBeEnabled();
       expect(
         within(dock).getByRole('button', {
-          name: 'Start a new session with Issue tracker',
+          name: 'Continue in a new session',
         }),
       ).toBeInTheDocument();
     });
@@ -3506,7 +3506,7 @@ describe('SessionDetailPage', () => {
 
       expect(
         screen.getByText(
-          'This session cannot continue; your message starts a new one with the same agent. Tap the button below to start it.',
+          'This session cannot continue; your message carries it on in a new session with the same agent. Tap the button below to start it.',
         ),
       ).toBeInTheDocument();
     });

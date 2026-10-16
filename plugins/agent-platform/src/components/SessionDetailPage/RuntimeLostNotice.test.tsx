@@ -25,7 +25,7 @@ describe('RuntimeLostNotice', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Send again to retry.*start a new session with Grill master/,
+        /Send again to retry\. If it fails again, choose Continue in a new session under the message box\./,
       ),
     ).toBeInTheDocument();
   });
@@ -81,7 +81,7 @@ describe('RuntimeLostNotice', () => {
     expect(screen.queryByText(/send again/)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /Start a new session with Grill master from the message box below to carry on\. Its first message holds this conversation, with tools named but not their results, and the text in the box\./,
+        /To carry on with Grill master, choose Continue in a new session under the message box\. Its first message holds this conversation, with tools named but not their results, and the text in the box\./,
       ),
     ).toBeInTheDocument();
   });

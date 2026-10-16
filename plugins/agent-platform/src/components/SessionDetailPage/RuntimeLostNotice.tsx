@@ -109,9 +109,9 @@ export function RuntimeLostNotice({
   if (newSessionBlocker) {
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
   } else if (offersNewSession && loss.reported) {
-    wayOut = `Start a new session with ${agent} from the message box below to carry on. ${start}`;
+    wayOut = `To carry on with ${agent}, choose Continue in a new session under the message box. ${start}`;
   } else if (offersNewSession) {
-    wayOut = `Send again to retry. If it fails again, start a new session with ${agent} from the message box below. ${start}`;
+    wayOut = `Send again to retry. If it fails again, choose Continue in a new session under the message box. ${start}`;
   }
 
   return (

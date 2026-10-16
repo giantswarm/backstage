@@ -287,7 +287,7 @@ test('a session whose runtime is lost explains itself, is marked, and carries th
       'the retry stays while the loss is only suspected',
     ).toBeVisible();
     const startNew = admin.getByRole('button', {
-      name: `Start a new session with ${labAgent.name}`,
+      name: 'Continue in a new session',
     });
     await expect(startNew, 'the way out stands under the box').toBeEnabled();
     await snapshot(admin, 'runtime-lost-suspected');

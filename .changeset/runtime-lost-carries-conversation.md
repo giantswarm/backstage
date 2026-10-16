@@ -9,4 +9,5 @@ by name), the open question with any answer the lost runtime never took, and
 the text in the message box last, within the message size limit; text typed in
 the box is never shortened. It is titled "Continued: <title>" and shows a
 "Continued session" banner linking to the lost session. The runtime-lost notice
-says what the new session will start with.
+says what the new session will start with. In both cases the button now reads
+"Continue in a new session" instead of "Start a new session with <agent>".

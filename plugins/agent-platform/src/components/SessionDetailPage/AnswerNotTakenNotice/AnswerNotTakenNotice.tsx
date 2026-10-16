@@ -78,7 +78,7 @@ export function AnswerNotTakenNotice({
   if (newSessionBlocker) {
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
   } else if (offersNewSession) {
-    wayOut = `Start a new session with ${agent} from the message box below to carry on. ${describeContinuationStart(
+    wayOut = `To carry on with ${agent}, choose Continue in a new session under the message box. ${describeContinuationStart(
       { continuation, hasQuestion: true, hasAnswer: Boolean(answer) },
     )}`;
   }

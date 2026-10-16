@@ -1484,22 +1484,23 @@ on gazelle on 2026-09-15 (giantswarm/giantswarm#37795).
 `RuntimeLostNotice` explains the loss in the portal's words, with the runtime's
 text as evidence only; the failed-turn entry does the same.
 
-**The way out is a new session with the same agent** (the composer's
-`newSession` prop). It is secondary while the loss is suspected, since a cold
-worker can time out once, and primary once kagent reports it, replacing Send and
-the answer panel. The new session carries this one on, as after an answer
-kagent did not take (see "Carrying the session on in a new one"): its first
-message holds the conversation, the open question if the session waits on one
-with any answer the lost runtime never took, and last the box's text. A failed
-send's text is in the box because the composer restored it, so clearing the box
-leaves it out; where the transcript already holds that message, the restored
-copy is not added a second time. The images of the message that never got its
-answer (the newest message, with no reply or request after it) go along, since
-the conversation names them. It is titled `Continued: <title>`, and the notice
-says what the first message will hold and shows the answer, except while the
-question card is up and holds it. It follows create, navigate, send (see
-"Starting a session"). `SessionDetailRoute` keys the page on the session, so
-the new one mounts fresh.
+**The way out is a new session with the same agent**: "Continue in a new
+session" under the box (the composer's `newSession` prop), the same button an
+answer kagent did not take offers. It is secondary while the loss is suspected,
+since a cold worker can time out once, and primary once kagent reports it,
+replacing Send and the answer panel. The new session carries this one on, as
+after an answer kagent did not take (see "Carrying the session on in a new
+one"): its first message holds the conversation, the open question if the
+session waits on one with any answer the lost runtime never took, and last the
+box's text. A failed send's text is in the box because the composer restored it,
+so clearing the box leaves it out; where the transcript already holds that
+message, the restored copy is not added a second time. The images of the message
+that never got its answer (the newest message, with no reply or request after
+it) go along, since the conversation names them. It is titled
+`Continued: <title>`, and the notice says what the first message will hold and
+shows the answer, except while the question card is up and holds it. It follows
+create, navigate, send (see "Starting a session"). `SessionDetailRoute` keys the
+page on the session, so the new one mounts fresh.
 
 **Only a reported loss marks the session** (`Runtime lost` in the header, the
 Sessions table and the rail card); the suspected reading belongs to the notice.
@@ -1839,8 +1840,8 @@ same request without the answer at the end of the wait fails the answer with
 
 While that request stands, the page treats it as the end of the session, as it
 does a reported runtime loss: "Could not resume this session" replaces the
-answer card and the new-session button takes Send's place. The notice shows a
-question's answer and says what the new session will start with. The answer is
+answer card and "Continue in a new session" takes Send's place. The notice shows
+a question's answer and says what the new session will start with. The answer is
 not put in the box, which would keep it beside a live Send once a late resume
 moves the task on. Where no new session can be offered, the box is disabled
 instead. No retry is offered, because a second answer goes the same way. Any
@@ -1911,9 +1912,10 @@ separate new-session form. Both composers use `ComposerFrame` from `ui-react`.
 Every entry point creates through `useCreateSession`: the home screen at `/`
 (`AgentPlatformHome`), the command palette (`NewSessionDialog`), the sessions
 list's first-run card (`StartNewSession`), the agent page's dialog, a lost
-runtime's new-session action, the meta-agent hand-offs ("<verb> with
-<agent>", `useMetaAgentHandoff`) and `CreateAgentAssist`.
-The composer grows with its content and never shrinks back. Enter starts.
+runtime's or a failed resume's "Continue in a new session", the meta-agent
+hand-offs ("<verb> with <agent>", `useMetaAgentHandoff`) and
+`CreateAgentAssist`. The composer grows with its content and never shrinks back.
+Enter starts.
 
 #### Create, navigate, then send — in that order
 

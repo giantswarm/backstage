@@ -22,7 +22,7 @@ describe('AnswerNotTakenNotice', () => {
     expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Start a new session with Grill master from the message box below to carry on\. Its first message holds this conversation, with tools named but not their results, the open question and your answer; text in the box replaces the answer\./,
+        /To carry on with Grill master, choose Continue in a new session under the message box\. Its first message holds this conversation, with tools named but not their results, the open question and your answer; text in the box replaces the answer\./,
       ),
     ).toBeInTheDocument();
     // Terminal: nothing suggests sending it again.
@@ -35,7 +35,7 @@ describe('AnswerNotTakenNotice', () => {
 
     expect(
       screen.getByText(
-        /carry on\. Its first message holds this conversation, with tools named but not their results, the open question and the text in the box\./,
+        /under the message box\. Its first message holds this conversation, with tools named but not their results, the open question and the text in the box\./,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Your answer/)).not.toBeInTheDocument();

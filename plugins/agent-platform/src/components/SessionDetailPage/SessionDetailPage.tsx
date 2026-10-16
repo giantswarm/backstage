@@ -1516,7 +1516,7 @@ export function SessionDetailPage() {
           newSession={
             offersNewSession
               ? {
-                  label: `Start a new session with ${row.agentName || 'this agent'}`,
+                  label: 'Continue in a new session',
                   onStart: (draft, images) => {
                     // Errors surface through the create hook's `error`, which
                     // the notice renders.
@@ -1526,15 +1526,15 @@ export function SessionDetailPage() {
                   replacesSend: cannotContinue,
                   caption: cannotContinue ? (
                     <>
-                      This session cannot continue; your message starts a new
-                      one with the same agent.{' '}
+                      This session cannot continue; your message carries it on
+                      in a new session with the same agent.{' '}
                       <SendKeyHint
                         options={SEND_KEY_CAPTIONS.runtimeLost}
                         touch={touch}
                       />
                     </>
                   ) : (
-                    'Sending again retries the runtime. If it fails again, start a new session with the same agent — your message goes with it.'
+                    'Sending again retries the runtime. If it fails again, continue in a new session with the same agent; this conversation and your message go with it.'
                   ),
                 }
               : undefined

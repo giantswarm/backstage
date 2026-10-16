@@ -375,7 +375,7 @@ export function SessionComposer({
 
   let placeholder = 'Send a message to this session…';
   if (newSessionReplacesSend) {
-    placeholder = 'Start a new session with this message…';
+    placeholder = 'Add a message for the new session…';
   } else if (isFinished && agentName) {
     // The session is idle, not over: the next message continues it.
     placeholder = `Reply to ${agentName}…`;
