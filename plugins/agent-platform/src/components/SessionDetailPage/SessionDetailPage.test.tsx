@@ -2559,14 +2559,11 @@ describe('SessionDetailPage', () => {
       expect(prompt).toMatch(/## My answer\n\n1\. Cyclists$/);
       // Titled after this session, not after the framing.
       expect(title).toMatch(/^Continued: /);
-      expect(mockNavigate).toHaveBeenCalledWith(
-        '/sessions/gazelle/new-1',
-        {
-          state: {
-            newSession: expect.not.objectContaining({ prepared: true }),
-          },
+      expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/new-1', {
+        state: {
+          newSession: expect.not.objectContaining({ prepared: true }),
         },
-      );
+      });
       expect(mockAnswer).not.toHaveBeenCalled();
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
