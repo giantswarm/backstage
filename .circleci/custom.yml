@@ -51,7 +51,7 @@ jobs:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: postgres
     environment:
-      JEST_MAX_WORKERS: "4"
+      JEST_MAX_WORKERS: "6"
       BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING: postgresql://postgres:postgres@localhost:5432
 
 workflows:
