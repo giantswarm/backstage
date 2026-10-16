@@ -12,7 +12,8 @@ import {
 } from './useRegisterMcpServer';
 
 const callTool = jest.fn();
-const musterApi = { callTool } as unknown as MusterApi;
+const describeTool = jest.fn();
+const musterApi = { callTool, describeTool } as unknown as MusterApi;
 const analyticsApi = mockApis.analytics.mock();
 
 const definition: McpServerDefinition = {
@@ -31,7 +32,10 @@ const registration: McpServerRegistration = {
 
 function renderRegister() {
   const queryClient = new QueryClient({
-    defaultOptions: { mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
   });
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
@@ -50,9 +54,26 @@ function renderRegister() {
   };
 }
 
+/** `describe_tool` of a muster whose tools take a display name or not. */
+function schemaWith(displayName: boolean) {
+  return (name: string) =>
+    Promise.resolve({
+      name,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          ...(displayName ? { displayName: { type: 'string' } } : {}),
+        },
+      },
+    });
+}
+
 beforeEach(() => {
   callTool.mockReset();
   callTool.mockResolvedValue({});
+  describeTool.mockReset();
+  describeTool.mockImplementation(schemaWith(true));
   jest.mocked(analyticsApi.captureEvent).mockClear();
 });
 
@@ -89,6 +110,73 @@ describe('useRegisterMcpServer', () => {
       'gazelle',
     );
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('sends the display name to a muster whose tool takes it', async () => {
+    const named = { ...definition, displayName: 'GitHub' };
+    const { result } = renderRegister();
+
+    let sent: McpServerDefinition | undefined;
+    await act(async () => {
+      sent = await result.current.mutateAsync({
+        ...registration,
+        definition: named,
+      });
+    });
+
+    expect(describeTool).toHaveBeenCalledWith(
+      'core_mcpserver_create',
+      'gazelle',
+    );
+    expect(callTool.mock.calls).toEqual([
+      ['core_mcpserver_validate', named, 'gazelle'],
+      ['core_mcpserver_create', named, 'gazelle'],
+    ]);
+    expect(sent).toEqual(named);
+  });
+
+  it.each([
+    [
+      'does not declare it',
+      () => describeTool.mockImplementation(schemaWith(false)),
+    ],
+    [
+      'cannot be asked',
+      () => describeTool.mockRejectedValue(new Error('unavailable')),
+    ],
+  ])(
+    'leaves the display name out where the tool %s',
+    async (_case, arrange) => {
+      arrange();
+      const { result } = renderRegister();
+
+      let sent: McpServerDefinition | undefined;
+      await act(async () => {
+        sent = await result.current.mutateAsync({
+          ...registration,
+          definition: { ...definition, displayName: '' },
+          isEdit: true,
+        });
+      });
+
+      expect(describeTool).toHaveBeenCalledWith(
+        'core_mcpserver_update',
+        'gazelle',
+      );
+      expect(callTool.mock.calls).toEqual([
+        ['core_mcpserver_validate', definition, 'gazelle'],
+        ['core_mcpserver_update', definition, 'gazelle'],
+      ]);
+      expect(sent).toEqual(definition);
+    },
+  );
+
+  it('asks for no schema when there is no display name to send', async () => {
+    const { result } = renderRegister();
+
+    await act(() => result.current.mutateAsync(registration));
+
+    expect(describeTool).not.toHaveBeenCalled();
   });
 
   it('writes nothing and reports nothing when validation refuses', async () => {

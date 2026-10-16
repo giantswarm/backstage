@@ -8,9 +8,9 @@ import {
   PLATFORM_NAMESPACE,
 } from './kubectl';
 
-// The portal cannot set a connector's display name — muster's create and
-// update tools take no annotations — so the fixture is applied with
-// `kubectl`, the way an admin or a chart sets it.
+// The fixture is applied with `kubectl`, the way an admin or a chart sets a
+// display name, so these specs do not depend on the lab's muster taking one
+// through Add connector (muster v5.43.0 and later).
 
 /** Where the lab's muster reads its MCPServers from. */
 const NAMESPACE = PLATFORM_NAMESPACE;

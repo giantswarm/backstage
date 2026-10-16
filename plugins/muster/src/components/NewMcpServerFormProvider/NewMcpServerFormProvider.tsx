@@ -81,10 +81,12 @@ export type NewMcpServerFormContextValue = {
    */
   lastSaveAt: number | undefined;
   /**
-   * Records a successful create or update of `definition`: the server is now
-   * registered under its name on the form's installation, and later saves
-   * (the verify step's "Edit details" loop) are updates laid over exactly what
-   * was saved — not over the server as it was when the edit started.
+   * Records a successful create or update of `definition` — as sent, so
+   * without a `displayName` the installation's muster does not take: the
+   * server is now registered under its name on the form's installation, and
+   * later saves (the verify step's "Edit details" loop) are updates laid over
+   * exactly what was saved — not over the server as it was when the edit
+   * started.
    */
   markSaved: (definition: McpServerDefinition) => void;
   /**
@@ -142,10 +144,15 @@ const NewMcpServerFormContext = createContext<
   NewMcpServerFormContextValue | undefined
 >(undefined);
 
-/** The registered server a run edits, and the form state it reads back as. */
+/**
+ * The registered server a run edits, the form state it reads back as, and its
+ * `ui.giantswarm.io/display-name` (`undefined` without one) — what an update
+ * leaves alone unless the name changes.
+ */
 type EditBase = {
   definition: Record<string, unknown>;
   form: NewMcpServerFormState;
+  displayName: string | undefined;
 };
 
 /** An unfinished registration an edit set aside. */
@@ -203,7 +210,15 @@ export function NewMcpServerFormProvider({
     setLastSaveAt(Date.now());
     setRegisteredName(saved.name);
     setRegisteredInstallation(current.state.installation);
-    setBase({ definition: saved, form: current.state });
+    // A save without `displayName` left the annotation as it was.
+    setBase(prev => ({
+      definition: saved,
+      form: current.state,
+      displayName:
+        saved.displayName === undefined
+          ? prev?.displayName
+          : saved.displayName || undefined,
+    }));
   }, []);
 
   const startEdit = useCallback(
@@ -226,7 +241,11 @@ export function NewMcpServerFormProvider({
       setRegisteredInstallation(server.cluster);
       setLastSave(undefined);
       setLastSaveAt(undefined);
-      setBase({ definition: toMcpServerDefinition(server), form });
+      setBase({
+        definition: toMcpServerDefinition(server),
+        form,
+        displayName: server.getDisplayNameAnnotation(),
+      });
       setState(form);
     },
     // initialState is fixed for the provider's lifetime, so this stays stable.
@@ -246,13 +265,7 @@ export function NewMcpServerFormProvider({
   }, [initialState]);
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
-    // The display name only derives the technical name, which an edit locks —
-    // so the Details step hides it then, and it must not block the edit.
-    const detailsProblems = mcpServerDetailsProblems(
-      registeredName && !state.name.trim()
-        ? { ...state, name: registeredName }
-        : state,
-    );
+    const detailsProblems = mcpServerDetailsProblems(state);
     const problems = [...detailsProblems, ...mcpServerAuthProblems(state)];
     const detailsErrors = detailsProblems.map(problem => problem.message);
     const validationErrors = problems.map(problem => problem.message);
@@ -331,7 +344,12 @@ export function NewMcpServerFormProvider({
       authFields: authFieldAvailability(state),
       authAdvisories: sigv4Advisories(state),
       definition: base
-        ? mergeOntoExisting(base.definition, composeMcpServerDefinition(state))
+        ? mergeOntoExisting(
+            base.definition,
+            composeMcpServerDefinition(state, {
+              storedDisplayName: base.displayName,
+            }),
+          )
         : composeMcpServerDefinition(state),
     };
   }, [

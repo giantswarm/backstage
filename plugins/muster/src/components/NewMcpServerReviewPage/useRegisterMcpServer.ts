@@ -3,10 +3,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { musterApiRef } from '../../apis';
-import type {
-  McpServerAuthMode,
-  McpServerDefinition,
+import {
+  takesDisplayName,
+  type McpServerAuthMode,
+  type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
+import { toolDescriptionQuery } from '../shared/useToolDescription';
 
 export type McpServerRegistration = {
   definition: McpServerDefinition;
@@ -23,6 +25,11 @@ export type McpServerRegistration = {
  * authority that will apply it; then create, or update when this wizard run
  * registered the server already (never a delete-and-recreate). A create is
  * reported as `Muster.mcpServerAdded`; an edit is not an addition.
+ *
+ * The definition's `displayName` goes only to a muster whose tool declares it
+ * (v5.43.0 and later); an older one refuses unknown fields, so it gets the
+ * definition without it — the connector is then named by its resource name,
+ * as before. Resolves to the definition as sent.
  */
 export function useRegisterMcpServer() {
   const musterApi = useApi(musterApiRef);
@@ -33,17 +40,21 @@ export function useRegisterMcpServer() {
       definition,
       installation,
       isEdit,
-    }: McpServerRegistration) => {
-      await musterApi.callTool(
-        'core_mcpserver_validate',
-        definition,
-        installation,
-      );
-      await musterApi.callTool(
-        isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create',
-        definition,
-        installation,
-      );
+    }: McpServerRegistration): Promise<McpServerDefinition> => {
+      const tool = isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create';
+      let sent = definition;
+      if (definition.displayName !== undefined) {
+        const detail = await queryClient
+          .fetchQuery(toolDescriptionQuery(musterApi, tool, installation))
+          .catch(() => undefined);
+        if (!takesDisplayName(detail?.inputSchema)) {
+          const { displayName: _unsupported, ...rest } = definition;
+          sent = rest;
+        }
+      }
+      await musterApi.callTool('core_mcpserver_validate', sent, installation);
+      await musterApi.callTool(tool, sent, installation);
+      return sent;
     },
     event: (_data, { isEdit, authMode }) =>
       isEdit

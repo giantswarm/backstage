@@ -9,12 +9,14 @@ import {
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { takesDisplayName } from '../../lib/mcpServerDefinition';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
 import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
+import { useToolDescription } from '../shared/useToolDescription';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
 
 const useStyles = makeStyles({
@@ -119,6 +121,11 @@ function inStepWords(message: string | undefined): string | undefined {
  * state), the connector's name and an optional description. The transport is
  * taken from the probe rather than asked.
  *
+ * The name is the connector's display name; its technical name derives from
+ * it on create and is fixed after. An edit lets the name change only where
+ * the installation's muster takes a display name on update (v5.43.0 and
+ * later, read from the tool's input schema); elsewhere it stays read-only.
+ *
  * The prototype's "Who can use it?" audience choice is deliberately absent:
  * muster registers a connector for the whole installation and has no
  * per-person visibility to map it to, so the wizard does not pretend to ask.
@@ -149,6 +156,17 @@ export function NewConnectorConnectPage() {
       setInstallation(activeInstallation);
     }
   }, [registeredName, activeInstallation, state.installation, setInstallation]);
+
+  // Whether this muster's update keeps a changed name; read only for an edit.
+  // Until the schema is read the name stays read-only, as it was before
+  // muster took a display name.
+  const { data: updateTool } = useToolDescription(
+    'core_mcpserver_update',
+    registeredInstallation,
+    { enabled: Boolean(registeredName) },
+  );
+  const canRename =
+    !registeredName || takesDisplayName(updateTool?.inputSchema);
 
   // The detected transport is applied as long as this run has not been
   // registered yet; an edit keeps the transport the server is registered with,
@@ -234,25 +252,27 @@ export function NewConnectorConnectPage() {
       <TextField
         label="Name"
         isRequired
-        isReadOnly={Boolean(registeredName)}
+        isReadOnly={!canRename}
         value={state.name}
         onChange={setName}
         placeholder="e.g. Jira"
         description={
-          registeredName
-            ? 'It cannot be changed after registration.'
-            : 'Shown when giving an agent access.'
+          canRename
+            ? 'Shown when giving an agent access.'
+            : 'It cannot be changed after registration.'
         }
         {...validation.textFieldProps(
           'name',
           fieldErrors.name ?? fieldErrors.slug,
         )}
       />
-      {!registeredName && state.slug && (
-        <Text variant="body-small" color="secondary">
-          Registered as <code>{state.slug}</code> — used in its tool names.
-        </Text>
-      )}
+      {state.slug &&
+        (!registeredName || canRename || state.name.trim() !== state.slug) && (
+          <Text variant="body-small" color="secondary">
+            Registered as <code>{state.slug}</code> — used in its tool names.
+            {registeredName && ' It cannot be changed.'}
+          </Text>
+        )}
 
       <TextAreaField
         label="What does it give access to?"

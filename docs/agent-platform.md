@@ -136,12 +136,22 @@ MCPServer's; and connectors that would read the same (two annotated alike, or
 one annotated like another's name, case aside) go by their own names
 instead, so no two read alike. URLs, `server:` selectors and tool names keep
 the technical name, which Technical details on the Details tab still shows,
-and searches match both names. Add connector cannot set the annotation:
-muster's `core_mcpserver_create` and `_update` take no annotations (their
-request parsing rejects unknown fields), so it is set on the MCPServer
-directly, for example in its GitOps source or with
-`kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`.
-An update through the wizard keeps it.
+and searches match both names.
+
+Add connector keeps the name typed into its Name field as that annotation,
+through the `displayName` argument of muster's `core_mcpserver_create` and
+`_update` (muster v5.43.0 and later). The technical name derives from it as
+before ("Stack Overflow" is registered as `stack-overflow`); a name that is the
+technical name already (`jira`) sets no annotation. Editing a connector shows
+its display name in the Name field and saves a changed one, sending
+`displayName` only when it changes (back to the technical name removes the
+annotation); the technical name stays fixed. Whether an installation's muster
+takes the argument is read from the tool's input schema (`describe_tool`):
+on an older muster, which refuses unknown fields, the wizard registers without
+it and an edit keeps the Name read-only, as before. The annotation can also be
+set on the MCPServer directly, for example in its GitOps source or with
+`kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
+an edit that does not change the name keeps it.
 
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
