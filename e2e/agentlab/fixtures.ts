@@ -8,6 +8,7 @@ import {
   type BrowserContext,
   type Locator,
   type Page,
+  type Request,
   type Response,
   type TestInfo,
 } from '@playwright/test';
@@ -140,6 +141,44 @@ function expectLabPortalMode(served: PortalMode, testInfo: TestInfo): void {
 }
 
 /**
+ * Opens `path` and, when the load lost one of the app's scripts, loads it
+ * once more.
+ *
+ * A Chromium that has just started changes its certificate verifier once,
+ * about two seconds in, and every request in flight at that moment fails
+ * (`net::ERR_CERT_VERIFIER_CHANGED`, the rest `net::ERR_FAILED`). Caught in
+ * the first page load of a new browser — a worker's sign-in, a test's own
+ * `page` — the app's script chunks are among them, and the page stays blank:
+ * neither the portal nor the sign-in card. A second load comes after the
+ * change. A load that loses its scripts again is left as it is, for the
+ * caller's assertion to report.
+ */
+export async function gotoApp(page: Page, path: string): Promise<void> {
+  const lost: string[] = [];
+  const record = (request: Request) => {
+    if (
+      request.resourceType() === 'script' &&
+      request.frame() === page.mainFrame()
+    ) {
+      lost.push(`${request.url()} (${request.failure()?.errorText})`);
+    }
+  };
+  page.on('requestfailed', record);
+  try {
+    await page.goto(path);
+  } finally {
+    page.off('requestfailed', record);
+  }
+  if (lost.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `agentlab e2e: ${path} lost ${lost.length} script(s), loading it again: ${lost[0]}`,
+    );
+    await page.goto(path);
+  }
+}
+
+/**
  * Signs `page` in as a lab user the way a person does: the Dex card's
  * **Sign In** opens the popup, the lab Dex asks for the fixture account, and
  * the portal renders signed in. Fails with the page's state when the card is
@@ -147,7 +186,7 @@ function expectLabPortalMode(served: PortalMode, testInfo: TestInfo): void {
  * or the handler page did not hand the session to the opener).
  */
 export async function signIn(page: Page, user: LabUser): Promise<void> {
-  await page.goto('/');
+  await gotoApp(page, '/');
   // The classic card's "Sign In" and the shell card's "Sign in with …" alike
   // (a case-insensitive substring).
   const card = page.getByRole('button', { name: 'Sign In' });
@@ -408,7 +447,7 @@ export async function open(
   path: string,
   user: LabUser = lab.users.admin,
 ): Promise<void> {
-  await page.goto(path);
+  await gotoApp(page, path);
   const chrome = portalChrome(page);
   const card = page.getByRole('button', { name: 'Sign In' });
   await expect(chrome.or(card).first()).toBeAttached();
@@ -416,7 +455,7 @@ export async function open(
   // "Sign in" buttons too (the inbox's MCP sign-in row and its dialog).
   if ((await chrome.count()) === 0 && (await card.isVisible())) {
     await signIn(page, user);
-    await page.goto(path);
+    await gotoApp(page, path);
   }
   await expect(chrome).toBeAttached();
 }
