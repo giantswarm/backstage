@@ -1,0 +1,117 @@
+import type { Page } from '@playwright/test';
+import { dismissMcpSignInNotice, expect, open, signIn, test } from './fixtures';
+import { contextOptionsFor, lab } from './lab';
+
+/**
+ * A portal tab left open on `/catalog` or `/settings` after the portal session
+ * expired: the catalog's own readers (the entity-presentation loader, the
+ * catalog page's getEntities refetch) run on their own timers and never open
+ * the Login Required dialog. An action the person starts still asks for the
+ * sign-in.
+ *
+ * The page's clock is moved past the ID token's lifetime (Playwright's fake
+ * clock) and the session's refresh is refused, as Dex's would be once the
+ * refresh token is gone.
+ */
+
+const AUTH_REFRESH = /\/api\/auth\/[^/]+\/refresh/;
+
+function loginRequired(page: Page) {
+  return page.getByRole('dialog', { name: 'Login Required' });
+}
+
+/** Whether the Login Required dialog shows within `timeout`. */
+async function prompts(page: Page, timeout: number): Promise<boolean> {
+  return loginRequired(page)
+    .waitFor({ state: 'visible', timeout })
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+/** Every catalog request the page sends from now on. */
+function recordCatalogRequests(page: Page): string[] {
+  const sent: string[] = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith('/api/catalog/')) {
+      sent.push(`${request.method()} ${url.pathname}`);
+    }
+  });
+  return sent;
+}
+
+/** Expires the portal session: refresh refused, clock past the token. */
+async function expireSession(page: Page) {
+  await page.route('**/api/auth/*/refresh**', route =>
+    route.fulfill({
+      status: 401,
+      json: { error: { name: 'AuthenticationError' } },
+    }),
+  );
+  const refreshed = page.waitForRequest(request =>
+    AUTH_REFRESH.test(request.url()),
+  );
+  await page.clock.fastForward('02:00:00');
+  await refreshed;
+}
+
+for (const path of ['/catalog', '/settings']) {
+  test(`idling on ${path} after the session expired opens no Login Required dialog`, async ({
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    const context = await browser.newContext(contextOptionsFor('desktop'));
+    try {
+      const page = await context.newPage();
+      await page.clock.install();
+      await dismissMcpSignInNotice(page);
+      await signIn(page, lab.users.admin);
+      await open(page, path);
+      await page.clock.runFor(5_000);
+      await page.waitForLoadState('networkidle');
+
+      const catalogReads = recordCatalogRequests(page);
+      await expireSession(page);
+      // Long enough for the catalog page's refetch and the presentation
+      // loader's batches to come round several times.
+      await page.clock.runFor('00:10:00');
+
+      expect(
+        await prompts(page, 15_000),
+        `the readers on ${path} opened no Login Required dialog`,
+      ).toBe(false);
+      expect(
+        catalogReads,
+        'no catalog read leaves the page without a session',
+      ).toEqual([]);
+      await test.info().attach(`idle-${path.slice(1)}`, {
+        body: await page.screenshot(),
+        contentType: 'image/png',
+      });
+
+      // A person's own action still asks for the sign-in: a catalog write,
+      // the Refresh of an entity's About card.
+      await page.goto('/catalog/default/user/admin');
+      expect(
+        await prompts(page, 15_000),
+        'opening the page is a read: no dialog',
+      ).toBe(false);
+      await page
+        .getByRole('button', { name: /refresh/i })
+        .first()
+        .click();
+      await expect(
+        loginRequired(page),
+        'the person’s action asks for the sign-in',
+      ).toBeVisible({ timeout: 60_000 });
+      await test.info().attach(`login-on-action-${path.slice(1)}`, {
+        body: await page.screenshot(),
+        contentType: 'image/png',
+      });
+    } finally {
+      await context.close();
+    }
+  });
+}

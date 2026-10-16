@@ -22705,6 +22705,7 @@ __metadata:
     "@backstage-community/plugin-github-actions": "npm:^1.0.0"
     "@backstage-community/plugin-grafana": "npm:^0.22.0"
     "@backstage/app-defaults": "backstage:^"
+    "@backstage/catalog-client": "backstage:^"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
