@@ -111,9 +111,4 @@ export const SEND_KEY_CAPTIONS = {
   },
   /** The answer panel, on the last question. */
   answer: { key: 'Enter sends', tap: 'Tap Send answer to send it' },
-  /** The session composer, once kagent has reported the runtime lost. */
-  runtimeLost: {
-    key: 'Enter starts it',
-    tap: 'Tap the button below to start it',
-  },
 } satisfies Record<string, SendKeyCaptionOptions>;
