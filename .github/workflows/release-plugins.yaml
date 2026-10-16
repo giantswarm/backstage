@@ -59,15 +59,24 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Generate giantswarm-release token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASE_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Version packages or publish to npm
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          # A bot token, not GITHUB_TOKEN: a pull request opened with
+          # A giantswarm-release App token, not GITHUB_TOKEN: a pull request opened with
           # GITHUB_TOKEN gets no pull_request workflow runs, so the required
           # checks (pre-commit, semantic-pull-request, check-values-schema)
           # would never report and the Version Packages pull request could
           # not be merged.
-          github-token: ${{ secrets.TAYLORBOT_GITHUB_ACTION }}
+          github-token: ${{ steps.app-token.outputs.token }}
           # Push with the Git CLI. The GitHub API mode (the default) stages
           # every commit on a temporary branch changesets-ghcommit-temp/<branch>
           # that is pushed at main's HEAD first; CircleCI builds that branch like
