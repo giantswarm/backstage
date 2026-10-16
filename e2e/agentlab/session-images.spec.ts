@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, open, openReadyAgent, test } from './fixtures';
+import { expect, openHome, openReadyAgent, test } from './fixtures';
 
 /**
  * Images in a session message: the home composer attaches a pasted image as a
@@ -51,7 +51,7 @@ async function openHomeWithAgent(
   page: Page,
   labAgent: { name: string },
 ): Promise<Locator> {
-  await open(page, '/');
+  await openHome(page);
   await page
     .getByRole('button', { name: /(^| )Agent$/ })
     .first()
@@ -179,7 +179,9 @@ test('the home composer attaches pasted images and refuses other files', async (
   await expect(remove).toHaveCount(0);
   await expect(prompt, 'the focus went back to the prompt').toBeFocused();
 
-  await dropFile(admin.getByTestId('composer-card'), {
+  // The drop target is the composer's box; a drop on its text field bubbles
+  // there, as a file let go of over the box does.
+  await dropFile(prompt, {
     name: 'report.pdf',
     type: 'application/pdf',
     text: '%PDF-1.7',
@@ -228,7 +230,7 @@ test('an image of the person’s message shows as a thumbnail that opens at full
 }) => {
   test.setTimeout(10 * 60_000);
   await openReadyAgent(admin, labAgent);
-  await open(admin, '/');
+  await openHome(admin);
   await admin
     .getByRole('button', { name: /(^| )Agent$/ })
     .first()

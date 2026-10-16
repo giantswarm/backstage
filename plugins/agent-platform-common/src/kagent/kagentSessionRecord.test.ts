@@ -108,6 +108,22 @@ describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0
     });
   });
 
+  it('says a listing the backend cut is truncated, keeping its rows', () => {
+    const { sessions: rows, drift } = normalizeSessionList(
+      { sessions: [sessions.sessions[0]], truncated: true },
+      'lab',
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(drift).toEqual({
+      kind: 'truncated',
+      message: 'the listing was cut at the backend’s page limit',
+    });
+    expect(normalizeSessionList({ truncated: true }, 'lab').drift?.kind).toBe(
+      'truncated',
+    );
+  });
+
   it('keeps unknown fields and unknown states out of the way', () => {
     const { sessions: rows } = normalizeSessionList(
       {

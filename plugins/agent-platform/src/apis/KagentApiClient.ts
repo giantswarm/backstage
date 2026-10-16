@@ -214,6 +214,21 @@ export class KagentApiClient implements KagentApi {
   }
 
   async listSessions(installation: string): Promise<KagentSession[]> {
+    const { sessions } = await this.readSessionList(installation);
+    return sessions;
+  }
+
+  async listSessionsIfComplete(
+    installation: string,
+  ): Promise<KagentSession[] | undefined> {
+    const { sessions, drift } = await this.readSessionList(installation);
+    // Any drift that did not throw left sessions out: rows that did not parse,
+    // a body that did not parse at all (read as no sessions), or a listing
+    // the backend cut at its page limit.
+    return drift ? undefined : sessions;
+  }
+
+  private async readSessionList(installation: string) {
     const body = await this.get<unknown>('/kagent/sessions', installation);
     const { sessions, drift } = normalizeSessionList(body, installation);
 
@@ -238,7 +253,7 @@ export class KagentApiClient implements KagentApi {
       throw upstreamError(drift.message);
     }
 
-    return sessions;
+    return { sessions, drift };
   }
 
   async getSessionDetail(

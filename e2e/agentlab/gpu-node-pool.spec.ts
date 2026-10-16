@@ -1,6 +1,13 @@
 import type { Locator, Page } from '@playwright/test';
 
-import { expect, expectWizardStep, open, signIn, test } from './fixtures';
+import {
+  dismissMcpSignInNotice,
+  expect,
+  expectWizardStep,
+  open,
+  signIn,
+  test,
+} from './fixtures';
 import {
   KEPT_CLAIM,
   PRESET_SOURCE,
@@ -595,6 +602,9 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
   test('a Deploy cut short lists the pending objects and Continue re-runs the same call', async ({
     page,
   }) => {
+    // The outcome's Continue sits at the foot of the page, where the MCP
+    // sign-in notice floats while the lab's OAuth fixture waits for a sign-in.
+    await dismissMcpSignInNotice(page);
     const { calls } = await reachReview(page, { partialApplies: 1 });
     await page.getByRole('button', { name: /^Deploy/ }).click();
 

@@ -77,6 +77,18 @@ export interface KagentApi {
   listSessions(installation: string): Promise<KagentSession[]>;
 
   /**
+   * The signed-in user's sessions on one installation, but only when the
+   * read is known to be complete: every row parsed, and the listing not cut
+   * at the backend's page limit. Undefined otherwise. Throws as
+   * {@link listSessions} does. For a caller that acts on a session's
+   * *absence* (dropping what is stored about deleted sessions); a list shown
+   * to the person uses {@link listSessions}, which keeps partial data.
+   */
+  listSessionsIfComplete(
+    installation: string,
+  ): Promise<KagentSession[] | undefined>;
+
+  /**
    * One session's metadata, plus the message timestamps recovered from its
    * stored events.
    *
