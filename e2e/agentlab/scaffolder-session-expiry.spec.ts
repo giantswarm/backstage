@@ -114,10 +114,13 @@ test.describe('a template submitted after the sign-in expired', () => {
     const { page, submitted } = await fillTemplate(context);
 
     const createdAt = await nextSecond();
-    await page.clock.fastForward('02:00:00');
+    // Listening before the jump: what the page polls with the portal's token
+    // (the MCP sign-in notice's status read) may refresh it first, and Create
+    // then sends the token that refresh minted.
     const minted = page.waitForRequest(request =>
       /\/api\/auth\/(cluster-token\/|[^/]+\/refresh)/.test(request.url()),
     );
+    await page.clock.fastForward('02:00:00');
     await page.getByRole('button', { name: 'Create' }).click();
     await minted;
 
@@ -147,11 +150,19 @@ test.describe('a template submitted after the sign-in expired', () => {
       }),
     );
     await page.clock.fastForward('02:00:00');
-    await page.getByRole('button', { name: 'Create' }).click();
-
+    const create = page.getByRole('button', { name: 'Create' });
     const login = page.getByRole('dialog', { name: 'Login Required' });
-    await expect(login, 'the portal asks for the sign-in').toBeVisible();
-    await login.getByRole('button', { name: 'Reject All' }).click();
+    // What the page polls with the portal's token (the MCP sign-in notice's
+    // status read) may meet the refused refresh before Create does, and its
+    // prompt then covers Create.
+    if (!(await login.isVisible())) {
+      await create.click();
+    }
+    const decline = async () => {
+      await expect(login, 'the portal asks for the sign-in').toBeVisible();
+      await login.getByRole('button', { name: 'Reject All' }).click();
+    };
+    await decline();
 
     // The sign-in declined is the portal's own: the template read before the
     // mint carries the portal's token, whose refresh the stub refuses. An
@@ -159,6 +170,18 @@ test.describe('a template submitted after the sign-in expired', () => {
     const alert = page.getByRole('alert').filter({
       hasText: /Your sign-in expired|Sign-in needed/,
     });
+    // Declined from a poll's prompt, Create has not run yet: selected now, it
+    // asks for the sign-in itself, and that prompt is declined too.
+    const reported = await alert
+      .waitFor({ state: 'visible', timeout: 5_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    if (!reported) {
+      await create.click();
+      await decline();
+    }
     await expect(alert).toBeVisible();
     await expect(alert).toContainText('your entries are kept');
     await expect(alert).toBeFocused();
@@ -166,7 +189,7 @@ test.describe('a template submitted after the sign-in expired', () => {
     await expect(page.getByRole('progressbar')).toBeHidden();
 
     await page.unroute('**/api/auth/*/refresh**');
-    await page.getByRole('button', { name: 'Create' }).click();
+    await create.click();
 
     const done = page.waitForURL(/\/create\/tasks\/session-expiry-task/);
     const prompted = await login

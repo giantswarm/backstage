@@ -1,6 +1,13 @@
 import type { Locator, Page } from '@playwright/test';
 
-import { expect, expectWizardStep, open, signIn, test } from './fixtures';
+import {
+  dismissMcpAuthNotice,
+  expect,
+  expectWizardStep,
+  open,
+  signIn,
+  test,
+} from './fixtures';
 import {
   KEPT_CLAIM,
   PRESET_SOURCE,
@@ -613,6 +620,9 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     await expect(page.getByRole('button', { name: /^Deploy/ })).toHaveCount(0);
     await snapshot(page, 'gpu-pool-deploy-partial');
 
+    // The outcome sits at the foot of the page, where the MCP sign-in notice
+    // floats while the lab's OAuth fixture waits for a sign-in.
+    await dismissMcpAuthNotice(page);
     await partial.getByRole('button', { name: 'Continue' }).click();
     // The completed Deploy returns to GPU pools on the pool's lifecycle panel.
     await expect(page).toHaveURL(CAPACITY_VIEW, { timeout: 30_000 });

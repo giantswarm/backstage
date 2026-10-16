@@ -485,6 +485,23 @@ export async function connectToMuster(page: Page, ready: Locator) {
 }
 
 /**
+ * Hides the MCP sign-in notice with its **Not now**, as a person does who has
+ * no use for the connector it names: it floats over the foot of every page
+ * while a connector waits for the person's sign-in (the lab's
+ * `lab-oauth-fixture` does), and on a phone covers what is there. It stays
+ * hidden for the browser session.
+ */
+export async function dismissMcpAuthNotice(page: Page): Promise<void> {
+  const notice = page.getByRole('complementary', {
+    name: 'MCP server sign-in',
+  });
+  if (await notice.isVisible()) {
+    await notice.getByRole('button', { name: 'Not now' }).click();
+    await expect(notice).toBeHidden();
+  }
+}
+
+/**
  * Creates an agent in the New agent wizard the way a person does, as the
  * page's user: Details (no skills, no tools, the lab's default ModelConfig
  * unless `model` names another: the model radio's name, which is the
@@ -562,14 +579,17 @@ export async function createAgentInWizard(
   // --- Step 4: Check and create = agent-manager's dry run, then Create -----
   await expectWizardStep(page, 'Review');
   await expect(page.getByText(agentName).first()).toBeVisible();
-  // The release and its manifests are collapsed under Technical details.
-  await page.getByText('Technical details').click();
-  await expect(page.getByText(agentSlug).first()).toBeVisible();
   const deploy = page.getByRole('button', { name: 'Create agent' }).first();
   await expect(
     deploy,
     'the dry run through agent-manager completed and Create is offered',
   ).toBeEnabled({ timeout: 90_000 });
+  // The release and its manifests are collapsed under Technical details, at
+  // the foot of the page — where, on a phone, the MCP sign-in notice floats
+  // over it while the lab's OAuth fixture waits for a sign-in.
+  await dismissMcpAuthNotice(page);
+  await page.getByText('Technical details').click();
+  await expect(page.getByText(agentSlug).first()).toBeVisible();
   await options.onStep?.('Review');
   await deploy.click();
 
