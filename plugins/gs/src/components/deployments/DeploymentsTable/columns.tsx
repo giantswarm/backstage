@@ -7,7 +7,12 @@ import {
   semverCompareSort,
   sortAndFilterOptions,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { DateComponent, NotAvailable, Version } from '../../UI';
+import {
+  DateComponent,
+  InstallationLink,
+  NotAvailable,
+  Version,
+} from '../../UI';
 import { Box, Typography } from '@material-ui/core';
 import { DeploymentActions } from '../DeploymentActions';
 import {
@@ -153,6 +158,9 @@ export const getInitialColumns = ({
     {
       title: 'Installation',
       field: DeploymentColumns.installationName,
+      render: row => (
+        <InstallationLink installationName={row.installationName} />
+      ),
     },
     {
       title: 'Cluster',

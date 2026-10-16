@@ -9,14 +9,18 @@ import {
   Stat,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { ContentRow, ClusterLink, DateComponent } from '../../UI';
+import {
+  ContentRow,
+  ClusterLink,
+  DateComponent,
+  InstallationLink,
+} from '../../UI';
 import { Labels } from '../../LabelsCard/Labels';
 import { ClusterTypes } from '../../clusters/utils';
 import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { DeploymentStatus } from '../DeploymentStatus';
 import { useDeploymentsData } from '../DeploymentsDataProvider';
 import { DeploymentData } from '../DeploymentsDataProvider/utils';
-import { useCatalogEntityByRef } from '../../hooks/useCatalogEntityByRef';
 import {
   useMimirWorkloadDiagnostics,
   WorkloadDiagnostics,
@@ -31,20 +35,6 @@ const KIND_LABELS: Record<string, string> = {
   statefulset: 'StatefulSet',
   daemonset: 'DaemonSet',
 };
-
-function InstallationLink({ installationName }: { installationName: string }) {
-  const { entity } = useCatalogEntityByRef({
-    kind: 'Resource',
-    namespace: 'default',
-    name: installationName,
-  });
-
-  if (entity) {
-    return <EntityRefLink entityRef={entity} />;
-  }
-
-  return <>{installationName}</>;
-}
 
 function SummaryCard({ workload }: { workload: DeploymentData }) {
   return (

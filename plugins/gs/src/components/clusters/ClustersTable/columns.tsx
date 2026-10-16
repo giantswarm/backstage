@@ -13,6 +13,7 @@ import { formatVersion, toSentenceCase } from '../../utils/helpers';
 import {
   Account,
   DateComponent,
+  InstallationLink,
   KubernetesVersion,
   NotAvailable,
   Version,
@@ -143,6 +144,9 @@ export const getInitialColumns = ({
     {
       title: 'Installation',
       field: ClusterColumns.installationName,
+      render: row => (
+        <InstallationLink installationName={row.installationName} />
+      ),
     },
     {
       title: 'Organization',
