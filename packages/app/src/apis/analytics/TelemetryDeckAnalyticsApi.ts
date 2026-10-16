@@ -167,6 +167,8 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
       return;
     }
 
+    // The query string and the hash are never sent, and the pathname only
+    // picks the page: the signal carries its route template instead.
     const pathname = event.subject.split('?')[0].split('#')[0];
     const payload = getTelemetryPageViewPayload(pathname);
 
