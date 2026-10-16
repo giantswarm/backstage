@@ -56,6 +56,7 @@ import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 import { GSPageLayout } from './GSPageLayout';
 import { ScopedStorageApi } from './scopedStorageApi';
+import { getOptionalMainAuthApi } from '../auth/getOptionalMainAuthApi';
 import { createBackstageFetchApi } from './backstageFetch';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
@@ -111,9 +112,20 @@ export const appOverrides = createFrontendModule({
             configApi: configApiRef,
             identityApi: identityApiRef,
             discoveryApi: discoveryApiRef,
+            gsAuthProvidersApi: gsAuthProvidersApiRef,
           },
-          factory: ({ configApi, identityApi, discoveryApi }) =>
-            createBackstageFetchApi({ configApi, discoveryApi, identityApi }),
+          factory: ({
+            configApi,
+            identityApi,
+            discoveryApi,
+            gsAuthProvidersApi,
+          }) =>
+            createBackstageFetchApi({
+              configApi,
+              discoveryApi,
+              identityApi,
+              mainAuthApi: getOptionalMainAuthApi(gsAuthProvidersApi),
+            }),
         }),
     }),
     /**

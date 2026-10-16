@@ -7,7 +7,6 @@ import {
   GitHubPullRequestsEntityContent,
   GrafanaDashboardsEntityCard,
 } from './legacyEntityExtensions';
-import { CatalogApiOverride } from './CatalogApi';
 import { EntityPresentationApi } from './EntityPresentationApi';
 import { WhoIsOnCallEntityCard } from './WhoIsOnCallEntityCard';
 import {
@@ -19,7 +18,6 @@ export const catalogPluginOverrides = createFrontendModule({
   pluginId: 'catalog',
   extensions: [
     IndexPage,
-    CatalogApiOverride,
     EntityPresentationApi,
     GitHubPullRequestsEntityContent,
     CircleCIEntityContent,

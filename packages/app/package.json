@@ -17,7 +17,6 @@
     "@backstage-community/plugin-github-actions": "^1.0.0",
     "@backstage-community/plugin-grafana": "^0.22.0",
     "@backstage/app-defaults": "backstage:^",
-    "@backstage/catalog-client": "backstage:^",
     "@backstage/catalog-model": "backstage:^",
     "@backstage/cli": "backstage:^",
     "@backstage/core-app-api": "backstage:^",
@@ -92,6 +91,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@backstage/catalog-client": "backstage:^",
     "@backstage/config": "backstage:^",
     "@backstage/config-loader": "backstage:^",
     "@backstage/frontend-test-utils": "backstage:^",
