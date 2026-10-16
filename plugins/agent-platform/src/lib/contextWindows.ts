@@ -1,3 +1,5 @@
+import type { ContextReading } from '@giantswarm/backstage-plugin-agent-platform-common';
+
 /**
  * Context-window sizes for the chat's context indicator.
  *
@@ -56,41 +58,65 @@ export function contextWindowFor(
   return best?.tokens;
 }
 
-export type ContextUsage = {
-  /** Tokens in the context — the newest turn's prompt tokens. */
-  usedTokens: number;
-  /** The model's window, when the config names it. */
-  windowTokens?: number;
+/**
+ * How full the model's context window is, in one of the states the indicator
+ * shows. Each state carries exactly the figures it may show, so a share never
+ * sits beside numbers that contradict it.
+ */
+export type ContextUsage =
+  /** No turn has reported usage yet. */
+  | { kind: 'none' }
   /**
-   * `usedTokens` as a share of the window, 0–100, when the window is known.
-   * Capped at 100: the numerator is a per-turn sum over the turn's model calls,
-   * so on a many-call turn it can exceed the window without the context ever
-   * having done so — a bar past full would state something that did not happen.
+   * The runtime reports only a turn total summed over several model calls, or
+   * one whose call count it did not say (the claude Harness), which is no
+   * single call's context: there is nothing to show without inventing it.
    */
-  percent?: number;
-};
+  | { kind: 'unmeasured' }
+  /** The table names no window for the model: the raw count only. */
+  | { kind: 'tokens'; usedTokens: number }
+  /** The share of the window, 0–100. */
+  | { kind: 'share'; usedTokens: number; windowTokens: number; percent: number }
+  /**
+   * A call counted more than the configured window. No call can exceed its
+   * model's window, so the window does not fit the call: the setting is too
+   * small, or matched by a pattern meant for another model, or the turn ran on
+   * a model the agent has since left (the window is looked up for the agent's
+   * current model). The raw count stands, and no share is claimed.
+   */
+  | { kind: 'over-window'; usedTokens: number; windowTokens: number };
 
 /**
- * How full the model's context window is, from the newest turn's prompt tokens and the
- * configured window. The numerator is the closest measurement that exists:
- * kagent records tokens per turn (summed over the turn's model calls), not per
- * call, so treat the figure as an approximation and say so wherever it shows.
+ * How full the model's context window is, from the newest usage reading (see
+ * `SessionTimeline.context`) and the configured window.
  */
 export function contextUsage(
-  usedTokens: number,
+  reading: ContextReading | undefined,
   windowTokens: number | undefined,
 ): ContextUsage {
-  const used = Number.isFinite(usedTokens) && usedTokens > 0 ? usedTokens : 0;
+  if (!reading) {
+    return { kind: 'none' };
+  }
+  if (!reading.perCall) {
+    return { kind: 'unmeasured' };
+  }
+  const usedTokens = reading.tokens;
+  if (!Number.isFinite(usedTokens) || usedTokens <= 0) {
+    return { kind: 'none' };
+  }
   if (
     windowTokens === undefined ||
     !Number.isFinite(windowTokens) ||
     windowTokens <= 0
   ) {
-    return { usedTokens: used };
+    return { kind: 'tokens', usedTokens };
+  }
+  if (usedTokens > windowTokens) {
+    return { kind: 'over-window', usedTokens, windowTokens };
   }
   return {
-    usedTokens: used,
+    kind: 'share',
+    usedTokens,
     windowTokens,
-    percent: Math.min(100, (used / windowTokens) * 100),
+    percent: (usedTokens / windowTokens) * 100,
   };
 }

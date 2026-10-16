@@ -270,9 +270,53 @@ export function isInternalToolName(name: string | undefined): boolean {
  * counts them in the total but in neither part.
  */
 export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
-  return tokenUsageOf(
-    readKagentMetadata(metadata, 'usage_metadata', carriesTokenUsage),
-  );
+  return readUsageReport(metadata)?.usage;
+}
+
+/** What a usage bag says about the model's context, for the context indicator. */
+export type ContextReading = {
+  /**
+   * The tokens the bag counts: its reported total, else prompt + completion.
+   * The completion is in it because it is in the context from then on — the
+   * next call re-sends it — and because a call's prompt and output together
+   * must fit the model's window.
+   */
+  tokens: number;
+  /**
+   * Whether `tokens` is one model call's. ADK writes one bag per model call
+   * (one per LLM response event), with no call count: per call. The claude
+   * Harness writes one bag per turn — the Claude Agent SDK's cumulative
+   * result, marked by `numTurns` and `costUsd` — which is one call's only when
+   * `numTurns` is exactly 1. A Harness bag whose count is missing or malformed
+   * is not trusted as one call: a sum over calls must not pass for a context.
+   */
+  perCall: boolean;
+};
+
+/** A usage bag read once: its totals, and what it says about the context. */
+export type UsageReport = {
+  usage: TokenUsage;
+  context: ContextReading;
+};
+
+/**
+ * A message's usage bag, parsed once for both the session totals
+ * ({@link readTokenUsage}) and the context indicator ({@link ContextReading}).
+ */
+export function readUsageReport(metadata: unknown): UsageReport | undefined {
+  const bag = readKagentMetadata(metadata, 'usage_metadata', carriesTokenUsage);
+  const usage = tokenUsageOf(bag);
+  if (!bag || !usage) {
+    return undefined;
+  }
+  const isTurnTotal = 'numTurns' in bag || 'costUsd' in bag;
+  return {
+    usage,
+    context: {
+      tokens: usage.total,
+      perCall: !isTurnTotal || bag.numTurns === 1,
+    },
+  };
 }
 
 /**

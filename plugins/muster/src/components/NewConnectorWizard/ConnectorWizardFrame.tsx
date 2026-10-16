@@ -32,8 +32,9 @@ export function useConnectorWizardCloseHref(): string {
   const pageLinks = useServerPageLinks();
   const { registeredName, registeredInstallation, lastSave } =
     useNewMcpServerForm();
+  // Set together, so both are there for an edit.
   const editedPage =
-    registeredName && lastSave !== 'create'
+    registeredName && registeredInstallation && lastSave !== 'create'
       ? pageLinks.server(registeredName, registeredInstallation)
       : undefined;
   if (editedPage) {
@@ -78,12 +79,16 @@ export function ConnectorWizardFrame({
     {
       id: 'connect',
       label: 'Connect',
-      href: connectLink && withEditParam(connectLink(), registeredName),
+      href:
+        connectLink &&
+        withEditParam(connectLink(), registeredName, registeredInstallation),
     },
     {
       id: 'signin',
       label: 'Sign-in',
-      href: signInLink && withEditParam(signInLink(), registeredName),
+      href:
+        signInLink &&
+        withEditParam(signInLink(), registeredName, registeredInstallation),
     },
     { id: 'test', label: 'Test' },
   ];

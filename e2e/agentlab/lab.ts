@@ -157,3 +157,10 @@ export const mobileContextOptions = {
 export function contextOptionsFor(variant: Variant) {
   return variant === 'mobile' ? mobileContextOptions : contextOptions;
 }
+
+/**
+ * What a fixture of another run created is left over once it is this old: no
+ * run of the suite takes so long, so a run going on at the same time against
+ * the same lab keeps what it uses.
+ */
+export const LEFTOVER_AGE = 3 * 60 * 60_000;

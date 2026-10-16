@@ -95,14 +95,14 @@ function PlainTool({
 }: {
   tool: string;
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
 }) {
   const classes = useStyles();
   const workflowLinks = useWorkflowPageLinks();
   const display = toolDisplay(tool, prefixes);
   switch (display.kind) {
     case 'workflow': {
-      const href = workflowLinks.workflow(display.workflow, installation ?? '');
+      const href = workflowLinks.workflow(display.workflow, installation);
       return (
         <>
           Runs the workflow{' '}
@@ -275,7 +275,7 @@ export interface WorkflowStepDetailsProps {
   /** Top-level step ids, to name a `fromStep` reference by number. */
   stepIds: string[];
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
   /** The latest run's outcome for this step, when a run is known. */
   overlay?: StepRunOverlay;
   /** What the step's tool does, from the tool catalogue, when known. */

@@ -11,6 +11,7 @@ import {
   type TestInfo,
 } from '@playwright/test';
 import {
+  LEFTOVER_AGE,
   contextOptionsFor,
   lab,
   type LabUser,
@@ -197,11 +198,14 @@ type WorkerFixtures = {
   /**
    * An agent of the worker's own on the lab, created as the admin in the New
    * agent wizard (agent-manager's `create_agent` through muster) the first
-   * time a test asks for it, and deleted again when the worker ends. A spec
-   * that needs an agent on the roster uses this one, never whatever earlier
-   * runs left on a shared lab; one that needs it ready opens it with
-   * {@link openReadyAgent}. A failed creation fails every later request for
-   * it in the same run at once, with the first failure's message.
+   * time a test asks for it, and deleted again when the worker ends, also
+   * after a failed test, on a fresh sign-in where the worker's page cannot
+   * (`removeLabAgent`). Before creating it, the worker deletes the agents
+   * earlier runs left ({@link isLeftoverAgent}): a killed worker never reaches
+   * its teardown. A spec that needs an agent on the roster uses this one,
+   * never whatever earlier runs left on a shared lab; one that needs it ready
+   * opens it with {@link openReadyAgent}. A failed creation fails every later
+   * request for it in the same run at once, with the first failure's message.
    */
   labAgent: LabAgent;
 };
@@ -230,6 +234,9 @@ type TestFixtures = {
    */
   signInAs: (user: LabUser) => Promise<Page>;
 };
+
+/** The prefix of every agent's technical name the `labAgent` fixture creates. */
+export const LAB_AGENT_PREFIX = 'e2e-roster-';
 
 /**
  * The plugins persist their react-query caches in localStorage, which the
@@ -297,7 +304,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   labAgent: [
-    async ({ adminPage }, use, workerInfo) => {
+    async ({ adminPage, browser, variant }, use, workerInfo) => {
       // One failed creation is the run's answer: a later worker fails at once
       // instead of paying the wizard and its timeouts again.
       const failureFile = labAgentFailureFile(workerInfo.project.outputDir);
@@ -306,12 +313,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           `the fixture agent could not be created earlier in this run: ${readFileSync(failureFile, 'utf8')}`,
         );
       }
+      await removeLeftoverAgents(adminPage);
       // Unique to the run, the worker and the second, so two runs against a
       // shared lab never meet on one agent.
-      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 14);
+      const stamp = labAgentStamp(new Date());
       const suffix = `${randomUUID().slice(0, 6)}-${workerInfo.workerIndex}`;
       const name = `E2E Roster ${stamp} ${suffix.replace('-', ' ')}`;
-      const slug = `e2e-roster-${stamp}-${suffix}`;
+      const slug = `${LAB_AGENT_PREFIX}${stamp}-${suffix}`;
       let detailPath: string | undefined;
       try {
         try {
@@ -323,17 +331,15 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         }
         await use({ name, slug, detailPath });
       } finally {
-        // Deploy may have created the agent even when the hand-off to its
-        // page failed: then the roster's link is the way to it.
-        detailPath ??= await rosterPathOf(adminPage, name).catch(
-          () => undefined,
+        await removeLabAgent(
+          adminPage,
+          () => browser.newContext(contextOptionsFor(variant)),
+          { name, slug, detailPath },
         );
-        if (detailPath) {
-          await deleteAgentInPortal(adminPage, detailPath, slug);
-        }
       }
     },
-    { scope: 'worker', timeout: 5 * 60_000 },
+    // The sweep, the wizard and the deletion's wait for Flux each take minutes.
+    { scope: 'worker', timeout: 10 * 60_000 },
   ],
 
   admin: async ({ adminPage }, use) => {
@@ -546,7 +552,7 @@ export async function createAgentInWizard(
   await expectWizardStep(page, 'Tools');
   // A new agent starts on "Nothing outside the chat". What is selected so far
   // shows in the docked *Selected* rail where the step keeps its column beside
-  // it (a desktop), else in the *Selected so far* bar (a phone, a tablet).
+  // it on a desktop, else in the *Selected so far* bar (a phone, a tablet).
   await expect(
     page
       .getByRole('complementary', { name: 'Selected' })
@@ -588,6 +594,18 @@ export async function deleteAgentInPortal(
   detailPath: string,
   agentSlug: string,
 ): Promise<void> {
+  await requestAgentDeletion(page, detailPath);
+  await expectAgentsGone(page, [agentSlug]);
+}
+
+/**
+ * Deletes the agent through its actions menu and resolves back on the agents
+ * list, before the roster drops it ({@link expectAgentsGone}).
+ */
+async function requestAgentDeletion(
+  page: Page,
+  detailPath: string,
+): Promise<void> {
   await open(page, detailPath);
   await page.getByRole('button', { name: 'Agent actions' }).click();
   await page.getByRole('menuitem', { name: /Delete agent/ }).click();
@@ -598,14 +616,129 @@ export async function deleteAgentInPortal(
   await expect(page).toHaveURL(/\/customize\/agents$/, {
     timeout: 60_000,
   });
+}
+
+/** Waits on the open agents list until the roster lists none of `slugs`. */
+async function expectAgentsGone(page: Page, slugs: string[]): Promise<void> {
   // By the href: the link's name is the display name, not the slug. The
   // roster re-reads the Agents on its 60 s poll, and the Agent goes only once
   // Flux has uninstalled the release agent-manager deleted, so allow two
   // polls.
   await expect(
-    page.locator(`a[href$="/${agentSlug}"]`),
-    'the roster no longer lists the agent',
+    page.locator(slugs.map(slug => `a[href$="/${slug}"]`).join(', ')),
+    `the roster no longer lists ${slugs.join(', ')}`,
   ).toHaveCount(0, { timeout: 150_000 });
+}
+
+/** The `labAgent` stamp of `date`: its UTC month to second, `MMDDhhmmss`. */
+export function labAgentStamp(date: Date): string {
+  return date.toISOString().replace(/[-:T]/g, '').slice(4, 14);
+}
+
+/**
+ * Whether `slug` names a `labAgent` an earlier run left: created, by its
+ * stamp, more than {@link LEFTOVER_AGE} ago. The stamp has no year: one later
+ * than an hour from now is last year's.
+ */
+export function isLeftoverAgent(
+  slug: string,
+  now: number = Date.now(),
+): boolean {
+  const stamp = slug.match(
+    new RegExp(`^${LAB_AGENT_PREFIX}(\\d{2})(\\d{2})(\\d{2})(\\d{2})(\\d{2})-`),
+  );
+  if (!stamp) {
+    return false;
+  }
+  const [month, day, hour, minute, second] = stamp.slice(1).map(Number);
+  const year = new Date(now).getUTCFullYear();
+  const at = (y: number) => Date.UTC(y, month - 1, day, hour, minute, second);
+  const created = at(year) > now + 60 * 60_000 ? at(year - 1) : at(year);
+  return now - created > LEFTOVER_AGE;
+}
+
+/**
+ * Deletes every `labAgent` earlier runs left ({@link isLeftoverAgent}) through
+ * the portal, all requested first and then awaited together. What does not go
+ * is reported, not thrown: it belongs to no run going on, so it does not fail
+ * this one.
+ */
+async function removeLeftoverAgents(page: Page): Promise<void> {
+  await open(page, '/agent-platform/agents');
+  const rows = page.getByRole('main').getByRole('listitem').getByRole('link');
+  if (
+    !(await rows
+      .first()
+      .waitFor({ timeout: 30_000 })
+      .then(
+        () => true,
+        () => false,
+      ))
+  ) {
+    return;
+  }
+  await searchRoster(page, 'E2E Roster');
+  const leftovers = (
+    await rows.evaluateAll(links =>
+      links.map(link => link.getAttribute('href') ?? ''),
+    )
+  ).filter(href => isLeftoverAgent(href.split('/').pop() ?? ''));
+  const requested: string[] = [];
+  const failed: string[] = [];
+  for (const href of leftovers) {
+    const slug = href.split('/').pop()!;
+    await requestAgentDeletion(page, href).then(
+      () => requested.push(slug),
+      (error: Error) =>
+        failed.push(`${slug} (${error.message.split('\n')[0]})`),
+    );
+  }
+  if (requested.length > 0) {
+    await expectAgentsGone(page, requested).catch((error: Error) =>
+      failed.push(error.message.split('\n')[0]),
+    );
+  }
+  if (failed.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`labAgent: leftovers not removed: ${failed.join('; ')}`);
+  }
+}
+
+/**
+ * Deletes the worker's `labAgent` at its teardown, whatever the tests left:
+ * on the worker's admin page, and where that page cannot (a test ended its
+ * session, the page crashed) again on a fresh context signed in as the admin,
+ * where the roster tells whether it is still there.
+ */
+async function removeLabAgent(
+  adminPage: Page,
+  newContext: () => Promise<BrowserContext>,
+  agent: { name: string; slug: string; detailPath?: string },
+): Promise<void> {
+  const remove = async (page: Page, detailPath?: string) => {
+    // Deploy may have created the agent even when the hand-off to its page
+    // failed: then the roster's link is the way to it.
+    const path = detailPath ?? (await rosterPathOf(page, agent.name));
+    if (path) {
+      await deleteAgentInPortal(page, path, agent.slug);
+    }
+  };
+  try {
+    await remove(adminPage, agent.detailPath);
+  } catch (first) {
+    const context = await newContext();
+    try {
+      const page = await context.newPage();
+      await signIn(page, lab.users.admin);
+      await remove(page);
+    } catch (second) {
+      throw new Error(
+        `the fixture agent ${agent.slug} could not be deleted: ${first}; on a fresh sign-in: ${second}`,
+      );
+    } finally {
+      await context.close();
+    }
+  }
 }
 
 /**
