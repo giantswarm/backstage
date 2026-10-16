@@ -2717,6 +2717,11 @@
                             "description": "Number of PostgreSQL instances in the CNPG cluster",
                             "minimum": 1
                         },
+                        "maxConnections": {
+                            "type": "integer",
+                            "description": "PostgreSQL `max_connections` of the CNPG cluster. The backend pods that hold connections at once during a rollout (two per replica, the terminating ones included, plus the surge) share it less `superuserReservedConnections`, each with every plugin's pool plus two: the render fails when they do not fit. Every connection costs the instance memory: raise `resources` with it.",
+                            "minimum": 1
+                        },
                         "operatorNamespace": {
                             "type": "string",
                             "description": "Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation."
@@ -2731,9 +2736,88 @@
                                 }
                             }
                         },
+                        "pool": {
+                            "type": "object",
+                            "description": "The backend's database pools: every backend plugin holds its own, which releases idle connections (min 0).",
+                            "additionalProperties": false,
+                            "properties": {
+                                "max": {
+                                    "type": "integer",
+                                    "description": "Connections per plugin pool for the plugins without an entry in `plugins`: most open one only for their service-to-service keys.",
+                                    "minimum": 1
+                                },
+                                "plugins": {
+                                    "type": "object",
+                                    "description": "Connections per plugin pool by plugin id, for the busy plugins.",
+                                    "properties": {
+                                        "catalog": {
+                                            "type": "integer"
+                                        },
+                                        "scaffolder": {
+                                            "type": "integer"
+                                        },
+                                        "search": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "additionalProperties": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    }
+                                },
+                                "pluginsWithDatabase": {
+                                    "type": "integer",
+                                    "description": "Backend plugins in the image, each with a pool. The backend's tests check it against packages/backend/src/index.ts.",
+                                    "minimum": 1
+                                }
+                            }
+                        },
+                        "resources": {
+                            "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.ResourceRequirements",
+                            "type": "object",
+                            "description": "Resources of each CNPG instance, sized for `maxConnections`.",
+                            "additionalProperties": true,
+                            "properties": {
+                                "limits": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "cpu": {
+                                            "type": "string"
+                                        },
+                                        "ephemeral-storage": {
+                                            "type": "string"
+                                        },
+                                        "memory": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "requests": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "cpu": {
+                                            "type": "string"
+                                        },
+                                        "ephemeral-storage": {
+                                            "type": "string"
+                                        },
+                                        "memory": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        },
                         "storageSize": {
                             "type": "string",
                             "description": "Persistent volume size for the PostgreSQL CNPG cluster"
+                        },
+                        "superuserReservedConnections": {
+                            "type": "integer",
+                            "description": "PostgreSQL `superuser_reserved_connections` of the CNPG cluster: the slots kept for the operator's superuser, which the backend's `app` role never gets.",
+                            "minimum": 0
                         }
                     }
                 }

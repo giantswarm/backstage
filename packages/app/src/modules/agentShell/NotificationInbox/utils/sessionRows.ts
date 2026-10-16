@@ -9,7 +9,7 @@ import type {
   NotifiableSession,
   SeenMarkTarget,
 } from '@giantswarm/backstage-plugin-agent-platform';
-import type { InboxRow } from '../types';
+import type { DerivedInboxRow } from '../types';
 
 /**
  * A failed row's reason class as the row says it. `other` says nothing more:
@@ -104,8 +104,8 @@ export function toSessionRows({
   record,
   hrefOf,
   mute,
-}: SessionRowsInput): InboxRow[] {
-  const rows: InboxRow[] = [];
+}: SessionRowsInput): DerivedInboxRow[] {
+  const rows: DerivedInboxRow[] = [];
   for (const [id, state] of states) {
     const session = sessions.get(id);
     if (!session) {

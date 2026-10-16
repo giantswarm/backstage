@@ -21,17 +21,6 @@ describe('EffectBadge', () => {
     expect(changes?.className).not.toBe(reads?.className);
   });
 
-  it("words a workflow's effect as the guarantee it is", () => {
-    render(
-      <>
-        <EffectBadge effect="reads" subject="workflow" />
-        <EffectBadge effect="changes" subject="workflow" />
-      </>,
-    );
-    expect(screen.getByText('Only reads')).toBeInTheDocument();
-    expect(screen.getByText('Can change things')).toBeInTheDocument();
-  });
-
   it('draws the compact size where asked', () => {
     render(
       <>

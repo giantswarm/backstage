@@ -67,12 +67,14 @@ const callTool = jest.fn();
 const listServers = jest.fn();
 const getAuthStatus = jest.fn();
 const filterTools = jest.fn();
+const describeTool = jest.fn();
 
 const musterApi = {
   callTool,
   listServers,
   getAuthStatus,
   filterTools,
+  describeTool,
 } as unknown as jest.Mocked<import('../../apis').MusterApi>;
 
 function renderWizard(path: string) {
@@ -114,6 +116,25 @@ async function renderSignInStep() {
   return result;
 }
 
+/**
+ * `describe_tool` of a muster whose create and update take a display name
+ * (v5.43.0 and later) or not.
+ */
+function musterTakesDisplayName(takes: boolean) {
+  describeTool.mockImplementation((name: string) =>
+    Promise.resolve({
+      name,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          ...(takes ? { displayName: { type: 'string' } } : {}),
+        },
+      },
+    }),
+  );
+}
+
 /** The arguments of each `core_mcpserver_<tool>` call so far. */
 function toolCalls(tool: string): unknown[][] {
   return callTool.mock.calls.filter(call => call[0] === tool);
@@ -133,6 +154,7 @@ describe('shell connector wizard', () => {
       truncated: false,
       tools: [],
     });
+    musterTakesDisplayName(true);
   });
 
   describe('Connect step', () => {
@@ -323,6 +345,7 @@ describe('shell connector wizard', () => {
 
       const expected = {
         name: 'jira',
+        displayName: 'Jira',
         type: 'streamable-http',
         url: 'https://jira.example.com/mcp',
         autoStart: true,
@@ -333,6 +356,73 @@ describe('shell connector wizard', () => {
       expect(toolCalls('core_mcpserver_create')).toEqual([
         ['core_mcpserver_create', expected, 'gazelle'],
       ]);
+    });
+
+    it('keeps the typed name as the display name, registered under the derived one', async () => {
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://stackoverflow.example.com/mcp',
+      );
+      await userEvent.type(screen.getByLabelText(/^Name/), 'Stack Overflow');
+      // The create form is as it was: the derived name is said under the field.
+      expect(screen.getByText(/^Registered as/)).toHaveTextContent(
+        'Registered as stack-overflow — used in its tool names.',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('radio', { name: 'No sign-in' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+        name: 'stack-overflow',
+        displayName: 'Stack Overflow',
+      });
+    });
+
+    it('sends no display name for a plain id', async () => {
+      await renderWizard('/customize/connectors/new');
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'https://jira.example.com/mcp',
+      );
+      await userEvent.type(screen.getByLabelText(/^Name/), 'jira');
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('radio', { name: 'No sign-in' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_create')[0][1]).not.toHaveProperty(
+        'displayName',
+      );
+    });
+
+    it('registers as before on a muster that takes no display name', async () => {
+      musterTakesDisplayName(false);
+      await renderSignInStep();
+      await userEvent.click(screen.getByRole('radio', { name: 'No sign-in' }));
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      await screen.findByText('Test the connection');
+
+      for (const tool of ['core_mcpserver_validate', 'core_mcpserver_create']) {
+        expect(toolCalls(tool)[0][1]).toEqual({
+          name: 'jira',
+          type: 'streamable-http',
+          url: 'https://jira.example.com/mcp',
+          autoStart: true,
+        });
+      }
     });
 
     it('registers "own account" with the advanced override behind the disclosure', async () => {
@@ -605,13 +695,16 @@ describe('shell connector wizard', () => {
       expect(screen.getByLabelText(/^What does it give access to/)).toHaveValue(
         'Search, read and update tickets',
       );
-      // The registered name is the CR's: kept, not renamed.
+      // The name is the display name, which an edit can change; the
+      // registered name under it cannot.
       const name = screen.getByRole('textbox', { name: /^Name/ });
       expect(name).toHaveValue('jira');
-      // Locked like every immutable field on edit: read-only, said once.
-      expect(name).toHaveAttribute('readonly');
+      await waitFor(() => expect(name).not.toHaveAttribute('readonly'));
       expect(name).toHaveAccessibleDescription(
-        'It cannot be changed after registration.',
+        'Shown when giving an agent access.',
+      );
+      expect(screen.getByText(/^Registered as/)).toHaveTextContent(
+        'Registered as jira — used in its tool names. It cannot be changed.',
       );
       // Leaving goes back to the connector's page, where Edit was pressed.
       expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
@@ -634,9 +727,109 @@ describe('shell connector wizard', () => {
       await waitFor(() =>
         expect(document.title).toBe('Edit Acme Jira · Connectors'),
       );
-      // The registered name stays the CR's.
       expect(screen.getByRole('textbox', { name: /^Name/ })).toHaveValue(
-        'jira',
+        'Acme Jira',
+      );
+    });
+
+    it('renames the connector through its display name on save', async () => {
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/display-name': 'Acme Jira',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      await waitFor(() => expect(name).not.toHaveAttribute('readonly'));
+      await userEvent.clear(name);
+      await userEvent.type(name, 'Acme Tickets');
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_update')[0][1]).toMatchObject({
+        name: 'jira',
+        displayName: 'Acme Tickets',
+      });
+    });
+
+    it('leaves the display name alone when the name is not changed', async () => {
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      await screen.findByLabelText(/^Server address/);
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_update')[0][1]).not.toHaveProperty(
+        'displayName',
+      );
+    });
+
+    it('keeps the name read-only on a muster that takes no display name', async () => {
+      musterTakesDisplayName(false);
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      await waitFor(() =>
+        expect(describeTool).toHaveBeenCalledWith(
+          'core_mcpserver_update',
+          'gazelle',
+        ),
+      );
+      expect(name).toHaveAttribute('readonly');
+      expect(name).toHaveAccessibleDescription(
+        'It cannot be changed after registration.',
+      );
+      // A plain id needs no second line saying the same name.
+      expect(screen.queryByText(/Registered as/)).not.toBeInTheDocument();
+    });
+
+    it('says once that the name is fixed, on a muster that takes no display name', async () => {
+      musterTakesDisplayName(false);
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/display-name': 'Acme Jira',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      expect(name).toHaveValue('Acme Jira');
+      expect(name).toHaveAccessibleDescription(
+        'It cannot be changed after registration.',
+      );
+      const registeredAs = screen.getByText(/^Registered as/);
+      expect(registeredAs).toHaveTextContent(
+        'Registered as jira — used in its tool names.',
+      );
+      expect(registeredAs).not.toHaveTextContent(/cannot be changed/);
+    });
+
+    it('keeps the name of a family member read-only, the family sharing it', async () => {
+      const server = registered();
+      (server.jsonData.spec as Record<string, unknown>).family = {
+        name: 'tickets',
+        instanceArg: 'site',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      await waitFor(() =>
+        expect(describeTool).toHaveBeenCalledWith(
+          'core_mcpserver_update',
+          'gazelle',
+        ),
+      );
+      expect(name).toHaveAttribute('readonly');
+      expect(name).toHaveAccessibleDescription(
+        'Shared with the other members of the tickets family, so it is set where they are defined.',
       );
     });
 

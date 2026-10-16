@@ -19,6 +19,7 @@ import {
   withLevel,
   withPortalStarted,
   withSeen,
+  withSeenReplaced,
   type NotificationLevel,
   type SeenMarkTarget,
 } from '../lib/notificationRecord';
@@ -35,11 +36,15 @@ type SessionRef = { installation: string; sessionId: string };
 
 /**
  * Why rows are marked seen, when it is the person's own doing in the
- * Notification inbox: they opened a row (of this kind), or chose "Mark all
- * read". Reported to analytics; a write without one is not.
+ * Notification inbox: they opened a row (of this kind; the MCP sign-in row
+ * opens with its Sign in), or chose "Mark all read". Reported to analytics;
+ * a write without one is not.
  */
 export type SeenMarkReason =
-  | { action: 'opened'; kind: 'waiting' | 'failed' | 'turnFinished' }
+  | {
+      action: 'opened';
+      kind: 'waiting' | 'failed' | 'turnFinished' | 'mcpSignIn';
+    }
   | { action: 'markedAllRead' };
 
 type SeenMarksWrite = {
@@ -257,6 +262,43 @@ export function useNotificationSeenMarks() {
     [mutateAsync],
   );
 
+  const { mutateAsync: writeReplaced } = useTrackedMutation(
+    {
+      mutationFn: ({
+        target,
+        previous,
+      }: {
+        target: SeenMarkTarget;
+        previous: string;
+      }) =>
+        update<true>(current => {
+          const next = withSeenReplaced(
+            readNotificationSeen(current),
+            target,
+            previous,
+            Date.now(),
+          );
+          return next && { value: next, result: true };
+        }),
+      event: null,
+      untrackedReason:
+        'Bookkeeping of a seen mark the inbox narrows after a sign-in, not an action of the person.',
+    },
+    storedSettingWriteClient,
+  );
+
+  /**
+   * Replaces a row's seen mark with `target`'s, only while the stored mark
+   * is still `previous`: a mark written since, in another tab or on another
+   * device, is kept.
+   */
+  const replaceSeenMark = useCallback(
+    async (target: SeenMarkTarget, previous: string) => {
+      await writeReplaced({ target, previous });
+    },
+    [writeReplaced],
+  );
+
   const isKnown = snapshot.presence !== 'unknown';
   return useMemo(
     () => ({
@@ -266,6 +308,7 @@ export function useNotificationSeenMarks() {
       isSeen,
       markSeen,
       markManySeen,
+      replaceSeenMark,
     }),
     [
       isKnown,
@@ -274,6 +317,7 @@ export function useNotificationSeenMarks() {
       isSeen,
       markSeen,
       markManySeen,
+      replaceSeenMark,
     ],
   );
 }

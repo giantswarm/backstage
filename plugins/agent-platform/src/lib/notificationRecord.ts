@@ -359,6 +359,24 @@ export function withSeen(
   };
 }
 
+/**
+ * The seen marks with `target` marked, only while the stored mark of its row
+ * is still `previous`, or undefined when it is not (another tab or device has
+ * written since `previous` was read) or already carries `target`'s mark.
+ */
+export function withSeenReplaced(
+  seen: NotificationSeenValue,
+  target: SeenMarkTarget,
+  previous: string,
+  now: number,
+): NotificationSeenValue | undefined {
+  const stored =
+    target.kind === 'session'
+      ? sessionSeenMarkOf(seen, target.installation, target.sessionId)
+      : mcpSignInSeenMarkOf(seen, target.installation);
+  return stored === previous ? withSeen(seen, [target], now) : undefined;
+}
+
 /** The keys of `entries` that belong to `installation`. */
 export function sessionKeysOf(
   entries: Record<string, unknown>,

@@ -2,7 +2,7 @@ import { useCallback, useId, useRef, useState } from 'react';
 import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ShowMore } from '@giantswarm/backstage-plugin-ui-react';
-import type { ToolEffect } from '../../lib/toolAnnotations';
+import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { conditionSummary } from '../../lib/workflowDisplay';
 import {
@@ -228,7 +228,7 @@ function StepCard({
       aria-label={accessibleName(node, [
         groupLabel ?? line,
         gate,
-        effect && (effect === 'changes' ? 'changes things' : 'only reads'),
+        effect && TOOL_EFFECT_LABELS[effect].toLowerCase(),
         node.allowFailure && 'may fail',
         overlay && runSpoken(overlay),
       ])}
