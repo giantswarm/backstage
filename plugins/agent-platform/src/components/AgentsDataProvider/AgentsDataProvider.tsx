@@ -1,12 +1,14 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-import type { Query } from '@tanstack/react-query';
+import { useQueryClient, type Query } from '@tanstack/react-query';
+import { musterInstallationsQueryKey } from '@giantswarm/backstage-plugin-muster';
 import {
   Agent,
   Harness,
@@ -28,6 +30,10 @@ import {
 import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
+import {
+  musterAgentManagerInfoQueryKey,
+  musterServersQueryKey,
+} from '../../lib/queryKeys';
 import { useNamespacedFallback } from '../../hooks/useNamespacedResources';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
@@ -105,6 +111,12 @@ export type AgentsContextValue = {
    * remedy (`selectAgentsInventoryFailure`).
    */
   inventoryFailure: InventoryFailure | undefined;
+  /**
+   * Reads the agents again on every installation in scope, with what muster
+   * says about their namespaces; resolves once those reads have answered.
+   * The way forward from `unreachableInstallations`.
+   */
+  retry: () => Promise<void>;
 };
 
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
@@ -481,6 +493,37 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     ),
   );
 
+  // Everything an installation's agent read is made of: its Agent lists,
+  // cluster-wide and per namespace (one key prefix), and muster's answers on
+  // which namespaces to read. Active queries refetch; a failed one with
+  // `retry: false` included.
+  const queryClient = useQueryClient();
+  const retry = useCallback(async () => {
+    const { group, plural } = Agent;
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: musterInstallationsQueryKey(),
+      }),
+      ...scopedInstallations.flatMap(installation => [
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey }) =>
+            queryKey[0] === 'cluster' &&
+            queryKey[1] === installation &&
+            queryKey[2] === 'list' &&
+            queryKey[3] === group &&
+            queryKey[5] === plural,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterServersQueryKey(installation),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterAgentManagerInfoQueryKey(installation),
+        }),
+      ]),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient, scopedInstallationsKey]);
+
   const value = useMemo<AgentsContextValue>(() => {
     const rows = sortAgentRows(
       Object.entries(agentsByInstallation).flatMap(([cluster, agents]) => {
@@ -565,6 +608,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
           rows.length === 0 &&
           scopedInstallations.length === 0,
       }),
+      retry,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -586,6 +630,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     kagentSwitchedOffKey,
     unknownPin,
     inventoryFailuresKey,
+    retry,
   ]);
 
   return (

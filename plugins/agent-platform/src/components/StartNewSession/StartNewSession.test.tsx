@@ -56,6 +56,7 @@ const loadedAgents: AgentsContextValue = {
   kagentSwitchedOff: [],
   unknownPin: undefined,
   inventoryFailure: undefined,
+  retry: async () => {},
 };
 
 function render(props: StartNewSessionProps, { agentsBound = true } = {}) {
