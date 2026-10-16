@@ -93,6 +93,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@backstage/catalog-client": "backstage:^",
     "@backstage/config": "backstage:^",
     "@backstage/config-loader": "backstage:^",
     "@backstage/frontend-test-utils": "backstage:^",

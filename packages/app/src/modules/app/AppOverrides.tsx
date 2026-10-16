@@ -35,11 +35,7 @@ import {
   ScmIntegrationsApi,
   scmIntegrationsApiRef,
 } from '@backstage/integration-react';
-import {
-  createFetchApi,
-  FetchMiddlewares,
-  GithubAuth,
-} from '@backstage/core-app-api';
+import { GithubAuth } from '@backstage/core-app-api';
 import {
   GSDiscoveryApiClient,
   gsAuthProvidersApiRef,
@@ -60,6 +56,8 @@ import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 import { GSPageLayout } from './GSPageLayout';
 import { ScopedStorageApi } from './scopedStorageApi';
+import { getOptionalMainAuthApi } from '../auth/getOptionalMainAuthApi';
+import { createBackstageFetchApi } from './backstageFetch';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -114,28 +112,19 @@ export const appOverrides = createFrontendModule({
             configApi: configApiRef,
             identityApi: identityApiRef,
             discoveryApi: discoveryApiRef,
+            gsAuthProvidersApi: gsAuthProvidersApiRef,
           },
-          factory: ({ configApi, identityApi, discoveryApi }) =>
-            createFetchApi({
-              middleware: [
-                FetchMiddlewares.resolvePluginProtocol({ discoveryApi }),
-                FetchMiddlewares.injectIdentityAuth({
-                  identityApi,
-                  config: configApi,
-                  // Per-request matcher (not a static allowlist): the
-                  // per-installation `backendUrl` overrides are loaded from the
-                  // backend after sign-in, so the set of URLs needing the
-                  // Backstage token grows after app boot.
-                  allowUrl:
-                    GSDiscoveryApiClient.createUrlPrefixAllowlistMatcher(
-                      configApi,
-                    ),
-                  header: {
-                    name: 'X-Backstage-Token',
-                    value: (token: string) => `Bearer ${token}`,
-                  },
-                }),
-              ],
+          factory: ({
+            configApi,
+            identityApi,
+            discoveryApi,
+            gsAuthProvidersApi,
+          }) =>
+            createBackstageFetchApi({
+              configApi,
+              discoveryApi,
+              identityApi,
+              mainAuthApi: getOptionalMainAuthApi(gsAuthProvidersApi),
             }),
         }),
     }),
