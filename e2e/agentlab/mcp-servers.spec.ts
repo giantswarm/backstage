@@ -6,6 +6,7 @@ import {
   open,
   test,
 } from './fixtures';
+import { connectorRow, INVENTORY_REJECTED_TOKEN, SHOWN } from './connectors';
 import { lab } from './lab';
 
 /**
@@ -35,18 +36,6 @@ const internalPath = `/customize/connectors/internal${scope}`;
 const KUBERNETES_FAMILY = 'kubernetes';
 
 /**
- * What Customize · Connectors calls the lab's connectors: the display name
- * their charts stamp (`ui.giantswarm.io/display-name`), else their name. The
- * addresses keep the technical name.
- */
-const SHOWN = {
-  kubernetes: 'Kubernetes',
-  agentManager: 'Agent Manager',
-  muster: 'muster',
-  fixture: 'lab-oauth-fixture',
-} as const;
-
-/**
  * Open the Details tab's fold-out. It also opens by itself while the connector
  * reads Failed, and follows a refresh that changes that until it is toggled,
  * so a click can race it: retried until it stays open.
@@ -61,11 +50,6 @@ async function openTechnicalDetails(page: Page) {
       timeout: 1_000,
     });
   }).toPass();
-}
-
-/** A connector's row in the table: its shown name, then its description. */
-function connectorRow(page: Page, name: string) {
-  return page.getByRole('row', { name: new RegExp(`^${name}( |$)`) });
 }
 
 test('Customize · Connectors lists the customer’s connectors first, on their own sub-tab', async ({
@@ -106,7 +90,14 @@ test('Infrastructure lists the infrastructure servers, Internal the platform’s
   admin,
 }) => {
   await open(admin, infrastructurePath);
-  await connectToMuster(admin, admin.getByRole('grid'));
+  // A refused inventory probe replaces the views with its gate
+  // (inventory-gate.spec.ts): ready on either, so that failure names the gate.
+  const inventoryGate = admin.getByText(INVENTORY_REJECTED_TOKEN);
+  await connectToMuster(admin, admin.getByRole('grid').or(inventoryGate));
+  await expect(
+    inventoryGate,
+    "the API server accepted the portal's token: no inventory gate",
+  ).toHaveCount(0);
   await expect(connectorRow(admin, SHOWN.kubernetes)).toBeVisible();
   await expect(connectorRow(admin, SHOWN.fixture)).toHaveCount(0);
 

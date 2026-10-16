@@ -4,6 +4,15 @@ import { lab } from './lab';
 import { skipWithoutModelManager } from './model-manager.fixture';
 
 /**
+ * An LM Studio endpoint nothing listens on — the discard port of the host
+ * that serves the lab's Ollama — so the backend registers and lists no models.
+ */
+const UNSERVED_ENDPOINT = `http://${new URL(lab.ollamaEndpoint).hostname}:9`;
+
+/** Running models, where Add model backend returns to after a Deploy or a Cancel. */
+const SERVING_VIEW = /\/customize\/models\/hosting\/?$/;
+
+/**
  * Add model backend and Remove backend on the Serving page: model-manager's
  * `add_backend` / `remove_backend` reached through muster as the signed-in
  * person. A default lab's model-manager serves the host's Ollama and Lemonade
@@ -81,15 +90,6 @@ test.describe.serial('model backends', () => {
     await expect(card, 'the card is gone').toBeHidden({ timeout: 60_000 });
   });
 });
-
-/**
- * An LM Studio endpoint nothing listens on — the discard port of the host
- * that serves the lab's Ollama — so the backend registers and lists no models.
- */
-const UNSERVED_ENDPOINT = `http://${new URL(lab.ollamaEndpoint).hostname}:9`;
-
-/** Running models, where Add model backend returns to after a Deploy or a Cancel. */
-const SERVING_VIEW = /\/customize\/models\/hosting\/?$/;
 
 async function openAddBackend(page: Page): Promise<void> {
   // The Serving view's header keeps Serve model and the import as buttons;
