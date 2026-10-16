@@ -81,7 +81,11 @@ export type UpstreamInboxRow = InboxRowBase & {
   notificationId: string;
 };
 
-/** What a source of rows gives the inbox. */
+/**
+ * What a source of rows gives the inbox: its rows, and how they are read.
+ * The inbox dispatches each row to the source it came from, so a new source
+ * brings its own read state without the inbox knowing where it lives.
+ */
 export type InboxRowSource<Row extends InboxRow = InboxRow> = {
   rows: Row[];
   /**
@@ -92,7 +96,24 @@ export type InboxRowSource<Row extends InboxRow = InboxRow> = {
   /**
    * The source has read once, everywhere it reads, and knows what the person
    * has read (for derived rows, the Seen record): the rows now are the tab's
-   * first read. Until then nothing is announced.
+   * first read. Until then nothing is announced, and no row of it is marked
+   * read for being on screen.
    */
   ready: boolean;
+  /**
+   * Marks one row read; `opened` reports that the person opened it from the
+   * inbox, which the source reports as their action.
+   */
+  markRead(row: Row, opened: boolean): Promise<void>;
+  /**
+   * Marks every unread row of the source read, without reporting it (the
+   * inbox reports "Mark all read" once for all sources). Resolves to whether
+   * anything was marked.
+   */
+  markAllRead(): Promise<boolean>;
+  /**
+   * Whether the row is about the page at `pathname`: no toast is raised for
+   * it, and it counts as seen while the person works on that page.
+   */
+  isOnScreen(row: Row, pathname: string): boolean;
 };

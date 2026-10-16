@@ -13,6 +13,7 @@ import { AgentShellNav } from '../AgentShellNav';
 import { RailWidthProvider } from '../RailWidthProvider';
 import { homeRouteRef } from '../routes';
 import { DESKTOP_NOTIFICATIONS_STORAGE_KEY } from './hooks/useDesktopNotifications';
+import { inboxQueryClient } from './hooks/inboxQueryClient';
 import { fakeInbox, type FakeSession } from './testing/fakeInbox';
 import { TOAST_BURST } from './hooks/useInboxInterruptions';
 
@@ -134,6 +135,7 @@ async function setFocused(next: boolean) {
 }
 
 beforeEach(() => {
+  inboxQueryClient.clear();
   fakeInbox.reset();
   post.mockClear();
   close.mockClear();
@@ -336,13 +338,10 @@ describe('Notification inbox', () => {
         within(overlay).getByRole('button', { name: 'Mark all read' }),
       );
       expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(1);
-      expect(fakeInbox.writes.markManySeen).toHaveBeenCalledWith(
-        [
-          expect.objectContaining({ sessionId: 's1' }),
-          expect.objectContaining({ sessionId: 's2' }),
-        ],
-        { action: 'markedAllRead' },
-      );
+      expect(fakeInbox.writes.markManySeen).toHaveBeenCalledWith([
+        expect.objectContaining({ sessionId: 's1' }),
+        expect.objectContaining({ sessionId: 's2' }),
+      ]);
       await waitFor(() =>
         expect(
           within(overlay).queryByRole('button', { name: 'Mark all read' }),

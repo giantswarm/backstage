@@ -1314,23 +1314,37 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   (`notificationService` in a backend plugin, or a template's
   `notification:send` step) shows as a plain row: a bell icon, the title, the
   description on one line, the age; clicking it follows the link (a link out
-  of the portal opens in a new tab). The upstream notifications backend
-  stores them; the shell reads them through the upstream `NotificationsClient`,
-  registered by `agentShellNotificationsApi`
+  of the portal, protocol-relative ones included, opens in a new tab; a
+  same-origin URL loses the app's base path, which the router adds). The
+  upstream notifications backend stores them; the shell reads them through the
+  upstream `NotificationsClient`, registered by `agentShellNotificationsApi`
   (`modules/agentShell/notificationsApiExtension.ts`) without the upstream
-  notifications frontend plugin, whose page and home widget the portal does not
-  ship. `useUpstreamRowSource` reads the newest 20 when the inbox mounts, again
-  on every change the backend announces on the `notifications` signals
-  channel (a burst restarts one read), when the overlay opens and when the
-  window regains the focus. These rows keep the store's read state: opening
-  one marks it read there, as does the very page it links to on screen (its
-  toast followed; a page below it does not count), and "Mark all read" reads the store's unread ids and
-  marks those (the store has no call for all of them), next to the one write
-  to the seen marks. Opening one reports `AgentPlatform.notificationOpened`
-  with `kind: plain`. A notification sent again for the same scope is a new,
-  unread row. A read of the store that fails leaves the session rows as they
-  are and shows the plain rows of the last read that worked. Only the listed
-  rows count towards the badge.
+  notifications frontend plugin, whose page and home widget the portal does
+  not ship. `useUpstreamRowSource` reads the newest 20 and the newest 50
+  unread (a notification sent again for an older scope keeps its first
+  `created`, by which the store sorts) when the inbox mounts, again on every
+  change the backend announces on the `notifications` signals channel (a
+  burst restarts one read), when the overlay opens and when the tab comes
+  back into view more than 30 s after the last read. It keeps its own query
+  client (`inboxQueryClient`), never persisted: the agent-platform client the
+  inbox renders under writes its queries to `localStorage`. These rows keep the
+  store's read state: opening one marks it read there, as does the very page
+  it links to on screen (its toast followed; a page below it does not count,
+  and a toast is still raised there), and "Mark all read" reads the store's
+  unread ids and marks those (the store has no call for all of them). A toast
+  of a row linking out of the portal opens the overlay instead, since the
+  toast's plain link would leave the shell in this tab. A notification sent
+  again for the same scope is a new, unread row. A read of the store that
+  fails leaves the session rows as they are and shows the plain rows of the
+  last read that worked.
+- **Sources.** Each source (`InboxRowSource` in `NotificationInbox/types.ts`)
+  says how its rows are read: `markRead`, `markAllRead` and `isOnScreen` (the
+  page a row is about, which both the toasts and the on-screen marking use).
+  The inbox only dispatches. "Mark all read" writes to every source with
+  unread rows, waits for all of them and reports
+  `AgentPlatform.notificationsMarkedRead` once if any marked something;
+  opening a plain row reports `AgentPlatform.notificationOpened` with
+  `kind: plain`.
 - **Reading.** `useNotifiableSessions` (agent-platform) reads the same query
   keys as the rail's dots: every 10 s while the tab is visible, and on the
   60 s baseline tier while it is hidden. A state for a session the sessions
@@ -1358,8 +1372,8 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
 
 Rows are `InboxRow`s (`NotificationInbox/types.ts`), the shape the bell, the
 overlay, the title count and the interruptions read, so a later producer (the
-MCP sign-in row) adds rows of its own: a derived row is read through the Seen
-record, a plain row (`kind: 'plain'`) through the upstream store.
+MCP sign-in row) adds a source of its own: a derived row is read through the
+Seen record, a plain row (`kind: 'plain'`) through the upstream store.
 
 #### Sending a test notification locally
 

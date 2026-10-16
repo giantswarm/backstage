@@ -86,8 +86,8 @@ function writeTabMemory(memory: TabMemory) {
 type OpenToast = {
   toast: ToastApiPostResult;
   ids: string[];
-  /** Visiting this page, or one below it, answers it. */
-  closeOnPath?: string;
+  /** Its row's page on screen answers it. */
+  row?: InboxRow;
   /** Visiting exactly this page answers it. */
   closeOnExactPath?: string;
   /** Opening the overlay answers it. */
@@ -142,6 +142,7 @@ export function useInboxInterruptions({
   rows,
   subjects,
   ready,
+  isOnScreen,
   attention,
   desktop,
   waitingHref,
@@ -150,6 +151,11 @@ export function useInboxInterruptions({
   rows: InboxRow[];
   subjects: ReadonlySet<string>;
   ready: boolean;
+  /**
+   * Whether a row is about the page at `pathname`, by its source's rule: no
+   * toast for it, and its toast closes there.
+   */
+  isOnScreen: (row: InboxRow, pathname: string) => boolean;
   attention: PageAttention;
   desktop: DesktopNotifications;
   /** The Sessions list on its Waiting filter, when that route is bound. */
@@ -166,8 +172,14 @@ export function useInboxInterruptions({
   const open = useRef(new Map<string, OpenToast>());
   const toastCount = useRef(0);
   // Read inside the rows effect without re-running it on every navigation.
-  const latest = useRef({ location, attention, desktop, openOverlay });
-  latest.current = { location, attention, desktop, openOverlay };
+  const latest = useRef({
+    location,
+    attention,
+    desktop,
+    openOverlay,
+    isOnScreen,
+  });
+  latest.current = { location, attention, desktop, openOverlay, isOnScreen };
 
   const post = useCallback(
     (
@@ -185,12 +197,17 @@ export function useInboxInterruptions({
     if (!ready) {
       return;
     }
-    const { location: here, attention: now, desktop: desk } = latest.current;
-    // The session on screen in the window the person works in: its page
-    // says it, louder, and marks it read. A visible window behind another
+    const {
+      location: here,
+      attention: now,
+      desktop: desk,
+      isOnScreen: isRowOnScreen,
+    } = latest.current;
+    // The row on screen in the window the person works in: its page says
+    // it, louder, and marks it read. A visible window behind another
     // application is not being watched.
     const onScreen = (row: InboxRow) =>
-      now.visible && now.focused && isAt(here.pathname, row.href);
+      now.visible && now.focused && isRowOnScreen(row, here.pathname);
 
     // A row that went, or was read here or elsewhere, takes its toast along.
     const unread = new Set(rows.filter(row => row.unread).map(row => row.id));
@@ -270,17 +287,24 @@ export function useInboxInterruptions({
         }
       } else {
         for (const row of news) {
+          // The toast renders a link as a plain anchor, which would take a
+          // link out of the portal in this tab and leave the shell: such a
+          // row is opened from the overlay, in a new tab.
+          let link: { label: string; href: string } | undefined;
+          if (row.external) {
+            link = { label: 'Open notifications', href: NOTIFICATIONS_HASH };
+          } else if (row.href) {
+            link = { label: row.announce.linkLabel, href: row.href };
+          }
           post(
             row.id,
             {
               title: row.announce.title,
               description: row.announce.description,
               status: row.announce.status,
-              links: row.href
-                ? [{ label: row.announce.linkLabel, href: row.href }]
-                : undefined,
+              links: link ? [link] : undefined,
             },
-            { ids: [row.id], closeOnPath: row.href },
+            { ids: [row.id], row, closeOnOverlay: row.external },
           );
         }
       }
@@ -316,7 +340,8 @@ export function useInboxInterruptions({
   useEffect(() => {
     for (const [key, entry] of open.current) {
       if (
-        isAt(location.pathname, entry.closeOnPath) ||
+        (entry.row &&
+          latest.current.isOnScreen(entry.row, location.pathname)) ||
         location.pathname === entry.closeOnExactPath
       ) {
         entry.toast.close();

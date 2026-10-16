@@ -1,17 +1,33 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useApiHolder } from '@backstage/frontend-plugin-api';
+import { useCallback, useEffect, useMemo } from 'react';
 import {
-  notificationsApiRef,
-  type GetNotificationsResponse,
-} from '@backstage/plugin-notifications';
+  configApiRef,
+  useApi,
+  useApiHolder,
+} from '@backstage/frontend-plugin-api';
+import { notificationsApiRef } from '@backstage/plugin-notifications';
+import type { Notification } from '@backstage/plugin-notifications-common';
 import { signalApiRef } from '@backstage/plugin-signals-react';
-import { QueryClient, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import type { InboxRowSource, UpstreamInboxRow } from '../types';
-import { toUpstreamRows } from '../utils/upstreamRows';
+import { appLocationOf, toUpstreamRows } from '../utils/upstreamRows';
+import { inboxQueryClient } from './inboxQueryClient';
 
-/** The newest notifications the overlay lists. */
+/** The newest notifications the overlay lists, read or not. */
 export const UPSTREAM_NOTIFICATIONS_LIMIT = 20;
+
+/**
+ * The unread notifications the overlay lists besides the newest: one sent
+ * again for an older scope keeps its first `created` (by which the store
+ * sorts), so it can be unread again below the newest.
+ */
+export const UPSTREAM_UNREAD_LIMIT = 50;
+
+/**
+ * How long a read is trusted when the tab comes back into view: the signal
+ * keeps the list current, so a quick switch away and back reads nothing.
+ */
+export const UPSTREAM_STALE_MS = 30_000;
 
 /** The channel the notifications backend announces changes on. */
 export const NOTIFICATIONS_SIGNAL_CHANNEL = 'notifications';
@@ -21,76 +37,93 @@ const QUERY_KEY = ['agentShell', 'notificationInbox', 'upstream'];
 type MarkReadWrite = {
   /** The notifications to mark read; all the unread ones when left out. */
   ids?: string[];
-  /** The person's own action, which the write reports. */
-  reason?: 'opened' | 'markedAllRead';
+  /** The person opened the row from the inbox. */
+  opened?: boolean;
 };
 
 export type UpstreamRowSource = InboxRowSource<UpstreamInboxRow> & {
   /** Reads the list again: the overlay opened. */
   refresh: () => void;
-  /**
-   * Marks one row read; `opened` reports that the person opened it from the
-   * inbox.
-   */
-  markRead: (row: UpstreamInboxRow, opened: boolean) => Promise<void>;
-  /**
-   * Marks every unread notification read: the store has no call for it, so
-   * the unread ones are read first and their ids marked, as the upstream UI
-   * does. `report` says whether this write reports "Mark all read".
-   */
-  markAllRead: (report: boolean) => Promise<void>;
 };
+
+/** The newest notifications and the unread ones, each once. */
+function merge(...lists: Notification[][]): Notification[] {
+  const byId = new Map<string, Notification>();
+  lists.flat().forEach(notification => byId.set(notification.id, notification));
+  return [...byId.values()];
+}
+
+/** A plain row is on screen on exactly the page it links to. */
+function isPlainRowOnScreen(row: UpstreamInboxRow, pathname: string) {
+  return !row.external && row.href?.split(/[?#]/)[0] === pathname;
+}
 
 /**
  * The inbox's rows from the upstream notifications store: what other portal
  * features send the person through the standard notifications service, as
  * plain rows that keep the store's read state.
  *
- * The list is read when the inbox mounts, again on every change the
- * notifications backend announces (on the `notifications` signals channel; a
- * burst of announcements restarts one read rather than trusting each), when
- * the overlay opens and when the window regains the focus. A read that fails
+ * The list (the newest notifications and the unread ones) is read when the
+ * inbox mounts, again on every change the notifications backend announces (on
+ * the `notifications` signals channel; a burst of announcements restarts one
+ * read rather than trusting each), when the overlay opens and when the tab
+ * comes back into view after {@link UPSTREAM_STALE_MS}. A read that fails
  * keeps the rows of the last one that did not (none at first): the inbox's
  * other rows never wait on, or break with, the store. Without the
  * notifications API (a test app, or a portal without it) there are no rows.
+ *
+ * A plain row counts as seen on exactly the page it links to (its toast
+ * followed, say), not below it: a producer's link may be a whole section the
+ * person is in for other reasons.
  */
 export function useUpstreamRowSource(): UpstreamRowSource {
   const apis = useApiHolder();
   const notificationsApi = apis.get(notificationsApiRef);
   const signalApi = apis.get(signalApiRef);
-
-  // The inbox's own cache: one per mounted inbox, gone with it.
-  const [client] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: { retry: false, refetchOnWindowFocus: false },
-          mutations: { retry: false },
-        },
-      }),
+  const configApi = useApi(configApiRef);
+  const app = useMemo(
+    () => appLocationOf(configApi.getOptionalString('app.baseUrl')),
+    [configApi],
   );
-  useEffect(() => () => client.clear(), [client]);
+
+  // Mounted, the client reads again when the tab comes back into view.
+  useEffect(() => {
+    inboxQueryClient.mount();
+    return () => inboxQueryClient.unmount();
+  }, []);
 
   const query = useQuery(
     {
       queryKey: QUERY_KEY,
-      queryFn: () =>
-        notificationsApi!.getNotifications({
-          limit: UPSTREAM_NOTIFICATIONS_LIMIT,
-          sort: 'created',
-          sortOrder: 'desc',
-        }),
+      queryFn: async () => {
+        const [newest, unread] = await Promise.all([
+          notificationsApi!.getNotifications({
+            limit: UPSTREAM_NOTIFICATIONS_LIMIT,
+            sort: 'created',
+            sortOrder: 'desc',
+          }),
+          notificationsApi!.getNotifications({
+            read: false,
+            limit: UPSTREAM_UNREAD_LIMIT,
+            sort: 'created',
+            sortOrder: 'desc',
+          }),
+        ]);
+        return merge(newest.notifications, unread.notifications);
+      },
       enabled: Boolean(notificationsApi),
+      staleTime: UPSTREAM_STALE_MS,
+      refetchOnWindowFocus: true,
     },
-    client,
+    inboxQueryClient,
   );
 
   // A read already on its way restarts, so the newest change is in it.
   const refresh = useCallback(() => {
     if (notificationsApi) {
-      client.refetchQueries({ queryKey: QUERY_KEY }).catch(() => {});
+      inboxQueryClient.refetchQueries({ queryKey: QUERY_KEY }).catch(() => {});
     }
-  }, [client, notificationsApi]);
+  }, [notificationsApi]);
 
   useEffect(() => {
     if (!notificationsApi || !signalApi) {
@@ -102,11 +135,6 @@ export function useUpstreamRowSource(): UpstreamRowSource {
     );
     return () => subscription.unsubscribe();
   }, [notificationsApi, signalApi, refresh]);
-
-  useEffect(() => {
-    window.addEventListener('focus', refresh);
-    return () => window.removeEventListener('focus', refresh);
-  }, [refresh]);
 
   const { mutateAsync } = useTrackedMutation(
     {
@@ -127,63 +155,53 @@ export function useUpstreamRowSource(): UpstreamRowSource {
         }
         return targets;
       },
-      // Read here at once; the backend's announcement re-reads the list too.
+      // A read on its way may have left before the write: it must not land
+      // after it and turn the row unread again.
+      onMutate: () => inboxQueryClient.cancelQueries({ queryKey: QUERY_KEY }),
+      // Read here at once, then confirmed by a read that starts after the
+      // write (and replaces any that started during it).
       onSuccess: targets => {
         const read = new Set(targets);
         const now = new Date();
-        client.setQueryData<GetNotificationsResponse>(QUERY_KEY, current =>
-          current
-            ? {
-                ...current,
-                notifications: current.notifications.map(notification =>
-                  read.has(notification.id) && !notification.read
-                    ? { ...notification, read: now }
-                    : notification,
-                ),
-              }
-            : current,
+        inboxQueryClient.setQueryData<Notification[]>(QUERY_KEY, current =>
+          current?.map(notification =>
+            read.has(notification.id) && !notification.read
+              ? { ...notification, read: now }
+              : notification,
+          ),
         );
+        inboxQueryClient
+          .invalidateQueries({ queryKey: QUERY_KEY })
+          .catch(() => {});
       },
-      event: (_, { reason }) => {
-        if (reason === 'markedAllRead') {
-          return {
-            name: 'AgentPlatform.notificationsMarkedRead',
-            attributes: {},
-          };
-        }
-        if (reason === 'opened') {
-          return {
-            name: 'AgentPlatform.notificationOpened',
-            attributes: { kind: 'plain' },
-          };
-        }
-        return null;
-      },
+      // "Mark all read" is reported by the inbox, once for every source.
+      event: (_, { opened }) =>
+        opened
+          ? {
+              name: 'AgentPlatform.notificationOpened',
+              attributes: { kind: 'plain' },
+            }
+          : null,
     },
-    client,
+    inboxQueryClient,
   );
 
   const markRead = useCallback(
     async (row: UpstreamInboxRow, opened: boolean) => {
-      await mutateAsync({
-        ids: [row.notificationId],
-        reason: opened ? 'opened' : undefined,
-      });
+      await mutateAsync({ ids: [row.notificationId], opened });
     },
     [mutateAsync],
   );
 
   const markAllRead = useCallback(
-    async (report: boolean) => {
-      await mutateAsync({ reason: report ? 'markedAllRead' : undefined });
-    },
+    async () => (await mutateAsync({})).length > 0,
     [mutateAsync],
   );
 
-  const notifications = query.data?.notifications;
+  const notifications = query.data;
   const rows = useMemo(
-    () => toUpstreamRows(notifications ?? []),
-    [notifications],
+    () => toUpstreamRows(notifications ?? [], app),
+    [notifications, app],
   );
   const subjects = useMemo(() => new Set(rows.map(row => row.subject)), [rows]);
 
@@ -195,5 +213,6 @@ export function useUpstreamRowSource(): UpstreamRowSource {
     refresh,
     markRead,
     markAllRead,
+    isOnScreen: isPlainRowOnScreen,
   };
 }

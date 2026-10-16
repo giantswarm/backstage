@@ -18,7 +18,10 @@ import { DESKTOP_NOTIFICATIONS_STORAGE_KEY } from './hooks/useDesktopNotificatio
 import {
   NOTIFICATIONS_SIGNAL_CHANNEL,
   UPSTREAM_NOTIFICATIONS_LIMIT,
+  UPSTREAM_STALE_MS,
+  UPSTREAM_UNREAD_LIMIT,
 } from './hooks/useUpstreamRowSource';
+import { inboxQueryClient } from './hooks/inboxQueryClient';
 import { fakeInbox } from './testing/fakeInbox';
 import { createFakeUpstream } from './testing/fakeUpstream';
 
@@ -119,6 +122,23 @@ async function openOverlay() {
   return screen.findByRole('dialog', { name: 'Notifications' });
 }
 
+/**
+ * The tab's first read of the store has answered: what arrives from now on is
+ * news, not catch-up.
+ */
+async function firstRead() {
+  await waitFor(() =>
+    expect(upstream.notificationsApi.getNotifications).toHaveBeenCalled(),
+  );
+  await act(async () => {
+    await Promise.allSettled(
+      upstream.notificationsApi.getNotifications.mock.results.map(
+        result => result.value,
+      ),
+    );
+  });
+}
+
 /** The backend stores `notification` and announces it on the channel. */
 async function send(notification: Parameters<typeof upstream.put>[0]) {
   await act(async () => {
@@ -149,6 +169,7 @@ let focused = true;
 let hasFocus: jest.SpyInstance;
 
 beforeEach(() => {
+  inboxQueryClient.clear();
   fakeInbox.reset();
   upstream = createFakeUpstream();
   post.mockClear();
@@ -215,6 +236,42 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
         sort: 'created',
         sortOrder: 'desc',
       });
+    });
+
+    it('lists an older notification sent again, below the newest', async () => {
+      const newest = Array.from(
+        { length: UPSTREAM_NOTIFICATIONS_LIMIT },
+        (_, i) => ({
+          id: `new-${i}`,
+          title: `Newer ${i}`,
+          created: now() - (i + 1) * 60_000,
+          read: true,
+        }),
+      );
+      upstream.set([
+        ...newest,
+        {
+          id: 'old',
+          title: 'Template run failed again',
+          created: now() - 7 * 24 * 3600_000,
+          updated: now(),
+        },
+      ]);
+      await renderShell();
+
+      await waitFor(() =>
+        expect(document.title).toBe('(1) Sessions · Agent Platform'),
+      );
+      expect(upstream.notificationsApi.getNotifications).toHaveBeenCalledWith({
+        read: false,
+        limit: UPSTREAM_UNREAD_LIMIT,
+        sort: 'created',
+        sortOrder: 'desc',
+      });
+      const overlay = await openOverlay();
+      expect(within(overlay).getAllByRole('listitem')[0]).toHaveTextContent(
+        'Template run failed again',
+      );
     });
 
     it('opens a link out of the portal in a new tab', async () => {
@@ -324,6 +381,24 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
       ]);
     });
 
+    it('marks a plain row read on its page before the session record is read', async () => {
+      fakeInbox.setKnown(false);
+      upstream.set([
+        {
+          id: 'n1',
+          title: 'Template run finished',
+          link: '/create/tasks/abc',
+          created: now(),
+        },
+      ]);
+      await renderShell({ path: '/create/tasks/abc' });
+      await waitFor(() =>
+        expect(
+          upstream.notificationsApi.updateNotifications,
+        ).toHaveBeenCalledWith({ ids: ['n1'], read: true }),
+      );
+    });
+
     it('marks a plain row read on the page it links to, and not below it', async () => {
       upstream.set([
         {
@@ -384,14 +459,73 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
       expect(
         upstream.notificationsApi.updateNotifications,
       ).toHaveBeenCalledWith({ ids: ['n2', 'n1'], read: true });
-      expect(fakeInbox.writes.markManySeen).toHaveBeenCalledWith(
-        [expect.objectContaining({ sessionId: 's1' })],
-        { action: 'markedAllRead' },
-      );
+      expect(fakeInbox.writes.markManySeen).toHaveBeenCalledWith([
+        expect.objectContaining({ sessionId: 's1' }),
+      ]);
+      // One "Mark all read" for both sources.
+      expect(reportedEvents()).toEqual([
+        ['AgentPlatform.notificationsMarkedRead', {}],
+      ]);
       await waitFor(() =>
         expect(document.title).toBe('Sessions · Agent Platform'),
       );
       expect(upstream.isRead('n1') && upstream.isRead('n2')).toBe(true);
+    });
+
+    it('reports "Mark all read" for what one source marked when the other failed, and says it failed', async () => {
+      upstream.set([
+        { id: 'n1', title: 'Template run finished', created: now() },
+      ]);
+      fakeInbox.setSessions([
+        { sessionId: 's1', state: 'input-required', changedAt: now() },
+      ]);
+      fakeInbox.writes.markManySeen.mockRejectedValueOnce(
+        new Error('write refused'),
+      );
+      await renderShell();
+
+      const overlay = await openOverlay();
+      await userEvent.click(
+        await within(overlay).findByRole('button', { name: 'Mark all read' }),
+      );
+      await waitFor(() =>
+        expect(post).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'Could not mark the notifications read',
+          }),
+        ),
+      );
+      expect(upstream.isRead('n1')).toBe(true);
+      expect(reportedEvents()).toEqual([
+        ['AgentPlatform.notificationsMarkedRead', {}],
+      ]);
+    });
+
+    it('reports no "Mark all read" when everything was already read elsewhere', async () => {
+      upstream.set([
+        { id: 'n1', title: 'Template run finished', created: now() },
+      ]);
+      await renderShell();
+
+      const overlay = await openOverlay();
+      const button = await within(overlay).findByRole('button', {
+        name: 'Mark all read',
+      });
+      // Read on another device; this tab has not heard yet.
+      upstream.put({
+        id: 'n1',
+        title: 'Template run finished',
+        created: now(),
+        read: true,
+      });
+      await userEvent.click(button);
+      await waitFor(() =>
+        expect(document.title).toBe('Sessions · Agent Platform'),
+      );
+      expect(
+        upstream.notificationsApi.updateNotifications,
+      ).not.toHaveBeenCalled();
+      expect(reportedEvents()).toEqual([]);
     });
 
     it('reports one "Mark all read" when only plain rows are unread', async () => {
@@ -412,11 +546,9 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
       expect(fakeInbox.writes.markManySeen).not.toHaveBeenCalled();
     });
 
-    it('reads the list again on a signal, on opening the overlay and on focus', async () => {
+    it('reads the list again on a signal, on opening the overlay and when the tab comes back into view', async () => {
       await renderShell();
-      await waitFor(() =>
-        expect(upstream.notificationsApi.getNotifications).toHaveBeenCalled(),
-      );
+      await firstRead();
       expect(upstream.signalApi.subscribe).toHaveBeenCalledWith(
         NOTIFICATIONS_SIGNAL_CHANNEL,
         expect.any(Function),
@@ -441,14 +573,29 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
         await within(overlay).findByRole('link', { name: 'Unread: Second' }),
       ).toBeInTheDocument();
 
-      // No signal: the window regaining the focus reads it.
+      // No signal: the tab coming back into view reads it, once the last
+      // read is older than the stale time; a quick switch back reads nothing.
       upstream.put({ id: 'n3', title: 'Third', created: now() });
+      const reads =
+        upstream.notificationsApi.getNotifications.mock.calls.length;
       await act(async () => {
-        window.dispatchEvent(new Event('focus'));
+        window.dispatchEvent(new Event('visibilitychange'));
       });
-      expect(
-        await within(overlay).findByRole('link', { name: 'Unread: Third' }),
-      ).toBeInTheDocument();
+      expect(upstream.notificationsApi.getNotifications).toHaveBeenCalledTimes(
+        reads,
+      );
+      const later = now() + UPSTREAM_STALE_MS + 1000;
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(later);
+      try {
+        await act(async () => {
+          window.dispatchEvent(new Event('visibilitychange'));
+        });
+        expect(
+          await within(overlay).findByRole('link', { name: 'Unread: Third' }),
+        ).toBeInTheDocument();
+      } finally {
+        clock.mockRestore();
+      }
     });
 
     it('follows a notification read on another tab or device', async () => {
@@ -495,9 +642,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
 
     it('toasts a notification that arrives by signal, with its link', async () => {
       await renderShell();
-      await waitFor(() =>
-        expect(upstream.notificationsApi.getNotifications).toHaveBeenCalled(),
-      );
+      await firstRead();
 
       await send({
         id: 'n1',
@@ -517,11 +662,51 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
       );
     });
 
+    it('points the toast of a notification linking out of the portal at the overlay', async () => {
+      await renderShell();
+      await firstRead();
+
+      await send({
+        id: 'n1',
+        title: 'Pipeline failed',
+        link: 'https://ci.example.com/runs/42',
+        created: now(),
+      });
+      await waitFor(() =>
+        expect(post).toHaveBeenCalledWith({
+          title: 'Pipeline failed',
+          status: 'info',
+          links: [{ label: 'Open notifications', href: '#notifications' }],
+        }),
+      );
+      await openOverlay();
+      expect(close).toHaveBeenCalled();
+    });
+
+    it('announces a notification for a section the person is in, and keeps it unread there', async () => {
+      await renderShell({ path: '/catalog/default/component/foo' });
+      await firstRead();
+
+      await send({
+        id: 'n1',
+        title: 'Catalog import finished',
+        link: '/catalog',
+        created: now(),
+      });
+      await waitFor(() =>
+        expect(toastTitles()).toEqual(['Catalog import finished']),
+      );
+      await waitFor(() =>
+        expect(document.title).toBe('(1) Sessions · Agent Platform'),
+      );
+      expect(
+        upstream.notificationsApi.updateNotifications,
+      ).not.toHaveBeenCalled();
+    });
+
     it('turns a burst of notifications into one toast opening the overlay', async () => {
       await renderShell();
-      await waitFor(() =>
-        expect(upstream.notificationsApi.getNotifications).toHaveBeenCalled(),
-      );
+      await firstRead();
 
       await act(async () => {
         for (const id of ['n1', 'n2', 'n3', 'n4', 'n5']) {
@@ -556,9 +741,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
         },
       ]);
       await renderShell();
-      await waitFor(() =>
-        expect(upstream.notificationsApi.getNotifications).toHaveBeenCalled(),
-      );
+      await firstRead();
       expect(toastTitles()).toEqual([]);
 
       await send({
@@ -577,9 +760,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
 
     it('closes the toast once the notification is read', async () => {
       await renderShell();
-      await waitFor(() =>
-        expect(upstream.notificationsApi.getNotifications).toHaveBeenCalled(),
-      );
+      await firstRead();
       await send({ id: 'n1', title: 'Template run failed', created: now() });
       await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
 
@@ -613,6 +794,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
       try {
         upstream.set([{ id: 'old', title: 'Old news', created: 1000 }]);
         await renderShell();
+        await firstRead();
         await waitFor(() =>
           expect(document.title).toBe('(1) Sessions · Agent Platform'),
         );

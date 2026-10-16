@@ -34,6 +34,7 @@ export const SHELL_SPECS = [
   'mcp-auth-notice.spec.ts',
   'mcp-server-auth-modes.spec.ts',
   'mcp-servers.spec.ts',
+  'notification-inbox.spec.ts',
   'muster-namespaced.spec.ts',
   'model-backends.spec.ts',
   'models.spec.ts',
@@ -70,6 +71,7 @@ export const SHELL_SPECS = [
 export const MOBILE_SPECS = [
   'mobile-hosting.spec.ts',
   'mobile-navigation.spec.ts',
+  'mobile-notification-inbox.spec.ts',
   'mobile-sessions.spec.ts',
   'mobile-tool-page.spec.ts',
   'mobile-wizard.spec.ts',

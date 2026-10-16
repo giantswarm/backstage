@@ -144,6 +144,11 @@ export const fakeInbox = {
     }
     emit();
   },
+  /** Whether the person's notification record has been read yet. */
+  setKnown(isKnown: boolean) {
+    store.isKnown = isKnown;
+    emit();
+  },
   /** Whether the sessions and their states have been read yet. */
   setRead(isRead: boolean) {
     store.isRead = isRead;

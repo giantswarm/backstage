@@ -28,37 +28,69 @@ function timeOf(value: Date | string | undefined): number | undefined {
   return Number.isNaN(ms) ? undefined : ms;
 }
 
+/** Where the portal is served: its origin and the path the app runs under. */
+export type AppLocation = {
+  origin: string;
+  /** The path of `app.baseUrl`, without its trailing slash ('' at the root). */
+  basePath: string;
+};
+
+/** The app's location from its `app.baseUrl` (the page's origin without one). */
+export function appLocationOf(baseUrl: string | undefined): AppLocation {
+  try {
+    const url = new URL(baseUrl ?? window.location.origin);
+    return { origin: url.origin, basePath: url.pathname.replace(/\/+$/, '') };
+  } catch {
+    return { origin: window.location.origin, basePath: '' };
+  }
+}
+
 /**
- * Where a notification's link leads: a path inside the portal, or a whole URL
- * outside it. The store keeps a link as the producer sent it, a path (with or
- * without its leading slash, against the app's base URL) or a URL.
+ * Where a notification's link leads: a path inside the app (relative to where
+ * the app is served, as the router takes it), or a whole URL outside it. The
+ * store keeps a link as the producer sent it: a path (with or without its
+ * leading slash, against the app's base URL) or a URL. Each is resolved as a
+ * URL first, so a protocol-relative `//other.example` is outside too.
  */
 export function notificationHref(
   link: string | undefined,
-  origin: string = window.location.origin,
+  app: AppLocation,
 ): { href: string; external: boolean } | undefined {
   const trimmed = link?.trim();
   if (!trimmed) {
     return undefined;
   }
-  if (!/^[a-z][a-z\d+.-]*:/i.test(trimmed)) {
-    return {
-      href: trimmed.startsWith('/') ? trimmed : `/${trimmed}`,
-      external: false,
-    };
-  }
   let url: URL;
   try {
-    url = new URL(trimmed);
+    url = new URL(
+      trimmed.startsWith('/') || /^[a-z][a-z\d+.-]*:/i.test(trimmed)
+        ? trimmed
+        : `/${trimmed}`,
+      app.origin,
+    );
   } catch {
     return undefined;
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     return undefined;
   }
-  return url.origin === origin
-    ? { href: `${url.pathname}${url.search}${url.hash}`, external: false }
-    : { href: url.href, external: true };
+  if (url.origin !== app.origin) {
+    return { href: url.href, external: true };
+  }
+  // A same-origin URL carries the app's base path, which the router adds
+  // itself; a path the producer wrote is already relative to it.
+  const absolute = /^[a-z][a-z\d+.-]*:/i.test(trimmed);
+  const { basePath } = app;
+  let path = url.pathname;
+  if (absolute && basePath) {
+    if (path === basePath || path.startsWith(`${basePath}/`)) {
+      path = path.slice(basePath.length) || '/';
+    } else {
+      // Same origin, but outside the app.
+      return { href: url.href, external: true };
+    }
+  }
+  return { href: `${path}${url.search}${url.hash}`, external: false };
 }
 
 /**
@@ -72,11 +104,12 @@ export function notificationHref(
  */
 export function toUpstreamRows(
   notifications: readonly Notification[],
+  app: AppLocation,
 ): UpstreamInboxRow[] {
   return notifications.map(notification => {
     const { payload } = notification;
     const at = timeOf(notification.updated) ?? timeOf(notification.created);
-    const link = notificationHref(payload.link);
+    const link = notificationHref(payload.link, app);
     const description = payload.description?.trim() || undefined;
     return {
       id: `${notificationSubject(notification.id)}:${at ?? ''}`,
