@@ -13,9 +13,48 @@ warning.
 
 ## Page views
 
-Every navigation sends one `pageview` signal with the page's name (for example
-`Clusters index`) and its path. The mapping from path to page name is
-`getTelemetryPageViewPayload` in `packages/app/src/utils/telemetry.ts`.
+Every navigation sends one `pageview` signal with the page's name (`page`, for
+example `Session detail`), for some pages the tab or step shown (`view`, and
+`subview` on the Connectors tab), and as `path` the template of the route the
+page matched, not the address in the browser:
+
+| Address in the browser                              | `path` sent                                              |
+| --------------------------------------------------- | -------------------------------------------------------- |
+| `/sessions/acme-prod/0c4b2f5e?prompt=hello#t-3`     | `/sessions/:installation/:sessionId`                     |
+| `/customize/agents/acme-prod/team-a/helper/usage`   | `/customize/agents/:installation/:namespace/:name/usage` |
+| `/catalog/acme/component/payments-api/docs/runbook` | `/catalog/:namespace/:kind/:name/docs/*`                 |
+| `/agent-platform/agents/acme-prod/team-a/helper`    | `/agent-platform/*`                                      |
+| a path no page matches                              | `unknown`                                                |
+
+The address names installations, namespaces, agents, models, connectors, tools,
+workflows, skill repositories, clusters and catalog entities, and carries
+session ids; the query string and the hash can carry search terms and typed
+text. None of that may leave the portal, so a page view carries only fixed
+strings and values from closed sets:
+
+- Each segment that names something is a placeholder (`:installation`), and a
+  splat whose depth varies, such as a skill's repository and directory, is `*`.
+- A tab or view is named only when it is one the page has; any other segment in
+  its place is `*` in `path` and `redirect` or `other` in its attribute.
+- Catalog entity, cluster and deployment pages add their `tab`, and catalog
+  entity, docs and deployment pages the kind (`entityKind`, `deploymentKind`); an
+  unknown tab or kind is `other`. They carry no installation, namespace or name.
+- The query string and the hash are never read.
+
+Dashboards built on `page` and `view` are unaffected by this rule; ones built on
+`path` see the templates since the portal release that introduced it, raw paths
+before.
+
+The mapping is `getTelemetryPageViewPayload` in
+`packages/app/src/utils/telemetry.ts`, one case per page, each naming the page
+and its route template. A route registered in the app that no case matches
+reports as `Unknown page` and is sent to Sentry as an `Untracked page view`
+warning, so a new page needs its case and a row in the test's
+`knownTopLevelPaths`.
+
+The TelemetryDeck SDK adds nothing of the page to a signal (no URL, title or
+referrer), and the browser sends no `Referer` with it: the portal is served with
+Backstage's default `Referrer-Policy: no-referrer`.
 
 ## Actions
 

@@ -336,7 +336,11 @@ route checks it against that skill's review checklist.**
 Page views are reported via `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`,
 which maps each `navigate` event to a page name through
 `getTelemetryPageViewPayload` in `packages/app/src/utils/telemetry.ts`. That
-mapping is a hand-maintained `switch` over path prefixes.
+mapping is a hand-maintained `switch` over path prefixes. Each case sets the
+page name and the route template sent as `path`
+(`/sessions/:installation/:sessionId`), never the path itself: a segment that
+names something becomes a placeholder, a tab only appears from its closed set,
+and no attribute takes free text from the URL (see `docs/telemetry.md`).
 
 **When you add a new top-level page/route (a new plugin page, tab, or sub-route),
 add a matching case to `getTelemetryPageViewPayload`.** A *registered* route that
