@@ -104,11 +104,13 @@ async function settledPresetState(
           state = 'gone';
         } else {
           const text = await row.innerText();
-          state = text.includes('Not ready')
-            ? 'Not ready'
-            : text.includes('Ready')
-              ? 'Ready'
-              : 'changing';
+          if (text.includes('Not ready')) {
+            state = 'Not ready';
+          } else if (text.includes('Ready')) {
+            state = 'Ready';
+          } else {
+            state = 'changing';
+          }
         }
         return state;
       },
