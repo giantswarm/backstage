@@ -201,4 +201,45 @@ describe('useStoredSetting', () => {
       value: ['a'],
     });
   });
+
+  it('keeps the shown value, not a new copy, when a read answers the same', async () => {
+    const listeners: Array<(value: unknown) => void> = [];
+    const bucket = {
+      forBucket: () => bucket,
+      snapshot: (key: string) => ({ key, presence: 'unknown' }),
+      observe$: () => ({
+        subscribe: (observer: (value: unknown) => void) => {
+          listeners.push(observer);
+          return { unsubscribe: () => {} };
+        },
+      }),
+    } as unknown as StorageApi;
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[storageApiRef, bucket]]}>
+        {children}
+      </TestApiProvider>
+    );
+    const { result } = renderHook(() => useStoredSetting(KEY), { wrapper });
+    const emit = (value: unknown) =>
+      act(() =>
+        listeners.forEach(next =>
+          next({ key: KEY, presence: 'present', value }),
+        ),
+      );
+
+    emit({ sessions: { 'gazelle/abc': { level: 'all', at: 1 } } });
+    const shown = result.current.snapshot;
+    // A write's own answer and the signal's re-read: the same value again.
+    // The same snapshot object, so what readers derive from it (the session
+    // page's header actions) keeps its identity too.
+    emit({ sessions: { 'gazelle/abc': { level: 'all', at: 1 } } });
+    emit({ sessions: { 'gazelle/abc': { level: 'all', at: 1 } } });
+
+    expect(result.current.snapshot).toBe(shown);
+
+    emit({ sessions: { 'gazelle/abc': { level: 'muted', at: 2 } } });
+    expect(result.current.snapshot.value).toEqual({
+      sessions: { 'gazelle/abc': { level: 'muted', at: 2 } },
+    });
+  });
 });

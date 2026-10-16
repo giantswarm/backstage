@@ -131,6 +131,11 @@ export function SessionActionsMenu({
   const classes = useStyles();
   const isPhone = usePhoneLayout();
   const [isDeleteOpen, setDeleteOpen] = useState(false);
+  // The level just chosen, until its write settles: the menu closes on the
+  // choice, and a tick that moved only once the round trip ended changed the
+  // closing menu under the pointer, a flicker.
+  const [chosenLevel, setChosenLevel] = useState<NotificationLevel>();
+  const shownLevel = chosenLevel ?? notifications?.level;
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -178,17 +183,25 @@ export function SessionActionsMenu({
   };
 
   const chooseLevel = (level: NotificationLevel) => {
-    if (!notifications || level === notifications.level) {
+    if (!notifications || level === shownLevel) {
       return;
     }
-    notifications.onChange(level).catch(() => {
-      // The tick stays on the stored level; say why the choice did not hold.
-      toastApi.post({
-        title: 'Could not change the session’s notifications',
-        status: 'danger',
-        timeout: TOAST_TIMEOUT_MS,
-      });
-    });
+    setChosenLevel(level);
+    notifications
+      .onChange(level)
+      .catch(() => {
+        // The tick goes back to the stored level; say why the choice did not
+        // hold.
+        toastApi.post({
+          title: 'Could not change the session’s notifications',
+          status: 'danger',
+          timeout: TOAST_TIMEOUT_MS,
+        });
+      })
+      .finally(() =>
+        // Only if no later choice replaced this one.
+        setChosenLevel(current => (current === level ? undefined : current)),
+      );
   };
 
   return (
@@ -228,7 +241,7 @@ export function SessionActionsMenu({
                 aria-label="Notifications"
                 selectionMode="single"
                 disallowEmptySelection
-                selectedKeys={notifications.level ? [notifications.level] : []}
+                selectedKeys={shownLevel ? [shownLevel] : []}
                 onSelectionChange={keys => {
                   if (keys === 'all') {
                     return;
@@ -245,7 +258,7 @@ export function SessionActionsMenu({
                     id={level}
                     iconStart={
                       <span className={classes.tick} aria-hidden>
-                        {level === notifications.level && <CheckIcon />}
+                        {level === shownLevel && <CheckIcon />}
                       </span>
                     }
                   >
