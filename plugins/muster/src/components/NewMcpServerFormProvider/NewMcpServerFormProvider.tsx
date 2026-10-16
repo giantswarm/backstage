@@ -86,7 +86,8 @@ export type NewMcpServerFormContextValue = {
    * server is now registered under its name on the form's installation, and
    * later saves (the verify step's "Edit details" loop) are updates laid over
    * exactly what was saved — not over the server as it was when the edit
-   * started.
+   * started. The Name field then shows what the connector is called now: a
+   * typed name the save could not keep gives way to the technical name.
    */
   markSaved: (definition: McpServerDefinition) => void;
   /**
@@ -200,8 +201,8 @@ export function NewMcpServerFormProvider({
 
   // The run-level actions below are stable (the servers page memoizes its
   // header actions on them), so they read the current values from here.
-  const latest = useRef({ state, slugEdited, registeredName });
-  latest.current = { state, slugEdited, registeredName };
+  const latest = useRef({ state, slugEdited, registeredName, base });
+  latest.current = { state, slugEdited, registeredName, base };
   const draft = useRef<Draft>();
 
   const markSaved = useCallback((saved: McpServerDefinition) => {
@@ -210,15 +211,15 @@ export function NewMcpServerFormProvider({
     setLastSaveAt(Date.now());
     setRegisteredName(saved.name);
     setRegisteredInstallation(current.state.installation);
-    // A save without `displayName` left the annotation as it was.
-    setBase(prev => ({
-      definition: saved,
-      form: current.state,
-      displayName:
-        saved.displayName === undefined
-          ? prev?.displayName
-          : saved.displayName || undefined,
-    }));
+    // A save without `displayName` left the annotation as it was: none after a
+    // create, the stored one after an update.
+    const displayName =
+      saved.displayName === undefined
+        ? latest.current.base?.displayName
+        : saved.displayName || undefined;
+    const form = { ...current.state, name: displayName ?? saved.name };
+    setState(form);
+    setBase({ definition: saved, form, displayName });
   }, []);
 
   const startEdit = useCallback(
@@ -346,9 +347,7 @@ export function NewMcpServerFormProvider({
       definition: base
         ? mergeOntoExisting(
             base.definition,
-            composeMcpServerDefinition(state, {
-              storedDisplayName: base.displayName,
-            }),
+            composeMcpServerDefinition(state, { stored: base.displayName }),
           )
         : composeMcpServerDefinition(state),
     };

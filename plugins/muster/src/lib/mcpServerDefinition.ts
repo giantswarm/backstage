@@ -401,7 +401,8 @@ function composeMeta(
 /**
  * Wizard state → the definition passed to `core_mcpserver_validate` and
  * `core_mcpserver_create` — or, with `edit` (the edited server's stored
- * display name), the wizard's part of an update ({@link mergeOntoExisting}).
+ * display name, as {@link displayNameArgument} takes it), the wizard's part of
+ * an update ({@link mergeOntoExisting}).
  *
  * `autoStart: true` so the server connects as soon as it is registered — the
  * flow's promise is that registration is the only step before the tools show
@@ -410,7 +411,7 @@ function composeMeta(
  */
 export function composeMcpServerDefinition(
   state: NewMcpServerFormState,
-  edit?: { storedDisplayName: string | undefined },
+  edit?: { stored: string | undefined },
 ): McpServerDefinition {
   const definition: McpServerDefinition = {
     name: state.slug.trim(),
@@ -418,11 +419,7 @@ export function composeMcpServerDefinition(
     url: state.url.trim(),
     autoStart: true,
   };
-  const displayName = displayNameArgument(
-    state.name,
-    state.slug,
-    edit && { stored: edit.storedDisplayName },
-  );
+  const displayName = displayNameArgument(state.name, state.slug, edit);
   if (displayName !== undefined) {
     definition.displayName = displayName;
   }

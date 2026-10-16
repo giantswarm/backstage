@@ -372,16 +372,28 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.definition.displayName).toBe('');
     });
 
-    it('offers the name again after a save that could not send it', () => {
+    it('names the connector by its technical name after a save that could not keep the typed one', () => {
       // An installation whose muster does not take a display name saves the
-      // definition without it; the stored name is then still none.
+      // definition without it: the connector is then called by its technical
+      // name, and the form says so rather than showing a name it does not have.
       const { result, fillDetails } = renderForm();
       fillDetails();
       const { displayName: _dropped, ...sent } = result.current.definition;
 
       act(() => result.current.markSaved(sent));
 
-      expect(result.current.definition.displayName).toBe('Weather MCP');
+      expect(result.current.state.name).toBe('weather-mcp');
+      expect(result.current.definition).not.toHaveProperty('displayName');
+    });
+
+    it('keeps the typed name in the form after a save that kept it', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+
+      act(() => result.current.markSaved(result.current.definition));
+
+      expect(result.current.state.name).toBe('Weather MCP');
+      expect(result.current.definition).not.toHaveProperty('displayName');
     });
 
     it('lays later saves over what was saved, not over the server as it was', () => {

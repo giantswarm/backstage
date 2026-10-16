@@ -790,6 +790,49 @@ describe('shell connector wizard', () => {
       expect(screen.queryByText(/Registered as/)).not.toBeInTheDocument();
     });
 
+    it('says once that the name is fixed, on a muster that takes no display name', async () => {
+      musterTakesDisplayName(false);
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/display-name': 'Acme Jira',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      expect(name).toHaveValue('Acme Jira');
+      expect(name).toHaveAccessibleDescription(
+        'It cannot be changed after registration.',
+      );
+      const registeredAs = screen.getByText(/^Registered as/);
+      expect(registeredAs).toHaveTextContent(
+        'Registered as jira — used in its tool names.',
+      );
+      expect(registeredAs).not.toHaveTextContent(/cannot be changed/);
+    });
+
+    it('keeps the name of a family member read-only, the family sharing it', async () => {
+      const server = registered();
+      (server.jsonData.spec as Record<string, unknown>).family = {
+        name: 'tickets',
+        instanceArg: 'site',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      const name = await screen.findByRole('textbox', { name: /^Name/ });
+      await waitFor(() =>
+        expect(describeTool).toHaveBeenCalledWith(
+          'core_mcpserver_update',
+          'gazelle',
+        ),
+      );
+      expect(name).toHaveAttribute('readonly');
+      expect(name).toHaveAccessibleDescription(
+        'Shared with the other members of the tickets family, so it is set where they are defined.',
+      );
+    });
+
     it('marks the invalid fields themselves on Continue, as when adding', async () => {
       await renderWizard('/customize/connectors/gazelle/jira/edit');
 

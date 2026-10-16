@@ -1200,12 +1200,12 @@ describe('editing a registered server in the wizard', () => {
     expect(form).toMatchObject({ name: 'Weather', slug: 'weather-mcp' });
     // Unchanged, the update leaves the annotation alone.
     expect(
-      composeMcpServerDefinition(form, { storedDisplayName: 'Weather' }),
+      composeMcpServerDefinition(form, { stored: 'Weather' }),
     ).not.toHaveProperty('displayName');
     expect(
       composeMcpServerDefinition(
         { ...form, name: 'Weather forecasts' },
-        { storedDisplayName: 'Weather' },
+        { stored: 'Weather' },
       ).displayName,
     ).toBe('Weather forecasts');
   });
@@ -1216,7 +1216,7 @@ describe('editing a registered server in the wizard', () => {
 
     const unchanged = mergeOntoExisting(
       saved,
-      composeMcpServerDefinition(state(), { storedDisplayName: 'Weather MCP' }),
+      composeMcpServerDefinition(state(), { stored: 'Weather MCP' }),
     );
     expect(unchanged).not.toHaveProperty('displayName');
   });

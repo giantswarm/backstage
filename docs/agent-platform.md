@@ -145,10 +145,14 @@ before ("Stack Overflow" is registered as `stack-overflow`); a name that is the
 technical name already (`jira`) sets no annotation. Editing a connector shows
 its display name in the Name field and saves a changed one, sending
 `displayName` only when it changes (back to the technical name removes the
-annotation); the technical name stays fixed. Whether an installation's muster
-takes the argument is read from the tool's input schema (`describe_tool`):
-on an older muster, which refuses unknown fields, the wizard registers without
-it and an edit keeps the Name read-only, as before. The annotation can also be
+annotation); the technical name stays fixed. A family member's Name stays
+read-only: its members share one display name, which a rename of one would
+split. Whether an installation's muster takes the argument is read from each
+tool's input schema (`describe_tool`, validate's and create's or update's on
+their own): on an older muster, which refuses unknown fields, the wizard
+registers without it, the Name field then shows the technical name, and an
+edit keeps it read-only, as before. A schema that cannot be read stops the
+save with an error rather than dropping the name unsaid. The annotation can also be
 set on the MCPServer directly, for example in its GitOps source or with
 `kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
 an edit that does not change the name keeps it.

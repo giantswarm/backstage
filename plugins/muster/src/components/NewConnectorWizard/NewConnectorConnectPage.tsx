@@ -9,14 +9,13 @@ import {
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { takesDisplayName } from '../../lib/mcpServerDefinition';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
+import { useTakesDisplayName } from '../NewMcpServerReviewPage';
 import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
 import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
-import { useToolDescription } from '../shared/useToolDescription';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
 
 const useStyles = makeStyles({
@@ -124,7 +123,8 @@ function inStepWords(message: string | undefined): string | undefined {
  * The name is the connector's display name; its technical name derives from
  * it on create and is fixed after. An edit lets the name change only where
  * the installation's muster takes a display name on update (v5.43.0 and
- * later, read from the tool's input schema); elsewhere it stays read-only.
+ * later, read from the tool's input schema), and not on a family member,
+ * whose members share one name a rename of one would split.
  *
  * The prototype's "Who can use it?" audience choice is deliberately absent:
  * muster registers a connector for the whole installation and has no
@@ -133,7 +133,7 @@ function inStepWords(message: string | undefined): string | undefined {
 export function NewConnectorConnectPage() {
   const navigate = useNavigate();
   const wizardLinks = useConnectorWizardLinks();
-  const { activeInstallation } = useMusterInstance();
+  const { activeInstallation, mcpServers } = useMusterInstance();
   const {
     state,
     setName,
@@ -159,14 +159,25 @@ export function NewConnectorConnectPage() {
 
   // Whether this muster's update keeps a changed name; read only for an edit.
   // Until the schema is read the name stays read-only, as it was before
-  // muster took a display name.
-  const { data: updateTool } = useToolDescription(
+  // muster took a display name. A family's members are named together (the
+  // name they agree on), so one member is not renamed on its own.
+  const updateTakesDisplayName = useTakesDisplayName(
     'core_mcpserver_update',
     registeredInstallation,
     { enabled: Boolean(registeredName) },
   );
-  const canRename =
-    !registeredName || takesDisplayName(updateTool?.inputSchema);
+  const family = registeredName
+    ? mcpServers
+        .find(server => server.getName() === registeredName)
+        ?.getFamily()
+    : undefined;
+  const canRename = !registeredName || (updateTakesDisplayName && !family);
+  let nameDescription = 'Shown when giving an agent access.';
+  if (!canRename) {
+    nameDescription = family
+      ? `Shared with the other members of the ${family} family, so it is set where they are defined.`
+      : 'It cannot be changed after registration.';
+  }
 
   // The detected transport is applied as long as this run has not been
   // registered yet; an edit keeps the transport the server is registered with,
@@ -256,11 +267,7 @@ export function NewConnectorConnectPage() {
         value={state.name}
         onChange={setName}
         placeholder="e.g. Jira"
-        description={
-          canRename
-            ? 'Shown when giving an agent access.'
-            : 'It cannot be changed after registration.'
-        }
+        description={nameDescription}
         {...validation.textFieldProps(
           'name',
           fieldErrors.name ?? fieldErrors.slug,
@@ -270,7 +277,7 @@ export function NewConnectorConnectPage() {
         (!registeredName || canRename || state.name.trim() !== state.slug) && (
           <Text variant="body-small" color="secondary">
             Registered as <code>{state.slug}</code> — used in its tool names.
-            {registeredName && ' It cannot be changed.'}
+            {registeredName && canRename && ' It cannot be changed.'}
           </Text>
         )}
 
