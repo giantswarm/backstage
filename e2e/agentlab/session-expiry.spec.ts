@@ -59,9 +59,6 @@ async function openConnectorInApp(page: Page, name: string) {
   await expect(page).toHaveURL(new RegExp(`/${name}`));
 }
 
-/** muster's tool listing, answered expired by the last test. */
-const TOOLS_FILTER = '**/api/muster/tools/filter*';
-
 test('an ID token near its exp is refreshed before it is forwarded to muster', async ({
   browser,
 }) => {
@@ -135,9 +132,7 @@ test('a tab past the token’s lifetime offers Sign in again, never the raw must
 test("muster's expired-token answer reads as Sign in again", async ({
   admin,
 }) => {
-  // The admin page is the worker's, shared with the specs after this one:
-  // every muster read through it would answer expired until it is removed.
-  await admin.route(TOOLS_FILTER, route =>
+  await admin.route('**/api/muster/tools/filter*', route =>
     route.fulfill({
       status: 500,
       contentType: 'application/json',
@@ -150,17 +145,13 @@ test("muster's expired-token answer reads as Sign in again", async ({
       }),
     }),
   );
-  try {
-    await open(admin, internalPath);
+  await open(admin, internalPath);
 
-    await expect(admin.getByText(EXPIRED_COPY).first()).toBeVisible({
-      timeout: 60_000,
-    });
-    await expect(
-      admin.getByRole('button', { name: 'Sign in again' }).first(),
-    ).toBeVisible();
-    await expect(admin.getByText(/token has expired/i)).toHaveCount(0);
-  } finally {
-    await admin.unroute(TOOLS_FILTER);
-  }
+  await expect(admin.getByText(EXPIRED_COPY).first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(
+    admin.getByRole('button', { name: 'Sign in again' }).first(),
+  ).toBeVisible();
+  await expect(admin.getByText(/token has expired/i)).toHaveCount(0);
 });

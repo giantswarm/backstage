@@ -45,14 +45,6 @@ test('a Claude Code agent shows no limits, and its turn its reported cost', asyn
     harness: /Harness claude\b/,
     onStep: async step => {
       await expectNoLimits(admin, `the wizard's ${step} step`);
-      // A lab whose admin is signed out of the OAuth fixture shows the MCP
-      // sign-in notice over the wizard's footer; it is not this spec's.
-      const notice = admin.getByRole('complementary', {
-        name: 'MCP server sign-in',
-      });
-      if (await notice.isVisible()) {
-        await notice.getByRole('button', { name: 'Not now' }).click();
-      }
     },
   });
 

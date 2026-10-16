@@ -325,6 +325,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           mkdirSync(workerInfo.project.outputDir, { recursive: true });
           writeFileSync(failureFile, String(error));
           throw error;
+        } finally {
+          await restoreMcpSignInNotice(adminPage);
         }
         await use({ name, slug, detailPath });
       } finally {
@@ -348,6 +350,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     // The page outlives the test: a route a test left behind (a swapped
     // token, a stubbed answer) must not answer the next test's requests.
     await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
+    await restoreMcpSignInNotice(adminPage);
     await adminPage
       .evaluate(
         flag => window.sessionStorage.setItem(flag, '1'),
@@ -485,45 +488,64 @@ export async function connectToMuster(page: Page, ready: Locator) {
 }
 
 /**
- * Opens the home screen on the agents as they are now. The portal writes its
- * cache to localStorage at most every 30 s and trusts an entry for 60 s, so a
- * load right after the fixture agent turned Ready elsewhere would restore the
- * list from before it existed and not ask again: the persisted cache is
- * dropped first, and the home reads the roster afresh.
+ * Opens the admin page's home screen on the agents as they are now. The portal
+ * writes its cache to localStorage at most every 30 s and trusts an entry for
+ * 60 s, so a load right after the fixture agent turned Ready elsewhere would
+ * restore the list from before it existed and not ask again: the admin page's
+ * init script drops the persisted caches on this load, before the app runs,
+ * and the home reads the roster afresh.
  */
-export async function openHome(page: Page): Promise<void> {
-  await page.evaluate(() =>
-    window.localStorage.removeItem('agent-platform-react-query-cache'),
+export async function openHome(admin: Page): Promise<void> {
+  await admin.evaluate(
+    flag => window.sessionStorage.setItem(flag, '1'),
+    DROP_CACHES_FLAG,
   );
-  await open(page, '/');
+  await open(admin, '/');
 }
 
 /**
  * The notice's memory of a **Not now** for the browser session
  * (`HIDDEN_NOTICE_STORAGE_KEY` in the muster plugin).
  */
-const MCP_AUTH_NOTICE_HIDDEN_KEY = 'muster.mcpAuthNotice.hidden';
+export const MCP_AUTH_NOTICE_HIDDEN_KEY = 'muster.mcpAuthNotice.hidden';
+
+/** The MCP sign-in notice: it floats over the foot of every page. */
+function mcpSignInNotice(page: Page): Locator {
+  return page.getByRole('complementary', { name: 'MCP server sign-in' });
+}
 
 /**
- * Hides the MCP sign-in notice with its **Not now**, as a person does who has
- * no use for the connector it names: it floats over the foot of every page
- * while a connector waits for the person's sign-in (the lab's
- * `lab-oauth-fixture` does), and on a phone covers what is there. Hidden on
- * this page only: the choice is forgotten again, so the next page load of the
- * worker's shared page shows the notice as a new browser session would.
+ * Answers the MCP sign-in notice with **Not now** whenever it shows, as a
+ * person does who has no use for the connector it names: while a connector
+ * waits for the person's sign-in (the lab's `lab-oauth-fixture` does) it
+ * floats over the foot of every page, and covers what is there — a docked
+ * form footer, on a phone the foot of the content. An open select's underlay
+ * takes every click outside its listbox, so the listbox is closed first. The
+ * worker's shared page is restored by its fixtures
+ * ({@link restoreMcpSignInNotice}).
  */
-export async function dismissMcpAuthNotice(page: Page): Promise<void> {
-  const notice = page.getByRole('complementary', {
-    name: 'MCP server sign-in',
-  });
-  if (await notice.isVisible()) {
+export async function dismissMcpSignInNotice(page: Page): Promise<void> {
+  await page.addLocatorHandler(mcpSignInNotice(page), async notice => {
+    if (await page.getByRole('listbox').isVisible()) {
+      await page.keyboard.press('Escape');
+    }
     await notice.getByRole('button', { name: 'Not now' }).click();
-    await expect(notice).toBeHidden();
-    await page.evaluate(
+  });
+}
+
+/**
+ * Undoes {@link dismissMcpSignInNotice} on a page that outlives the test: the
+ * handler is removed and the Not now forgotten, so the next test sees the
+ * notice as a new browser session would.
+ */
+async function restoreMcpSignInNotice(page: Page): Promise<void> {
+  await page.removeLocatorHandler(mcpSignInNotice(page));
+  await page
+    .evaluate(
       key => window.sessionStorage.removeItem(key),
       MCP_AUTH_NOTICE_HIDDEN_KEY,
-    );
-  }
+    )
+    .catch(() => undefined);
 }
 
 /**
@@ -549,6 +571,9 @@ export async function createAgentInWizard(
     onStep?: (step: 'Details' | 'Review') => Promise<void>;
   } = {},
 ): Promise<string> {
+  // The notice covers the footer's Continue and, on a phone, Technical
+  // details at the foot of Review.
+  await dismissMcpSignInNotice(page);
   // --- Step 1: Details -----------------------------------------------------
   await open(page, '/agent-platform/agents/new');
   await expectWizardStep(page, 'Details');
@@ -609,10 +634,7 @@ export async function createAgentInWizard(
     deploy,
     'the dry run through agent-manager completed and Create is offered',
   ).toBeEnabled({ timeout: 90_000 });
-  // The release and its manifests are collapsed under Technical details, at
-  // the foot of the page — where, on a phone, the MCP sign-in notice floats
-  // over it while the lab's OAuth fixture waits for a sign-in.
-  await dismissMcpAuthNotice(page);
+  // The release and its manifests are collapsed under Technical details.
   await page.getByText('Technical details').click();
   await expect(page.getByText(agentSlug).first()).toBeVisible();
   await options.onStep?.('Review');

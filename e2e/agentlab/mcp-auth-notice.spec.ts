@@ -5,6 +5,7 @@ import {
   expect,
   expectWizardStep,
   fillAgentDetails,
+  MCP_AUTH_NOTICE_HIDDEN_KEY,
   open,
   test,
 } from './fixtures';
@@ -28,8 +29,9 @@ const fixturePath = `/agent-platform/connectors/${FIXTURE}?installation=${lab.in
  */
 async function signOutOfFixture(page: Page) {
   await open(page, fixturePath);
-  await page.evaluate(() =>
-    window.sessionStorage.removeItem('muster.mcpAuthNotice.hidden'),
+  await page.evaluate(
+    key => window.sessionStorage.removeItem(key),
+    MCP_AUTH_NOTICE_HIDDEN_KEY,
   );
   await connectToMuster(
     page,
