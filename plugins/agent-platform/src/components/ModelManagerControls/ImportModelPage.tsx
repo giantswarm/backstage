@@ -107,7 +107,7 @@ export function describeSearchResult(result: ModelManagerSearchResult): string {
  * server will decide. A model that does not fit cannot be submitted; a gated
  * one needs the installation's hub token.
  *
- * A page of its own (`/agent-platform/models/serving/import`), the app's
+ * A page of its own (`/customize/models/hosting/import`), the app's
  * single-step create pattern (`WizardFrame`): a refused request stays on
  * it, saying so.
  *

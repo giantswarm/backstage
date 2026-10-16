@@ -60,7 +60,7 @@ describe('AgentReachLine', () => {
       <AgentReachLine
         toolset={PICKED}
         installation="gazelle"
-        toolsHref="/agent-platform/agents/gazelle/kagent/sre-agent/tools"
+        toolsHref="/customize/agents/gazelle/kagent/sre-agent/tools"
       />,
     );
 
@@ -76,7 +76,7 @@ describe('AgentReachLine', () => {
       screen.getByRole('link', { name: 'See which tools' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/kagent/sre-agent/tools',
+      '/customize/agents/gazelle/kagent/sre-agent/tools',
     );
   });
 
@@ -110,7 +110,7 @@ describe('AgentReachLine', () => {
     render(
       <AgentReachLine
         toolset={{ state: 'no-gateway' }}
-        toolsHref="/agent-platform/agents/gazelle/kagent/chat/tools"
+        toolsHref="/customize/agents/gazelle/kagent/chat/tools"
       />,
     );
 

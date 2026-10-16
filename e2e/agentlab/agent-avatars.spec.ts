@@ -39,7 +39,7 @@ test('avatars are requested from the portal’s origin with the backend’s cook
 
   // The New agent wizard's live preview requests an avatar for whatever is
   // typed, so the proof needs no agent on the installation.
-  await open(admin, '/agent-platform/agents/new');
+  await open(admin, '/customize/agents/new');
   await expectWizardStep(admin, 'Details');
   await admin
     .getByRole('textbox', { name: 'Name', exact: true })

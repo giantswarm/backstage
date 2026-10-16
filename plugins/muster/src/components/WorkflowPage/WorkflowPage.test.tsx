@@ -324,7 +324,7 @@ async function renderAt(
   const page = (
     <Routes>
       <Route
-        path="/agent-platform/workflows/:name/*"
+        path="/customize/workflows/:installation/:name/*"
         element={<WorkflowPage editAction={editAction} />}
       />
     </Routes>
@@ -337,7 +337,7 @@ async function renderAt(
           {inShell ? (
             <>
               <nav aria-label="Main">
-                <a href="/agent-platform/sessions">Sessions</a>
+                <a href="/sessions">Sessions</a>
               </nav>
               <div id="content">{page}</div>
             </>
@@ -350,7 +350,7 @@ async function renderAt(
     {
       initialRouteEntries: [path],
       mountedRoutes: {
-        '/agent-platform/workflows': workflowsRouteRef,
+        '/customize/workflows': workflowsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
       apis: [[musterApiRef, api as never]],
@@ -359,7 +359,7 @@ async function renderAt(
   return api;
 }
 
-const BASE = '/agent-platform/workflows';
+const BASE = '/customize/workflows/gazelle';
 
 // The formatters read the reader's locale; the assertions below are English,
 // so the default locale is pinned rather than left to the machine's LANG.
@@ -431,7 +431,7 @@ function gitOpsDeploy(): MusterWorkflow {
 
 describe('WorkflowPage', () => {
   it('heads the page with its place under Customize and the honest badge', async () => {
-    const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy`);
 
     expect(
       screen.getByRole('heading', { level: 1, name: 'deploy' }),
@@ -457,7 +457,7 @@ describe('WorkflowPage', () => {
   });
 
   it('opens on Overview: what it is for under its heading, when it was created', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     await waitFor(() =>
       expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
@@ -483,7 +483,7 @@ describe('WorkflowPage', () => {
         'gazelle',
       ),
     ];
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     expect(
       within(screen.getByRole('region', { name: 'What it’s for' })).getByText(
@@ -492,8 +492,8 @@ describe('WorkflowPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('links its tabs under the workflow’s address, keeping the installation', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+  it('links its tabs under the workflow’s address, on its installation', async () => {
+    await renderAt(`${BASE}/deploy`);
 
     for (const [name, path] of [
       ['Overview', ''],
@@ -504,7 +504,7 @@ describe('WorkflowPage', () => {
       expect(
         screen.getByRole('tab', { name }).closest('a') ??
           screen.getByRole('tab', { name }),
-      ).toHaveAttribute('href', `${BASE}/deploy${path}?installation=gazelle`);
+      ).toHaveAttribute('href', `${BASE}/deploy${path}`);
     }
   });
 
@@ -518,7 +518,7 @@ describe('WorkflowPage', () => {
   });
 
   it('lands an address it no longer has on Overview, keeping its query', async () => {
-    await renderAt(`${BASE}/deploy/runs?installation=gazelle&foo=b`);
+    await renderAt(`${BASE}/deploy/runs?foo=b`);
 
     expect(
       await screen.findByRole('region', { name: 'What it’s for' }),
@@ -531,20 +531,20 @@ describe('WorkflowPage', () => {
     );
     expect(screen.getByRole('tab', { name: 'Usage' })).toHaveAttribute(
       'href',
-      `${BASE}/deploy/usage?installation=gazelle&foo=b`,
+      `${BASE}/deploy/usage?foo=b`,
     );
   });
 
   it('names the workflow in the document title', async () => {
     // Live round 2 (R5): the page set none, so a client-side visit kept the
     // previous page's title.
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     await waitFor(() => expect(document.title).toBe('deploy · Workflows'));
   });
 
   it('lists the inputs with type, required and default', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     expect(screen.getByText('app')).toBeInTheDocument();
     expect(screen.getByText('required')).toBeInTheDocument();
@@ -554,7 +554,7 @@ describe('WorkflowPage', () => {
   });
 
   it('draws the flow — spine, gate, loop group, cleanup lane — as the only step view, with no branches or trigger', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const figure = screen.getByTestId('workflow-flow-canvas');
     const canvas = within(figure);
 
@@ -603,14 +603,14 @@ describe('WorkflowPage', () => {
   });
 
   it('caps the canvas viewport so a long workflow scrolls inside its box', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const viewport = screen.getByTestId('workflow-flow-viewport');
 
     expect(getComputedStyle(viewport).overflow).toBe('auto');
   });
 
   it('expands a step in place to its plain details, with its own technical fold-out', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const figure = within(screen.getByTestId('workflow-flow-canvas'));
     const step = screen.getByRole('button', {
       name: /^Step 2: Apply the manifests/,
@@ -686,7 +686,7 @@ describe('WorkflowPage', () => {
   });
 
   it('gives the expanded step room: its box grows and the steps after it move down', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const box = (key: string) =>
       screen
         .getByTestId('workflow-flow-canvas')
@@ -719,7 +719,7 @@ describe('WorkflowPage', () => {
   });
 
   it('folds the open step by keyboard, by pressing it again and by a click beside the steps', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const step = screen.getByRole('button', {
       name: /^Step 2: Apply the manifests/,
     });
@@ -745,12 +745,7 @@ describe('WorkflowPage', () => {
   });
 
   it('takes the flow full screen over the content area, beside the rail, and back by its button or Escape', async () => {
-    await renderAt(
-      `${BASE}/deploy?installation=gazelle`,
-      makeApi(),
-      undefined,
-      true,
-    );
+    await renderAt(`${BASE}/deploy`, makeApi(), undefined, true);
     const content = document.getElementById('content')!;
     const rail = screen.getByRole('navigation', { name: 'Main' });
     // The content area starts where the rail ends (the layout pads it).
@@ -839,7 +834,7 @@ describe('WorkflowPage', () => {
   });
 
   it('covers the whole window outside the shell frame, everything else inert', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     await userEvent.click(screen.getByRole('button', { name: 'Full screen' }));
     const layer = screen.getByRole('dialog', {
@@ -856,7 +851,7 @@ describe('WorkflowPage', () => {
   });
 
   it('expands a group head’s details in place: what the loop runs over', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     const head = screen.getByRole('button', {
       name: /^Step 3: Check every cluster/,
@@ -880,7 +875,7 @@ describe('WorkflowPage', () => {
   });
 
   it('colours the nodes with the latest run and marks what each step does', async () => {
-    const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy`);
     const figure = screen.getByTestId('workflow-flow-canvas');
 
     expect(
@@ -922,7 +917,7 @@ describe('WorkflowPage', () => {
   });
 
   it('orders Overview: what it is for, what it needs, how it runs — no statistics or technical details', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     const titles = ['What it’s for', 'What it needs', 'How it runs'].map(name =>
       screen.getByRole('heading', { level: 2, name }),
@@ -945,7 +940,7 @@ describe('WorkflowPage', () => {
   });
 
   it('puts the last run and muster’s run totals on Usage', async () => {
-    const api = await renderAt(`${BASE}/deploy/usage?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy/usage`);
 
     expect(
       screen.getByText(
@@ -995,7 +990,7 @@ describe('WorkflowPage', () => {
               has_more: true,
             },
     );
-    await renderAt(`${BASE}/deploy/usage?installation=gazelle`, api);
+    await renderAt(`${BASE}/deploy/usage`, api);
 
     const lastRun = await screen.findByTestId('workflow-last-run');
     expect(lastRun).toHaveTextContent('Failed');
@@ -1004,7 +999,7 @@ describe('WorkflowPage', () => {
   });
 
   it('lists the plain facts on Details, then the CR’s bookkeeping in a Technical details fold-out', async () => {
-    await renderAt(`${BASE}/deploy/details?installation=gazelle`);
+    await renderAt(`${BASE}/deploy/details`);
 
     const facts = screen.getByRole('region', { name: 'Workflow details' });
     expect(facts).toHaveTextContent(
@@ -1049,7 +1044,7 @@ describe('WorkflowPage', () => {
 
   it('gives the labels a row of their own in Technical details, one label per line', async () => {
     mockWorkflows = [gitOpsDeploy()];
-    await renderAt(`${BASE}/deploy/details?installation=gazelle`);
+    await renderAt(`${BASE}/deploy/details`);
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Technical details' }),
@@ -1076,7 +1071,7 @@ describe('WorkflowPage', () => {
       mcpServer('a-mcp-kubernetes', 'kubernetes', 'Kubernetes'),
       mcpServer('b-mcp-kubernetes', 'kubernetes', 'Kubernetes'),
     ];
-    await renderAt(`${BASE}/deploy/details?installation=gazelle`);
+    await renderAt(`${BASE}/deploy/details`);
 
     const facts = screen.getByRole('region', { name: 'Workflow details' });
     expect(within(facts).getByText('Kubernetes')).toBeInTheDocument();
@@ -1094,18 +1089,18 @@ describe('WorkflowPage', () => {
       'gazelle',
     );
     mockWorkflows = [DEPLOY, caller];
-    await renderAt(`${BASE}/deploy/details?installation=gazelle`);
+    await renderAt(`${BASE}/deploy/details`);
 
     expect(
       within(
         screen.getByRole('region', { name: 'Workflow details' }),
       ).getByRole('link', { name: 'release' }),
-    ).toHaveAttribute('href', `${BASE}/release?installation=gazelle`);
+    ).toHaveAttribute('href', `${BASE}/release`);
   });
 
   it('shows the CR’s manifest from "View manifest" in its menu, with a copy button', async () => {
     mockToKubectlYaml.mockClear();
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     expect(mockToKubectlYaml).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
@@ -1131,7 +1126,7 @@ describe('WorkflowPage', () => {
   });
 
   it('offers no create, edit or delete affordances of its own, and runs only from Run it', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     // Anchored: step buttons may name a tool such as kubernetes · delete.
     expect(screen.queryByRole('button', { name: /^edit/i })).toBeNull();
@@ -1148,7 +1143,7 @@ describe('WorkflowPage', () => {
   });
 
   it('runs the workflow on Run it with the tool page’s form, and shows the result', async () => {
-    const api = await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy/run`);
 
     // The tool page's form, for the workflow's tool, without the description
     // Overview already gives.
@@ -1179,7 +1174,7 @@ describe('WorkflowPage', () => {
   });
 
   it('reads the run records again after a run, so Usage counts it', async () => {
-    const api = await renderAt(`${BASE}/deploy/usage?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy/usage`);
     await waitFor(() => expect(api.listExecutions).toHaveBeenCalled());
     const before = api.listExecutions.mock.calls.length;
 
@@ -1203,7 +1198,7 @@ describe('WorkflowPage', () => {
     api.getAuthStatus.mockResolvedValue({
       servers: [{ name: 'kubernetes', status: 'auth_required' }],
     } as never);
-    await renderAt(`${BASE}/deploy/run?installation=gazelle`, api);
+    await renderAt(`${BASE}/deploy/run`, api);
 
     expect(
       await screen.findByText('Sign in to a connector first'),
@@ -1225,7 +1220,7 @@ describe('WorkflowPage', () => {
       truncated: false,
       tools: [{ name: 'x_kubernetes_get_pods' }],
     }));
-    await renderAt(`${BASE}/deploy/run?installation=gazelle`, api);
+    await renderAt(`${BASE}/deploy/run`, api);
 
     expect(
       await screen.findByRole('heading', {
@@ -1246,7 +1241,7 @@ describe('WorkflowPage', () => {
       truncated: true,
       tools: [{ name: 'x_kubernetes_get_pods' }],
     }));
-    await renderAt(`${BASE}/deploy/run?installation=gazelle`, api);
+    await renderAt(`${BASE}/deploy/run`, api);
 
     expect(
       await screen.findByRole('region', { name: 'Inputs' }),
@@ -1258,7 +1253,7 @@ describe('WorkflowPage', () => {
 
   it('says on Run it that no run is possible where muster has no per-user sessions', async () => {
     mockRequiresAuth = false;
-    const api = await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy/run`);
 
     expect(
       await screen.findByRole('heading', {
@@ -1275,7 +1270,7 @@ describe('WorkflowPage', () => {
     async function startRun() {
       const api = makeApi();
       api.callTool.mockImplementation(() => new Promise(() => {}));
-      await renderAt(`${BASE}/deploy/run?installation=gazelle`, api);
+      await renderAt(`${BASE}/deploy/run`, api);
       const inputs = await screen.findByRole('region', { name: 'Inputs' });
       await userEvent.type(
         within(inputs).getByRole('textbox', { name: /app/i }),
@@ -1349,7 +1344,7 @@ describe('WorkflowPage', () => {
   });
 
   it('lets the page go without asking once no run is in flight', async () => {
-    await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+    await renderAt(`${BASE}/deploy/run`);
     await screen.findByRole('region', { name: 'Inputs' });
 
     const event = new Event('beforeunload', { cancelable: true });
@@ -1362,7 +1357,7 @@ describe('WorkflowPage', () => {
 
   it('asks for a muster session on Run it in place of the form', async () => {
     mockAuthenticated = false;
-    const api = await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy/run`);
 
     expect(
       screen.getByText(/Running a workflow needs a muster session/),
@@ -1373,7 +1368,7 @@ describe('WorkflowPage', () => {
   });
 
   it('offers no Edit in Git… for a workflow outside Git', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(
@@ -1395,7 +1390,7 @@ describe('WorkflowPage', () => {
         },
       ),
     ];
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(
@@ -1422,7 +1417,7 @@ describe('WorkflowPage', () => {
         namespace: 'agent-platform',
       },
     });
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
     await userEvent.click(
@@ -1464,7 +1459,7 @@ describe('WorkflowPage', () => {
         </button>
       );
     }
-    await renderAt(`${BASE}/deploy?installation=gazelle`, makeApi(), <Probe />);
+    await renderAt(`${BASE}/deploy`, makeApi(), <Probe />);
 
     const action = screen.getByRole('button', {
       name: 'Edit deploy on gazelle via workflow_deploy',
@@ -1504,7 +1499,7 @@ describe('WorkflowPage', () => {
 
   it('asks for a muster session instead of claiming runs or a badge, and still draws the definition', async () => {
     mockAuthenticated = false;
-    const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy`);
 
     // Overview names what it needs the session for; statistics are on Usage.
     expect(
@@ -1532,7 +1527,7 @@ describe('WorkflowPage', () => {
 
   it('asks for a muster session on Usage in place of statistics', async () => {
     mockAuthenticated = false;
-    const api = await renderAt(`${BASE}/deploy/usage?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy/usage`);
 
     expect(
       screen.getByText(/Statistics need a muster session/),
@@ -1543,7 +1538,7 @@ describe('WorkflowPage', () => {
   });
 
   it('says so, with a way back, for a workflow the installation lacks', async () => {
-    await renderAt(`${BASE}/missing?installation=gazelle`);
+    await renderAt(`${BASE}/missing`);
 
     expect(
       screen.getByText('No workflow “missing” on gazelle'),
@@ -1602,7 +1597,7 @@ describe('WorkflowPage at phone width', () => {
   afterEach(() => layout.restore());
 
   it('keeps the four tabs and the menu, with the facts on Details rather than folded above the content', async () => {
-    await renderAt(`${BASE}/deploy/details?installation=gazelle`);
+    await renderAt(`${BASE}/deploy/details`);
 
     for (const name of ['Overview', 'Run it', 'Usage', 'Details']) {
       expect(screen.getByRole('tab', { name })).toBeInTheDocument();
@@ -1617,7 +1612,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('runs the workflow from Run it at phone width with the same form', async () => {
-    const api = await renderAt(`${BASE}/deploy/run?installation=gazelle`);
+    const api = await renderAt(`${BASE}/deploy/run`);
 
     const inputs = await screen.findByRole('region', { name: 'Inputs' });
     await userEvent.click(within(inputs).getByRole('button', { name: 'Run' }));
@@ -1634,7 +1629,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('lists the steps in place of the canvas: groups indented, gates as lines, cleanup as its own section', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     // No canvas, so no sideways flow and no scroll box to trap the swipe —
     // and nothing to take full screen.
@@ -1687,7 +1682,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('opens a step’s details in place under it, several at once, and Close folds them back onto the step', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const gated = screen.getByRole('button', {
       name: /^Step 2: Apply the manifests/,
     });
@@ -1733,7 +1728,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('marks each card with the latest run and what its tool does', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const list = screen.getByTestId('workflow-step-list');
     const card = (key: string) =>
       list.querySelector(`[data-step-key="${key}"]`) as HTMLElement;
@@ -1756,7 +1751,7 @@ describe('WorkflowPage at phone width', () => {
 
   it('shows a long workflow a page of steps at a time, a parallel group as its own indented list', async () => {
     mockWorkflows = [longWorkflow(300)];
-    await renderAt(`${BASE}/long?installation=gazelle`);
+    await renderAt(`${BASE}/long`);
 
     const steps = screen.getByRole('list', {
       name: "The workflow's 300 steps, in order",
@@ -1777,7 +1772,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('wraps a long default instead of cutting it', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
     const pill = screen.getByTestId('arg-default');
 
     expect(getComputedStyle(pill).whiteSpace).not.toBe('nowrap');
@@ -1786,7 +1781,7 @@ describe('WorkflowPage at phone width', () => {
   });
 
   it('says when the last run started to the minute, as text — a phone shows no hover title', async () => {
-    await renderAt(`${BASE}/deploy/usage?installation=gazelle`);
+    await renderAt(`${BASE}/deploy/usage`);
 
     expect(await screen.findByTestId('workflow-last-run')).toHaveTextContent(
       'started 9 Oct 2026, 08:00 UTC',
@@ -1824,7 +1819,7 @@ describe('WorkflowPage on a desktop', () => {
         'gazelle',
       ),
     ];
-    await renderAt(`${BASE}/titles?installation=gazelle`);
+    await renderAt(`${BASE}/titles`);
     const figure = screen.getByTestId('workflow-flow-canvas');
     const node = (key: string) =>
       figure.querySelector(`[data-step-key="${key}"]`) as HTMLElement;
@@ -1858,7 +1853,7 @@ describe('WorkflowPage on a desktop', () => {
   });
 
   it('keeps the capped canvas, with no step list', async () => {
-    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await renderAt(`${BASE}/deploy`);
 
     expect(screen.getByTestId('workflow-flow-viewport')).toBeInTheDocument();
     expect(screen.queryByTestId('workflow-step-list')).toBeNull();

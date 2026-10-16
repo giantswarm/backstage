@@ -206,7 +206,7 @@ function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
           element={<ModelDetailPage />}
         />
         <Route
-          path="/agent-platform/models/edit/:installation/:namespace/:name"
+          path="/customize/models/:installation/:namespace/:name/edit"
           element={<p>The Connect-a-model flow, prefilled</p>}
         />
       </Routes>
@@ -218,9 +218,9 @@ function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
     {
       initialRouteEntries: [path],
       mountedRoutes: {
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
-        '/agent-platform/agents': agentsRouteRef,
+        '/customize/agents': agentsRouteRef,
       },
     },
   );
@@ -570,10 +570,7 @@ describe('ModelDetailPage', () => {
     expect(within(items[0]).getByText('$0.00')).toBeInTheDocument();
     expect(
       within(list).getByRole('link', { name: 'Support Triage' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/agents/inst-1/kagent/support-triage',
-    );
+    ).toHaveAttribute('href', '/customize/agents/inst-1/kagent/support-triage');
     expect(screen.queryByText('Copywriter')).toBeNull();
     expect(
       screen.getByText(

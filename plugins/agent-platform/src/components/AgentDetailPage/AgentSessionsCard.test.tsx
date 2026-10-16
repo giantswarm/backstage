@@ -75,7 +75,7 @@ describe('AgentSessionsCard', () => {
   it("lists the agent's few sessions as the Sessions page does: its words, no paging, no search", async () => {
     await renderInTestApp(
       <AgentSessionsCard agentName="Swarmgeist" sessions={sessions} />,
-      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
     );
 
     expect(

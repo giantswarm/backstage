@@ -313,8 +313,8 @@ async function render(
     // through `agentDetailRouteRef` — a SubRouteRef, which `mountedRoutes` does not
     // take, so its parent is what gets mounted.
     mountedRoutes: {
-      '/agent-platform/sessions': sessionsRouteRef,
-      '/agent-platform/agents': agentsRouteRef,
+      '/sessions': sessionsRouteRef,
+      '/customize/agents': agentsRouteRef,
     },
   });
 }
@@ -393,7 +393,7 @@ describe('SessionDetailPage', () => {
     // agent sent — as text, so only the header one is a link.
     expect(screen.getByRole('link', { name: 'Issue tracker' })).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/kagent/issue-tracker',
+      '/customize/agents/gazelle/kagent/issue-tracker',
     );
   });
 
@@ -1497,7 +1497,7 @@ describe('SessionDetailPage', () => {
           );
         }
         await renderInTestApp(<Harness />, {
-          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+          mountedRoutes: { '/sessions': sessionsRouteRef },
         });
 
         expect(
@@ -2190,17 +2190,14 @@ describe('SessionDetailPage', () => {
       await userEvent.click(startButton());
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith(
-          '/agent-platform/sessions/gazelle/new-1',
-          {
-            state: {
-              newSession: expect.objectContaining({
-                text: lastUserMessage,
-                imagesKey: expect.any(String),
-              }),
-            },
+        expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/new-1', {
+          state: {
+            newSession: expect.objectContaining({
+              text: lastUserMessage,
+              imagesKey: expect.any(String),
+            }),
           },
-        );
+        });
       });
     });
 
@@ -2225,7 +2222,7 @@ describe('SessionDetailPage', () => {
       });
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/agent-platform/sessions/gazelle/new-1',
+          '/sessions/gazelle/new-1',
           handoffTo('Six of them are vegetarian.'),
         );
       });
@@ -2270,7 +2267,7 @@ describe('SessionDetailPage', () => {
         );
       });
       expect(mockNavigate).toHaveBeenCalledWith(
-        '/agent-platform/sessions/gazelle/new-1',
+        '/sessions/gazelle/new-1',
         handoffTo(lastUserMessage),
       );
     });
@@ -2404,7 +2401,7 @@ describe('SessionDetailPage', () => {
       // The original may be on another installation.
       expect(
         screen.getByRole('link', { name: 'an earlier session on other-lab' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions/other-lab/0a1b2c');
+      ).toHaveAttribute('href', '/sessions/other-lab/0a1b2c');
       expect(
         screen.getByText('I am continuing a session with you.'),
       ).toBeInTheDocument();
@@ -2562,14 +2559,11 @@ describe('SessionDetailPage', () => {
       expect(prompt).toMatch(/## My answer\n\n1\. Cyclists$/);
       // Titled after this session, not after the framing.
       expect(title).toMatch(/^Continued: /);
-      expect(mockNavigate).toHaveBeenCalledWith(
-        '/agent-platform/sessions/gazelle/new-1',
-        {
-          state: {
-            newSession: expect.not.objectContaining({ prepared: true }),
-          },
+      expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/new-1', {
+        state: {
+          newSession: expect.not.objectContaining({ prepared: true }),
         },
-      );
+      });
       expect(mockAnswer).not.toHaveBeenCalled();
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
@@ -2784,7 +2778,7 @@ describe('SessionDetailPage', () => {
       });
       expect(
         within(breadcrumbs).getByRole('link', { name: 'Sessions' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions');
+      ).toHaveAttribute('href', '/sessions');
       expect(within(breadcrumbs).getByText('Session')).toBeInTheDocument();
     });
 
@@ -2846,7 +2840,7 @@ describe('SessionDetailPage', () => {
       const renderHeaderMenu = () =>
         renderInTestApp(<>{lastProvidedActions()}</>, {
           apis: [[storageApiRef, storage]],
-          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+          mountedRoutes: { '/sessions': sessionsRouteRef },
         });
       const openNotifications = async () => {
         await userEvent.click(

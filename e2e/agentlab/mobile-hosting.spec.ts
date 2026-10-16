@@ -31,7 +31,7 @@ async function openHosting(
   await installPersistedQueryDrop(page);
   await dropPersistedQueriesOnNextLoad(page);
   const calls = await stubClusterManager(page, options);
-  await open(page, `/agent-platform/models/${tab}`);
+  await open(page, `/customize/models/hosting/${tab}`);
   return calls;
 }
 
@@ -114,8 +114,8 @@ test('the hosting header is one button and a ⋯ menu on a phone', async ({
   admin,
 }) => {
   for (const path of [
-    '/agent-platform/models/serving',
-    '/agent-platform/models/capacity',
+    '/customize/models/hosting',
+    '/customize/models/hosting/capacity',
   ]) {
     await open(admin, path);
     await expect(admin.getByRole('heading', { level: 1 })).toBeVisible();

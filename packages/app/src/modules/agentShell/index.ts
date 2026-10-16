@@ -6,6 +6,7 @@ import { agentShellFeatureFlagsApi } from './featureFlagsApiExtension';
 import { AGENT_SHELL_FLAG } from './predicates';
 
 export { AGENT_SHELL_FLAG, agentShellOff, agentShellOn } from './predicates';
+export { agentPlatformLegacyPages } from './legacyPagesModule';
 export {
   isAgentArea,
   useAgentShellArea,

@@ -18,7 +18,7 @@ test('a person with a namespaced kagent RoleBinding picks a model in the New age
   signInAs,
 }) => {
   const dev = await signInAs(lab.users.dev);
-  await open(dev, '/agent-platform/agents/new', lab.users.dev);
+  await open(dev, '/customize/agents/new', lab.users.dev);
   await expectWizardStep(dev, 'Details');
 
   await expect(

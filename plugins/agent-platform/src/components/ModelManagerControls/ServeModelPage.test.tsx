@@ -160,7 +160,7 @@ function render(
   return renderInTestApp(
     <Wrapper>
       <ServeModelPage
-        closeHref="/agent-platform/models/serving"
+        closeHref="/customize/models/hosting"
         targets={[pool]}
         models={[]}
         onServed={onServed}
@@ -629,7 +629,7 @@ describe('ServeModelPage', () => {
           <QueryClientProvider client={queryClient}>
             <PageHeaderActionsProvider>
               <ServeModelPage
-                closeHref="/agent-platform/models/serving"
+                closeHref="/customize/models/hosting"
                 targets={targets}
                 models={[]}
               />
@@ -777,7 +777,7 @@ describe('ServeModelPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
     await waitFor(() =>
       expect(screen.getByTestId('serve-fit-verdict')).toHaveTextContent('Fits'),

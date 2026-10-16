@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { customizeExternalRouteRef } from '../../../routes';
+import { customizeExternalRouteRef, mcpServersRouteRef } from '../../../routes';
 import {
   connectorGroup,
   connectorGroupInfo,
@@ -24,15 +24,18 @@ export interface ConnectorGroupPaths {
 }
 
 /**
- * The Customize screen's Connectors tab and its sub-tabs, where the app binds
- * the Customize page; each undefined where it does not, so a caller renders
- * plain text instead of a link to a 404.
+ * The Customize screen and its Connectors tab with the tab's sub-tabs. The
+ * tab is this plugin's own route (the list at its bare path), so it resolves
+ * wherever the connector pages do; the Customize screen resolves where the
+ * app binds it. Each is undefined where it does not resolve, so a caller
+ * renders plain text instead of a link to a 404.
  */
 export function useConnectorGroupPaths(): ConnectorGroupPaths {
   const customizeRoute = useRouteRef(customizeExternalRouteRef);
+  const serversRoute = useRouteRef(mcpServersRouteRef);
   const customize = customizeRoute?.();
+  const connectors = serversRoute?.();
   return useMemo(() => {
-    const connectors = customize ? `${customize}/connectors` : undefined;
     const group = (id: ConnectorGroup) => {
       const path = connectorGroupInfo(id).path;
       if (!connectors) {
@@ -47,5 +50,5 @@ export function useConnectorGroupPaths(): ConnectorGroupPaths {
       return key === MUSTER_SERVER_KEY ? group('internal') : undefined;
     };
     return { customize, connectors, group, listOf };
-  }, [customize]);
+  }, [customize, connectors]);
 }

@@ -109,7 +109,7 @@ async function renderShell(path = '/', mount: Mount = 'watcher') {
         [toastApiRef, { post }],
       ],
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      mountedRoutes: { '/sessions': sessionsRouteRef },
     },
   );
   // The first summary is in: what was already waiting then is not news.
@@ -173,7 +173,7 @@ describe('NeedsInputToasts, mounted without the rail’s list (collapsed rail, p
         links: [
           {
             label: 'Open session',
-            href: '/agent-platform/sessions/gazelle/notes',
+            href: '/sessions/gazelle/notes',
           },
         ],
       }),
@@ -203,7 +203,7 @@ describe('NeedsInputToasts, mounted without the rail’s list (collapsed rail, p
   });
 
   it('stays quiet about the session the person is looking at', async () => {
-    await renderRail('/agent-platform/sessions/gazelle/notes');
+    await renderRail('/sessions/gazelle/notes');
 
     await poll([{ sessionId: 'notes', state: 'input-required' }]);
 
@@ -278,7 +278,7 @@ describe('NeedsInputToasts, many sessions at once (T39)', () => {
         links: [
           {
             label: 'Show waiting sessions',
-            href: '/agent-platform/sessions?state=waiting',
+            href: '/sessions?state=waiting',
           },
         ],
       }),

@@ -1,5 +1,8 @@
 import { createApiRef } from '@backstage/frontend-plugin-api';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  createExtensionTester,
+  renderInTestApp,
+} from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import { ConfigReader } from '@backstage/config';
 import {
@@ -8,7 +11,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-react';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import {
   ModelConfig,
@@ -26,10 +29,12 @@ import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import { CustomizePage } from './CustomizePage';
 
 /**
- * One model's page through the app's real Customize route, with the real
- * agent-platform page and everything it renders (GitOpsCard included): only
- * the data is stubbed, never a provider or a component. A provider the page
- * needs and the route does not mount fails here, as it would in the portal.
+ * One model's page through the app's real Customize route and the real
+ * Models tab agent-platform attaches to it (`sub-page:agent-platform/models`,
+ * whose router now holds the page), with everything it renders (GitOpsCard
+ * included): only the data is stubbed, never a provider or a component. A
+ * provider the page needs and the route does not mount fails here, as it
+ * would in the portal.
  */
 
 // A ModelConfig a Flux HelmRelease applies, as the lab's default one is, so
@@ -200,16 +205,28 @@ const kagentApiRef = createApiRef<object>({
 const mimirApiRef = createApiRef<object>({ id: 'plugin.gs.mimir' });
 
 function renderAt(path: string) {
+  const modelsTab = createExtensionTester(
+    agentPlatformPlugin.getExtension('sub-page:agent-platform/models'),
+  ).reactElement();
   return renderInTestApp(
     <Routes>
-      <Route path="/customize/*" element={<CustomizePage />} />
+      <Route
+        path="/customize/*"
+        element={
+          // The boundary the app's page extension renders the page in.
+          <Suspense fallback={<p>Loading</p>}>
+            <CustomizePage pages={[{ path: 'models', element: modelsTab }]} />
+          </Suspense>
+        }
+      />
     </Routes>,
     {
       // The app binds agent-platform's `customize` route to its Customize
-      // page; mounting it here stands for that binding (the page's own route
-      // ref only names the tab redirect, which falls back to `/customize`).
+      // page, and the Models tab resolves under it; mounting both here
+      // stands for that.
       mountedRoutes: {
         '/customize': agentPlatformPlugin.externalRoutes.customize,
+        '/customize/models': agentPlatformPlugin.routes.models,
       },
       initialRouteEntries: [path],
       apis: [

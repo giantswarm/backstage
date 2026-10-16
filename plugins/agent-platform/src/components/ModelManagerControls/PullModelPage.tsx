@@ -71,7 +71,7 @@ export type PullModelPageProps = {
  * of a reference that is already downloading is joined by model-manager, not
  * duplicated — the panel shows one job either way.
  *
- * A page of its own (`/agent-platform/models/serving/pull`), the app's
+ * A page of its own (`/customize/models/hosting/pull`), the app's
  * single-step create pattern (`WizardFrame`): a failed request stays on it,
  * saying so. The app's standard form: Pull stays
  * pressable, and a blocked Pull marks the field that is wrong, under it, and

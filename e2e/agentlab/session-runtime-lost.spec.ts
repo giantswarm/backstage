@@ -216,7 +216,7 @@ async function deleteCurrentSession(page: Page): Promise<void> {
   const dialog = page.getByRole('dialog', { name: /Delete session/ });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Delete session' }).click();
-  await expect(page).toHaveURL(/\/agent-platform\/sessions$/, {
+  await expect(page).toHaveURL(/\/sessions$/, {
     timeout: 60_000,
   });
 }
@@ -242,7 +242,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
     await promptBox.fill(prompt);
     await admin.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(admin).toHaveURL(
-      new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`),
+      new RegExp(`/sessions/${lab.installation}/[^/]+$`),
       { timeout: 60_000 },
     );
     const lostUrl = new URL(admin.url());
@@ -309,7 +309,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
     await expect(startNew).toBeVisible();
     await snapshot(admin, 'runtime-lost-reported');
 
-    await open(admin, '/agent-platform/sessions');
+    await open(admin, '/sessions');
     const lostRow = admin
       .getByRole('row')
       .filter({ has: admin.getByText('Runtime lost', { exact: true }) });
@@ -325,9 +325,8 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
     await startNew.click();
     await expect(admin).toHaveURL(
       url =>
-        new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`).test(
-          url.pathname,
-        ) && url.pathname !== lostUrl.pathname,
+        new RegExp(`/sessions/${lab.installation}/[^/]+$`).test(url.pathname) &&
+        url.pathname !== lostUrl.pathname,
       { timeout: 60_000 },
     );
     created.push(new URL(admin.url()).pathname);

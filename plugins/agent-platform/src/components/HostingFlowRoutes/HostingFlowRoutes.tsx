@@ -106,7 +106,7 @@ function useServingHref(): string {
 }
 
 /**
- * Serve model's route (`/agent-platform/models/serving/serve`): the backends
+ * Serve model's route (`/customize/models/hosting/serve`): the backends
  * that can load, the seed from the query, and — once model-manager accepted
  * the load — a toast and the Serving view, opened on the served model's
  * timeline.
@@ -183,7 +183,7 @@ export function ServeModelRoute() {
   );
 }
 
-/** Import from Hugging Face's route (`/agent-platform/models/serving/import`). */
+/** Import from Hugging Face's route (`/customize/models/hosting/import`). */
 export function ImportModelRoute() {
   const serving = useServing();
   const { importTargets } = useServingTargets();
@@ -219,7 +219,7 @@ export function ImportModelRoute() {
   );
 }
 
-/** Pull model's route (`/agent-platform/models/serving/pull`). */
+/** Pull model's route (`/customize/models/hosting/pull`). */
 export function PullModelRoute() {
   const serving = useServing();
   const { pullTargets } = useServingTargets();
@@ -256,7 +256,7 @@ export function PullModelRoute() {
 }
 
 /**
- * Add model backend's route (`/agent-platform/models/serving/add-backend`):
+ * Add model backend's route (`/customize/models/hosting/add-backend`):
  * the installations whose muster lists model-manager, and — after a Deploy —
  * a toast and the Serving view, where the backend's group appears.
  */
@@ -307,7 +307,7 @@ export function AddModelBackendRoute() {
 }
 
 /**
- * Add GPU node pool's route (`/agent-platform/models/capacity/add-pool`): the
+ * Add GPU node pool's route (`/customize/models/hosting/capacity/add-pool`): the
  * installations whose muster lists cluster-manager, and — after a complete
  * Deploy — the GPU pools view, opened on the pool's lifecycle panel. A preset
  * chosen to serve becomes the pool's serve intent (a Deploy without one

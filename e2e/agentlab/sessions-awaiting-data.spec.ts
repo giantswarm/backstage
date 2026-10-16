@@ -39,7 +39,7 @@ test('a failed read whose retry waits shows loading, not the first-session state
     },
   );
 
-  await open(admin, '/agent-platform/sessions');
+  await open(admin, '/sessions');
   await expect.poll(() => failed, { timeout: 60_000 }).toBe(true);
 
   // Long enough for a wrongly released empty state to render.

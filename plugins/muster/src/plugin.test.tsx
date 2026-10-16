@@ -1,50 +1,31 @@
-import {
-  createFrontendPlugin,
-  FeatureFlagState,
-} from '@backstage/frontend-plugin-api';
-import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
-import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { screen } from '@testing-library/react';
-
 import { musterPlugin } from './plugin';
 
-// The redirect's own loader, stubbed: what is under test is whether the app
-// routes the old address at all.
-const redirectPage = musterPlugin
-  .getExtension('page:muster/mcp-servers-redirect')
-  .override({
-    params: {
-      path: '/agent-platform/mcp-servers',
-      noHeader: true,
-      loader: async () => <div>Redirect content</div>,
-    },
-  });
-
-function renderRedirect(agentShell: FeatureFlagState) {
-  return renderTestApp({
-    features: [
-      createFrontendPlugin({ pluginId: 'muster', extensions: [redirectPage] }),
-    ],
-    initialRouteEntries: ['/agent-platform/mcp-servers/kubernetes'],
-    apis: [
-      mockApis.featureFlags({
-        initialStates: { [AGENT_SHELL_FLAG]: agentShell },
-      }),
-    ],
-  });
+/** Where an extension attaches; not on the public type, read for the test. */
+function attachToOf(extension: object): unknown {
+  return (extension as { attachTo?: unknown }).attachTo;
 }
 
-describe('the old MCP Servers address', () => {
-  it('is routed in the agent shell', async () => {
-    renderRedirect(FeatureFlagState.Active);
-
-    expect(await screen.findByText('Redirect content')).toBeInTheDocument();
+describe("muster's Customize tabs", () => {
+  // The Customize page belongs to the app; the tabs reach it by its id, the
+  // way agent-platform's do. The old `/agent-platform/mcp-servers…` address
+  // redirects through the app's mapping of old addresses.
+  it.each([
+    'sub-page:muster/mcp-servers',
+    'sub-page:muster/workflows',
+  ] as const)('%s attaches to the Customize page', id => {
+    expect(attachToOf(musterPlugin.getExtension(id))).toEqual({
+      id: 'page:app/agent-shell-customize',
+      input: 'pages',
+    });
   });
 
-  it('is not routed without the shell: the classic portal has no Agent Platform', async () => {
-    renderRedirect(FeatureFlagState.None);
-
-    expect(await screen.findByText(/not found/i)).toBeInTheDocument();
-    expect(screen.queryByText('Redirect content')).not.toBeInTheDocument();
+  it("contributes its usage section to the Usage page's sections", () => {
+    expect(
+      attachToOf(
+        musterPlugin.getExtension(
+          'agent-platform-usage-section:muster/mcp-usage',
+        ),
+      ),
+    ).toEqual({ id: 'page:agent-platform/usage', input: 'sections' });
   });
 });
