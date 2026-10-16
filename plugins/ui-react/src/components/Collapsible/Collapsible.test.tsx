@@ -90,6 +90,25 @@ describe('Collapsible', () => {
     expect(region.style.maxHeight).toBe('');
   });
 
+  it('draws the toggle in the foreground of the fill it sits on', () => {
+    function OnFill() {
+      const collapsible = useCollapsible({ collapsedHeight: '10lh' });
+      return (
+        <div style={{ color: 'rgb(255, 255, 255)' }}>
+          <CollapsibleViewport state={collapsible}>
+            <pre>{lines(40)}</pre>
+          </CollapsibleViewport>
+          <CollapsibleToggle state={collapsible} labels={LABELS} onSolid />
+        </div>
+      );
+    }
+    render(<OnFill />);
+
+    expect(screen.getByRole('button', { name: 'Show more' })).toHaveStyle({
+      color: 'rgb(255, 255, 255)',
+    });
+  });
+
   it('renders no toggle when the content fits', () => {
     render(<Bubble text={lines(10)} />);
 

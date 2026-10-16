@@ -1590,14 +1590,21 @@ describe('SessionTimeline — a long user message', () => {
     // Cut, not removed: the whole message stays in the page for a screen
     // reader and for copying.
     expect(region).toHaveTextContent('line 40');
-    expect(screen.getByTestId('timeline-user-message')).toContainElement(
-      toggle,
-    );
+    // In the bubble, under the cut: after it, never over it.
+    const bubble = screen.getByTestId('user-message-bubble');
+    expect(bubble).toContainElement(toggle);
+    expect(region).not.toContainElement(toggle);
+    expect(
+      region.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     await userEvent.click(toggle);
     const less = screen.getByRole('button', { name: 'Show less' });
     expect(less).toHaveAttribute('aria-expanded', 'true');
     expect(panelFor(less).style.maxHeight).toBe('');
+    // At the end of the opened text, in the bubble still.
+    expect(bubble).toContainElement(less);
+    expect(panelFor(less)).not.toContainElement(less);
 
     await userEvent.click(less);
     expect(screen.getByRole('button', { name: 'Show more' })).toHaveAttribute(

@@ -1138,17 +1138,24 @@ use.
 in full; the agent's internal work folds into work summaries; older turns page
 behind "Show earlier activity".
 
-User messages follow `app.branding.theme.<mode>.primaryColor` and are **not**
-markdown, because prompts quote logs and `#` lines verbatim. Agent prose is GFM
+User messages take the fill Send carries, `--bui-bg-solid` with
+`--bui-fg-solid` (the shell's primary colour), and are **not** markdown,
+because prompts quote logs and `#` lines verbatim. The solid tokens are
+deprecated for `--bui-accent-*`, but the installed bui's primary Button still
+paints them, and the shell's accent (`#009fff`) fails contrast under white
+text; move the bubble when Send moves. Agent prose is GFM
 markdown. JSON inside result strings is inlined. Streaming auto-follow applies
 only while the page is scrolled to the end.
 
 **A long user message is cut to 10 lines** of its own text (`10lh`, so the cut
-follows the reader's font size) behind a fade, with _Show more_ under the bubble
-(a button with `aria-expanded`, tied to the message by `aria-controls`) and
-_Show less_ once open. A continuation's opener carries the whole earlier
-conversation, and a pasted log or file can run to thousands of lines; either
-would bury the answer under it. A message that fits, or would hide no more than
+follows the reader's font size) behind a fade, with _Show more_ centred in the
+bubble under the fade, and _Show less_ in the same place at the end of the opened
+text, in a row of its own so it never covers a line. It is a button with
+`aria-expanded`, tied to the message by `aria-controls`, drawn in the bubble's
+foreground (`CollapsibleToggle`'s `onSolid`: the bubble's `--bui-fg-solid` for
+the label and focus ring, a wash of it on hover). A continuation's opener
+carries the whole earlier conversation, and a pasted log or file can run to
+thousands of lines; either would bury the answer under it. A message that fits, or would hide no more than
 two lines (a fifth of the cut, `collapseSlack`, the rule `ShowMore` pages by),
 is shown whole with no control. The cut is visual only: the whole text stays in
 the page for screen readers, selection and copying, and keyboard focus or find
@@ -1167,7 +1174,8 @@ can be long.
 
 The pieces (`useCollapsible`, `CollapsibleViewport`, `CollapsibleToggle`) live
 in `ui-react` and are the same ones `CollapsibleMarkdown` uses for an agent's
-instructions; the bubble sets `--bui-bg-inherit` to its own fill so the fade
+instructions, whose toggle likewise sits centred in its own row under the cut;
+the bubble sets `--bui-bg-inherit` to its own fill so the fade
 matches it. Tests lay them out with `mockCollapsibleLayout` from
 `@giantswarm/backstage-plugin-ui-react/testUtils`.
 

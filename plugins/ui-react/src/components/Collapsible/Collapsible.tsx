@@ -38,6 +38,22 @@ const useStyles = makeStyles({
       'linear-gradient(to top, var(--bui-bg-inherit), rgb(from var(--bui-bg-inherit) r g b / 0))',
     pointerEvents: 'none',
   },
+  // On a filled surface (a chat bubble in the primary colour): the fill's own
+  // foreground for the label and the focus ring, and a wash of it on hover,
+  // where the tertiary button's neutral hover and ring would vanish into the
+  // fill. Unlayered, so it wins over bui's `components` layer.
+  onSolid: {
+    color: 'inherit',
+    '&:hover': {
+      backgroundColor: 'color-mix(in srgb, currentColor 12%, transparent)',
+    },
+    '&:active': {
+      backgroundColor: 'color-mix(in srgb, currentColor 20%, transparent)',
+    },
+    '&[data-focus-visible]': {
+      boxShadow: 'inset 0 0 0 2px currentColor',
+    },
+  },
 });
 
 export type CollapsibleViewportProps = {
@@ -116,10 +132,20 @@ export function CollapsibleViewport({
 export type CollapsibleToggleProps = {
   state: CollapsibleState;
   labels: { expand: string; collapse: string };
+  /**
+   * The toggle sits on a filled surface, such as a chat bubble in the primary
+   * colour, rather than on a page or card: it takes the surface's foreground.
+   */
+  onSolid?: boolean;
 };
 
 /** Shows or cuts the content again; nothing when the content fits. */
-export function CollapsibleToggle({ state, labels }: CollapsibleToggleProps) {
+export function CollapsibleToggle({
+  state,
+  labels,
+  onSolid = false,
+}: CollapsibleToggleProps) {
+  const classes = useStyles();
   if (!state.overflows) {
     return null;
   }
@@ -127,6 +153,7 @@ export function CollapsibleToggle({ state, labels }: CollapsibleToggleProps) {
     <Button
       variant="tertiary"
       size="small"
+      className={onSolid ? classes.onSolid : undefined}
       aria-expanded={state.expanded}
       aria-controls={state.viewportId}
       onPress={state.toggle}

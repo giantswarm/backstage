@@ -10,7 +10,10 @@ const longMessage = Array.from(
     `2026-10-16T10:${String(i).padStart(2, '0')}:00Z level=info msg="reconciled" step=${i + 1}`,
 ).join('\n');
 
-/** A chat bubble cut in place, with its toggle under the bubble. */
+/**
+ * A chat bubble cut in place, as the session page draws a long user message:
+ * the toggle centred in the bubble, under the fade, on the solid fill.
+ */
 function Bubble({
   text,
   collapsedHeight,
@@ -25,7 +28,6 @@ function Bubble({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-end',
-        gap: 4,
       }}
     >
       <div
@@ -34,13 +36,18 @@ function Bubble({
             maxWidth: '85%',
             padding: '10px 16px',
             borderRadius: 'var(--bui-radius-3)',
-            background: '#1f5c9e',
-            color: '#fff',
+            // The session page's bubble: the fill Send carries. Deprecated
+            // for `--bui-accent-*`, but still what bui's primary Button paints.
+            // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- see above
+            background: 'var(--bui-bg-solid)',
+            // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- see above
+            color: 'var(--bui-fg-solid)',
             // On the bubble, so the cut's `lh` is a line of its text.
             fontSize: '0.875rem',
             lineHeight: 1.6,
             // The fade fades to the bubble's fill, not the page's.
-            '--bui-bg-inherit': '#1f5c9e',
+            // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- see above
+            '--bui-bg-inherit': 'var(--bui-bg-solid)',
           } as CSSProperties
         }
       >
@@ -49,17 +56,25 @@ function Bubble({
             style={{
               margin: 0,
               whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
               font: 'inherit',
             }}
           >
             {text}
           </pre>
         </CollapsibleViewport>
+        {collapsible.overflows && (
+          <div
+            style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}
+          >
+            <CollapsibleToggle
+              state={collapsible}
+              labels={{ expand: 'Show more', collapse: 'Show less' }}
+              onSolid
+            />
+          </div>
+        )}
       </div>
-      <CollapsibleToggle
-        state={collapsible}
-        labels={{ expand: 'Show more', collapse: 'Show less' }}
-      />
     </div>
   );
 }
@@ -86,9 +101,11 @@ const meta = {
             'cut shows everything; cutting again brings the content back into ' +
             'view.',
           whenToUse:
-            'When the toggle cannot sit right under the content in the same ' +
-            'box — under a chat bubble, say, where the session page puts ' +
-            '*Show more* for a long user message. For markdown, ' +
+            'When the content is cut inside a box of its own and the toggle ' +
+            'goes in that box too — a chat bubble, where the session page ' +
+            'centres *Show more* under the fade of a long user message. ' +
+            '`onSolid` draws the toggle in the foreground of a filled surface. ' +
+            'For markdown, ' +
             '`CollapsibleMarkdown` composes them already. A surface bui does ' +
             'not paint sets `--bui-bg-inherit` to its fill, so the fade matches it.',
           migration: 'mixed',

@@ -26,18 +26,32 @@ const useStyles = makeStyles(theme => ({
   },
   userBubble: {
     maxWidth: '85%',
-    // The portal's own colour, the same fill Send carries — and unlike bui's
-    // accent token it follows `app.branding.theme.<mode>.primaryColor`, so a
-    // white-labelled portal speaks in its own voice.
-    backgroundColor: theme.palette.primary.main,
-    color: theme.palette.primary.contrastText,
+    // The fill Send carries (a bui primary button), and its foreground: one
+    // pair, so the text and the Show more on it read in light and dark. The
+    // shell's `--bui-bg-solid` is its primary colour (`agentShellLightColors`),
+    // and Backstage's own themes match it to the MUI primary in both modes.
+    // The solid tokens are deprecated for `--bui-accent-*`, but the installed
+    // bui's primary Button still paints these, and the shell's accent is the
+    // bright #009fff, under which white text fails contrast.
+    // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- see above
+    backgroundColor: 'var(--bui-bg-solid)',
+    // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- see above
+    color: 'var(--bui-fg-solid)',
     padding: theme.spacing(1.25, 2),
     borderRadius: 'var(--bui-radius-3)',
     // On the bubble rather than the text, so the cut's `lh` is a line of it.
     fontSize: '0.875rem',
     lineHeight: 1.6,
     // What a long message's fade fades to: the bubble, not the page.
-    '--bui-bg-inherit': theme.palette.primary.main,
+    // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- see above
+    '--bui-bg-inherit': 'var(--bui-bg-solid)',
+  },
+  // In the bubble, under the cut and its fade, or at the end of the opened
+  // text: a row of its own, so the button never covers a line.
+  toggleRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginTop: theme.spacing(0.5),
   },
   // Deliberately not markdown: prompts quote logs, manifests and `#` headings
   // that must stay the characters the user typed.
@@ -81,8 +95,8 @@ export type UserMessageProps = {
 /**
  * The person's message as a right-aligned bubble. A long one is cut to
  * {@link USER_MESSAGE_LINES} lines of its text behind a fade, with *Show
- * more* under the bubble rather than in it, where it would sit on the
- * portal's colour.
+ * more* centred in the bubble under the fade, and *Show less* in the same
+ * place at the end of the opened text, in the bubble's own foreground.
  */
 export function UserMessage({
   text,
@@ -99,16 +113,21 @@ export function UserMessage({
 
   return (
     <div className={classes.userRow} data-testid="timeline-user-message">
-      <div className={classes.userBubble}>
+      <div className={classes.userBubble} data-testid="user-message-bubble">
         <span className={classes.srOnly}>You</span>
         <CollapsibleViewport state={collapsible}>
           <pre className={classes.userText}>{text}</pre>
         </CollapsibleViewport>
+        {collapsible.overflows && (
+          <div className={classes.toggleRow}>
+            <CollapsibleToggle
+              state={collapsible}
+              labels={{ expand: 'Show more', collapse: 'Show less' }}
+              onSolid
+            />
+          </div>
+        )}
       </div>
-      <CollapsibleToggle
-        state={collapsible}
-        labels={{ expand: 'Show more', collapse: 'Show less' }}
-      />
       {caption && (
         <Text
           as="p"
