@@ -144,6 +144,7 @@ export function NewConnectorSignInPage() {
     definition,
     registeredName,
     registeredInstallation,
+    startedFromEdit,
     markSaved,
   } = useNewMcpServerForm();
 
@@ -203,7 +204,7 @@ export function NewConnectorSignInPage() {
       return;
     }
     register(
-      { definition, installation, authMode, isEdit },
+      { definition, installation, authMode, isEdit, startedFromEdit },
       {
         onSuccess: sent => {
           // What was just written is the base of any further save in this run.
@@ -226,6 +227,7 @@ export function NewConnectorSignInPage() {
     installation,
     authMode,
     isEdit,
+    startedFromEdit,
     markSaved,
     wizardLinks,
     navigate,

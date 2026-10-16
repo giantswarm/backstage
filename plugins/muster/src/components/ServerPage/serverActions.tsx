@@ -5,15 +5,13 @@ import {
   fieldErrorProps,
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useApi } from '@backstage/core-plugin-api';
-import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
-import { musterApiRef } from '../../apis';
+import { MCP_SERVER_UPDATED } from '../../lib/connectorToolEvents';
 import { MCPServer } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
 import { parseJsonDefinition } from '../../lib/definitionParsers';
 import { mutationErrorMessage } from '../../lib/authError';
-import { useMusterMutationRefresh } from '../MusterInstanceProvider';
 import { DefinitionEditorDialog } from '../shared';
+import { useConnectorToolCall } from './useConnectorToolCall';
 
 const useStyles = makeStyles({
   editField: {
@@ -63,22 +61,7 @@ export function ConfirmActionDialog({
   /** Called once muster has carried the action out. */
   onDone?: (action: LiveAction) => void;
 }) {
-  const musterApi = useApi(musterApiRef);
-  const refresh = useMusterMutationRefresh(server.cluster);
-  const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'Server lifecycle changes and deletion are not a tracked portal action yet.',
-    mutationFn: (live: LiveAction) =>
-      musterApi.callTool(live.tool, live.args, server.cluster),
-    onSuccess: (_result, live) => {
-      // muster writes the CR synchronously, so refetching now shows the spec
-      // change (e.g. the Activate/Deactivate swap) instead of waiting for the
-      // next 30s poll.
-      refresh();
-      onDone?.(live);
-    },
-  });
+  const mutation = useConnectorToolCall<LiveAction>(server.cluster, onDone);
 
   // Reset on open, not on close: the dialog keeps rendering while it fades
   // out, and `action` stays set for that reason too.
@@ -171,7 +154,7 @@ export function AdHocServerDialog({
       )}
       validateTool="core_mcpserver_validate"
       saveTool="core_mcpserver_update"
-      saveUntrackedReason="An edit of a server, not an addition."
+      saveTracking={{ event: MCP_SERVER_UPDATED }}
       savedMessage="Saved."
     />
   );

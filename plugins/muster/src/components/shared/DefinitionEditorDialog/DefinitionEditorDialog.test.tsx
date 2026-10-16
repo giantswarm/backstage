@@ -2,7 +2,12 @@ import { useState } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import {
+  mockApis,
+  renderInTestApp,
+  TestApiProvider,
+} from '@backstage/test-utils';
 import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../../apis';
 import { MusterInstanceContext } from '../../MusterInstanceProvider';
@@ -11,6 +16,10 @@ import {
   DefinitionEditorDialog,
   DefinitionEditorDialogProps,
 } from './DefinitionEditorDialog';
+
+const analyticsApi = mockApis.analytics.mock();
+
+beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
 
 function parseJson(value: string): Record<string, unknown> {
   try {
@@ -25,10 +34,14 @@ function Harness({
   onClose,
   seedRef,
   parse = parseJson,
+  saveTracking = {
+    event: { name: 'Muster.mcpServerUpdated', attributes: {} },
+  },
 }: {
   onClose: jest.Mock;
   seedRef: { current: string };
   parse?: DefinitionEditorDialogProps['parse'];
+  saveTracking?: DefinitionEditorDialogProps['saveTracking'];
 }) {
   const [open, setOpen] = useState(false);
   const props: DefinitionEditorDialogProps = {
@@ -59,7 +72,7 @@ function Harness({
     ),
     validateTool: 'core_thing_validate',
     saveTool: 'core_thing_update',
-    saveUntrackedReason: 'A test.',
+    saveTracking,
     savedMessage: 'Saved the thing.',
   };
   return (
@@ -75,6 +88,7 @@ function Harness({
 async function renderDialog(
   callTool: jest.Mock = jest.fn(async () => ({})),
   parse?: DefinitionEditorDialogProps['parse'],
+  saveTracking?: DefinitionEditorDialogProps['saveTracking'],
 ) {
   const retry = jest.fn();
   const onClose = jest.fn();
@@ -83,12 +97,22 @@ async function renderDialog(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, { callTool }]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, { callTool }],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <MusterInstanceContext.Provider
           value={makeTestMusterInstance({ retry })}
         >
-          <Harness onClose={onClose} seedRef={seedRef} parse={parse} />
+          <Harness
+            onClose={onClose}
+            seedRef={seedRef}
+            parse={parse}
+            saveTracking={saveTracking}
+          />
         </MusterInstanceContext.Provider>
       </QueryClientProvider>
     </TestApiProvider>,
@@ -113,9 +137,10 @@ describe('DefinitionEditorDialog', () => {
       'gazelle',
     );
     expect(retry).not.toHaveBeenCalled();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
-  it('saves with the save tool and refetches the reads', async () => {
+  it('saves with the save tool, refetches the reads and reports the save', async () => {
     const { callTool, retry } = await renderDialog();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -127,6 +152,25 @@ describe('DefinitionEditorDialog', () => {
       'gazelle',
     );
     expect(retry).toHaveBeenCalled();
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'Muster.mcpServerUpdated',
+        attributes: {},
+      }),
+    );
+  });
+
+  it('reports nothing for a save its caller leaves untracked', async () => {
+    await renderDialog(undefined, undefined, {
+      event: null,
+      untrackedReason: 'A test.',
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Saved the thing.')).toBeInTheDocument();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('shows a parse error on the editor, focuses it and calls no tool', async () => {

@@ -1,6 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   musterApiRef,
@@ -12,6 +13,7 @@ import { committedTo } from '../lib/__fixtures__/gitOpsCommit';
 
 const callTool = jest.fn();
 const musterApi = { callTool } as unknown as MusterApi;
+const analyticsApi = mockApis.analytics.mock();
 
 function renderWith(installation: string | undefined = 'gazelle') {
   const queryClient = new QueryClient({
@@ -19,7 +21,12 @@ function renderWith(installation: string | undefined = 'gazelle') {
   });
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, musterApi],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -36,6 +43,7 @@ function renderWith(installation: string | undefined = 'gazelle') {
 
 beforeEach(() => {
   callTool.mockReset();
+  jest.mocked(analyticsApi.captureEvent).mockClear();
 });
 
 describe('useAgentDeletion', () => {
@@ -76,6 +84,52 @@ describe('useAgentDeletion', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['cluster', 'gazelle', 'get', 'api.kagent.dev'],
     });
+    // Reported without the agent's name, namespace or installation.
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.agentDeleted',
+        attributes: { mode: 'apply' },
+      }),
+    );
+  });
+
+  it('reports no deletion when agent-manager found nothing left to remove', async () => {
+    callTool.mockResolvedValue({
+      name: 'pr-reviewer',
+      namespace: 'kagent',
+      helmReleaseDeleted: false,
+      ociRepositoryDeleted: false,
+    });
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.deleteAgent();
+    });
+
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('reports the deletion of an agent that is not a Helm release', async () => {
+    callTool.mockResolvedValue({
+      name: 'pr-reviewer',
+      namespace: 'kagent',
+      helmReleaseDeleted: false,
+      agentDeleted: true,
+      ociRepositoryDeleted: false,
+    });
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.deleteAgent();
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.agentDeleted',
+        attributes: { mode: 'apply' },
+      }),
+    );
   });
 
   it("surfaces agent-manager's refusal verbatim, with its code", async () => {
@@ -96,6 +150,7 @@ describe('useAgentDeletion', () => {
         code: 'conflict',
       });
     });
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
     expect(result.current.failure?.message).toBe(
       'HelmRelease kagent/pr-reviewer is applied by Flux Kustomization "agents": its desired state lives in git, a live write would be undone. Change it in the GitOps repository, or pass force to write anyway',
     );
@@ -139,6 +194,12 @@ describe('useAgentDeletion', () => {
     );
     expect(outcome).toEqual(
       committedTo('https://github.com/org/gitops/pull/9'),
+    );
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.agentDeleted',
+        attributes: { mode: 'commit' },
+      }),
     );
   });
 

@@ -76,6 +76,13 @@ export type NewMcpServerFormContextValue = {
    */
   lastSave: 'create' | 'update' | undefined;
   /**
+   * Whether this run started from a registered server's Edit
+   * ({@link startEdit}) rather than from Add. A save is then the person's edit
+   * of that server; in an Add run, an update after the create is a correction
+   * inside the registration.
+   */
+  startedFromEdit: boolean;
+  /**
    * Epoch-ms of that last save. A server list read before it still shows the
    * server as it was, so the verify step waits for a newer read.
    */
@@ -194,6 +201,7 @@ export function NewMcpServerFormProvider({
     string | undefined
   >();
   const [lastSave, setLastSave] = useState<'create' | 'update'>();
+  const [startedFromEdit, setStartedFromEdit] = useState(false);
   const [lastSaveAt, setLastSaveAt] = useState<number>();
   // The registered server as last read or saved: the base the wizard's
   // definition is laid over, so an update keeps what it cannot show.
@@ -240,6 +248,7 @@ export function NewMcpServerFormProvider({
       setSlugEdited(true);
       setRegisteredName(server.getName());
       setRegisteredInstallation(server.cluster);
+      setStartedFromEdit(true);
       setLastSave(undefined);
       setLastSaveAt(undefined);
       setBase({
@@ -259,6 +268,7 @@ export function NewMcpServerFormProvider({
     setSlugEdited(restored?.slugEdited ?? false);
     setRegisteredName(undefined);
     setRegisteredInstallation(undefined);
+    setStartedFromEdit(false);
     setLastSave(undefined);
     setLastSaveAt(undefined);
     setBase(undefined);
@@ -335,6 +345,7 @@ export function NewMcpServerFormProvider({
       registeredInstallation,
       lastSave,
       lastSaveAt,
+      startedFromEdit,
       markSaved,
       startEdit,
       reset,
@@ -358,6 +369,7 @@ export function NewMcpServerFormProvider({
     registeredInstallation,
     lastSave,
     lastSaveAt,
+    startedFromEdit,
     base,
     markSaved,
     startEdit,

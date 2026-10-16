@@ -201,9 +201,9 @@ export function useAnswerConfirmation(
 
   const { run, clear } = turn;
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'A turn inside a running session; sessionStarted measures sessions.',
+    // Nothing of the answer: not its text, nor whether it was an offered
+    // option or typed.
+    event: () => ({ name: 'AgentPlatform.questionAnswered', attributes: {} }),
     mutationFn: async (answer: PendingAnswer) => {
       if (!agent) {
         throw new Error(

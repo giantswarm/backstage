@@ -68,9 +68,8 @@ export function useSendMessage(
 
   const { run, clear } = turn;
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'A turn inside a running session; sessionStarted measures sessions.',
+    // Neither the text nor its images: only that a message went.
+    event: () => ({ name: 'AgentPlatform.messageSent', attributes: {} }),
     mutationFn: async (message: PendingMessage) => {
       if (!agent) {
         // Not a user-facing path: the composer is withheld when the session's
