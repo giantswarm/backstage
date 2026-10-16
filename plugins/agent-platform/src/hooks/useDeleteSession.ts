@@ -23,9 +23,7 @@ export function useDeleteSession(installation: string, sessionId: string) {
   const queryClient = useQueryClient();
 
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'Housekeeping on a session; sessionStarted measures sessions.',
+    event: () => ({ name: 'AgentPlatform.sessionDeleted', attributes: {} }),
     mutationFn: async () => {
       await kagentApi.deleteSession(installation, sessionId);
 

@@ -18,7 +18,10 @@ import {
   type FieldBlurProps,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import {
+  useTrackedMutation,
+  type PortalEvent,
+} from '@giantswarm/backstage-plugin-analytics-react';
 import { musterApiRef } from '../../../apis';
 import { mutationErrorMessage } from '../../../lib/authError';
 import { useMusterMutationRefresh } from '../../MusterInstanceProvider';
@@ -57,8 +60,13 @@ export type DefinitionEditorDialogProps = {
   validateTool: string;
   /** The muster tool that writes the definition. */
   saveTool: string;
-  /** Why the save is not a tracked portal action. */
-  saveUntrackedReason: string;
+  /**
+   * What a save reports once it went through, or why it reports nothing (an
+   * edit through a create flow, say).
+   */
+  saveTracking:
+    | { event: PortalEvent; untrackedReason?: never }
+    | { event: null; untrackedReason: string };
   /** The success message once the save went through. */
   savedMessage: string;
 };
@@ -85,7 +93,7 @@ export function DefinitionEditorDialog({
   renderEditor,
   validateTool,
   saveTool,
-  saveUntrackedReason,
+  saveTracking,
   savedMessage,
 }: DefinitionEditorDialogProps) {
   const musterApi = useApi(musterApiRef);
@@ -129,8 +137,9 @@ export function DefinitionEditorDialog({
     onError,
   });
   const save = useTrackedMutation({
-    event: null,
-    untrackedReason: saveUntrackedReason,
+    ...(saveTracking.event
+      ? { event: () => saveTracking.event }
+      : { event: null, untrackedReason: saveTracking.untrackedReason }),
     mutationFn: (def: Record<string, unknown>) =>
       musterApi.callTool(saveTool, def, installation),
     onSuccess: () => {

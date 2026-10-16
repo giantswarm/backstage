@@ -32,6 +32,11 @@ export const portalEvents = defineEvents({
       change: ['edited', 'skillsRefreshed'],
     },
   },
+  'AgentPlatform.agentDeleted': {
+    description:
+      'An agent was deleted in the Agent Platform, live or committed to Git as a pull request; a live delete that found nothing left to remove is not counted.',
+    attributes: { mode: ['apply', 'commit'] },
+  },
   'AgentPlatform.sessionStarted': {
     description: 'A session with an agent was started.',
     attributes: {
@@ -48,6 +53,28 @@ export const portalEvents = defineEvents({
         'workflowCreateAssist',
       ],
     },
+  },
+  'AgentPlatform.messageSent': {
+    description:
+      'A message was sent to the agent in a session, a first message included, and the agent took it.',
+    attributes: {},
+  },
+  'AgentPlatform.questionAnswered': {
+    description:
+      "An agent's question in a session was answered, and the agent took the answer.",
+    attributes: {},
+  },
+  'AgentPlatform.turnStopped': {
+    description: "A session's running turn was stopped.",
+    attributes: {},
+  },
+  'AgentPlatform.sessionRenamed': {
+    description: 'A session was renamed.',
+    attributes: {},
+  },
+  'AgentPlatform.sessionDeleted': {
+    description: 'A session was deleted.',
+    attributes: {},
   },
   'AgentPlatform.sessionPinChanged': {
     description:
@@ -83,6 +110,21 @@ export const portalEvents = defineEvents({
       'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',
     attributes: { kind: ['created', 'updated'] },
   },
+  'AgentPlatform.modelCreated': {
+    description:
+      "A model an agent can use (a kagent ModelConfig) was created in the Agent Platform, through the model form. The models a model backend's addition registers are not counted.",
+    attributes: {},
+  },
+  'AgentPlatform.modelUpdated': {
+    description:
+      "A model's configuration (a kagent ModelConfig) was changed in the Agent Platform, through the model form.",
+    attributes: {},
+  },
+  'AgentPlatform.modelDeleted': {
+    description:
+      "A model (a kagent ModelConfig) was deleted in the Agent Platform, on its page. The models a model backend's removal takes along are not counted.",
+    attributes: {},
+  },
   'AgentPlatform.clusterCreated': {
     description:
       'A workload cluster was created through cluster-manager, applied live or committed to Git.',
@@ -98,14 +140,35 @@ export const portalEvents = defineEvents({
     attributes: {},
   },
   'Muster.mcpServerAdded': {
-    description: 'An MCP server was registered in muster through the wizard.',
+    description:
+      "An MCP server was registered in muster, through the wizard or its registration tool's page.",
     attributes: {
       authMode: ['none', 'own-account', 'platform-sso', 'sigv4'],
     },
   },
+  'Muster.mcpServerUpdated': {
+    description:
+      "An MCP server's definition was edited in muster: through the wizard opened from its Edit, as JSON on its page, or on its update tool's page.",
+    attributes: {},
+  },
+  'Muster.mcpServerConnectionChanged': {
+    description:
+      "An MCP server was activated, deactivated or reconnected in muster, on its page or on the tool's page.",
+    attributes: { change: ['activated', 'deactivated', 'reconnected'] },
+  },
+  'Muster.mcpServerDeleted': {
+    description:
+      "An MCP server was deleted from muster, on its page or on the delete tool's page.",
+    attributes: {},
+  },
   'Muster.workflowRan': {
     description:
       "A muster workflow was run from the Agent Platform, on its page or its tool's, and returned a result.",
+    attributes: {},
+  },
+  'Muster.toolRan': {
+    description:
+      "A muster tool was run from its page in the Agent Platform and returned a result. A workflow's run and muster's connector tools report their own events instead; any other tool counts here, including a write another page reports as its own event (an agent's deletion, say).",
     attributes: {},
   },
 });

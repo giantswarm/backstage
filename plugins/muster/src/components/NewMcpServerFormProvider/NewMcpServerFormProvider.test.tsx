@@ -306,6 +306,7 @@ describe('NewMcpServerFormProvider', () => {
       act(() => result.current.startEdit(server));
 
       expect(result.current.registeredName).toBe('weather-mcp');
+      expect(result.current.startedFromEdit).toBe(true);
       expect(result.current.isComplete).toBe(true);
       expect(result.current.definition).toMatchObject({
         name: 'weather-mcp',
@@ -434,6 +435,8 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.lastSave).toBe('create');
       expect(result.current.registeredName).toBe('weather-mcp');
       expect(result.current.registeredInstallation).toBe('gaggle');
+      // Later saves correct the registration; the run is still an Add.
+      expect(result.current.startedFromEdit).toBe(false);
     });
 
     it('brings the registered auth answer back when its mode is picked again', () => {
@@ -474,6 +477,7 @@ describe('NewMcpServerFormProvider', () => {
 
       act(() => result.current.reset());
       expect(result.current.registeredName).toBeUndefined();
+      expect(result.current.startedFromEdit).toBe(false);
       expect(result.current.state.url).toBe('https://draft.example.com/mcp');
 
       // Brought back once; the next reset is an empty form.
