@@ -69,12 +69,16 @@ export async function connectWithRetry(
 
 type MigrateConfig = { tableName?: string; schemaName?: string };
 
+const MIGRATION_LOCK_POLL_MS = 1000;
+const sleep = (ms: number) =>
+  new Promise<void>(resolve => setTimeout(resolve, ms));
+
 /**
  * Makes every `migrate.latest` and `migrate.up` of a PostgreSQL client wait
  * for a session advisory lock named after the plugin and its migrations
  * table, so backends started at once (a fresh install's replicas) migrate one
  * after another: knex creates its migrations tables unlocked and fails a
- * migration whose lock another backend holds. The lock is held on a
+ * migration whose lock another backend holds. The lock is taken on a
  * connection of its own, outside the plugin's pool, which the migration
  * needs; it ends with the migration, or with the backend that holds it.
  * Other clients are returned unchanged.
@@ -101,17 +105,23 @@ export function serializeMigrations(
       const key = `backstage-migrations:${pluginId}:${schemaName}:${tableName}`;
       const connection = await knexClient.acquireRawConnection();
       try {
-        const { rows } = await connection.query(
-          'SELECT pg_try_advisory_lock(hashtext($1)) AS locked',
-          [key],
-        );
-        if (!rows[0].locked) {
-          logger.info(
-            `Waiting for another backend's migrations of ${tableName}`,
+        // Polled, never a blocking pg_advisory_lock: a statement waiting for
+        // the lock is an open transaction, and the holder's
+        // CREATE INDEX CONCURRENTLY waits for every open transaction.
+        for (let attempt = 0; ; attempt++) {
+          const { rows } = await connection.query(
+            'SELECT pg_try_advisory_lock(hashtext($1)) AS locked',
+            [key],
           );
-          await connection.query('SELECT pg_advisory_lock(hashtext($1))', [
-            key,
-          ]);
+          if (rows[0].locked) {
+            break;
+          }
+          if (attempt === 0) {
+            logger.info(
+              `Waiting for another backend's migrations of ${tableName}`,
+            );
+          }
+          await sleep(MIGRATION_LOCK_POLL_MS);
         }
         return await run(...args);
       } finally {

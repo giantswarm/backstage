@@ -30,16 +30,24 @@ function mockLogger() {
   return logger;
 }
 
-// One slow migration, so two backends that start it at once overlap.
+// One slow migration, so two backends that start it at once overlap. Like
+// the catalog's, it runs outside a transaction and builds an index
+// concurrently, which waits for every open transaction of the database: a
+// backend waiting for the lock must hold none.
 const migrationSource: Knex.MigrationSource<string> = {
   getMigrations: async () => ['20260101000000_init'],
   getMigrationName: name => name,
   getMigration: async () => ({
+    config: { transaction: false },
     async up(knex: Knex) {
-      await knex.raw('SELECT pg_sleep(1)');
       await knex.schema.createTable('things', table => {
         table.string('id').primary();
+        table.string('name');
       });
+      await knex.raw('SELECT pg_sleep(1)');
+      await knex.raw(
+        'CREATE INDEX CONCURRENTLY things_name_idx ON things(name)',
+      );
     },
     async down(knex: Knex) {
       await knex.schema.dropTable('things');
