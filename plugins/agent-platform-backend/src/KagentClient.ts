@@ -173,6 +173,10 @@ const MAX_TASK_PAGES = 10;
  * goes rather than in hundreds of calls that would outlast the poll.
  */
 const MAX_TASK_REQUESTS = 100;
+/**
+ * How many `ListSessions` pages a listing follows. A listing cut here says so
+ * (`truncated: true`), so a caller never takes it for every session there is.
+ */
 const MAX_SESSION_PAGES = 20;
 // A session has a handful of shares at most; the bound only guards the loop.
 const MAX_SHARE_PAGES = 5;
@@ -431,7 +435,9 @@ export class KagentClient {
 
   /**
    * `SessionService/ListSessions` — the caller's sessions, walked to the end
-   * of the listing, as `{sessions: […]}`.
+   * of the listing, as `{sessions: […]}`. A listing longer than
+   * `MAX_SESSION_PAGES` pages is cut there and adds `truncated: true`: the
+   * sessions it leaves out still exist.
    *
    * **For the caller only, never `all_creators`.** The controller scopes the
    * list to the identity agentgateway derived from the bearer; the cross-user
@@ -475,10 +481,11 @@ export class KagentClient {
         break;
       }
     }
-    return toJson(
+    const listing = toJson(
       ListSessionsResponseSchema,
       create(ListSessionsResponseSchema, { sessions }),
-    );
+    ) as Record<string, unknown>;
+    return pageToken ? { ...listing, truncated: true } : listing;
   }
 
   /**
