@@ -95,7 +95,7 @@ html[data-agent-shell]
 html[data-agent-shell]
   .bui-Alert
   a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
-  color: var(--agent-shell-link, #00609c);
+  color: var(--agent-shell-link);
   text-decoration-line: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
@@ -109,7 +109,7 @@ html[data-agent-shell]
     .bui-ButtonIcon,
     [class*='MuiButton']
   ):hover {
-  color: var(--agent-shell-link-hover, #002645);
+  color: var(--agent-shell-link-hover);
   text-decoration-thickness: 2px;
 }
 
