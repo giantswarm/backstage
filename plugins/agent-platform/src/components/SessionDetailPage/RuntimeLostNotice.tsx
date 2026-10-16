@@ -1,7 +1,12 @@
 import { Alert } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { newSessionBlockedText, newSessionElsewhereText } from './helpers';
+import type { Continuation } from '../../lib/continuationPrompt';
+import {
+  describeContinuationStart,
+  newSessionBlockedText,
+  newSessionElsewhereText,
+} from './helpers';
 
 const useStyles = makeStyles(theme => ({
   description: {
@@ -15,6 +20,11 @@ const useStyles = makeStyles(theme => ({
     fontFamily: 'monospace',
     fontSize: '0.75rem',
     color: theme.palette.text.secondary,
+    overflowWrap: 'anywhere',
+  },
+  // The person's own words, kept in sight and set apart from the explanation.
+  answer: {
+    whiteSpace: 'pre-wrap',
     overflowWrap: 'anywhere',
   },
 }));
@@ -34,6 +44,18 @@ export type RuntimeLostNoticeProps = {
    * (`AgentRow.sessionBlocker`): the way out names it instead of a button.
    */
   newSessionBlocker?: string;
+  /** Whether the session is waiting on a question, which the new session gets. */
+  hasQuestion?: boolean;
+  /**
+   * The answer to that question that the lost runtime never took, which the
+   * new session's first message carries.
+   */
+  answer?: string;
+  /**
+   * What the new session's first message carries of this conversation
+   * (`buildContinuationPrompt`), so the notice can say so before it starts.
+   */
+  continuation?: Pick<Continuation, 'messageCount' | 'includedMessageCount'>;
   /** Why the last attempt to start the new session failed, when it did. */
   startError?: string;
 };
@@ -57,6 +79,9 @@ export function RuntimeLostNotice({
   agentName,
   offersNewSession,
   newSessionBlocker,
+  hasQuestion = false,
+  answer,
+  continuation,
   startError,
 }: RuntimeLostNoticeProps) {
   const classes = useStyles();
@@ -75,13 +100,18 @@ export function RuntimeLostNotice({
       ? ` It has failed ${loss.attempts} times in a row.`
       : '';
 
+  const start = describeContinuationStart({
+    continuation,
+    hasQuestion,
+    hasAnswer: Boolean(answer),
+  });
   let wayOut = newSessionElsewhereText(agent);
   if (newSessionBlocker) {
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
   } else if (offersNewSession && loss.reported) {
-    wayOut = `Start a new session with ${agent} to carry on — the button under the message box takes your message with it.`;
+    wayOut = `Start a new session with ${agent} from the message box below to carry on. ${start}`;
   } else if (offersNewSession) {
-    wayOut = `Send again to retry. If it fails again, start a new session with ${agent} — the button under the message box takes your message with it.`;
+    wayOut = `Send again to retry. If it fails again, start a new session with ${agent} from the message box below. ${start}`;
   }
 
   return (
@@ -94,6 +124,9 @@ export function RuntimeLostNotice({
             {what}
             {attempts} The transcript above is complete. {wayOut}
           </span>
+          {answer && (
+            <span className={classes.answer}>Your answer: {answer}</span>
+          )}
           {loss.cause && (
             <span className={classes.cause}>kagent reported: {loss.cause}</span>
           )}

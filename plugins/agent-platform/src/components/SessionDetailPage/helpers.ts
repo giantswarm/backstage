@@ -1,4 +1,6 @@
 import { readNestedTokenUsage } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
+import type { Continuation } from '../../lib/continuationPrompt';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import type { ComposerImage } from '../../lib/messageImages';
 
@@ -23,6 +25,46 @@ export function newSessionBlockedText(agent: string, blocker: string): string {
  */
 export function newSessionElsewhereText(agent: string): string {
   return `Continue in a new session with ${agent} from the Sessions list.`;
+}
+
+/**
+ * What a session that cannot go on hands its new session, in a sentence for
+ * the notice: how much of this conversation (`buildContinuationPrompt`), the
+ * open question when there is one, and the answer or the box's text.
+ */
+export function describeContinuationStart({
+  continuation,
+  hasQuestion,
+  hasAnswer,
+}: {
+  continuation?: Pick<Continuation, 'messageCount' | 'includedMessageCount'>;
+  /** Whether the session is waiting on a question, which the message ends with. */
+  hasQuestion: boolean;
+  /** Whether the message carries the person's answer to it. */
+  hasAnswer: boolean;
+}): string {
+  let tail = 'and the text in the box';
+  if (hasQuestion) {
+    tail = hasAnswer
+      ? 'the open question and your answer'
+      : 'the open question and the text in the box';
+  }
+  const replaces =
+    hasQuestion && hasAnswer ? '; text in the box replaces the answer' : '';
+  if (!continuation || continuation.messageCount === 0) {
+    return `Its first message holds this conversation, with tools named but not their results, ${tail}${replaces}.`;
+  }
+  const { messageCount, includedMessageCount } = continuation;
+  const messages = countNoun(messageCount, 'message');
+  // None fit beside a long answer: say so, rather than "the newest 0".
+  if (includedMessageCount === 0) {
+    return `Its first message holds ${tail.replace(/^and /, '')}; this conversation's ${messages} do not fit beside ${hasQuestion ? 'them' : 'it'}.`;
+  }
+  const conversation =
+    includedMessageCount < messageCount
+      ? `the newest ${includedMessageCount} of this conversation's ${messages}`
+      : `this conversation (${messages})`;
+  return `Its first message holds ${conversation}, with tools named but not their results, ${tail}${replaces}.`;
 }
 
 /**

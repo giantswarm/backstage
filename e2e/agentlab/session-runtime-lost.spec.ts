@@ -221,7 +221,7 @@ async function deleteCurrentSession(page: Page): Promise<void> {
   });
 }
 
-test('a session whose runtime is lost explains itself, is marked, and opens a new session with the message', async ({
+test('a session whose runtime is lost explains itself, is marked, and carries the conversation into a new session', async ({
   admin,
   labAgent,
 }) => {
@@ -307,6 +307,12 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       'Send yields to the new session',
     ).toHaveCount(0);
     await expect(startNew).toBeVisible();
+    await expect(
+      admin.getByText(
+        /Its first message holds this conversation \(1 message\), with tools named but not their results, and the text in the box\./,
+      ),
+      'the notice says what the new session starts with',
+    ).toBeVisible();
     await snapshot(admin, 'runtime-lost-reported');
 
     await open(admin, '/sessions');
@@ -319,9 +325,11 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
     ).toBeVisible({ timeout: 60_000 });
     await snapshot(admin, 'runtime-lost-sessions-list');
 
-    // --- The way out: a new session with the same agent, message carried --
+    // --- The way out: a new session with the same agent, conversation carried
     await open(admin, lostUrl.pathname);
     await expect(startNew).toBeVisible({ timeout: 60_000 });
+    const followUp = 'Make it a picnic instead.';
+    await admin.getByRole('textbox', { name: 'Message' }).fill(followUp);
     await startNew.click();
     await expect(admin).toHaveURL(
       url =>
@@ -330,10 +338,29 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       { timeout: 60_000 },
     );
     created.push(new URL(admin.url()).pathname);
+    // The first message carries the conversation, with the message that never
+    // got its answer, and the box's text last.
+    const firstMessage = admin
+      .getByTestId('timeline-user-message')
+      .filter({ hasText: `User: ${prompt}` });
     await expect(
-      bubble(),
-      'the message that never got its answer opens the new session',
+      firstMessage,
+      'the conversation, with the message that never got its answer, opens the new session',
     ).toBeVisible({ timeout: 30_000 });
+    await expect(firstMessage).toContainText(followUp);
+    await expect(
+      admin.getByText('Continued session', { exact: true }),
+      'the banner links back to the lost session',
+    ).toBeVisible();
+    await expect(
+      admin.getByRole('link', {
+        name: `an earlier session on ${lab.installation}`,
+      }),
+    ).toHaveAttribute('href', lostUrl.pathname);
+    await expect(
+      admin.getByText(/\[Continues session/),
+      'the marker line is the banner, not text',
+    ).toHaveCount(0);
     await expect(
       admin.getByText('The agent’s runtime could not be brought back'),
       'a fresh session, with nothing lost about it',

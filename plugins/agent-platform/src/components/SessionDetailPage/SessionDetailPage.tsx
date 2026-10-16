@@ -478,29 +478,39 @@ export function SessionDetailPage() {
     [timeline.items],
   );
   const failedAnswer = confirmation.failed;
-  const answerNotTaken =
-    isAnswerNotTakenError(confirmation.error) &&
+  /** The failed answer is to the request that still stands. */
+  const failedAnswerStands =
     failedAnswer !== null &&
     pendingConfirmation !== undefined &&
     pendingConfirmation !== null &&
     failedAnswer.taskId === pendingConfirmation.taskId &&
     failedAnswer.askedIn === pendingConfirmation.askedIn;
+  const answerNotTaken =
+    isAnswerNotTakenError(confirmation.error) && failedAnswerStands;
   /** Nothing more can happen in this session; the way on is a new one. */
   const cannotContinue = Boolean(runtimeLoss?.reported) || answerNotTaken;
   /**
-   * The answer that was not taken: a question's answers, positionally. Not an
-   * approval's words (a decline's reason), which say nothing as an answer to
-   * a new session. Shown in the notice, and carried into the new session's
-   * first message; never put in the box, which would keep it beside a live
-   * Send once a late resume moves the task on.
+   * Whether this page offers to carry the session on in a new one: after a
+   * lost runtime (suspected or reported) and after an answer kagent did not
+   * take. The new session starts with this one's conversation either way.
    */
-  const notTakenAnswers =
-    answerNotTaken &&
+  const carriesOn = answerNotTaken || Boolean(runtimeLoss);
+  /**
+   * The answer that did not reach the agent — not taken, or lost with the
+   * runtime: a question's answers, positionally. Not an approval's words (a
+   * decline's reason), which say nothing as an answer to a new session. Shown
+   * in the notice, and carried into the new session's first message; never
+   * put in the box, which would keep it beside a live Send once a late resume
+   * moves the task on.
+   */
+  const failedAnswers =
+    carriesOn &&
+    failedAnswerStands &&
     failedAnswer?.decision === 'approve' &&
     failedAnswer.answers?.length
       ? failedAnswer.answers
       : undefined;
-  const notTakenAnswerText = notTakenAnswers ? failedAnswer?.text : undefined;
+  const failedAnswerText = failedAnswers ? failedAnswer?.text : undefined;
   /**
    * The first message of the session that carries this one on: the whole
    * conversation, the open question and the answer (`buildContinuationPrompt`).
@@ -509,19 +519,19 @@ export function SessionDetailPage() {
    */
   const continuation = useMemo(
     () =>
-      answerNotTaken
+      carriesOn
         ? buildContinuationPrompt({
             items: conversationItems,
             pendingQuestions: pendingConfirmation?.questions ?? [],
-            answers: notTakenAnswers,
+            answers: failedAnswers,
             continues: { installation, sessionId },
           })
         : undefined,
     [
-      answerNotTaken,
+      carriesOn,
       conversationItems,
       pendingConfirmation,
-      notTakenAnswers,
+      failedAnswers,
       installation,
       sessionId,
     ],
@@ -993,50 +1003,51 @@ export function SessionDetailPage() {
   );
 
   /**
-   * The way out of a lost runtime: a new session with the same agent, opened
-   * on the message that never got its answer.
+   * The way out of a lost runtime or an answer kagent did not take: a new
+   * session with the same agent, titled `Continued: <title>`, whose first
+   * message carries this conversation on (`buildContinuationPrompt`).
    *
    * Create, navigate, then send — the order every entry point keeps, see
-   * "Starting a session" in docs/agent-platform.md. The text is what the box
-   * holds, else the message that failed (handed back by the send), else the
-   * last message the person sent into this session: the one the runtime never
-   * read. Carried through the router state exactly as the list's composer
-   * carries a first message, so the new page dispatches it on arrival — a
-   * different page instance, since `SessionDetailRoute` keys the page on the
-   * session.
+   * "Starting a session" in docs/agent-platform.md. Carried through the router
+   * state exactly as the list's composer carries a first message, so the new
+   * page dispatches it on arrival — a different page instance, since
+   * `SessionDetailRoute` keys the page on the session.
    */
   const creation = useCreateSession('sessionDetail');
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession } = creation;
-  const unanswered = send.failed ?? lastUserMessage;
+  /**
+   * The message that never got its answer: the one the failed send handed
+   * back, which the transcript does not hold, else the last one the person
+   * sent, unless the agent answered it with the request it now waits on.
+   */
+  const unanswered =
+    send.failed ?? (pendingConfirmation ? undefined : lastUserMessage);
   const startNewSession = useCallback(
     async (draft: string, boxImages: ComposerImage[]) => {
-      // An empty box carries the unanswered message over whole: its text and
-      // its images.
+      // The new session has none of this conversation, and a message or an
+      // answer alone answers nothing in it: its first message carries the
+      // conversation, then the open question with the answer that did not
+      // reach the agent, then what the box holds as the person's new message
+      // (in the answer's place, when there is a question). A message the
+      // failed send handed back is not in the transcript, so an empty box
+      // carries it; an empty box also carries the unanswered message's images.
       const isEmpty = !draft.trim() && boxImages.length === 0;
-      let text = draft.trim() || unanswered?.text;
-      let images = isEmpty ? (unanswered?.images ?? []) : boxImages;
-      // An answer kagent did not take carries the conversation instead: the
-      // new session has none of it, and an answer alone answers nothing. What
-      // the box holds stands in for the answer.
-      let title: string | undefined;
-      if (answerNotTaken) {
-        text = buildContinuationPrompt({
-          items: conversationItems,
-          pendingQuestions: pendingConfirmation?.questions ?? [],
-          answers: notTakenAnswers,
-          reply: draft,
-          continues: { installation, sessionId },
-        }).text;
-        images = boxImages;
-        // One prefix however many times a session is carried on.
-        title = `${CONTINUED_TITLE_PREFIX}${sessionTitle.replace(
-          CONTINUED_TITLE_PATTERN,
-          '',
-        )}`;
-      }
-      if (!agentRow || !text) {
+      const images = isEmpty ? (unanswered?.images ?? []) : boxImages;
+      const { text } = buildContinuationPrompt({
+        items: conversationItems,
+        pendingQuestions: pendingConfirmation?.questions ?? [],
+        answers: failedAnswers,
+        reply: draft.trim() || send.failed?.text,
+        continues: { installation, sessionId },
+      });
+      // One prefix however many times a session is carried on.
+      const title = `${CONTINUED_TITLE_PREFIX}${sessionTitle.replace(
+        CONTINUED_TITLE_PATTERN,
+        '',
+      )}`;
+      if (!agentRow) {
         return;
       }
       let newSessionId: string;
@@ -1044,7 +1055,7 @@ export function SessionDetailPage() {
         newSessionId = await createSession({
           agent: agentRow,
           prompt: text,
-          ...(title && { title }),
+          title,
         });
       } catch {
         // Left to the notice, which renders the hook's `error`.
@@ -1074,10 +1085,10 @@ export function SessionDetailPage() {
       navigate,
       sessionDetailRoute,
       unanswered,
-      answerNotTaken,
+      send.failed,
       conversationItems,
       pendingConfirmation,
-      notTakenAnswers,
+      failedAnswers,
       sessionTitle,
       installation,
       sessionId,
@@ -1387,6 +1398,9 @@ export function SessionDetailPage() {
             agentName={row.agentName || undefined}
             offersNewSession={offersNewSession}
             newSessionBlocker={agentRow?.sessionBlocker}
+            hasQuestion={Boolean(pendingConfirmation?.questions.length)}
+            answer={failedAnswerText}
+            continuation={continuation}
             startError={creation.error?.message}
           />
         )}
@@ -1396,7 +1410,7 @@ export function SessionDetailPage() {
             agentName={row.agentName || undefined}
             offersNewSession={offersNewSession}
             newSessionBlocker={agentRow?.sessionBlocker}
-            answer={notTakenAnswerText}
+            answer={failedAnswerText}
             continuation={continuation}
             startError={creation.error?.message}
           />

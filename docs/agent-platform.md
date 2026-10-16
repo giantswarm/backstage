@@ -1487,10 +1487,15 @@ text as evidence only; the failed-turn entry does the same.
 **The way out is a new session with the same agent** (the composer's
 `newSession` prop). It is secondary while the loss is suspected, since a cold
 worker can time out once, and primary once kagent reports it, replacing Send and
-the answer panel. It takes the box's text, else the failed send's text, else
-the person's last message in this session, and follows create, navigate, send
-(see "Starting a session"). `SessionDetailRoute` keys the page on the session,
-so the new one mounts fresh.
+the answer panel. The new session carries this one on, as after an answer
+kagent did not take (see "Carrying the session on in a new one"): its first
+message holds the conversation, the open question if the session waits on one
+with any answer the lost runtime never took, and last the box's text, else the
+failed send's text, which the transcript does not hold. It is titled
+`Continued: <title>`, and the notice says what the first message will hold and
+shows the answer. An empty box also takes the images of the message that never
+got its answer. It follows create, navigate, send (see "Starting a session").
+`SessionDetailRoute` keys the page on the session, so the new one mounts fresh.
 
 **Only a reported loss marks the session** (`Runtime lost` in the header, the
 Sessions table and the rail card); the suspected reading belongs to the notice.
@@ -1681,7 +1686,7 @@ There is no button to attach images with.
   turn, and the failure path hands the text and the images back to the box.
 - **Sent again.** A stalled turn's message comes back with its images when
   the turn is stopped, and a lost runtime's new session, started from an empty
-  box, takes the unanswered message with its images.
+  box, takes the unanswered message's images with the conversation.
 - **The transcript** shows a sent image after the message, as a thumbnail
   (at most 240 × 160 px) that opens at full size; the optimistic copy of a
   message in flight shows its images the same way, from the composer's
@@ -1842,8 +1847,8 @@ again.
 
 #### Carrying the session on in a new one
 
-A new session has an empty model history, so the new session's first message
-carries the conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`),
+A new session has an empty model history, so the new session's first message,
+after an answer kagent did not take or a lost runtime, carries the conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`),
 built from the page's timeline, which holds the whole task history:
 
 - a first line naming the session it continues,
@@ -1860,7 +1865,8 @@ built from the page's timeline, which holds the whole task history:
 - attachments by name and failed or stopped turns, one line each; not the
   model's reasoning;
 - the open question with its choices, then the answer, or the box's text in
-  its place. An approval's words are never carried.
+  its place; with no open question, the box's text as the person's reply. An
+  approval's words are never carried.
 
 The message stays within `MESSAGE_TEXT_MAX_LENGTH` (32,000 characters), the
 send route's bound. The question (each cut at 4,000 characters, as are its

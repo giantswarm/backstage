@@ -81,7 +81,57 @@ describe('RuntimeLostNotice', () => {
     expect(screen.queryByText(/send again/)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /Start a new session with Grill master to carry on — the button under the message box/,
+        /Start a new session with Grill master from the message box below to carry on\. Its first message holds this conversation, with tools named but not their results, and the text in the box\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says what the new session starts with', () => {
+    const { rerender } = render(
+      <RuntimeLostNotice
+        loss={{ reported: true, attempts: 1 }}
+        agentName="Grill master"
+        offersNewSession
+        continuation={{ messageCount: 12, includedMessageCount: 12 }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        /Its first message holds this conversation \(12 messages\), with tools named but not their results, and the text in the box\./,
+      ),
+    ).toBeInTheDocument();
+
+    rerender(
+      <RuntimeLostNotice
+        loss={{ reported: true, attempts: 1 }}
+        agentName="Grill master"
+        offersNewSession
+        hasQuestion
+        continuation={{ messageCount: 52, includedMessageCount: 40 }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        /Its first message holds the newest 40 of this conversation's 52 messages, with tools named but not their results, the open question and the text in the box\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the answer the lost runtime never took, which the new session carries', () => {
+    render(
+      <RuntimeLostNotice
+        loss={{ reported: true, attempts: 1 }}
+        agentName="Grill master"
+        offersNewSession
+        hasQuestion
+        answer="Cyclists"
+      />,
+    );
+
+    expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /the open question and your answer; text in the box replaces the answer\./,
       ),
     ).toBeInTheDocument();
   });

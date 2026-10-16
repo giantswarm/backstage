@@ -1,6 +1,7 @@
 import { TimelineItem } from '../../lib/kagentTimeline';
 import {
   createPolledPairing,
+  describeContinuationStart,
   fresherStreamedCopy,
   readLastUserMessage,
 } from './helpers';
@@ -220,5 +221,48 @@ describe('readLastUserMessage', () => {
 
   it('reads nothing from a conversation the person has not written in', () => {
     expect(readLastUserMessage([])).toBeUndefined();
+  });
+});
+
+describe('describeContinuationStart', () => {
+  it('ends on the box’s text when the session waits on nothing', () => {
+    expect(
+      describeContinuationStart({
+        continuation: { messageCount: 3, includedMessageCount: 3 },
+        hasQuestion: false,
+        hasAnswer: false,
+      }),
+    ).toBe(
+      'Its first message holds this conversation (3 messages), with tools named but not their results, and the text in the box.',
+    );
+  });
+
+  it('says the answer gives way to the box’s text', () => {
+    expect(
+      describeContinuationStart({ hasQuestion: true, hasAnswer: true }),
+    ).toBe(
+      'Its first message holds this conversation, with tools named but not their results, the open question and your answer; text in the box replaces the answer.',
+    );
+  });
+
+  it('says plainly when none of the conversation fits', () => {
+    expect(
+      describeContinuationStart({
+        continuation: { messageCount: 7, includedMessageCount: 0 },
+        hasQuestion: false,
+        hasAnswer: false,
+      }),
+    ).toBe(
+      "Its first message holds the text in the box; this conversation's 7 messages do not fit beside it.",
+    );
+    expect(
+      describeContinuationStart({
+        continuation: { messageCount: 7, includedMessageCount: 0 },
+        hasQuestion: true,
+        hasAnswer: true,
+      }),
+    ).toBe(
+      "Its first message holds the open question and your answer; this conversation's 7 messages do not fit beside them.",
+    );
   });
 });

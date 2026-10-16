@@ -1,8 +1,11 @@
 import { Alert } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 import type { Continuation } from '../../../lib/continuationPrompt';
-import { newSessionBlockedText, newSessionElsewhereText } from '../helpers';
+import {
+  describeContinuationStart,
+  newSessionBlockedText,
+  newSessionElsewhereText,
+} from '../helpers';
 
 const useStyles = makeStyles(theme => ({
   description: {
@@ -46,34 +49,6 @@ export type AnswerNotTakenNoticeProps = {
 };
 
 /**
- * What the new session starts with, in a sentence: how much of this
- * conversation, the open question, and the answer or the box's text.
- */
-function describeStart(
-  continuation: AnswerNotTakenNoticeProps['continuation'],
-  hasAnswer: boolean,
-): string {
-  const tail = hasAnswer
-    ? 'the open question and your answer'
-    : 'the open question and the text in the box';
-  const replaces = hasAnswer ? '; text in the box replaces the answer' : '';
-  if (!continuation || continuation.messageCount === 0) {
-    return `Its first message holds this conversation, with tools named but not their results, ${tail}${replaces}.`;
-  }
-  const { messageCount, includedMessageCount } = continuation;
-  const messages = countNoun(messageCount, 'message');
-  // None fit beside a long answer: say so, rather than "the newest 0".
-  if (includedMessageCount === 0) {
-    return `Its first message holds ${tail}; this conversation's ${messages} do not fit beside them.`;
-  }
-  const conversation =
-    includedMessageCount < messageCount
-      ? `the newest ${includedMessageCount} of this conversation's ${messages}`
-      : `this conversation (${messages})`;
-  return `Its first message holds ${conversation}, with tools named but not their results, ${tail}${replaces}.`;
-}
-
-/**
  * The words for an answer kagent did not take (`isAnswerNotTakenError`): the
  * agent could not resume, the question is still open, and sending the answer
  * again goes the same way. It takes the question card's place, so nothing on
@@ -103,9 +78,8 @@ export function AnswerNotTakenNotice({
   if (newSessionBlocker) {
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
   } else if (offersNewSession) {
-    wayOut = `Start a new session with ${agent} from the message box below to carry on. ${describeStart(
-      continuation,
-      Boolean(answer),
+    wayOut = `Start a new session with ${agent} from the message box below to carry on. ${describeContinuationStart(
+      { continuation, hasQuestion: true, hasAnswer: Boolean(answer) },
     )}`;
   }
 
