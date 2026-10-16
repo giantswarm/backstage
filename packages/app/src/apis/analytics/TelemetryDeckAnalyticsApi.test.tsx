@@ -98,8 +98,23 @@ describe('TelemetryDeckAnalyticsApi', () => {
 
     expect(mockSignal).toHaveBeenCalledWith('pageview', {
       page: 'Unknown page',
-      path: '/wp-login.php',
+      path: 'unknown',
     });
+  });
+
+  it('sends the route template, never the path, query string or hash', async () => {
+    navigateInTestApp(
+      '/sessions/acme-prod/0c4b2f5e-9a3d?prompt=acme+payments#turn-3',
+    );
+    await flushPromises();
+
+    expect(mockSignal).toHaveBeenCalledTimes(1);
+    const [, payload] = mockSignal.mock.calls[0];
+    expect(payload).toEqual({
+      page: 'Session detail',
+      path: '/sessions/:installation/:sessionId',
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/acme|0c4b2f5e|prompt|turn/);
   });
 
   it('sends a pageview signal for tracked pages', async () => {

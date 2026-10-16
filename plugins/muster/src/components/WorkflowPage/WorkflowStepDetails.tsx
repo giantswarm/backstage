@@ -3,14 +3,13 @@ import { Box, Button, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { countNoun, PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import type { WorkflowCondition, WorkflowSubStep } from '../../lib/k8s';
-import type { ToolEffect } from '../../lib/toolAnnotations';
+import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { formatDuration } from '../../lib/formatDuration';
 import {
   conditionSummary,
   formatArgValue,
   toolDisplay,
-  WORKFLOW_EFFECT_LABELS,
 } from '../../lib/workflowDisplay';
 import {
   FlowStepContext,
@@ -367,11 +366,7 @@ export function WorkflowStepDetails({
     facts.push('May fail without stopping the workflow.');
   }
   if (effect) {
-    facts.push(
-      effect === 'reads'
-        ? `Its tool ${WORKFLOW_EFFECT_LABELS.reads.toLowerCase()}.`
-        : 'Its tool can change things.',
-    );
+    facts.push(`Its tool ${TOOL_EFFECT_LABELS[effect].toLowerCase()}.`);
   }
   if (overlay) {
     facts.push(lastRunSentence(overlay));

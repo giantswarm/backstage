@@ -14,8 +14,9 @@ import { lab } from './lab';
  * Content-Security-Policy that names no installation.
  *
  * The lab runs no avatar renderer (its edge lacks the route's rewrite filter),
- * so the backend answers each avatar with an error and the portal shows the
- * initials; what the lab proves is the path, the cookie and the header. That
+ * so the backend answers each avatar 404, an agent without an avatar, and the
+ * portal shows the initials; what the lab proves is the path, the cookie, the
+ * header and that no avatar answers 502. That
  * an avatar renders through the proxy is proven on an installation with the
  * renderer.
  */
@@ -65,6 +66,9 @@ test('avatars are requested from the portal’s origin with the backend’s cook
     expect([401, 403], 'the cookie authenticates the image load').not.toContain(
       status,
     );
+    // The lab serves no avatars: an agent without one is a 404. A lab that
+    // gains a renderer answers 200.
+    expect([200, 404], 'an avatar or none, never an error').toContain(status);
   }
   test.info().annotations.push({
     type: 'avatar responses',

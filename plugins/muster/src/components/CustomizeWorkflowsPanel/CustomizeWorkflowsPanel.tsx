@@ -31,7 +31,7 @@ import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { SessionGate, useToolCatalogue, useWorkflowPageLinks } from '../shared';
-import { EffectBadge } from '../shared';
+import { WorkflowEffectBadge } from '../shared';
 import {
   LAST_RUN_LABELS,
   LAST_RUN_ORDER,
@@ -173,9 +173,7 @@ function WorkflowRows({
       // hint stays empty, claiming nothing.
       cell: row => (
         <Cell>
-          {row.effect ? (
-            <EffectBadge effect={row.effect} subject="workflow" />
-          ) : null}
+          {row.effect ? <WorkflowEffectBadge effect={row.effect} /> : null}
         </Cell>
       ),
     },
@@ -196,7 +194,7 @@ function WorkflowRows({
   if (isPhone) {
     // The phone layout (T22 B9): six columns in 343px froze the five
     // secondary ones at bui's 75px minimum and left the name ~51px of text,
-    // with "Can change things" clipped. A stacked row per workflow instead:
+    // with its access badge clipped. A stacked row per workflow instead:
     // the name (the row's link) and its access badge, then category · steps ·
     // runs · source, then two lines of what it does.
     const items = rows.map<StackedRowItem>(row => {
@@ -206,7 +204,7 @@ function WorkflowRows({
         title: row.name,
         ...(href ? { href } : {}),
         ...(row.effect
-          ? { status: <EffectBadge effect={row.effect} subject="workflow" /> }
+          ? { status: <WorkflowEffectBadge effect={row.effect} /> }
           : {}),
         facts: [row.category, row.steps, row.runs, row.source],
         ...(row.description ? { description: row.description } : {}),
@@ -390,12 +388,13 @@ function Panel({ search, createAssist }: CustomizeWorkflowsPanelProps) {
 
 /**
  * The Workflows tab of the shell's Customize screen — read-only (decision
- * D11): the active muster's workflows with their category, step count, honest
- * "Only reads / Can change things" badge (the readOnlyHint muster derives on
- * each `workflow_<name>` tool), run count with the latest run, and whether
- * GitOps or muster's own store holds the definition. Each row opens the
- * workflow's page. Filtered by how the last run went, once runs tell the
- * workflows apart (T49). Must be mounted inside a `CustomizeMusterProvider`.
+ * D11): the active muster's workflows with their category, step count,
+ * "Reads / Changes things" badge (the readOnlyHint muster derives on each
+ * `workflow_<name>` tool, read-only only when every step's tool is), run
+ * count with the latest run, and whether GitOps or muster's own store holds
+ * the definition. Each row opens the workflow's page. Filtered by how the
+ * last run went, once runs tell the workflows apart (T49). Must be mounted
+ * inside a `CustomizeMusterProvider`.
  */
 export function CustomizeWorkflowsPanel(props: CustomizeWorkflowsPanelProps) {
   return (

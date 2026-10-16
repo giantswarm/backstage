@@ -5,6 +5,7 @@ export * from './Breadcrumbs';
 export * from './CatalogFilters';
 export * from './Autocomplete';
 export * from './CodeBlock';
+export * from './Collapsible';
 export * from './CollapsibleMarkdown';
 export * from './CollapsibleMarkdownCard';
 export * from './ComposerAttachmentList';

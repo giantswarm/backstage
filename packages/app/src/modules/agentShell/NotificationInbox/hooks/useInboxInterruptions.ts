@@ -86,18 +86,37 @@ function writeTabMemory(memory: TabMemory) {
 type OpenToast = {
   toast: ToastApiPostResult;
   ids: string[];
-  /** Visiting this page, or one below it, answers it. */
-  closeOnPath?: string;
+  /** Its row's page on screen answers it. */
+  row?: InboxRow;
   /** Visiting exactly this page answers it. */
   closeOnExactPath?: string;
   /** Opening the overlay answers it. */
   closeOnOverlay?: boolean;
 };
 
-function attentionTitle(count: number) {
-  return `${countNoun(count, 'session')} ${
-    count === 1 ? 'needs' : 'need'
+/** The kinds of row that are about one session each. */
+const SESSION_KINDS: ReadonlySet<InboxRow['kind']> = new Set([
+  'waiting',
+  'failed',
+  'turnFinished',
+]);
+
+/**
+ * "2 sessions need your attention" while every row is a session's;
+ * "notifications" once any is not (the MCP sign-in row, any later producer).
+ */
+function attentionTitle(rows: InboxRow[]) {
+  const noun = rows.every(row => SESSION_KINDS.has(row.kind))
+    ? 'session'
+    : 'notification';
+  return `${countNoun(rows.length, noun)} ${
+    rows.length === 1 ? 'needs' : 'need'
   } your attention`;
+}
+
+/** Where a row's toast and desktop notification lead. */
+function linkOf(row: InboxRow): string | undefined {
+  return row.announce.href ?? row.href;
 }
 
 /**
@@ -109,7 +128,8 @@ function attentionTitle(count: number) {
  * notification. A row is **news** when it is unread and appeared, or changed
  * identity, after that first read, and either its subject was already read
  * by the tab (it changed while watched) or its time says it changed after the
- * first read. A row that shows up later with neither (an installation
+ * first read. A row that only narrows one the tab read (`narrows`) is not
+ * news. A row that shows up later with neither (an installation
  * answering late with an old wait) is quietly unread. Nothing is raised for
  * the session on screen in the window the person works in. A toast closes
  * once its row goes or is read, or its page is opened.
@@ -123,19 +143,28 @@ export function useInboxInterruptions({
   rows,
   subjects,
   ready,
+  isOnScreen,
   attention,
   desktop,
   waitingHref,
   openOverlay,
+  hashActions,
 }: {
   rows: InboxRow[];
   subjects: ReadonlySet<string>;
   ready: boolean;
+  /**
+   * Whether a row is about the page at `pathname`, by its source's rule: no
+   * toast for it, and its toast closes there.
+   */
+  isOnScreen: (row: InboxRow, pathname: string) => boolean;
   attention: PageAttention;
   desktop: DesktopNotifications;
   /** The Sessions list on its Waiting filter, when that route is bound. */
   waitingHref?: string;
   openOverlay: () => void;
+  /** Hash links that act where the person is (`#notifications`). */
+  hashActions: Readonly<Record<string, () => void>>;
 }): { overlayOpened: () => void } {
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
@@ -147,8 +176,22 @@ export function useInboxInterruptions({
   const open = useRef(new Map<string, OpenToast>());
   const toastCount = useRef(0);
   // Read inside the rows effect without re-running it on every navigation.
-  const latest = useRef({ location, attention, desktop, openOverlay });
-  latest.current = { location, attention, desktop, openOverlay };
+  const latest = useRef({
+    location,
+    attention,
+    desktop,
+    openOverlay,
+    isOnScreen,
+    hashActions,
+  });
+  latest.current = {
+    location,
+    attention,
+    desktop,
+    openOverlay,
+    isOnScreen,
+    hashActions,
+  };
 
   const post = useCallback(
     (
@@ -166,12 +209,17 @@ export function useInboxInterruptions({
     if (!ready) {
       return;
     }
-    const { location: here, attention: now, desktop: desk } = latest.current;
-    // The session on screen in the window the person works in: its page
-    // says it, louder, and marks it read. A visible window behind another
+    const {
+      location: here,
+      attention: now,
+      desktop: desk,
+      isOnScreen: isRowOnScreen,
+    } = latest.current;
+    // The row on screen in the window the person works in: its page says
+    // it, louder, and marks it read. A visible window behind another
     // application is not being watched.
     const onScreen = (row: InboxRow) =>
-      now.visible && now.focused && isAt(here.pathname, row.href);
+      now.visible && now.focused && isRowOnScreen(row, here.pathname);
 
     // A row that went, or was read here or elsewhere, takes its toast along.
     const unread = new Set(rows.filter(row => row.unread).map(row => row.id));
@@ -196,7 +244,7 @@ export function useInboxInterruptions({
         post(
           'catch-up',
           {
-            title: attentionTitle(catchUp.length),
+            title: attentionTitle(catchUp),
             status: 'info',
             links: [{ label: 'Open notifications', href: NOTIFICATIONS_HASH }],
           },
@@ -213,6 +261,7 @@ export function useInboxInterruptions({
       row =>
         row.unread &&
         !known.has(row.id) &&
+        !before.rows.some(id => row.narrows?.(id)) &&
         !onScreen(row) &&
         (watched.has(row.subject) || (row.at !== undefined && row.at >= since)),
     );
@@ -240,7 +289,7 @@ export function useInboxInterruptions({
           post(
             `burst:${toastCount.current}`,
             {
-              title: attentionTitle(news.length),
+              title: attentionTitle(news),
               status: 'info',
               links: [
                 { label: 'Open notifications', href: NOTIFICATIONS_HASH },
@@ -251,17 +300,25 @@ export function useInboxInterruptions({
         }
       } else {
         for (const row of news) {
+          // The toast renders a link as a plain anchor, which would take a
+          // link out of the portal in this tab and leave the shell: such a
+          // row is opened from the overlay, in a new tab.
+          const to = linkOf(row);
+          let link: { label: string; href: string } | undefined;
+          if (row.external) {
+            link = { label: 'Open notifications', href: NOTIFICATIONS_HASH };
+          } else if (to) {
+            link = { label: row.announce.linkLabel, href: to };
+          }
           post(
             row.id,
             {
               title: row.announce.title,
               description: row.announce.description,
               status: row.announce.status,
-              links: row.href
-                ? [{ label: row.announce.linkLabel, href: row.href }]
-                : undefined,
+              links: link ? [link] : undefined,
             },
-            { ids: [row.id], closeOnPath: row.href },
+            { ids: [row.id], row, closeOnOverlay: row.external },
           );
         }
       }
@@ -272,7 +329,7 @@ export function useInboxInterruptions({
     if (desk.enabled && !now.focused) {
       if (burst) {
         showDesktopNotification({
-          title: attentionTitle(news.length),
+          title: attentionTitle(news),
           tag: BURST_TAG,
           onClick: () => latest.current.openOverlay(),
         });
@@ -283,10 +340,16 @@ export function useInboxInterruptions({
             body: row.announce.description,
             tag: row.id,
             onClick: () => {
-              if (row.href) {
-                navigate(row.href);
-              } else {
+              const link = linkOf(row);
+              const action = link && latest.current.hashActions[link];
+              if (action) {
+                action();
+              } else if (!link) {
                 latest.current.openOverlay();
+              } else if (row.external) {
+                window.open(link, '_blank', 'noopener');
+              } else {
+                navigate(link);
               }
             },
           });
@@ -302,7 +365,8 @@ export function useInboxInterruptions({
   useEffect(() => {
     for (const [key, entry] of open.current) {
       if (
-        isAt(location.pathname, entry.closeOnPath) ||
+        (entry.row &&
+          latest.current.isOnScreen(entry.row, location.pathname)) ||
         location.pathname === entry.closeOnExactPath
       ) {
         entry.toast.close();

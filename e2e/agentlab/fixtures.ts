@@ -8,6 +8,7 @@ import {
   type BrowserContext,
   type Locator,
   type Page,
+  type Response,
   type TestInfo,
 } from '@playwright/test';
 import {
@@ -329,7 +330,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           writeFileSync(failureFile, String(error));
           throw error;
         } finally {
-          await restoreMcpSignInNotice(adminPage);
+          await restoreInboxToasts(adminPage);
         }
         await use({ name, slug, detailPath });
       } finally {
@@ -347,20 +348,35 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   admin: async ({ adminPage }, use) => {
     const errors: string[] = [];
     const record = (error: Error) => errors.push(error.message);
+    // An agent without an avatar is a 404 the portal shows as initials; a 502
+    // is the backend failing, on whichever page lists agents.
+    const badAvatars: string[] = [];
+    const recordAvatar = (response: Response) => {
+      if (
+        response.status() === 502 &&
+        response.url().includes('/api/agent-platform/avatars/')
+      ) {
+        badAvatars.push(response.url());
+      }
+    };
     adminPage.on('pageerror', record);
+    adminPage.on('response', recordAvatar);
     await use(adminPage);
     adminPage.off('pageerror', record);
+    adminPage.off('response', recordAvatar);
     // The page outlives the test: a route a test left behind (a swapped
     // token, a stubbed answer) must not answer the next test's requests.
     await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
-    await restoreMcpSignInNotice(adminPage);
+    await restoreInboxToasts(adminPage);
     await adminPage
       .evaluate(
         flag => window.sessionStorage.setItem(flag, '1'),
         DROP_CACHES_FLAG,
       )
       .catch(() => undefined);
-    expect(errors, 'no uncaught errors on the page').toEqual([]);
+    // Soft, so one failing does not hide the other.
+    expect.soft(errors, 'no uncaught errors on the page').toEqual([]);
+    expect.soft(badAvatars, 'no avatar answered 502').toEqual([]);
   },
 
   signInAs: async ({ browser, variant }, use) => {
@@ -397,7 +413,7 @@ export async function open(
   const card = page.getByRole('button', { name: 'Sign In' });
   await expect(chrome.or(card).first()).toBeAttached();
   // Signed out only without the portal's chrome: a signed-in page has its own
-  // "Sign in" buttons too (the MCP server sign-in notice and its dialog).
+  // "Sign in" buttons too (the inbox's MCP sign-in row and its dialog).
   if ((await chrome.count()) === 0 && (await card.isVisible())) {
     await signIn(page, user);
     await page.goto(path);
@@ -507,48 +523,43 @@ export async function openHome(admin: Page): Promise<void> {
 }
 
 /**
- * The notice's memory of a **Not now** for the browser session
- * (`HIDDEN_NOTICE_STORAGE_KEY` in the muster plugin).
+ * The Notification inbox's toasts that stay until answered: the one summary of
+ * what was unread at the tab's first read ("2 notifications need your
+ * attention") and a new MCP sign-in row's ("1 MCP server needs your
+ * sign-in"). While a connector waits for the person's sign-in (the lab's
+ * `lab-oauth-fixture` does), a fresh tab raises one at the foot of the page.
+ * It stands clear of the bottom bar, a docked composer and a wizard's footer,
+ * but covers the foot of the content: on a phone, Technical details at the
+ * foot of Review.
  */
-export const MCP_AUTH_NOTICE_HIDDEN_KEY = 'muster.mcpAuthNotice.hidden';
-
-/** The MCP sign-in notice: it floats over the foot of every page. */
-function mcpSignInNotice(page: Page): Locator {
-  return page.getByRole('complementary', { name: 'MCP server sign-in' });
+function inboxToast(page: Page): Locator {
+  return page
+    .getByRole('alertdialog')
+    .filter({ hasText: /needs? your (attention|sign-in)/ });
 }
 
 /**
- * Answers the MCP sign-in notice with **Not now** whenever it shows, as a
- * person does who has no use for the connector it names: while a connector
- * waits for the person's sign-in (the lab's `lab-oauth-fixture` does) it
- * floats over the foot of every page, and covers what is there — a docked
- * form footer, on a phone the foot of the content. An open select's underlay
- * takes every click outside its listbox, so the listbox is closed first. The
+ * Closes the inbox's lasting toasts ({@link inboxToast}) whenever one shows,
+ * as a person does who has no use for it. An open select's underlay takes
+ * every click outside its listbox, so the listbox is closed first. The
  * worker's shared page is restored by its fixtures
- * ({@link restoreMcpSignInNotice}).
+ * ({@link restoreInboxToasts}).
  */
-export async function dismissMcpSignInNotice(page: Page): Promise<void> {
-  await page.addLocatorHandler(mcpSignInNotice(page), async notice => {
+export async function dismissInboxToasts(page: Page): Promise<void> {
+  await page.addLocatorHandler(inboxToast(page), async toast => {
     if (await page.getByRole('listbox').isVisible()) {
       await page.keyboard.press('Escape');
     }
-    await notice.getByRole('button', { name: 'Not now' }).click();
+    await toast.getByRole('button', { name: 'Close' }).click();
   });
 }
 
 /**
- * Undoes {@link dismissMcpSignInNotice} on a page that outlives the test: the
- * handler is removed and the Not now forgotten, so the next test sees the
- * notice as a new browser session would.
+ * Undoes {@link dismissInboxToasts} on a page that outlives the test, so the
+ * next test sees the toasts.
  */
-async function restoreMcpSignInNotice(page: Page): Promise<void> {
-  await page.removeLocatorHandler(mcpSignInNotice(page));
-  await page
-    .evaluate(
-      key => window.sessionStorage.removeItem(key),
-      MCP_AUTH_NOTICE_HIDDEN_KEY,
-    )
-    .catch(() => undefined);
+async function restoreInboxToasts(page: Page): Promise<void> {
+  await page.removeLocatorHandler(inboxToast(page));
 }
 
 /**
@@ -574,9 +585,9 @@ export async function createAgentInWizard(
     onStep?: (step: 'Details' | 'Review') => Promise<void>;
   } = {},
 ): Promise<string> {
-  // The notice covers the footer's Continue and, on a phone, Technical
-  // details at the foot of Review.
-  await dismissMcpSignInNotice(page);
+  // A toast covers the foot of the content: on a phone, Technical details at
+  // the foot of Review.
+  await dismissInboxToasts(page);
   // --- Step 1: Details -----------------------------------------------------
   await open(page, '/customize/agents/new');
   await expectWizardStep(page, 'Details');
@@ -809,12 +820,15 @@ async function removeLabAgent(
 /**
  * The roster's link to the agent named `name`, on the open Agents tab
  * (Customize's): one row per agent, the whole row a link to its page, named by
- * all it shows — so the row is found by the name line itself.
+ * all it shows — so the row is found by the name line itself. Only the
+ * roster's lists ("Agents", and "Favorite agents" once the person has some):
+ * the tab's "Last used by you" cards and the rail's sessions name an agent
+ * too, once a session ran on it earlier in the run.
  */
 export function rosterLinkOf(page: Page, name: string): Locator {
   return page
     .getByRole('main')
-    .getByRole('listitem')
+    .getByRole('list', { name: /^(Favorite agents|Agents)$/ })
     .getByRole('link')
     .filter({ has: page.getByText(name, { exact: true }) });
 }

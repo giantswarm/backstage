@@ -13,9 +13,9 @@ const meta = {
     docs: {
       description: {
         component: [
-          'Whether a tool (or a workflow) only reads or changes things, as a small badge.',
+          'Whether a tool (or a workflow) reads or changes things, as a small badge.',
           '',
-          '**When to use it:** wherever a tool’s or a workflow’s effect is shown — a connector’s tool list, a tool page, the workflow list and flow, an agent’s tool catalogue, the approval card. Take the effect from `toolEffect` (a workflow’s from `workflowEffect`); never hand-roll the words or the colours.',
+          '**When to use it:** wherever a tool’s or a workflow’s effect is shown — a connector’s tool list, a tool page, the workflow list and flow, an agent’s tool catalogue, the approval card. Take the effect from `toolEffect` (a workflow’s from `workflowEffect`); never hand-roll the words or the colours. A workflow uses the same words as a tool: muster marks it read-only only when every tool its steps can reach is, so its “Reads” holds for all of them.',
           '',
           '“Reads” is neutral: a fill one step above the surface and a quiet edge, so it shows as a box on the agent shell’s white page. On a bui surface it knows (a `Card`, a `Box bg="neutral"`) bui steps the fill itself. “Changes things” is the stronger signal, in bui’s warning tone. Both set their text in `--bui-font-size-2`, the text size of bui’s medium badge, at the small badge’s height, on one line.',
           '',
@@ -40,16 +40,6 @@ export const Tool: Story = {
     <Flex gap="2" align="center">
       <EffectBadge effect="reads" />
       <EffectBadge effect="changes" />
-    </Flex>
-  ),
-};
-
-/** A workflow's derived effect, worded as the guarantee it is. */
-export const Workflow: Story = {
-  render: () => (
-    <Flex gap="2" align="center">
-      <EffectBadge effect="reads" subject="workflow" />
-      <EffectBadge effect="changes" subject="workflow" />
     </Flex>
   ),
 };

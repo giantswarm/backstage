@@ -86,7 +86,8 @@ test('a Claude Code agent shows no limits, and its turn its reported cost', asyn
       costs.getByText('Reported cost'),
       'the claude turn reported its cost on its final task status',
     ).toBeVisible({ timeout: 60_000 });
-    await expect(costs).toContainText(/Reported cost\s*\$\d/);
+    // formatUsd shows a cheap turn as `<$0.01`, any other as `$1.23`.
+    await expect(costs).toContainText(/Reported cost\s*(<\$0\.01|\$\d)/);
   } catch (error) {
     failure = error;
   }

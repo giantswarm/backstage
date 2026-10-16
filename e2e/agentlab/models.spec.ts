@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import {
   createAgentInWizard,
   deleteAgentInPortal,
-  dismissMcpSignInNotice,
+  dismissInboxToasts,
   expect,
   open,
   startSessionOnReadyAgent,
@@ -291,7 +291,7 @@ test('a Vertex AI model is checked in the form, accepted by kagent, and says the
     location: 'global',
     key: { content: fakeServiceAccountKey(projectID) },
   };
-  await dismissMcpSignInNotice(admin);
+  await dismissInboxToasts(admin);
 
   // kagent's own check, in the form, as soon as a file is chosen.
   await open(admin, '/customize/models/new');
@@ -355,7 +355,7 @@ for (const turn of vertexTurns) {
     const agentSlug = `e2e-vertex-${turn.slug}-agent-${vertexStamp}`;
     const prompt = 'Reply with exactly the single word PONG and nothing else.';
 
-    await dismissMcpSignInNotice(admin);
+    await dismissInboxToasts(admin);
     const modelPath = await connectVertexModel(admin, {
       provider: turn.provider,
       displayName,

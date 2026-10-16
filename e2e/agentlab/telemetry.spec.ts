@@ -86,6 +86,16 @@ test('creating an agent and starting a session send their signals, with no free 
         everything,
         'the agent’s display name never leaves the portal',
       ).not.toContain(agentName);
+      // Page views send the route's template, never the path, which names
+      // the agent and its installation and namespace.
+      expect(
+        everything,
+        'the agent’s page view carries its route, not its name',
+      ).toContain('/customize/agents/:installation/:namespace/:name');
+      expect(
+        everything,
+        'the agent’s name never leaves the portal',
+      ).not.toContain(agentSlug);
     } catch (error) {
       failure = error;
     }

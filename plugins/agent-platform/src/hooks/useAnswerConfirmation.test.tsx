@@ -1,6 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import {
   InvalidateQueryFilters,
   QueryClient,
@@ -19,6 +20,7 @@ const streamAnswer = jest.fn();
 const listSessionTasks = jest.fn();
 
 const kagentApi = { streamAnswer, listSessionTasks } as unknown as KagentApi;
+const analyticsApi = mockApis.analytics.mock();
 
 const SESSION_KEY = ['agent-platform', 'kagent', 'session', 'gazelle', 'abc'];
 const TASKS_KEY = [
@@ -45,7 +47,12 @@ function renderWith(withAgent: typeof agent | undefined) {
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
 
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+    <TestApiProvider
+      apis={[
+        [kagentApiRef, kagentApi],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -77,6 +84,7 @@ function transportError(message: string): Error {
 }
 
 beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
   streamAnswer.mockReset();
   streamAnswer.mockResolvedValue(undefined);
   listSessionTasks.mockReset();
@@ -112,6 +120,14 @@ describe('useAnswerConfirmation', () => {
       },
       expect.any(Function),
       expect.any(AbortSignal),
+    );
+    // Nothing of the answer, nor how it was given.
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.questionAnswered',
+        attributes: {},
+      }),
     );
   });
 
@@ -188,6 +204,7 @@ describe('useAnswerConfirmation', () => {
       expect(result.current.pending).toBeNull();
       expect(result.current.error?.message).toBe('kagent said no');
     });
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   describe('the resumed turn, streamed', () => {

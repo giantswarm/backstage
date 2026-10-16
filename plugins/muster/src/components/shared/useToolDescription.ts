@@ -1,6 +1,22 @@
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { musterApiRef } from '../../apis';
+import { musterApiRef, type MusterApi } from '../../apis';
+
+/**
+ * The query behind {@link useToolDescription}, for a caller outside a
+ * component — a mutation that reads a tool's schema before it calls the tool
+ * shares the cached entry.
+ */
+export function toolDescriptionQuery(
+  musterApi: MusterApi,
+  name: string,
+  installation: string | undefined,
+) {
+  return {
+    queryKey: ['muster', 'describe-tool', installation, name],
+    queryFn: () => musterApi.describeTool(name, installation),
+  };
+}
 
 /**
  * A tool as muster describes it (`describe_tool`): description, annotations
@@ -14,8 +30,7 @@ export function useToolDescription(
 ) {
   const musterApi = useApi(musterApiRef);
   return useQuery({
-    queryKey: ['muster', 'describe-tool', installation, name],
-    queryFn: () => musterApi.describeTool(name, installation),
+    ...toolDescriptionQuery(musterApi, name, installation),
     enabled,
   });
 }

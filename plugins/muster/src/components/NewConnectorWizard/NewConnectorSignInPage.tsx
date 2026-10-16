@@ -144,6 +144,7 @@ export function NewConnectorSignInPage() {
     definition,
     registeredName,
     registeredInstallation,
+    startedFromEdit,
     markSaved,
   } = useNewMcpServerForm();
 
@@ -203,13 +204,13 @@ export function NewConnectorSignInPage() {
       return;
     }
     register(
-      { definition, installation, authMode, isEdit },
+      { definition, installation, authMode, isEdit, startedFromEdit },
       {
-        onSuccess: () => {
+        onSuccess: sent => {
           // What was just written is the base of any further save in this run.
-          markSaved(definition);
+          markSaved(sent);
           const test = wizardLinks('verify', {
-            name: definition.name,
+            name: sent.name,
             installation,
           });
           if (test) {
@@ -226,6 +227,7 @@ export function NewConnectorSignInPage() {
     installation,
     authMode,
     isEdit,
+    startedFromEdit,
     markSaved,
     wizardLinks,
     navigate,
