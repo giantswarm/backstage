@@ -91,12 +91,11 @@ test('an environment without kagent explains the empty list, New agent still off
     timeout: 60_000,
   });
   // The card links to Installations only where the gs Installations page is
-  // installed; the agent-platform chart's portal switches it off, and the
-  // card then names the platform team instead of a dead link.
-  const installationsLink = page.getByRole('link', {
-    name: 'Go to Installations',
-  });
-  const withInstallations = (await installationsLink.count()) > 0;
+  // installed (`AGENTLAB_INSTALLATIONS_PAGE=1`, as in installations-versions);
+  // the agent-platform chart's portal switches it off, and the card then
+  // names the platform team instead of a dead link. Pinned on the lab, not on
+  // the rendered link, so a portal that lost the binding fails here.
+  const withInstallations = !!process.env.AGENTLAB_INSTALLATIONS_PAGE;
   const enable = withInstallations
     ? 'Enable the Agent Platform'
     : 'Ask your platform team to enable the Agent Platform';
@@ -105,8 +104,13 @@ test('an environment without kagent explains the empty list, New agent still off
       `Agents run on environments with kagent. ${enable} on ${lab.installation} to create agents there.`,
     ),
   ).toBeVisible();
+  const installationsLink = page.getByRole('link', {
+    name: 'Go to Installations',
+  });
   if (withInstallations) {
     await expect(installationsLink).toHaveAttribute('href', '/installations');
+  } else {
+    await expect(installationsLink).toHaveCount(0);
   }
   expect(
     stripped.length,
