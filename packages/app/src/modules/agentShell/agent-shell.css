@@ -46,6 +46,11 @@ html[data-agent-shell] body[data-theme-mode='light'] {
   --bui-bg-warning: #ffe9d6;
   --bui-fg-warning-on-bg: #8f4000;
   --bui-border-warning: #f2c9a3;
+  /* bui's current names for the same warning colours (the three above are
+     deprecated), so what uses them matches the shell's warnings. */
+  --bui-warning-bg-subdued: #ffe9d6;
+  --bui-warning-fg-subdued: #8f4000;
+  --bui-warning-border: #f2c9a3;
   --bui-fg-danger: #c6283a;
   --bui-bg-info: #dff1ff;
   --bui-fg-info-on-bg: #004a7a;

@@ -1604,13 +1604,26 @@ on gazelle on 2026-09-15 (giantswarm/giantswarm#37795).
 `RuntimeLostNotice` explains the loss in the portal's words, with the runtime's
 text as evidence only; the failed-turn entry does the same.
 
-**The way out is a new session with the same agent** (the composer's
-`newSession` prop). It is secondary while the loss is suspected, since a cold
-worker can time out once, and primary once kagent reports it, replacing Send and
-the answer panel. It takes the box's text, else the failed send's text, else
-the person's last message in this session, and follows create, navigate, send
-(see "Starting a session"). `SessionDetailRoute` keys the page on the session,
-so the new one mounts fresh.
+**The way out is a new session with the same agent**: "Continue in a new
+session" inside the notice (`ContinueInNewSessionButton`, under the notice's
+text rather than in bui `Alert`'s `customActions`, which would squeeze the text
+at phone width), the same button an answer kagent did not take offers. While
+the loss is only suspected, since a cold worker can time out once, the box and
+Send stay for the retry and the button is secondary. Once kagent reports the
+loss the session takes no more messages: the page shows no box (only the cost
+chip under the notice), and the button is the one way on. The new session
+carries this one on, as after an answer kagent did not take (see "Carrying the
+session on in a new one"): its first message holds the conversation and the
+open question if the session waits on one, with any answer the lost runtime
+never took. Nothing the box holds goes along. A failed send the transcript does
+not hold (kagent refused it before it recorded the turn) is carried as the
+newest message, once (`withFailedSend`). The images of the message that never
+got its answer (the newest message, with no reply or request after it) go
+along, since the conversation names them. It is titled `Continued: <title>`,
+and the notice says what the first message will hold and shows the answer,
+except while the question card is up and holds it. It follows create, navigate,
+send (see "Starting a session"). `SessionDetailRoute` keys the page on the
+session, so the new one mounts fresh.
 
 **Only a reported loss marks the session** (`Runtime lost` in the header, the
 Sessions table and the rail card); the suspected reading belongs to the notice.
@@ -1800,8 +1813,8 @@ There is no button to attach images with.
   kagent: an OpenAI-compatible endpoint serving a text-only model refuses the
   turn, and the failure path hands the text and the images back to the box.
 - **Sent again.** A stalled turn's message comes back with its images when
-  the turn is stopped, and a lost runtime's new session, started from an empty
-  box, takes the unanswered message with its images.
+  the turn is stopped, and a lost runtime's new session takes the unanswered
+  message's images with the conversation.
 - **The transcript** shows a sent image after the message, as a thumbnail
   (at most 240 × 160 px) that opens at full size; the optimistic copy of a
   message in flight shows its images the same way, from the composer's
@@ -1950,11 +1963,11 @@ same request without the answer at the end of the wait fails the answer with
 
 While that request stands, the page treats it as the end of the session, as it
 does a reported runtime loss: "Could not resume this session" replaces the
-answer card and the new-session button takes Send's place. The notice shows a
-question's answer and says what the new session will start with. The answer is
-not put in the box, which would keep it beside a live Send once a late resume
-moves the task on. Where no new session can be offered, the box is disabled
-instead. No retry is offered, because a second answer goes the same way. Any
+answer card, the page shows no box, and the notice offers "Continue in a new
+session". The notice shows a question's answer and says what the new session
+will start with; the answer goes when a late resume moves the task on, and the
+notice with it. Where no new session can be offered, the notice says where else
+to go. No retry is offered, because a second answer goes the same way. Any
 other answer failure (a refusal, a 5xx, a lost connection) keeps the card with
 "Answer not sent" and its retry. kagent marks nothing, so the session keeps its
 "Waiting for you" state in the list and the rail, and a reload shows the card
@@ -1962,9 +1975,10 @@ again.
 
 #### Carrying the session on in a new one
 
-A new session has an empty model history, so the new session's first message
-carries the conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`),
-built from the page's timeline, which holds the whole task history:
+A new session has an empty model history, so the new session's first message,
+after an answer kagent did not take or a lost runtime, carries the
+conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`), built
+from the page's timeline, which holds the whole task history:
 
 - a first line naming the session it continues,
   `[Continues session <installation>/<session id>]` (see below);
@@ -1979,22 +1993,25 @@ built from the page's timeline, which holds the whole task history:
   and the new session can call a tool again rather than trust a stale result;
 - attachments by name and failed or stopped turns, one line each; not the
   model's reasoning;
-- the open question with its choices, then the answer, or the box's text in
-  its place. An approval's words are never carried.
+- the open question with its choices, then the answer when there is one. An
+  approval's words are never carried, and nothing the person types: the
+  session shows no box once it cannot go on, so the person writes their next
+  message in the new session.
 
 The message stays within `MESSAGE_TEXT_MAX_LENGTH` (32,000 characters), the
 send route's bound. The question (each cut at 4,000 characters, as are its
 choices) and the answer come first; the conversation gives way from its oldest
 end and says how many messages it left out, and the notice says how many of
-them the new session gets, or that none fit. The conversation leaves 4,000
-characters (`REPLY_RESERVE`) for the answer or what the person types in its
-place, so a reply up to that length keeps the count the notice gave. The
-framing says what the message ends with: the question and the answer, or the
-question alone. The open question is found in the timeline by what it asks,
+them the new session gets, or that none fit; the page builds the message once,
+so the start sends what the notice counted. The framing says what the message
+ends with: the question and the answer, the question alone, or the
+conversation. The open question is found in the timeline by what it asks,
 so an answered question whose verdict the timeline could not read stays in the
 history. A session that was itself a continuation is carried on with its first
 message expanded into entries (its earlier conversation, question and answer),
-not clipped as one long message. The session is titled
+not clipped as one long message; an older continuation's `## My reply` (the
+box's text, which earlier versions carried) comes back as the person's message.
+The session is titled
 `Continued: <this session's title>`, with one prefix however often it is
 carried on.
 
@@ -2018,9 +2035,10 @@ separate new-session form. Both composers use `ComposerFrame` from `ui-react`.
 Every entry point creates through `useCreateSession`: the home screen at `/`
 (`AgentPlatformHome`), the command palette (`NewSessionDialog`), the sessions
 list's first-run card (`StartNewSession`), the agent page's dialog, a lost
-runtime's new-session action, the meta-agent hand-offs ("<verb> with
-<agent>", `useMetaAgentHandoff`) and `CreateAgentAssist`.
-The composer grows with its content and never shrinks back. Enter starts.
+runtime's or a failed resume's "Continue in a new session", the meta-agent
+hand-offs ("<verb> with <agent>", `useMetaAgentHandoff`) and
+`CreateAgentAssist`. The composer grows with its content and never shrinks back.
+Enter starts.
 
 #### Create, navigate, then send — in that order
 

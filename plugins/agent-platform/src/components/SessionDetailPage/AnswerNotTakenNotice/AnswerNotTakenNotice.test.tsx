@@ -1,12 +1,18 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { AnswerNotTakenNotice } from './AnswerNotTakenNotice';
 
+const newSession = () => ({ onStart: jest.fn() });
+const continueButton = () =>
+  screen.queryByRole('button', { name: 'Continue in a new session' });
+
 describe('AnswerNotTakenNotice', () => {
-  it('says the session cannot continue, shows the answer and offers the new session', () => {
+  it('says the session cannot continue, shows the answer and offers the new session in itself', async () => {
+    const action = newSession();
     render(
       <AnswerNotTakenNotice
         agentName="Grill master"
-        offersNewSession
+        newSession={action}
         answer="Cyclists"
       />,
     );
@@ -22,20 +28,28 @@ describe('AnswerNotTakenNotice', () => {
     expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Start a new session with Grill master from the message box below to carry on\. Its first message holds this conversation, with tools named but not their results, the open question and your answer; text in the box replaces the answer\./,
+        /To carry on, continue in a new session with Grill master\. Its first message holds this conversation, with tools named but not their results, the open question and your answer\./,
       ),
     ).toBeInTheDocument();
     // Terminal: nothing suggests sending it again.
     expect(screen.queryByText(/retry|again/i)).not.toBeInTheDocument();
+
+    await userEvent.click(continueButton()!);
+    expect(action.onStart).toHaveBeenCalled();
   });
 
-  it('offers the new session without the answer when there is none to carry', () => {
+  it('says the new session gets the open question when there is no answer to carry', () => {
     // An approval's words mean nothing to a new session.
-    render(<AnswerNotTakenNotice agentName="Grill master" offersNewSession />);
+    render(
+      <AnswerNotTakenNotice
+        agentName="Grill master"
+        newSession={newSession()}
+      />,
+    );
 
     expect(
       screen.getByText(
-        /carry on\. Its first message holds this conversation, with tools named but not their results, the open question and the text in the box\./,
+        /Its first message holds this conversation, with tools named but not their results, and the open question\./,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Your answer/)).not.toBeInTheDocument();
@@ -45,7 +59,7 @@ describe('AnswerNotTakenNotice', () => {
     const { rerender } = render(
       <AnswerNotTakenNotice
         agentName="Grill master"
-        offersNewSession
+        newSession={newSession()}
         answer="Cyclists"
         continuation={{ messageCount: 12, includedMessageCount: 12 }}
       />,
@@ -59,7 +73,7 @@ describe('AnswerNotTakenNotice', () => {
     rerender(
       <AnswerNotTakenNotice
         agentName="Grill master"
-        offersNewSession
+        newSession={newSession()}
         answer="Cyclists"
         continuation={{ messageCount: 52, includedMessageCount: 40 }}
       />,
@@ -75,7 +89,7 @@ describe('AnswerNotTakenNotice', () => {
     render(
       <AnswerNotTakenNotice
         agentName="Grill master"
-        offersNewSession
+        newSession={newSession()}
         answer="Cyclists"
         continuation={{ messageCount: 7, includedMessageCount: 0 }}
       />,
@@ -93,7 +107,6 @@ describe('AnswerNotTakenNotice', () => {
     render(
       <AnswerNotTakenNotice
         agentName="Grill master"
-        offersNewSession={false}
         newSessionBlocker="Muster has no per-user sign-in here."
         answer="Cyclists"
       />,
@@ -105,23 +118,25 @@ describe('AnswerNotTakenNotice', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
+    expect(continueButton()).not.toBeInTheDocument();
   });
 
   it('points to the Sessions list when the page cannot offer the new session', () => {
-    render(<AnswerNotTakenNotice offersNewSession={false} />);
+    render(<AnswerNotTakenNotice />);
 
     expect(
       screen.getByText(
         /Continue in a new session with the same agent from the Sessions list\./,
       ),
     ).toBeInTheDocument();
+    expect(continueButton()).not.toBeInTheDocument();
   });
 
-  it('reports a failed start', () => {
+  it('reports a failed start, with the button there to try again', () => {
     render(
       <AnswerNotTakenNotice
         agentName="Grill master"
-        offersNewSession
+        newSession={newSession()}
         startError="kagent does not know the agent"
       />,
     );
@@ -131,5 +146,6 @@ describe('AnswerNotTakenNotice', () => {
         'The new session could not be started: kagent does not know the agent',
       ),
     ).toBeInTheDocument();
+    expect(continueButton()).toBeEnabled();
   });
 });
