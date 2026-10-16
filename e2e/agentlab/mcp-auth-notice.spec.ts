@@ -276,7 +276,15 @@ test('the notice’s status poll never asks for the sign-in once the portal sess
     const page = await context.newPage();
     await page.clock.install();
     await signIn(page, lab.users.admin);
-    const notice = await showNoticeOn(page, '/catalog');
+    // A page that reads nothing of its own (Not Found, the chrome alone):
+    // whatever asks for the sign-in after the jump is the notice's doing.
+    const notice = await showNoticeOn(page, '/mcp-auth-notice-e2e-quiet-page');
+
+    // What the page itself has queued (a catalog lookup batches on a timer)
+    // runs while the session is still good: after the jump, the page has
+    // nothing of its own left to ask for a token.
+    await page.clock.runFor(5_000);
+    await page.waitForLoadState('networkidle');
 
     // The portal session is gone: its refresh is refused, as Dex's would be.
     await page.route('**/api/auth/*/refresh**', route =>
@@ -309,8 +317,16 @@ test('the notice’s status poll never asks for the sign-in once the portal sess
     expect(statusReads, 'no status read is sent without a session').toEqual([]);
     await expect(notice, 'the notice stays as it was').toBeVisible();
 
-    // A person's own action that needs the session still asks for it, once.
-    await page.getByRole('link', { name: 'Customize' }).first().click();
+    // A person's own action still asks for the session: Sign in on the
+    // notice, then on the server's row.
+    await notice.getByRole('button', { name: 'Sign in' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Sign in to MCP servers' });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByRole('listitem')
+      .filter({ hasText: FIXTURE })
+      .getByRole('button', { name: 'Sign in' })
+      .click();
     await expect(login, 'the action asks for the sign-in').toBeVisible({
       timeout: 60_000,
     });

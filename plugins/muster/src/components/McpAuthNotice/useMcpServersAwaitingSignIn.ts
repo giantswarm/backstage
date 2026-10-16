@@ -22,6 +22,11 @@ export type McpServersAwaitingSignIn = {
   statuses: ServerAuthStatus[];
   /** True until the first answer. */
   isLoading: boolean;
+  /**
+   * The portal session is gone: the status is not read until the person is
+   * back, and nothing reading in the background should ask for the sign-in.
+   */
+  sessionExpired: boolean;
 };
 
 function isSessionExpired(error: unknown): boolean {
@@ -43,7 +48,7 @@ export function useMcpServersAwaitingSignIn(
   const { servers, enabled = true } = options;
   const musterApi = useApi(musterApiRef);
 
-  const { data, isPending } = useQuery({
+  const { data, error, isPending } = useQuery({
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled,
@@ -68,6 +73,7 @@ export function useMcpServersAwaitingSignIn(
       statuses,
       waiting: statuses.filter(needsSignIn).map(status => status.name),
       isLoading: enabled && isPending,
+      sessionExpired: isSessionExpired(error),
     };
-  }, [data, serversKey, enabled, isPending]);
+  }, [data, error, serversKey, enabled, isPending]);
 }

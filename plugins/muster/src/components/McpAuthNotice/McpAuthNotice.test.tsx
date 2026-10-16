@@ -17,15 +17,31 @@ import { MCPServer } from '../../lib/k8s';
 
 /** The installation's MCPServers, per test; none by default. */
 let mockServers: MCPServer[] = [];
+/** Whether each read of the MCPServers was enabled, in render order. */
+const mockServerReads: boolean[] = [];
+const mockServerReadOptions: object[] = [];
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({
-    resources: mockServers,
-    errors: [],
-    queries: [],
-    isLoading: false,
-    retry: jest.fn(),
-  }),
+  useResources: (
+    _clusters: unknown,
+    _kind: unknown,
+    _options: unknown,
+    queryOptions: {
+      enabled?: boolean;
+      enableDiscovery?: boolean;
+      staleTime?: number;
+    } = {},
+  ) => {
+    mockServerReads.push(queryOptions.enabled ?? true);
+    mockServerReadOptions.push(queryOptions);
+    return {
+      resources: mockServers,
+      errors: [],
+      queries: [],
+      isLoading: false,
+      retry: jest.fn(),
+    };
+  },
 }));
 
 function annotated(name: string, displayName: string): MCPServer {
@@ -45,6 +61,8 @@ function annotated(name: string, displayName: string): MCPServer {
 
 afterEach(() => {
   mockServers = [];
+  mockServerReads.length = 0;
+  mockServerReadOptions.length = 0;
 });
 
 jest.mock('./useNoticeInstallation', () => ({
@@ -144,6 +162,30 @@ describe('McpAuthNotice', () => {
     } finally {
       jest.restoreAllMocks();
     }
+  });
+
+  it('stops reading the server names once the portal session has expired', async () => {
+    // The names come from the installation's MCPServers through the cluster
+    // token, which a person with no session would be asked to sign in for.
+    const response: AuthStatusResponse = {
+      servers: [waitingFor('workspace-manager')],
+    };
+    const api = makeApi(response);
+    const queryClient = await renderNotice(api);
+    await screen.findByText('1 MCP server needs your sign-in');
+    expect(mockServerReads).toContain(true);
+    // Read once: no discovery and no refetch of its own that could ask for
+    // the cluster token in the background.
+    expect(mockServerReadOptions.at(-1)).toMatchObject({
+      enableDiscovery: false,
+      staleTime: Infinity,
+    });
+
+    mockServerReads.length = 0;
+    api.getAuthStatus.mockRejectedValue(sessionExpiredError('graveler'));
+    await queryClient.refetchQueries({ queryKey: ['muster'] });
+    await waitFor(() => expect(mockServerReads.length).toBeGreaterThan(0));
+    expect(mockServerReads).not.toContain(true);
   });
 
   it('shows nothing, and reserves nothing, once the portal session has expired', async () => {

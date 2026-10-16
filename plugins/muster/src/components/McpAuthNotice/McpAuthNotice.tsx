@@ -123,15 +123,20 @@ function namedList(names: string[]): string {
 export function McpAuthNoticeContent() {
   const classes = useStyles();
   const installation = useNoticeInstallation();
-  const { waiting } = useMcpServersAwaitingSignIn(installation, {
-    enabled: Boolean(installation),
-  });
+  const { waiting, sessionExpired } = useMcpServersAwaitingSignIn(
+    installation,
+    {
+      enabled: Boolean(installation),
+    },
+  );
   const [hidden, setHidden] = useState<string[]>(readHidden);
   const [isDialogOpen, setDialogOpen] = useState(false);
   const [notice, setNotice] = useState<HTMLElement | null>(null);
   useFloatingNoticeClearance(notice);
 
-  const labelOf = useServerLabels(installation, waiting);
+  const labelOf = useServerLabels(installation, waiting, {
+    enabled: !sessionExpired,
+  });
   const isHidden = waiting.every(name => hidden.includes(name));
   const showNotice = waiting.length > 0 && !isHidden;
 
