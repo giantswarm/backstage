@@ -3,6 +3,10 @@ import { Config } from '@backstage/config';
 import { InputError, NotFoundError } from '@backstage/errors';
 import express from 'express';
 import Router from 'express-promise-router';
+import {
+  errorCode,
+  isDnsErrorCode,
+} from '@giantswarm/backstage-plugin-gs-node';
 import { readInstallationBaseDomain } from './installationDomain';
 
 /**
@@ -31,10 +35,11 @@ import { readInstallationBaseDomain } from './installationDomain';
  * upstream cannot send this backend anywhere else either.
  *
  * An installation that serves no avatars (its avatars host has no address,
- * or refuses the path with a 4xx because DiceBear is off) answers 404, the
- * answer for an agent without an avatar: the browser shows the initials. A
- * 502 is left for a renderer that is there and fails (a 5xx, a timeout,
- * something other than a raster image).
+ * or a route that is not the renderer answers 406 because DiceBear is off)
+ * answers 404, the answer for an agent without an avatar, for a minute without
+ * asking again: the browser shows the initials. A 502 is left for a renderer
+ * or gateway in trouble (another 4xx, a 5xx, a timeout, something other than
+ * a raster image).
  *
  * Authentication is the plugin's cookie policy for this path — an `<img>`
  * carries no bearer token — see plugin.ts.
@@ -44,6 +49,8 @@ export interface AvatarRouterOptions {
   logger: LoggerService;
   /** Overridable for tests. */
   fetchFn?: typeof fetch;
+  /** Overridable clock for tests. */
+  now?: () => number;
 }
 
 /** Sizes the avatar endpoint allowlists. Must match AVATAR_SIZES in plugins/agent-platform. */
@@ -155,11 +162,9 @@ type UpstreamAnswer =
   | { kind: 'not-found' }
   | {
       /**
-       * The installation serves no avatars: its avatars host has no address,
-       * or refuses the path with a client error (a catch-all route answered,
-       * the chart's DiceBear is off). The request is built from validated
-       * parts only, so a 4xx is the installation's answer, not a fault of
-       * this backend or of a renderer that is down.
+       * The installation serves no avatars ({@link NOT_SERVED_STATUS}, or no
+       * address for its avatars host): the answer for an agent without an
+       * avatar, not a fault of a renderer.
        */
       kind: 'not-served';
       reason: string;
@@ -174,6 +179,23 @@ type UpstreamAnswer =
       /** The varying parts, for the log's structured metadata. */
       details?: Record<string, string | number>;
     };
+
+/**
+ * The status that says the avatars host is not the renderer: the renderer
+ * answers any `image/*`, so a 406 comes from a route that negotiates something
+ * else — the edge's catch-all MCP route of an installation whose DiceBear is
+ * off. Every other 4xx (an auth gate, a rate limit, a size a renderer
+ * refuses) is a renderer or a gateway in trouble and stays a 502.
+ */
+const NOT_SERVED_STATUS = 406;
+
+/** How long an installation that serves no avatars is not asked again. */
+const NOT_SERVED_TTL_MS = 60_000;
+
+/** Lets an unread answer's connection go back to the pool. */
+async function discard(upstream: Response): Promise<void> {
+  await upstream.body?.cancel().catch(() => undefined);
+}
 
 /**
  * One fetch of an avatar, classified. Nothing of the browser's request goes
@@ -201,30 +223,23 @@ async function fetchAvatar(
       return { kind: 'not-modified', headers: upstream.headers };
     }
     if (upstream.status === 404) {
+      await discard(upstream);
       return { kind: 'not-found' };
     }
     const contentType = upstream.headers.get('content-type') ?? '';
-    if (upstream.status >= 400 && upstream.status < 500) {
-      return {
-        kind: 'not-served',
-        reason: contentType
-          ? `answered ${upstream.status} with ${contentType}`
-          : `answered ${upstream.status}`,
-        details: { status: upstream.status, contentType },
-      };
-    }
     if (!upstream.ok) {
-      return {
-        kind: 'failed',
-        problem: 'answered an error',
-        reason: contentType
-          ? `answered ${upstream.status} with ${contentType}`
-          : `answered ${upstream.status}`,
-        details: { status: upstream.status, contentType },
-      };
+      await discard(upstream);
+      const reason = contentType
+        ? `answered ${upstream.status} with ${contentType}`
+        : `answered ${upstream.status}`;
+      const details = { status: upstream.status, contentType };
+      return upstream.status === NOT_SERVED_STATUS
+        ? { kind: 'not-served', reason, details }
+        : { kind: 'failed', problem: 'answered an error', reason, details };
     }
 
     if (!RASTER_TYPES.has(mediaType(contentType))) {
+      await discard(upstream);
       return {
         kind: 'failed',
         problem: 'answered something other than a raster image',
@@ -234,6 +249,7 @@ async function fetchAvatar(
     }
     const declared = Number(upstream.headers.get('content-length') ?? 0);
     if (declared > MAX_BODY_BYTES) {
+      await discard(upstream);
       return {
         kind: 'failed',
         problem: 'sent an avatar too large to forward',
@@ -260,10 +276,11 @@ async function fetchAvatar(
       };
     }
     const message = error instanceof Error ? error.message : String(error);
-    if (resolvesNowhere(error)) {
+    const code = errorCode(error);
+    if (isDnsErrorCode(code)) {
       return {
         kind: 'not-served',
-        reason: 'has no address',
+        reason: `has no address (${code})`,
         details: { error: message },
       };
     }
@@ -276,16 +293,6 @@ async function fetchAvatar(
   } finally {
     clearTimeout(timer);
   }
-}
-
-/** Whether a fetch failed because the host name has no address (`fetch` puts the DNS error in `cause`). */
-function resolvesNowhere(error: unknown): boolean {
-  const cause = error instanceof Error ? error.cause : undefined;
-  const code =
-    cause && typeof cause === 'object' && 'code' in cause
-      ? String(cause.code)
-      : undefined;
-  return code === 'ENOTFOUND';
 }
 
 function forwardHeaders(res: express.Response, headers: Headers): void {
@@ -302,7 +309,28 @@ export function createAvatarRouter(
 ): express.Router {
   const { config, logger } = options;
   const fetchFn = options.fetchFn ?? fetch;
+  const now = options.now ?? Date.now;
   const router = Router();
+  /** Installations found to serve no avatars, until when, and why. */
+  const notServed = new Map<string, { until: number; reason: string }>();
+
+  // A 404 with the reason, cached as long as the finding is: the browser does
+  // not ask again for a minute, and this backend does not ask the upstream.
+  const answerNotServed = (
+    res: express.Response,
+    installation: string,
+    reason: string,
+    until: number,
+  ) => {
+    const maxAge = Math.max(0, Math.ceil((until - now()) / 1000));
+    res.setHeader('Cache-Control', `private, max-age=${maxAge}`);
+    res.status(404).json({
+      error: {
+        name: 'NotFoundError',
+        message: `The installation '${installation}' serves no avatars: its avatars host ${reason}.`,
+      },
+    });
+  };
 
   router.get('/avatars/:installation/v1/*rest', async (req, res) => {
     const installation = String(req.params.installation);
@@ -319,6 +347,12 @@ export function createAvatarRouter(
       );
     }
     const url = `https://avatars.${baseDomain}/${avatarPath(target)}`;
+
+    const known = notServed.get(installation);
+    if (known && known.until > now()) {
+      answerNotServed(res, installation, known.reason, known.until);
+      return;
+    }
 
     const ifNoneMatch = req.headers['if-none-match'];
     const answer = await fetchAvatar(
@@ -344,18 +378,21 @@ export function createAvatarRouter(
         throw new NotFoundError(
           `No avatar for '${target.name}' on '${installation}'.`,
         );
-      case 'not-served':
-        // A defined answer, not a failure: the browser shows the initials,
-        // as it does for any agent without an avatar. Logged at debug: every
-        // image of every page that lists agents asks again.
-        logger.debug('The installation serves no avatars', {
+      case 'not-served': {
+        // A defined answer, not a failure: the browser shows the initials, as
+        // for any agent without an avatar. Logged once per finding at info,
+        // so an installation that should serve avatars (a wrong base domain,
+        // a renderer switched off by mistake) still shows in the logs.
+        const until = now() + NOT_SERVED_TTL_MS;
+        notServed.set(installation, { until, reason: answer.reason });
+        logger.info('The installation serves no avatars', {
           url,
           installation,
           ...answer.details,
         });
-        throw new NotFoundError(
-          `The installation '${installation}' serves no avatars: its avatars host ${answer.reason}.`,
-        );
+        answerNotServed(res, installation, answer.reason, until);
+        return;
+      }
       case 'failed':
         // Answered rather than thrown: `MiddlewareFactory.error()` forwards
         // every 5xx to Sentry, and an avatar service that is down fails once

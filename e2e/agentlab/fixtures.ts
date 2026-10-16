@@ -374,8 +374,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         DROP_CACHES_FLAG,
       )
       .catch(() => undefined);
-    expect(errors, 'no uncaught errors on the page').toEqual([]);
-    expect(badAvatars, 'no avatar answered 502').toEqual([]);
+    // Soft, so one failing does not hide the other.
+    expect.soft(errors, 'no uncaught errors on the page').toEqual([]);
+    expect.soft(badAvatars, 'no avatar answered 502').toEqual([]);
   },
 
   signInAs: async ({ browser, variant }, use) => {

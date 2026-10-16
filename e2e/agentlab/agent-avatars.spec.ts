@@ -66,10 +66,9 @@ test('avatars are requested from the portal’s origin with the backend’s cook
     expect([401, 403], 'the cookie authenticates the image load').not.toContain(
       status,
     );
-    expect(
-      status,
-      'an installation without a renderer is no bad gateway',
-    ).not.toBe(502);
+    // The lab serves no avatars: an agent without one is a 404. A lab that
+    // gains a renderer answers 200.
+    expect([200, 404], 'an avatar or none, never an error').toContain(status);
   }
   test.info().annotations.push({
     type: 'avatar responses',
