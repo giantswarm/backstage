@@ -30,6 +30,12 @@ import { readInstallationBaseDomain } from './installationDomain';
  * and nothing else of the request reaches it. Redirects are refused, so an
  * upstream cannot send this backend anywhere else either.
  *
+ * An installation that serves no avatars (its avatars host has no address,
+ * or refuses the path with a 4xx because DiceBear is off) answers 404, the
+ * answer for an agent without an avatar: the browser shows the initials. A
+ * 502 is left for a renderer that is there and fails (a 5xx, a timeout,
+ * something other than a raster image).
+ *
  * Authentication is the plugin's cookie policy for this path — an `<img>`
  * carries no bearer token — see plugin.ts.
  */
@@ -148,6 +154,18 @@ type UpstreamAnswer =
   | { kind: 'not-modified'; headers: Headers }
   | { kind: 'not-found' }
   | {
+      /**
+       * The installation serves no avatars: its avatars host has no address,
+       * or refuses the path with a client error (a catch-all route answered,
+       * the chart's DiceBear is off). The request is built from validated
+       * parts only, so a 4xx is the installation's answer, not a fault of
+       * this backend or of a renderer that is down.
+       */
+      kind: 'not-served';
+      reason: string;
+      details?: Record<string, string | number>;
+    }
+  | {
       kind: 'failed';
       /** Fixed wording for the log message (Sentry fingerprints on it). */
       problem: string;
@@ -186,10 +204,16 @@ async function fetchAvatar(
       return { kind: 'not-found' };
     }
     const contentType = upstream.headers.get('content-type') ?? '';
+    if (upstream.status >= 400 && upstream.status < 500) {
+      return {
+        kind: 'not-served',
+        reason: contentType
+          ? `answered ${upstream.status} with ${contentType}`
+          : `answered ${upstream.status}`,
+        details: { status: upstream.status, contentType },
+      };
+    }
     if (!upstream.ok) {
-      // An error that is not even an image service's (an HTML or plain-text
-      // page) usually means the host is not routed to the avatar service at
-      // all — the chart's DiceBear is off, and a catch-all route answered.
       return {
         kind: 'failed',
         problem: 'answered an error',
@@ -236,6 +260,13 @@ async function fetchAvatar(
       };
     }
     const message = error instanceof Error ? error.message : String(error);
+    if (resolvesNowhere(error)) {
+      return {
+        kind: 'not-served',
+        reason: 'has no address',
+        details: { error: message },
+      };
+    }
     return {
       kind: 'failed',
       problem: 'could not be reached',
@@ -245,6 +276,16 @@ async function fetchAvatar(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Whether a fetch failed because the host name has no address (`fetch` puts the DNS error in `cause`). */
+function resolvesNowhere(error: unknown): boolean {
+  const cause = error instanceof Error ? error.cause : undefined;
+  const code =
+    cause && typeof cause === 'object' && 'code' in cause
+      ? String(cause.code)
+      : undefined;
+  return code === 'ENOTFOUND';
 }
 
 function forwardHeaders(res: express.Response, headers: Headers): void {
@@ -302,6 +343,18 @@ export function createAvatarRouter(
       case 'not-found':
         throw new NotFoundError(
           `No avatar for '${target.name}' on '${installation}'.`,
+        );
+      case 'not-served':
+        // A defined answer, not a failure: the browser shows the initials,
+        // as it does for any agent without an avatar. Logged at debug: every
+        // image of every page that lists agents asks again.
+        logger.debug('The installation serves no avatars', {
+          url,
+          installation,
+          ...answer.details,
+        });
+        throw new NotFoundError(
+          `The installation '${installation}' serves no avatars: its avatars host ${answer.reason}.`,
         );
       case 'failed':
         // Answered rather than thrown: `MiddlewareFactory.error()` forwards

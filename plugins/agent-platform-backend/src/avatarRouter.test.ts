@@ -172,19 +172,51 @@ describe('GET /avatars/:installation/v1/...', () => {
 
   it.each([
     [
-      'answers an error',
-      () => new Response('down', { status: 503 }),
-      /answered 503/,
-    ],
-    [
-      // The lab's avatars host without DiceBear: a catch-all MCP route.
-      'is not behind the host at all',
+      // An installation without DiceBear: a catch-all MCP route answers.
+      'its avatars host refuses the path',
       () =>
         new Response('mcp: client must accept text/event-stream', {
           status: 406,
           headers: { 'Content-Type': 'text/plain; charset=utf-8' },
         }),
-      /answered 406 with text\/plain/,
+      /serves no avatars: its avatars host answered 406 with text\/plain/,
+    ],
+    [
+      'its avatars host has no address',
+      () =>
+        Promise.reject(
+          new TypeError('fetch failed', {
+            cause: Object.assign(new Error('getaddrinfo ENOTFOUND'), {
+              code: 'ENOTFOUND',
+            }),
+          }),
+        ),
+      /serves no avatars: its avatars host has no address/,
+    ],
+  ])(
+    'answers an agent without an avatar 404, not 502, when the installation %s',
+    async (_, answer, reason) => {
+      const logger = mockServices.logger.mock();
+      const fetchFn = upstream(answer);
+
+      const response = await request(app(fetchFn, logger)).get(
+        '/avatars/gazelle/v1/48/e2e-agent.png',
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.name).toBe('NotFoundError');
+      expect(response.body.error.message).toMatch(reason);
+      // Handled, not a fault: nothing for Sentry.
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [
+      'answers an error',
+      () => new Response('down', { status: 503 }),
+      /answered 503/,
     ],
     [
       'answers something that is not an image',
