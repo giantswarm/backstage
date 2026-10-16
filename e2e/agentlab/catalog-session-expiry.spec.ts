@@ -54,6 +54,32 @@ async function expireSession(page: Page) {
   await page.clock.fastForward('02:00:00');
 }
 
+/**
+ * Reports the tab's user activation (`navigator.userActivation.isActive`) as
+ * a browser does for a tab nobody touches, until {@link touch}: Playwright's
+ * own calls (the fake clock's, a locator's) count as gestures, so under it a
+ * page reads as just clicked all the time. The portal lets only a request a
+ * person's gesture starts open the sign-in.
+ */
+async function idleTab(page: Page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, 'userActivation', {
+      configurable: true,
+      get: () => ({
+        isActive: Boolean((window as any).__e2eUserGesture),
+        hasBeenActive: true,
+      }),
+    });
+  });
+}
+
+/** The person acts: the tab's next requests carry a user gesture. */
+async function touch(page: Page) {
+  await page.evaluate(() => {
+    (window as any).__e2eUserGesture = true;
+  });
+}
+
 for (const path of ['/catalog', '/settings']) {
   test(`idling on ${path} after the session expired opens no Login Required dialog`, async ({
     browser,
@@ -63,6 +89,7 @@ for (const path of ['/catalog', '/settings']) {
     try {
       const page = await context.newPage();
       await page.clock.install();
+      await idleTab(page);
       await dismissMcpSignInNotice(page);
       await signIn(page, lab.users.admin);
       await open(page, path);
@@ -93,6 +120,7 @@ for (const path of ['/catalog', '/settings']) {
       // A person's own action still asks for the sign-in: opening Clusters
       // from the sidebar, in the app (no reload), reads the clusters with
       // the session's token on the interactive path.
+      await touch(page);
       await page
         .getByRole('navigation', { name: 'sidebar nav' })
         .getByRole('link', { name: 'Clusters' })
