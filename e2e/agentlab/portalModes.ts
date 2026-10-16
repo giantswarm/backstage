@@ -32,6 +32,7 @@ export const SHELL_SPECS = [
   'mcp-auth-notice.spec.ts',
   'mcp-server-auth-modes.spec.ts',
   'mcp-servers.spec.ts',
+  'muster-namespaced.spec.ts',
   'model-backends.spec.ts',
   'models.spec.ts',
   'serve-node-choice.spec.ts',

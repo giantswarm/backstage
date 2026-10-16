@@ -6,6 +6,7 @@ import {
   open,
   test,
 } from './fixtures';
+import { connectorRow, INVENTORY_REJECTED_TOKEN, SHOWN } from './connectors';
 import { lab } from './lab';
 
 /**
@@ -49,11 +50,6 @@ async function openTechnicalDetails(page: Page) {
   }).toPass();
 }
 
-/** A connector's row in the table: its name, then its description. */
-function connectorRow(page: Page, name: string) {
-  return page.getByRole('row', { name: new RegExp(`^${name}( |$)`) });
-}
-
 test('Customize · Connectors lists the customer’s connectors first, on their own sub-tab', async ({
   admin,
 }) => {
@@ -75,12 +71,12 @@ test('Customize · Connectors lists the customer’s connectors first, on their 
     'Status',
   ]);
   // The fixture carries no tool-group label: it is the customer's.
-  await expect(connectorRow(admin, 'lab-oauth-fixture')).toBeVisible();
-  for (const name of ['agent-manager', KUBERNETES_FAMILY, 'muster']) {
+  await expect(connectorRow(admin, SHOWN.fixture)).toBeVisible();
+  for (const name of [SHOWN.agentManager, SHOWN.kubernetes, SHOWN.muster]) {
     await expect(connectorRow(admin, name)).toHaveCount(0);
   }
   // The fixture asks each person to sign in, right from its row.
-  const fixture = connectorRow(admin, 'lab-oauth-fixture');
+  const fixture = connectorRow(admin, SHOWN.fixture);
   await expect(fixture).toContainText('Your own account');
   await expect(fixture.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await expect(
@@ -92,16 +88,23 @@ test('Infrastructure lists the infrastructure servers, Internal the platform’s
   admin,
 }) => {
   await open(admin, infrastructurePath);
-  await connectToMuster(admin, admin.getByRole('grid'));
-  await expect(connectorRow(admin, KUBERNETES_FAMILY)).toBeVisible();
-  await expect(connectorRow(admin, 'lab-oauth-fixture')).toHaveCount(0);
+  // A refused inventory probe replaces the views with its gate
+  // (inventory-gate.spec.ts): ready on either, so that failure names the gate.
+  const inventoryGate = admin.getByText(INVENTORY_REJECTED_TOKEN);
+  await connectToMuster(admin, admin.getByRole('grid').or(inventoryGate));
+  await expect(
+    inventoryGate,
+    "the API server accepted the portal's token: no inventory gate",
+  ).toHaveCount(0);
+  await expect(connectorRow(admin, SHOWN.kubernetes)).toBeVisible();
+  await expect(connectorRow(admin, SHOWN.fixture)).toHaveCount(0);
 
   await admin.getByRole('tab', { name: /^Internal/ }).click();
   await expect(admin).toHaveURL(
     new RegExp(`/customize/connectors/internal\\${scope}$`),
   );
-  await expect(connectorRow(admin, 'agent-manager')).toBeVisible();
-  const muster = connectorRow(admin, 'muster');
+  await expect(connectorRow(admin, SHOWN.agentManager)).toBeVisible();
+  const muster = connectorRow(admin, SHOWN.muster);
   await expect(muster).toBeVisible();
   // Its endpoint is on its page, not its row.
   await expect(
@@ -150,12 +153,12 @@ test('searching a tool name narrows the table to the connectors offering it', as
     .click();
   await expect(admin).toHaveURL(/\/customize\/connectors\/infrastructure\?/);
 
-  const kubernetes = connectorRow(admin, KUBERNETES_FAMILY);
+  const kubernetes = connectorRow(admin, SHOWN.kubernetes);
   await expect(kubernetes, 'kubernetes offers cluster_health').toBeVisible({
     timeout: 60_000,
   });
-  await expect(connectorRow(admin, 'lab-oauth-fixture')).toHaveCount(0);
-  await expect(connectorRow(admin, 'agent-manager')).toHaveCount(0);
+  await expect(connectorRow(admin, SHOWN.fixture)).toHaveCount(0);
+  await expect(connectorRow(admin, SHOWN.agentManager)).toHaveCount(0);
 
   await kubernetes.getByRole('rowheader').click();
   // Its Tools tab opens on the same search, at the tools that matched.
@@ -215,8 +218,12 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per co
 
   // The per-server session is muster's, per user, and outlives a page: a
   // previous run may have left the fixture signed in — sign out first (the
-  // header's More actions), so the flow under test is the sign-in.
-  const signIn = admin.getByRole('button', { name: 'Sign in' }).first();
+  // header's More actions), so the flow under test is the sign-in. The page's
+  // own Sign in, not the one of the portal-wide sign-in notice.
+  const signIn = admin
+    .getByRole('main')
+    .getByRole('button', { name: 'Sign in' })
+    .first();
   const moreActions = admin.getByRole('button', { name: 'More actions' });
   const signOut = async () => {
     await moreActions.click();
@@ -250,12 +257,12 @@ test("a family's row opens its connector page, with the family's tabs", async ({
 }) => {
   await open(admin, infrastructurePath);
   await connectToMuster(admin, admin.getByRole('grid'));
-  await connectorRow(admin, KUBERNETES_FAMILY).getByRole('rowheader').click();
+  await connectorRow(admin, SHOWN.kubernetes).getByRole('rowheader').click();
 
   await expect(
     admin.getByRole('heading', {
       level: 1,
-      name: KUBERNETES_FAMILY,
+      name: SHOWN.kubernetes,
       exact: true,
     }),
   ).toBeVisible();
@@ -299,7 +306,7 @@ test("muster's own connector page lists its core tools, and one opens on its pag
   test.setTimeout(120_000);
   await open(admin, internalPath);
   await connectToMuster(admin, admin.getByRole('grid'));
-  await connectorRow(admin, 'muster').getByRole('rowheader').click();
+  await connectorRow(admin, SHOWN.muster).getByRole('rowheader').click();
   await expect(admin).toHaveURL(
     new RegExp(`/agent-platform/connectors/muster\\${scope}$`),
   );

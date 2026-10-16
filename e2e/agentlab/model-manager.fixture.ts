@@ -47,6 +47,8 @@ export type ModelManagerStub = {
 
 const TOOL_PREFIX = 'x_model-manager_';
 
+let modelManagerVerdict: Promise<string | undefined> | undefined;
+
 /**
  * Why the lab cannot show Model hosting, or undefined when it can: the
  * portal draws the serving layer where model-manager answers (or KServe's API
@@ -65,8 +67,6 @@ export function modelManagerUnavailable(
   });
   return modelManagerVerdict;
 }
-
-let modelManagerVerdict: Promise<string | undefined> | undefined;
 
 async function readModelManagerVerdict(
   page: Page,
