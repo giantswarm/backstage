@@ -4,6 +4,8 @@ export { StateBadge } from './StateBadge';
 export type { StateBadgeProps } from './StateBadge';
 export { EffectBadge } from './EffectBadge';
 export type { EffectBadgeProps } from './EffectBadge';
+export { MarkerBadge } from './MarkerBadge';
+export type { MarkerBadgeProps } from './MarkerBadge';
 // `Stat` moved to `ui-react` when the agent-platform Usage page needed it too.
 // Re-exported from here so muster's own call sites and its public
 // `src/index.ts` surface stay unchanged.

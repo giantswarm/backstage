@@ -20,6 +20,7 @@ import {
   runSpoken,
   toolLine,
 } from './flowLabels';
+import { EffectBadge, MarkerBadge } from '../shared';
 import { WorkflowStepDetails } from './WorkflowStepDetails';
 
 /** The cleanup lane's line, the same words the canvas puts on it. */
@@ -150,21 +151,11 @@ const useStyles = makeStyles({
     flexWrap: 'wrap',
     gap: 4,
   },
+  // The canvas's marker size; the look is MarkerBadge's.
   marker: {
     height: 18,
     padding: '0 6px',
-    borderRadius: 6,
-    border: '1px solid var(--bui-border-2)',
-    background: 'var(--bui-bg-neutral-1)',
-    fontSize: 11,
-    lineHeight: '16px',
     whiteSpace: 'nowrap',
-    color: 'var(--bui-fg-secondary)',
-  },
-  markerChanges: {
-    borderColor: 'var(--bui-warning-border)',
-    background: 'var(--bui-warning-bg-subdued)',
-    color: 'var(--bui-warning-fg-subdued)',
   },
   cleanup: {
     display: 'flex',
@@ -278,17 +269,11 @@ function StepCard({
       )}
       {hasMarkers && (
         <span className={classes.markers}>
-          {effect && (
-            <span
-              className={`${classes.marker} ${
-                effect === 'changes' ? classes.markerChanges : ''
-              }`}
-            >
-              {effect === 'changes' ? 'Changes things' : 'Reads'}
-            </span>
-          )}
+          {effect && <EffectBadge effect={effect} className={classes.marker} />}
           {node.allowFailure && (
-            <span className={classes.marker}>May fail</span>
+            <MarkerBadge tone="neutral" className={classes.marker}>
+              May fail
+            </MarkerBadge>
           )}
         </span>
       )}

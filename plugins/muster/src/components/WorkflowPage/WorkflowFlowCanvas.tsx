@@ -41,7 +41,7 @@ import {
   stepToolEffects,
   TitleFit,
 } from '../../lib/workflowGraph';
-import { useToolCatalogue } from '../shared';
+import { EffectBadge, MarkerBadge, useToolCatalogue } from '../shared';
 import {
   accessibleName,
   quietStatus,
@@ -380,21 +380,11 @@ const useStyles = makeStyles({
     display: 'flex',
     gap: 4,
   },
+  // A marker's size where it rides the edge; its look is MarkerBadge's.
   marker: {
     height: 18,
     padding: '0 6px',
-    borderRadius: 6,
-    border: '1px solid var(--bui-border-2)',
-    background: 'var(--bui-bg-neutral-1)',
-    fontSize: 11,
-    lineHeight: '16px',
     whiteSpace: 'nowrap',
-    color: 'var(--bui-fg-secondary)',
-  },
-  markerChanges: {
-    borderColor: 'var(--bui-warning-border)',
-    background: 'var(--bui-warning-bg-subdued)',
-    color: 'var(--bui-warning-fg-subdued)',
   },
   gate: {
     position: 'absolute',
@@ -485,16 +475,12 @@ function Markers({
   }
   return (
     <span className={classes.markers}>
-      {effect && (
-        <span
-          className={`${classes.marker} ${
-            effect === 'changes' ? classes.markerChanges : ''
-          }`}
-        >
-          {effect === 'changes' ? 'Changes things' : 'Reads'}
-        </span>
+      {effect && <EffectBadge effect={effect} className={classes.marker} />}
+      {allowFailure && (
+        <MarkerBadge tone="neutral" className={classes.marker}>
+          May fail
+        </MarkerBadge>
       )}
-      {allowFailure && <span className={classes.marker}>May fail</span>}
     </span>
   );
 }
@@ -632,7 +618,11 @@ function Group({
         >
           {title}
         </span>
-        {node?.allowFailure && <span className={classes.marker}>May fail</span>}
+        {node?.allowFailure && (
+          <MarkerBadge tone="neutral" className={classes.marker}>
+            May fail
+          </MarkerBadge>
+        )}
       </span>
       <span className={classes.subRow}>
         <span className={classes.groupLabel} title={group.label}>
@@ -960,10 +950,8 @@ export function WorkflowFlowCanvas({
       <Text as="span" variant="body-small" color="secondary">
         What each step's tool does:
       </Text>
-      <span className={classes.marker}>Reads</span>
-      <span className={`${classes.marker} ${classes.markerChanges}`}>
-        Changes things
-      </span>
+      <EffectBadge effect="reads" className={classes.marker} />
+      <EffectBadge effect="changes" className={classes.marker} />
     </span>
   );
 
