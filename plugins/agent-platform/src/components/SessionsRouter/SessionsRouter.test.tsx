@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
+import { sessionsRouteRef } from '../../routes';
 import { SessionsRouter } from './SessionsRouter';
 
 function mockPassThrough({ children }: { children: ReactNode }) {
@@ -25,23 +26,47 @@ jest.mock('./SessionDetailRoute', () => ({
   SessionDetailRoute: () => <p>Session detail</p>,
 }));
 
+function Where() {
+  return <p>At {useLocation().pathname}</p>;
+}
+
 function renderAt(path: string) {
   return renderInTestApp(
     <Routes>
-      <Route path="/agent-platform/sessions/*" element={<SessionsRouter />} />
+      <Route
+        path="/sessions/*"
+        element={
+          <>
+            <Where />
+            <SessionsRouter />
+          </>
+        }
+      />
     </Routes>,
-    { initialRouteEntries: [path] },
+    {
+      initialRouteEntries: [path],
+      mountedRoutes: { '/sessions': sessionsRouteRef },
+    },
   );
 }
 
 describe('SessionsRouter', () => {
   it('routes the list', async () => {
-    await renderAt('/agent-platform/sessions');
+    await renderAt('/sessions');
     expect(screen.getByText('Sessions list')).toBeInTheDocument();
   });
 
   it('routes one session', async () => {
-    await renderAt('/agent-platform/sessions/gazelle/abc');
+    await renderAt('/sessions/gazelle/abc');
     expect(screen.getByText('Session detail')).toBeInTheDocument();
   });
+
+  it.each(['/sessions/gazelle', '/sessions/gazelle/abc/deeper'])(
+    'sends %s, which names no session, to the list',
+    async path => {
+      await renderAt(path);
+      expect(await screen.findByText('Sessions list')).toBeInTheDocument();
+      expect(screen.getByText('At /sessions')).toBeInTheDocument();
+    },
+  );
 });

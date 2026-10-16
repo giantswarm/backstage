@@ -117,7 +117,7 @@ export function clusterMarks(cluster: ManagedCluster): string[] {
 }
 
 /**
- * Add GPU node pool (`/agent-platform/models/capacity/add-pool`) — the app's
+ * Add GPU node pool (`/customize/models/hosting/capacity/add-pool`) — the app's
  * multi-step create pattern, `WizardFrame` with its step strip like agent
  * creation: a **Pool** step (the form), then `create_node_pool` with `dryRun`
  * through muster as the signed-in person, the composed releases as manifests

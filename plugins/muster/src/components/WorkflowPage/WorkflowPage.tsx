@@ -5,7 +5,6 @@ import {
   Routes,
   useLocation,
   useParams,
-  useSearchParams,
 } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
@@ -137,8 +136,7 @@ function WorkflowPageContent({
   const session = useMusterSession();
   const hasSession =
     session.authenticated || !(activeInstallationInfo?.requiresAuth ?? false);
-  // The workflow's own installation, which a fallback by name may make
-  // another than the active one.
+  // The workflow's own installation, the one the address names.
   const perUserSession =
     installationInfos.find(info => info.name === installation)?.requiresAuth ??
     false;
@@ -413,21 +411,18 @@ function WorkflowPageBody({
   name,
   editAction,
 }: { name: string } & WorkflowPageProps) {
-  const [searchParams] = useSearchParams();
-  const installationParam = searchParams.get('installation') ?? undefined;
+  // The installation the address names, which the muster providers are
+  // pinned to: its workflows are the only ones read here.
+  const { installation = '' } = useParams();
   const paths = useCustomizePaths();
   const { search } = useLocation();
   const { workflows, isLoading, isLoadingInstallations, activeInstallation } =
     useMusterInstance();
 
-  const workflow = useMemo(() => {
-    const byNameAndInstallation = workflows.find(
-      w =>
-        w.getName() === name &&
-        (!installationParam || w.cluster === installationParam),
-    );
-    return byNameAndInstallation ?? workflows.find(w => w.getName() === name);
-  }, [workflows, name, installationParam]);
+  const workflow = useMemo(
+    () => workflows.find(w => w.getName() === name),
+    [workflows, name],
+  );
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, badge row, tab
@@ -462,12 +457,12 @@ function WorkflowPageBody({
           title={
             activeInstallation
               ? `No workflow “${name}” on ${activeInstallation}`
-              : `No workflow “${name}”`
+              : 'Environment not available'
           }
           description={
             activeInstallation
               ? 'It may be on another environment, or removed.'
-              : "None of this portal's environments runs muster."
+              : `Workflows on ${installation} cannot be read here. It may be turned off under Cluster access, or run no muster.`
           }
           actions={
             paths.workflows ? (

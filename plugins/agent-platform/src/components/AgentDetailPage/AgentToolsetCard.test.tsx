@@ -235,7 +235,7 @@ async function renderCard(
     ) : (
       tree
     ),
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }
 

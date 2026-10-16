@@ -15,6 +15,13 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   useProvidePageHeaderActions: jest.fn(),
 }));
 
+// The muster providers, whose instance the mock below stands for.
+jest.mock('../MusterSubPage', () => ({
+  MusterSubPage: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
 let mockAuthenticated = true;
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -81,7 +88,7 @@ function makeApi() {
   };
 }
 
-const BASE = '/agent-platform/connectors';
+const BASE = '/customize/connectors';
 
 async function renderAt(path: string, api = makeApi()) {
   const queryClient = new QueryClient({
@@ -92,7 +99,7 @@ async function renderAt(path: string, api = makeApi()) {
       <PageHeaderActionsProvider>
         <Routes>
           <Route
-            path="/agent-platform/connectors/*"
+            path="/customize/connectors/*"
             element={<McpServersRouter />}
           />
         </Routes>
@@ -101,7 +108,7 @@ async function renderAt(path: string, api = makeApi()) {
     {
       initialRouteEntries: [path],
       mountedRoutes: {
-        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize/connectors': mcpServersRouteRef,
         '/customize': customizeExternalRouteRef,
       },
       apis: [[musterApiRef, api as never]],
@@ -118,7 +125,7 @@ beforeEach(() => {
 describe('ToolPage', () => {
   it('shows the tool under its server and runs it', async () => {
     const api = await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`,
     );
 
     expect(
@@ -149,18 +156,14 @@ describe('ToolPage', () => {
   });
 
   it('says a tool of a connector each person signs in to runs as them', async () => {
-    await renderAt(
-      `${BASE}/jira/tools/x_jira_search_issues?installation=gazelle`,
-    );
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_search_issues`);
     expect(
       await screen.findByText('Runs as you. Nothing is changed.'),
     ).toBeInTheDocument();
   });
 
   it('does not promise that a tool which changes things changes nothing', async () => {
-    await renderAt(
-      `${BASE}/jira/tools/x_jira_add_comment?installation=gazelle`,
-    );
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_add_comment`);
     expect(await screen.findByText('Runs as you.')).toBeInTheDocument();
     expect(screen.queryByText(/Nothing is changed/)).not.toBeInTheDocument();
     // The Tools list's word for it, never the server's "destructive".
@@ -170,22 +173,19 @@ describe('ToolPage', () => {
 
   it('leads back to the Tools search and filter it was opened from', async () => {
     await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle&q=list&effect=reads`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets?q=list&effect=reads`,
     );
     expect(
       within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
         'link',
         { name: 'aws-root' },
       ),
-    ).toHaveAttribute(
-      'href',
-      `${BASE}/aws-root?installation=gazelle&q=list&effect=reads`,
-    );
+    ).toHaveAttribute('href', `${BASE}/gazelle/aws-root?q=list&effect=reads`);
   });
 
   it('does not show a tool under a server that does not offer it', async () => {
     const api = await renderAt(
-      `${BASE}/aws-root/tools/x_kubernetes_get_pods?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_kubernetes_get_pods`,
     );
 
     expect(
@@ -193,14 +193,14 @@ describe('ToolPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Back to the tools of aws-root' }),
-    ).toHaveAttribute('href', `${BASE}/aws-root?installation=gazelle`);
+    ).toHaveAttribute('href', `${BASE}/gazelle/aws-root`);
     expect(api.describeTool).not.toHaveBeenCalled();
   });
 
   it('asks for a muster session before describing the tool', async () => {
     mockAuthenticated = false;
     const api = await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`,
     );
 
     expect(screen.getByText(/Tools need a muster session/)).toBeInTheDocument();
@@ -211,7 +211,7 @@ describe('ToolPage', () => {
     // The prefix is the server's, the tool is not in its list: a stale link,
     // or a tool the installation's server does not have.
     const api = await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_removed_tool?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_removed_tool`,
     );
 
     expect(
@@ -228,7 +228,7 @@ describe('ToolPage', () => {
       tools: [{ name: 'x_aws-root_list_buckets' }],
     }));
     await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_far_down_the_list?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_far_down_the_list`,
       api,
     );
 
@@ -250,9 +250,7 @@ describe('ToolPage at phone width', () => {
   afterEach(() => layout.restore());
 
   it("leads its Connectors crumb to the sub-tab that lists the tool's connector", async () => {
-    await renderAt(
-      `${BASE}/muster/tools/core_service_list?installation=gazelle`,
-    );
+    await renderAt(`${BASE}/gazelle/muster/tools/core_service_list`);
     expect(
       within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
         'link',
@@ -262,9 +260,7 @@ describe('ToolPage at phone width', () => {
   });
 
   it('is a shell page: the tool as its h1, the trail under Customize, the full name in the header', async () => {
-    await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,
-    );
+    await renderAt(`${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`);
 
     expect(
       screen.getByRole('heading', { level: 1, name: 'list_buckets' }),
@@ -279,11 +275,11 @@ describe('ToolPage at phone width', () => {
           link.getAttribute('href'),
         ]),
     ).toEqual([
-      ['Back to aws-root', `${BASE}/aws-root?installation=gazelle`],
+      ['Back to aws-root', `${BASE}/gazelle/aws-root`],
       ['Customize', '/customize'],
       ['Connectors', '/customize/connectors'],
       // One link to the connector: no "Tools" crumb repeating it.
-      ['aws-root', `${BASE}/aws-root?installation=gazelle`],
+      ['aws-root', `${BASE}/gazelle/aws-root`],
     ]);
     // The unbroken snake_case name may break anywhere instead of widening
     // the page.

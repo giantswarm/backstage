@@ -61,7 +61,7 @@ const WORKSPACES_VIA = 'Workspaces are managed through workspace-manager';
 /**
  * Why Open, Edit and Create workspace are not offered yet: the workspace's
  * page and its editor are built next, at
- * `/agent-platform/workspaces/<installation>/<organization>/<name>` and
+ * `/customize/workspaces/<installation>/<organization>/<name>` and
  * `…/edit`.
  */
 const NOT_BUILT_YET = 'Coming with the workspace page';

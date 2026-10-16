@@ -84,14 +84,17 @@ const shellPathMessage =
   'Do not write an Agent Platform shell path by hand: link through a route ' +
   'ref, an external route ref the app binds, or a helper built on one ' +
   '(useCustomizePaths, useSkillPaths, useServerPageLinks…). ' +
-  'giantswarm/giantswarm#38510.';
+  'See the urls skill (.claude/skills/urls/SKILL.md).';
 
 // A string, or the first part of a template, that starts with one of the
-// shell's URL roots, followed by a path, a query, a fragment or nothing. A
-// later template part follows an expression, such as a route ref's base, so
-// it is not a path written by hand. `\x2F` is a `/`: esquery ends a regular
-// expression at the first `/`, even an escaped one.
-const shellPathPattern = '/^\\x2F(agent-platform|customize)(\\x2F|\\?|#|$)/';
+// shell's URL roots (`/sessions`, `/usage`, `/profile`, `/customize`, and the
+// old `/agent-platform`, written only in the redirect mapping), followed by a
+// path, a query, a fragment or nothing. A later template part follows an
+// expression, such as a route ref's base, so it is not a path written by
+// hand. `\x2F` is a `/`: esquery ends a regular expression at the first `/`,
+// even an escaped one.
+const shellPathPattern =
+  '/^\\x2F(agent-platform|customize|sessions|usage|profile)(\\x2F|\\?|#|$)/';
 
 module.exports = {
   root: true,
@@ -128,6 +131,12 @@ module.exports = {
         'packages/app/src/modules/**/*.ts?(x)',
       ],
       excludedFiles: [
+        // Backend routes (muster-backend's `/usage`), and the API clients
+        // that call them, are API paths, not shell links.
+        'plugins/*-backend/**',
+        'plugins/*-backend-module-*/**',
+        'plugins/*-node/**',
+        'plugins/*/src/apis/**',
         '**/*.test.ts?(x)',
         '**/*.stories.tsx',
         '**/setupTests.ts',

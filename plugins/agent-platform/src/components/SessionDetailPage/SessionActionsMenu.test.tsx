@@ -58,7 +58,7 @@ const renderMenu = (isUserScoped?: boolean) =>
       onRename={onRename}
       isUserScoped={isUserScoped}
     />,
-    { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    { mountedRoutes: { '/sessions': sessionsRouteRef } },
   );
 
 async function openMenu() {
@@ -126,7 +126,7 @@ describe('SessionActionsMenu', () => {
       );
     }
     await renderInTestApp(<Harness />, {
-      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      mountedRoutes: { '/sessions': sessionsRouteRef },
     });
 
     const pin = screen.getByRole('button', { name: 'Pin session' });
@@ -232,7 +232,7 @@ describe('SessionActionsMenu', () => {
     expect(mockToastPost.mock.calls[0][0].title).toMatch(
       /Session "What issues are assigned to me\?" deleted/,
     );
-    expect(mockNavigate).toHaveBeenCalledWith('/agent-platform/sessions');
+    expect(mockNavigate).toHaveBeenCalledWith('/sessions');
 
     await waitFor(() => {
       expect(
@@ -250,8 +250,8 @@ describe('SessionActionsMenu', () => {
         triggerLabel="More actions for “What issues are assigned to me?”"
       />,
       {
-        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
-        initialRouteEntries: ['/agent-platform/sessions'],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+        initialRouteEntries: ['/sessions'],
       },
     );
     await userEvent.click(
@@ -364,7 +364,7 @@ describe('SessionActionsMenu — Notifications', () => {
       .mockResolvedValue(undefined),
   ) =>
     renderInTestApp(<Harness initial={initial} onChange={onChange} />, {
-      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      mountedRoutes: { '/sessions': sessionsRouteRef },
     });
 
   async function openNotifications() {
@@ -529,7 +529,7 @@ describe('SessionActionsMenu — deleting a session whose runtime is lost', () =
           attempts: 2,
         }}
       />,
-      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
     );
     await openDeleteDialog();
 
@@ -549,7 +549,7 @@ describe('SessionActionsMenu — deleting a session whose runtime is lost', () =
         deletion={deletion}
         onRename={onRename}
       />,
-      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
     );
     await openDeleteDialog();
 

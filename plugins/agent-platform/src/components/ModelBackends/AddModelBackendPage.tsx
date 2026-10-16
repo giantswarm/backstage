@@ -214,7 +214,7 @@ export function addBackendFieldErrors(
 const ADVANCED_FIELDS: (keyof AddBackendFieldErrors)[] = ['agentEndpoint'];
 
 /**
- * Add model backend (`/agent-platform/models/serving/add-backend`) — the
+ * Add model backend (`/customize/models/hosting/add-backend`) — the
  * app's multi-step create pattern, `WizardFrame` with its step strip like
  * agent creation: a **Backend** step (the form), then `add_backend` with
  * `dryRun` through muster as the signed-in person, the backend document it

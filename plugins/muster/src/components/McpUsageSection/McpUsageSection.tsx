@@ -566,12 +566,12 @@ function UsageBody({
 }
 
 /**
- * The installation-wide half of the Agent Platform's Usage tab: tool-call
+ * The installation-wide half of the Agent Platform's Usage page: tool-call
  * volume, outcomes, latency and top tools/servers for the selected
  * installation, from muster's own Prometheus metrics via the muster-backend's
  * `/usage` route.
  *
- * Contributed to `sub-page:agent-platform/usage` (see `../../mcpUsageSection`)
+ * Contributed to `page:agent-platform/usage` (see `../../mcpUsageSection`)
  * rather than imported by that plugin, so neither plugin depends on the other.
  * It therefore brings its own `MusterProviders`: that stack is designed to be
  * mounted per view — the QueryClient is a module singleton and the active

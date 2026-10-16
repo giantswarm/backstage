@@ -4,7 +4,6 @@ import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 import { Box, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import {
   CommandPalette,
-  NeedsInputToasts,
   RecentSessions,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import { ClusterAccessConnector } from '@giantswarm/backstage-plugin-gs';
@@ -15,6 +14,10 @@ import SearchIcon from '@material-ui/icons/Search';
 import { LogoIcon } from '../../nav/LogoIcon';
 import { usePortals } from '../agentArea';
 import { agentShellNavItems, SEARCH_FOLLOWS } from '../navItems';
+import {
+  NotificationInboxProvider,
+  NotificationSheet,
+} from '../NotificationInbox';
 import { homeRouteRef } from '../routes';
 import { RailFrame } from './RailFrame';
 import { RailItem } from './RailItem';
@@ -200,16 +203,18 @@ function PaletteSearchItem({
 // The connector probes each installation and records it healthy; the
 // installation inventory, and so every Agent Platform page, waits on that.
 //
-// The needs-input watcher mounts here, once per shell, rather than inside the
-// rail's session list: the expanded rail is the only place that list renders,
-// and a collapsed rail or the phone's bottom bar must still raise the toast.
-// Guarded like the palette, for tests that mock the plugin module partially.
+// The Notification inbox mounts here, once per shell, around the rail rather
+// than inside the rail's session list: the expanded rail is the only place
+// that list renders, and a collapsed rail or the phone's bottom bar must still
+// show the bell's count and raise the toasts. The bell and the phone's Profile
+// menu read it.
 export function AgentShellNav() {
   return (
     <>
       <ClusterAccessConnector />
-      {NeedsInputToasts && <NeedsInputToasts />}
-      <AgentShellRail />
+      <NotificationInboxProvider>
+        <AgentShellRail />
+      </NotificationInboxProvider>
     </>
   );
 }
@@ -265,6 +270,7 @@ function AgentShellRail() {
             ))}
           </ul>
         </nav>
+        <NotificationSheet />
       </>
     );
   }

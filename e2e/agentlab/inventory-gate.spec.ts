@@ -18,7 +18,7 @@ import { lab } from './lab';
  */
 
 const scope = `?installation=${lab.installation}`;
-const serversPath = `/agent-platform/connectors${scope}`;
+const serversPath = `/customize/connectors${scope}`;
 
 test.describe('an installation whose inventory probe the API server refused', () => {
   test.skip(
@@ -62,7 +62,7 @@ test.describe('an installation whose inventory probe the API server refused', ()
       'the refused probe is not re-run on every mount of the hook',
     ).toBeLessThanOrEqual(3);
 
-    await page.goto(`/agent-platform/agents${scope}`);
+    await page.goto(`/customize/agents${scope}`);
     await expect(
       page.getByText(rejectedToken),
       'the Agents tab explains the same refusal',

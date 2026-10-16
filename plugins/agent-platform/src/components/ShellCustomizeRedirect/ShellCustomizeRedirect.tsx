@@ -1,7 +1,5 @@
-import { Navigate, useLocation } from 'react-router-dom';
-import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
-
-import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { agentsRouteRef, modelsRouteRef, skillsRouteRef } from '../../routes';
+import { RouteRefRedirect } from '../RouteRefRedirect';
 
 export type ShellCustomizeRedirectProps = {
   tab: 'agents' | 'skills' | 'models';
@@ -12,33 +10,23 @@ export type ShellCustomizeRedirectProps = {
   keepSearch?: boolean;
 };
 
+const TAB_ROUTES = {
+  agents: agentsRouteRef,
+  skills: skillsRouteRef,
+  models: modelsRouteRef,
+};
+
 /**
- * Sends a list the shell shows on its Customize screen there, keeping the
- * query string (the installation scope), through the `customize` route the
- * app binds (`useCustomizePaths`). Where the app binds none, there is no list
- * to send anyone to, and an empty state says so instead of a dead link.
+ * Sends an address under one of this plugin's Customize tabs that names no
+ * page to the nearest valid parent, the tab's list. The tab is this plugin's
+ * own route (the list at its bare path), so it resolves wherever the tab's
+ * pages do.
  */
 export function ShellCustomizeRedirect({
   tab,
   keepSearch = true,
 }: ShellCustomizeRedirectProps) {
-  const { search } = useLocation();
-  const target = useCustomizePaths()[tab];
-  if (!target) {
-    return (
-      <EmptyStateCard
-        title="Not available"
-        description={`This portal has no Customize page, where the ${tab} are listed.`}
-      />
-    );
-  }
   return (
-    <Navigate
-      to={{
-        pathname: target,
-        search: keepSearch ? search : undefined,
-      }}
-      replace
-    />
+    <RouteRefRedirect routeRef={TAB_ROUTES[tab]} keepSearch={keepSearch} />
   );
 }

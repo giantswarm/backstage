@@ -59,7 +59,7 @@ function useProfileInfo(): ProfileInfo | undefined {
 
 /**
  * The shell's minimal "Profile and settings" page
- * (`/agent-platform/profile`): who is signed in, the installations this
+ * (`/profile`): who is signed in, the installations this
  * portal talks to, and Sign out — so the rail's profile menu stays in the
  * shell instead of jumping into the classic Settings chrome. The page's
  * footer names the running release (`app.releaseVersion`), the same line as

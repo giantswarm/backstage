@@ -132,6 +132,28 @@ describe('agentShellLightColors', () => {
     });
   });
 
+  it('gives bui’s current warning tokens the shell’s warning colours', () => {
+    // The deprecated names (`--bui-bg-warning`, …) were set and the current
+    // ones were not, so a warning badge took bui's saturated default edge
+    // beside the approval card's soft one.
+    const css = shellCss();
+    expect(css).toContain(
+      `--bui-warning-bg-subdued: ${agentShellLightColors.warningBackground};`,
+    );
+    expect(css).toContain(
+      `--bui-warning-fg-subdued: ${agentShellLightColors.warningText};`,
+    );
+    expect(css).toContain(
+      `--bui-warning-border: ${agentShellLightColors.warningBorder};`,
+    );
+    expect(
+      contrast(
+        agentShellLightColors.warningText,
+        agentShellLightColors.warningBackground,
+      ),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('edges a focused form field at 3:1 or more against its fill', () => {
     expect(
       contrast(

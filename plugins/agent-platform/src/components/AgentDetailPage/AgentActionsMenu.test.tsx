@@ -53,7 +53,7 @@ const renderMenu = (agentManager: AgentManagerGate = AVAILABLE) =>
       onUpdateSkills={onUpdateSkills}
       onDelete={onDelete}
     />,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 
 async function openMenu() {

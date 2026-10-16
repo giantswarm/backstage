@@ -388,7 +388,7 @@ instead of the whole portal can send `/` to that product's page:
 
 ```yaml
 app:
-  rootRedirect: /agent-platform
+  rootRedirect: /catalog
 ```
 
 The value is a path inside the app, not a URL. Unset keeps the home page. A

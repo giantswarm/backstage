@@ -6,9 +6,12 @@ description: Rules for building UI in the agent-platform shell — patterns to r
 # Agent Platform UI: UX and coding rules
 
 Load this skill before you touch anything that renders in the agent-platform
-shell: `/`, `/agent-platform/**` and `/customize/**`, built from
-`plugins/agent-platform`, `plugins/muster`, the shell components in
-`plugins/ui-react` and `packages/app/src/modules/agentShell`.
+shell: `/`, `/sessions/**`, `/usage/**`, `/profile` and `/customize/**`, built
+from `plugins/agent-platform`, `plugins/muster`, the shell components in
+`plugins/ui-react` and `packages/app/src/modules/agentShell`. The old
+`/agent-platform/**` addresses only redirect. Where a page lives, how it is
+addressed and linked, and what adding or moving one takes are the
+[`urls`](../urls/SKILL.md) skill's rules.
 
 Repository conventions (bui first, component directories, named exports,
 telemetry, `useTrackedMutation`, changesets, logging) live in
