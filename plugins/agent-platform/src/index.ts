@@ -3,7 +3,14 @@ export { agentPlatformPlugin } from './plugin';
 export { AgentPlatformProviders } from './components/AgentPlatformProviders';
 export { RecentSessions } from './components/RecentSessions';
 export type { RecentSessionsProps } from './components/RecentSessions';
-export { NeedsInputToasts } from './components/NeedsInputToasts';
+export { AgentAvatar } from './components/AgentAvatar';
+export { PHONE_FULL_SCREEN_DIALOG } from './components/NewSessionDialog';
+export { sessionsListSearch } from './components/SessionsTable/filters';
+export { useNotifiableSessions } from './hooks/useNotifiableSessions';
+export type {
+  NotifiableSession,
+  NotifiableSessionsView,
+} from './hooks/useNotifiableSessions';
 export { AgentPlatformHome } from './components/AgentPlatformHome';
 export { StartNewSession } from './components/StartNewSession';
 export type {
@@ -19,6 +26,7 @@ export {
   useSessionNotificationRecord,
   useSessionNotificationSettings,
 } from './hooks/useSessionNotificationRecord';
+export type { SeenMarkReason } from './hooks/useSessionNotificationRecord';
 export type {
   NotificationLevel,
   SeenMarkTarget,

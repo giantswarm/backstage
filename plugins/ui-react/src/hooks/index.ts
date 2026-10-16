@@ -5,6 +5,7 @@ export * from './useDetailsPane';
 export * from './useFilters';
 export * from './useIsTruncated';
 export * from './useOnDialogOpen';
+export * from './usePageAttention';
 export * from './usePhoneColumns';
 export * from './useScrolledPast';
 export * from './useScrollToTopOnNavigation';
