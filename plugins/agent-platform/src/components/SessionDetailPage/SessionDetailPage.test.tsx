@@ -26,6 +26,7 @@ import {
   normalizeSessionDetail,
   normalizeTaskList,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { buildContinuationPrompt } from '../../lib/continuationPrompt';
 import { SessionDetailPage } from './SessionDetailPage';
 import {
   mockCollapsibleLayout,
@@ -2700,15 +2701,21 @@ describe('SessionDetailPage', () => {
       afterEach(() => layout.restore());
 
       it('cuts the opener under the banner behind Show more', async () => {
-        const earlier = Array.from(
-          { length: 60 },
-          (_, i) => `**Person:** question ${i + 1}`,
-        ).join('\n\n');
-        mockUseSessionDetail.mockReturnValue(
-          continuationView(
-            `[Continues session other-lab/0a1b2c]\n\nI am continuing a session with you.\n\n## Earlier conversation\n\n${earlier}`,
-          ),
-        );
+        // The first message as "Continue in a new session" writes it: the
+        // marker line, the framing and sixty earlier messages.
+        const { text } = buildContinuationPrompt({
+          items: Array.from({ length: 60 }, (_, i) => ({
+            id: `m${i}`,
+            kind:
+              i % 2 ? ('agent-message' as const) : ('user-message' as const),
+            taskIndex: Math.floor(i / 2),
+            text: `Message ${i + 1}`,
+          })),
+          pendingQuestions: [],
+          continues: { installation: 'other-lab', sessionId: '0a1b2c' },
+        });
+        expect(text).toMatch(/^\[Continues session other-lab\/0a1b2c\]/);
+        mockUseSessionDetail.mockReturnValue(continuationView(text));
         await render();
 
         expect(screen.getByText('Continued session')).toBeInTheDocument();
@@ -2717,9 +2724,11 @@ describe('SessionDetailPage', () => {
           toggle.getAttribute('aria-controls')!,
         )!;
         expect(message.style.maxHeight).toBe('10lh');
+        // The marker is the banner, not the message's first line.
         expect(message).toHaveTextContent(
-          /^I am continuing a session with you\./,
+          /^I am continuing a session with you that could not be resumed/,
         );
+        expect(message).toHaveTextContent('Message 60');
         expect(message).not.toHaveTextContent('[Continues session');
 
         await userEvent.click(toggle);
