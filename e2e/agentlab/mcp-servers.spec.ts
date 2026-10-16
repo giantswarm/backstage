@@ -227,8 +227,12 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per co
 
   // The per-server session is muster's, per user, and outlives a page: a
   // previous run may have left the fixture signed in — sign out first (the
-  // header's More actions), so the flow under test is the sign-in.
-  const signIn = admin.getByRole('button', { name: 'Sign in' }).first();
+  // header's More actions), so the flow under test is the sign-in. The page's
+  // own Sign in, not the one of the portal-wide sign-in notice.
+  const signIn = admin
+    .getByRole('main')
+    .getByRole('button', { name: 'Sign in' })
+    .first();
   const moreActions = admin.getByRole('button', { name: 'More actions' });
   const signOut = async () => {
     await moreActions.click();
