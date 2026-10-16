@@ -15,9 +15,12 @@ describe('fetchRepoContentBatch', () => {
       data: {
         r0: {
           defaultBranchRef: { name: 'main' },
-          readme: { __typename: 'Blob' },
+          root: { entries: [{ name: 'go.mod' }, { name: 'README.md' }] },
         },
-        r1: { defaultBranchRef: { name: 'master' }, readme: null },
+        r1: {
+          defaultBranchRef: { name: 'master' },
+          root: { entries: [{ name: 'docs' }] },
+        },
       },
     });
 
@@ -51,13 +54,36 @@ describe('fetchRepoContentBatch', () => {
       slugs: [slugs[0]],
       token: 't',
       fetchImpl: graphqlFetch({
-        data: { r0: { defaultBranchRef: null, readme: null } },
+        data: { r0: { defaultBranchRef: null, root: null } },
       }),
     });
 
     expect(result.content.get('giantswarm/alpha')).toEqual({
       hasReadme: false,
     });
+  });
+
+  it.each([
+    ['readme.md', true],
+    ['Readme.md', true],
+    ['README.MD', false],
+    ['README', false],
+    ['README.rst', false],
+  ])('treats a root %s as a README: %p', async (name, expected) => {
+    const result = await fetchRepoContentBatch({
+      slugs: [slugs[0]],
+      token: 't',
+      fetchImpl: graphqlFetch({
+        data: {
+          r0: {
+            defaultBranchRef: { name: 'main' },
+            root: { entries: [{ name }] },
+          },
+        },
+      }),
+    });
+
+    expect(result.content.get('giantswarm/alpha')?.hasReadme).toBe(expected);
   });
 
   it('sorts per-repository errors into unreadable and failed', async () => {
@@ -68,7 +94,7 @@ describe('fetchRepoContentBatch', () => {
         data: { r0: null, r1: null },
         errors: [
           { message: 'Could not resolve', type: 'NOT_FOUND', path: ['r0'] },
-          { message: 'Something went wrong', path: ['r1', 'readme'] },
+          { message: 'Something went wrong', path: ['r1', 'root'] },
         ],
       }),
     });

@@ -20,9 +20,8 @@ import {
 } from '@backstage/integration';
 import type { Knex } from 'knex';
 import { getMigratedClient } from '../util/database';
+import { PROJECT_SLUG_ANNOTATION } from '../util/projectSlug';
 import { createSbomRefreshTask } from './sbomScheduledTask';
-
-const GITHUB_PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 
 const EXISTING_COMPONENTS_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -148,7 +147,7 @@ export class SbomDependencyProcessor implements CatalogProcessor {
       return entity;
     }
 
-    const slug = entity.metadata.annotations?.[GITHUB_PROJECT_SLUG_ANNOTATION];
+    const slug = entity.metadata.annotations?.[PROJECT_SLUG_ANNOTATION];
     if (!slug) {
       return entity;
     }

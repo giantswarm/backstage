@@ -5,6 +5,7 @@
 const TRANSIENT_ERROR_NAMES = new Set([
   'AbortError',
   'FetchError',
+  'GithubRateLimitError',
   'ServiceUnavailableError',
   'TimeoutError',
 ]);

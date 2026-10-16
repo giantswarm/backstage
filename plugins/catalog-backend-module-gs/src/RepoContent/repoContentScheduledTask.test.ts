@@ -3,10 +3,14 @@ import {
   type TestDatabaseId,
   TestDatabases,
 } from '@backstage/backend-test-utils';
+import { CATALOG_FILTER_EXISTS } from '@backstage/catalog-client';
 import type { Entity } from '@backstage/catalog-model';
 import type { CatalogService } from '@backstage/plugin-catalog-node';
 import { getMigratedClient } from '../util/database';
-import { refreshRepoContent } from './repoContentScheduledTask';
+import {
+  RECORD_MAX_AGE_MS,
+  refreshRepoContent,
+} from './repoContentScheduledTask';
 import { RepoContentStore } from './repoContentStore';
 
 jest.setTimeout(60_000);
@@ -25,9 +29,11 @@ function component(name: string, slug?: string): Entity {
 
 function catalog(entities: Entity[]) {
   return {
-    streamEntities: async function* streamEntities() {
+    streamEntities: jest.fn(async function* streamEntities(_request: {
+      filter: unknown;
+    }) {
       yield entities;
-    },
+    }),
     refreshEntity: jest.fn().mockResolvedValue(undefined),
   };
 }
@@ -35,7 +41,7 @@ function catalog(entities: Entity[]) {
 function repo(defaultBranch: string, readme = true) {
   return {
     defaultBranchRef: { name: defaultBranch },
-    readme: readme ? { __typename: 'Blob' } : null,
+    root: { entries: readme ? [{ name: 'README.md' }] : [] },
   };
 }
 
@@ -59,6 +65,7 @@ describe('refreshRepoContent', () => {
       await getMigratedClient(mockServices.database({ knex })),
     );
     const logger = mockServices.logger.mock();
+    const onStoreChanged = jest.fn();
     const run = (
       catalogApi: ReturnType<typeof catalog>,
       fetchImpl: jest.Mock,
@@ -71,16 +78,17 @@ describe('refreshRepoContent', () => {
         catalogApi: catalogApi as unknown as CatalogService,
         auth: mockServices.auth(),
         store,
+        onStoreChanged,
         logger,
         fetchImpl,
       });
-    return { store, logger, run };
+    return { store, logger, onStoreChanged, run };
   }
 
   it.each(databases.eachSupportedId())(
     'stores every repository and refreshes only the components that changed, %p',
     async databaseId => {
-      const { store, run } = await setup(databaseId);
+      const { store, onStoreChanged, run } = await setup(databaseId);
       const entities = [
         component('alpha', 'giantswarm/alpha'),
         component('alpha-docs', 'giantswarm/alpha'),
@@ -98,6 +106,11 @@ describe('refreshRepoContent', () => {
         defaultBranch: 'main',
         hasReadme: true,
       });
+      expect(first.streamEntities.mock.calls[0][0].filter).toEqual({
+        kind: 'Component',
+        'metadata.annotations.github.com/project-slug': CATALOG_FILTER_EXISTS,
+      });
+      expect(onStoreChanged).toHaveBeenCalledTimes(1);
       expect(first.refreshEntity.mock.calls.map(c => c[0]).sort()).toEqual([
         'component:default/alpha',
         'component:default/alpha-docs',
@@ -152,7 +165,7 @@ describe('refreshRepoContent', () => {
   );
 
   it.each(databases.eachSupportedId())(
-    'keeps every record when a batch fails, and removes records no component names, %p',
+    'keeps every record when a batch fails or the catalog is still filling, %p',
     async databaseId => {
       const { store, logger, run } = await setup(databaseId);
       await run(
@@ -169,14 +182,57 @@ describe('refreshRepoContent', () => {
           new Response('', { status: 503, statusText: 'Service Unavailable' }),
         );
       await run(catalog([component('alpha', 'giantswarm/alpha')]), failing);
+      await run(catalog([]), jest.fn());
 
       expect(await store.get('giantswarm/alpha')).toEqual({
         defaultBranch: 'main',
         hasReadme: true,
       });
-      expect(await store.get('giantswarm/beta')).toBeUndefined();
+      expect(await store.get('giantswarm/beta')).toEqual({
+        defaultBranch: 'main',
+        hasReadme: true,
+      });
       // A 503 clears up on its own: not a Sentry issue.
       expect(logger.warn).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(databases.eachSupportedId())(
+    'removes records not fetched for RECORD_MAX_AGE_MS, %p',
+    async databaseId => {
+      const { store, run } = await setup(databaseId);
+      const old = new Date(Date.now() - RECORD_MAX_AGE_MS - 60_000);
+      await store.put('giantswarm/gone', { hasReadme: false }, old);
+
+      await run(
+        catalog([component('alpha', 'giantswarm/alpha')]),
+        graphqlFetch({ data: { r0: repo('main') } }),
+      );
+
+      expect(await store.get('giantswarm/gone')).toBeUndefined();
+      expect(await store.get('giantswarm/alpha')).toBeDefined();
+    },
+  );
+
+  it.each(databases.eachSupportedId())(
+    'logs a rate-limited batch at info, %p',
+    async databaseId => {
+      const { logger, run } = await setup(databaseId);
+
+      await run(
+        catalog([component('alpha', 'giantswarm/alpha')]),
+        graphqlFetch({
+          errors: [
+            { type: 'RATE_LIMITED', message: 'API rate limit exceeded' },
+          ],
+        }),
+      );
+
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(
+        'Repo content refresh: batch failed',
+        expect.objectContaining({ owner: 'giantswarm' }),
+      );
     },
   );
 

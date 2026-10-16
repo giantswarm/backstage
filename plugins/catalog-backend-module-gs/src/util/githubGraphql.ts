@@ -22,10 +22,37 @@ export type GraphqlResponse<T> = {
 export class NoGithubTokenError extends Error {}
 
 /**
+ * GitHub's primary or secondary rate limit: clears up on its own, so
+ * `isTransientError` recognises it by name.
+ */
+export class GithubRateLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GithubRateLimitError';
+  }
+}
+
+/**
+ * A 403 or 429 that GitHub marks as a rate limit: `x-ratelimit-remaining: 0`
+ * for the primary limit, `retry-after` or the message for a secondary one.
+ */
+function isRateLimitResponse(response: Response, text: string): boolean {
+  if (response.status !== 403 && response.status !== 429) {
+    return false;
+  }
+  return (
+    response.headers.get('x-ratelimit-remaining') === '0' ||
+    response.headers.has('retry-after') ||
+    /rate limit/i.test(text)
+  );
+}
+
+/**
  * Posts one query to GitHub's GraphQL API and returns the body as is: partial
- * data and per-field errors are the caller's to interpret. A non-2xx answer
- * throws with the status in the message, so `isTransientError` recognises a
- * rate limit or a 5xx.
+ * data and per-field errors are the caller's to interpret. A rate limit, as an
+ * HTTP status or as a `RATE_LIMITED` error in a 200 body, throws
+ * `GithubRateLimitError`. Any other non-2xx answer throws with the status in
+ * the message, so `isTransientError` recognises a 5xx.
  */
 export async function githubGraphql<T>(options: {
   query: string;
@@ -44,11 +71,21 @@ export async function githubGraphql<T>(options: {
     body: JSON.stringify({ query, variables }),
   });
   if (!response.ok) {
-    throw new Error(
-      `GitHub GraphQL returned ${response.status} ${response.statusText}`,
+    const text = await response.text().catch(() => '');
+    const message = `GitHub GraphQL returned ${response.status} ${response.statusText}`;
+    if (isRateLimitResponse(response, text)) {
+      throw new GithubRateLimitError(message);
+    }
+    throw new Error(message);
+  }
+  const body = (await response.json()) as GraphqlResponse<T>;
+  const rateLimited = body.errors?.find(e => e.type === 'RATE_LIMITED');
+  if (rateLimited) {
+    throw new GithubRateLimitError(
+      `GitHub GraphQL rate limited: ${rateLimited.message}`,
     );
   }
-  return (await response.json()) as GraphqlResponse<T>;
+  return body;
 }
 
 /**

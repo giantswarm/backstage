@@ -1,3 +1,5 @@
+export const PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
+
 export type ProjectSlug = { owner: string; repo: string };
 
 /**

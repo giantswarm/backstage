@@ -14,6 +14,7 @@ export type RepoContent = {
 };
 
 type Row = { content: string };
+type SlugRow = Row & { repo_slug: string };
 
 /** The last fetched `RepoContent` per `github.com/project-slug`. */
 export class RepoContentStore {
@@ -25,6 +26,14 @@ export class RepoContentStore {
       .where('repo_slug', slug)
       .first();
     return row ? (JSON.parse(row.content) as RepoContent) : undefined;
+  }
+
+  /** Every record, keyed by slug. */
+  async getAll(): Promise<Map<string, RepoContent>> {
+    const rows: SlugRow[] = await this.db(TABLE).select('repo_slug', 'content');
+    return new Map(
+      rows.map(row => [row.repo_slug, JSON.parse(row.content) as RepoContent]),
+    );
   }
 
   /** Stores `content` for `slug`, and reports whether it differs from before. */
@@ -51,8 +60,8 @@ export class RepoContentStore {
     return deleted > 0;
   }
 
-  /** Removes the records of repos no component refers to any more. */
-  async retainOnly(slugs: string[]): Promise<number> {
-    return this.db(TABLE).whereNotIn('repo_slug', slugs).delete();
+  /** Removes the records last fetched before `cutoff`. */
+  async deleteFetchedBefore(cutoff: Date): Promise<number> {
+    return this.db(TABLE).where('fetched_at', '<', cutoff).delete();
   }
 }

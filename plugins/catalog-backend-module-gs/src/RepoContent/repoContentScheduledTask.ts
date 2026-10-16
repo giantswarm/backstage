@@ -9,14 +9,24 @@ import type {
   GithubCredentialsProvider,
   ScmIntegrationRegistry,
 } from '@backstage/integration';
+import { CATALOG_FILTER_EXISTS } from '@backstage/catalog-client';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { isTransientError } from '../util/errors';
 import { resolveGithubToken } from '../util/githubToken';
-import { parseProjectSlug, type ProjectSlug } from '../util/projectSlug';
+import {
+  PROJECT_SLUG_ANNOTATION,
+  parseProjectSlug,
+  type ProjectSlug,
+} from '../util/projectSlug';
 import { BATCH_SIZE, fetchRepoContentBatch } from './fetchRepoContent';
 import type { RepoContentStore } from './repoContentStore';
 
-const PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
+/**
+ * A record not fetched again for this long is dropped: no component names its
+ * repository any more, or it has failed every run since. A catalog that is
+ * still filling up after a restart leaves the other records in place.
+ */
+export const RECORD_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const DEFAULT_SCHEDULE: SchedulerServiceTaskScheduleDefinition = {
   frequency: { minutes: 60 },
@@ -30,6 +40,8 @@ type RefreshOptions = {
   catalogApi: CatalogService;
   auth: AuthService;
   store: RepoContentStore;
+  /** Called once this run's writes are in the store. */
+  onStoreChanged?: () => void;
   logger: LoggerService;
   fetchImpl?: typeof fetch;
 };
@@ -52,7 +64,7 @@ export async function createRepoContentRefreshTask(
  * Fetches `RepoContent` for every repository a Component names in
  * `github.com/project-slug`, stores it, and asks the catalog to reprocess the
  * components whose record changed. A repository that could not be asked keeps
- * its previous record until the next run.
+ * its previous record until it is older than `RECORD_MAX_AGE_MS`.
  */
 export async function refreshRepoContent(options: RefreshOptions) {
   const {
@@ -61,6 +73,7 @@ export async function refreshRepoContent(options: RefreshOptions) {
     catalogApi,
     auth,
     store,
+    onStoreChanged,
     logger,
     fetchImpl = fetch,
   } = options;
@@ -72,7 +85,11 @@ export async function refreshRepoContent(options: RefreshOptions) {
   const slugsByOwner = new Map<string, ProjectSlug[]>();
   for await (const batch of catalogApi.streamEntities(
     {
-      filter: { kind: 'Component' },
+      filter: {
+        kind: 'Component',
+        [`metadata.annotations.${PROJECT_SLUG_ANNOTATION}`]:
+          CATALOG_FILTER_EXISTS,
+      },
       fields: [
         'kind',
         'metadata.name',
@@ -156,7 +173,10 @@ export async function refreshRepoContent(options: RefreshOptions) {
     }
   }
 
-  const removed = await store.retainOnly(Array.from(refsBySlug.keys()));
+  const removed = await store.deleteFetchedBefore(
+    new Date(fetchedAt.getTime() - RECORD_MAX_AGE_MS),
+  );
+  onStoreChanged?.();
 
   logger.info('Repo content refresh complete', {
     repos: refsBySlug.size,

@@ -20,12 +20,25 @@ import {
 } from '@backstage/integration';
 import { Annotations } from '@giantswarm/backstage-plugin-gs-common';
 import { getMigratedClient } from '../util/database';
+import {
+  PROJECT_SLUG_ANNOTATION,
+  parseProjectSlug,
+  type ProjectSlug,
+} from '../util/projectSlug';
 import { createRepoContentRefreshTask } from './repoContentScheduledTask';
+import { RepoContentSnapshot } from './repoContentSnapshot';
 import { type RepoContent, RepoContentStore } from './repoContentStore';
 
-const PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 const TECHDOCS_REF_ANNOTATION = 'backstage.io/techdocs-ref';
 const DEFAULT_BRANCH_MASTER_TAG = 'defaultbranch:master';
+
+/**
+ * Branch names that survive as the last segment of a `tree/<branch>` URL.
+ * Backstage's GitHub reader and the TechDocs edit link both read the branch
+ * back from there, so `release/v1` would come back as `v1`, and `#`, `%` or
+ * `?` would change what the URL means.
+ */
+const URL_SAFE_BRANCH = /^[^/#%?\s]+$/;
 
 /**
  * Annotates Component entities with what their repository's default branch
@@ -33,10 +46,7 @@ const DEFAULT_BRANCH_MASTER_TAG = 'defaultbranch:master';
  * of its own.
  */
 export class RepoContentProcessor implements CatalogProcessor {
-  constructor(
-    private readonly store: RepoContentStore,
-    private readonly logger: LoggerService,
-  ) {}
+  constructor(private readonly snapshot: RepoContentSnapshot) {}
 
   static async create(options: {
     config: RootConfigService;
@@ -49,6 +59,7 @@ export class RepoContentProcessor implements CatalogProcessor {
     const { config, database, logger, catalogApi, scheduler, auth } = options;
 
     const store = new RepoContentStore(await getMigratedClient(database));
+    const snapshot = new RepoContentSnapshot(store, logger);
     const integrations = ScmIntegrations.fromConfig(config);
     const scheduleConfig = config.getOptionalConfig(
       'catalog.processors.repoContent.schedule',
@@ -61,6 +72,7 @@ export class RepoContentProcessor implements CatalogProcessor {
       catalogApi,
       auth,
       store,
+      onStoreChanged: () => snapshot.invalidate(),
       logger,
       scheduler,
       schedule: scheduleConfig
@@ -68,7 +80,7 @@ export class RepoContentProcessor implements CatalogProcessor {
         : undefined,
     });
 
-    return new RepoContentProcessor(store, logger);
+    return new RepoContentProcessor(snapshot);
   }
 
   getProcessorName(): string {
@@ -85,36 +97,37 @@ export class RepoContentProcessor implements CatalogProcessor {
     if (entity.kind !== 'Component') {
       return entity;
     }
-    const slug = entity.metadata.annotations?.[PROJECT_SLUG_ANNOTATION];
+    const slug = parseProjectSlug(
+      entity.metadata.annotations?.[PROJECT_SLUG_ANNOTATION],
+    );
     if (!slug) {
       return entity;
     }
 
-    let content: RepoContent | undefined;
-    try {
-      content = await this.store.get(slug);
-    } catch (error) {
-      this.logger.warn('RepoContentProcessor: reading the record failed', {
-        repo: slug,
-        error: String(error),
-      });
-      return entity;
-    }
-    return content ? withRepoContent(entity, content) : entity;
+    const records = await this.snapshot.get();
+    const content = records?.get(`${slug.owner}/${slug.repo}`);
+    return content ? withRepoContent(entity, slug, content) : entity;
   }
 }
 
 /**
  * Writes the default branch, and a TechDocs reference when the default branch
- * has a README. Once a record exists it is the authority: a `techdocs-ref` or
- * `defaultbranch:master` tag the entity arrived with is removed when the
- * record no longer supports it.
+ * has a README. Once a record exists it is the authority for the default
+ * branch and the `defaultbranch:master` tag.
+ *
+ * A `techdocs-ref` is only written or removed while it is absent or has the
+ * `url:https://github.com/<slug>/tree/<branch>` shape written here and by the
+ * importer: any other value (`dir:.`, a docs subdirectory, another repo) was
+ * set by hand and is left alone.
  *
  * The TechDocs reference ends in the branch name, which the TechDocs URL
  * preparer in `techdocs-backend-module-gs` reads back for the edit link.
  */
-export function withRepoContent(entity: Entity, content: RepoContent): Entity {
-  const slug = entity.metadata.annotations?.[PROJECT_SLUG_ANNOTATION];
+export function withRepoContent(
+  entity: Entity,
+  slug: ProjectSlug,
+  content: RepoContent,
+): Entity {
   const annotations: Record<string, string> = {
     ...(entity.metadata.annotations ?? {}),
   };
@@ -125,11 +138,14 @@ export function withRepoContent(entity: Entity, content: RepoContent): Entity {
   } else {
     delete annotations[Annotations.annotationDefaultBranch];
   }
-  if (defaultBranch && hasReadme) {
-    annotations[TECHDOCS_REF_ANNOTATION] =
-      `url:https://github.com/${slug}/tree/${defaultBranch}`;
-  } else {
-    delete annotations[TECHDOCS_REF_ANNOTATION];
+  const treeUrl = `url:https://github.com/${slug.owner}/${slug.repo}/tree/`;
+  const existingRef = annotations[TECHDOCS_REF_ANNOTATION];
+  if (existingRef === undefined || existingRef.startsWith(treeUrl)) {
+    if (defaultBranch && hasReadme && URL_SAFE_BRANCH.test(defaultBranch)) {
+      annotations[TECHDOCS_REF_ANNOTATION] = `${treeUrl}${defaultBranch}`;
+    } else {
+      delete annotations[TECHDOCS_REF_ANNOTATION];
+    }
   }
 
   const tags = (entity.metadata.tags ?? []).filter(

@@ -11,8 +11,8 @@ import type {
 } from '@backstage/integration';
 import type { Knex } from 'knex';
 import { resolveGithubToken } from '../util/githubToken';
+import { PROJECT_SLUG_ANNOTATION, parseProjectSlug } from '../util/projectSlug';
 
-const GITHUB_PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 const GIANTSWARM_PURL_RE = /^pkg:golang\/github\.com\/giantswarm\/([^@/]+)/;
 
 const DEFAULT_SCHEDULE: SchedulerServiceTaskScheduleDefinition = {
@@ -100,15 +100,15 @@ export async function refreshSbomDependencies(options: {
       fields: [
         'metadata.name',
         'metadata.namespace',
-        `metadata.annotations.${GITHUB_PROJECT_SLUG_ANNOTATION}`,
+        `metadata.annotations.${PROJECT_SLUG_ANNOTATION}`,
       ],
     },
     { credentials },
   )) {
     for (const entity of batch) {
-      const slug =
-        entity.metadata.annotations?.[GITHUB_PROJECT_SLUG_ANNOTATION];
-      if (!slug) {
+      const slug = entity.metadata.annotations?.[PROJECT_SLUG_ANNOTATION];
+      const parsed = parseProjectSlug(slug);
+      if (!slug || !parsed) {
         continue;
       }
 
@@ -121,8 +121,7 @@ export async function refreshSbomDependencies(options: {
         );
 
         // Filter out self-references
-        const repoName = slug.split('/')[1];
-        const filtered = dependencies.filter(name => name !== repoName);
+        const filtered = dependencies.filter(name => name !== parsed.repo);
 
         logger.debug(
           `SBOM refresh: ${slug} has ${filtered.length} giantswarm dependencies`,

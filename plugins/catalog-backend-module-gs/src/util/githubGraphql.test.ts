@@ -47,6 +47,72 @@ describe('githubGraphql', () => {
   });
 });
 
+describe('githubGraphql rate limits', () => {
+  const call = (response: Response) =>
+    githubGraphql({
+      query: 'query { ok }',
+      variables: {},
+      token: 't',
+      fetchImpl: jest.fn().mockResolvedValue(response),
+    }).catch((e: unknown) => e);
+
+  it.each([
+    [
+      'a RATE_LIMITED error in a 200 body',
+      new Response(
+        JSON.stringify({
+          errors: [
+            { type: 'RATE_LIMITED', message: 'API rate limit exceeded' },
+          ],
+        }),
+      ),
+    ],
+    [
+      'a primary limit 403',
+      new Response('', {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { 'x-ratelimit-remaining': '0' },
+      }),
+    ],
+    [
+      'a secondary limit 403 with retry-after',
+      new Response('', {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { 'retry-after': '60' },
+      }),
+    ],
+    [
+      'a secondary limit 403 by its message',
+      new Response(
+        JSON.stringify({
+          message: 'You have exceeded a secondary rate limit.',
+        }),
+        { status: 403, statusText: 'Forbidden' },
+      ),
+    ],
+  ])('treats %s as transient', async (_name, response) => {
+    const error = await call(response);
+
+    expect(error).toEqual(
+      expect.objectContaining({ name: 'GithubRateLimitError' }),
+    );
+    expect(isTransientError(error)).toBe(true);
+  });
+
+  it('does not treat any other 403 as transient', async () => {
+    const error = await call(
+      new Response(JSON.stringify({ message: 'Resource not accessible' }), {
+        status: 403,
+        statusText: 'Forbidden',
+      }),
+    );
+
+    expect(isTransientError(error)).toBe(false);
+  });
+});
+
 describe('isUnreadableRepoError', () => {
   it.each([
     ['NOT_FOUND', true],

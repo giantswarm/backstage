@@ -487,12 +487,10 @@ describe('BuildStatusProcessor', () => {
     const { graphql, graphqlStatus = 200, circle = {}, circleStatus } = options;
     return jest.fn(async (url: string) => {
       if (url === 'https://api.github.com/graphql') {
-        return {
-          ok: graphqlStatus === 200,
+        return new Response(JSON.stringify(graphql ?? null), {
           status: graphqlStatus,
           statusText: 'stubbed',
-          json: async () => graphql,
-        };
+        });
       }
       const match = /project\/gh\/([^/]+)\/([^/]+)\/(\d+)$/.exec(url);
       const key = match
@@ -514,6 +512,7 @@ describe('BuildStatusProcessor', () => {
     options: {
       logger?: ReturnType<typeof mockServices.logger.mock>;
       credentials?: typeof credentialsProvider;
+      writeDefaultBranch?: boolean;
     } = {},
   ) {
     return new BuildStatusProcessor({
@@ -522,6 +521,7 @@ describe('BuildStatusProcessor', () => {
       integrations,
       cacheTtlMs: 60_000,
       fetchImpl: fetchImpl as unknown as typeof fetch,
+      writeDefaultBranch: options.writeDefaultBranch,
     });
   }
 
@@ -578,10 +578,9 @@ describe('BuildStatusProcessor', () => {
     expect(
       result.metadata.annotations?.['giantswarm.io/build-failing-checks'],
     ).toBe('["ci/circleci: build"]');
-    // RepoContentProcessor owns the default branch.
-    expect(
-      result.metadata.annotations?.['giantswarm.io/default-branch'],
-    ).toBeUndefined();
+    expect(result.metadata.annotations?.['giantswarm.io/default-branch']).toBe(
+      'main',
+    );
     expect(
       result.metadata.annotations?.['giantswarm.io/build-status-checked'],
     ).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -589,6 +588,29 @@ describe('BuildStatusProcessor', () => {
     expect(result.metadata.annotations?.['giantswarm.io/readiness-flags']).toBe(
       'BUILD-RED,NO-VALUES-SCHEMA',
     );
+  });
+
+  it('leaves the default branch to RepoContentProcessor when told to', async () => {
+    const processor = makeProcessor(
+      fakeFetch({
+        graphql: graphqlBody([
+          {
+            __typename: 'StatusContext',
+            context: 'ci/circleci: build',
+            state: 'FAILURE',
+            targetUrl: CIRCLE_URL,
+          },
+        ]),
+        circle: { [CIRCLE_URL]: { branch: 'main', status: 'failed' } },
+      }),
+      { writeDefaultBranch: false },
+    );
+
+    const result = await run(processor, component(slug));
+
+    expect(
+      result.metadata.annotations?.['giantswarm.io/default-branch'],
+    ).toBeUndefined();
   });
 
   it('never touches the release verdict', async () => {

@@ -11,13 +11,22 @@ export const BATCH_SIZE = 25;
 const FIELDS = `
 fragment RepoContentFields on Repository {
   defaultBranchRef { name }
-  readme: object(expression: "HEAD:README.md") { __typename }
+  root: object(expression: "HEAD:") { ... on Tree { entries { name } } }
 }`;
 
 type RepoNode = {
   defaultBranchRef: { name: string } | null;
-  readme: { __typename: string } | null;
+  root: { entries?: Array<{ name: string }> } | null;
 };
+
+/**
+ * `README.md` in any case, as GitHub renders it, but with a lowercase `.md`:
+ * the TechDocs preparer in `techdocs-backend-module-gs` only picks up files
+ * ending in `.md`.
+ */
+function isReadme(name: string): boolean {
+  return name.endsWith('.md') && name.slice(0, -3).toLowerCase() === 'readme';
+}
 
 export type BatchResult = {
   /** Keyed by `owner/repo`. */
@@ -41,7 +50,9 @@ function buildQuery(count: number): string {
 }
 
 function toRepoContent(node: RepoNode): RepoContent {
-  const content: RepoContent = { hasReadme: node.readme !== null };
+  const content: RepoContent = {
+    hasReadme: node.root?.entries?.some(entry => isReadme(entry.name)) ?? false,
+  };
   if (node.defaultBranchRef) {
     content.defaultBranch = node.defaultBranchRef.name;
   }

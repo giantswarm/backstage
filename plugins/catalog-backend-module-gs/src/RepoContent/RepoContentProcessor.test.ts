@@ -1,9 +1,11 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import type { Entity } from '@backstage/catalog-model';
 import { RepoContentProcessor, withRepoContent } from './RepoContentProcessor';
+import { RepoContentSnapshot } from './repoContentSnapshot';
 import type { RepoContent, RepoContentStore } from './repoContentStore';
 
 const location = { type: 'url', target: 'https://example.com' };
+const alpha = { owner: 'giantswarm', repo: 'alpha' };
 
 function component(
   annotations: Record<string, string> = {},
@@ -25,7 +27,7 @@ function component(
 
 describe('withRepoContent', () => {
   it('writes the default branch and a TechDocs reference ending in it', () => {
-    const result = withRepoContent(component(), {
+    const result = withRepoContent(component(), alpha, {
       defaultBranch: 'main',
       hasReadme: true,
     });
@@ -44,6 +46,7 @@ describe('withRepoContent', () => {
         'backstage.io/techdocs-ref':
           'url:https://github.com/giantswarm/alpha/tree/main',
       }),
+      alpha,
       { defaultBranch: 'main', hasReadme: false },
     );
 
@@ -53,22 +56,74 @@ describe('withRepoContent', () => {
   });
 
   it('tags a master default branch, and untags it once renamed', () => {
-    const master = withRepoContent(component({}, ['go']), {
+    const master = withRepoContent(component({}, ['go']), alpha, {
       defaultBranch: 'master',
       hasReadme: true,
     });
     expect(master.metadata.tags).toEqual(['go', 'defaultbranch:master']);
 
-    const renamed = withRepoContent(master, {
+    const renamed = withRepoContent(master, alpha, {
       defaultBranch: 'main',
       hasReadme: true,
     });
     expect(renamed.metadata.tags).toEqual(['go']);
   });
 
+  it.each([
+    'dir:.',
+    'dir:./docs',
+    'url:https://github.com/giantswarm/handbook/tree/main',
+  ])('leaves a TechDocs reference set by hand alone: %s', ref => {
+    const entity = component({ 'backstage.io/techdocs-ref': ref });
+
+    for (const content of [
+      { defaultBranch: 'main', hasReadme: true },
+      { defaultBranch: 'main', hasReadme: false },
+    ]) {
+      expect(
+        withRepoContent(entity, alpha, content).metadata.annotations?.[
+          'backstage.io/techdocs-ref'
+        ],
+      ).toBe(ref);
+    }
+  });
+
+  it('replaces a TechDocs reference to another branch of the same repository', () => {
+    const result = withRepoContent(
+      component({
+        'backstage.io/techdocs-ref':
+          'url:https://github.com/giantswarm/alpha/tree/master',
+      }),
+      alpha,
+      { defaultBranch: 'main', hasReadme: true },
+    );
+
+    expect(result.metadata.annotations?.['backstage.io/techdocs-ref']).toBe(
+      'url:https://github.com/giantswarm/alpha/tree/main',
+    );
+  });
+
+  it.each(['release/v1', 'fix#1', '100%', 'what?'])(
+    'writes no TechDocs reference for a branch a URL cannot carry: %s',
+    defaultBranch => {
+      const result = withRepoContent(component(), alpha, {
+        defaultBranch,
+        hasReadme: true,
+      });
+
+      expect(result.metadata.annotations).toMatchObject({
+        'giantswarm.io/default-branch': defaultBranch,
+      });
+      expect(
+        result.metadata.annotations?.['backstage.io/techdocs-ref'],
+      ).toBeUndefined();
+    },
+  );
+
   it('writes nothing branch-related for an empty repository', () => {
     const result = withRepoContent(
       component({ 'giantswarm.io/default-branch': 'main' }),
+      alpha,
       { hasReadme: false },
     );
 
@@ -81,9 +136,11 @@ describe('withRepoContent', () => {
 describe('RepoContentProcessor', () => {
   function processor(records: Record<string, RepoContent>) {
     const store = {
-      get: jest.fn(async (slug: string) => records[slug]),
+      getAll: jest.fn(async () => new Map(Object.entries(records))),
     } as unknown as RepoContentStore;
-    return new RepoContentProcessor(store, mockServices.logger.mock());
+    return new RepoContentProcessor(
+      new RepoContentSnapshot(store, mockServices.logger.mock()),
+    );
   }
 
   const run = (p: RepoContentProcessor, entity: Entity) =>
@@ -112,6 +169,21 @@ describe('RepoContentProcessor', () => {
     });
 
     expect(await run(processor({}), entity)).toBe(entity);
+  });
+
+  it('ignores a slug that names no single repository', async () => {
+    const entity = component({
+      'github.com/project-slug': 'giantswarm/alpha/tree/main',
+    });
+
+    expect(
+      await run(
+        processor({
+          'giantswarm/alpha': { defaultBranch: 'main', hasReadme: true },
+        }),
+        entity,
+      ),
+    ).toBe(entity);
   });
 
   it('ignores entities other than components', async () => {

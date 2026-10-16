@@ -21,9 +21,8 @@ import {
   listLatestReleasesByPrefix,
 } from '../util/githubReleases';
 import { resolveGithubToken } from '../util/githubToken';
-import { parseProjectSlug } from '../util/projectSlug';
+import { PROJECT_SLUG_ANNOTATION, parseProjectSlug } from '../util/projectSlug';
 
-const PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 const RELEASE_TAG_PREFIX_ANNOTATION = 'giantswarm.io/release-tag-prefix';
 const LATEST_RELEASE_TAG_ANNOTATION = 'giantswarm.io/latest-release-tag';
 const LATEST_RELEASE_DATE_ANNOTATION = 'giantswarm.io/latest-release-date';

@@ -35,14 +35,13 @@ import {
   type LatestRelease,
 } from '../util/githubReleases';
 import { resolveGithubToken } from '../util/githubToken';
-import { parseProjectSlug } from '../util/projectSlug';
+import { PROJECT_SLUG_ANNOTATION, parseProjectSlug } from '../util/projectSlug';
 import { type Cached, TtlCache } from '../util/TtlCache';
 
 // Re-exported for callers that reached the cache through this module.
 export { TtlCache } from '../util/TtlCache';
 
 const HELMCHARTS_ANNOTATION = 'giantswarm.io/helmcharts';
-const PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 const RELEASE_TAG_PREFIX_ANNOTATION = 'giantswarm.io/release-tag-prefix';
 const READINESS_LABEL = 'giantswarm.io/readiness';
 const READINESS_FLAGS_ANNOTATION = 'giantswarm.io/readiness-flags';

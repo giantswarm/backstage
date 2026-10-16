@@ -23,13 +23,13 @@ import {
   NoGithubTokenError,
 } from '../util/githubGraphql';
 import { resolveGithubToken } from '../util/githubToken';
-import { parseProjectSlug } from '../util/projectSlug';
+import { PROJECT_SLUG_ANNOTATION, parseProjectSlug } from '../util/projectSlug';
 import { type Cached, TtlCache } from '../util/TtlCache';
 
-const PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 const BUILD_STATUS_LABEL = 'giantswarm.io/build-status';
 const BUILD_FAILING_CHECKS_ANNOTATION = 'giantswarm.io/build-failing-checks';
 const BUILD_STATUS_CHECKED_ANNOTATION = 'giantswarm.io/build-status-checked';
+const DEFAULT_BRANCH_ANNOTATION = 'giantswarm.io/default-branch';
 const READINESS_FLAGS_ANNOTATION = 'giantswarm.io/readiness-flags';
 
 /**
@@ -156,6 +156,11 @@ export type Verdict = {
   failingChecks: string[];
 };
 
+type BuildLookup = {
+  verdict: Verdict | undefined;
+  defaultBranch: string | undefined;
+};
+
 type FetchFn = typeof fetch;
 
 const ROLLUP_QUERY = `
@@ -220,16 +225,18 @@ export class BuildStatusProcessor implements CatalogProcessor {
   private readonly circleciToken: string | undefined;
   private readonly fetchImpl: FetchFn;
   /** The whole lookup — rollup, attribution and verdict — keyed `owner/repo`. */
-  private readonly lookupCache: TtlCache<Verdict | undefined>;
+  private readonly lookupCache: TtlCache<BuildLookup>;
   /**
    * The last lookup that succeeded per `owner/repo`, served when a lookup
    * fails: a GitHub 5xx or a CircleCI rate limit says nothing about the build,
    * and writing `unknown` for it would flip every affected component for a
    * pass. Its `checkedAt` shows how old it is. Bounded by the fleet's size.
    */
-  private readonly lastKnown = new Map<string, Cached<Verdict | undefined>>();
+  private readonly lastKnown = new Map<string, Cached<BuildLookup>>();
   /** Owners already warned about for having no GitHub token. */
   private readonly ownersWithoutToken = new Set<string>();
+  /** Off when `RepoContentProcessor` owns `giantswarm.io/default-branch`. */
+  private readonly writeDefaultBranch: boolean;
 
   static fromConfig(options: {
     config: RootConfigService;
@@ -255,6 +262,9 @@ export class BuildStatusProcessor implements CatalogProcessor {
           ? cacheTtlSeconds * 1000
           : DEFAULT_CACHE_TTL_MS,
       fetchImpl,
+      writeDefaultBranch: !config.getOptionalBoolean(
+        'catalog.processors.repoContent.enabled',
+      ),
     });
   }
 
@@ -265,12 +275,14 @@ export class BuildStatusProcessor implements CatalogProcessor {
     circleciToken?: string;
     cacheTtlMs?: number;
     fetchImpl?: FetchFn;
+    writeDefaultBranch?: boolean;
   }) {
     this.logger = options.logger;
     this.credentialsProvider = options.credentialsProvider;
     this.integrations = options.integrations;
     this.circleciToken = options.circleciToken;
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.writeDefaultBranch = options.writeDefaultBranch ?? true;
     const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
     this.lookupCache = new TtlCache(cacheTtlMs);
   }
@@ -298,7 +310,7 @@ export class BuildStatusProcessor implements CatalogProcessor {
     }
 
     const key = `${slug.owner}/${slug.repo}`;
-    let lookup: Cached<Verdict | undefined>;
+    let lookup: Cached<BuildLookup>;
     try {
       lookup = await this.lookupCache.get(key, () => this.lookup(slug));
       this.lastKnown.set(key, lookup);
@@ -335,14 +347,17 @@ export class BuildStatusProcessor implements CatalogProcessor {
       lookup = previous;
     }
 
-    if (!lookup.value) {
+    if (!lookup.value.verdict) {
       // No CI reports to this branch at all. There is nothing to say, and
       // saying "unknown" would suggest we looked for something that exists.
       return entity;
     }
 
     return withBuildStatus(entity, {
-      verdict: lookup.value,
+      verdict: lookup.value.verdict,
+      defaultBranch: this.writeDefaultBranch
+        ? lookup.value.defaultBranch
+        : undefined,
       checkedAt: lookup.fetchedAt,
     });
   }
@@ -350,10 +365,10 @@ export class BuildStatusProcessor implements CatalogProcessor {
   private async lookup(slug: {
     owner: string;
     repo: string;
-  }): Promise<Verdict | undefined> {
+  }): Promise<BuildLookup> {
     const rollup = await this.fetchRollup(slug);
     if (!rollup) {
-      return undefined;
+      return { verdict: undefined, defaultBranch: undefined };
     }
 
     const urls = unsettled(rollup)
@@ -366,7 +381,10 @@ export class BuildStatusProcessor implements CatalogProcessor {
       }),
     );
 
-    return verdict(rollup, builds);
+    return {
+      verdict: verdict(rollup, builds),
+      defaultBranch: rollup.defaultBranch,
+    };
   }
 
   private async fetchRollup(slug: {
@@ -709,10 +727,11 @@ function withBuildStatus(
   entity: Entity,
   options: {
     verdict: Verdict;
+    defaultBranch?: string;
     checkedAt?: number;
   },
 ): Entity {
-  const { verdict: result, checkedAt } = options;
+  const { verdict: result, defaultBranch, checkedAt } = options;
   const annotations: Record<string, string> = {
     ...(entity.metadata.annotations ?? {}),
   };
@@ -720,6 +739,9 @@ function withBuildStatus(
     annotations[BUILD_STATUS_CHECKED_ANNOTATION] = new Date(
       checkedAt,
     ).toISOString();
+  }
+  if (defaultBranch) {
+    annotations[DEFAULT_BRANCH_ANNOTATION] = defaultBranch;
   }
   if (result.failingChecks.length > 0) {
     // A JSON array, not a comma list: check names contain commas, as in a

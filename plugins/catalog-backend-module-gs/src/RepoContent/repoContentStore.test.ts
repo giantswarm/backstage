@@ -44,18 +44,20 @@ describe('RepoContentStore', () => {
   );
 
   it.each(databases.eachSupportedId())(
-    'deletes one record, or every record not retained, %p',
+    'deletes one record, or every record fetched before a cutoff, %p',
     async databaseId => {
       const store = await createStore(databaseId);
+      const later = new Date('2026-10-07T10:00:00Z');
       await store.put('giantswarm/alpha', main, at);
-      await store.put('giantswarm/beta', main, at);
+      await store.put('giantswarm/beta', main, later);
       await store.put('giantswarm/gamma', main, at);
 
       expect(await store.delete('giantswarm/alpha')).toBe(true);
       expect(await store.delete('giantswarm/alpha')).toBe(false);
-      expect(await store.retainOnly(['giantswarm/beta'])).toBe(1);
-      expect(await store.get('giantswarm/beta')).toEqual(main);
-      expect(await store.get('giantswarm/gamma')).toBeUndefined();
+      expect(await store.deleteFetchedBefore(later)).toBe(1);
+      expect(await store.getAll()).toEqual(
+        new Map([['giantswarm/beta', main]]),
+      );
     },
   );
 });

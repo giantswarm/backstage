@@ -18,7 +18,7 @@ In our case, this is expected to provide the URL of the source code repository o
 
 See [upstream documentation](https://backstage.io/docs/features/software-catalog/well-known-annotations/#backstageiotechdocs-ref).
 
-Can be set manually, or populated automatically by the `RepoContentProcessor` for components with `github.com/project-slug`, as `url:https://github.com/<slug>/tree/<default branch>` when the default branch has a `README.md`. Once the processor has a record for the repository it removes a reference the repository no longer supports.
+Can be set manually, or populated automatically by the `RepoContentProcessor` for components with `github.com/project-slug`, as `url:https://github.com/<slug>/tree/<default branch>` when the root of the default branch has a `README.md` (any case of `readme`, lowercase `.md`). The processor only writes or removes a value that is absent or already has that `url:https://github.com/<slug>/tree/...` shape; any other value, such as `dir:.`, is left as set. It writes none for a default branch whose name contains `/`, `#`, `%`, `?` or whitespace.
 
 ### giantswarm.io/app-test-suite-version-source
 
@@ -38,7 +38,7 @@ Base domain of a Giant Swarm installation.
 
 ### giantswarm.io/default-branch
 
-Name of the default branch of the component's repository. Populated automatically by the `RepoContentProcessor` from `github.com/project-slug`. A repository whose default branch is `master` also gets the `defaultbranch:master` tag.
+Name of the default branch of the component's repository. Populated automatically by the `RepoContentProcessor` from `github.com/project-slug`, or by the `BuildStatusProcessor` while the `RepoContentProcessor` is off. A repository whose default branch is `master` also gets the `defaultbranch:master` tag.
 
 ### giantswarm.io/custom-ca
 
