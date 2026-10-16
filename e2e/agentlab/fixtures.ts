@@ -50,7 +50,13 @@ export async function completeDexLogin(
       () => false,
     );
   await dex.getByRole('button', { name: 'Login' }).click();
-  const done = await Promise.race([closed, leftDex]);
+  // The popup closing rejects the URL wait at once, which can settle the race
+  // as false before the close event settles it as true: a false is judged by
+  // both.
+  const done =
+    (await Promise.race([closed, leftDex])) ||
+    (await closed) ||
+    (await leftDex);
   expect(done, 'Dex accepted the login and sent the popup on').toBe(true);
   if (!dex.isClosed()) {
     // A completion page: give it a moment in case it closes itself, then
@@ -491,19 +497,25 @@ export async function connectToMuster(page: Page, ready: Locator) {
 }
 
 /**
- * Opens the admin page's home screen on the agents as they are now. The portal
+ * Opens `path` on the admin page with the agents as they are now. The portal
  * writes its cache to localStorage at most every 30 s and trusts an entry for
  * 60 s, so a load right after the fixture agent turned Ready elsewhere would
- * restore the list from before it existed and not ask again: the admin page's
- * init script drops the persisted caches on this load, before the app runs,
- * and the home reads the roster afresh.
+ * restore the list from before it existed and not ask again — on this page and
+ * on every page reached from it without a load: the admin page's init script
+ * drops the persisted caches on this load, before the app runs, and the
+ * portal reads the roster afresh.
  */
-export async function openHome(admin: Page): Promise<void> {
+export async function openFresh(admin: Page, path: string): Promise<void> {
   await admin.evaluate(
     flag => window.sessionStorage.setItem(flag, '1'),
     DROP_CACHES_FLAG,
   );
-  await open(admin, '/');
+  await open(admin, path);
+}
+
+/** Opens the admin page's home screen on the agents as they are now ({@link openFresh}). */
+export async function openHome(admin: Page): Promise<void> {
+  await openFresh(admin, '/');
 }
 
 /**

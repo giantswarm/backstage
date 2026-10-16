@@ -4,6 +4,7 @@ import {
   expectClearOfBottomBar,
   expectNoHorizontalScroll,
   open,
+  openFresh,
   openReadyAgent,
   test,
 } from './fixtures';
@@ -25,9 +26,10 @@ test('the bottom bar holds New session · Sessions · Search · Customize · Pro
 }) => {
   test.setTimeout(10 * 60_000);
   // New session lands on the home Prompt, which the home shows only once the
-  // person has an agent ready for a session: the worker's own.
+  // person has an agent ready for a session: the worker's own, on a roster
+  // read after it turned Ready.
   await openReadyAgent(admin, labAgent);
-  await open(admin, '/agent-platform/sessions');
+  await openFresh(admin, '/agent-platform/sessions');
   const nav = bar(admin);
   await expect(nav).toHaveClass(/agent-shell-mobile-bar/);
   // Profile's item carries the person's avatar (an initial) before its label.
