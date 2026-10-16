@@ -3,6 +3,10 @@ import { makeStyles } from '@material-ui/core';
 import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { Continuation } from '../../lib/continuationPrompt';
 import {
+  ContinueInNewSessionButton,
+  type NewSessionAction,
+} from './ContinueInNewSessionButton';
+import {
   describeContinuationStart,
   newSessionBlockedText,
   newSessionElsewhereText,
@@ -34,11 +38,11 @@ export type RuntimeLostNoticeProps = {
   /** The agent's display name, for the way out. Absent when no Agent matched. */
   agentName?: string;
   /**
-   * Whether the composer below offers the new session — when it does, this
-   * notice only explains; when it cannot (no addressable agent, a read-only
-   * session), it has to say so itself.
+   * The new session this notice offers, under its text. Absent when none can
+   * be offered (no addressable agent, a blocker, the agent still being read):
+   * the notice then says where else to go.
    */
-  offersNewSession: boolean;
+  newSession?: NewSessionAction;
   /**
    * Why no new session can start with the agent from this portal
    * (`AgentRow.sessionBlocker`): the way out names it instead of a button.
@@ -72,12 +76,14 @@ export type RuntimeLostNoticeProps = {
  * Two registers. A **suspected** loss (the interim shape, before kagent marks
  * the instance) is worded as what the runtime did, with the retry still open —
  * a cold worker can produce the same timeout once, and "you can also send
- * again" costs nothing. A **reported** loss is final, and says so.
+ * again" costs nothing; the message box stays for it, and the new session is
+ * the secondary way on. A **reported** loss is final, and says so: the page
+ * shows no message box, and the new session is the one way on.
  */
 export function RuntimeLostNotice({
   loss,
   agentName,
-  offersNewSession,
+  newSession,
   newSessionBlocker,
   hasQuestion = false,
   answer,
@@ -108,10 +114,10 @@ export function RuntimeLostNotice({
   let wayOut = newSessionElsewhereText(agent);
   if (newSessionBlocker) {
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
-  } else if (offersNewSession && loss.reported) {
-    wayOut = `To carry on with ${agent}, choose Continue in a new session under the message box. ${start}`;
-  } else if (offersNewSession) {
-    wayOut = `Send again to retry. If it fails again, choose Continue in a new session under the message box. ${start}`;
+  } else if (newSession && loss.reported) {
+    wayOut = `To carry on, continue in a new session with ${agent}. ${start}`;
+  } else if (newSession) {
+    wayOut = `Send again to retry. If it fails again, continue in a new session with ${agent}. ${start}`;
   }
 
   return (
@@ -132,6 +138,12 @@ export function RuntimeLostNotice({
           )}
           {startError && (
             <span>The new session could not be started: {startError}</span>
+          )}
+          {newSession && !newSessionBlocker && (
+            <ContinueInNewSessionButton
+              {...newSession}
+              variant={loss.reported ? 'primary' : 'secondary'}
+            />
           )}
         </span>
       }

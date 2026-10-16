@@ -391,30 +391,12 @@ describe('SessionComposer', () => {
 
   it('renders the details slot inside the box, next to the action', async () => {
     // The cost/context chip docks here so it stays on screen with the composer.
-    // It must survive every trailing state: beside Send, beside Stop, and when
-    // a lost runtime removes Send entirely.
+    // It must survive every trailing state: beside Send and beside Stop.
     renderComposer({ details: <span data-testid="details-chip" /> });
 
     const box = screen.getByTestId('composer-card');
     expect(box).toContainElement(screen.getByTestId('details-chip'));
     expect(sendButton()).toBeInTheDocument();
-  });
-
-  it('keeps the details slot when a new session replaces Send', () => {
-    renderComposer({
-      details: <span data-testid="details-chip" />,
-      newSession: {
-        label: 'Continue in a new session',
-        onStart: jest.fn(),
-        replacesSend: true,
-        caption: 'This session cannot continue.',
-      },
-    });
-
-    expect(screen.getByTestId('details-chip')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Send' }),
-    ).not.toBeInTheDocument();
   });
 
   it('shows why a send failed', () => {
@@ -580,113 +562,6 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
   });
 });
 
-describe('SessionComposer — the way out of a lost runtime', () => {
-  const onStart = jest.fn();
-  const newSession = {
-    label: 'Continue in a new session',
-    onStart,
-    caption: 'Sending again retries the runtime.',
-  };
-  const startButton = () =>
-    screen.getByRole('button', {
-      name: 'Continue in a new session',
-    });
-
-  beforeEach(() => {
-    onStart.mockReset();
-  });
-
-  it('offers the new session under the box while the loss is only suspected', async () => {
-    // A cold worker can time out once, so sending again stays the honest retry
-    // and the way out waits below it.
-    renderComposer({ newSession, isFinished: true });
-
-    expect(sendButton()).toBeInTheDocument();
-    expect(startButton()).toBeEnabled();
-    expect(
-      screen.getByText('Sending again retries the runtime.'),
-    ).toBeInTheDocument();
-  });
-
-  it('keeps the way out outside the box, not among its controls', () => {
-    // It leaves this session; reading as one of the message box's own controls
-    // was the confusion worth a test.
-    renderComposer({ newSession, isFinished: true });
-
-    expect(screen.getByTestId('composer-card')).not.toContainElement(
-      startButton(),
-    );
-  });
-
-  it('hands the box’s text to the new session and keeps it in the box', async () => {
-    renderComposer({ newSession, isFinished: true });
-
-    await userEvent.type(field(), '  six of them are vegetarian  ');
-    await userEvent.click(startButton());
-
-    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian', []);
-    // Not cleared: the create can fail, and the box is where the words are.
-    expect(field()).toHaveValue('  six of them are vegetarian  ');
-    expect(onSubmit).not.toHaveBeenCalled();
-  });
-
-  it('starts with an empty box too — the caller carries the unanswered message', async () => {
-    renderComposer({ newSession, isFinished: true });
-
-    await userEvent.click(startButton());
-
-    expect(onStart).toHaveBeenCalledWith('', []);
-  });
-
-  it('keeps Enter sending while Send is still offered', async () => {
-    renderComposer({ newSession, isFinished: true });
-
-    await userEvent.type(field(), 'try once more{Enter}');
-
-    expect(onSubmit).toHaveBeenCalledWith('try once more', []);
-    expect(onStart).not.toHaveBeenCalled();
-  });
-
-  it('takes Send’s place, and Enter, once the loss is reported', async () => {
-    // A send then fails the same way every time; the one thing that works is
-    // what the primary control and Enter should do.
-    renderComposer({
-      newSession: { ...newSession, replacesSend: true },
-      isFinished: true,
-    });
-
-    expect(
-      screen.queryByRole('button', { name: 'Send' }),
-    ).not.toBeInTheDocument();
-    expect(field()).toHaveAttribute(
-      'placeholder',
-      'Add a message for the new session…',
-    );
-
-    await userEvent.type(field(), 'six of them are vegetarian{Enter}');
-
-    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian', []);
-    expect(onSubmit).not.toHaveBeenCalled();
-  });
-
-  it('withholds the action while the new session is being created', () => {
-    renderComposer({
-      newSession: { ...newSession, isStarting: true },
-      isFinished: true,
-    });
-
-    expect(startButton()).toBeDisabled();
-  });
-
-  it('is not offered at all without the prop', () => {
-    renderComposer();
-
-    expect(
-      screen.queryByRole('button', { name: /Continue in a new session/ }),
-    ).not.toBeInTheDocument();
-  });
-});
-
 describe('SessionComposer on a phone (T22)', () => {
   let layout: MockedLayout;
   afterEach(() => layout.restore());
@@ -804,16 +679,6 @@ describe('SessionComposer send-key hint', () => {
   it.each([
     ['the agent works', { isAgentWorking: true }],
     ['a confirmation is open', { disabledReason: 'Answer the question.' }],
-    [
-      'the runtime is lost',
-      {
-        newSession: {
-          label: 'Continue in a new session',
-          onStart: jest.fn(),
-          caption: 'This session cannot continue.',
-        },
-      },
-    ],
   ])('hides the keys while %s, keeping their room', (_, props) => {
     layout = mockDesktopLayout();
     renderComposer(props);
@@ -1106,40 +971,5 @@ describe('SessionComposer — images', () => {
       screen.getByRole('button', { name: 'Remove Pasted image.png' }),
     );
     expect(sendButton()).toBeEnabled();
-  });
-
-  it('waits for an image still being read before starting a new session with it', async () => {
-    let decoded: () => void = () => {};
-    encoding.createImageBitmap.mockImplementationOnce(
-      () =>
-        new Promise(resolve => {
-          decoded = () => resolve({ width: 1, height: 1, close: jest.fn() });
-        }),
-    );
-    const onStart = jest.fn();
-    renderComposer({
-      images: {},
-      newSession: {
-        label: 'Continue in a new session',
-        onStart,
-        replacesSend: true,
-        caption: 'This session cannot continue.',
-      },
-    });
-
-    paste([pngFile()]);
-    const start = screen.getByRole('button', {
-      name: 'Continue in a new session',
-    });
-    expect(start).toBeDisabled();
-
-    await waitFor(() => expect(encoding.createImageBitmap).toHaveBeenCalled());
-    await act(async () => decoded());
-    await screen.findByText('Pasted image.png');
-    await userEvent.click(start);
-
-    expect(onStart).toHaveBeenCalledWith('', [
-      expect.objectContaining({ name: 'Pasted image.png' }),
-    ]);
   });
 });

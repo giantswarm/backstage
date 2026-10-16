@@ -6,14 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  Alert,
-  Button,
-  ButtonIcon,
-  Flex,
-  Text,
-  TextAreaField,
-} from '@backstage/ui';
+import { Alert, ButtonIcon, Flex, Text, TextAreaField } from '@backstage/ui';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import StopIcon from '@material-ui/icons/Stop';
 import {
@@ -24,11 +17,7 @@ import {
 import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { isSendKey, sendEnterKeyHint } from '../../lib/sendKey';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
-import {
-  attachedImagesProblem,
-  type ComposerImage,
-  type SessionImages,
-} from '../../lib/messageImages';
+import type { ComposerImage, SessionImages } from '../../lib/messageImages';
 import { DROP_LABEL, useComposerImages } from '../../hooks/useComposerImages';
 import { SendKeyHint } from '../SendKeyHint';
 import { ComposerImageList } from '../ComposerImageList';
@@ -174,35 +163,6 @@ export type SessionComposerProps = {
    * the conversation's length. Presentation only; the caller owns it.
    */
   details?: ReactNode;
-  /**
-   * The way out of a session whose runtime kagent cannot bring back: start a
-   * new session with the same agent, taking the box's text along.
-   *
-   * Rendered under the box, as a secondary button while the loss is only
-   * suspected — a cold worker can time out once, and sending again is the honest
-   * retry — and as the primary one, Send gone, once kagent has reported the
-   * runtime lost (`replacesSend`), because a send then fails the same way every
-   * time and Enter should do the one thing that works. The action receives
-   * whatever is in the box; the caller decides what to carry when it is empty
-   * (the message that never got its answer).
-   */
-  newSession?: {
-    /** The button's text — names the agent, so it says where the person lands. */
-    label: string;
-    /**
-     * Receives the trimmed text of the box, which may be empty, and the
-     * images attached in it.
-     */
-    onStart: (draft: string, images: ComposerImage[]) => void;
-    /** The new session is being created. */
-    isStarting?: boolean;
-    /** Send is withheld and this becomes the primary control; Enter starts
-     * the session. */
-    replacesSend?: boolean;
-    /** What the caption says while this is offered; may draw keys
-     * (`SendKeyHint`). */
-    caption: ReactNode;
-  };
 };
 
 /**
@@ -248,7 +208,6 @@ export function SessionComposer({
   onStop,
   isStopping = false,
   details,
-  newSession,
   images: imageOptions,
 }: SessionComposerProps) {
   const [value, setValue] = useState('');
@@ -283,28 +242,14 @@ export function SessionComposer({
   const text = value.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
   const isDisabled = Boolean(disabledReason);
-  // Once kagent has said the runtime is lost, Send has nothing left to do: it
-  // goes, and the new session becomes the primary control — and takes Enter.
-  const newSessionReplacesSend = Boolean(newSession?.replacesSend);
   const canSubmit =
     Boolean(text) &&
     !isTooLong &&
     !isDisabled &&
     !isAgentWorking &&
-    !newSessionReplacesSend &&
     // A send now would leave behind the image still being read.
     !attached.isPreparing &&
     !attached.problem;
-  // A new session starts with no images behind it, so only the message's own
-  // limits apply to what goes with it.
-  const newSessionImagesProblem = attachedImagesProblem(attached.images);
-  const canStartNewSession =
-    Boolean(newSession) &&
-    !isTooLong &&
-    !isDisabled &&
-    !newSession?.isStarting &&
-    !attached.isPreparing &&
-    !newSessionImagesProblem;
 
   useEffect(() => {
     if (autoFocus) {
@@ -333,21 +278,7 @@ export function SessionComposer({
     }
   }, [isDisabled]);
 
-  const startNewSession = () => {
-    if (!newSession || !canStartNewSession) {
-      return;
-    }
-    // Not cleared: the create can fail, and the box is where the words still
-    // are. The caller unmounts this composer by navigating once the session
-    // exists.
-    newSession.onStart(text, attached.images);
-  };
-
   const submit = () => {
-    if (newSessionReplacesSend) {
-      startNewSession();
-      return;
-    }
     if (!canSubmit) {
       return;
     }
@@ -374,9 +305,7 @@ export function SessionComposer({
   const showStop = isAgentWorking && !isDisabled && Boolean(onStop);
 
   let placeholder = 'Send a message to this session…';
-  if (newSessionReplacesSend) {
-    placeholder = 'Add a message for the new session…';
-  } else if (isFinished && agentName) {
+  if (isFinished && agentName) {
     // The session is idle, not over: the next message continues it.
     placeholder = `Reply to ${agentName}…`;
   }
@@ -388,8 +317,6 @@ export function SessionComposer({
   let caption: ReactNode;
   if (disabledReason) {
     caption = disabledReason;
-  } else if (newSession) {
-    caption = newSession.caption;
   } else if (isStopping) {
     caption = 'Stopping the turn…';
   } else if (isAgentWorking && isStalled) {
@@ -411,9 +338,8 @@ export function SessionComposer({
   }
 
   // How the box sends, said only at rest. While the agent works or a
-  // confirmation is open, Enter does not send. A pending Stop and a suspected
-  // runtime loss leave Enter sending, but their captions say what matters
-  // more then; once the loss is reported, that caption names its keys itself.
+  // confirmation is open, Enter does not send. A pending Stop leaves Enter
+  // sending, but its caption says what matters more then.
   // Out of rest the hint is hidden, not removed: it keeps its room, so the
   // docked composer does not change height on every turn and the
   // conversation above it does not jump (it wraps to a line of its own on a
@@ -422,8 +348,6 @@ export function SessionComposer({
   let problem: string | undefined;
   if (isTooLong) {
     problem = `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
-  } else if (newSession?.replacesSend) {
-    problem = attached.notice ?? newSessionImagesProblem;
   } else {
     problem = attached.notice ?? attached.problem;
   }
@@ -514,14 +438,12 @@ export function SessionComposer({
                         onPress={onStop}
                       />
                     ) : (
-                      !newSessionReplacesSend && (
-                        <ButtonIcon
-                          type="submit"
-                          aria-label="Send"
-                          icon={<ArrowUpwardIcon />}
-                          isDisabled={!canSubmit}
-                        />
-                      )
+                      <ButtonIcon
+                        type="submit"
+                        aria-label="Send"
+                        icon={<ArrowUpwardIcon />}
+                        isDisabled={!canSubmit}
+                      />
                     )}
                   </>
                 }
@@ -554,26 +476,6 @@ export function SessionComposer({
                 <SendKeyHint touch={touch} />
               </Text>
             </Flex>
-
-            {newSession && (
-              // Under the box, not in it: it is a way out of this session, not one
-              // of the box's own controls. Worded rather than an icon — an icon
-              // could not say where the person lands. `type="button"`: only the
-              // primary control submits the form, and while Send is still there,
-              // Enter must keep sending.
-              <Flex justify="end">
-                <Button
-                  type={newSessionReplacesSend ? 'submit' : 'button'}
-                  size="small"
-                  variant={newSessionReplacesSend ? 'primary' : 'secondary'}
-                  isDisabled={!canStartNewSession}
-                  isPending={newSession.isStarting}
-                  onPress={newSessionReplacesSend ? undefined : startNewSession}
-                >
-                  {newSession.label}
-                </Button>
-              </Flex>
-            )}
           </Flex>
         </form>
       )}

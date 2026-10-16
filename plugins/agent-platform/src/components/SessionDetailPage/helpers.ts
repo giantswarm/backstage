@@ -27,10 +27,13 @@ export function newSessionElsewhereText(agent: string): string {
   return `Continue in a new session with ${agent} from the Sessions list.`;
 }
 
+/** The way out of a session that cannot go on, on the notice's button. */
+export const CONTINUE_IN_NEW_SESSION_LABEL = 'Continue in a new session';
+
 /**
  * What a session that cannot go on hands its new session, in a sentence for
- * the notice: how much of this conversation (`buildContinuationPrompt`), the
- * open question when there is one, and the answer or the box's text.
+ * the notice: how much of this conversation (`buildContinuationPrompt`), and
+ * the open question and the answer when there are.
  */
 export function describeContinuationStart({
   continuation,
@@ -43,26 +46,30 @@ export function describeContinuationStart({
   /** Whether the message carries the person's answer to it. */
   hasAnswer: boolean;
 }): string {
-  // What follows the conversation: the open question when there is one, then
-  // the answer or the box's text.
-  const reply =
-    hasQuestion && hasAnswer ? 'your answer' : 'the text in the box';
-  const rest = hasQuestion ? `the open question and ${reply}` : reply;
-  const replaces =
-    hasQuestion && hasAnswer ? '; text in the box replaces the answer' : '';
+  // What follows the conversation, when anything does.
+  let rest: string | undefined;
+  if (hasQuestion) {
+    rest = hasAnswer
+      ? 'the open question and your answer'
+      : 'the open question';
+  }
+  // "…, and the open question", but "…, the open question and your answer".
+  let after = '';
+  if (rest) {
+    after = hasAnswer ? `, ${rest}` : `, and ${rest}`;
+  }
   const withConversation = (conversation: string) =>
-    `Its first message holds ${conversation}, with tools named but not their results, ${
-      hasQuestion ? rest : `and ${rest}`
-    }${replaces}.`;
+    `Its first message holds ${conversation}, with tools named but not their results${after}.`;
   if (!continuation || continuation.messageCount === 0) {
     return withConversation('this conversation');
   }
   const { messageCount, includedMessageCount } = continuation;
   const messages = countNoun(messageCount, 'message');
-  // None fit beside a long answer: say so, rather than "the newest 0".
-  if (includedMessageCount === 0) {
+  // None fit beside a long question or answer: say so, rather than "the
+  // newest 0".
+  if (includedMessageCount === 0 && rest) {
     return `Its first message holds ${rest}; this conversation's ${messages} do not fit beside ${
-      hasQuestion ? 'them' : 'it'
+      hasAnswer ? 'them' : 'it'
     }.`;
   }
   return withConversation(
@@ -221,4 +228,50 @@ export function readUnansweredUserMessage(
     return undefined;
   }
   return readLastUserMessage(items);
+}
+
+/**
+ * The conversation a new session carries on: the transcript, and the message
+ * the failed send handed back when the transcript does not hold it (kagent
+ * refused it before it recorded the turn), with its images, as the newest
+ * message. Where the transcript holds it, it is there once already.
+ */
+export function withFailedSend(
+  items: readonly TimelineItem[],
+  failed: { messageId: string; text: string; images?: ComposerImage[] } | null,
+): TimelineItem[] {
+  if (
+    !failed ||
+    items.some(
+      item =>
+        item.kind === 'user-message' && item.messageId === failed.messageId,
+    )
+  ) {
+    return [...items];
+  }
+  const taskIndex = items[items.length - 1]?.taskIndex ?? 0;
+  return [
+    ...items,
+    {
+      kind: 'user-message',
+      id: `failed-send:${failed.messageId}`,
+      taskIndex,
+      messageId: failed.messageId,
+      text: failed.text,
+    },
+    ...(failed.images ?? []).map((image): TimelineItem => ({
+      kind: 'attachment',
+      id: `failed-send:${image.id}`,
+      taskIndex,
+      messageId: failed.messageId,
+      isUser: true,
+      name: image.name,
+      preview: {
+        kind: 'image',
+        type: image.mediaType,
+        dataUrl: image.previewUrl,
+        byteSize: image.byteSize,
+      },
+    })),
+  ];
 }

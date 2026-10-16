@@ -25,8 +25,11 @@ import type { TimelineItem } from './kagentTimeline';
  * The whole message stays within {@link MESSAGE_TEXT_MAX_LENGTH}, the bound the
  * send route enforces. The open question and the answer always fit; the
  * conversation gives way from its oldest end, and the message says how many
- * messages it left out. What the person typed is never cut: when it cannot fit
- * whole beside the rest, it is the message on its own.
+ * messages it left out.
+ *
+ * Nothing the person types goes in: the session that cannot go on shows no
+ * message box, so the new session starts with the conversation, and the person
+ * writes their next message there.
  */
 
 /** The session a continuation carries on, as the route names it. */
@@ -103,13 +106,6 @@ export function splitContinuation(items: TimelineItem[]): {
 /** The longest any one earlier message is carried, before it is cut. */
 export const ENTRY_MAX_LENGTH = 4_000;
 
-/**
- * Room the conversation leaves for the answer, or for what the person types
- * in its place. A reply up to this long leaves the conversation as the notice
- * described it; only a longer one takes more from the oldest end.
- */
-export const REPLY_RESERVE = ENTRY_MAX_LENGTH;
-
 /** Room kept free under the limit, for the counts the omission note adds. */
 const SLACK = 200;
 
@@ -119,20 +115,21 @@ const INTRO_START =
 
 const EARLIER_HEADING = '## Earlier conversation';
 const QUESTION_HEADING = '## Your last question';
-const ANSWER_HEADINGS = ['## My answer', '## My reply'];
+const ANSWER_HEADING = '## My answer';
+/**
+ * The headings an answer has been written under. Continuations written before
+ * the message box went from these sessions also carry the person's typed
+ * text as `## My reply`; a session carried on again still reads it back.
+ */
+const ANSWER_HEADINGS = [ANSWER_HEADING, '## My reply'];
 
 export type ContinuationInput = {
   /** The conversation so far, as the page renders it. */
   items: TimelineItem[];
   /** The questions the session is waiting on, with their choices. */
   pendingQuestions: AskUserQuestion[];
-  /** The answer that was not taken, positionally per question. */
+  /** The answer that did not reach the agent, positionally per question. */
   answers?: string[][];
-  /**
-   * What the person typed in the box instead, which replaces the answer.
-   * Blank counts as nothing typed.
-   */
-  reply?: string;
   /** The session this carries on, named on the message's first line. */
   continues?: ContinuedSession;
   /** Overridable for tests. */
@@ -399,8 +396,6 @@ function introFor(hasQuestion: boolean, hasAnswer: boolean): string {
     ending = `It ends with the question you asked last and my answer to it, which could not reach you in that session. ${ending}`;
   } else if (hasQuestion) {
     ending = `It ends with the question you asked last, which I have not answered. ${ending}`;
-  } else if (hasAnswer) {
-    ending = `It ends with what I wrote next. ${ending}`;
   }
   return `${INTRO_START}, so you do not have its history. Below is our earlier conversation, oldest first: what I wrote, what you replied, and the tools you used, named without their results. ${ending}`;
 }
@@ -409,19 +404,14 @@ export function buildContinuationPrompt({
   items,
   pendingQuestions,
   answers,
-  reply,
   continues,
   maxLength = MESSAGE_TEXT_MAX_LENGTH,
 }: ContinuationInput): Continuation {
-  const typed = reply?.trim();
-  let answer: string | undefined;
-  if (typed) {
-    answer = typed;
-  } else if (answers?.length) {
-    answer = answerSection(answers);
-  }
-
   const hasQuestion = pendingQuestions.length > 0;
+  // An answer answers the open question; without one there is nothing it is to.
+  let answer =
+    hasQuestion && answers?.length ? answerSection(answers) : undefined;
+
   const intro = introFor(hasQuestion, Boolean(answer));
   const marker = continues ? continuationMarker(continues) : undefined;
   let question = hasQuestion ? questionSection(pendingQuestions) : undefined;
@@ -432,7 +422,7 @@ export function buildContinuationPrompt({
       intro,
       `${EARLIER_HEADING}\n\n${conversation}`,
       question && `${QUESTION_HEADING}\n\n${question}`,
-      answer && `${hasQuestion ? '## My answer' : '## My reply'}\n\n${answer}`,
+      answer && `${ANSWER_HEADING}\n\n${answer}`,
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -441,20 +431,10 @@ export function buildContinuationPrompt({
   const messageCount = entries.filter(entry => entry.isMessage).length;
 
   // The question and the answer are what the new session must act on, so the
-  // conversation gives way first. Only a reply typed to the limit, or
-  // questions near it, can crowd the frame itself. The person's own text is
-  // never cut: a reply too long to fit whole beside the frame is the message
-  // on its own, after the marker line where that still fits. A failed
-  // answer's text gives way instead, and after it the questions.
+  // conversation gives way first. Only an answer or questions near the limit
+  // can crowd the frame itself: then the answer gives way, and after it the
+  // questions.
   let overflow = frame('').length + SLACK - maxLength;
-  if (overflow > 0 && typed) {
-    const marked = marker && `${marker}\n\n${typed}`;
-    return {
-      text: marked && marked.length <= maxLength ? marked : typed,
-      messageCount,
-      includedMessageCount: 0,
-    };
-  }
   if (overflow > 0 && answer) {
     answer = clip(answer, Math.max(0, answer.length - overflow));
     overflow = frame('').length + SLACK - maxLength;
@@ -463,10 +443,7 @@ export function buildContinuationPrompt({
     question = clip(question, Math.max(0, question.length - overflow));
   }
 
-  // Room held for the answer or a reply typed in its place, so a short reply
-  // keeps the conversation exactly as the notice counted it.
-  const reserve = Math.max(0, REPLY_RESERVE - (answer?.length ?? 0));
-  let budget = maxLength - frame('').length - SLACK - reserve;
+  let budget = maxLength - frame('').length - SLACK;
   const kept: Entry[] = [];
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const cost = entries[index].text.length + 2;

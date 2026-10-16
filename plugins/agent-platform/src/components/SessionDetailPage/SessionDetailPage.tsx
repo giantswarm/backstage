@@ -28,7 +28,6 @@ import {
   StatusDot,
   TOUCH_MEDIA,
   useProvidePageHeaderActions,
-  useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { isConflictError, isUnauthorizedError } from '../../apis';
@@ -86,6 +85,7 @@ import {
   fresherStreamedCopy,
   readLastUserMessage,
   readUnansweredUserMessage,
+  withFailedSend,
   STALLED_STATE_LABEL,
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
@@ -115,8 +115,6 @@ import { describeCostBasis } from '../../lib/costBasis';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { AgentAvatar } from '../AgentAvatar';
-import { SEND_KEY_CAPTIONS } from '../../lib/sendKey';
-import { SendKeyHint } from '../SendKeyHint';
 
 /** Long enough to read why the switch went back, like the other failure toasts. */
 const TOOL_ACTIVITY_TOAST_TIMEOUT_MS = 12000;
@@ -353,7 +351,6 @@ export function SessionDetailPage() {
   const classes = useStyles();
   const { installation = '', sessionId = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
-  const touch = useTouchInput();
 
   // Before the reads, because it gates them: a delete is in flight from this very
   // page, and an interval landing between "kagent accepted the delete" and the
@@ -463,8 +460,8 @@ export function SessionDetailPage() {
   /**
    * The answer kagent did not take: the agent could not resume, and the
    * question it answered is still open (`useAnswerConfirmation`). Terminal like
-   * a reported runtime loss — the card goes, the composer offers the new
-   * session — but only while **that** question stands: the same task, asking
+   * a reported runtime loss — the card and the box go, the notice offers the
+   * new session — but only while **that** question stands: the same task, asking
    * in the same status message. A resume that lands late moves the task on,
    * and a follow-up question in the same task is a new one to answer.
    */
@@ -500,9 +497,7 @@ export function SessionDetailPage() {
    * The answer that did not reach the agent — not taken, or lost with the
    * runtime: a question's answers, positionally. Not an approval's words (a
    * decline's reason), which say nothing as an answer to a new session. Shown
-   * in the notice, and carried into the new session's first message; never
-   * put in the box, which would keep it beside a live Send once a late resume
-   * moves the task on.
+   * in the notice, and carried into the new session's first message.
    */
   const failedAnswers =
     carriesOn &&
@@ -513,30 +508,36 @@ export function SessionDetailPage() {
       : undefined;
   const failedAnswerText = failedAnswers ? failedAnswer?.text : undefined;
   /**
-   * The first message of the session that carries this one on: the whole
-   * conversation, the open question and the answer (`buildContinuationPrompt`).
-   * Built here without a typed reply, for the notice's account of what the new
-   * session gets; the start builds it again with whatever the box holds.
+   * What the session that carries this one on starts with: the first message,
+   * holding the whole conversation, the open question and the answer
+   * (`buildContinuationPrompt`), and the images of the message that never got
+   * its answer, which the conversation names. Nothing the box holds: a
+   * session that cannot go on shows no box, and a suspected loss keeps its
+   * box for the retry. Built once, so the notice says what the start sends.
    */
-  const continuation = useMemo(
-    () =>
-      carriesOn
-        ? buildContinuationPrompt({
-            items: conversationItems,
-            pendingQuestions: pendingConfirmation?.questions ?? [],
-            answers: failedAnswers,
-            continues: { installation, sessionId },
-          })
-        : undefined,
-    [
-      carriesOn,
-      conversationItems,
-      pendingConfirmation,
-      failedAnswers,
-      installation,
-      sessionId,
-    ],
-  );
+  const continuation = useMemo(() => {
+    if (!carriesOn) {
+      return undefined;
+    }
+    const items = withFailedSend(conversationItems, send.failed);
+    return {
+      ...buildContinuationPrompt({
+        items,
+        pendingQuestions: pendingConfirmation?.questions ?? [],
+        answers: failedAnswers,
+        continues: { installation, sessionId },
+      }),
+      images: readUnansweredUserMessage(items)?.images ?? [],
+    };
+  }, [
+    carriesOn,
+    conversationItems,
+    send.failed,
+    pendingConfirmation,
+    failedAnswers,
+    installation,
+    sessionId,
+  ]);
 
   /**
    * The agent, as a row the create path takes — the same join the composer
@@ -1018,110 +1019,57 @@ export function SessionDetailPage() {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession } = creation;
-  /**
-   * The message that never got its answer, when the transcript holds it: the
-   * conversation carries its text and names its images, so the images go
-   * with the new session's first message.
-   */
-  const unanswered = useMemo(
-    () => readUnansweredUserMessage(conversationItems),
-    [conversationItems],
-  );
-  /**
-   * The failed send's text, when the transcript holds that message too (the
-   * gateway recorded the turn before the send failed). The composer restored
-   * it into the box, where it is the same message, not a new one.
-   */
-  const failedSendInTranscript =
-    send.failed &&
-    conversationItems.some(
-      item =>
-        item.kind === 'user-message' &&
-        item.messageId === send.failed?.messageId,
-    )
-      ? send.failed.text
-      : undefined;
-  const startNewSession = useCallback(
-    async (draft: string, boxImages: ComposerImage[]) => {
-      // The new session has none of this conversation, and a message or an
-      // answer alone answers nothing in it: its first message carries the
-      // conversation, then the open question with the answer that did not
-      // reach the agent, then what the box holds as the person's new message
-      // (in the answer's place, when there is a question). Only what the box
-      // holds: a failed send the transcript does not have was restored into
-      // the box, and a person who cleared it meant to.
-      const typed = draft.trim();
-      const restatesTranscript =
-        typed !== '' &&
-        [unanswered?.text, failedSendInTranscript].some(
-          said => said !== undefined && said.trim() === typed,
-        );
-      // The unanswered message's images with the box's, each once: a
-      // restored copy holds the same bytes.
-      const images = [...(unanswered?.images ?? []), ...boxImages].filter(
-        (image, index, all) =>
-          all.findIndex(other => other.previewUrl === image.previewUrl) ===
-          index,
-      );
-      const { text } = buildContinuationPrompt({
-        items: conversationItems,
-        pendingQuestions: pendingConfirmation?.questions ?? [],
-        answers: failedAnswers,
-        reply: restatesTranscript ? undefined : draft,
-        continues: { installation, sessionId },
+  const startNewSession = useCallback(async () => {
+    // The new session has none of this conversation, and an answer alone
+    // answers nothing in it.
+    if (!continuation) {
+      return;
+    }
+    const { text, images } = continuation;
+    // One prefix however many times a session is carried on.
+    const title = `${CONTINUED_TITLE_PREFIX}${sessionTitle.replace(
+      CONTINUED_TITLE_PATTERN,
+      '',
+    )}`;
+    if (!agentRow) {
+      return;
+    }
+    let newSessionId: string;
+    try {
+      newSessionId = await createSession({
+        agent: agentRow,
+        prompt: text,
+        title,
       });
-      // One prefix however many times a session is carried on.
-      const title = `${CONTINUED_TITLE_PREFIX}${sessionTitle.replace(
-        CONTINUED_TITLE_PATTERN,
-        '',
-      )}`;
-      if (!agentRow) {
-        return;
-      }
-      let newSessionId: string;
-      try {
-        newSessionId = await createSession({
-          agent: agentRow,
-          prompt: text,
-          title,
-        });
-      } catch {
-        // Left to the notice, which renders the hook's `error`.
-        return;
-      }
-      const href = sessionDetailRoute?.({
-        installation: agentRow.installation,
-        sessionId: newSessionId,
-      });
-      if (!href) {
-        return;
-      }
-      navigate(href, {
-        state: {
-          [NEW_SESSION_STATE_KEY]: {
-            text,
-            agentNamespace: agentRow.namespace,
-            agentName: agentRow.technicalName,
-            imagesKey: stashHandoffImages(images),
-          },
+    } catch {
+      // Left to the notice, which renders the hook's `error`.
+      return;
+    }
+    const href = sessionDetailRoute?.({
+      installation: agentRow.installation,
+      sessionId: newSessionId,
+    });
+    if (!href) {
+      return;
+    }
+    navigate(href, {
+      state: {
+        [NEW_SESSION_STATE_KEY]: {
+          text,
+          agentNamespace: agentRow.namespace,
+          agentName: agentRow.technicalName,
+          imagesKey: stashHandoffImages(images),
         },
-      });
-    },
-    [
-      agentRow,
-      createSession,
-      navigate,
-      sessionDetailRoute,
-      unanswered,
-      failedSendInTranscript,
-      conversationItems,
-      pendingConfirmation,
-      failedAnswers,
-      sessionTitle,
-      installation,
-      sessionId,
-    ],
-  );
+      },
+    });
+  }, [
+    agentRow,
+    createSession,
+    navigate,
+    sessionDetailRoute,
+    continuation,
+    sessionTitle,
+  ]);
 
   const { cancelTask } = cancellation;
   const { reset: resetSend } = send;
@@ -1382,13 +1330,14 @@ export function SessionDetailPage() {
     //
     // Not while kagent has reported the runtime lost, nor once it did not take
     // an answer: another answer would go the same way, so the question is left
-    // where it is and the way out takes the card's place.
+    // where it is and the notice, with the way out, takes the card's place.
     const isConfirming =
       Boolean(pendingConfirmation && agent) &&
       !answerDispatched &&
       !cannotContinue;
-    // The way out, offered under the box: a second button while the loss is
-    // only suspected, the only one once kagent has reported it. Needs the agent
+    // The way out, offered in the notice that explains it: beside the retry
+    // while the loss is only suspected, the only way on once kagent has
+    // reported it or did not take an answer. Needs the agent
     // as a row to create against; without one the notice says where else to go.
     // Withheld where agent-manager cannot start a session as the person (the
     // notice gives the row's `sessionBlocker`), and while that is still read.
@@ -1402,18 +1351,24 @@ export function SessionDetailPage() {
     // The prototype's waiting caption, naming who waits on what and pointing
     // at the card attached just above the box. The box is disabled meanwhile,
     // because a plain message cannot answer the card: it would open a new
-    // turn. The same holds for a question kagent did not take when no new
-    // session can be offered in Send's place: the notice says where to go.
-    let composerDisabledReason: string | undefined;
-    if (isConfirming) {
-      composerDisabledReason = `${row.agentName || 'The agent'} is waiting for your ${
-        pendingConfirmation?.asks === 'input'
-          ? 'answer above.'
-          : 'decision above.'
-      }`;
-    } else if (answerNotTaken && !offersNewSession) {
-      composerDisabledReason = 'This session cannot continue.';
-    }
+    // turn.
+    const composerDisabledReason = isConfirming
+      ? `${row.agentName || 'The agent'} is waiting for your ${
+          pendingConfirmation?.asks === 'input'
+            ? 'answer above.'
+            : 'decision above.'
+        }`
+      : undefined;
+    const newSession = offersNewSession
+      ? {
+          onStart: () => {
+            // Errors surface through the create hook's `error`, which the
+            // notice renders.
+            startNewSession().catch(() => {});
+          },
+          isStarting: creation.isCreating,
+        }
+      : undefined;
     bottomControl = (
       <div
         ref={setDockElement}
@@ -1424,7 +1379,7 @@ export function SessionDetailPage() {
           <RuntimeLostNotice
             loss={runtimeLoss}
             agentName={row.agentName || undefined}
-            offersNewSession={offersNewSession}
+            newSession={newSession}
             newSessionBlocker={agentRow?.sessionBlocker}
             hasQuestion={Boolean(pendingConfirmation?.questions.length)}
             // Not while the question card is up: it holds the answer itself.
@@ -1437,7 +1392,7 @@ export function SessionDetailPage() {
         {answerNotTaken && !runtimeLoss?.reported && (
           <AnswerNotTakenNotice
             agentName={row.agentName || undefined}
-            offersNewSession={offersNewSession}
+            newSession={newSession}
             newSessionBlocker={agentRow?.sessionBlocker}
             answer={failedAnswerText}
             continuation={continuation}
@@ -1463,97 +1418,78 @@ export function SessionDetailPage() {
             }
           />
         )}
-        <SessionComposer
-          attachment={
-            isConfirming ? (
-              <PendingConfirmationPanel
-                pending={pendingConfirmation!}
-                agentName={row.agentName || undefined}
-                connectorOf={connectorOf}
-                isAnswering={confirmation.isAnswering}
-                error={confirmation.error?.message}
-                restore={confirmation.failed}
-                isUserScoped={isUserScoped}
-                onAnswer={answer => {
-                  // Errors surface through the hook's `error`, which the card
-                  // renders above the choices it hands back. The request it
-                  // answers goes along, so a not-taken verdict is tied to it.
-                  confirmation
-                    .answer({
-                      ...answer,
-                      ...(pendingConfirmation?.askedIn && {
-                        askedIn: pendingConfirmation.askedIn,
-                      }),
-                    })
-                    .catch(() => {});
-                }}
-              />
-            ) : undefined
-          }
-          // Waiting on an answer is the opposite of busy; the caption is the
-          // reason below either way. A stalled turn still withholds Send —
-          // kagent would refuse the message — but says so instead of promising
-          // a reply.
-          isAgentWorking={isConfirming ? false : showWorking || isStalled}
-          isStalled={isStalled}
-          isFinished={Boolean(shownState && !shownState.isActive)}
-          agentName={row.agentName || undefined}
-          disabledReason={composerDisabledReason}
-          // A conflict has its own notice above; the composer must not also
-          // report it as a generic failure. Nor must a lost runtime: the
-          // notice carries the runtime's words as its evidence.
-          error={isConflict || runtimeLoss ? undefined : send.error?.message}
-          // A failed Stop is reported as one, not as a message that was not
-          // sent — the turn it aimed at is still running.
-          stopError={describeStopFailure(cancellation.error)}
-          // On failure the optimistic copy is dropped, so this is the only place the
-          // user's text still exists. After a stalled turn was cancelled, the
-          // message it never answered comes back the same way.
-          restore={send.failed ?? redraft}
-          onStop={isConfirming ? undefined : stopTurn}
-          isStopping={cancellation.isCancelling}
-          details={costChip}
-          newSession={
-            offersNewSession
-              ? {
-                  label: 'Continue in a new session',
-                  onStart: (draft, images) => {
-                    // Errors surface through the create hook's `error`, which
-                    // the notice renders.
-                    startNewSession(draft, images).catch(() => {});
-                  },
-                  isStarting: creation.isCreating,
-                  replacesSend: cannotContinue,
-                  caption: cannotContinue ? (
-                    <>
-                      This session cannot continue; your message carries it on
-                      in a new session with the same agent.{' '}
-                      <SendKeyHint
-                        options={SEND_KEY_CAPTIONS.runtimeLost}
-                        touch={touch}
-                      />
-                    </>
-                  ) : (
-                    'Sending again retries the runtime. If it fails again, continue in a new session with the same agent; this conversation and your message go with it.'
-                  ),
-                }
-              : undefined
-          }
-          // The user arrived here by starting the session — typing in a composer
-          // one screen ago — and the navigation dropped the focus. Restoring it to
-          // the box is continuity, the one case the a11y rule does not have in mind;
-          // a session merely opened from the list gets no autofocus.
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus={Boolean(handoff)}
-          images={composerImages}
-          onSubmit={(text, images) => {
-            // Errors are surfaced through the hook's `error`, which the composer
-            // renders beside the text it hands back.
-            send.sendMessage(text, images).catch(() => {});
-            // The optimistic echo appears at the very bottom; go where it is.
-            scrollToBottom();
-          }}
-        />
+        {/* A session that cannot go on takes no more messages, so it shows no
+            box: the notice above is the way on. The chip keeps the session's
+            totals in reach without one. */}
+        {cannotContinue ? (
+          <Flex justify="end">{costChip}</Flex>
+        ) : (
+          <SessionComposer
+            attachment={
+              isConfirming ? (
+                <PendingConfirmationPanel
+                  pending={pendingConfirmation!}
+                  agentName={row.agentName || undefined}
+                  connectorOf={connectorOf}
+                  isAnswering={confirmation.isAnswering}
+                  error={confirmation.error?.message}
+                  restore={confirmation.failed}
+                  isUserScoped={isUserScoped}
+                  onAnswer={answer => {
+                    // Errors surface through the hook's `error`, which the card
+                    // renders above the choices it hands back. The request it
+                    // answers goes along, so a not-taken verdict is tied to it.
+                    confirmation
+                      .answer({
+                        ...answer,
+                        ...(pendingConfirmation?.askedIn && {
+                          askedIn: pendingConfirmation.askedIn,
+                        }),
+                      })
+                      .catch(() => {});
+                  }}
+                />
+              ) : undefined
+            }
+            // Waiting on an answer is the opposite of busy; the caption is the
+            // reason below either way. A stalled turn still withholds Send —
+            // kagent would refuse the message — but says so instead of promising
+            // a reply.
+            isAgentWorking={isConfirming ? false : showWorking || isStalled}
+            isStalled={isStalled}
+            isFinished={Boolean(shownState && !shownState.isActive)}
+            agentName={row.agentName || undefined}
+            disabledReason={composerDisabledReason}
+            // A conflict has its own notice above; the composer must not also
+            // report it as a generic failure. Nor must a lost runtime: the
+            // notice carries the runtime's words as its evidence.
+            error={isConflict || runtimeLoss ? undefined : send.error?.message}
+            // A failed Stop is reported as one, not as a message that was not
+            // sent — the turn it aimed at is still running.
+            stopError={describeStopFailure(cancellation.error)}
+            // On failure the optimistic copy is dropped, so this is the only place the
+            // user's text still exists. After a stalled turn was cancelled, the
+            // message it never answered comes back the same way.
+            restore={send.failed ?? redraft}
+            onStop={isConfirming ? undefined : stopTurn}
+            isStopping={cancellation.isCancelling}
+            details={costChip}
+            // The user arrived here by starting the session — typing in a composer
+            // one screen ago — and the navigation dropped the focus. Restoring it to
+            // the box is continuity, the one case the a11y rule does not have in mind;
+            // a session merely opened from the list gets no autofocus.
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus={Boolean(handoff)}
+            images={composerImages}
+            onSubmit={(text, images) => {
+              // Errors are surfaced through the hook's `error`, which the composer
+              // renders beside the text it hands back.
+              send.sendMessage(text, images).catch(() => {});
+              // The optimistic echo appears at the very bottom; go where it is.
+              scrollToBottom();
+            }}
+          />
+        )}
       </div>
     );
   }

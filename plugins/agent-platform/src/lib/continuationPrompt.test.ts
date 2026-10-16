@@ -107,16 +107,19 @@ describe('buildContinuationPrompt', () => {
     expect(text).not.toContain('Thinking about potatoes');
   });
 
-  it('carries what the person typed in place of the answer', () => {
+  it('ends on the conversation when the session waits on nothing', () => {
     const { text } = buildContinuationPrompt({
-      items: conversation,
-      pendingQuestions,
+      items: [user('Plan a barbecue.'), tool('search')],
+      pendingQuestions: [],
+      // Nothing to answer, so nothing is carried as an answer.
       answers: [['Egg']],
-      reply: '  Bacon, crispy  ',
     });
 
-    expect(text).toMatch(/## My answer\n\nBacon, crispy$/);
-    expect(text).not.toContain('1. Egg');
+    expect(text).toMatch(
+      /named without their results\. Please carry on from there\.\n\n## Earlier conversation\n\nUser: Plan a barbecue\.\n\n\[Assistant used a tool: search\]$/,
+    );
+    expect(text).not.toContain('## My answer');
+    expect(text).not.toContain('## My reply');
   });
 
   it('notes approvals, attachments and ended turns in a line each', () => {
@@ -166,7 +169,7 @@ describe('buildContinuationPrompt', () => {
     const items = Array.from({ length: 40 }, (_, index) =>
       user(`message ${index} ${'y'.repeat(200)}`),
     );
-    const maxLength = 10_000;
+    const maxLength = 6_000;
 
     const { text, messageCount, includedMessageCount } =
       buildContinuationPrompt({
@@ -187,37 +190,6 @@ describe('buildContinuationPrompt', () => {
     expect(text).toContain('message 39 ');
     expect(text).not.toContain('message 0 ');
     expect(text).toMatch(/## My answer\n\n1\. Egg$/);
-  });
-
-  it('never cuts a reply typed to the limit: it goes on its own', () => {
-    const maxLength = 3_000;
-    const reply = 'z'.repeat(maxLength - 100);
-    const continued = buildContinuationPrompt({
-      items: [user('hello')],
-      pendingQuestions,
-      reply,
-      continues: { installation: 'lab', sessionId: '01a1-b2c3' },
-      maxLength,
-    });
-
-    // After the marker line, so the new session still links back.
-    expect(continued.text).toBe(
-      `[Continues session lab/01a1-b2c3]\n\n${reply}`,
-    );
-    expect(continued.includedMessageCount).toBe(0);
-    expect(continued.messageCount).toBe(1);
-
-    // Without it where the marker does not fit beside the text.
-    const full = 'z'.repeat(maxLength);
-    expect(
-      buildContinuationPrompt({
-        items: [user('hello')],
-        pendingQuestions,
-        reply: full,
-        continues: { installation: 'lab', sessionId: '01a1-b2c3' },
-        maxLength,
-      }).text,
-    ).toBe(full);
   });
 
   it('shortens a failed answer that alone crowds the limit', () => {
@@ -319,6 +291,28 @@ describe('buildContinuationPrompt, review cases', () => {
     expect(messageCount).toBe(6);
   });
 
+  it('reads back a reply an earlier continuation carried from the message box', () => {
+    // Continuations used to end on what the person typed, under `## My reply`.
+    const earlier = [
+      '[Continues session lab/session-a]',
+      'I am continuing a session with you that could not be resumed, so you do not have its history. Please carry on from there.',
+      '## Earlier conversation',
+      'User: Plan a barbecue.',
+      '## My reply',
+      'Make it a picnic.',
+    ].join('\n\n');
+
+    const { text } = buildContinuationPrompt({
+      items: [user(earlier), agent('A picnic, then.')],
+      pendingQuestions: [],
+    });
+
+    expect(text).toContain(
+      'User: Plan a barbecue.\n\nUser: Make it a picnic.\n\nAssistant: A picnic, then.',
+    );
+    expect(text).not.toContain('## My reply');
+  });
+
   it('keeps an answered question whose verdict was not recognised', () => {
     // The open request is a tool approval; an earlier question was answered
     // in a wording the timeline did not read, so its verdict is missing.
@@ -360,28 +354,6 @@ describe('buildContinuationPrompt, review cases', () => {
 
     expect(text.length).toBeLessThanOrEqual(maxLength);
     expect(text).toContain('## Your last question');
-  });
-
-  it('keeps the conversation as counted when a short reply replaces the answer', () => {
-    const items = Array.from({ length: 60 }, (_, index) =>
-      user(`message ${index} ${'y'.repeat(300)}`),
-    );
-    const counted = buildContinuationPrompt({
-      items,
-      pendingQuestions,
-      answers: [['Egg']],
-      maxLength: 12_000,
-    });
-    const typed = buildContinuationPrompt({
-      items,
-      pendingQuestions,
-      answers: [['Egg']],
-      reply: 'z'.repeat(3_000),
-      maxLength: 12_000,
-    });
-
-    expect(counted.includedMessageCount).toBeLessThan(60);
-    expect(typed.includedMessageCount).toBe(counted.includedMessageCount);
   });
 });
 

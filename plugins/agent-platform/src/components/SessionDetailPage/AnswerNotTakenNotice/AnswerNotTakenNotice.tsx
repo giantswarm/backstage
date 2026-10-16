@@ -2,6 +2,10 @@ import { Alert } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import type { Continuation } from '../../../lib/continuationPrompt';
 import {
+  ContinueInNewSessionButton,
+  type NewSessionAction,
+} from '../ContinueInNewSessionButton';
+import {
   describeContinuationStart,
   newSessionBlockedText,
   newSessionElsewhereText,
@@ -24,10 +28,11 @@ export type AnswerNotTakenNoticeProps = {
   /** The agent's display name, for the way out. Absent when no Agent matched. */
   agentName?: string;
   /**
-   * Whether the composer below offers the new session. When it cannot (no
-   * addressable agent, a blocker), the notice says where else to go.
+   * The new session this notice offers, under its text. Absent when none can
+   * be offered (no addressable agent, a blocker): the notice then says where
+   * else to go.
    */
-  offersNewSession: boolean;
+  newSession?: NewSessionAction;
   /**
    * Why no new session can start with the agent from this portal
    * (`AgentRow.sessionBlocker`): the way out names it instead of a button.
@@ -51,13 +56,12 @@ export type AnswerNotTakenNoticeProps = {
 /**
  * The words for an answer kagent did not take (`isAnswerNotTakenError`): the
  * agent could not resume, the question is still open, and sending the answer
- * again goes the same way. It takes the question card's place, so nothing on
- * the page invites a retry, and points at the new session the composer offers
- * under it.
+ * again goes the same way. It takes the place of the question card and of the
+ * message box, so nothing on the page invites a retry, and offers the new
+ * session under its text.
  *
- * The answer is shown here rather than put in the message box: the notice
- * goes when a late resume moves the task on, and the answer goes with it,
- * where a box would keep it beside a live Send.
+ * The answer is shown here, and the new session carries it: the notice goes
+ * when a late resume moves the task on, and the answer goes with it.
  *
  * Danger, like a reported runtime loss: this session cannot go on. Unlike that
  * notice it names no cause, because kagent reports none; it says what the page
@@ -65,7 +69,7 @@ export type AnswerNotTakenNoticeProps = {
  */
 export function AnswerNotTakenNotice({
   agentName,
-  offersNewSession,
+  newSession,
   newSessionBlocker,
   answer,
   continuation,
@@ -77,8 +81,8 @@ export function AnswerNotTakenNotice({
   let wayOut = newSessionElsewhereText(agent);
   if (newSessionBlocker) {
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
-  } else if (offersNewSession) {
-    wayOut = `To carry on with ${agent}, choose Continue in a new session under the message box. ${describeContinuationStart(
+  } else if (newSession) {
+    wayOut = `To carry on, continue in a new session with ${agent}. ${describeContinuationStart(
       { continuation, hasQuestion: true, hasAnswer: Boolean(answer) },
     )}`;
   }
@@ -99,6 +103,9 @@ export function AnswerNotTakenNotice({
           )}
           {startError && (
             <span>The new session could not be started: {startError}</span>
+          )}
+          {newSession && !newSessionBlocker && (
+            <ContinueInNewSessionButton {...newSession} variant="primary" />
           )}
         </span>
       }
