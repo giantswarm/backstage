@@ -52,6 +52,39 @@ describe('normalizeSessionStates', () => {
     expect(states.map(s => s.sessionId)).toEqual(['good', 'also-good']);
   });
 
+  it('reads the failure reason', () => {
+    const { states } = normalizeSessionStates({
+      states: [
+        { sessionId: 'a', state: 'failed', failureReason: 'tool-failed' },
+        {
+          sessionId: 'b',
+          state: 'input-required',
+          failureReason: 'runtime-lost',
+        },
+      ],
+    });
+
+    expect(states).toEqual([
+      { sessionId: 'a', state: 'failed', failureReason: 'tool-failed' },
+      {
+        sessionId: 'b',
+        state: 'input-required',
+        failureReason: 'runtime-lost',
+      },
+    ]);
+  });
+
+  it('reads a failure reason it does not know as other', () => {
+    // A class a newer backend adds still reads as a failure with a reason.
+    const { states } = normalizeSessionStates({
+      states: [{ sessionId: 'a', state: 'failed', failureReason: 'quota' }],
+    });
+
+    expect(states).toEqual([
+      { sessionId: 'a', state: 'failed', failureReason: 'other' },
+    ]);
+  });
+
   it('passes unknown future fields through without complaint', () => {
     const { states } = normalizeSessionStates({
       states: [{ sessionId: 'a', state: 'working', somethingNew: true }],

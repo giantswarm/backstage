@@ -293,6 +293,7 @@ describe('readNewestTaskState', () => {
     expect(readNewestTaskState(tasks)).toEqual({
       state: expect.objectContaining({ raw: 'working' }),
       changedAt: Date.parse('2026-08-31T11:00:00Z'),
+      index: 0,
     });
   });
 });
