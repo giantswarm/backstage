@@ -15,6 +15,7 @@ import { AgentShellNav } from '../AgentShellNav';
 import { RailWidthProvider } from '../RailWidthProvider';
 import { homeRouteRef } from '../routes';
 import { DESKTOP_NOTIFICATIONS_STORAGE_KEY } from './hooks/useDesktopNotifications';
+import { TAB_MEMORY_KEY } from './hooks/useInboxInterruptions';
 import {
   NOTIFICATIONS_SIGNAL_CHANNEL,
   UPSTREAM_NOTIFICATIONS_LIMIT,
@@ -125,20 +126,15 @@ async function openOverlay() {
 }
 
 /**
- * The tab's first read of the store has answered: what arrives from now on is
- * news, not catch-up.
+ * The tab's first read has been taken, with the store's answer in it: what
+ * arrives from now on is news, not catch-up. The read's promise settling is
+ * not enough: the query notifies the inbox on a later tick, so a signal sent
+ * in between would land in the first read.
  */
 async function firstRead() {
   await waitFor(() =>
-    expect(upstream.notificationsApi.getNotifications).toHaveBeenCalled(),
+    expect(window.sessionStorage.getItem(TAB_MEMORY_KEY)).not.toBeNull(),
   );
-  await act(async () => {
-    await Promise.allSettled(
-      upstream.notificationsApi.getNotifications.mock.results.map(
-        result => result.value,
-      ),
-    );
-  });
 }
 
 /** The backend stores `notification` and announces it on the channel. */
