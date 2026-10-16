@@ -151,8 +151,9 @@ test('the notice stands clear of the wizard footer: Continue takes the click whi
 /** The notice, shown again: a Not now earlier in the run is forgotten. */
 async function showNoticeOn(page: Page, path: string) {
   await open(page, path);
-  await page.evaluate(() =>
-    window.sessionStorage.removeItem('muster.mcpAuthNotice.hidden'),
+  await page.evaluate(
+    key => window.sessionStorage.removeItem(key),
+    MCP_AUTH_NOTICE_HIDDEN_KEY,
   );
   await open(page, path);
   const notice = page.getByRole('complementary', {
