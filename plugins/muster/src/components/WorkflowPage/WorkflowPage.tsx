@@ -43,10 +43,10 @@ import { mcpServerDisplayNames } from '../../lib/serverGrouping';
 import { customizeExternalRouteRef } from '../../routes';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
-  EffectBadge,
   SessionGate,
   StateBadge,
   useWorkflowPageLinks,
+  WorkflowEffectBadge,
 } from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
@@ -277,7 +277,7 @@ function WorkflowPageContent({
         menu={<MoreActionsMenu items={menu} />}
         badges={
           <>
-            {effect && <EffectBadge effect={effect} subject="workflow" />}
+            {effect && <WorkflowEffectBadge effect={effect} />}
             {workflow.hasValidationWarning() && (
               <StateBadge tone="warning" label="Validation warning" />
             )}
