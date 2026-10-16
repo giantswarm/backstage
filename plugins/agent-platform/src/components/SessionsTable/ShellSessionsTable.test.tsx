@@ -127,6 +127,7 @@ const states: FleetSessionStatesView = {
   failedInstallations: new Set(),
   skippedCount: 0,
   isLoading: false,
+  isComplete: true,
   isError: false,
 };
 
