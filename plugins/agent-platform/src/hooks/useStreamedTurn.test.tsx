@@ -58,7 +58,7 @@ describe('useStreamedTurn', () => {
     const { handle, open } = hangingStream();
     const { result, unmount, invalidateQueries } = renderTurn();
 
-    let outcome: Promise<void> = Promise.resolve();
+    let outcome: Promise<unknown> = Promise.resolve();
     act(() => {
       outcome = result.current.run('message-1', open);
     });
@@ -71,7 +71,7 @@ describe('useStreamedTurn', () => {
     unmount();
 
     expect(handle.signal?.aborted).toBe(true);
-    await expect(outcome).resolves.toBeUndefined();
+    await expect(outcome).resolves.toMatchObject({ dispatched: true });
     // Nothing on screen to refresh: the next visit reads the conversation.
     expect(invalidateQueries).not.toHaveBeenCalled();
   });
@@ -80,7 +80,7 @@ describe('useStreamedTurn', () => {
     const { handle, open } = hangingStream();
     const { result, unmount, invalidateQueries } = renderTurn();
 
-    let outcome: Promise<void> = Promise.resolve();
+    let outcome: Promise<unknown> = Promise.resolve();
     act(() => {
       outcome = result.current.run('message-1', open);
     });
@@ -95,7 +95,7 @@ describe('useStreamedTurn', () => {
     handle.emit({ kind: 'task', id: 'task-1', status: { state: 'working' } });
 
     expect(handle.signal?.aborted).toBe(true);
-    await expect(outcome).resolves.toBeUndefined();
+    await expect(outcome).resolves.toMatchObject({ dispatched: true });
     expect(listSessionTasks).not.toHaveBeenCalled();
     expect(invalidateQueries).not.toHaveBeenCalled();
   });
@@ -104,7 +104,7 @@ describe('useStreamedTurn', () => {
     let fail: (error: Error) => void = () => {};
     const { result, unmount } = renderTurn();
 
-    let outcome: Promise<void> = Promise.resolve();
+    let outcome: Promise<unknown> = Promise.resolve();
     act(() => {
       outcome = result.current.run(
         'message-1',

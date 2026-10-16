@@ -9,6 +9,23 @@ import type { ComposerImage } from '../../lib/messageImages';
 export const STALLED_STATE_LABEL = 'Not responding';
 
 /**
+ * The way out of a session that cannot go on when this portal cannot start the
+ * new session: agent-manager refuses to start one as the person
+ * (`AgentRow.sessionBlocker`), which the sentence passes on.
+ */
+export function newSessionBlockedText(agent: string, blocker: string): string {
+  return `A new session with ${agent} cannot be started from this portal: sessions start through agent-manager as you. ${blocker}`;
+}
+
+/**
+ * The way out of a session that cannot go on when this page has no new-session
+ * button to offer (no addressable agent, or one still being read).
+ */
+export function newSessionElsewhereText(agent: string): string {
+  return `Continue in a new session with ${agent} from the Sessions list.`;
+}
+
+/**
  * Pairs streamed items with the polled items they are copies of.
  *
  * Recognition is by `messageId`, and pairing by **position within the
