@@ -16,7 +16,7 @@
     "clean": "backstage-cli repo clean",
     "test": "backstage-cli repo test --watchAll=false",
     "test:watch": "backstage-cli repo test",
-    "test:all": "backstage-cli repo test --coverage --maxWorkers=40% --workerIdleMemoryLimit=1024MB",
+    "test:all": "backstage-cli repo test --coverage --maxWorkers=${JEST_MAX_WORKERS:-40%} --workerIdleMemoryLimit=1024MB",
     "test:e2e": "scripts/no-core-dumps.sh playwright test",
     "test:e2e:agentlab": "scripts/no-core-dumps.sh playwright test --config e2e/agentlab/playwright.config.ts",
     "fix": "backstage-cli repo fix",
