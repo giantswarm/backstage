@@ -497,25 +497,19 @@ export async function connectToMuster(page: Page, ready: Locator) {
 }
 
 /**
- * Opens `path` on the admin page with the agents as they are now. The portal
+ * Opens the admin page's home screen on the agents as they are now. The portal
  * writes its cache to localStorage at most every 30 s and trusts an entry for
  * 60 s, so a load right after the fixture agent turned Ready elsewhere would
- * restore the list from before it existed and not ask again — on this page and
- * on every page reached from it without a load: the admin page's init script
- * drops the persisted caches on this load, before the app runs, and the
- * portal reads the roster afresh.
+ * restore the list from before it existed and not ask again: the admin page's
+ * init script drops the persisted caches on this load, before the app runs,
+ * and the home reads the roster afresh.
  */
-export async function openFresh(admin: Page, path: string): Promise<void> {
+export async function openHome(admin: Page): Promise<void> {
   await admin.evaluate(
     flag => window.sessionStorage.setItem(flag, '1'),
     DROP_CACHES_FLAG,
   );
-  await open(admin, path);
-}
-
-/** Opens the admin page's home screen on the agents as they are now ({@link openFresh}). */
-export async function openHome(admin: Page): Promise<void> {
-  await openFresh(admin, '/');
+  await open(admin, '/');
 }
 
 /**
