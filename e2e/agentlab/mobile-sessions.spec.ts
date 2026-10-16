@@ -4,6 +4,7 @@ import {
   expectClearOfBottomBar,
   expectNoHorizontalScroll,
   open,
+  openHome,
   openReadyAgent,
   test,
 } from './fixtures';
@@ -144,7 +145,7 @@ test('a session starts from the home screen with a two-line message, its compose
   test.setTimeout(10 * 60_000);
   await openReadyAgent(admin, labAgent);
 
-  await open(admin, '/');
+  await openHome(admin);
   const prompt = admin.getByRole('textbox', { name: 'Prompt' });
   await expect(prompt).toBeVisible();
   await expectNoHorizontalScroll(admin, 'the home screen');

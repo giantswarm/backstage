@@ -328,6 +328,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           mkdirSync(workerInfo.project.outputDir, { recursive: true });
           writeFileSync(failureFile, String(error));
           throw error;
+        } finally {
+          await restoreMcpSignInNotice(adminPage);
         }
         await use({ name, slug, detailPath });
       } finally {
@@ -351,6 +353,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     // The page outlives the test: a route a test left behind (a swapped
     // token, a stubbed answer) must not answer the next test's requests.
     await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
+    await restoreMcpSignInNotice(adminPage);
     await adminPage
       .evaluate(
         flag => window.sessionStorage.setItem(flag, '1'),
@@ -488,6 +491,67 @@ export async function connectToMuster(page: Page, ready: Locator) {
 }
 
 /**
+ * Opens the admin page's home screen on the agents as they are now. The portal
+ * writes its cache to localStorage at most every 30 s and trusts an entry for
+ * 60 s, so a load right after the fixture agent turned Ready elsewhere would
+ * restore the list from before it existed and not ask again: the admin page's
+ * init script drops the persisted caches on this load, before the app runs,
+ * and the home reads the roster afresh.
+ */
+export async function openHome(admin: Page): Promise<void> {
+  await admin.evaluate(
+    flag => window.sessionStorage.setItem(flag, '1'),
+    DROP_CACHES_FLAG,
+  );
+  await open(admin, '/');
+}
+
+/**
+ * The notice's memory of a **Not now** for the browser session
+ * (`HIDDEN_NOTICE_STORAGE_KEY` in the muster plugin).
+ */
+export const MCP_AUTH_NOTICE_HIDDEN_KEY = 'muster.mcpAuthNotice.hidden';
+
+/** The MCP sign-in notice: it floats over the foot of every page. */
+function mcpSignInNotice(page: Page): Locator {
+  return page.getByRole('complementary', { name: 'MCP server sign-in' });
+}
+
+/**
+ * Answers the MCP sign-in notice with **Not now** whenever it shows, as a
+ * person does who has no use for the connector it names: while a connector
+ * waits for the person's sign-in (the lab's `lab-oauth-fixture` does) it
+ * floats over the foot of every page, and covers what is there — a docked
+ * form footer, on a phone the foot of the content. An open select's underlay
+ * takes every click outside its listbox, so the listbox is closed first. The
+ * worker's shared page is restored by its fixtures
+ * ({@link restoreMcpSignInNotice}).
+ */
+export async function dismissMcpSignInNotice(page: Page): Promise<void> {
+  await page.addLocatorHandler(mcpSignInNotice(page), async notice => {
+    if (await page.getByRole('listbox').isVisible()) {
+      await page.keyboard.press('Escape');
+    }
+    await notice.getByRole('button', { name: 'Not now' }).click();
+  });
+}
+
+/**
+ * Undoes {@link dismissMcpSignInNotice} on a page that outlives the test: the
+ * handler is removed and the Not now forgotten, so the next test sees the
+ * notice as a new browser session would.
+ */
+async function restoreMcpSignInNotice(page: Page): Promise<void> {
+  await page.removeLocatorHandler(mcpSignInNotice(page));
+  await page
+    .evaluate(
+      key => window.sessionStorage.removeItem(key),
+      MCP_AUTH_NOTICE_HIDDEN_KEY,
+    )
+    .catch(() => undefined);
+}
+
+/**
  * Creates an agent in the New agent wizard the way a person does, as the
  * page's user: Details (no skills, no tools, the lab's default ModelConfig
  * unless `model` names another: the model radio's name, which is the
@@ -510,6 +574,9 @@ export async function createAgentInWizard(
     onStep?: (step: 'Details' | 'Review') => Promise<void>;
   } = {},
 ): Promise<string> {
+  // The notice covers the footer's Continue and, on a phone, Technical
+  // details at the foot of Review.
+  await dismissMcpSignInNotice(page);
   // --- Step 1: Details -----------------------------------------------------
   await open(page, '/agent-platform/agents/new');
   await expectWizardStep(page, 'Details');
@@ -565,14 +632,14 @@ export async function createAgentInWizard(
   // --- Step 4: Check and create = agent-manager's dry run, then Create -----
   await expectWizardStep(page, 'Review');
   await expect(page.getByText(agentName).first()).toBeVisible();
-  // The release and its manifests are collapsed under Technical details.
-  await page.getByText('Technical details').click();
-  await expect(page.getByText(agentSlug).first()).toBeVisible();
   const deploy = page.getByRole('button', { name: 'Create agent' }).first();
   await expect(
     deploy,
     'the dry run through agent-manager completed and Create is offered',
   ).toBeEnabled({ timeout: 90_000 });
+  // The release and its manifests are collapsed under Technical details.
+  await page.getByText('Technical details').click();
+  await expect(page.getByText(agentSlug).first()).toBeVisible();
   await options.onStep?.('Review');
   await deploy.click();
 
