@@ -37,6 +37,7 @@ export * from './JsonHighlight';
 export * from './LoadingIndicator';
 export * from './ManifestDialog';
 export * from './MenuArrowIcons';
+export * from './MermaidDiagram';
 export * from './Mono';
 export * from './MoreActionsMenu';
 export * from './MoreOptions';
