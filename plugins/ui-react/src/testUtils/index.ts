@@ -12,3 +12,8 @@ export type {
   IntersectionPosition,
   MockedIntersectionObserver,
 } from './mockIntersectionObserver';
+export { mockCollapsibleLayout } from './mockCollapsibleLayout';
+export type {
+  MockCollapsibleLayoutOptions,
+  MockedCollapsibleLayout,
+} from './mockCollapsibleLayout';
