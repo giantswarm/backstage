@@ -166,7 +166,7 @@ describe('buildContinuationPrompt', () => {
     const items = Array.from({ length: 40 }, (_, index) =>
       user(`message ${index} ${'y'.repeat(200)}`),
     );
-    const maxLength = 3_000;
+    const maxLength = 10_000;
 
     const { text, messageCount, includedMessageCount } =
       buildContinuationPrompt({
@@ -233,6 +233,124 @@ describe('buildContinuationPrompt', () => {
       continues: { installation: 'Lab One', sessionId: 'x' },
     });
     expect(text).toMatch(/^I am continuing a session/);
+  });
+});
+
+describe('buildContinuationPrompt, review cases', () => {
+  it('carries a continued session on again without clipping the older history', () => {
+    // B continued A; now B could not be resumed either.
+    const first = buildContinuationPrompt({
+      items: conversation,
+      pendingQuestions,
+      answers: [['Egg']],
+      continues: { installation: 'lab', sessionId: 'session-a' },
+    }).text;
+    const sessionB: TimelineItem[] = [
+      user(first),
+      agent('Egg it is. How crispy?'),
+      asked(['How crispy?']),
+    ];
+
+    const { text, messageCount } = buildContinuationPrompt({
+      items: sessionB,
+      pendingQuestions: [{ question: 'How crispy?', multiple: false }],
+      answers: [['Very']],
+      continues: { installation: 'lab', sessionId: 'session-b' },
+    });
+
+    // One framing, one marker: the earlier continuation's own came apart into
+    // entries of this one.
+    expect(text.match(/I am continuing a session/g)).toHaveLength(1);
+    expect(text.match(/\[Continues session/g)).toHaveLength(1);
+    expect(text).toMatch(/^\[Continues session lab\/session-b\]/);
+    expect(text).toContain(
+      [
+        'User: I want to invent a recipe for fried potatoes',
+        '',
+        '[Assistant used tools: read_file, search (2×)]',
+        '',
+        'Assistant asked:\n- Is it a side or a meal?',
+        '',
+        'User: A meal',
+        '',
+        'Assistant asked:\n1. Which protein?\n   Choices: Egg; Bacon',
+        '',
+        'User: 1. Egg',
+        '',
+        'Assistant: Egg it is. How crispy?',
+        '',
+        '## Your last question',
+        '',
+        '1. How crispy?',
+      ].join('\n'),
+    );
+    expect(text).toMatch(/## My answer\n\n1\. Very$/);
+    expect(messageCount).toBe(6);
+  });
+
+  it('keeps an answered question whose verdict was not recognised', () => {
+    // The open request is a tool approval; an earlier question was answered
+    // in a wording the timeline did not read, so its verdict is missing.
+    const { text } = buildContinuationPrompt({
+      items: [user('Hi'), asked(['Which protein?']), user('Egg')],
+      pendingQuestions: [],
+    });
+
+    expect(text).toContain('Assistant asked:\n- Which protein?');
+  });
+
+  it('does not promise an answer it does not carry', () => {
+    const { text } = buildContinuationPrompt({
+      items: conversation,
+      pendingQuestions,
+    });
+
+    expect(text).toContain(
+      'It ends with the question you asked last, which I have not answered.',
+    );
+    expect(text).not.toContain('my answer to it');
+    expect(text).not.toContain('## My answer');
+  });
+
+  it('stays within the limit when the questions alone are too long', () => {
+    const maxLength = 6_000;
+    const { text } = buildContinuationPrompt({
+      items: conversation,
+      pendingQuestions: [
+        {
+          question: 'q'.repeat(9_000),
+          choices: ['c'.repeat(9_000)],
+          multiple: false,
+        },
+        { question: 'r'.repeat(9_000), multiple: false },
+      ],
+      maxLength,
+    });
+
+    expect(text.length).toBeLessThanOrEqual(maxLength);
+    expect(text).toContain('## Your last question');
+  });
+
+  it('keeps the conversation as counted when a short reply replaces the answer', () => {
+    const items = Array.from({ length: 60 }, (_, index) =>
+      user(`message ${index} ${'y'.repeat(300)}`),
+    );
+    const counted = buildContinuationPrompt({
+      items,
+      pendingQuestions,
+      answers: [['Egg']],
+      maxLength: 12_000,
+    });
+    const typed = buildContinuationPrompt({
+      items,
+      pendingQuestions,
+      answers: [['Egg']],
+      reply: 'z'.repeat(3_000),
+      maxLength: 12_000,
+    });
+
+    expect(counted.includedMessageCount).toBeLessThan(60);
+    expect(typed.includedMessageCount).toBe(counted.includedMessageCount);
   });
 });
 

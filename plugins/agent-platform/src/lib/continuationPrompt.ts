@@ -102,8 +102,23 @@ export function splitContinuation(items: TimelineItem[]): {
 /** The longest any one earlier message is carried, before it is cut. */
 export const ENTRY_MAX_LENGTH = 4_000;
 
+/**
+ * Room the conversation leaves for the answer, or for what the person types
+ * in its place. A reply up to this long leaves the conversation as the notice
+ * described it; only a longer one takes more from the oldest end.
+ */
+export const REPLY_RESERVE = ENTRY_MAX_LENGTH;
+
 /** Room kept free under the limit, for the counts the omission note adds. */
 const SLACK = 200;
+
+/** How a continuation's framing starts, which is how a nested one is found. */
+const INTRO_START =
+  'I am continuing a session with you that could not be resumed';
+
+const EARLIER_HEADING = '## Earlier conversation';
+const QUESTION_HEADING = '## Your last question';
+const ANSWER_HEADINGS = ['## My answer', '## My reply'];
 
 export type ContinuationInput = {
   /** The conversation so far, as the page renders it. */
@@ -162,21 +177,104 @@ function toolLine(names: string[]): string {
   return `[Assistant used ${names.length === 1 ? 'a tool' : 'tools'}: ${listed}]`;
 }
 
+/** The text under one of a continuation's headings, up to the next one. */
+function sectionOf(
+  body: string,
+  heading: string,
+  until: string[],
+): string | undefined {
+  const marker = `\n\n${heading}\n\n`;
+  const at = body.lastIndexOf(marker);
+  if (at < 0) {
+    return undefined;
+  }
+  const from = at + marker.length;
+  const ends = until
+    .map(next => body.indexOf(`\n\n${next}\n\n`, from))
+    .filter(index => index >= 0);
+  return body.slice(from, ends.length ? Math.min(...ends) : undefined).trim();
+}
+
 /**
- * The conversation as entries, oldest first. The pending question is left
- * out: it has its own section at the end.
+ * The entries a continuation's own first message carries, when a session that
+ * was itself a continuation is carried on again. Its earlier conversation, its
+ * question and its answer come back as entries of this one, so nothing of the
+ * older history is clipped as one long message and no second framing reaches
+ * the model. Undefined for any other message.
  */
-function readEntries(items: TimelineItem[]): Entry[] {
+function expandContinuation(text: string): Entry[] | undefined {
+  const body = readContinuationMarker(text)?.rest ?? text;
+  if (!body.startsWith(INTRO_START)) {
+    return undefined;
+  }
+  const earlierAt = body.indexOf(`\n\n${EARLIER_HEADING}\n\n`);
+  if (earlierAt < 0) {
+    return undefined;
+  }
+  const tail = [QUESTION_HEADING, ...ANSWER_HEADINGS];
+  const conversation = sectionOf(body, EARLIER_HEADING, tail) ?? '';
+  const question = sectionOf(body, QUESTION_HEADING, ANSWER_HEADINGS);
+  const answer = ANSWER_HEADINGS.map(heading =>
+    sectionOf(body, heading, []),
+  ).find(Boolean);
+
+  // Entries were joined by blank lines; a paragraph that starts no entry of
+  // its own belongs to the message before it.
+  const entries: Entry[] = [];
+  for (const paragraph of conversation.split('\n\n')) {
+    const opensMessage = /^(User: |Assistant: |Assistant asked:)/.test(
+      paragraph,
+    );
+    const opensNote = paragraph.startsWith('[');
+    if (paragraph === '[No earlier messages.]') {
+      continue;
+    }
+    if (opensMessage || opensNote || entries.length === 0) {
+      entries.push({ text: paragraph, isMessage: opensMessage });
+    } else {
+      entries[entries.length - 1].text += `\n\n${paragraph}`;
+    }
+  }
+  if (question) {
+    entries.push({ text: `Assistant asked:\n${question}`, isMessage: true });
+  }
+  if (answer) {
+    entries.push({ text: `User: ${answer}`, isMessage: true });
+  }
+  return entries.map(entry => ({
+    ...entry,
+    text: clip(entry.text, ENTRY_MAX_LENGTH),
+  }));
+}
+
+/**
+ * The conversation as entries, oldest first. The open question is left out:
+ * it has its own section at the end. It is found by what it asks, the
+ * questions the session waits on, not by a missing verdict, which a decision
+ * worded in a way the timeline did not recognise also leaves.
+ */
+function readEntries(
+  items: TimelineItem[],
+  pendingQuestions: AskUserQuestion[],
+): Entry[] {
+  const asked = pendingQuestions.map(question => question.question.trim());
   let pendingIndex = -1;
   items.forEach((item, index) => {
     if (
+      asked.length > 0 &&
       item.kind === 'approval' &&
       item.asks === 'input' &&
-      item.verdict === undefined
+      item.verdict === undefined &&
+      (item.questions ?? []).length === asked.length &&
+      (item.questions ?? []).every(
+        (question, at) => question.trim() === asked[at],
+      )
     ) {
       pendingIndex = index;
     }
   });
+  const firstUserIndex = items.findIndex(item => item.kind === 'user-message');
+
   const entries: Entry[] = [];
   let tools: string[] = [];
   const flushTools = () => {
@@ -196,12 +294,19 @@ function readEntries(items: TimelineItem[]): Entry[] {
     }
     flushTools();
     switch (item.kind) {
-      case 'user-message':
+      case 'user-message': {
+        const expanded =
+          index === firstUserIndex ? expandContinuation(item.text) : undefined;
+        if (expanded) {
+          entries.push(...expanded);
+          return;
+        }
         entries.push({
           text: `User: ${clip(item.text, ENTRY_MAX_LENGTH)}`,
           isMessage: true,
         });
         return;
+      }
       case 'agent-message': {
         // The agent often says its question before asking it; the question
         // entry (or the final section) carries it once.
@@ -273,9 +378,9 @@ function questionSection(questions: AskUserQuestion[]): string {
   return questions
     .map((question, index) => {
       const choices = question.choices?.length
-        ? `\n   Choices: ${question.choices.join('; ')}`
+        ? `\n   Choices: ${clip(question.choices.join('; '), ENTRY_MAX_LENGTH)}`
         : '';
-      return `${index + 1}. ${question.question.trim()}${choices}`;
+      return `${index + 1}. ${clip(question.question, ENTRY_MAX_LENGTH)}${choices}`;
     })
     .join('\n');
 }
@@ -284,6 +389,19 @@ function answerSection(answers: string[][]): string {
   return answers
     .map((answer, index) => `${index + 1}. ${answer.join(', ')}`)
     .join('\n');
+}
+
+/** What the framing says the message ends with, so it never promises a part that is not there. */
+function introFor(hasQuestion: boolean, hasAnswer: boolean): string {
+  let ending = 'Please carry on from there.';
+  if (hasQuestion && hasAnswer) {
+    ending = `It ends with the question you asked last and my answer to it, which could not reach you in that session. ${ending}`;
+  } else if (hasQuestion) {
+    ending = `It ends with the question you asked last, which I have not answered. ${ending}`;
+  } else if (hasAnswer) {
+    ending = `It ends with what I wrote next. ${ending}`;
+  }
+  return `${INTRO_START}, so you do not have its history. Below is our earlier conversation, oldest first: what I wrote, what you replied, and the tools you used, named without their results. ${ending}`;
 }
 
 export function buildContinuationPrompt({
@@ -303,39 +421,40 @@ export function buildContinuationPrompt({
   }
 
   const hasQuestion = pendingQuestions.length > 0;
-  const intro = [
-    'I am continuing a session with you that could not be resumed, so you do not have its history. Below is our earlier conversation, oldest first: what I wrote, what you replied, and the tools you used, named without their results.',
-    hasQuestion
-      ? 'It ends with the question you asked last and my answer to it, which could not reach you in that session. Please carry on from there.'
-      : 'Please carry on from there.',
-  ].join(' ');
+  const intro = introFor(hasQuestion, Boolean(answer));
+  const marker = continues ? continuationMarker(continues) : undefined;
+  let question = hasQuestion ? questionSection(pendingQuestions) : undefined;
 
-  const tailWith = (shown: string | undefined) =>
+  const frame = (conversation: string) =>
     [
-      hasQuestion &&
-        `## Your last question\n\n${questionSection(pendingQuestions)}`,
-      shown && `## ${hasQuestion ? 'My answer' : 'My reply'}\n\n${shown}`,
+      marker,
+      intro,
+      `${EARLIER_HEADING}\n\n${conversation}`,
+      question && `${QUESTION_HEADING}\n\n${question}`,
+      answer && `${hasQuestion ? '## My answer' : '## My reply'}\n\n${answer}`,
     ]
       .filter(Boolean)
       .join('\n\n');
-  let tail = tailWith(answer);
 
-  const marker = continues ? continuationMarker(continues) : undefined;
-  const frame = (conversation: string) =>
-    [marker, intro, `## Earlier conversation\n\n${conversation}`, tail]
-      .filter(Boolean)
-      .join('\n\n');
-
-  // The answer is the one part that must arrive whole; only a reply typed to
-  // the limit can crowd it, and then it gives way rather than the framing.
-  const overflow = frame('').length + SLACK - maxLength;
+  // The question and the answer are what the new session must act on, so the
+  // conversation gives way first. Only a reply typed to the limit, or
+  // questions near it, can crowd the frame itself: then the answer gives way,
+  // and after it the questions.
+  let overflow = frame('').length + SLACK - maxLength;
   if (overflow > 0 && answer) {
-    tail = tailWith(clip(answer, Math.max(0, answer.length - overflow)));
+    answer = clip(answer, Math.max(0, answer.length - overflow));
+    overflow = frame('').length + SLACK - maxLength;
+  }
+  if (overflow > 0 && question) {
+    question = clip(question, Math.max(0, question.length - overflow));
   }
 
-  const entries = readEntries(items);
+  const entries = readEntries(items, pendingQuestions);
   const messageCount = entries.filter(entry => entry.isMessage).length;
-  let budget = maxLength - frame('').length - SLACK;
+  // Room held for the answer or a reply typed in its place, so a short reply
+  // keeps the conversation exactly as the notice counted it.
+  const reserve = Math.max(0, REPLY_RESERVE - (answer?.length ?? 0));
+  let budget = maxLength - frame('').length - SLACK - reserve;
   const kept: Entry[] = [];
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const cost = entries[index].text.length + 2;
@@ -358,7 +477,8 @@ export function buildContinuationPrompt({
   }
 
   return {
-    text: frame(lines.join('\n\n')),
+    // The last guard: nothing above should reach it.
+    text: frame(lines.join('\n\n')).slice(0, maxLength),
     messageCount,
     includedMessageCount,
   };

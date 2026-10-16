@@ -1,6 +1,5 @@
-import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert } from '@backstage/ui';
+import { Alert, Link } from '@backstage/ui';
 import type { ContinuedSession } from '../../../lib/continuationPrompt';
 import { sessionDetailRouteRef } from '../../../routes';
 
@@ -31,12 +30,11 @@ export function ContinuedSessionBanner({
   return (
     <Alert
       status="info"
-      title="Resumed session"
+      title="Continued session"
       description={
         <>
           This session is a follow-up to{' '}
-          {/* core-components' `Link`, which routes client-side. */}
-          {href ? <Link to={href}>{earlier}</Link> : earlier}, which could not
+          {href ? <Link href={href}>{earlier}</Link> : earlier}, which could not
           be resumed.
         </>
       }

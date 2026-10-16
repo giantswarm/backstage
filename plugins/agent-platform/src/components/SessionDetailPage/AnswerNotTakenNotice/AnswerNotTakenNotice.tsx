@@ -53,20 +53,24 @@ function describeStart(
   continuation: AnswerNotTakenNoticeProps['continuation'],
   hasAnswer: boolean,
 ): string {
-  let conversation = 'this conversation';
-  if (continuation && continuation.messageCount > 0) {
-    const { messageCount, includedMessageCount } = continuation;
-    conversation =
-      includedMessageCount < messageCount
-        ? `the newest ${includedMessageCount} of this conversation's ${countNoun(
-            messageCount,
-            'message',
-          )}`
-        : `this conversation (${countNoun(messageCount, 'message')})`;
+  const tail = hasAnswer
+    ? 'the open question and your answer'
+    : 'the open question and the text in the box';
+  const replaces = hasAnswer ? '; text in the box replaces the answer' : '';
+  if (!continuation || continuation.messageCount === 0) {
+    return `Its first message holds this conversation, with tools named but not their results, ${tail}${replaces}.`;
   }
-  return hasAnswer
-    ? `Its first message holds ${conversation}, with tools named but not their results, the open question and your answer; text in the box replaces the answer.`
-    : `Its first message holds ${conversation}, with tools named but not their results, and the text in the box.`;
+  const { messageCount, includedMessageCount } = continuation;
+  const messages = countNoun(messageCount, 'message');
+  // None fit beside a long answer: say so, rather than "the newest 0".
+  if (includedMessageCount === 0) {
+    return `Its first message holds ${tail}; this conversation's ${messages} do not fit beside them.`;
+  }
+  const conversation =
+    includedMessageCount < messageCount
+      ? `the newest ${includedMessageCount} of this conversation's ${messages}`
+      : `this conversation (${messages})`;
+  return `Its first message holds ${conversation}, with tools named but not their results, ${tail}${replaces}.`;
 }
 
 /**

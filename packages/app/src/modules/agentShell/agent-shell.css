@@ -19,6 +19,9 @@ html[data-agent-shell] body[data-theme-mode='light'] {
   --bui-accent-bg: #009fff;
   --bui-accent-bg-hover: #0088db;
   --bui-ring: #00609c;
+  /* The shell's link colour, at rest and on hover. */
+  --agent-shell-link: #00609c;
+  --agent-shell-link-hover: #002645;
   --bui-shadow: 0 12px 32px rgba(0, 38, 69, 0.14);
   --bui-fg-success: #1f9d48;
   --bui-bg-success: #ddf5e3;
@@ -68,13 +71,13 @@ html[data-agent-shell]
   html[data-agent-shell]
     body[data-theme-mode='light']
     .bui-Link[data-color='primary'] {
-    color: #00609c;
+    color: var(--agent-shell-link);
   }
 
   html[data-agent-shell]
     body[data-theme-mode='light']
     .bui-Link[data-color='primary']:hover {
-    color: #002645;
+    color: var(--agent-shell-link-hover);
   }
 }
 
@@ -92,7 +95,7 @@ html[data-agent-shell]
 html[data-agent-shell]
   .bui-Alert
   a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
-  color: #00609c;
+  color: var(--agent-shell-link, #00609c);
   text-decoration-line: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
@@ -106,7 +109,7 @@ html[data-agent-shell]
     .bui-ButtonIcon,
     [class*='MuiButton']
   ):hover {
-  color: #002645;
+  color: var(--agent-shell-link-hover, #002645);
   text-decoration-thickness: 2px;
 }
 

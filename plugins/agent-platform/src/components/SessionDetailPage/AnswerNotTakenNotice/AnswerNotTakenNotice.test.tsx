@@ -35,7 +35,7 @@ describe('AnswerNotTakenNotice', () => {
 
     expect(
       screen.getByText(
-        /carry on\. Its first message holds this conversation, with tools named but not their results, and the text in the box\./,
+        /carry on\. Its first message holds this conversation, with tools named but not their results, the open question and the text in the box\./,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Your answer/)).not.toBeInTheDocument();
@@ -69,6 +69,24 @@ describe('AnswerNotTakenNotice', () => {
         /Its first message holds the newest 40 of this conversation's 52 messages/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('says plainly when none of the conversation fits beside the answer', () => {
+    render(
+      <AnswerNotTakenNotice
+        agentName="Grill master"
+        offersNewSession
+        answer="Cyclists"
+        continuation={{ messageCount: 7, includedMessageCount: 0 }}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        /Its first message holds the open question and your answer; this conversation's 7 messages do not fit beside them\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/newest 0/)).not.toBeInTheDocument();
   });
 
   it('names why no new session can start from this portal, and keeps the answer in sight', () => {

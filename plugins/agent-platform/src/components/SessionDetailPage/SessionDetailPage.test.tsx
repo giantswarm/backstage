@@ -2399,7 +2399,7 @@ describe('SessionDetailPage', () => {
       );
       await render();
 
-      expect(screen.getByText('Resumed session')).toBeInTheDocument();
+      expect(screen.getByText('Continued session')).toBeInTheDocument();
       // The original may be on another installation.
       expect(
         screen.getByRole('link', { name: 'an earlier session on other-lab' }),
@@ -2410,13 +2410,47 @@ describe('SessionDetailPage', () => {
       expect(screen.queryByText(/\[Continues session/)).not.toBeInTheDocument();
     });
 
+    it('does not carry the marker on when the runtime is lost', async () => {
+      // A new session from the runtime-lost notice opens on the last message,
+      // here the continuation itself: without the marker, which names the
+      // session before this one.
+      mockUseSessionDetail.mockReturnValue({
+        ...continuationView(
+          '[Continues session other-lab/0a1b2c]\n\nI am continuing a session with you.',
+        ),
+        state: {
+          raw: 'failed',
+          key: 'failed',
+          label: 'Failed',
+          tone: 'danger' as const,
+          isActive: false,
+        },
+        runtimeLoss: { reported: true, cause: 'gone', attempts: 1 },
+      });
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Start a new session with Issue tracker',
+        }),
+      );
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            prompt: 'I am continuing a session with you.',
+          }),
+        );
+      });
+    });
+
     it('shows no banner for an ordinary first message', async () => {
       mockUseSessionDetail.mockReturnValue(
         continuationView('Please continue session other-lab/0a1b2c'),
       );
       await render();
 
-      expect(screen.queryByText('Resumed session')).not.toBeInTheDocument();
+      expect(screen.queryByText('Continued session')).not.toBeInTheDocument();
     });
   });
 
@@ -2537,6 +2571,30 @@ describe('SessionDetailPage', () => {
       );
       expect(mockAnswer).not.toHaveBeenCalled();
       expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps one Continued prefix when a continued session is carried on again', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...waitingView,
+        detail: {
+          ...waitingView.detail!,
+          session: {
+            ...waitingView.detail!.session,
+            title: 'Continued: Fried potatoes',
+          },
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      expect(mockCreateSession.mock.calls[0][0].title).toBe(
+        'Continued: Fried potatoes',
+      );
     });
 
     it('carries what the person typed in place of the answer', async () => {

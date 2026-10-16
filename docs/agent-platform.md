@@ -1752,16 +1752,26 @@ built from the page's timeline, which holds the whole task history:
   its place. An approval's words are never carried.
 
 The message stays within `MESSAGE_TEXT_MAX_LENGTH` (32,000 characters), the
-send route's bound. The question and the answer always fit; the conversation
-gives way from its oldest end and says how many messages it left out, and the
-notice says how many of them the new session gets. The session is titled
-`Continued: <this session's title>`.
+send route's bound. The question (each cut at 4,000 characters, as are its
+choices) and the answer come first; the conversation gives way from its oldest
+end and says how many messages it left out, and the notice says how many of
+them the new session gets, or that none fit. The conversation leaves 4,000
+characters (`REPLY_RESERVE`) for the answer or what the person types in its
+place, so a reply up to that length keeps the count the notice gave. The
+framing says what the message ends with: the question and the answer, or the
+question alone. The open question is found in the timeline by what it asks,
+so an answered question whose verdict the timeline could not read stays in the
+history. A session that was itself a continuation is carried on with its first
+message expanded into entries (its earlier conversation, question and answer),
+not clipped as one long message. The session is titled
+`Continued: <this session's title>`, with one prefix however often it is
+carried on.
 
 **The marker line.** The first line is one bracketed line, so it reads plainly
 to the model and wherever the raw text shows (Slack, kagent's UI). The session
 page recognises it only at the very start of the session's first user message
 (`readContinuationMarker`, `splitContinuation`), takes it out of the message
-and shows a "Resumed session" banner above the conversation instead: "This
+and shows a "Continued session" banner above the conversation instead: "This
 session is a follow-up to an earlier session on <installation>", linked through
 `sessionDetailRouteRef` (the installation may differ from the session's own).
 The one-visit "Prepared by the portal" caption is not used for it. Links inside

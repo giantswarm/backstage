@@ -119,6 +119,13 @@ const TOOL_ACTIVITY_TOAST_TIMEOUT_MS = 12000;
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
 
+/**
+ * How a session that carries on another is titled: the earlier title after a
+ * prefix, which a further continuation replaces rather than stacks.
+ */
+const CONTINUED_TITLE_PREFIX = 'Continued: ';
+const CONTINUED_TITLE_PATTERN = /^(?:Continued: )+/;
+
 const useStyles = makeStyles(theme => ({
   // bui's Switch has one size, sized for forms. On the meta line it takes the
   // line's text size and a proportionally smaller track (1.5 × 0.875rem
@@ -452,6 +459,16 @@ export function SessionDetailPage() {
    * in the same status message. A resume that lands late moves the task on,
    * and a follow-up question in the same task is a new one to answer.
    */
+  /**
+   * The conversation as kagent recorded it, with a continuation's marker line
+   * taken out of the first message: what a new session is built from, and
+   * what the person's last message is read from. A marker carried along would
+   * link the next session to the wrong one.
+   */
+  const conversationItems = useMemo(
+    () => splitContinuation(timeline.items).items,
+    [timeline.items],
+  );
   const failedAnswer = confirmation.failed;
   const answerNotTaken =
     isAnswerNotTakenError(confirmation.error) &&
@@ -486,12 +503,20 @@ export function SessionDetailPage() {
     () =>
       answerNotTaken
         ? buildContinuationPrompt({
-            items: splitContinuation(timeline.items).items,
+            items: conversationItems,
             pendingQuestions: pendingConfirmation?.questions ?? [],
             answers: notTakenAnswers,
+            continues: { installation, sessionId },
           })
         : undefined,
-    [answerNotTaken, timeline.items, pendingConfirmation, notTakenAnswers],
+    [
+      answerNotTaken,
+      conversationItems,
+      pendingConfirmation,
+      notTakenAnswers,
+      installation,
+      sessionId,
+    ],
   );
 
   /**
@@ -925,8 +950,8 @@ export function SessionDetailPage() {
   // With the images it carried, as the composer holds them, so a message
   // sent again or opened in a new session is the whole message.
   const lastUserMessage = useMemo(
-    () => readLastUserMessage(timeline.items),
-    [timeline.items],
+    () => readLastUserMessage(conversationItems),
+    [conversationItems],
   );
 
   /**
@@ -960,14 +985,18 @@ export function SessionDetailPage() {
       let title: string | undefined;
       if (answerNotTaken) {
         text = buildContinuationPrompt({
-          items: splitContinuation(timeline.items).items,
+          items: conversationItems,
           pendingQuestions: pendingConfirmation?.questions ?? [],
           answers: notTakenAnswers,
           reply: draft,
           continues: { installation, sessionId },
         }).text;
         images = boxImages;
-        title = `Continued: ${sessionTitle}`;
+        // One prefix however many times a session is carried on.
+        title = `${CONTINUED_TITLE_PREFIX}${sessionTitle.replace(
+          CONTINUED_TITLE_PATTERN,
+          '',
+        )}`;
       }
       if (!agentRow || !text) {
         return;
@@ -1008,7 +1037,7 @@ export function SessionDetailPage() {
       sessionDetailRoute,
       unanswered,
       answerNotTaken,
-      timeline.items,
+      conversationItems,
       pendingConfirmation,
       notTakenAnswers,
       sessionTitle,
