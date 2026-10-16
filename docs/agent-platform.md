@@ -181,6 +181,11 @@ and Git do. A workflow's page splits into Overview, Run it, Usage (its run
 statistics) and Details tabs; its ⋮ menu shows the Workflow CR as YAML and,
 where Flux reconciles the workflow, where in Git to change it.
 
+The Workflows list and a workflow's page say what a workflow does in the same
+badges a tool has: Reads or Changes things. muster marks a workflow read-only
+only when every tool its steps can reach is, so Reads holds for all its steps;
+a workflow without that mark shows Changes things.
+
 Run it (`/customize/workflows/<installation>/<name>/run`) runs the
 workflow as a tool's page runs a tool: muster exposes each workflow as the
 tool `workflow_<name>`, and the tab shows that tool's input form and result,

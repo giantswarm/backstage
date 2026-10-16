@@ -540,7 +540,7 @@ function StepNode({
         aria-label={accessibleName(node, [
           line,
           gate,
-          effect && (effect === 'changes' ? 'changes things' : 'only reads'),
+          effect && (effect === 'changes' ? 'changes things' : 'reads'),
           node.allowFailure && 'may fail',
           overlay && runSpoken(overlay),
         ])}
@@ -740,7 +740,7 @@ function useDetailsHeight(
  * No trigger, schedule or version: muster has none of them. With a muster
  * session the latest run's per-step records colour the nodes (done, failed,
  * skipped, not run) with durations where muster recorded them, and each
- * step's tool says whether it only reads or changes things.
+ * step's tool says whether it reads or changes things.
  *
  * The flow is the page's only step view. A step (or group head) expands in
  * place: its box grows to hold its details — plain first, technical

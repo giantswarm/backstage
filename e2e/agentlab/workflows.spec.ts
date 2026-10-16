@@ -29,7 +29,9 @@ test('Customize · Workflows lists the lab workflow and opens its page', async (
   const row = admin.getByRole('row', { name: new RegExp(`^${WORKFLOW}`) });
   await expect(row).toBeVisible({ timeout: 60_000 });
   await expect(row.getByRole('gridcell', { name: '2 steps' })).toBeVisible();
-  await expect(row.getByRole('gridcell', { name: 'Only reads' })).toBeVisible();
+  await expect(
+    row.getByRole('gridcell', { name: 'Reads', exact: true }),
+  ).toBeVisible();
 
   // The name is a real link (M21): keyboard-reachable, opens in a new tab.
   await expect(
@@ -248,7 +250,13 @@ test('a workflow runs from its Run it tab with the tool page’s form, and shows
   ).toBeVisible();
   // muster marks it read-only, as the badge says.
   await expect(inputs.getByText(/Nothing is changed\./)).toBeVisible();
-  await expect(admin.getByText('Only reads', { exact: true })).toBeVisible();
+  // The badge beside the title, in the tools' words.
+  await expect(
+    admin
+      .getByRole('heading', { level: 1 })
+      .locator('..')
+      .getByText('Reads', { exact: true }),
+  ).toBeVisible();
 
   await run.click();
   await expect(

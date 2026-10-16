@@ -10,7 +10,6 @@ import {
   conditionSummary,
   formatArgValue,
   toolDisplay,
-  WORKFLOW_EFFECT_LABELS,
 } from '../../lib/workflowDisplay';
 import {
   FlowStepContext,
@@ -369,7 +368,7 @@ export function WorkflowStepDetails({
   if (effect) {
     facts.push(
       effect === 'reads'
-        ? `Its tool ${WORKFLOW_EFFECT_LABELS.reads.toLowerCase()}.`
+        ? 'Its tool only reads.'
         : 'Its tool can change things.',
     );
   }

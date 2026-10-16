@@ -277,7 +277,7 @@ function WorkflowPageContent({
         menu={<MoreActionsMenu items={menu} />}
         badges={
           <>
-            {effect && <EffectBadge effect={effect} subject="workflow" />}
+            {effect && <EffectBadge effect={effect} />}
             {workflow.hasValidationWarning() && (
               <StateBadge tone="warning" label="Validation warning" />
             )}

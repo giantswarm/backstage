@@ -228,7 +228,7 @@ function StepCard({
       aria-label={accessibleName(node, [
         groupLabel ?? line,
         gate,
-        effect && (effect === 'changes' ? 'changes things' : 'only reads'),
+        effect && (effect === 'changes' ? 'changes things' : 'reads'),
         node.allowFailure && 'may fail',
         overlay && runSpoken(overlay),
       ])}

@@ -429,6 +429,15 @@ function gitOpsDeploy(): MusterWorkflow {
   });
 }
 
+/**
+ * The page's title block: its heading and the badges beside it. The flow's
+ * legend and steps show the same effect badges, so the workflow's own is
+ * looked for here.
+ */
+function pageHeading(): HTMLElement {
+  return screen.getByRole('heading', { level: 1 }).parentElement!;
+}
+
 describe('WorkflowPage', () => {
   it('heads the page with its place under Customize and the honest badge', async () => {
     const api = await renderAt(`${BASE}/deploy`);
@@ -444,7 +453,7 @@ describe('WorkflowPage', () => {
       'href',
       '/customize/workflows',
     );
-    expect(await screen.findByText('Only reads')).toBeInTheDocument();
+    expect(await within(pageHeading()).findByText('Reads')).toBeInTheDocument();
     // The derived hint comes off the tools endpoint, never the CR.
     // Off the catalogue the flow canvas reads too: no request of its own.
     expect(api.filterTools).toHaveBeenCalledTimes(1);
@@ -1153,7 +1162,7 @@ describe('WorkflowPage', () => {
     // A workflow on read-only tools changes nothing; its connector has its
     // own credentials, so the note does not claim it runs as the person.
     expect(within(inputs).getByText('Nothing is changed.')).toBeInTheDocument();
-    expect(screen.getByText('Only reads')).toBeInTheDocument();
+    expect(within(pageHeading()).getByText('Reads')).toBeInTheDocument();
 
     await userEvent.type(
       within(inputs).getByRole('textbox', { name: /app/i }),
@@ -1230,7 +1239,7 @@ describe('WorkflowPage', () => {
     expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
     // Not described: describing a tool muster lacks is an error, not an answer.
     expect(api.describeTool).not.toHaveBeenCalled();
-    expect(screen.queryByText('Only reads')).toBeNull();
+    expect(screen.queryByText('Reads')).toBeNull();
   });
 
   it('lets the form describe a workflow a truncated catalogue stops short of', async () => {
@@ -1248,7 +1257,7 @@ describe('WorkflowPage', () => {
     ).toBeInTheDocument();
     // Described, for the badge and the form alike.
     expect(api.describeTool).toHaveBeenCalledWith('workflow_deploy', 'gazelle');
-    expect(screen.getByText('Only reads')).toBeInTheDocument();
+    expect(within(pageHeading()).getByText('Reads')).toBeInTheDocument();
   });
 
   it('says on Run it that no run is possible where muster has no per-user sessions', async () => {
@@ -1508,7 +1517,7 @@ describe('WorkflowPage', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Statistics need/)).toBeNull();
-    expect(screen.queryByText('Only reads')).toBeNull();
+    expect(screen.queryByText('Reads')).toBeNull();
     expect(screen.queryByTestId('workflow-last-run')).toBeNull();
     expect(api.listExecutions).not.toHaveBeenCalled();
     expect(api.getWorkflowStats).not.toHaveBeenCalled();
