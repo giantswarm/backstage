@@ -29,8 +29,9 @@ order by it with one comparator (`byLastActive`). The waiting count beside
 bottom bar. The **Platform Portal** item appears only where the deployment also
 serves the classic portal. The **Notification inbox** (a bell on the rail's
 Profile row, and on a phone the Profile item's menu) lists the sessions that
-need the person, with toasts, an unread count in the tab title and opt-in
-desktop notifications; see [The Notification inbox](#the-notification-inbox).
+need the person and what other portal features send them, with toasts, an
+unread count in the tab title and opt-in desktop notifications; see
+[The Notification inbox](#the-notification-inbox).
 
 ## Sessions and chat
 
@@ -1308,6 +1309,28 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   `AgentPlatform.notificationsMarkedRead`. The unread count prefixes the
   document title through `ShellDocumentTitle` (`useShellDocumentTitleCount`,
   ui-react).
+- **Rows from the upstream notifications store.** What other portal features
+  send the person through the standard Backstage notifications service
+  (`notificationService` in a backend plugin, or a template's
+  `notification:send` step) shows as a plain row: a bell icon, the title, the
+  description on one line, the age; clicking it follows the link (a link out
+  of the portal opens in a new tab). The upstream notifications backend
+  stores them; the shell reads them through the upstream `NotificationsClient`,
+  registered by `agentShellNotificationsApi`
+  (`modules/agentShell/notificationsApiExtension.ts`) without the upstream
+  notifications frontend plugin, whose page and home widget the portal does not
+  ship. `useUpstreamRowSource` reads the newest 20 when the inbox mounts, again
+  on every change the backend announces on the `notifications` signals
+  channel (a burst restarts one read), when the overlay opens and when the
+  window regains the focus. These rows keep the store's read state: opening
+  one marks it read there, as does the very page it links to on screen (its
+  toast followed; a page below it does not count), and "Mark all read" reads the store's unread ids and
+  marks those (the store has no call for all of them), next to the one write
+  to the seen marks. Opening one reports `AgentPlatform.notificationOpened`
+  with `kind: plain`. A notification sent again for the same scope is a new,
+  unread row. A read of the store that fails leaves the session rows as they
+  are and shows the plain rows of the last read that worked. Only the listed
+  rows count towards the badge.
 - **Reading.** `useNotifiableSessions` (agent-platform) reads the same query
   keys as the rail's dots: every 10 s while the tab is visible, and on the
   60 s baseline tier while it is hidden. A state for a session the sessions
@@ -1335,7 +1358,50 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
 
 Rows are `InboxRow`s (`NotificationInbox/types.ts`), the shape the bell, the
 overlay, the title count and the interruptions read, so a later producer (the
-MCP sign-in row, the upstream notifications store) adds rows of its own.
+MCP sign-in row) adds rows of its own: a derived row is read through the Seen
+record, a plain row (`kind: 'plain'`) through the upstream store.
+
+#### Sending a test notification locally
+
+No portal feature sends to the store yet. To see a plain row, send one to
+yourself through the notifications backend's API, which takes service
+credentials only. Give the local backend a static token for it: add an entry
+to `backend.auth.externalAccess` in `app-config.local.yaml`, next to any entry
+already there:
+
+```yaml
+backend:
+  auth:
+    externalAccess:
+      - type: static
+        options:
+          token: local-notifications-test-token-0123456789
+          subject: local-notifications-test
+        accessRestrictions:
+          - plugin: notifications
+```
+
+Then, with the shell open in a browser, send a notification to the entity ref
+of the user you are signed in as (or `"type": "broadcast"` for everyone):
+
+```bash
+curl -X POST http://localhost:7007/api/notifications/notifications \
+  -H 'Authorization: Bearer local-notifications-test-token-0123456789' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "recipients": { "type": "entity", "entityRef": "user:default/alex.example" },
+    "payload": {
+      "title": "Template run finished",
+      "description": "Create a Go service",
+      "link": "/create",
+      "severity": "normal",
+      "scope": "local-test"
+    }
+  }'
+```
+
+The row appears, with a toast, through the signal. Send it again with the same
+`scope` to see it turn unread again.
 
 ### Notification level and the notification record
 

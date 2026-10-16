@@ -10,7 +10,7 @@ import {
   useSessionNotificationRecord,
   type NotifiableSession,
 } from '@giantswarm/backstage-plugin-agent-platform';
-import type { InboxRowSource } from '../types';
+import type { DerivedInboxRow, InboxRowSource } from '../types';
 import { sessionSubject, toSessionRows } from '../utils/sessionRows';
 
 type NotificationRecord = ReturnType<typeof useSessionNotificationRecord>;
@@ -23,7 +23,7 @@ type NotificationRecord = ReturnType<typeof useSessionNotificationRecord>;
  */
 export function useSessionRowSource(
   record: NotificationRecord,
-): InboxRowSource {
+): InboxRowSource<DerivedInboxRow> {
   const toastApi = useApi(toastApiRef);
   const sessionDetailRoute = useRouteRef(
     agentPlatformPlugin.routes.sessionDetail,

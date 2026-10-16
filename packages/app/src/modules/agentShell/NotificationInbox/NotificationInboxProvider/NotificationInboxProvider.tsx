@@ -28,6 +28,7 @@ import {
 } from '../hooks/useDesktopNotifications';
 import { isAt, useInboxInterruptions } from '../hooks/useInboxInterruptions';
 import { useSessionRowSource } from '../hooks/useSessionRowSource';
+import { useUpstreamRowSource } from '../hooks/useUpstreamRowSource';
 import {
   NOTIFICATIONS_HASH,
   useToastLinkRouting,
@@ -63,6 +64,11 @@ export function useNotificationInbox(): NotificationInboxValue | undefined {
   return useContext(InboxContext);
 }
 
+/** The path of an in-app link, without its query or fragment. */
+function pathOf(href: string | undefined): string | undefined {
+  return href?.split(/[?#]/)[0];
+}
+
 /** Newest first; rows that cannot say when go last. */
 function byNewest(a: InboxRow, b: InboxRow): number {
   return (b.at ?? -Infinity) - (a.at ?? -Infinity);
@@ -76,56 +82,91 @@ function Inbox({ children }: { children: ReactNode }) {
   const record = useSessionNotificationRecord();
   const { markSeen, markManySeen } = record;
 
-  const source = useSessionRowSource(record);
-  const rows = useMemo(() => [...source.rows].sort(byNewest), [source.rows]);
+  // Two sources, one inbox: rows the shell derives from its own reads, and
+  // what other portal features send through the upstream notifications store.
+  const sessions = useSessionRowSource(record);
+  const upstream = useUpstreamRowSource();
+  const {
+    markRead: markUpstreamRead,
+    markAllRead: markAllUpstreamRead,
+    refresh: refreshUpstream,
+  } = upstream;
+  const rows = useMemo<InboxRow[]>(
+    () => [...sessions.rows, ...upstream.rows].sort(byNewest),
+    [sessions.rows, upstream.rows],
+  );
+  const subjects = useMemo(
+    () => new Set([...sessions.subjects, ...upstream.subjects]),
+    [sessions.subjects, upstream.subjects],
+  );
+  const ready = sessions.ready && upstream.ready;
   const unreadCount = rows.filter(row => row.unread).length;
 
   const [isOpen, setOpenState] = useState(false);
   const desktop = useDesktopNotifications();
 
-  // Rows whose seen mark is on its way, so a row is written once however it
+  // Rows whose read mark is on its way, so a row is written once however it
   // was read: clicked, then on screen once its page opens.
   const marking = useRef(new Set<string>());
   const markOnce = useCallback(
-    (row: InboxRow, reason?: SeenMarkReason) => {
+    (row: InboxRow, opened: boolean) => {
       if (!row.unread || marking.current.has(row.id)) {
         return;
       }
       marking.current.add(row.id);
-      markSeen(row.seenMark, reason)
+      const reason: SeenMarkReason | undefined =
+        opened && row.kind !== 'plain'
+          ? { action: 'opened', kind: row.kind }
+          : undefined;
+      (row.kind === 'plain'
+        ? markUpstreamRead(row, opened)
+        : markSeen(row.seenMark, reason)
+      )
         .catch(() => {})
         .finally(() => marking.current.delete(row.id));
     },
-    [markSeen],
+    [markSeen, markUpstreamRead],
   );
 
   const markRead = useCallback(
-    (row: InboxRow) => markOnce(row, { action: 'opened', kind: row.kind }),
+    (row: InboxRow) => markOnce(row, true),
     [markOnce],
   );
 
+  // One write per source, and one "Mark all read" reported between them.
   const markAllRead = useCallback(async () => {
-    const targets = rows.filter(row => row.unread).map(row => row.seenMark);
-    if (targets.length > 0) {
-      await markManySeen(targets, { action: 'markedAllRead' });
-    }
-  }, [rows, markManySeen]);
+    const unread = rows.filter(row => row.unread);
+    const targets = unread.flatMap(row =>
+      row.kind === 'plain' ? [] : [row.seenMark],
+    );
+    const plain = unread.some(row => row.kind === 'plain');
+    await Promise.all([
+      targets.length > 0
+        ? markManySeen(targets, { action: 'markedAllRead' })
+        : undefined,
+      plain ? markAllUpstreamRead(targets.length === 0) : undefined,
+    ]);
+  }, [rows, markManySeen, markAllUpstreamRead]);
 
   // Opening the overlay, however it opens, answers the toasts that point to
   // it; `interruptions` is read through a ref because it needs the opener.
   const overlayOpened = useRef(() => {});
-  const setOpen = useCallback((open: boolean) => {
-    setOpenState(open);
-    if (open) {
-      overlayOpened.current();
-    }
-  }, []);
+  const setOpen = useCallback(
+    (open: boolean) => {
+      setOpenState(open);
+      if (open) {
+        overlayOpened.current();
+        refreshUpstream();
+      }
+    },
+    [refreshUpstream],
+  );
   const openOverlay = useCallback(() => setOpen(true), [setOpen]);
 
   const interruptions = useInboxInterruptions({
     rows,
-    subjects: source.subjects,
-    ready: source.ready,
+    subjects,
+    ready,
     attention,
     desktop,
     waitingHref: sessionsRoute
@@ -149,12 +190,20 @@ function Inbox({ children }: { children: ReactNode }) {
   // The session on screen counts as seen: opening a session marks its row
   // read. Only while the person works in this window — a session parked in a
   // background tab, or in a window behind another application, still
-  // notifies.
+  // notifies. A plain row counts as seen on exactly the page it links to
+  // (its toast followed, say), not below it: a producer's link may be a
+  // section the person is in for other reasons.
   useEffect(() => {
     if (!attention.visible || !attention.focused || !record.isKnown) {
       return;
     }
-    rows.filter(row => isAt(pathname, row.href)).forEach(row => markOnce(row));
+    rows
+      .filter(row =>
+        row.kind === 'plain'
+          ? !row.external && pathOf(row.href) === pathname
+          : isAt(pathname, row.href),
+      )
+      .forEach(row => markOnce(row, false));
   }, [
     rows,
     pathname,
@@ -169,7 +218,7 @@ function Inbox({ children }: { children: ReactNode }) {
   const value = useMemo<NotificationInboxValue>(
     () => ({
       rows,
-      ready: source.ready,
+      ready,
       unreadCount,
       markRead,
       markAllRead,
@@ -177,16 +226,7 @@ function Inbox({ children }: { children: ReactNode }) {
       setOpen,
       desktop,
     }),
-    [
-      rows,
-      source.ready,
-      unreadCount,
-      markRead,
-      markAllRead,
-      isOpen,
-      setOpen,
-      desktop,
-    ],
+    [rows, ready, unreadCount, markRead, markAllRead, isOpen, setOpen, desktop],
   );
 
   return (
@@ -196,8 +236,9 @@ function Inbox({ children }: { children: ReactNode }) {
 
 /**
  * The Notification inbox of the Agent Platform shell: rows derived in the
- * browser from the shell's own reads (the person's sessions today), the
- * unread count in the bell and the document title, toasts in the visible
+ * browser from the shell's own reads (the person's sessions today) and plain
+ * rows other portal features send through the upstream notifications store,
+ * the unread count in the bell and the document title, toasts in the visible
  * tab and opt-in desktop notifications.
  *
  * Mount it once per shell, around the rail: the bell and the phone's Profile

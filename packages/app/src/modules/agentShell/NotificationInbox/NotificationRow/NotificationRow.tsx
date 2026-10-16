@@ -2,6 +2,7 @@ import { ButtonIcon, Menu, MenuItem, MenuTrigger, Text } from '@backstage/ui';
 import { Link as AriaLink } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
+import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
 import { AgentAvatar } from '@giantswarm/backstage-plugin-agent-platform';
 import {
   getRelativeDate,
@@ -53,12 +54,39 @@ const useStyles = makeStyles({
   avatar: {
     flex: '0 0 auto',
   },
+  // A plain row's stand-in for an avatar, the size and shape of one.
+  icon: {
+    flex: '0 0 auto',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '1.5rem',
+    height: '1.5rem',
+    borderRadius: '20%',
+    background: 'var(--bui-bg-neutral-2)',
+    color: 'var(--bui-fg-secondary)',
+    '& svg': {
+      fontSize: 16,
+    },
+  },
   text: {
     flex: '1 1 auto',
     minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
     gap: 2,
+  },
+  // A producer's description can run long: it gives way, on one line, so
+  // the age after it always shows.
+  plainMeta: {
+    display: 'flex',
+    minWidth: 0,
+    whiteSpace: 'nowrap',
+  },
+  description: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   chip: {
     flex: '0 0 auto',
@@ -74,8 +102,10 @@ const useStyles = makeStyles({
 
 /**
  * One row of the Notification inbox: the agent's Avatar, what happened, the
- * session's name, how long ago and a state chip, with its own ⋯ menu.
- * Clicking it opens what it is about; `onOpen` marks it read.
+ * session's name, how long ago and a state chip, with its own ⋯ menu; a
+ * plain row from another portal feature has its title, description and age.
+ * Clicking it opens what it is about (a link out of the portal in a new
+ * tab); `onOpen` marks it read.
  */
 export function NotificationRow({
   row,
@@ -88,13 +118,11 @@ export function NotificationRow({
   onOpen: () => void;
 }) {
   const classes = useStyles();
-  const meta = [
-    row.context,
+  const age =
     row.at === undefined
       ? undefined
-      : getRelativeDate(new Date(row.at), new Date(now)),
-    row.detail,
-  ].filter(Boolean);
+      : getRelativeDate(new Date(row.at), new Date(now));
+  const meta = [row.context, age, row.detail].filter(Boolean);
 
   return (
     <li
@@ -104,6 +132,8 @@ export function NotificationRow({
       {row.unread && <span aria-hidden="true" className={classes.unreadDot} />}
       <AriaLink
         href={row.href}
+        target={row.external ? '_blank' : undefined}
+        rel={row.external ? 'noopener noreferrer' : undefined}
         onPress={onOpen}
         className={classes.link}
         aria-label={row.unread ? `Unread: ${row.title}` : undefined}
@@ -117,6 +147,11 @@ export function NotificationRow({
             className={classes.avatar}
           />
         )}
+        {!row.avatar && row.kind === 'plain' && (
+          <span aria-hidden="true" className={classes.icon}>
+            <NotificationsNoneIcon />
+          </span>
+        )}
         <span className={classes.text}>
           <Text
             as="span"
@@ -125,10 +160,24 @@ export function NotificationRow({
           >
             {row.title}
           </Text>
-          {meta.length > 0 && (
-            <Text as="span" variant="body-x-small" color="secondary">
-              {meta.join(' · ')}
+          {row.kind === 'plain' && row.context ? (
+            <Text
+              as="span"
+              variant="body-x-small"
+              color="secondary"
+              className={classes.plainMeta}
+            >
+              <span className={classes.description} title={row.context}>
+                {row.context}
+              </span>
+              {age && <span>&nbsp;·&nbsp;{age}</span>}
             </Text>
+          ) : (
+            meta.length > 0 && (
+              <Text as="span" variant="body-x-small" color="secondary">
+                {meta.join(' · ')}
+              </Text>
+            )
           )}
         </span>
         {row.state && (

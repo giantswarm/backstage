@@ -5828,7 +5828,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/plugin-notifications-common@npm:^0.2.4":
+"@backstage/plugin-notifications-common@backstage:^::backstage=1.55.3&npm=0.2.4, @backstage/plugin-notifications-common@npm:^0.2.4":
   version: 0.2.4
   resolution: "@backstage/plugin-notifications-common@npm:0.2.4"
   dependencies:
@@ -22731,6 +22731,7 @@ __metadata:
     "@backstage/plugin-kubernetes": "backstage:^"
     "@backstage/plugin-kubernetes-react": "backstage:^"
     "@backstage/plugin-notifications": "backstage:^"
+    "@backstage/plugin-notifications-common": "backstage:^"
     "@backstage/plugin-org": "backstage:^"
     "@backstage/plugin-permission-react": "backstage:^"
     "@backstage/plugin-scaffolder": "backstage:^"
@@ -22772,6 +22773,7 @@ __metadata:
     "@remixicon/react": "npm:^4.9.0"
     "@roadiehq/backstage-plugin-github-pull-requests": "npm:^3.0.0"
     "@sentry/react": "npm:^10.0.0"
+    "@tanstack/react-query": "npm:^5.82.0"
     "@telemetrydeck/sdk": "npm:^2.0.4"
     "@terasky/backstage-plugin-api-docs-module-crd": "npm:^0.7.0"
     "@testing-library/dom": "npm:^10.0.0"

@@ -94,10 +94,29 @@ type OpenToast = {
   closeOnOverlay?: boolean;
 };
 
-function attentionTitle(count: number) {
-  return `${countNoun(count, 'session')} ${
-    count === 1 ? 'needs' : 'need'
+/** "2 sessions need your attention", or notifications once not all are. */
+function attentionTitle(rows: readonly InboxRow[]) {
+  const noun = rows.every(row => row.kind !== 'plain')
+    ? 'session'
+    : 'notification';
+  return `${countNoun(rows.length, noun)} ${
+    rows.length === 1 ? 'needs' : 'need'
   } your attention`;
+}
+
+/** Opens a row's link: in the app, or a new tab when it leads out of it. */
+function openRow(
+  row: InboxRow,
+  navigate: (to: string) => void,
+  openOverlay: () => void,
+) {
+  if (!row.href) {
+    openOverlay();
+  } else if (row.external) {
+    window.open(row.href, '_blank', 'noopener');
+  } else {
+    navigate(row.href);
+  }
 }
 
 /**
@@ -196,7 +215,7 @@ export function useInboxInterruptions({
         post(
           'catch-up',
           {
-            title: attentionTitle(catchUp.length),
+            title: attentionTitle(catchUp),
             status: 'info',
             links: [{ label: 'Open notifications', href: NOTIFICATIONS_HASH }],
           },
@@ -240,7 +259,7 @@ export function useInboxInterruptions({
           post(
             `burst:${toastCount.current}`,
             {
-              title: attentionTitle(news.length),
+              title: attentionTitle(news),
               status: 'info',
               links: [
                 { label: 'Open notifications', href: NOTIFICATIONS_HASH },
@@ -272,7 +291,7 @@ export function useInboxInterruptions({
     if (desk.enabled && !now.focused) {
       if (burst) {
         showDesktopNotification({
-          title: attentionTitle(news.length),
+          title: attentionTitle(news),
           tag: BURST_TAG,
           onClick: () => latest.current.openOverlay(),
         });
@@ -282,13 +301,8 @@ export function useInboxInterruptions({
             title: row.announce.title,
             body: row.announce.description,
             tag: row.id,
-            onClick: () => {
-              if (row.href) {
-                navigate(row.href);
-              } else {
-                latest.current.openOverlay();
-              }
-            },
+            onClick: () =>
+              openRow(row, navigate, () => latest.current.openOverlay()),
           });
         }
       }
