@@ -4,6 +4,8 @@ export { StateBadge } from './StateBadge';
 export type { StateBadgeProps } from './StateBadge';
 export { EffectBadge } from './EffectBadge';
 export type { EffectBadgeProps } from './EffectBadge';
+export { WorkflowEffectBadge } from './WorkflowEffectBadge';
+export type { WorkflowEffectBadgeProps } from './WorkflowEffectBadge';
 export { MarkerBadge } from './MarkerBadge';
 export type { MarkerBadgeProps } from './MarkerBadge';
 // `Stat` moved to `ui-react` when the agent-platform Usage page needed it too.

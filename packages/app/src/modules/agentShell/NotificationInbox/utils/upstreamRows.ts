@@ -120,6 +120,7 @@ export function toUpstreamRows(
       unread: !notification.read,
       title: payload.title,
       context: description,
+      icon: 'notification',
       href: link?.href,
       external: link?.external,
       announce: {

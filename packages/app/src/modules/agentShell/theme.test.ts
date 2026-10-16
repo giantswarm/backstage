@@ -238,7 +238,7 @@ describe('agentShellLightColors', () => {
 
   // T22 B4. The upstream class is a CSS-module name with a hash suffix; the
   // shell matches its prefix, which this pins against the installed package.
-  it('keeps toasts clear of the bottom bar and the docked composer', () => {
+  it('keeps toasts clear of the bottom bar, the docked composer and a wizard’s footer', () => {
     const upstream = readFileSync(
       join(
         require.resolve('@backstage/plugin-app/package.json'),
@@ -253,11 +253,11 @@ describe('agentShellLightColors', () => {
 
     const css = shellCss();
     expect(css).toMatch(
-      /html\[data-agent-shell\] \[class\*='Toast_container'\] \{\s*bottom: calc\(2rem \+ var\(--session-dock-height, 0px\)\);/,
+      /html\[data-agent-shell\] \[class\*='Toast_container'\] \{\s*bottom: calc\(\s*2rem \+ var\(--session-dock-height, 0px\) \+ var\(--wizard-footer-height, 0px\)\s*\);/,
     );
     expect(
       mediaBlocks(css, PHONE).some(block =>
-        /\[class\*='Toast_container'\] \{\s*bottom: calc\(\s*var\(--agent-shell-mobile-bar-height\) \+ var\(--session-dock-height, 0px\) \+\s*8px\s*\);/.test(
+        /\[class\*='Toast_container'\] \{\s*bottom: calc\(\s*var\(--agent-shell-mobile-bar-height\) \+ var\(--session-dock-height, 0px\) \+\s*var\(--wizard-footer-height, 0px\) \+ 8px\s*\);/.test(
           block,
         ),
       ),

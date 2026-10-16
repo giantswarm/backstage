@@ -55,8 +55,10 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
   const { createRouteRef } = jest.requireActual(
     '@backstage/frontend-plugin-api',
   );
+  const { fakeInboxMusterExports } = jest.requireActual('./testing/fakeInbox');
   return {
     __esModule: true,
+    ...fakeInboxMusterExports(),
     default: {
       routes: { mcpServers: createRouteRef(), workflows: createRouteRef() },
     },
@@ -272,6 +274,60 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
       expect(within(overlay).getAllByRole('listitem')[0]).toHaveTextContent(
         'Template run failed again',
       );
+    });
+
+    it('lists the MCP sign-in row first, then session and plain rows newest first, and marks all three read', async () => {
+      upstream.set([
+        { id: 'n1', title: 'Template run finished', created: now() - 1000 },
+      ]);
+      fakeInbox.setSessions([
+        {
+          sessionId: 's1',
+          title: 'Debug ingress',
+          state: 'input-required',
+          changedAt: now() - 60_000,
+        },
+      ]);
+      fakeInbox.setMcpWaiting(['kubernetes']);
+      await renderShell();
+
+      const overlay = await openOverlay();
+      await waitFor(() =>
+        expect(within(overlay).getAllByRole('listitem')).toHaveLength(3),
+      );
+      expect(
+        within(overlay)
+          .getAllByRole('listitem')
+          .map(row => row.textContent),
+      ).toEqual([
+        expect.stringContaining('1 MCP server needs your sign-in'),
+        expect.stringContaining('Template run finished'),
+        expect.stringContaining('SRE Agent needs your input'),
+      ]);
+      await waitFor(() =>
+        expect(document.title).toBe('(3) Sessions · Agent Platform'),
+      );
+
+      await userEvent.click(
+        within(overlay).getByRole('button', { name: 'Mark all read' }),
+      );
+      // The seen marks in one write, the store in another.
+      expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(1);
+      expect(fakeInbox.writes.markManySeen.mock.calls[0][0]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'session', sessionId: 's1' }),
+          expect.objectContaining({ kind: 'mcpSignIn' }),
+        ]),
+      );
+      expect(
+        upstream.notificationsApi.updateNotifications,
+      ).toHaveBeenCalledWith({ ids: ['n1'], read: true });
+      await waitFor(() =>
+        expect(document.title).toBe('Sessions · Agent Platform'),
+      );
+      expect(reportedEvents()).toEqual([
+        ['AgentPlatform.notificationsMarkedRead', {}],
+      ]);
     });
 
     it('opens a link out of the portal in a new tab', async () => {

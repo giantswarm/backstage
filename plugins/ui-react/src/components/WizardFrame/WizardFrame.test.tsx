@@ -266,7 +266,7 @@ describe('WizardFrame', () => {
     );
   });
 
-  it('publishes the footer’s height on the document while it is mounted, for the floating sign-in notice', () => {
+  it('publishes the footer’s height on the document while it is mounted, for the shell’s toasts', () => {
     const rect = jest
       .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
       .mockReturnValue({ width: 1200, height: 65 } as DOMRect);

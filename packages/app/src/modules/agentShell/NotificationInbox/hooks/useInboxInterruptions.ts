@@ -94,9 +94,19 @@ type OpenToast = {
   closeOnOverlay?: boolean;
 };
 
-/** "2 sessions need your attention", or notifications once not all are. */
-function attentionTitle(rows: readonly InboxRow[]) {
-  const noun = rows.every(row => row.kind !== 'plain')
+/** The kinds of row that are about one session each. */
+const SESSION_KINDS: ReadonlySet<InboxRow['kind']> = new Set([
+  'waiting',
+  'failed',
+  'turnFinished',
+]);
+
+/**
+ * "2 sessions need your attention" while every row is a session's;
+ * "notifications" once any is not (the MCP sign-in row, any later producer).
+ */
+function attentionTitle(rows: InboxRow[]) {
+  const noun = rows.every(row => SESSION_KINDS.has(row.kind))
     ? 'session'
     : 'notification';
   return `${countNoun(rows.length, noun)} ${
@@ -104,19 +114,9 @@ function attentionTitle(rows: readonly InboxRow[]) {
   } your attention`;
 }
 
-/** Opens a row's link: in the app, or a new tab when it leads out of it. */
-function openRow(
-  row: InboxRow,
-  navigate: (to: string) => void,
-  openOverlay: () => void,
-) {
-  if (!row.href) {
-    openOverlay();
-  } else if (row.external) {
-    window.open(row.href, '_blank', 'noopener');
-  } else {
-    navigate(row.href);
-  }
+/** Where a row's toast and desktop notification lead. */
+function linkOf(row: InboxRow): string | undefined {
+  return row.announce.href ?? row.href;
 }
 
 /**
@@ -128,7 +128,8 @@ function openRow(
  * notification. A row is **news** when it is unread and appeared, or changed
  * identity, after that first read, and either its subject was already read
  * by the tab (it changed while watched) or its time says it changed after the
- * first read. A row that shows up later with neither (an installation
+ * first read. A row that only narrows one the tab read (`narrows`) is not
+ * news. A row that shows up later with neither (an installation
  * answering late with an old wait) is quietly unread. Nothing is raised for
  * the session on screen in the window the person works in. A toast closes
  * once its row goes or is read, or its page is opened.
@@ -147,6 +148,7 @@ export function useInboxInterruptions({
   desktop,
   waitingHref,
   openOverlay,
+  hashActions,
 }: {
   rows: InboxRow[];
   subjects: ReadonlySet<string>;
@@ -161,6 +163,8 @@ export function useInboxInterruptions({
   /** The Sessions list on its Waiting filter, when that route is bound. */
   waitingHref?: string;
   openOverlay: () => void;
+  /** Hash links that act where the person is (`#notifications`). */
+  hashActions: Readonly<Record<string, () => void>>;
 }): { overlayOpened: () => void } {
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
@@ -178,8 +182,16 @@ export function useInboxInterruptions({
     desktop,
     openOverlay,
     isOnScreen,
+    hashActions,
   });
-  latest.current = { location, attention, desktop, openOverlay, isOnScreen };
+  latest.current = {
+    location,
+    attention,
+    desktop,
+    openOverlay,
+    isOnScreen,
+    hashActions,
+  };
 
   const post = useCallback(
     (
@@ -249,6 +261,7 @@ export function useInboxInterruptions({
       row =>
         row.unread &&
         !known.has(row.id) &&
+        !before.rows.some(id => row.narrows?.(id)) &&
         !onScreen(row) &&
         (watched.has(row.subject) || (row.at !== undefined && row.at >= since)),
     );
@@ -290,11 +303,12 @@ export function useInboxInterruptions({
           // The toast renders a link as a plain anchor, which would take a
           // link out of the portal in this tab and leave the shell: such a
           // row is opened from the overlay, in a new tab.
+          const to = linkOf(row);
           let link: { label: string; href: string } | undefined;
           if (row.external) {
             link = { label: 'Open notifications', href: NOTIFICATIONS_HASH };
-          } else if (row.href) {
-            link = { label: row.announce.linkLabel, href: row.href };
+          } else if (to) {
+            link = { label: row.announce.linkLabel, href: to };
           }
           post(
             row.id,
@@ -325,8 +339,19 @@ export function useInboxInterruptions({
             title: row.announce.title,
             body: row.announce.description,
             tag: row.id,
-            onClick: () =>
-              openRow(row, navigate, () => latest.current.openOverlay()),
+            onClick: () => {
+              const link = linkOf(row);
+              const action = link && latest.current.hashActions[link];
+              if (action) {
+                action();
+              } else if (!link) {
+                latest.current.openOverlay();
+              } else if (row.external) {
+                window.open(link, '_blank', 'noopener');
+              } else {
+                navigate(link);
+              }
+            },
           });
         }
       }

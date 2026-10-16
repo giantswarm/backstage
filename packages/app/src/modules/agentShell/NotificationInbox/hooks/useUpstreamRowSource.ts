@@ -9,7 +9,7 @@ import type { Notification } from '@backstage/plugin-notifications-common';
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
-import type { InboxRowSource, UpstreamInboxRow } from '../types';
+import type { ReadableInboxRowSource, UpstreamInboxRow } from '../types';
 import { appLocationOf, toUpstreamRows } from '../utils/upstreamRows';
 import { inboxQueryClient } from './inboxQueryClient';
 
@@ -41,7 +41,7 @@ type MarkReadWrite = {
   opened?: boolean;
 };
 
-export type UpstreamRowSource = InboxRowSource<UpstreamInboxRow> & {
+export type UpstreamRowSource = ReadableInboxRowSource<UpstreamInboxRow> & {
   /** Reads the list again: the overlay opened. */
   refresh: () => void;
 };

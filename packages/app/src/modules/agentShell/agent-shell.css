@@ -453,21 +453,27 @@ html[data-agent-shell] body {
  * centre, `bottom: 1rem`, 2rem from 500px) lands on the phone's bottom bar
  * and on the session's docked composer — the needs-input toast covered both
  * (T22 B4). It sits above the bar at phone width and above the docked
- * composer at any width: `--session-dock-height` is the docked composer's own
- * height (not counting the bar), which the session page publishes on the
- * document while its composer is docked; unset, it is 0. Matched by the
- * module class's stable prefix, since the hash changes with every release;
- * theme.test.ts checks the upstream class still carries it.
+ * composer and a wizard's footer at any width: `--session-dock-height` is the
+ * docked composer's own height (not counting the bar), which the session page
+ * publishes on the document while its composer is docked, and
+ * `--wizard-footer-height` a WizardFrame's footer (Continue, Create), which
+ * the frame publishes while it is mounted; unset, each is 0. The inbox's
+ * lasting toasts (a catch-up summary, an MCP sign-in) so never take the
+ * click of a page's primary action. Matched by the module class's stable
+ * prefix, since the hash changes with every release; theme.test.ts checks
+ * the upstream class still carries it.
  */
 html[data-agent-shell] [class*='Toast_container'] {
-  bottom: calc(2rem + var(--session-dock-height, 0px));
+  bottom: calc(
+    2rem + var(--session-dock-height, 0px) + var(--wizard-footer-height, 0px)
+  );
 }
 
 @media (max-width: 599.95px) {
   html[data-agent-shell] [class*='Toast_container'] {
     bottom: calc(
       var(--agent-shell-mobile-bar-height) + var(--session-dock-height, 0px) +
-        8px
+        var(--wizard-footer-height, 0px) + 8px
     );
   }
 }

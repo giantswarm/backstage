@@ -29,8 +29,9 @@ order by it with one comparator (`byLastActive`). The waiting count beside
 bottom bar. The **Platform Portal** item appears only where the deployment also
 serves the classic portal. The **Notification inbox** (a bell on the rail's
 Profile row, and on a phone the Profile item's menu) lists the sessions that
-need the person and what other portal features send them, with toasts, an
-unread count in the tab title and opt-in desktop notifications; see
+need the person, the MCP servers that wait for their sign-in and what other
+portal features send them, with toasts, an unread count in the tab title and
+opt-in desktop notifications; see
 [The Notification inbox](#the-notification-inbox).
 
 ## Sessions and chat
@@ -130,21 +131,35 @@ annotation on its MCPServer, as agents, models and harnesses are: in the
 Connectors list, its page's title, breadcrumbs and document title, the tool
 page's breadcrumb, the connector wizard's edit frame, the command palette, the
 agent wizard's Tools step and review, the agent page's tools, the reach line,
-the session timeline, Usage → Connectors, the workflow pages and the sign-in
-notice and dialogs. One rule names it everywhere (`connectorDisplayNames` in
-the muster plugin): a family takes the display name its annotated members
-agree on, and members that disagree leave it its own name; without a display
-name a connector goes by its family's name (`spec.family.name`) or its
-MCPServer's; and connectors that would read the same (two annotated alike, or
-one annotated like another's name, case aside) go by their own names
-instead, so no two read alike. URLs, `server:` selectors and tool names keep
-the technical name, which Technical details on the Details tab still shows,
-and searches match both names. Add connector cannot set the annotation:
-muster's `core_mcpserver_create` and `_update` take no annotations (their
-request parsing rejects unknown fields), so it is set on the MCPServer
-directly, for example in its GitOps source or with
-`kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`.
-An update through the wizard keeps it.
+the session timeline, Usage → Connectors, the workflow pages, the inbox's MCP
+sign-in row and the sign-in dialogs. One rule names it everywhere
+(`connectorDisplayNames` in the muster plugin): a family takes the display name
+its annotated members agree on, and members that disagree leave it its own name;
+without a display name a connector goes by its family's name
+(`spec.family.name`) or its MCPServer's; and connectors that would read the same
+(two annotated alike, or one annotated like another's name, case aside) go by
+their own names instead, so no two read alike. URLs, `server:` selectors and
+tool names keep the technical name, which Technical details on the Details tab
+still shows, and searches match both names.
+
+Add connector keeps the name typed into its Name field as that annotation,
+through the `displayName` argument of muster's `core_mcpserver_create` and
+`_update` (muster v5.43.0 and later). The technical name derives from it as
+before ("Stack Overflow" is registered as `stack-overflow`); a name that is the
+technical name already (`jira`) sets no annotation. Editing a connector shows
+its display name in the Name field and saves a changed one, sending
+`displayName` only when it changes (back to the technical name removes the
+annotation); the technical name stays fixed. A family member's Name stays
+read-only: its members share one display name, which a rename of one would
+split. Whether an installation's muster takes the argument is read from each
+tool's input schema (`describe_tool`, validate's and create's or update's on
+their own): on an older muster, which refuses unknown fields, the wizard
+registers without it, the Name field then shows the technical name, and an
+edit keeps it read-only, as before. A schema that cannot be read stops the
+save with an error rather than dropping the name unsaid. The annotation can also be
+set on the MCPServer directly, for example in its GitOps source or with
+`kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
+an edit that does not change the name keeps it.
 
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
@@ -181,6 +196,15 @@ Muster's workflows. The portal does not create, edit or delete them; agents
 and Git do. A workflow's page splits into Overview, Run it, Usage (its run
 statistics) and Details tabs; its ⋮ menu shows the Workflow CR as YAML and,
 where Flux reconciles the workflow, where in Git to change it.
+
+The Workflows list and a workflow's page say what a workflow does in the same
+badges a tool has: Reads or Changes things. muster marks a workflow read-only
+only when every tool its steps can reach is, so Reads holds for all its steps;
+a workflow muster lists without that mark shows Changes things. Without a muster
+session, or where muster offers the person no tool for the workflow, no badge is
+shown. On a workflow, the badge's
+tooltip says so ("Every step only reads." or "At least one step can change
+things."), on hover, keyboard focus or a tap; a tool's badge has none.
 
 Run it (`/customize/workflows/<installation>/<name>/run`) runs the
 workflow as a tool's page runs a tool: muster exposes each workflow as the
@@ -1125,10 +1149,46 @@ use.
 in full; the agent's internal work folds into work summaries; older turns page
 behind "Show earlier activity".
 
-User messages follow `app.branding.theme.<mode>.primaryColor` and are **not**
-markdown, because prompts quote logs and `#` lines verbatim. Agent prose is GFM
+User messages take the fill Send carries, `--bui-bg-solid` with
+`--bui-fg-solid` (the shell's primary colour), and are **not** markdown,
+because prompts quote logs and `#` lines verbatim. The solid tokens are
+deprecated for `--bui-accent-*`, but the installed bui's primary Button still
+paints them, and the shell's accent (`#009fff`) fails contrast under white
+text; move the bubble when Send moves. Agent prose is GFM
 markdown. JSON inside result strings is inlined. Streaming auto-follow applies
 only while the page is scrolled to the end.
+
+**A long user message is cut to 10 lines** of its own text (`10lh`, so the cut
+follows the reader's font size) behind a fade, with _Show more_ centred in the
+bubble under the fade, and _Show less_ in the same place at the end of the opened
+text, in a row of its own so it never covers a line. It is a button with
+`aria-expanded`, tied to the message by `aria-controls`, drawn in the bubble's
+foreground (`CollapsibleToggle`'s `onSolid`: the bubble's `--bui-fg-solid` for
+the label and focus ring, a wash of it on hover). A continuation's opener
+carries the whole earlier conversation, and a pasted log or file can run to
+thousands of lines; either would bury the answer under it. A message that fits, or would hide no more than
+two lines (a fifth of the cut, `collapseSlack`, the rule `ShowMore` pages by),
+is shown whole with no control. The cut is visual only: the whole text stays in
+the page for screen readers, selection and copying, and keyboard focus or find
+in page reaching past the cut opens the message where the match is. _Show less_
+on a message read to its end brings it back into view rather than leaving the
+reader in a later turn.
+
+`SessionTimeline` holds which messages are open, keyed by kagent's
+`messageId`, so a message stays open when kagent's copy replaces the optimistic
+one after sending and when its turn leaves the turn window and comes back with
+"Show earlier activity". A reload starts every message cut again. The agent's
+messages, tool output and the composer are never cut. The same applies in the
+create-agent assist panel, which renders its conversation with
+`SessionTimeline`: its opener quotes the system prompt drafted so far, which
+can be long.
+
+The pieces (`useCollapsible`, `CollapsibleViewport`, `CollapsibleToggle`) live
+in `ui-react` and are the same ones `CollapsibleMarkdown` uses for an agent's
+instructions, whose toggle likewise sits centred in its own row under the cut;
+the bubble sets `--bui-bg-inherit` to its own fill so the fade
+matches it. Tests lay them out with `mockCollapsibleLayout` from
+`@giantswarm/backstage-plugin-ui-react/testUtils`.
 
 | Entry                | Where it comes from                                                        |
 | -------------------- | -------------------------------------------------------------------------- |
@@ -1301,11 +1361,36 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   Finished), newest first. Clicking a row opens the session and marks it
   read; its ⋯ menu has "Mute this session". "Mark all read" is one write to
   the seen marks. No text of the conversation enters a row.
-- **Read.** A row is unread until its identity is the session's seen mark in
-  the notification record. The session on screen counts as seen while the
-  person works in that window (visible and focused); a session parked in a
-  background tab, or in a window behind another application, still notifies.
-  Opening a row reports `AgentPlatform.notificationOpened`, "Mark all read"
+- **MCP sign-in row.** One for the person's home installation while any of its
+  MCP servers waits for their own sign-in or grant (`auth_required` or
+  `reauth_required` in muster's per-user `auth://status`): "2 MCP servers need
+  your sign-in", naming the servers by display name, above the session rows (it
+  has no time to sort by), with **Sign in**, which marks it read, closes the
+  overlay and then opens muster's sign-in dialog over the page (loaded on the
+  first sign-in). Muster's `McpSignInProvider` reads the status under the muster
+  plugin's query client, every five minutes and when the tab regains focus, and
+  quietly: the read never asks for the portal sign-in, stops while the portal
+  session is gone (a focus checks again), and the servers' display names are
+  read once. A sign-in finished in the dialog or on a muster page removes the
+  row through the same read. Only the home installation is read, and the dialog
+  opens only for it: another installation's muster needs a brokered token, and
+  its servers are signed in to where they are used. The row replaces muster's
+  corner card and its "Not now": marking the row read is the way to put it
+  aside.
+- **Read.** A row is unread until its identity is the session's seen mark in the
+  notification record. The MCP sign-in row's identity is the installation and
+  the set of waiting servers; it is unread while a server waits that the seen
+  mark does not name, so a server that starts to wait makes it unread again and
+  a sign-in that leaves fewer waiting does not. A server muster then reports
+  connected leaves the mark (`replaceSeenMark`, written only while the stored
+  mark is still the one read, so a newer mark from another tab or device is
+  kept, and tried again a minute after a failed write), so a server signed in to
+  and later waiting again (an expired grant) is unread again; a server that
+  merely drops out of muster's list stays in it. The session on screen counts as
+  seen while the person works in that window (visible and focused); a session
+  parked in a background tab, or in a window behind another application, still
+  notifies. Opening a row (the MCP row: its Sign in) reports
+  `AgentPlatform.notificationOpened`, "Mark all read"
   `AgentPlatform.notificationsMarkedRead`. The unread count prefixes the
   document title through `ShellDocumentTitle` (`useShellDocumentTitleCount`,
   ui-react).
@@ -1350,19 +1435,28 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   60 s baseline tier while it is hidden. A state for a session the sessions
   list does not know reads that installation's list again, once per session,
   so a session started elsewhere can be named in a background tab too.
-- **Interruptions.** The tab's first read is every installation's sessions
-  and states. Rows unread then are catch-up: one summary toast at most ("Open
-  notifications" opens the overlay) and no desktop notification. The tab
-  keeps what it read in `sessionStorage`, so a return from a classic page or
-  a reload does not catch up again. A row that appears, or changes identity,
-  after that is news when its session was already read by the tab or its
-  state changed after the first read; an old wait an installation reports
-  late stays quietly unread. News raises a toast in the visible tab ("Open
-  session"), none for the session on screen, and more than three at once are
-  one toast (the Sessions list on its Waiting filter when they all wait). A
-  toast closes once its row goes or is read, or its page is opened. The
-  upstream toast renders its links as plain anchors; the inbox follows a
-  plain click on one inside the app instead of reloading the portal.
+- **Interruptions.** The tab's first read is every installation's sessions and
+  states; the MCP sign-in row joins when muster answers, quietly unread if that
+  is later. Rows unread then are catch-up: one summary toast at most ("2
+  sessions need your attention", or "notifications" once a row that is not a
+  session's is among them; "Open notifications" opens the overlay) and no
+  desktop notification. The tab keeps what it read in `sessionStorage`, so a
+  return from a classic page or a reload does not catch up again. A row that
+  appears, or changes identity, after that is news when its session was already
+  read by the tab or its state changed after the first read; an old wait an
+  installation reports late stays quietly unread. News raises a toast in the
+  visible tab ("Open session"), none for the session on screen, and more than
+  three at once are one toast (the Sessions list on its Waiting filter when they
+  all wait). A toast closes once its row goes or is read, or its page is opened.
+  The MCP sign-in row is news when a server starts to wait; fewer servers
+  waiting only narrows it and raises nothing. Its toast's **Sign in**
+  (`#mcp-sign-in`) opens it in place like its button, and so does its desktop
+  notification; in the address, `#mcp-sign-in` waits for the sign-in status.
+  Toasts stand above the phone's bottom bar, the session's docked composer and a
+  wizard's footer (`agent-shell.css`). The upstream toast renders its links as
+  plain anchors; the inbox follows a plain click on one inside the app instead
+  of reloading the portal, and acts on `#notifications` and `#mcp-sign-in` in
+  place.
 - **Desktop notifications.** Opt-in per browser from the switch at the foot of
   the overlay (`localStorage`); the browser's permission prompt follows that
   click only. Raised for news while the window does not have focus, silent,
@@ -1372,8 +1466,11 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
 
 Rows are `InboxRow`s (`NotificationInbox/types.ts`), the shape the bell, the
 overlay, the title count and the interruptions read, so a later producer (the
-MCP sign-in row) adds a source of its own: a derived row is read through the
-Seen record, a plain row (`kind: 'plain'`) through the upstream store.
+MCP sign-in row, any further producer) adds a source of its own. The session
+rows (`useSessionRowSource`) and the MCP sign-in row (`useMcpSignInRowSource`)
+are read through the Seen record, together (`useSeenRecordSource`, so "Mark
+all read" stays one write to the seen marks); the plain rows
+(`useUpstreamRowSource`, `kind: 'plain'`) through the upstream store.
 
 #### Sending a test notification locally
 
@@ -2036,9 +2133,10 @@ page recognises it only at the very start of the session's first user message
 and shows a "Continued session" banner above the conversation instead: "This
 session is a follow-up to an earlier session on <installation>", linked through
 `sessionDetailRouteRef` (the installation may differ from the session's own).
-The one-visit "Prepared by the portal" caption is not used for it. Links inside
-any bui `Alert` in the shell are underlined and take the shell's link colour
-(`agent-shell.css`), so they read as links on every alert background. An
+The one-visit "Prepared by the portal" caption is not used for it. The rest of
+the message, the carried conversation, is cut like any long user message. Links
+inside any bui `Alert` in the shell are underlined and take the shell's link
+colour (`agent-shell.css`), so they read as links on every alert background. An
 installation or session id outside `[a-z0-9-]` and `[A-Za-z0-9._-]` is not
 written, so a marker always reads back as written.
 

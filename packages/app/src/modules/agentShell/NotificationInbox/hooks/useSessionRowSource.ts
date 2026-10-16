@@ -12,14 +12,8 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform';
 import type { DerivedInboxRow, InboxRowSource } from '../types';
 import { sessionSubject, toSessionRows } from '../utils/sessionRows';
-import { isAt } from './useInboxInterruptions';
 
 type NotificationRecord = ReturnType<typeof useSessionNotificationRecord>;
-
-/** A session's row is on screen on its page, or one below it (a tab of it). */
-function isSessionRowOnScreen(row: DerivedInboxRow, pathname: string) {
-  return isAt(pathname, row.href);
-}
 
 /**
  * The inbox rows of the person's Agent Platform sessions, derived in the
@@ -35,8 +29,7 @@ export function useSessionRowSource(
     agentPlatformPlugin.routes.sessionDetail,
   );
   const { sessions, states, isRead } = useNotifiableSessions();
-  const { setLevel, levelOf, isPortalStarted, isSeen, markSeen, markManySeen } =
-    record;
+  const { setLevel, levelOf, isPortalStarted, isSeen } = record;
 
   const hrefOf = useCallback(
     (session: NotifiableSession) =>
@@ -82,31 +75,5 @@ export function useSessionRowSource(
     [states, sessions],
   );
 
-  const markRead = useCallback(
-    (row: DerivedInboxRow, opened: boolean) =>
-      markSeen(
-        row.seenMark,
-        opened ? { action: 'opened', kind: row.kind } : undefined,
-      ),
-    [markSeen],
-  );
-
-  // One write to the seen marks, whatever the number of rows.
-  const markAllRead = useCallback(async () => {
-    const targets = rows.filter(row => row.unread).map(row => row.seenMark);
-    if (targets.length === 0) {
-      return false;
-    }
-    await markManySeen(targets);
-    return true;
-  }, [rows, markManySeen]);
-
-  return {
-    rows,
-    subjects,
-    ready: isRead && record.isKnown,
-    markRead,
-    markAllRead,
-    isOnScreen: isSessionRowOnScreen,
-  };
+  return { rows, subjects, ready: isRead && record.isKnown };
 }
