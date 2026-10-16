@@ -134,9 +134,13 @@ export type { WorkflowPageTarget } from './components/WorkflowPage';
 export { WORKFLOW_PAGE_TABS } from './components/WorkflowPage';
 export {
   McpAuthDialog,
+  McpSignInProvider,
   useMcpServersAwaitingSignIn,
-} from './components/McpAuthNotice';
+  useMcpSignIn,
+} from './components/McpSignIn';
 export type {
   McpAuthDialogProps,
+  McpServerAwaitingSignIn,
   McpServersAwaitingSignIn,
-} from './components/McpAuthNotice';
+  McpSignInStatus,
+} from './components/McpSignIn';

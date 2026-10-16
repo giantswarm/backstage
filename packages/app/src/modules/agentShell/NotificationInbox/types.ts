@@ -26,9 +26,14 @@ export type InboxRow = {
    */
   subject: string;
   /** What happened, for analytics: the kind of row the person opened. */
-  kind: 'waiting' | 'failed' | 'turnFinished';
+  kind: 'waiting' | 'failed' | 'turnFinished' | 'mcpSignIn';
   /** When it happened (ms since the epoch); rows sort newest first. */
   at?: number;
+  /**
+   * Stands above the rows that sort by time: a condition that holds with no
+   * time to tell, such as MCP servers waiting for a sign-in.
+   */
+  pinned?: boolean;
   /** Not yet seen by the person, on any tab or device. */
   unread: boolean;
   /** What happened, naming who: "SRE Agent needs your input". */
@@ -41,22 +46,45 @@ export type InboxRow = {
   state?: { label: string; tone: StatusDotTone };
   /** The agent's Avatar, by Display name. */
   avatar?: { name: string; src?: string };
+  /** An icon in the Avatar's place, for a row about no agent. */
+  icon?: 'signIn';
   /** Where clicking the row goes (absolute). */
   href?: string;
+  /**
+   * The row's own button, such as the MCP sign-in row's Sign in, for a row
+   * that acts in place instead of opening a page: pressing it opens the row.
+   */
+  action?: {
+    label: string;
+    /** The button's name for assistive technology; begins with `label`. */
+    accessibleLabel?: string;
+    onAction: () => void;
+  };
   /** How a toast or a desktop notification says it. */
   announce: {
     title: string;
     description?: string;
     status: 'warning' | 'danger' | 'success' | 'info';
     linkLabel: string;
+    /**
+     * Where the link goes, when not to `href`: a hash link acts where the
+     * person is (`#mcp-sign-in` opens the sign-in dialog).
+     */
+    href?: string;
   };
   /** The row's entry in the person's Seen record. */
   seenMark: SeenMarkTarget;
   /** The row's ⋯ menu. */
   actions?: InboxRowAction[];
+  /**
+   * Whether this row only narrows a row of the same subject the tab already
+   * read (by that row's id): the MCP sign-in row once fewer servers wait.
+   * Such a row is no news, though its id is new.
+   */
+  narrows?: (previousId: string) => boolean;
 };
 
-/** What the session rows' source gives the inbox. */
+/** What a source of rows (the sessions, the MCP sign-in) gives the inbox. */
 export type InboxRowSource = {
   rows: InboxRow[];
   /**

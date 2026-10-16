@@ -1,7 +1,15 @@
-import { ButtonIcon, Menu, MenuItem, MenuTrigger, Text } from '@backstage/ui';
+import {
+  Button,
+  ButtonIcon,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Text,
+} from '@backstage/ui';
 import { Link as AriaLink } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
+import VpnKeyOutlinedIcon from '@material-ui/icons/VpnKeyOutlined';
 import { AgentAvatar } from '@giantswarm/backstage-plugin-agent-platform';
 import {
   getRelativeDate,
@@ -40,6 +48,15 @@ const useStyles = makeStyles({
       boxShadow: 'inset 0 0 0 2px var(--bui-ring)',
     },
   },
+  // A row that acts in place: the same layout, not a link.
+  content: {
+    flex: '1 1 auto',
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--bui-space-3)',
+    padding: 'var(--bui-space-2) var(--bui-space-1) var(--bui-space-2) 14px',
+  },
   unreadDot: {
     position: 'absolute',
     left: 4,
@@ -52,6 +69,21 @@ const useStyles = makeStyles({
   },
   avatar: {
     flex: '0 0 auto',
+  },
+  // In the Avatar's place, its size and shape.
+  icon: {
+    flex: '0 0 auto',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 24,
+    height: 24,
+    borderRadius: '20%',
+    background: 'var(--bui-warning-bg-subdued)',
+    color: 'var(--bui-warning-fg-subdued)',
+    '& svg': {
+      fontSize: 16,
+    },
   },
   text: {
     flex: '1 1 auto',
@@ -70,12 +102,30 @@ const useStyles = makeStyles({
     flex: '0 0 auto',
     marginRight: 'var(--bui-space-1)',
   },
+  action: {
+    flex: '0 0 auto',
+    marginRight: 'var(--bui-space-2)',
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap',
+  },
 });
+
+const ICONS = {
+  signIn: VpnKeyOutlinedIcon,
+};
 
 /**
  * One row of the Notification inbox: the agent's Avatar, what happened, the
  * session's name, how long ago and a state chip, with its own ⋯ menu.
- * Clicking it opens what it is about; `onOpen` marks it read.
+ * Clicking it opens what it is about; `onOpen` marks it read. A row with an
+ * `action` (the MCP sign-in row's Sign in) is not a link: its button opens
+ * it, in place.
  */
 export function NotificationRow({
   row,
@@ -96,47 +146,81 @@ export function NotificationRow({
     row.detail,
   ].filter(Boolean);
 
+  const Icon = row.icon ? ICONS[row.icon] : undefined;
+  const content = (
+    <>
+      {row.avatar && (
+        <AgentAvatar
+          size="small"
+          purpose="decoration"
+          name={row.avatar.name}
+          src={row.avatar.src ?? ''}
+          className={classes.avatar}
+        />
+      )}
+      {Icon && (
+        <span aria-hidden="true" className={classes.icon}>
+          <Icon />
+        </span>
+      )}
+      <span className={classes.text}>
+        <Text
+          as="span"
+          variant="body-small"
+          weight={row.unread ? 'bold' : 'regular'}
+        >
+          {row.action && row.unread && (
+            <span className={classes.srOnly}>Unread: </span>
+          )}
+          {row.title}
+        </Text>
+        {meta.length > 0 && (
+          <Text as="span" variant="body-x-small" color="secondary">
+            {meta.join(' · ')}
+          </Text>
+        )}
+      </span>
+      {row.state && (
+        <span className={classes.chip}>
+          <StatusDot tone={row.state.tone} label={row.state.label} size={6} />
+        </span>
+      )}
+    </>
+  );
+  const { action } = row;
+
   return (
     <li
       className={row.unread ? `${classes.row} ${classes.unread}` : classes.row}
       data-unread={row.unread ? 'true' : undefined}
     >
       {row.unread && <span aria-hidden="true" className={classes.unreadDot} />}
-      <AriaLink
-        href={row.href}
-        onPress={onOpen}
-        className={classes.link}
-        aria-label={row.unread ? `Unread: ${row.title}` : undefined}
-      >
-        {row.avatar && (
-          <AgentAvatar
+      {action ? (
+        <>
+          <span className={classes.content}>{content}</span>
+          <Button
+            variant="primary"
             size="small"
-            purpose="decoration"
-            name={row.avatar.name}
-            src={row.avatar.src ?? ''}
-            className={classes.avatar}
-          />
-        )}
-        <span className={classes.text}>
-          <Text
-            as="span"
-            variant="body-small"
-            weight={row.unread ? 'bold' : 'regular'}
+            className={classes.action}
+            aria-label={action.accessibleLabel}
+            onPress={() => {
+              onOpen();
+              action.onAction();
+            }}
           >
-            {row.title}
-          </Text>
-          {meta.length > 0 && (
-            <Text as="span" variant="body-x-small" color="secondary">
-              {meta.join(' · ')}
-            </Text>
-          )}
-        </span>
-        {row.state && (
-          <span className={classes.chip}>
-            <StatusDot tone={row.state.tone} label={row.state.label} size={6} />
-          </span>
-        )}
-      </AriaLink>
+            {action.label}
+          </Button>
+        </>
+      ) : (
+        <AriaLink
+          href={row.href}
+          onPress={onOpen}
+          className={classes.link}
+          aria-label={row.unread ? `Unread: ${row.title}` : undefined}
+        >
+          {content}
+        </AriaLink>
+      )}
       {row.actions && row.actions.length > 0 && (
         <span className={classes.menu}>
           <MenuTrigger>
@@ -147,9 +231,9 @@ export function NotificationRow({
               aria-label={`More actions for ${row.title}`}
             />
             <Menu placement="bottom end">
-              {row.actions.map(action => (
-                <MenuItem key={action.id} onAction={action.onAction}>
-                  {action.label}
+              {row.actions.map(item => (
+                <MenuItem key={item.id} onAction={item.onAction}>
+                  {item.label}
                 </MenuItem>
               ))}
             </Menu>

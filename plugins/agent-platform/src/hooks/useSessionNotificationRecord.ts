@@ -35,11 +35,15 @@ type SessionRef = { installation: string; sessionId: string };
 
 /**
  * Why rows are marked seen, when it is the person's own doing in the
- * Notification inbox: they opened a row (of this kind), or chose "Mark all
- * read". Reported to analytics; a write without one is not.
+ * Notification inbox: they opened a row (of this kind; the MCP sign-in row
+ * opens with its Sign in), or chose "Mark all read". Reported to analytics;
+ * a write without one is not.
  */
 export type SeenMarkReason =
-  | { action: 'opened'; kind: 'waiting' | 'failed' | 'turnFinished' }
+  | {
+      action: 'opened';
+      kind: 'waiting' | 'failed' | 'turnFinished' | 'mcpSignIn';
+    }
   | { action: 'markedAllRead' };
 
 type SeenMarksWrite = {

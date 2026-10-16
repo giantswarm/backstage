@@ -7,7 +7,8 @@ import { authStatusQueryKey, needsSignIn } from '../shared';
 /**
  * How often the status is re-read while nothing is happening: a server can
  * start to wait for a grant without the person doing anything (a new server,
- * an expired grant), and the notice should say so without a reload.
+ * an expired grant), and the inbox's sign-in row should say so without a
+ * reload.
  */
 export const AUTH_STATUS_REFRESH_MS = 5 * 60 * 1_000;
 
@@ -18,6 +19,12 @@ export type McpServersAwaitingSignIn = {
   statuses: ServerAuthStatus[];
   /** True until the first answer. */
   isLoading: boolean;
+  /**
+   * muster answered with a status. False until then, when the read failed
+   * and when muster could not say (`unavailable`): `waiting` is empty then
+   * because nothing is known, not because nothing waits.
+   */
+  isAvailable: boolean;
 };
 
 /**
@@ -26,7 +33,7 @@ export type McpServersAwaitingSignIn = {
  * `reauth_required`), optionally narrowed to `servers`. Shares its query with
  * every sign-in affordance of the installation, so a sign-in finished anywhere
  * drops the server from the list. An unreadable status reads as nothing
- * waiting: the notice says what it knows, never an error of its own.
+ * waiting: a sign-in prompt says what it knows, never an error of its own.
  */
 export function useMcpServersAwaitingSignIn(
   installation: string | undefined,
@@ -57,6 +64,7 @@ export function useMcpServersAwaitingSignIn(
       statuses,
       waiting: statuses.filter(needsSignIn).map(status => status.name),
       isLoading: enabled && isPending,
+      isAvailable: Boolean(data) && !data?.unavailable,
     };
   }, [data, serversKey, enabled, isPending]);
 }

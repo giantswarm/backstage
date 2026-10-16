@@ -18,6 +18,7 @@ import {
   useSessionNotificationRecord,
   type SeenMarkReason,
 } from '@giantswarm/backstage-plugin-agent-platform';
+import { McpSignInProvider } from '@giantswarm/backstage-plugin-muster';
 import {
   usePageAttention,
   useShellDocumentTitleCount,
@@ -27,12 +28,14 @@ import {
   type DesktopNotifications,
 } from '../hooks/useDesktopNotifications';
 import { isAt, useInboxInterruptions } from '../hooks/useInboxInterruptions';
+import { useMcpSignInRowSource } from '../hooks/useMcpSignInRowSource';
 import { useSessionRowSource } from '../hooks/useSessionRowSource';
 import {
   NOTIFICATIONS_HASH,
   useToastLinkRouting,
 } from '../hooks/useToastLinkRouting';
 import type { InboxRow } from '../types';
+import { MCP_SIGN_IN_HASH } from '../utils/mcpSignInRow';
 
 export type NotificationInboxValue = {
   /** The rows, newest first. */
@@ -63,8 +66,11 @@ export function useNotificationInbox(): NotificationInboxValue | undefined {
   return useContext(InboxContext);
 }
 
-/** Newest first; rows that cannot say when go last. */
+/** Pinned rows first, then newest first; rows that cannot say when go last. */
 function byNewest(a: InboxRow, b: InboxRow): number {
+  if (Boolean(a.pinned) !== Boolean(b.pinned)) {
+    return a.pinned ? -1 : 1;
+  }
   return (b.at ?? -Infinity) - (a.at ?? -Infinity);
 }
 
@@ -77,7 +83,16 @@ function Inbox({ children }: { children: ReactNode }) {
   const { markSeen, markManySeen } = record;
 
   const source = useSessionRowSource(record);
-  const rows = useMemo(() => [...source.rows].sort(byNewest), [source.rows]);
+  const mcp = useMcpSignInRowSource(record);
+  const rows = useMemo(
+    () => [...source.rows, ...mcp.rows].sort(byNewest),
+    [source.rows, mcp.rows],
+  );
+  const subjects = useMemo(
+    () => new Set([...source.subjects, ...mcp.subjects]),
+    [source.subjects, mcp.subjects],
+  );
+  const ready = source.ready && mcp.ready;
   const unreadCount = rows.filter(row => row.unread).length;
 
   const [isOpen, setOpenState] = useState(false);
@@ -122,29 +137,56 @@ function Inbox({ children }: { children: ReactNode }) {
   }, []);
   const openOverlay = useCallback(() => setOpen(true), [setOpen]);
 
+  // The MCP sign-in row opened from a link (its toast, its desktop
+  // notification): read, and the sign-in dialog over the page.
+  const latestRows = useRef(rows);
+  latestRows.current = rows;
+  const { openSignIn } = mcp;
+  const openMcpSignIn = useCallback(() => {
+    const row = latestRows.current.find(each => each.kind === 'mcpSignIn');
+    if (row) {
+      markRead(row);
+    }
+    setOpen(false);
+    openSignIn();
+  }, [markRead, setOpen, openSignIn]);
+
+  // Links that act where the person is, instead of opening a page.
+  const hashActions = useMemo<Readonly<Record<string, () => void>>>(
+    () => ({
+      [NOTIFICATIONS_HASH]: openOverlay,
+      [MCP_SIGN_IN_HASH]: openMcpSignIn,
+    }),
+    [openOverlay, openMcpSignIn],
+  );
+
   const interruptions = useInboxInterruptions({
     rows,
-    subjects: source.subjects,
-    ready: source.ready,
+    subjects,
+    ready,
     attention,
     desktop,
     waitingHref: sessionsRoute
       ? `${sessionsRoute()}${sessionsListSearch({ state: 'waiting' })}`
       : undefined,
     openOverlay,
+    hashActions,
   });
   overlayOpened.current = interruptions.overlayOpened;
 
-  useToastLinkRouting(openOverlay);
+  useToastLinkRouting(hashActions);
 
-  // `#notifications` in the address (a link the toasts' routing did not
-  // take) opens the overlay and leaves the address as it was.
+  // `#notifications` or `#mcp-sign-in` in the address (a link the toasts'
+  // routing did not take) acts once and leaves the address as it was.
+  const latestHashActions = useRef(hashActions);
+  latestHashActions.current = hashActions;
   useEffect(() => {
-    if (hash === NOTIFICATIONS_HASH) {
-      openOverlay();
+    const action = latestHashActions.current[hash];
+    if (action) {
+      action();
       navigate({ pathname, search }, { replace: true });
     }
-  }, [hash, pathname, search, navigate, openOverlay]);
+  }, [hash, pathname, search, navigate]);
 
   // The session on screen counts as seen: opening a session marks its row
   // read. Only while the person works in this window — a session parked in a
@@ -169,7 +211,7 @@ function Inbox({ children }: { children: ReactNode }) {
   const value = useMemo<NotificationInboxValue>(
     () => ({
       rows,
-      ready: source.ready,
+      ready,
       unreadCount,
       markRead,
       markAllRead,
@@ -177,16 +219,7 @@ function Inbox({ children }: { children: ReactNode }) {
       setOpen,
       desktop,
     }),
-    [
-      rows,
-      source.ready,
-      unreadCount,
-      markRead,
-      markAllRead,
-      isOpen,
-      setOpen,
-      desktop,
-    ],
+    [rows, ready, unreadCount, markRead, markAllRead, isOpen, setOpen, desktop],
   );
 
   return (
@@ -196,8 +229,8 @@ function Inbox({ children }: { children: ReactNode }) {
 
 /**
  * The Notification inbox of the Agent Platform shell: rows derived in the
- * browser from the shell's own reads (the person's sessions today), the
- * unread count in the bell and the document title, toasts in the visible
+ * browser from the shell's own reads (the person's sessions, and muster's
+ * sign-in status for their home installation), the unread count in the bell and the document title, toasts in the visible
  * tab and opt-in desktop notifications.
  *
  * Mount it once per shell, around the rail: the bell and the phone's Profile
@@ -206,6 +239,7 @@ function Inbox({ children }: { children: ReactNode }) {
  *
  * Guarded like the rest of the rail for tests that mock the agent-platform
  * plugin partially: without its data hooks the rail renders without a bell.
+ * Without muster's sign-in status there is no MCP sign-in row.
  */
 export function NotificationInboxProvider({
   children,
@@ -219,9 +253,14 @@ export function NotificationInboxProvider({
   ) {
     return <>{children}</>;
   }
+  const inbox = <Inbox>{children}</Inbox>;
   return (
     <AgentPlatformProviders>
-      <Inbox>{children}</Inbox>
+      {McpSignInProvider ? (
+        <McpSignInProvider>{inbox}</McpSignInProvider>
+      ) : (
+        inbox
+      )}
     </AgentPlatformProviders>
   );
 }

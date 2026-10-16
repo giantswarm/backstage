@@ -71,8 +71,8 @@ export const portalEvents = defineEvents({
   },
   'AgentPlatform.notificationOpened': {
     description:
-      'An unread row of the Notification inbox was opened, which marks it read: a session waiting, failed or with a finished turn.',
-    attributes: { kind: ['waiting', 'failed', 'turnFinished'] },
+      "An unread row of the Notification inbox was opened, which marks it read: a session waiting, failed or with a finished turn, or the MCP sign-in row's Sign in.",
+    attributes: { kind: ['waiting', 'failed', 'turnFinished', 'mcpSignIn'] },
   },
   'AgentPlatform.notificationsMarkedRead': {
     description: 'Every unread row of the Notification inbox was marked read.',

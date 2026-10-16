@@ -29,8 +29,9 @@ order by it with one comparator (`byLastActive`). The waiting count beside
 bottom bar. The **Platform Portal** item appears only where the deployment also
 serves the classic portal. The **Notification inbox** (a bell on the rail's
 Profile row, and on a phone the Profile item's menu) lists the sessions that
-need the person, with toasts, an unread count in the tab title and opt-in
-desktop notifications; see [The Notification inbox](#the-notification-inbox).
+need the person and the MCP servers that wait for their sign-in, with toasts,
+an unread count in the tab title and opt-in desktop notifications; see
+[The Notification inbox](#the-notification-inbox).
 
 ## Sessions and chat
 
@@ -129,8 +130,8 @@ annotation on its MCPServer, as agents, models and harnesses are: in the
 Connectors list, its page's title, breadcrumbs and document title, the tool
 page's breadcrumb, the connector wizard's edit frame, the command palette, the
 agent wizard's Tools step and review, the agent page's tools, the reach line,
-the session timeline, Usage → Connectors, the workflow pages and the sign-in
-notice and dialogs. One rule names it everywhere (`connectorDisplayNames` in
+the session timeline, Usage → Connectors, the workflow pages, the inbox's MCP
+sign-in row and the sign-in dialogs. One rule names it everywhere (`connectorDisplayNames` in
 the muster plugin): a family takes the display name its annotated members
 agree on, and members that disagree leave it its own name; without a display
 name a connector goes by its family's name (`spec.family.name`) or its
@@ -1300,11 +1301,30 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   Finished), newest first. Clicking a row opens the session and marks it
   read; its ⋯ menu has "Mute this session". "Mark all read" is one write to
   the seen marks. No text of the conversation enters a row.
+- **MCP sign-in row.** One for the person's home installation while any of
+  its MCP servers waits for their own sign-in or grant (`auth_required` or
+  `reauth_required` in muster's per-user `auth://status`): "2 MCP servers
+  need your sign-in", naming the servers by display name, above the session
+  rows (it has no time to sort by), with **Sign in**, which marks it read and
+  opens muster's sign-in dialog over the page. Muster's `McpSignInProvider`
+  reads the status under the muster plugin's query client, every five minutes
+  and when the tab regains focus, so a sign-in finished in the dialog or on a
+  muster page removes the row through the same read. Only the home
+  installation is read: another installation's muster needs a brokered
+  token, and its servers are signed in to where they are used. The row
+  replaces muster's corner card and its "Not now": marking the row read is
+  the way to put it aside.
 - **Read.** A row is unread until its identity is the session's seen mark in
-  the notification record. The session on screen counts as seen while the
+  the notification record. The MCP sign-in row's identity is the
+  installation and the set of waiting servers; it is unread while a server
+  waits that the seen mark does not name, so a server that starts to wait
+  makes it unread again and a sign-in that leaves fewer waiting does not.
+  Once fewer wait, the mark is narrowed to them, so a server signed in to
+  and later waiting again (an expired grant) is unread again. The session on screen counts as seen while the
   person works in that window (visible and focused); a session parked in a
   background tab, or in a window behind another application, still notifies.
-  Opening a row reports `AgentPlatform.notificationOpened`, "Mark all read"
+  Opening a row (the MCP row: its Sign in) reports
+  `AgentPlatform.notificationOpened`, "Mark all read"
   `AgentPlatform.notificationsMarkedRead`. The unread count prefixes the
   document title through `ShellDocumentTitle` (`useShellDocumentTitleCount`,
   ui-react).
@@ -1314,8 +1334,10 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   list does not know reads that installation's list again, once per session,
   so a session started elsewhere can be named in a background tab too.
 - **Interruptions.** The tab's first read is every installation's sessions
-  and states. Rows unread then are catch-up: one summary toast at most ("Open
-  notifications" opens the overlay) and no desktop notification. The tab
+  and states, and the MCP sign-in status. Rows unread then are catch-up: one
+  summary toast at most ("2 sessions need your attention", or "notifications"
+  once the MCP row is among them; "Open notifications" opens the overlay) and
+  no desktop notification. The tab
   keeps what it read in `sessionStorage`, so a return from a classic page or
   a reload does not catch up again. A row that appears, or changes identity,
   after that is news when its session was already read by the tab or its
@@ -1323,9 +1345,14 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   late stays quietly unread. News raises a toast in the visible tab ("Open
   session"), none for the session on screen, and more than three at once are
   one toast (the Sessions list on its Waiting filter when they all wait). A
-  toast closes once its row goes or is read, or its page is opened. The
-  upstream toast renders its links as plain anchors; the inbox follows a
-  plain click on one inside the app instead of reloading the portal.
+  toast closes once its row goes or is read, or its page is opened. The MCP
+  sign-in row is news when a server starts to wait; fewer servers waiting
+  only narrows it and raises nothing. Its toast's **Sign in** (`#mcp-sign-in`)
+  marks it read and opens the sign-in dialog where the person is, and so does
+  its desktop notification. The upstream toast renders its links as plain
+  anchors; the inbox follows a plain click on one inside the app instead of
+  reloading the portal, and acts on `#notifications` and `#mcp-sign-in` in
+  place.
 - **Desktop notifications.** Opt-in per browser from the switch at the foot of
   the overlay (`localStorage`); the browser's permission prompt follows that
   click only. Raised for news while the window does not have focus, silent,
@@ -1335,7 +1362,9 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
 
 Rows are `InboxRow`s (`NotificationInbox/types.ts`), the shape the bell, the
 overlay, the title count and the interruptions read, so a later producer (the
-MCP sign-in row, the upstream notifications store) adds rows of its own.
+upstream notifications store) adds rows of its own, as the MCP sign-in row
+(`useMcpSignInRowSource`) does next to the session rows
+(`useSessionRowSource`).
 
 ### Notification level and the notification record
 

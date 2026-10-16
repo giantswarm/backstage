@@ -94,10 +94,19 @@ type OpenToast = {
   closeOnOverlay?: boolean;
 };
 
-function attentionTitle(count: number) {
-  return `${countNoun(count, 'session')} ${
-    count === 1 ? 'needs' : 'need'
+/** "2 sessions need your attention"; "notifications" once not all are. */
+function attentionTitle(rows: InboxRow[]) {
+  const noun = rows.every(row => row.kind !== 'mcpSignIn')
+    ? 'session'
+    : 'notification';
+  return `${countNoun(rows.length, noun)} ${
+    rows.length === 1 ? 'needs' : 'need'
   } your attention`;
+}
+
+/** Where a row's toast and desktop notification lead. */
+function linkOf(row: InboxRow): string | undefined {
+  return row.announce.href ?? row.href;
 }
 
 /**
@@ -109,7 +118,8 @@ function attentionTitle(count: number) {
  * notification. A row is **news** when it is unread and appeared, or changed
  * identity, after that first read, and either its subject was already read
  * by the tab (it changed while watched) or its time says it changed after the
- * first read. A row that shows up later with neither (an installation
+ * first read. A row that only narrows one the tab read (`narrows`) is not
+ * news. A row that shows up later with neither (an installation
  * answering late with an old wait) is quietly unread. Nothing is raised for
  * the session on screen in the window the person works in. A toast closes
  * once its row goes or is read, or its page is opened.
@@ -127,6 +137,7 @@ export function useInboxInterruptions({
   desktop,
   waitingHref,
   openOverlay,
+  hashActions,
 }: {
   rows: InboxRow[];
   subjects: ReadonlySet<string>;
@@ -136,6 +147,8 @@ export function useInboxInterruptions({
   /** The Sessions list on its Waiting filter, when that route is bound. */
   waitingHref?: string;
   openOverlay: () => void;
+  /** Hash links that act where the person is (`#notifications`). */
+  hashActions: Readonly<Record<string, () => void>>;
 }): { overlayOpened: () => void } {
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
@@ -147,8 +160,14 @@ export function useInboxInterruptions({
   const open = useRef(new Map<string, OpenToast>());
   const toastCount = useRef(0);
   // Read inside the rows effect without re-running it on every navigation.
-  const latest = useRef({ location, attention, desktop, openOverlay });
-  latest.current = { location, attention, desktop, openOverlay };
+  const latest = useRef({
+    location,
+    attention,
+    desktop,
+    openOverlay,
+    hashActions,
+  });
+  latest.current = { location, attention, desktop, openOverlay, hashActions };
 
   const post = useCallback(
     (
@@ -196,7 +215,7 @@ export function useInboxInterruptions({
         post(
           'catch-up',
           {
-            title: attentionTitle(catchUp.length),
+            title: attentionTitle(catchUp),
             status: 'info',
             links: [{ label: 'Open notifications', href: NOTIFICATIONS_HASH }],
           },
@@ -213,6 +232,7 @@ export function useInboxInterruptions({
       row =>
         row.unread &&
         !known.has(row.id) &&
+        !before.rows.some(id => row.narrows?.(id)) &&
         !onScreen(row) &&
         (watched.has(row.subject) || (row.at !== undefined && row.at >= since)),
     );
@@ -240,7 +260,7 @@ export function useInboxInterruptions({
           post(
             `burst:${toastCount.current}`,
             {
-              title: attentionTitle(news.length),
+              title: attentionTitle(news),
               status: 'info',
               links: [
                 { label: 'Open notifications', href: NOTIFICATIONS_HASH },
@@ -251,14 +271,15 @@ export function useInboxInterruptions({
         }
       } else {
         for (const row of news) {
+          const link = linkOf(row);
           post(
             row.id,
             {
               title: row.announce.title,
               description: row.announce.description,
               status: row.announce.status,
-              links: row.href
-                ? [{ label: row.announce.linkLabel, href: row.href }]
+              links: link
+                ? [{ label: row.announce.linkLabel, href: link }]
                 : undefined,
             },
             { ids: [row.id], closeOnPath: row.href },
@@ -272,7 +293,7 @@ export function useInboxInterruptions({
     if (desk.enabled && !now.focused) {
       if (burst) {
         showDesktopNotification({
-          title: attentionTitle(news.length),
+          title: attentionTitle(news),
           tag: BURST_TAG,
           onClick: () => latest.current.openOverlay(),
         });
@@ -283,8 +304,12 @@ export function useInboxInterruptions({
             body: row.announce.description,
             tag: row.id,
             onClick: () => {
-              if (row.href) {
-                navigate(row.href);
+              const link = linkOf(row);
+              const action = link && latest.current.hashActions[link];
+              if (action) {
+                action();
+              } else if (link) {
+                navigate(link);
               } else {
                 latest.current.openOverlay();
               }
