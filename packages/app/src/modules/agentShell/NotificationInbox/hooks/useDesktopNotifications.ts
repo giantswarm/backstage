@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 /**
  * Where this browser keeps the person's "Desktop notifications" choice. Per
@@ -95,11 +95,15 @@ export function useDesktopNotifications(): DesktopNotifications {
     setChoice(granted);
   }, []);
 
-  return {
-    permission,
-    enabled: choice && permission === 'granted',
-    setEnabled,
-  };
+  // Stable while nothing changes: the inbox's context carries it.
+  return useMemo(
+    () => ({
+      permission,
+      enabled: choice && permission === 'granted',
+      setEnabled,
+    }),
+    [choice, permission, setEnabled],
+  );
 }
 
 /**

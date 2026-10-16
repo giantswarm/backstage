@@ -9,7 +9,7 @@ import type {
   NotifiableSession,
   SeenMarkTarget,
 } from '@giantswarm/backstage-plugin-agent-platform';
-import type { InboxRow } from './types';
+import type { InboxRow } from '../types';
 
 /**
  * A failed row's reason class as the row says it. `other` says nothing more:
@@ -67,10 +67,25 @@ function words(row: SessionNotificationRow, agent: string) {
 }
 
 const STATE_CHIPS = {
-  waiting: { label: 'Waiting', tone: 'warning', status: 'warning' },
-  failed: { label: 'Failed', tone: 'danger', status: 'danger' },
-  'turn-finished': { label: 'Finished', tone: 'success', status: 'success' },
+  waiting: {
+    label: 'Waiting',
+    tone: 'warning',
+    status: 'warning',
+    kind: 'waiting',
+  },
+  failed: { label: 'Failed', tone: 'danger', status: 'danger', kind: 'failed' },
+  'turn-finished': {
+    label: 'Finished',
+    tone: 'success',
+    status: 'success',
+    kind: 'turnFinished',
+  },
 } as const;
+
+/** The subject of a session's rows: the session. */
+export function sessionSubject(id: string): string {
+  return `session:${id}`;
+}
 
 /**
  * The inbox rows of the person's sessions: one per session at most, through
@@ -117,6 +132,8 @@ export function toSessionRows({
     const { title, announce } = words(derived, agent);
     rows.push({
       id: derived.id,
+      subject: sessionSubject(id),
+      kind: chip.kind,
       at: derived.changedAt,
       unread: !record.isSeen(target),
       title,
@@ -136,8 +153,7 @@ export function toSessionRows({
         status: chip.status,
         linkLabel: 'Open session',
       },
-      waiting: derived.kind === 'waiting',
-      read: { kind: 'seenRecord', target },
+      seenMark: target,
       actions: [
         {
           id: 'mute',

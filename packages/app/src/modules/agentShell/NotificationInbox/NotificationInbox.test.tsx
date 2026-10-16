@@ -12,9 +12,9 @@ import { useLocation } from 'react-router-dom';
 import { AgentShellNav } from '../AgentShellNav';
 import { RailWidthProvider } from '../RailWidthProvider';
 import { homeRouteRef } from '../routes';
-import { DESKTOP_NOTIFICATIONS_STORAGE_KEY } from './desktopNotifications';
+import { DESKTOP_NOTIFICATIONS_STORAGE_KEY } from './hooks/useDesktopNotifications';
 import { fakeInbox, type FakeSession } from './testing/fakeInbox';
-import { TOAST_BURST } from './useInboxInterruptions';
+import { TOAST_BURST } from './hooks/useInboxInterruptions';
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef, createSubRouteRef } = jest.requireActual(
@@ -69,7 +69,7 @@ function Location() {
 }
 
 async function renderShell({ path = '/' }: { path?: string } = {}) {
-  await renderInTestApp(
+  return renderInTestApp(
     <ShellDocumentTitleProvider suffix="Agent Platform">
       <RailWidthProvider>
         <SidebarPinStateProvider
@@ -84,6 +84,11 @@ async function renderShell({ path = '/' }: { path?: string } = {}) {
       </RailWidthProvider>
       <ShellDocumentTitle title="Sessions" />
       <Location />
+      {/* The app's toast region, as upstream renders a toast's links. */}
+      <div className="Toast_container__test">
+        <a href={`${SESSION_PATH}/s1`}>Open session</a>
+        <a href="#notifications">Open notifications</a>
+      </div>
     </ShellDocumentTitleProvider>,
     {
       initialRouteEntries: [path],
@@ -117,12 +122,28 @@ function toastTitles() {
 
 const now = () => Date.now();
 
+// Whether the window has the focus: the person works in it.
+let focused = true;
+let hasFocus: jest.SpyInstance;
+
+async function setFocused(next: boolean) {
+  focused = next;
+  await act(async () => {
+    window.dispatchEvent(new Event(next ? 'focus' : 'blur'));
+  });
+}
+
 beforeEach(() => {
   fakeInbox.reset();
   post.mockClear();
   close.mockClear();
   window.localStorage.clear();
+  window.sessionStorage.clear();
+  focused = true;
+  hasFocus = jest.spyOn(document, 'hasFocus').mockImplementation(() => focused);
 });
+
+afterEach(() => hasFocus.mockRestore());
 
 describe('Notification inbox', () => {
   describe('rows', () => {
@@ -240,8 +261,17 @@ describe('Notification inbox', () => {
       expect(screen.getByTestId('location')).toHaveTextContent(
         `${SESSION_PATH}/s1`,
       );
+      // One write, reported as the person opening a waiting row; the page it
+      // opened does not write it again.
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Notifications, 1 unread' }),
+        ).toBeInTheDocument(),
+      );
+      expect(fakeInbox.writes.markSeen).toHaveBeenCalledTimes(1);
       expect(fakeInbox.writes.markSeen).toHaveBeenCalledWith(
         expect.objectContaining({ kind: 'session', sessionId: 's1' }),
+        { action: 'opened', kind: 'waiting' },
       );
       await waitFor(() =>
         expect(
@@ -263,6 +293,7 @@ describe('Notification inbox', () => {
       await waitFor(() =>
         expect(fakeInbox.writes.markSeen).toHaveBeenCalledWith(
           expect.objectContaining({ sessionId: 's2' }),
+          undefined,
         ),
       );
       expect(
@@ -305,10 +336,13 @@ describe('Notification inbox', () => {
         within(overlay).getByRole('button', { name: 'Mark all read' }),
       );
       expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(1);
-      expect(fakeInbox.writes.markManySeen).toHaveBeenCalledWith([
-        expect.objectContaining({ sessionId: 's1' }),
-        expect.objectContaining({ sessionId: 's2' }),
-      ]);
+      expect(fakeInbox.writes.markManySeen).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({ sessionId: 's1' }),
+          expect.objectContaining({ sessionId: 's2' }),
+        ],
+        { action: 'markedAllRead' },
+      );
       await waitFor(() =>
         expect(
           within(overlay).queryByRole('button', { name: 'Mark all read' }),
@@ -383,7 +417,7 @@ describe('Notification inbox', () => {
       expect(post).toHaveBeenCalledWith(
         expect.objectContaining({
           title: '2 sessions need your attention',
-          links: [{ label: 'Open notifications', href: '/#notifications' }],
+          links: [{ label: 'Open notifications', href: '#notifications' }],
         }),
       );
 
@@ -493,6 +527,92 @@ describe('Notification inbox', () => {
       );
     });
 
+    it('stays quiet about an old wait an installation reports late, with no time to tell', async () => {
+      fakeInbox.setSessions([{ sessionId: 's1', state: 'working' }]);
+      await renderShell();
+
+      await read([
+        { sessionId: 's1', state: 'working' },
+        { sessionId: 'late', installation: 'golem', state: 'input-required' },
+      ]);
+      expect(post).not.toHaveBeenCalled();
+      // Still unread in the bell.
+      expect(
+        screen.getByRole('button', { name: 'Notifications, 1 unread' }),
+      ).toBeInTheDocument();
+    });
+
+    it('announces a watched session that starts waiting, whatever the server clock says', async () => {
+      fakeInbox.setSessions([{ sessionId: 's1', state: 'working' }]);
+      await renderShell();
+
+      // The server's clock runs ten minutes behind the browser's.
+      await read([
+        {
+          sessionId: 's1',
+          state: 'input-required',
+          changedAt: now() - 10 * 60_000,
+        },
+      ]);
+      expect(toastTitles()).toEqual(['SRE Agent is waiting for you']);
+    });
+
+    it('does not catch up again when the shell mounts again in the same tab', async () => {
+      fakeInbox.setSessions([
+        { sessionId: 's1', state: 'input-required', changedAt: 1000 },
+      ]);
+      const first = await renderShell();
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+
+      // A classic page and back, or a reload: the tab is the same.
+      first.unmount();
+      await renderShell();
+      expect(
+        await screen.findByRole('button', { name: 'Notifications, 1 unread' }),
+      ).toBeInTheDocument();
+      expect(post).toHaveBeenCalledTimes(1);
+    });
+
+    it('follows a toast link inside the app, and opens the overlay from "Open notifications"', async () => {
+      await renderShell();
+
+      await userEvent.click(screen.getByRole('link', { name: 'Open session' }));
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        `${SESSION_PATH}/s1`,
+      );
+
+      await userEvent.click(
+        screen.getByRole('link', { name: 'Open notifications' }),
+      );
+      expect(
+        await screen.findByRole('dialog', { name: 'Notifications' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        `${SESSION_PATH}/s1`,
+      );
+    });
+
+    it('treats the session on screen in a window behind another as not watched', async () => {
+      fakeInbox.setSessions([{ sessionId: 's1', state: 'working' }]);
+      await renderShell({ path: `${SESSION_PATH}/s1` });
+      await setFocused(false);
+
+      await read([
+        { sessionId: 's1', state: 'input-required', changedAt: now() },
+      ]);
+      expect(toastTitles()).toEqual(['SRE Agent is waiting for you']);
+      expect(fakeInbox.writes.markSeen).not.toHaveBeenCalled();
+
+      // Back in the window: the session on screen is read.
+      await setFocused(true);
+      await waitFor(() =>
+        expect(fakeInbox.writes.markSeen).toHaveBeenCalledWith(
+          expect.objectContaining({ sessionId: 's1' }),
+          undefined,
+        ),
+      );
+    });
+
     it('does not announce a row the person has already seen elsewhere', async () => {
       fakeInbox.setSessions([{ sessionId: 's1', state: 'working' }]);
       await renderShell();
@@ -511,8 +631,11 @@ describe('Notification inbox', () => {
 
   describe('desktop notifications', () => {
     let requestPermission: jest.Mock;
-    let shown: Array<{ title: string; options: NotificationOptions }>;
-    let hasFocus: jest.SpyInstance;
+    let shown: Array<{
+      title: string;
+      options: NotificationOptions;
+      notification: { onclick: (() => void) | null };
+    }>;
     const original = window.Notification;
 
     function installNotification(permission: NotificationPermission) {
@@ -522,7 +645,7 @@ describe('Notification inbox', () => {
         static requestPermission: jest.Mock;
         onclick: (() => void) | null = null;
         constructor(title: string, options: NotificationOptions) {
-          shown.push({ title, options });
+          shown.push({ title, options, notification: this });
         }
         close() {}
       }
@@ -537,12 +660,12 @@ describe('Notification inbox', () => {
       });
     }
 
+    // The person works in another window.
     beforeEach(() => {
-      hasFocus = jest.spyOn(document, 'hasFocus').mockReturnValue(false);
+      focused = false;
     });
 
     afterEach(() => {
-      hasFocus.mockRestore();
       Object.defineProperty(window, 'Notification', {
         configurable: true,
         value: original,
@@ -610,8 +733,40 @@ describe('Notification inbox', () => {
             tag: `gazelle:s1:waiting:${changedAt}`,
             silent: true,
           },
+          notification: expect.anything(),
         },
       ]);
+    });
+
+    it('opens the overlay from a burst, and closes the toast that points there', async () => {
+      installNotification('granted');
+      window.localStorage.setItem(DESKTOP_NOTIFICATIONS_STORAGE_KEY, 'on');
+      const ids = ['s1', 's2', 's3', 's4'];
+      fakeInbox.setSessions(
+        ids.map(sessionId => ({ sessionId, state: 'working' })),
+      );
+      await renderShell();
+
+      await read(
+        ids.map((sessionId, index) => ({
+          sessionId,
+          state: index < 2 ? 'input-required' : 'failed',
+          portalStarted: true,
+          changedAt: now(),
+        })),
+      );
+      expect(toastTitles()).toEqual(['4 sessions need your attention']);
+      expect(shown.map(each => each.title)).toEqual([
+        '4 sessions need your attention',
+      ]);
+
+      await act(async () => {
+        shown[0].notification.onclick?.();
+      });
+      expect(
+        await screen.findByRole('dialog', { name: 'Notifications' }),
+      ).toBeInTheDocument();
+      expect(close).toHaveBeenCalled();
     });
 
     it('raises none while switched off', async () => {

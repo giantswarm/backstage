@@ -1,6 +1,7 @@
 ---
 '@giantswarm/backstage-plugin-agent-platform': minor
 '@giantswarm/backstage-plugin-ui-react': minor
+'@giantswarm/backstage-plugin-analytics-react': minor
 ---
 
 The Agent Platform shell gets a Notification inbox: a bell with an unread count
@@ -16,7 +17,13 @@ desktop notification. The unread count prefixes the tab's title.
 their states, read every 10 s while the tab is visible and every 60 s while it
 is hidden), `AgentAvatar`, `sessionsListSearch` and `PHONE_FULL_SCREEN_DIALOG`,
 and no longer exports `NeedsInputToasts`. `useFleetSessionStates` takes
-`refetchIntervalInBackground`.
+`refetchIntervalInBackground` and tells when every installation has answered
+(`isComplete`). `markSeen` and `markManySeen` take an optional reason, which
+reports a row the person opened (`AgentPlatform.notificationOpened`) or "Mark
+all read" (`AgentPlatform.notificationsMarkedRead`), the two new events in
+`analytics-react`.
 
 `ui-react` adds `useShellDocumentTitleCount`, which prefixes every shell page's
-document title with a count, "(2) Sessions · Agent Platform".
+document title with a count, "(2) Sessions · Agent Platform", and
+`usePageAttention`: whether the page is visible, and whether its window has
+the focus.

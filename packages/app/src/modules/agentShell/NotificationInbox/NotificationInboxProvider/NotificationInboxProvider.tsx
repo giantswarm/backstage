@@ -16,29 +16,33 @@ import {
   sessionsListSearch,
   useNotifiableSessions,
   useSessionNotificationRecord,
+  type SeenMarkReason,
 } from '@giantswarm/backstage-plugin-agent-platform';
-import { useShellDocumentTitleCount } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  usePageAttention,
+  useShellDocumentTitleCount,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   useDesktopNotifications,
   type DesktopNotifications,
-} from '../desktopNotifications';
-import type { InboxRow } from '../types';
+} from '../hooks/useDesktopNotifications';
+import { isAt, useInboxInterruptions } from '../hooks/useInboxInterruptions';
+import { useSessionRowSource } from '../hooks/useSessionRowSource';
 import {
-  isAt,
   NOTIFICATIONS_HASH,
-  useInboxInterruptions,
-} from '../useInboxInterruptions';
-import { useSessionRowSource } from '../useSessionRowSource';
+  useToastLinkRouting,
+} from '../hooks/useToastLinkRouting';
+import type { InboxRow } from '../types';
 
 export type NotificationInboxValue = {
-  /** Every source's rows, newest first. */
+  /** The rows, newest first. */
   rows: InboxRow[];
-  /** Every source has read once. */
+  /** The rows' sources have read once. */
   ready: boolean;
   unreadCount: number;
-  /** Marks one row read, as clicking it does. */
+  /** Marks a row read because the person opened it. */
   markRead: (row: InboxRow) => void;
-  /** "Mark all read": every unread row, in one write per store. */
+  /** "Mark all read": every unread row, in one write. */
   markAllRead: () => Promise<void>;
   /** The overlay (a popover on the rail, a sheet on a phone). */
   isOpen: boolean;
@@ -64,111 +68,108 @@ function byNewest(a: InboxRow, b: InboxRow): number {
   return (b.at ?? -Infinity) - (a.at ?? -Infinity);
 }
 
-function useDocumentVisible(): boolean {
-  const [visible, setVisible] = useState(() => !document.hidden);
-  useEffect(() => {
-    const onChange = () => setVisible(!document.hidden);
-    document.addEventListener('visibilitychange', onChange);
-    return () => document.removeEventListener('visibilitychange', onChange);
-  }, []);
-  return visible;
-}
-
 function Inbox({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { pathname, search, hash } = useLocation();
-  const visible = useDocumentVisible();
+  const attention = usePageAttention();
   const sessionsRoute = useRouteRef(agentPlatformPlugin.routes.sessions);
   const record = useSessionNotificationRecord();
   const { markSeen, markManySeen } = record;
 
-  // The row sources, merged. A further source (the MCP sign-in row, the
-  // upstream notifications store) is one more entry here.
-  const sessionSource = useSessionRowSource(record);
-  const sources = [sessionSource];
-  const ready = sources.every(source => source.ready);
-  const rows = useMemo(
-    () => [...sessionSource.rows].sort(byNewest),
-    [sessionSource.rows],
-  );
+  const source = useSessionRowSource(record);
+  const rows = useMemo(() => [...source.rows].sort(byNewest), [source.rows]);
   const unreadCount = rows.filter(row => row.unread).length;
 
   const [isOpen, setOpenState] = useState(false);
   const desktop = useDesktopNotifications();
 
-  const markRead = useCallback(
-    (row: InboxRow) => {
-      if (row.unread) {
-        markSeen(row.read.target).catch(() => {});
+  // Rows whose seen mark is on its way, so a row is written once however it
+  // was read: clicked, then on screen once its page opens.
+  const marking = useRef(new Set<string>());
+  const markOnce = useCallback(
+    (row: InboxRow, reason?: SeenMarkReason) => {
+      if (!row.unread || marking.current.has(row.id)) {
+        return;
       }
+      marking.current.add(row.id);
+      markSeen(row.seenMark, reason)
+        .catch(() => {})
+        .finally(() => marking.current.delete(row.id));
     },
     [markSeen],
   );
 
+  const markRead = useCallback(
+    (row: InboxRow) => markOnce(row, { action: 'opened', kind: row.kind }),
+    [markOnce],
+  );
+
   const markAllRead = useCallback(async () => {
-    const targets = rows
-      .filter(row => row.unread && row.read.kind === 'seenRecord')
-      .map(row => row.read.target);
+    const targets = rows.filter(row => row.unread).map(row => row.seenMark);
     if (targets.length > 0) {
-      await markManySeen(targets);
+      await markManySeen(targets, { action: 'markedAllRead' });
     }
   }, [rows, markManySeen]);
 
-  const { overlayOpened } = useInboxInterruptions({
+  // Opening the overlay, however it opens, answers the toasts that point to
+  // it; `interruptions` is read through a ref because it needs the opener.
+  const overlayOpened = useRef(() => {});
+  const setOpen = useCallback((open: boolean) => {
+    setOpenState(open);
+    if (open) {
+      overlayOpened.current();
+    }
+  }, []);
+  const openOverlay = useCallback(() => setOpen(true), [setOpen]);
+
+  const interruptions = useInboxInterruptions({
     rows,
-    ready,
+    subjects: source.subjects,
+    ready: source.ready,
+    attention,
     desktop,
     waitingHref: sessionsRoute
       ? `${sessionsRoute()}${sessionsListSearch({ state: 'waiting' })}`
       : undefined,
-    openOverlay: () => setOpenState(true),
+    openOverlay,
   });
+  overlayOpened.current = interruptions.overlayOpened;
 
-  const setOpen = useCallback(
-    (open: boolean) => {
-      setOpenState(open);
-      if (open) {
-        overlayOpened();
-      }
-    },
-    [overlayOpened],
-  );
+  useToastLinkRouting(openOverlay);
 
-  // A link to the overlay (a summary toast's "Open notifications") opens it
-  // and leaves the address as it was.
+  // `#notifications` in the address (a link the toasts' routing did not
+  // take) opens the overlay and leaves the address as it was.
   useEffect(() => {
     if (hash === NOTIFICATIONS_HASH) {
-      setOpen(true);
+      openOverlay();
       navigate({ pathname, search }, { replace: true });
     }
-  }, [hash, pathname, search, navigate, setOpen]);
+  }, [hash, pathname, search, navigate, openOverlay]);
 
   // The session on screen counts as seen: opening a session marks its row
-  // read. Only while the tab is visible — a session parked in a background
-  // tab still notifies.
-  const marking = useRef(new Set<string>());
+  // read. Only while the person works in this window — a session parked in a
+  // background tab, or in a window behind another application, still
+  // notifies.
   useEffect(() => {
-    if (!visible || !record.isKnown) {
+    if (!attention.visible || !attention.focused || !record.isKnown) {
       return;
     }
-    const onScreen = rows.filter(
-      row =>
-        row.unread && isAt(pathname, row.href) && !marking.current.has(row.id),
-    );
-    for (const row of onScreen) {
-      marking.current.add(row.id);
-      markSeen(row.read.target)
-        .catch(() => {})
-        .finally(() => marking.current.delete(row.id));
-    }
-  }, [rows, pathname, visible, record.isKnown, markSeen]);
+    rows.filter(row => isAt(pathname, row.href)).forEach(row => markOnce(row));
+  }, [
+    rows,
+    pathname,
+    attention.visible,
+    attention.focused,
+    record.isKnown,
+    markOnce,
+  ]);
 
   useShellDocumentTitleCount(unreadCount);
 
   const value = useMemo<NotificationInboxValue>(
     () => ({
       rows,
-      ready,
+      ready: source.ready,
       unreadCount,
       markRead,
       markAllRead,
@@ -176,7 +177,16 @@ function Inbox({ children }: { children: ReactNode }) {
       setOpen,
       desktop,
     }),
-    [rows, ready, unreadCount, markRead, markAllRead, isOpen, setOpen, desktop],
+    [
+      rows,
+      source.ready,
+      unreadCount,
+      markRead,
+      markAllRead,
+      isOpen,
+      setOpen,
+      desktop,
+    ],
   );
 
   return (

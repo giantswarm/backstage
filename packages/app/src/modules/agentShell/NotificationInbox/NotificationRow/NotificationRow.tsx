@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { ButtonIcon, Menu, MenuItem, MenuTrigger, Text } from '@backstage/ui';
 import { Link as AriaLink } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
@@ -9,9 +8,6 @@ import {
   StatusDot,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { InboxRow } from '../types';
-
-/** How often a row's age is told again while the overlay is open. */
-const AGE_TICK_MS = 30_000;
 
 const useStyles = makeStyles({
   row: {
@@ -76,15 +72,6 @@ const useStyles = makeStyles({
   },
 });
 
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), AGE_TICK_MS);
-    return () => window.clearInterval(id);
-  }, []);
-  return now;
-}
-
 /**
  * One row of the Notification inbox: the agent's Avatar, what happened, the
  * session's name, how long ago and a state chip, with its own ⋯ menu.
@@ -92,13 +79,15 @@ function useNow(): number {
  */
 export function NotificationRow({
   row,
+  now,
   onOpen,
 }: {
   row: InboxRow;
+  /** The time ages are told against, shared by the list's rows. */
+  now: number;
   onOpen: () => void;
 }) {
   const classes = useStyles();
-  const now = useNow();
   const meta = [
     row.context,
     row.at === undefined

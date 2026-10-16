@@ -1,10 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { Button, Flex, Switch, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import { NotificationRow } from '../NotificationRow';
 import { useNotificationInbox } from '../NotificationInboxProvider';
+
+/** How often the rows' ages are told again while the overlay is open. */
+const AGE_TICK_MS = 30_000;
+
+/** Now, again every {@link AGE_TICK_MS}: one timer for every row. */
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), AGE_TICK_MS);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
 
 const useStyles = makeStyles({
   root: {
@@ -88,6 +101,7 @@ export function NotificationList({
   const inbox = useNotificationInbox();
   const toastApi = useApi(toastApiRef);
   const [marking, setMarking] = useState(false);
+  const now = useNow();
   if (!inbox) {
     return null;
   }
@@ -114,6 +128,7 @@ export function NotificationList({
           <NotificationRow
             key={row.id}
             row={row}
+            now={now}
             onOpen={() => {
               markRead(row);
               onNavigate();

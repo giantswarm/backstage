@@ -36,6 +36,11 @@ export type FleetSessionStatesView = {
   skippedCount: number;
   /** No installation has answered yet. */
   isLoading: boolean;
+  /**
+   * Every installation asked has answered or failed at least once, so the
+   * states are the whole of a first read rather than the fastest part of it.
+   */
+  isComplete: boolean;
   /** Every installation asked failed, so no row can be told about. */
   isError: boolean;
 };
@@ -46,6 +51,7 @@ const EMPTY_VIEW: FleetSessionStatesView = {
   failedInstallations: new Set(),
   skippedCount: 0,
   isLoading: false,
+  isComplete: true,
   isError: false,
 };
 
@@ -152,6 +158,7 @@ export function useFleetSessionStates(
       // column for the rows that already have a state — the same rule the
       // sessions fan-out itself follows.
       isLoading: results.every(result => isAwaitingData(result)),
+      isComplete: !results.some(result => isAwaitingData(result)),
       // A failed *refetch* keeps the previous answer, so this is the harder
       // claim: every installation asked failed and none has data to fall back
       // on.

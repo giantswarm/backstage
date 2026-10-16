@@ -6,30 +6,38 @@ import {
   type ToastApiMessage,
   type ToastApiPostResult,
 } from '@backstage/frontend-plugin-api';
-import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  countNoun,
+  type PageAttention,
+} from '@giantswarm/backstage-plugin-ui-react';
+import type { InboxRow } from '../types';
 import {
   showDesktopNotification,
   type DesktopNotifications,
-} from './desktopNotifications';
-import type { InboxRow } from './types';
+} from './useDesktopNotifications';
+import { NOTIFICATIONS_HASH } from './useToastLinkRouting';
 
 /**
  * The most rows one read announces one toast (or desktop notification) each.
- * Past it, a burst — an orchestrator fanning out, an installation's states
- * arriving late — is one, instead of a stack nobody reads.
+ * Past it, a burst — an orchestrator fanning out — is one, instead of a stack
+ * nobody reads.
  */
 export const TOAST_BURST = 3;
 
 /**
  * How far before the tab's first read a row may have changed and still be
- * news when it first shows up later (an installation answering late): the
- * row's time comes from the server's clock, the first read's from the
- * browser's.
+ * news when its subject was not read before (an installation answering
+ * late): the row's time comes from the server's clock, the first read's from
+ * the browser's.
  */
 export const CLOCK_SKEW_MS = 60_000;
 
-/** The location hash a link uses to open the inbox's overlay. */
-export const NOTIFICATIONS_HASH = '#notifications';
+/**
+ * Where a tab keeps what it has read, so a return to the shell from a classic
+ * page, or a reload, does not start catch-up over. `sessionStorage` is the
+ * tab's own and outlives a reload.
+ */
+export const TAB_MEMORY_KEY = 'agentPlatform.notificationInbox.tab';
 
 /** The tag of the one desktop notification a burst raises. */
 const BURST_TAG = 'agent-platform-notifications';
@@ -39,6 +47,39 @@ export function isAt(pathname: string, href: string | undefined): boolean {
   return (
     href !== undefined && (pathname === href || pathname.startsWith(`${href}/`))
   );
+}
+
+/** What a tab remembers of its reads. */
+type TabMemory = {
+  /** When the tab first read every source (ms, the browser's clock). */
+  firstReadAt: number;
+  /** The rows of the last read. */
+  rows: string[];
+  /** The subjects of the last read. */
+  subjects: string[];
+};
+
+function readTabMemory(): TabMemory | undefined {
+  try {
+    const value = JSON.parse(
+      window.sessionStorage.getItem(TAB_MEMORY_KEY) ?? 'null',
+    );
+    return typeof value?.firstReadAt === 'number' &&
+      Array.isArray(value.rows) &&
+      Array.isArray(value.subjects)
+      ? value
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeTabMemory(memory: TabMemory) {
+  try {
+    window.sessionStorage.setItem(TAB_MEMORY_KEY, JSON.stringify(memory));
+  } catch {
+    // Storage blocked: the tab remembers until the inbox unmounts.
+  }
 }
 
 /** A toast still up: the rows it speaks for, and what closes it. */
@@ -66,22 +107,31 @@ function attentionTitle(count: number) {
  * Rows present and unread at the tab's first read are **catch-up**: they
  * stay unread in the bell, with one summary toast at most and no desktop
  * notification. A row is **news** when it is unread and appeared, or changed
- * identity, after that first read. Nothing is raised for the session on
- * screen in the visible tab. A toast closes once its row goes or is read, or
- * its page is opened.
+ * identity, after that first read, and either its subject was already read
+ * by the tab (it changed while watched) or its time says it changed after the
+ * first read. A row that shows up later with neither (an installation
+ * answering late with an old wait) is quietly unread. Nothing is raised for
+ * the session on screen in the window the person works in. A toast closes
+ * once its row goes or is read, or its page is opened.
  *
- * Each tab decides on its own; desktop notifications are deduplicated across
- * tabs by the browser, through their `tag`.
+ * The first read is the tab's, not the inbox's mount: a return from a classic
+ * page or a reload picks up where the tab was. Each tab decides on its own;
+ * desktop notifications are deduplicated across tabs by the browser, through
+ * their `tag`.
  */
 export function useInboxInterruptions({
   rows,
+  subjects,
   ready,
+  attention,
   desktop,
   waitingHref,
   openOverlay,
 }: {
   rows: InboxRow[];
+  subjects: ReadonlySet<string>;
   ready: boolean;
+  attention: PageAttention;
   desktop: DesktopNotifications;
   /** The Sessions list on its Waiting filter, when that route is bound. */
   waitingHref?: string;
@@ -91,20 +141,14 @@ export function useInboxInterruptions({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // When the tab first read every source; undefined until then.
-  const firstReadAt = useRef<number>();
-  // Every row id this tab has seen, so a row is announced once.
-  const known = useRef(new Set<string>());
+  // What this tab has read: from an earlier mount, else nothing yet.
+  const memory = useRef<TabMemory | undefined>(readTabMemory());
   // Toasts still up, so they can be closed when they stop being true.
   const open = useRef(new Map<string, OpenToast>());
   const toastCount = useRef(0);
   // Read inside the rows effect without re-running it on every navigation.
-  const locationRef = useRef(location);
-  locationRef.current = location;
-  const desktopRef = useRef(desktop);
-  desktopRef.current = desktop;
-  const openOverlayRef = useRef(openOverlay);
-  openOverlayRef.current = openOverlay;
+  const latest = useRef({ location, attention, desktop, openOverlay });
+  latest.current = { location, attention, desktop, openOverlay };
 
   const post = useCallback(
     (
@@ -122,11 +166,12 @@ export function useInboxInterruptions({
     if (!ready) {
       return;
     }
-    const { pathname, search } = locationRef.current;
-    const visible = !document.hidden;
-    const overlayHref = `${pathname}${search}${NOTIFICATIONS_HASH}`;
-    // The session on screen: its page says it, louder, and marks it read.
-    const onScreen = (row: InboxRow) => visible && isAt(pathname, row.href);
+    const { location: here, attention: now, desktop: desk } = latest.current;
+    // The session on screen in the window the person works in: its page
+    // says it, louder, and marks it read. A visible window behind another
+    // application is not being watched.
+    const onScreen = (row: InboxRow) =>
+      now.visible && now.focused && isAt(here.pathname, row.href);
 
     // A row that went, or was read here or elsewhere, takes its toast along.
     const unread = new Set(rows.filter(row => row.unread).map(row => row.id));
@@ -137,23 +182,23 @@ export function useInboxInterruptions({
       }
     }
 
-    const isFirstRead = firstReadAt.current === undefined;
-    if (isFirstRead) {
-      firstReadAt.current = Date.now();
-    }
-    const since = (firstReadAt.current ?? 0) - CLOCK_SKEW_MS;
-    const unseenByTab = rows.filter(row => !known.current.has(row.id));
-    rows.forEach(row => known.current.add(row.id));
+    const before = memory.current;
+    memory.current = {
+      firstReadAt: before?.firstReadAt ?? Date.now(),
+      rows: rows.map(row => row.id),
+      subjects: [...subjects],
+    };
+    writeTabMemory(memory.current);
 
-    if (isFirstRead) {
-      const catchUp = unseenByTab.filter(row => row.unread && !onScreen(row));
-      if (catchUp.length > 0 && visible) {
+    if (!before) {
+      const catchUp = rows.filter(row => row.unread && !onScreen(row));
+      if (catchUp.length > 0 && now.visible) {
         post(
           'catch-up',
           {
             title: attentionTitle(catchUp.length),
             status: 'info',
-            links: [{ label: 'Open notifications', href: overlayHref }],
+            links: [{ label: 'Open notifications', href: NOTIFICATIONS_HASH }],
           },
           { ids: catchUp.map(row => row.id), closeOnOverlay: true },
         );
@@ -161,24 +206,27 @@ export function useInboxInterruptions({
       return;
     }
 
-    const news = unseenByTab.filter(
+    const known = new Set(before.rows);
+    const watched = new Set(before.subjects);
+    const since = before.firstReadAt - CLOCK_SKEW_MS;
+    const news = rows.filter(
       row =>
         row.unread &&
+        !known.has(row.id) &&
         !onScreen(row) &&
-        (row.at === undefined || row.at >= since),
+        (watched.has(row.subject) || (row.at !== undefined && row.at >= since)),
     );
     if (news.length === 0) {
       return;
     }
 
     const burst = news.length > TOAST_BURST;
-    const allWaiting = news.every(row => row.waiting);
 
-    if (visible) {
+    if (now.visible) {
+      const ids = news.map(row => row.id);
       if (burst) {
         toastCount.current += 1;
-        const ids = news.map(row => row.id);
-        if (allWaiting && waitingHref) {
+        if (news.every(row => row.kind === 'waiting') && waitingHref) {
           post(
             `burst:${toastCount.current}`,
             {
@@ -194,7 +242,9 @@ export function useInboxInterruptions({
             {
               title: attentionTitle(news.length),
               status: 'info',
-              links: [{ label: 'Open notifications', href: overlayHref }],
+              links: [
+                { label: 'Open notifications', href: NOTIFICATIONS_HASH },
+              ],
             },
             { ids, closeOnOverlay: true },
           );
@@ -217,14 +267,14 @@ export function useInboxInterruptions({
       }
     }
 
-    // A tab the person is not looking at: the desktop's turn, once they have
-    // switched it on. A focused tab already toasts.
-    if (desktopRef.current.enabled && !document.hasFocus()) {
+    // A window the person is not working in: the desktop's turn, once they
+    // have switched it on. A focused window already toasts.
+    if (desk.enabled && !now.focused) {
       if (burst) {
         showDesktopNotification({
           title: attentionTitle(news.length),
           tag: BURST_TAG,
-          onClick: () => openOverlayRef.current(),
+          onClick: () => latest.current.openOverlay(),
         });
       } else {
         for (const row of news) {
@@ -236,17 +286,17 @@ export function useInboxInterruptions({
               if (row.href) {
                 navigate(row.href);
               } else {
-                openOverlayRef.current();
+                latest.current.openOverlay();
               }
             },
           });
         }
       }
     }
-    // Keyed on the rows alone: the location, the desktop choice and the
-    // callbacks are read as of now through refs.
+    // Keyed on the reads alone: the location, the page's attention, the
+    // desktop choice and the callbacks are read as of now.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, ready]);
+  }, [rows, subjects, ready]);
 
   // Opening a row's page — or, for a burst, the list — answers its toast.
   useEffect(() => {

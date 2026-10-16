@@ -66,6 +66,7 @@ const rows = withSessionStates(
     failedInstallations: new Set(),
     skippedCount: 0,
     isLoading: false,
+    isComplete: true,
     isError: false,
   },
 );
@@ -107,6 +108,7 @@ describe('the State buckets', () => {
       failedInstallations: new Set(),
       skippedCount: 0,
       isLoading: false,
+      isComplete: true,
       isError: false,
     });
 
@@ -218,6 +220,7 @@ describe('SHELL_SESSION_STATE_FILTERS', () => {
       failedInstallations: new Set(),
       skippedCount: 0,
       isLoading: false,
+      isComplete: true,
       isError: false,
     });
     const chip = SHELL_SESSION_STATE_FILTERS.find(

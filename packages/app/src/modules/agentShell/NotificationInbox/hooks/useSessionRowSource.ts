@@ -10,8 +10,8 @@ import {
   useSessionNotificationRecord,
   type NotifiableSession,
 } from '@giantswarm/backstage-plugin-agent-platform';
-import { toSessionRows } from './sessionRows';
-import type { InboxRowSource } from './types';
+import type { InboxRowSource } from '../types';
+import { sessionSubject, toSessionRows } from '../utils/sessionRows';
 
 type NotificationRecord = ReturnType<typeof useSessionNotificationRecord>;
 
@@ -65,5 +65,15 @@ export function useSessionRowSource(
     [sessions, states, levelOf, isPortalStarted, isSeen, hrefOf, mute],
   );
 
-  return { rows, ready: isRead && record.isKnown };
+  // Only sessions the list can name: a state the list does not know yet
+  // (the list is being read again) is not watched until it is.
+  const subjects = useMemo(
+    () =>
+      new Set(
+        [...states.keys()].filter(id => sessions.has(id)).map(sessionSubject),
+      ),
+    [states, sessions],
+  );
+
+  return { rows, subjects, ready: isRead && record.isKnown };
 }

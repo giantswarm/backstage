@@ -449,6 +449,36 @@ describe('useNotificationSeenMarks', () => {
     await waitFor(() => expect(result.current.isSeen(mcpRow)).toBe(true));
   });
 
+  it('reports a row the person opened, and "Mark all read", but not bookkeeping', async () => {
+    analyticsApi.captureEvent.mockClear();
+    const { result } = renderHook(() => useNotificationSeenMarks(), {
+      wrapper: wrapperFor(mockApis.storage()),
+    });
+
+    await act(async () => {
+      await result.current.markSeen(waitingRow, {
+        action: 'opened',
+        kind: 'waiting',
+      });
+    });
+    await act(async () => {
+      await result.current.markManySeen([mcpRow], { action: 'markedAllRead' });
+    });
+    await act(async () => {
+      await result.current.markSeen({ ...waitingRow, mark: 'gazelle/abc/2' });
+    });
+
+    expect(
+      analyticsApi.captureEvent.mock.calls.map(([event]) => [
+        event.action,
+        event.attributes,
+      ]),
+    ).toEqual([
+      ['AgentPlatform.notificationOpened', { kind: 'waiting' }],
+      ['AgentPlatform.notificationsMarkedRead', {}],
+    ]);
+  });
+
   it('follows a row another tab marked seen', async () => {
     const { storage, writeElsewhere, announce } = backendStorage({});
     const { result } = renderHook(() => useNotificationSeenMarks(), {

@@ -26,6 +26,7 @@ export {
   useSessionNotificationRecord,
   useSessionNotificationSettings,
 } from './hooks/useSessionNotificationRecord';
+export type { SeenMarkReason } from './hooks/useSessionNotificationRecord';
 export type {
   NotificationLevel,
   SeenMarkTarget,

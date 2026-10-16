@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { usePageAttention } from '@giantswarm/backstage-plugin-ui-react';
 import { useSessions } from '../components/SessionsDataProvider';
 import {
   ACTIVE_REFETCH_INTERVAL_MS,
   BASELINE_REFETCH_INTERVAL_MS,
 } from '../lib/kagentSessionPolling';
+import { sessionsQueryKey } from '../lib/queryKeys';
 import { useAgentAvatarUrl } from './useAgentAvatarUrl';
 import { useFleetSessionStates } from './useFleetSessionStates';
 
@@ -30,25 +33,12 @@ export type NotifiableSessionsView = {
   /** Each session's state, from the shell's session-states read. */
   states: ReadonlyMap<string, SessionStateEntry>;
   /**
-   * The sessions list and the session states have both answered once, so
-   * what is there now is what the tab's first read found.
+   * Every installation's sessions list and session states have answered (or
+   * failed) once, so what is there now is the tab's whole first read, not the
+   * part the fastest installation sent.
    */
   isRead: boolean;
 };
-
-function isDocumentVisible() {
-  return typeof document === 'undefined' || !document.hidden;
-}
-
-function useDocumentVisible(): boolean {
-  const [visible, setVisible] = useState(isDocumentVisible);
-  useEffect(() => {
-    const onChange = () => setVisible(isDocumentVisible());
-    document.addEventListener('visibilitychange', onChange);
-    return () => document.removeEventListener('visibilitychange', onChange);
-  }, []);
-  return visible;
-}
 
 /**
  * The person's sessions and their states, for the Notification inbox in the
@@ -58,11 +48,17 @@ function useDocumentVisible(): boolean {
  * the rail's dots, every 10 s while the tab is visible. Unlike the rail, the
  * read goes on while the tab is hidden, on the 60 s baseline tier, so a
  * background tab still learns that a session waits.
+ *
+ * The sessions list itself is not polled. When a state names a session the
+ * list does not know (one started since, from Slack or by an orchestrator),
+ * that installation's list is read again, once per such session, so the
+ * session can be named — hidden tab or not.
  */
 export function useNotifiableSessions(): NotifiableSessionsView {
-  const { rows, isLoading } = useSessions();
+  const { rows, isLoading, isLoadingMore } = useSessions();
   const buildAvatarUrl = useAgentAvatarUrl();
-  const visible = useDocumentVisible();
+  const { visible } = usePageAttention();
+  const queryClient = useQueryClient();
 
   const installationsKey = Array.from(
     new Set(rows.map(row => row.installation)),
@@ -73,15 +69,12 @@ export function useNotifiableSessions(): NotifiableSessionsView {
     () => (installationsKey ? installationsKey.split(',') : []),
     [installationsKey],
   );
-  const { states, isLoading: statesLoading } = useFleetSessionStates(
-    installations,
-    {
-      refetchIntervalMs: visible
-        ? ACTIVE_REFETCH_INTERVAL_MS
-        : BASELINE_REFETCH_INTERVAL_MS,
-      refetchIntervalInBackground: true,
-    },
-  );
+  const { states, isComplete } = useFleetSessionStates(installations, {
+    refetchIntervalMs: visible
+      ? ACTIVE_REFETCH_INTERVAL_MS
+      : BASELINE_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: true,
+  });
 
   const sessions = useMemo(
     () =>
@@ -105,9 +98,28 @@ export function useNotifiableSessions(): NotifiableSessionsView {
     [rows, buildAvatarUrl],
   );
 
+  // A state for a session the list has not seen: read that installation's
+  // list again. Once per session, so a session the list leaves out on
+  // purpose (not listable) cannot make it read over and over.
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    const stale = new Set<string>();
+    for (const [id, entry] of states) {
+      if (!sessions.has(id) && !asked.current.has(id)) {
+        asked.current.add(id);
+        stale.add(id.slice(0, id.length - entry.sessionId.length - 1));
+      }
+    }
+    stale.forEach(installation => {
+      queryClient
+        .invalidateQueries({ queryKey: sessionsQueryKey(installation) })
+        .catch(() => {});
+    });
+  }, [states, sessions, queryClient]);
+
   return {
     sessions,
     states,
-    isRead: !isLoading && !statesLoading,
+    isRead: !isLoading && !isLoadingMore && isComplete,
   };
 }

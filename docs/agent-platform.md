@@ -1298,28 +1298,41 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   read; its ⋯ menu has "Mute this session". "Mark all read" is one write to
   the seen marks. No text of the conversation enters a row.
 - **Read.** A row is unread until its identity is the session's seen mark in
-  the notification record. The session on screen in a visible tab counts as
-  seen. The unread count prefixes the document title through
-  `ShellDocumentTitle` (`useShellDocumentTitleCount`, ui-react).
+  the notification record. The session on screen counts as seen while the
+  person works in that window (visible and focused); a session parked in a
+  background tab, or in a window behind another application, still notifies.
+  Opening a row reports `AgentPlatform.notificationOpened`, "Mark all read"
+  `AgentPlatform.notificationsMarkedRead`. The unread count prefixes the
+  document title through `ShellDocumentTitle` (`useShellDocumentTitleCount`,
+  ui-react).
 - **Reading.** `useNotifiableSessions` (agent-platform) reads the same query
   keys as the rail's dots: every 10 s while the tab is visible, and on the
-  60 s baseline tier while it is hidden.
-- **Interruptions.** Rows unread at the tab's first read are catch-up: one
-  summary toast at most ("Open notifications" opens the overlay through the
-  `#notifications` hash) and no desktop notification. A row that appears, or
-  changes identity, after that is news: a toast in the visible tab ("Open
+  60 s baseline tier while it is hidden. A state for a session the sessions
+  list does not know reads that installation's list again, once per session,
+  so a session started elsewhere can be named in a background tab too.
+- **Interruptions.** The tab's first read is every installation's sessions
+  and states. Rows unread then are catch-up: one summary toast at most ("Open
+  notifications" opens the overlay) and no desktop notification. The tab
+  keeps what it read in `sessionStorage`, so a return from a classic page or
+  a reload does not catch up again. A row that appears, or changes identity,
+  after that is news when its session was already read by the tab or its
+  state changed after the first read; an old wait an installation reports
+  late stays quietly unread. News raises a toast in the visible tab ("Open
   session"), none for the session on screen, and more than three at once are
   one toast (the Sessions list on its Waiting filter when they all wait). A
-  toast closes once its row goes or is read, or its page is opened.
+  toast closes once its row goes or is read, or its page is opened. The
+  upstream toast renders its links as plain anchors; the inbox follows a
+  plain click on one inside the app instead of reloading the portal.
 - **Desktop notifications.** Opt-in per browser from the switch at the foot of
   the overlay (`localStorage`); the browser's permission prompt follows that
-  click only. Raised for news while the tab does not have focus, silent, with
-  the row's identity as the `tag` so several tabs show one, and only for rows
-  still unread in the record.
+  click only. Raised for news while the window does not have focus, silent,
+  with the row's identity as the `tag` so several tabs show one, and only for
+  rows still unread in the record. A hidden tab can still notify about a
+  session another tab shows; the plan accepts that duplicate.
 
-Each row source returns `InboxRow`s (`NotificationInbox/types.ts`); the MCP
-sign-in row and the upstream notifications store are further sources merged
-in `NotificationInboxProvider`.
+Rows are `InboxRow`s (`NotificationInbox/types.ts`), the shape the bell, the
+overlay, the title count and the interruptions read, so a later producer (the
+MCP sign-in row, the upstream notifications store) adds rows of its own.
 
 ### Notification level and the notification record
 
