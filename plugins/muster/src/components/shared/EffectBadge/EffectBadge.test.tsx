@@ -32,11 +32,17 @@ describe('EffectBadge', () => {
     expect(screen.getByText('Can change things')).toBeInTheDocument();
   });
 
-  it("passes a caller's class to the badge", () => {
-    render(<EffectBadge effect="changes" className="compact" />);
-    expect(screen.getByText('Changes things')).toHaveClass(
-      'bui-Badge',
-      'compact',
+  it('draws the compact size where asked', () => {
+    render(
+      <>
+        <EffectBadge effect="reads" />
+        <EffectBadge effect="changes" />
+        <EffectBadge effect="changes" size="compact" />
+      </>,
     );
+    const [small, compact] = screen
+      .getAllByText('Changes things')
+      .map(badge => badge.classList);
+    expect(compact).toHaveLength(small.length + 1);
   });
 });

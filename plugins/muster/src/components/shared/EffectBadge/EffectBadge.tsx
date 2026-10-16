@@ -3,7 +3,7 @@ import {
   type ToolEffect,
 } from '../../../lib/toolAnnotations';
 import { WORKFLOW_EFFECT_LABELS } from '../../../lib/workflowDisplay';
-import { MarkerBadge } from '../MarkerBadge';
+import { MarkerBadge, type MarkerBadgeProps } from '../MarkerBadge';
 
 export type EffectBadgeProps = {
   effect: ToolEffect;
@@ -14,8 +14,8 @@ export type EffectBadgeProps = {
    * can reach is). Defaults to a tool.
    */
   subject?: 'tool' | 'workflow';
-  /** Extra class, e.g. the flow canvas's compact size for its edge markers. */
-  className?: string;
+  /** `compact` where it rides the edge of a box: a step on the flow canvas. */
+  size?: MarkerBadgeProps['size'];
 };
 
 /**
@@ -28,14 +28,14 @@ export type EffectBadgeProps = {
 export function EffectBadge({
   effect,
   subject = 'tool',
-  className,
+  size,
 }: EffectBadgeProps) {
   const labels =
     subject === 'workflow' ? WORKFLOW_EFFECT_LABELS : TOOL_EFFECT_LABELS;
   return (
     <MarkerBadge
       tone={effect === 'changes' ? 'warning' : 'neutral'}
-      className={className}
+      size={size}
     >
       {labels[effect]}
     </MarkerBadge>

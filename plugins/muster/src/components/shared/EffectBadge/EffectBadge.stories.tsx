@@ -17,9 +17,11 @@ const meta = {
           '',
           '**When to use it:** wherever a tool’s or a workflow’s effect is shown — a connector’s tool list, a tool page, the workflow list and flow, an agent’s tool catalogue, the approval card. Take the effect from `toolEffect` (a workflow’s from `workflowEffect`); never hand-roll the words or the colours.',
           '',
-          '“Reads” is neutral: a fill one step above the surface and a quiet edge, so it shows as a box on the agent shell’s white page. “Changes things” is the stronger signal, in bui’s warning tone. Both set their text in `--bui-font-size-2`, the text size of bui’s medium badge, at the small badge’s height.',
+          '“Reads” is neutral: a fill one step above the surface and a quiet edge, so it shows as a box on the agent shell’s white page. On a bui surface it knows (a `Card`, a `Box bg="neutral"`) bui steps the fill itself. “Changes things” is the stronger signal, in bui’s warning tone. Both set their text in `--bui-font-size-2`, the text size of bui’s medium badge, at the small badge’s height, on one line.',
           '',
-          'Drawn by `MarkerBadge`, which other markers beside it (“May fail” on a workflow step) use too.',
+          '`size="compact"` (18px high) is for a marker riding the edge of a box: a step on the workflow flow canvas and in its phone list.',
+          '',
+          'Drawn by `MarkerBadge`, which the other markers beside it (a workflow step’s number, “May fail”) use too.',
         ].join('\n'),
       },
     },
@@ -75,6 +77,26 @@ export const WithOtherMarkers: Story = {
     <Flex gap="2" align="center">
       <EffectBadge effect="changes" />
       <MarkerBadge tone="neutral">May fail</MarkerBadge>
+    </Flex>
+  ),
+};
+
+/**
+ * The compact size a workflow step's markers ride its top edge in: the step's
+ * number (round), what its tool does and whether it may fail.
+ */
+export const Compact: Story = {
+  render: () => (
+    <Flex gap="1" align="center">
+      <MarkerBadge tone="neutral" size="compact" className="story-step-number">
+        3
+      </MarkerBadge>
+      <EffectBadge effect="reads" size="compact" />
+      <EffectBadge effect="changes" size="compact" />
+      <MarkerBadge tone="neutral" size="compact">
+        May fail
+      </MarkerBadge>
+      <style>{`.story-step-number { min-width: 18px; box-sizing: border-box; border-radius: 9px; }`}</style>
     </Flex>
   ),
 };
