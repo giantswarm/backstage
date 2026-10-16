@@ -1129,18 +1129,33 @@ markdown, because prompts quote logs and `#` lines verbatim. Agent prose is GFM
 markdown. JSON inside result strings is inlined. Streaming auto-follow applies
 only while the page is scrolled to the end.
 
-**A long user message is cut to 10 lines** behind a fade, with _Show more_
-under the bubble (a button with `aria-expanded`, tied to the message by
-`aria-controls`) and _Show less_ once open. A continuation's opener carries the
-whole earlier conversation, and a pasted log or file can run to thousands of
-lines; either would bury the answer under it. A message that fits shows no
-control. The cut is visual only: the whole text stays in the page for screen
-readers, selection and copying. Each message keeps its own state while the page
-is open; a reload starts every message cut again. The agent's messages, tool
-output and the composer are never cut. The pieces (`useCollapsible`,
-`CollapsibleViewport`, `CollapsibleToggle`) live in `ui-react` and are the same
-ones `CollapsibleMarkdown` uses for an agent's instructions; the bubble sets
-`--bui-bg-inherit` to its own fill so the fade matches it.
+**A long user message is cut to 10 lines** of its own text (`10lh`, so the cut
+follows the reader's font size) behind a fade, with _Show more_ under the bubble
+(a button with `aria-expanded`, tied to the message by `aria-controls`) and
+_Show less_ once open. A continuation's opener carries the whole earlier
+conversation, and a pasted log or file can run to thousands of lines; either
+would bury the answer under it. A message that fits, or would hide no more than
+two lines (a fifth of the cut, `collapseSlack`, the rule `ShowMore` pages by),
+is shown whole with no control. The cut is visual only: the whole text stays in
+the page for screen readers, selection and copying, and keyboard focus or find
+in page reaching past the cut opens the message where the match is. _Show less_
+on a message read to its end brings it back into view rather than leaving the
+reader in a later turn.
+
+`SessionTimeline` holds which messages are open, keyed by kagent's
+`messageId`, so a message stays open when kagent's copy replaces the optimistic
+one after sending and when its turn leaves the turn window and comes back with
+"Show earlier activity". A reload starts every message cut again. The agent's
+messages, tool output and the composer are never cut. The same applies in the
+create-agent assist panel, which renders its conversation with
+`SessionTimeline`: its opener quotes the system prompt drafted so far, which
+can be long.
+
+The pieces (`useCollapsible`, `CollapsibleViewport`, `CollapsibleToggle`) live
+in `ui-react` and are the same ones `CollapsibleMarkdown` uses for an agent's
+instructions; the bubble sets `--bui-bg-inherit` to its own fill so the fade
+matches it. Tests lay them out with `mockCollapsibleLayout` from
+`@giantswarm/backstage-plugin-ui-react/testUtils`.
 
 | Entry                | Where it comes from                                                        |
 | -------------------- | -------------------------------------------------------------------------- |

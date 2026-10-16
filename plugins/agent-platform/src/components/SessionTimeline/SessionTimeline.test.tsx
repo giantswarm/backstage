@@ -1,6 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 
 import {
   buildTimeline,
@@ -21,6 +22,10 @@ import {
   tasksRuntimeLost,
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
+import {
+  mockCollapsibleLayout,
+  type MockedCollapsibleLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 function timelineFor(fixture: unknown) {
   return buildTimeline(normalizeTaskList(fixture).tasks);
@@ -1527,38 +1532,13 @@ describe('TimelineEntry — the connector of a tool call (UX review M2)', () => 
 });
 
 describe('SessionTimeline — a long user message', () => {
-  // jsdom lays nothing out: the stub reports a bubble's text as one line of
-  // its type (14px at 1.6) per line of the message, and nothing for anything
-  // else observed.
-  const RealResizeObserver = globalThis.ResizeObserver;
-  beforeAll(() => {
-    globalThis.ResizeObserver = class {
-      constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        const text = target.querySelector('pre')?.textContent;
-        if (text === undefined || text === null) {
-          return;
-        }
-        this.callback(
-          [
-            {
-              target,
-              contentRect: {
-                width: 600,
-                height: text.split('\n').length * 22.4,
-              },
-            } as unknown as ResizeObserverEntry,
-          ],
-          this as unknown as ResizeObserver,
-        );
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
+  // jsdom lays nothing out: one line of the bubble's text per line of the
+  // message, and the cut's ten `lh` as ten of them.
+  let layout: MockedCollapsibleLayout;
+  beforeEach(() => {
+    layout = mockCollapsibleLayout();
   });
-  afterAll(() => {
-    globalThis.ResizeObserver = RealResizeObserver;
-  });
+  afterEach(() => layout.restore());
 
   const lines = (count: number, prefix = 'line') =>
     Array.from({ length: count }, (_, i) => `${prefix} ${i + 1}`).join('\n');
@@ -1579,6 +1559,24 @@ describe('SessionTimeline — a long user message', () => {
     );
   }
 
+  /** A timeline the test can replace, as a poll does. */
+  async function renderChanging(first: TimelineItem[]) {
+    let replace: (items: TimelineItem[]) => void = () => {};
+    function Harness() {
+      const [items, setItems] = useState(first);
+      replace = setItems;
+      return (
+        <SessionTimeline
+          timeline={timeline(items)}
+          agentName="Issue tracker"
+          isAgentWorking={false}
+        />
+      );
+    }
+    await renderInTestApp(<Harness />);
+    return (items: TimelineItem[]) => act(() => replace(items));
+  }
+
   it('cuts it to ten lines behind Show more, and opens and closes it in place', async () => {
     await renderItems([
       { ...base, kind: 'user-message', id: 'u', text: lines(40) },
@@ -1587,7 +1585,8 @@ describe('SessionTimeline — a long user message', () => {
     const toggle = screen.getByRole('button', { name: 'Show more' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     const region = panelFor(toggle);
-    expect(region).toHaveStyle({ maxHeight: '224px' });
+    // Ten lines of the bubble's own text, at whatever size the browser sets.
+    expect(region.style.maxHeight).toBe('10lh');
     // Cut, not removed: the whole message stays in the page for a screen
     // reader and for copying.
     expect(region).toHaveTextContent('line 40');
@@ -1598,7 +1597,7 @@ describe('SessionTimeline — a long user message', () => {
     await userEvent.click(toggle);
     const less = screen.getByRole('button', { name: 'Show less' });
     expect(less).toHaveAttribute('aria-expanded', 'true');
-    expect(panelFor(less)).not.toHaveStyle({ maxHeight: '224px' });
+    expect(panelFor(less).style.maxHeight).toBe('');
 
     await userEvent.click(less);
     expect(screen.getByRole('button', { name: 'Show more' })).toHaveAttribute(
@@ -1632,6 +1631,17 @@ describe('SessionTimeline — a long user message', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('shows whole a message only a line or two past the cut', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(12) },
+    ]);
+
+    expect(screen.getByText(/line 12/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show more' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps each message open or closed on its own', async () => {
     await renderItems([
       { ...base, kind: 'user-message', id: 'u1', text: lines(40, 'first') },
@@ -1652,6 +1662,66 @@ describe('SessionTimeline — a long user message', () => {
 
     expect(first).toHaveAttribute('aria-expanded', 'false');
     expect(second).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('stays open when kagent’s copy of a sent message replaces the optimistic one', async () => {
+    const text = lines(40);
+    const replace = await renderChanging([
+      {
+        ...base,
+        kind: 'user-message',
+        id: 'pending:m1',
+        messageId: 'm1',
+        text,
+      },
+    ]);
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    // The poll's item: the same message under a positional key.
+    replace([
+      { ...base, kind: 'user-message', id: '0:0:0', messageId: 'm1', text },
+    ]);
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('stays open while its turn is out of the window and back', async () => {
+    const turn = (index: number): TimelineItem[] => [
+      {
+        ...base,
+        taskIndex: index,
+        kind: 'user-message',
+        id: `${index}:u`,
+        messageId: `m${index}`,
+        text: index === 0 ? lines(40, 'opener') : `Q${index}?`,
+      },
+      {
+        ...base,
+        taskIndex: index,
+        kind: 'agent-message',
+        id: `${index}:a`,
+        text: `A${index}.`,
+      },
+    ];
+    const turns = (count: number) =>
+      Array.from({ length: count }, (_, i) => turn(i)).flat();
+    const replace = await renderChanging(turns(RECENT_TURNS));
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    // A new turn pushes the opener's out of the window, unmounting it.
+    replace(turns(RECENT_TURNS + 1));
+    expect(screen.queryByText(/opener 1/)).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show earlier activity' }),
+    );
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 
   it('leaves the agent’s messages whole', async () => {

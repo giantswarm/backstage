@@ -1,10 +1,5 @@
-export {
-  CollapsibleToggle,
-  CollapsibleViewport,
-  useCollapsible,
-} from './Collapsible';
+export { CollapsibleToggle, CollapsibleViewport } from './Collapsible';
 export type {
-  CollapsibleState,
   CollapsibleToggleProps,
   CollapsibleViewportProps,
 } from './Collapsible';

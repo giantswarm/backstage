@@ -1,10 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import type { CSSProperties } from 'react';
-import {
-  CollapsibleToggle,
-  CollapsibleViewport,
-  useCollapsible,
-} from './Collapsible';
+import { CollapsibleToggle, CollapsibleViewport } from './Collapsible';
+import { useCollapsible } from '../../hooks';
 import { componentDocs } from '../../storybook/docs';
 
 const longMessage = Array.from(
@@ -19,7 +16,7 @@ function Bubble({
   collapsedHeight,
 }: {
   text: string;
-  collapsedHeight: number;
+  collapsedHeight: number | string;
 }) {
   const collapsible = useCollapsible({ collapsedHeight });
   return (
@@ -39,6 +36,9 @@ function Bubble({
             borderRadius: 'var(--bui-radius-3)',
             background: '#1f5c9e',
             color: '#fff',
+            // On the bubble, so the cut's `lh` is a line of its text.
+            fontSize: '0.875rem',
+            lineHeight: 1.6,
             // The fade fades to the bubble's fill, not the page's.
             '--bui-bg-inherit': '#1f5c9e',
           } as CSSProperties
@@ -49,9 +49,7 @@ function Bubble({
             style={{
               margin: 0,
               whiteSpace: 'pre-wrap',
-              fontFamily: 'inherit',
-              fontSize: '0.875rem',
-              lineHeight: 1.6,
+              font: 'inherit',
             }}
           >
             {text}
@@ -72,7 +70,7 @@ const meta = {
   tags: ['autodocs'],
   args: {
     text: longMessage,
-    collapsedHeight: 224,
+    collapsedHeight: '10lh',
   },
   parameters: {
     docs: {
@@ -81,8 +79,12 @@ const meta = {
           summary:
             'The pieces of a region cut to a fixed height behind a fade: ' +
             '`useCollapsible` holds the state, `CollapsibleViewport` cuts the ' +
-            'content and `CollapsibleToggle` shows or cuts it again. Content ' +
-            'that fits is shown whole and gets no toggle.',
+            'content and `CollapsibleToggle` shows or cuts it again. The ' +
+            'height is pixels or any CSS length (`10lh`: ten lines of the text). ' +
+            'Content that fits, or would hide no more than a fifth of the cut, ' +
+            'is shown whole and gets no toggle. Focus or find in page past the ' +
+            'cut shows everything; cutting again brings the content back into ' +
+            'view.',
           whenToUse:
             'When the toggle cannot sit right under the content in the same ' +
             'box — under a chat bubble, say, where the session page puts ' +

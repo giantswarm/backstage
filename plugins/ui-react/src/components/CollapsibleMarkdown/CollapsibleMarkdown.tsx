@@ -1,10 +1,7 @@
 import { Flex } from '@backstage/ui';
 import { GSMarkdownContent } from '../GSMarkdownContent';
-import {
-  CollapsibleToggle,
-  CollapsibleViewport,
-  useCollapsible,
-} from '../Collapsible';
+import { CollapsibleToggle, CollapsibleViewport } from '../Collapsible';
+import { useCollapsible } from '../../hooks';
 
 const DEFAULT_COLLAPSED_HEIGHT = 250;
 

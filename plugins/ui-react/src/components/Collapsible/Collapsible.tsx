@@ -1,14 +1,29 @@
-import { FocusEvent, ReactNode, useId, useState } from 'react';
+import { FocusEvent, ReactNode, UIEvent } from 'react';
 import { Button } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { useContainerDimensions } from '../../hooks';
+import type { CollapsibleState } from '../../hooks';
 
 const useStyles = makeStyles({
-  // `clip`, not `hidden`: the viewport is no scroll container, so neither
-  // focus nor `scrollIntoView` can scroll the content inside the cut.
+  // `hidden`, which only a script, focus or find in page can scroll: any of
+  // them scrolling the cut is how the viewport learns that something inside
+  // it was asked for, and shows everything.
   viewport: {
     position: 'relative',
-    overflow: 'clip',
+    overflow: 'hidden',
+  },
+  // Out of scroll anchoring, so the browser does not hold the page on a line
+  // that moves inside the cut while it opens or closes; the hook places it.
+  content: {
+    overflowAnchor: 'none',
+  },
+  limit: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 0,
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    overflowAnchor: 'none',
   },
   // The same fade bui's own scroll areas use: from the surface the content
   // sits on to transparent, so it matches any card or page background. A
@@ -25,53 +40,6 @@ const useStyles = makeStyles({
   },
 });
 
-/** The state of one collapsible region, shared by its viewport and toggle. */
-export type CollapsibleState = {
-  /** The content is taller than the collapsed height, so it has a toggle. */
-  overflows: boolean;
-  expanded: boolean;
-  /** The content is cut right now. */
-  collapsed: boolean;
-  collapsedHeight: number;
-  toggle: () => void;
-  expand: () => void;
-  /** Ties the toggle to the region it shows (`aria-controls`). */
-  viewportId: string;
-  /** Measures the content at the available width. */
-  contentRef: (node: Element | null) => void;
-};
-
-/**
- * A region cut to `collapsedHeight` pixels until it is expanded. Split from
- * its pieces, {@link CollapsibleViewport} and {@link CollapsibleToggle}, so the
- * toggle can sit outside the box the content is cut in — under a chat bubble,
- * say. Content that fits is never cut and has no toggle. The expanded state
- * lives as long as the component that holds it.
- */
-export function useCollapsible({
-  collapsedHeight,
-}: {
-  collapsedHeight: number;
-}): CollapsibleState {
-  const viewportId = useId();
-  const [expanded, setExpanded] = useState(false);
-  // The inner element is never height-limited, so its height is the rendered
-  // content's at the available width.
-  const [contentRef, { height }] = useContainerDimensions();
-  const overflows = height > collapsedHeight + 1;
-
-  return {
-    overflows,
-    expanded,
-    collapsed: overflows && !expanded,
-    collapsedHeight,
-    toggle: () => setExpanded(previous => !previous),
-    expand: () => setExpanded(true),
-    viewportId,
-    contentRef,
-  };
-}
-
 export type CollapsibleViewportProps = {
   state: CollapsibleState;
   children: ReactNode;
@@ -83,7 +51,16 @@ export function CollapsibleViewport({
   children,
 }: CollapsibleViewportProps) {
   const classes = useStyles();
-  const { collapsed, collapsedHeight, expand, viewportId, contentRef } = state;
+  const {
+    collapsed,
+    collapsedHeight,
+    collapsedPixels,
+    reveal,
+    viewportId,
+    viewportRef,
+    limitRef,
+    contentRef,
+  } = state;
 
   // Focus past the cut, from the keyboard or a `#heading` link, would land on
   // something hidden under the fade; show everything instead.
@@ -91,22 +68,46 @@ export function CollapsibleViewport({
     if (!collapsed) {
       return;
     }
+    const viewport = event.currentTarget;
     const offset =
       event.target.getBoundingClientRect().bottom -
-      event.currentTarget.getBoundingClientRect().top;
-    if (offset > collapsedHeight) {
-      expand();
+      viewport.getBoundingClientRect().top;
+    if (offset > collapsedPixels || viewport.scrollTop > 0) {
+      reveal(viewport.scrollTop);
+    }
+  };
+
+  // Find in page scrolls a match under the cut into the box; nothing else
+  // scrolls a box a person cannot scroll.
+  const revealScrolled = (event: UIEvent<HTMLDivElement>) => {
+    if (collapsed && event.currentTarget.scrollTop > 0) {
+      reveal(event.currentTarget.scrollTop);
     }
   };
 
   return (
     <div
+      ref={viewportRef}
       id={viewportId}
       className={classes.viewport}
       style={collapsed ? { maxHeight: collapsedHeight } : undefined}
       onFocus={revealFocused}
+      onScroll={revealScrolled}
     >
-      <div ref={contentRef}>{children}</div>
+      <div
+        ref={limitRef}
+        aria-hidden
+        className={classes.limit}
+        style={{ height: collapsedHeight }}
+        data-collapsible-limit=""
+      />
+      <div
+        ref={contentRef}
+        className={classes.content}
+        data-collapsible-content=""
+      >
+        {children}
+      </div>
       {collapsed && <div className={classes.fade} />}
     </div>
   );
