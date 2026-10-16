@@ -131,11 +131,12 @@ module.exports = {
         'packages/app/src/modules/**/*.ts?(x)',
       ],
       excludedFiles: [
-        // Backend routes (muster-backend's `/usage`) are API paths, not
-        // shell links.
+        // Backend routes (muster-backend's `/usage`), and the API clients
+        // that call them, are API paths, not shell links.
         'plugins/*-backend/**',
         'plugins/*-backend-module-*/**',
         'plugins/*-node/**',
+        'plugins/*/src/apis/**',
         '**/*.test.ts?(x)',
         '**/*.stories.tsx',
         '**/setupTests.ts',
