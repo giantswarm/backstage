@@ -96,7 +96,11 @@ test.describe('a connector with a display name', () => {
     await expect(
       admin.getByRole('navigation', { name: 'Breadcrumb' }),
     ).toContainText(DISPLAY_NAME);
-    await expect(admin).toHaveTitle(new RegExp(`^${DISPLAY_NAME} · `));
+    // The shell leads the title with the inbox's unread count, "(2) …", while
+    // there is one: earlier specs in a full run leave notifications unread.
+    await expect(admin).toHaveTitle(
+      new RegExp(`^(\\(\\d+\\) )?${DISPLAY_NAME} · `),
+    );
 
     await admin.getByRole('button', { name: 'Technical details' }).click();
     await expect(
