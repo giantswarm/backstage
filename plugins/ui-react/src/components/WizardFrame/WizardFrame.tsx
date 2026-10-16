@@ -435,7 +435,7 @@ function useFrameMeasurements() {
         documentRoot.style.setProperty(FOOTER_HEIGHT_VAR, value);
       }
     };
-    // At once as well: the floating notice clears the footer from the first
+    // At once as well: the shell's toasts clear the footer from the first
     // paint, not from the observer's first callback.
     measure();
     const observer =

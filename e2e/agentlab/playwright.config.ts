@@ -1,6 +1,8 @@
+import { join } from 'node:path';
 import { defineConfig } from '@playwright/test';
 import { contextOptions, lab, mobileContextOptions } from './lab';
 import type { Variant } from './lab';
+import { parseSpecOrder, writeShuffledSpecs } from './order';
 import { mobileSpecGlobs, shellSpecGlobs } from './portalModes';
 
 /**
@@ -16,8 +18,22 @@ import { mobileSpecGlobs, shellSpecGlobs } from './portalModes';
 // id) before they create anything.
 process.env.AGENTLAB_E2E_RUN ??= Date.now().toString(36);
 
+// The spec files' order (`order.ts`). The runner writes a shuffled run's
+// stubs and pins its seed in the environment; the workers, which load this
+// config again, inherit the seed and only read the stubs.
+const order = parseSpecOrder(process.env.AGENTLAB_E2E_ORDER);
+const ORDER_STUBS = join(__dirname, '../../.cache/e2e-agentlab-order');
+if (order.kind === 'shuffle' && process.env.TEST_WORKER_INDEX === undefined) {
+  process.env.AGENTLAB_E2E_ORDER = `shuffle:${order.seed}`;
+  writeShuffledSpecs(__dirname, ORDER_STUBS, order.seed);
+  // eslint-disable-next-line no-console
+  console.log(
+    `Spec files in shuffled order; replay with AGENTLAB_E2E_ORDER=shuffle:${order.seed}`,
+  );
+}
+
 export default defineConfig<{}, { variant: Variant }>({
-  testDir: '.',
+  testDir: order.kind === 'shuffle' ? ORDER_STUBS : '.',
   // A page load in the lab can take a few seconds while the backend probes the
   // installation; a golden boot for a new agent takes minutes. The lifecycle
   // spec raises its own timeout.

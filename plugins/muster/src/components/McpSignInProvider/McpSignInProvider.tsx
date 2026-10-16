@@ -89,11 +89,16 @@ function StatusReader({
 }) {
   const { installation, isLoading: isInstallationLoading } =
     useSignInInstallation();
-  const { waiting, statuses, isLoading, isAvailable } =
+  // Silent, as a reader in the background must be: the status read never
+  // asks for the sign-in and stops while the portal session is gone, and the
+  // display names are read once and not while the session is gone (#3058).
+  const { waiting, statuses, isLoading, isAvailable, sessionExpired } =
     useMcpServersAwaitingSignIn(installation, {
       enabled: Boolean(installation),
     });
-  const labelOf = useServerLabels(installation, waiting);
+  const labelOf = useServerLabels(installation, waiting, {
+    enabled: !sessionExpired,
+  });
 
   const isRead = installation ? !isLoading : !isInstallationLoading;
   // Handed up only when what it says changes, compared as JSON: a display
@@ -112,9 +117,10 @@ function StatusReader({
       waiting: servers.map(([name, label]) => ({ name, label })),
       connected,
       isRead,
-      isAvailable,
+      // A status kept from before the session expired is no answer now.
+      isAvailable: isAvailable && !sessionExpired,
     });
-  }, [installation, key, isRead, isAvailable, onRead]);
+  }, [installation, key, isRead, isAvailable, sessionExpired, onRead]);
 
   if (!installation || !isDialogOpen) {
     return null;

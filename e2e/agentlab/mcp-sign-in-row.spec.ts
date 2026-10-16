@@ -6,9 +6,10 @@ import {
   expectWizardStep,
   fillAgentDetails,
   open,
+  signIn,
   test,
 } from './fixtures';
-import { lab } from './lab';
+import { contextOptionsFor, lab } from './lab';
 
 /**
  * The Notification inbox's MCP sign-in row, and muster's sign-in dialog it
@@ -32,15 +33,15 @@ async function signOutOfFixture(page: Page): Promise<string> {
   await connectToMuster(page, heading);
   const label = (await heading.innerText()).trim();
   await page.getByRole('tab', { name: /^Tools/ }).click();
-  const signIn = page.getByRole('button', { name: 'Sign in' }).first();
+  const fixtureSignIn = page.getByRole('button', { name: 'Sign in' }).first();
   await expect(
-    signIn.or(page.getByRole('tab', { name: /^Tools \([1-9]/ })).first(),
+    fixtureSignIn.or(page.getByRole('tab', { name: /^Tools \([1-9]/ })).first(),
     'the fixture offers Sign in, or its tools once signed in',
   ).toBeVisible({ timeout: 120_000 });
-  if (!(await signIn.isVisible())) {
+  if (!(await fixtureSignIn.isVisible())) {
     await page.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
-    await expect(signIn).toBeVisible({ timeout: 60_000 });
+    await expect(fixtureSignIn).toBeVisible({ timeout: 60_000 });
   }
   return label;
 }
@@ -171,4 +172,80 @@ test("the inbox's toasts stand clear of the wizard footer: Continue takes the cl
   // another element (the toast) would receive.
   await footer.getByRole('button', { name: 'Continue' }).click();
   await expectWizardStep(admin, 'Skills');
+});
+
+test('the sign-in status read never asks for the sign-in once the portal session has expired', async ({
+  admin,
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  const label = await signOutOfFixture(admin);
+  const context = await browser.newContext(contextOptionsFor('desktop'));
+  try {
+    const page = await context.newPage();
+    await page.clock.install();
+    await signIn(page, lab.users.admin);
+    // A page that reads nothing of its own (Not Found, the chrome alone):
+    // whatever asks for the sign-in after the jump is the shell's doing.
+    await open(page, '/mcp-sign-in-row-e2e-quiet-page');
+    await expect(fixtureRow(await openInbox(page), label)).toBeVisible({
+      timeout: 60_000,
+    });
+    await page.keyboard.press('Escape');
+
+    // What the page itself has queued (a catalog lookup batches on a timer)
+    // runs while the session is still good.
+    await page.clock.runFor(5_000);
+    await page.waitForLoadState('networkidle');
+
+    // The portal session is gone: its refresh is refused, as Dex's would be.
+    await page.route('**/api/auth/*/refresh**', route =>
+      route.fulfill({
+        status: 401,
+        json: { error: { name: 'AuthenticationError' } },
+      }),
+    );
+    const statusReads: string[] = [];
+    page.on('request', request => {
+      if (request.url().includes('/api/muster/auth/status')) {
+        statusReads.push(request.url());
+      }
+    });
+    const refreshed = page.waitForRequest(request =>
+      /\/api\/auth\/[^/]+\/refresh/.test(request.url()),
+    );
+    // Past the ID token's lifetime and several of the read's intervals.
+    await page.clock.fastForward('02:00:00');
+    await refreshed;
+
+    const login = page.getByRole('dialog', { name: 'Login Required' });
+    const prompted = await login
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    expect(prompted, 'the background reads opened no Login Required').toBe(
+      false,
+    );
+    expect(statusReads, 'no status read is sent without a session').toEqual([]);
+
+    // A person's own action still asks for the session: Sign in on the row,
+    // then on the server's row in the dialog.
+    const row = fixtureRow(await openInbox(page), label);
+    await expect(row, 'the row stays as it was').toBeVisible();
+    await row.getByRole('button', { name: 'Sign in to MCP servers' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Sign in to MCP servers' });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByRole('listitem')
+      .filter({ hasText: label })
+      .getByRole('button', { name: 'Sign in' })
+      .click();
+    await expect(login, 'the action asks for the sign-in').toBeVisible({
+      timeout: 60_000,
+    });
+  } finally {
+    await context.close();
+  }
 });

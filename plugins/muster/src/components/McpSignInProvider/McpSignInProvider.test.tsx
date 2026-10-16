@@ -8,6 +8,7 @@ import {
   MusterApi,
   musterApiRef,
   ServerAuthStatus,
+  sessionExpiredError,
 } from '../../apis';
 import { McpSignInProvider, useMcpSignIn } from './McpSignInProvider';
 import type { SignInInstallation } from './useSignInInstallation';
@@ -15,10 +16,17 @@ import { MCPServer } from '../../lib/k8s';
 
 /** The installation's MCPServers, per test; none by default. */
 let mockServers: MCPServer[] = [];
+/** The options of each read of the MCPServers, in render order. */
+const mockServerReadOptions: Array<Record<string, unknown>> = [];
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({
-    resources: mockServers,
+  useResources: (
+    _installations: string[],
+    _kind: unknown,
+    _query: unknown,
+    options: Record<string, unknown>,
+  ) => ({
+    resources: (mockServerReadOptions.push(options), mockServers),
     errors: [],
     queries: [],
     isLoading: false,
@@ -59,6 +67,7 @@ function annotated(name: string, displayName: string): MCPServer {
 
 afterEach(() => {
   mockServers = [];
+  mockServerReadOptions.length = 0;
   mockInstallation = { installation: 'graveler', isLoading: false };
 });
 
@@ -290,6 +299,43 @@ describe('McpSignInProvider', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open sign-in' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(api.getAuthStatus).not.toHaveBeenCalled();
+  });
+
+  it('reads the display names once, and not while the portal session is gone', async () => {
+    const api = makeApi({ servers: [waitingFor('workspace-manager')] });
+    const queryClient = await renderProvider(api);
+    await waitFor(() => expect(status().waiting).toHaveLength(1));
+    // No discovery and no refetch of its own that could ask for the cluster
+    // token in the background.
+    expect(mockServerReadOptions.at(-1)).toEqual({
+      enabled: true,
+      enableDiscovery: false,
+      staleTime: Infinity,
+    });
+
+    api.getAuthStatus.mockRejectedValue(sessionExpiredError('graveler'));
+    await queryClient.refetchQueries({ queryKey: ['muster'] });
+    await waitFor(() =>
+      expect(mockServerReadOptions.at(-1)).toMatchObject({ enabled: false }),
+    );
+    // What was read before the session expired is no answer now.
+    expect(status().isAvailable).toBe(false);
+  });
+
+  it('has nothing waiting once the portal session has expired', async () => {
+    const api = makeApi({ servers: [] });
+    api.getAuthStatus.mockRejectedValue(sessionExpiredError('graveler'));
+    await renderProvider(api);
+
+    await waitFor(() =>
+      expect(status()).toEqual(
+        expect.objectContaining({
+          waiting: [],
+          isRead: true,
+          isAvailable: false,
+        }),
+      ),
+    );
   });
 
   it('leaves nothing outside a provider', async () => {
