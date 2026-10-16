@@ -38,11 +38,14 @@ jobs:
   # variable is missing instead of skipping.
   #
   # The Postgres container shares the job's 16 GB with `ci:verify`, which runs
-  # tsc, the lint and jest at once. Jest's `--maxWorkers=40%` resolves against
-  # the CPU count the container reports, which on the Docker executor is the
-  # host's, not the 8 vCPUs of xlarge: the workers alone could outgrow the
-  # memory, and the kernel killed Postgres (exit 137). JEST_MAX_WORKERS caps
-  # the jest workers to what the class holds beside tsc and the lint.
+  # tsc, the lint and jest at once. The lint's worker threads (half the CPUs)
+  # and jest's `--maxWorkers=40%` both size themselves from the CPU count the
+  # container reports, which on the Docker executor is the host's, not the 8
+  # vCPUs of xlarge: together they outgrew the memory, and the kernel killed
+  # Postgres (exit 137) in the first minute of Verify, while the oversubscribed
+  # CPUs pushed the heaviest render tests past jest's 5 s. The two variables
+  # size the lint (BACKSTAGE_CLI_CONCURRENCY, also the later build) and jest
+  # (JEST_MAX_WORKERS, read by `test:all`) to what xlarge holds beside tsc.
   node-build:
     resource_class: xlarge
     docker:
@@ -51,7 +54,8 @@ jobs:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: postgres
     environment:
-      JEST_MAX_WORKERS: "6"
+      BACKSTAGE_CLI_CONCURRENCY: "3"
+      JEST_MAX_WORKERS: "5"
       BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING: postgresql://postgres:postgres@localhost:5432
 
 workflows:
