@@ -1,6 +1,9 @@
 import {
   buildContinuationPrompt,
+  continuationMarker,
   ENTRY_MAX_LENGTH,
+  readContinuationMarker,
+  splitContinuation,
 } from './continuationPrompt';
 import type { TimelineItem } from './kagentTimeline';
 
@@ -197,5 +200,86 @@ describe('buildContinuationPrompt', () => {
 
     expect(text.length).toBeLessThanOrEqual(maxLength);
     expect(text).toContain('… [shortened]');
+  });
+
+  it('names the session it continues on its first line, for the page to find', () => {
+    const { text } = buildContinuationPrompt({
+      items: conversation,
+      pendingQuestions,
+      answers: [['Egg']],
+      continues: { installation: 'lab', sessionId: '01a1-b2c3' },
+    });
+
+    expect(text).toMatch(
+      /^\[Continues session lab\/01a1-b2c3\]\n\nI am continuing a session/,
+    );
+    expect(readContinuationMarker(text)).toEqual({
+      installation: 'lab',
+      sessionId: '01a1-b2c3',
+      rest: expect.stringMatching(/^I am continuing a session/),
+    });
+  });
+
+  it('writes no marker it could not read back', () => {
+    expect(
+      continuationMarker({ installation: 'Lab One', sessionId: 'x' }),
+    ).toBeUndefined();
+    expect(
+      continuationMarker({ installation: 'lab', sessionId: 'a/b' }),
+    ).toBeUndefined();
+    const { text } = buildContinuationPrompt({
+      items: [],
+      pendingQuestions,
+      continues: { installation: 'Lab One', sessionId: 'x' },
+    });
+    expect(text).toMatch(/^I am continuing a session/);
+  });
+});
+
+describe('readContinuationMarker', () => {
+  it('reads the marker only at the very start of the text', () => {
+    expect(
+      readContinuationMarker('[Continues session lab/abc]\nHello'),
+    ).toEqual({ installation: 'lab', sessionId: 'abc', rest: 'Hello' });
+    expect(
+      readContinuationMarker('Hello\n[Continues session lab/abc]\n'),
+    ).toBeUndefined();
+    expect(
+      readContinuationMarker(' [Continues session lab/abc]\nHello'),
+    ).toBeUndefined();
+    // A line of its own: the same words inside a sentence stay text.
+    expect(
+      readContinuationMarker('[Continues session lab/abc] and more'),
+    ).toBeUndefined();
+  });
+});
+
+describe('splitContinuation', () => {
+  it('takes the marker out of the session’s first user message', () => {
+    const items = [
+      user('[Continues session lab/abc]\n\nI am continuing a session'),
+      agent('Carrying on.'),
+    ];
+
+    const { items: shown, continues } = splitContinuation(items);
+
+    expect(continues).toEqual({ installation: 'lab', sessionId: 'abc' });
+    expect(shown[0]).toMatchObject({
+      kind: 'user-message',
+      text: 'I am continuing a session',
+    });
+    expect(shown[1]).toBe(items[1]);
+  });
+
+  it('leaves a marker in any later message alone', () => {
+    const items = [
+      user('Hello'),
+      user('[Continues session lab/abc]\n\nNot the first message'),
+    ];
+
+    const { items: shown, continues } = splitContinuation(items);
+
+    expect(continues).toBeUndefined();
+    expect(shown).toBe(items);
   });
 });

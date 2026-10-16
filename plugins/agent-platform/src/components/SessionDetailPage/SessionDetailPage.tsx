@@ -87,7 +87,11 @@ import {
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { AnswerNotTakenNotice } from './AnswerNotTakenNotice';
-import { buildContinuationPrompt } from '../../lib/continuationPrompt';
+import {
+  buildContinuationPrompt,
+  splitContinuation,
+} from '../../lib/continuationPrompt';
+import { ContinuedSessionBanner } from './ContinuedSessionBanner';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
@@ -482,7 +486,7 @@ export function SessionDetailPage() {
     () =>
       answerNotTaken
         ? buildContinuationPrompt({
-            items: timeline.items,
+            items: splitContinuation(timeline.items).items,
             pendingQuestions: pendingConfirmation?.questions ?? [],
             answers: notTakenAnswers,
           })
@@ -713,6 +717,22 @@ export function SessionDetailPage() {
     return { ...timeline, items };
   }, [timeline, send.pending, send.stream, answerStream]);
 
+  /**
+   * The session this one carries on, from the marker the portal puts on a
+   * continuation's first line (`buildContinuationPrompt`), and the timeline
+   * with that line taken out: the banner above the conversation shows it
+   * instead, with a link. Read off the live timeline, so it shows from the
+   * moment the first message is sent.
+   */
+  const { items: shownItems, continues: continuedFrom } = useMemo(
+    () => splitContinuation(timelineWithLive.items),
+    [timelineWithLive.items],
+  );
+  const shownTimeline = useMemo(
+    () => ({ ...timelineWithLive, items: shownItems }),
+    [timelineWithLive, shownItems],
+  );
+
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
   const [isRenameOpen, setRenameOpen] = useState(false);
@@ -940,10 +960,11 @@ export function SessionDetailPage() {
       let title: string | undefined;
       if (answerNotTaken) {
         text = buildContinuationPrompt({
-          items: timeline.items,
+          items: splitContinuation(timeline.items).items,
           pendingQuestions: pendingConfirmation?.questions ?? [],
           answers: notTakenAnswers,
           reply: draft,
+          continues: { installation, sessionId },
         }).text;
         images = boxImages;
         title = `Continued: ${sessionTitle}`;
@@ -976,8 +997,6 @@ export function SessionDetailPage() {
             agentNamespace: agentRow.namespace,
             agentName: agentRow.technicalName,
             imagesKey: stashHandoffImages(images),
-            // The portal wrote it, and the new page says so.
-            ...(answerNotTaken && { prepared: true }),
           },
         },
       });
@@ -993,6 +1012,8 @@ export function SessionDetailPage() {
       pendingConfirmation,
       notTakenAnswers,
       sessionTitle,
+      installation,
+      sessionId,
     ],
   );
 
@@ -1602,13 +1623,15 @@ export function SessionDetailPage() {
           />
         )}
 
+        {continuedFrom && <ContinuedSessionBanner continues={continuedFrom} />}
+
         {/* Held until the stored "Show tool activity" choice is read, so a
             person who hides the work never sees it appear and vanish. */}
         {!isToolActivityKnown ? (
           <LoadingIndicator label="Reading the session…" />
         ) : (
           <SessionTimeline
-            timeline={timelineWithLive}
+            timeline={shownTimeline}
             agentName={row.agentName}
             agentAvatarUrl={avatarUrl}
             isAgentWorking={showWorking}

@@ -28,6 +28,77 @@ import type { TimelineItem } from './kagentTimeline';
  * messages it left out.
  */
 
+/** The session a continuation carries on, as the route names it. */
+export type ContinuedSession = { installation: string; sessionId: string };
+
+// Installation names and kagent session ids as the portal routes them. A value
+// outside these is not written, so the marker always reads back as written.
+const INSTALLATION_PATTERN = '[a-z0-9][a-z0-9-]*';
+const SESSION_ID_PATTERN = '[A-Za-z0-9][A-Za-z0-9._-]*';
+
+/**
+ * The first line of a continuation: which session it carries on, for the page
+ * to show as a banner with a link. One bracketed line, so it reads plainly to
+ * the model and wherever the raw text shows (Slack, kagent's UI).
+ *
+ * Recognised only at the very start of a session's first user message
+ * ({@link readContinuationMarker}), so the same words later in a
+ * conversation stay text.
+ */
+const MARKER = new RegExp(
+  `^\\[Continues session (${INSTALLATION_PATTERN})/(${SESSION_ID_PATTERN})\\][ \\t]*(?:\\r?\\n)+`,
+);
+
+export function continuationMarker({
+  installation,
+  sessionId,
+}: ContinuedSession): string | undefined {
+  const line = `[Continues session ${installation}/${sessionId}]`;
+  return MARKER.test(`${line}\n`) ? line : undefined;
+}
+
+/**
+ * The session a message continues, and the message without its marker line —
+ * or undefined when the message does not start with one.
+ */
+export function readContinuationMarker(
+  text: string,
+): (ContinuedSession & { rest: string }) | undefined {
+  const match = MARKER.exec(text);
+  if (!match) {
+    return undefined;
+  }
+  return {
+    installation: match[1],
+    sessionId: match[2],
+    rest: text.slice(match[0].length),
+  };
+}
+
+/**
+ * The timeline with the session's first user message read for a marker: the
+ * session it continues, and the items with that line taken out of the
+ * message, which the page shows as a banner instead.
+ */
+export function splitContinuation(items: TimelineItem[]): {
+  items: TimelineItem[];
+  continues?: ContinuedSession;
+} {
+  const index = items.findIndex(item => item.kind === 'user-message');
+  const first = items[index];
+  if (!first || first.kind !== 'user-message') {
+    return { items };
+  }
+  const marker = readContinuationMarker(first.text);
+  if (!marker) {
+    return { items };
+  }
+  const { rest, ...continues } = marker;
+  const stripped = [...items];
+  stripped[index] = { ...first, text: rest };
+  return { items: stripped, continues };
+}
+
 /** The longest any one earlier message is carried, before it is cut. */
 export const ENTRY_MAX_LENGTH = 4_000;
 
@@ -46,6 +117,8 @@ export type ContinuationInput = {
    * Blank counts as nothing typed.
    */
   reply?: string;
+  /** The session this carries on, named on the message's first line. */
+  continues?: ContinuedSession;
   /** Overridable for tests. */
   maxLength?: number;
 };
@@ -218,6 +291,7 @@ export function buildContinuationPrompt({
   pendingQuestions,
   answers,
   reply,
+  continues,
   maxLength = MESSAGE_TEXT_MAX_LENGTH,
 }: ContinuationInput): Continuation {
   const typed = reply?.trim();
@@ -246,8 +320,9 @@ export function buildContinuationPrompt({
       .join('\n\n');
   let tail = tailWith(answer);
 
+  const marker = continues ? continuationMarker(continues) : undefined;
   const frame = (conversation: string) =>
-    [intro, `## Earlier conversation\n\n${conversation}`, tail]
+    [marker, intro, `## Earlier conversation\n\n${conversation}`, tail]
       .filter(Boolean)
       .join('\n\n');
 

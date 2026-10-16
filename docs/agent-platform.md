@@ -1735,6 +1735,8 @@ A new session has an empty model history, so the new session's first message
 carries the conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`),
 built from the page's timeline, which holds the whole task history:
 
+- a first line naming the session it continues,
+  `[Continues session <installation>/<session id>]` (see below);
 - a short framing for the model: this continues a session that could not be
   resumed, the earlier conversation follows, oldest first, then the open
   question and the answer;
@@ -1753,8 +1755,19 @@ The message stays within `MESSAGE_TEXT_MAX_LENGTH` (32,000 characters), the
 send route's bound. The question and the answer always fit; the conversation
 gives way from its oldest end and says how many messages it left out, and the
 notice says how many of them the new session gets. The session is titled
-`Continued: <this session's title>`, and the new page captions the message
-"Prepared by the portal".
+`Continued: <this session's title>`.
+
+**The marker line.** The first line is one bracketed line, so it reads plainly
+to the model and wherever the raw text shows (Slack, kagent's UI). The session
+page recognises it only at the very start of the session's first user message
+(`readContinuationMarker`, `splitContinuation`), takes it out of the message
+and shows a "Resumed session" banner above the conversation instead: "This
+session is a follow-up to an earlier session on <installation>", linked through
+`sessionDetailRouteRef` (the installation may differ from the session's own).
+The banner also says the portal prepared the first message, on every visit;
+the one-visit "Prepared by the portal" caption is not used for it. An
+installation or session id outside `[a-z0-9-]` and `[A-Za-z0-9._-]` is not
+written, so a marker always reads back as written.
 
 ### Starting a session
 

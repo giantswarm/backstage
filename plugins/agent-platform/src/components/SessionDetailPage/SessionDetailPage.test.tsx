@@ -2377,6 +2377,52 @@ describe('SessionDetailPage', () => {
     });
   });
 
+  describe('a session that continues another', () => {
+    const continuationView = (text: string): SessionDetailView => ({
+      ...loadedView,
+      timeline: {
+        ...loadedView.timeline,
+        items: [
+          { id: 'u1', kind: 'user-message', taskIndex: 0, text },
+          ...loadedView.timeline.items.filter(
+            item => item.kind !== 'user-message',
+          ),
+        ],
+      },
+    });
+
+    it('shows the marker as a banner linking to the original session, not as text', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        continuationView(
+          '[Continues session other-lab/0a1b2c]\n\nI am continuing a session with you.',
+        ),
+      );
+      await render();
+
+      expect(screen.getByText('Resumed session')).toBeInTheDocument();
+      // The original may be on another installation.
+      expect(
+        screen.getByRole('link', { name: 'an earlier session on other-lab' }),
+      ).toHaveAttribute('href', '/agent-platform/sessions/other-lab/0a1b2c');
+      expect(
+        screen.getByText(/The portal prepared its first message/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('I am continuing a session with you.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/\[Continues session/)).not.toBeInTheDocument();
+    });
+
+    it('shows no banner for an ordinary first message', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        continuationView('Please continue session other-lab/0a1b2c'),
+      );
+      await render();
+
+      expect(screen.queryByText('Resumed session')).not.toBeInTheDocument();
+    });
+  });
+
   describe('an answer kagent did not take', () => {
     // `useAnswerConfirmation` rejects with this once a silent answer (a 202,
     // an empty stream) never reached the task: the agent could not resume,
@@ -2470,8 +2516,9 @@ describe('SessionDetailPage', () => {
         expect(mockCreateSession).toHaveBeenCalled();
       });
       const { prompt, title } = mockCreateSession.mock.calls[0][0];
+      // Its first line names this session, for the new page's banner.
       expect(prompt).toMatch(
-        /^I am continuing a session with you that could not be resumed/,
+        /^\[Continues session gazelle\/abc\]\n\nI am continuing a session with you that could not be resumed/,
       );
       expect(prompt).toContain('## Earlier conversation');
       // The conversation's own first message, as the timeline holds it.
@@ -2487,10 +2534,7 @@ describe('SessionDetailPage', () => {
         '/agent-platform/sessions/gazelle/new-1',
         {
           state: {
-            newSession: expect.objectContaining({
-              text: prompt,
-              prepared: true,
-            }),
+            newSession: expect.not.objectContaining({ prepared: true }),
           },
         },
       );
