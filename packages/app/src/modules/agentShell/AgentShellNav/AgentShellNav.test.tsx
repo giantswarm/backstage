@@ -20,15 +20,21 @@ import {
   RailWidthProvider,
 } from '../RailWidthProvider';
 import { customizeRouteRef, homeRouteRef } from '../routes';
+import { fakeInbox } from '../NotificationInbox/testing/fakeInbox';
 import { AgentShellNav } from './AgentShellNav';
 
 const mockOpenPalette = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
-  const { createRouteRef } = jest.requireActual(
+  const { createRouteRef, createSubRouteRef } = jest.requireActual(
     '@backstage/frontend-plugin-api',
   );
+  const { fakeInboxPluginExports } = jest.requireActual(
+    '../NotificationInbox/testing/fakeInbox',
+  );
+  const sessions = createRouteRef();
   return {
+    ...fakeInboxPluginExports(),
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     CommandPalette: ({
       renderTrigger,
@@ -37,7 +43,11 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     }) => <>{renderTrigger(mockOpenPalette)}</>,
     agentPlatformPlugin: {
       routes: {
-        sessions: createRouteRef(),
+        sessions,
+        sessionDetail: createSubRouteRef({
+          path: '/:installation/:sessionId',
+          parent: sessions,
+        }),
         usage: createRouteRef(),
         agents: createRouteRef(),
         skills: createRouteRef(),
@@ -48,7 +58,6 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     RecentSessions: ({ shellRail }: { shellRail?: boolean }) => (
       <div data-testid="recent-sessions" data-shell-rail={String(shellRail)} />
     ),
-    NeedsInputToasts: () => <div data-testid="needs-input-toasts" />,
   };
 });
 
@@ -139,6 +148,7 @@ function railLinks() {
 }
 
 beforeEach(() => {
+  fakeInbox.reset();
   window.localStorage.clear();
   signOut.mockClear();
   mockOpenPalette.mockClear();
@@ -292,6 +302,8 @@ describe('AgentShellNav', () => {
           .getAllByRole('menuitem')
           .map(menuItem => menuItem.textContent),
       ).toEqual([
+        // The Notification inbox's entry leads (nothing unread here).
+        'Notifications',
         'Profile and settings',
         'Usage',
         'Platform Portal',
@@ -384,51 +396,128 @@ describe('AgentShellNav', () => {
     });
   });
 
-  describe('the needs-input toast watcher', () => {
-    it.each([
-      ['an expanded rail', { isPinned: true }],
-      ['a collapsed rail', { isPinned: false }],
-      ['the mobile bar', { isMobile: true }],
-    ])('is mounted exactly once with %s', async (_, options) => {
-      await renderNav(options);
-
-      // Once, and outside the rail's session list, which only the expanded
-      // rail renders: every layout gets the toast, none gets it twice.
-      expect(screen.getAllByTestId('needs-input-toasts')).toHaveLength(1);
-      const recent = screen.queryByTestId('recent-sessions');
-      expect(
-        recent?.contains(screen.getByTestId('needs-input-toasts')) ?? false,
-      ).toBe(false);
-    });
-  });
-
   it('mounts the cluster-access connector that the installation inventory waits on', async () => {
     await renderNav();
     expect(screen.getByTestId('cluster-access-connector')).toBeInTheDocument();
   });
 
-  it('has no notification bell: the session dots are the signal', async () => {
-    await renderNav();
+  describe('the notification bell', () => {
+    // Two sessions wait for the person, neither seen yet.
+    beforeEach(() => {
+      fakeInbox.setSessions([
+        { sessionId: 's1', title: 'Debug ingress', state: 'input-required' },
+        { sessionId: 's2', title: 'Deploy check', state: 'auth-required' },
+      ]);
+    });
 
-    const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(within(nav).queryByText('Notifications')).not.toBeInTheDocument();
-    expect(
-      within(nav).queryByRole('button', { name: /notification/i }),
-    ).not.toBeInTheDocument();
-  });
+    it('sits on the Profile row of the pinned rail, right of the Profile trigger, with the unread count', async () => {
+      await renderNav();
 
-  it('has no notification bell in the mobile bar either', async () => {
-    await renderNav({ isMobile: true });
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      const bell = within(nav).getByRole('button', {
+        name: 'Notifications, 2 unread',
+      });
+      const profile = within(nav).getByRole('button', {
+        name: 'Profile and settings',
+      });
+      const row = bell.closest('li')!;
+      expect(row).toContainElement(profile);
+      expect(
+        profile.compareDocumentPosition(bell) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(row).toHaveTextContent('2');
+    });
 
-    const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(
-      within(nav).queryByRole('button', { name: /notification/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(nav)
-        .getAllByRole('button')
-        .map(button => button.getAttribute('aria-label') ?? button.textContent),
-    ).toEqual(['Search', 'Profile and settings']);
+    it('stays in the collapsed rail, above the Profile avatar', async () => {
+      await renderNav({ isPinned: false });
+
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      const bell = within(nav).getByRole('button', {
+        name: 'Notifications, 2 unread',
+      });
+      const profile = within(nav).getByRole('button', {
+        name: 'Profile and settings',
+      });
+      expect(
+        bell.compareDocumentPosition(profile) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('says nothing is unread once everything is seen', async () => {
+      fakeInbox.setSessions([]);
+      await renderNav();
+
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      expect(
+        within(nav).getByRole('button', { name: 'Notifications' }),
+      ).toBeInTheDocument();
+    });
+
+    it('opens the overlay of notifications from the bell', async () => {
+      await renderNav();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Notifications, 2 unread' }),
+      );
+      const overlay = await screen.findByRole('dialog', {
+        name: 'Notifications',
+      });
+      expect(
+        within(overlay).getByText('SRE Agent needs your input'),
+      ).toBeInTheDocument();
+      expect(
+        within(overlay).getByText('SRE Agent needs your sign-in'),
+      ).toBeInTheDocument();
+    });
+
+    describe('on a phone', () => {
+      let layout: MockedLayout;
+
+      beforeEach(() => {
+        layout = mockPhoneLayout();
+      });
+
+      afterEach(() => {
+        layout.restore();
+      });
+
+      it('keeps the bar at five items, with the count on Profile', async () => {
+        await renderNav({ isMobile: true });
+
+        const nav = screen.getByRole('navigation', { name: 'Main' });
+        expect(within(nav).getAllByRole('listitem')).toHaveLength(5);
+        expect(
+          within(nav)
+            .getAllByRole('button')
+            .map(
+              button => button.getAttribute('aria-label') ?? button.textContent,
+            ),
+        ).toEqual(['Search', 'Profile and settings, 2 unread']);
+      });
+
+      it('opens the notifications as a sheet from the first entry of the Profile menu', async () => {
+        await renderNav({ isMobile: true });
+
+        await userEvent.click(
+          screen.getByRole('button', {
+            name: 'Profile and settings, 2 unread',
+          }),
+        );
+        const items = await screen.findAllByRole('menuitem');
+        expect(items[0]).toHaveTextContent('Notifications (2)');
+
+        await userEvent.click(items[0]);
+        const sheet = await screen.findByRole('dialog');
+        expect(
+          within(sheet).getByRole('heading', { name: 'Notifications' }),
+        ).toBeInTheDocument();
+        expect(
+          within(sheet).getByText('SRE Agent needs your input'),
+        ).toBeInTheDocument();
+      });
+    });
   });
 
   it('hides the items whose route is not bound', async () => {
