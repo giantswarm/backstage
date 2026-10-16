@@ -22,10 +22,15 @@ const fixturePath = `/agent-platform/connectors/${FIXTURE}?installation=${lab.in
 
 /**
  * Leaves the fixture signed out for the admin, as the lab ships it: from its
- * connector page, as a person does (`mcp-servers.spec.ts` does the same).
+ * connector page, as a person does (`mcp-servers.spec.ts` does the same). The
+ * worker keeps one page, so a Not now earlier in the run (another spec's) is
+ * forgotten too: the notice shows again from the next page load.
  */
 async function signOutOfFixture(page: Page) {
   await open(page, fixturePath);
+  await page.evaluate(() =>
+    window.sessionStorage.removeItem('muster.mcpAuthNotice.hidden'),
+  );
   await connectToMuster(
     page,
     page.getByRole('heading', { level: 1, name: FIXTURE }),
@@ -108,12 +113,6 @@ test('the notice stands clear of the wizard footer: Continue takes the click whi
   await admin.setViewportSize({ width: 1440, height: 900 });
   await signOutOfFixture(admin);
 
-  await open(admin, '/agent-platform/agents/new');
-  // The worker keeps one page: a Not now earlier in the run hid the notice
-  // for this browser session.
-  await admin.evaluate(() =>
-    window.sessionStorage.removeItem('muster.mcpAuthNotice.hidden'),
-  );
   await open(admin, '/agent-platform/agents/new');
   const notice = admin.getByRole('complementary', {
     name: 'MCP server sign-in',
