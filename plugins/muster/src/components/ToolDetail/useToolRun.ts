@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { musterApiRef } from '../../apis';
+import { connectorToolEvent } from '../../lib/connectorToolEvents';
 import { WORKFLOW_TOOL_PREFIX } from '../../lib/workflowReferences';
 
 /** A call's outcome as the Result section shows it. */
@@ -54,14 +55,16 @@ export function useToolRun(
   const [lastArgs, setLastArgs] = useState<Record<string, unknown>>({});
 
   const mutation = useTrackedMutation({
-    // muster runs a workflow as its `workflow_<name>` tool, so a run of one
-    // is reported as a workflow's however it was started; any other tool's
-    // as a tool's. Neither carries the tool's name or its arguments: both
-    // are the installation's own, and the arguments free text.
-    event: () =>
-      name.startsWith(WORKFLOW_TOOL_PREFIX)
+    // A connector tool reports what it did to the connector, as the
+    // connector's page does. muster runs a workflow as its `workflow_<name>`
+    // tool, so a run of one is reported as a workflow's however it was
+    // started; any other tool's as a tool's. None carries the tool's name or
+    // its arguments: both are the installation's own, the arguments free text.
+    event: (_data, args) =>
+      connectorToolEvent(name, args) ??
+      (name.startsWith(WORKFLOW_TOOL_PREFIX)
         ? { name: 'Muster.workflowRan', attributes: {} }
-        : { name: 'Muster.toolRan', attributes: {} },
+        : { name: 'Muster.toolRan', attributes: {} }),
     mutationFn: async (args: Record<string, unknown>) => {
       const startedAt = performance.now();
       const result = await musterApi.callTool(name, args, installation);

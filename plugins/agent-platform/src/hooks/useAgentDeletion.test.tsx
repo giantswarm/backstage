@@ -94,6 +94,44 @@ describe('useAgentDeletion', () => {
     );
   });
 
+  it('reports no deletion when agent-manager found nothing left to remove', async () => {
+    callTool.mockResolvedValue({
+      name: 'pr-reviewer',
+      namespace: 'kagent',
+      helmReleaseDeleted: false,
+      ociRepositoryDeleted: false,
+    });
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.deleteAgent();
+    });
+
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('reports the deletion of an agent that is not a Helm release', async () => {
+    callTool.mockResolvedValue({
+      name: 'pr-reviewer',
+      namespace: 'kagent',
+      helmReleaseDeleted: false,
+      agentDeleted: true,
+      ociRepositoryDeleted: false,
+    });
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.deleteAgent();
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.agentDeleted',
+        attributes: { mode: 'apply' },
+      }),
+    );
+  });
+
   it("surfaces agent-manager's refusal verbatim, with its code", async () => {
     callTool.mockRejectedValue(
       new Error(

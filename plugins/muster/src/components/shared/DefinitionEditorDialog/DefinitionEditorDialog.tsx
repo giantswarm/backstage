@@ -60,8 +60,13 @@ export type DefinitionEditorDialogProps = {
   validateTool: string;
   /** The muster tool that writes the definition. */
   saveTool: string;
-  /** What a save reports once it went through. */
-  saveEvent: PortalEvent;
+  /**
+   * What a save reports once it went through, or why it reports nothing (an
+   * edit through a create flow, say).
+   */
+  saveTracking:
+    | { event: PortalEvent; untrackedReason?: never }
+    | { event: null; untrackedReason: string };
   /** The success message once the save went through. */
   savedMessage: string;
 };
@@ -88,7 +93,7 @@ export function DefinitionEditorDialog({
   renderEditor,
   validateTool,
   saveTool,
-  saveEvent,
+  saveTracking,
   savedMessage,
 }: DefinitionEditorDialogProps) {
   const musterApi = useApi(musterApiRef);
@@ -132,7 +137,9 @@ export function DefinitionEditorDialog({
     onError,
   });
   const save = useTrackedMutation({
-    event: () => saveEvent,
+    ...(saveTracking.event
+      ? { event: () => saveTracking.event }
+      : { event: null, untrackedReason: saveTracking.untrackedReason }),
     mutationFn: (def: Record<string, unknown>) =>
       musterApi.callTool(saveTool, def, installation),
     onSuccess: () => {

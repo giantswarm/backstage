@@ -5,18 +5,13 @@ import {
   fieldErrorProps,
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useApi } from '@backstage/core-plugin-api';
-import {
-  useTrackedMutation,
-  type PortalEvent,
-} from '@giantswarm/backstage-plugin-analytics-react';
-import { musterApiRef } from '../../apis';
+import { MCP_SERVER_UPDATED } from '../../lib/connectorToolEvents';
 import { MCPServer } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
 import { parseJsonDefinition } from '../../lib/definitionParsers';
 import { mutationErrorMessage } from '../../lib/authError';
-import { useMusterMutationRefresh } from '../MusterInstanceProvider';
 import { DefinitionEditorDialog } from '../shared';
+import { useConnectorToolCall } from './useConnectorToolCall';
 
 const useStyles = makeStyles({
   editField: {
@@ -44,8 +39,6 @@ export type LiveAction = {
    * action and "Confirm" otherwise.
    */
   confirmLabel?: string;
-  /** What the action reports once muster carried it out. */
-  event: PortalEvent;
 };
 
 /**
@@ -68,20 +61,7 @@ export function ConfirmActionDialog({
   /** Called once muster has carried the action out. */
   onDone?: (action: LiveAction) => void;
 }) {
-  const musterApi = useApi(musterApiRef);
-  const refresh = useMusterMutationRefresh(server.cluster);
-  const mutation = useTrackedMutation({
-    event: (_result, live) => live.event,
-    mutationFn: (live: LiveAction) =>
-      musterApi.callTool(live.tool, live.args, server.cluster),
-    onSuccess: (_result, live) => {
-      // muster writes the CR synchronously, so refetching now shows the spec
-      // change (e.g. the Activate/Deactivate swap) instead of waiting for the
-      // next 30s poll.
-      refresh();
-      onDone?.(live);
-    },
-  });
+  const mutation = useConnectorToolCall<LiveAction>(server.cluster, onDone);
 
   // Reset on open, not on close: the dialog keeps rendering while it fades
   // out, and `action` stays set for that reason too.
@@ -174,7 +154,7 @@ export function AdHocServerDialog({
       )}
       validateTool="core_mcpserver_validate"
       saveTool="core_mcpserver_update"
-      saveEvent={{ name: 'Muster.mcpServerUpdated', attributes: {} }}
+      saveTracking={{ event: MCP_SERVER_UPDATED }}
       savedMessage="Saved."
     />
   );
@@ -215,7 +195,6 @@ export function serverLiveActions(server: MCPServer): {
     tool: 'core_mcpserver_delete',
     args: { name },
     destructive: true,
-    event: { name: 'Muster.mcpServerDeleted', attributes: {} },
   };
   if (server.getSuspended()) {
     return {
@@ -224,10 +203,6 @@ export function serverLiveActions(server: MCPServer): {
         tool: 'core_service_start',
         args: { name },
         description: 'muster connects it again and keeps it connected.',
-        event: {
-          name: 'Muster.mcpServerConnectionChanged',
-          attributes: { change: 'activated' },
-        },
       },
       remove,
     };
@@ -239,10 +214,6 @@ export function serverLiveActions(server: MCPServer): {
       args: { name },
       description:
         'muster disconnects it and keeps it off until it is activated again.',
-      event: {
-        name: 'Muster.mcpServerConnectionChanged',
-        attributes: { change: 'deactivated' },
-      },
     },
     reconnect: {
       label: `Reconnect ${name}`,
@@ -250,10 +221,6 @@ export function serverLiveActions(server: MCPServer): {
       args: { name },
       description:
         'muster opens a fresh session to it and re-runs tool discovery.',
-      event: {
-        name: 'Muster.mcpServerConnectionChanged',
-        attributes: { change: 'reconnected' },
-      },
     },
     reconnectGate: oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined,
     remove,

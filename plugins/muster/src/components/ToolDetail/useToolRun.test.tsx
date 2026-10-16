@@ -73,6 +73,21 @@ describe('useToolRun', () => {
     );
   });
 
+  it('reports a connector tool’s run as what it did to the connector', async () => {
+    const callTool = jest.fn(async () => ({ stopped: true }));
+    const { result } = setup('core_service_stop', callTool);
+
+    act(() => result.current.run({ name: 'miro' }));
+    await waitFor(() => expect(result.current.lastResult).toBeDefined());
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'Muster.mcpServerConnectionChanged',
+        attributes: { change: 'deactivated' },
+      }),
+    );
+  });
+
   it('reports nothing for a failed tool run', async () => {
     const callTool = jest.fn(async () => {
       throw new Error('tool core_echo is not available');

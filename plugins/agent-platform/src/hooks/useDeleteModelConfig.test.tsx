@@ -271,6 +271,7 @@ describe('useDeleteModelConfig', () => {
     });
 
     expect(result.current.error).toBeNull();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('does not fail the deletion when only the secret cleanup fails', async () => {

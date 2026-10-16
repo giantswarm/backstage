@@ -60,29 +60,6 @@ describe('serverLiveActions', () => {
     });
   });
 
-  it("reports each action by what it did, never the server's name", () => {
-    const active = serverLiveActions(makeServer({ state: 'Connected' }));
-    const suspended = serverLiveActions(
-      makeServer({ state: 'Disconnected', suspended: true }),
-    );
-    expect(active.deactivate?.event).toEqual({
-      name: 'Muster.mcpServerConnectionChanged',
-      attributes: { change: 'deactivated' },
-    });
-    expect(active.reconnect?.event).toEqual({
-      name: 'Muster.mcpServerConnectionChanged',
-      attributes: { change: 'reconnected' },
-    });
-    expect(suspended.activate?.event).toEqual({
-      name: 'Muster.mcpServerConnectionChanged',
-      attributes: { change: 'activated' },
-    });
-    expect(active.remove.event).toEqual({
-      name: 'Muster.mcpServerDeleted',
-      attributes: {},
-    });
-  });
-
   it('offers only Activate for a suspended server', () => {
     const live = serverLiveActions(
       makeServer({ state: 'Disconnected', suspended: true }),

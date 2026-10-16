@@ -78,10 +78,12 @@ export function useAgentDeletion(
   }, [queryClient, installation]);
 
   const deletion = useTrackedMutation({
-    event: () => ({
-      name: 'AgentPlatform.agentDeleted',
-      attributes: { mode: 'apply' },
-    }),
+    // Only a call that removed the agent: one that found nothing left to
+    // remove (a concurrent delete, a retry) deleted nothing.
+    event: result =>
+      result.helmReleaseDeleted || result.agentDeleted
+        ? { name: 'AgentPlatform.agentDeleted', attributes: { mode: 'apply' } }
+        : null,
     mutationFn: () => requireClient().deleteAgent(namespace, name),
     onSuccess: () => invalidateReads(),
   });

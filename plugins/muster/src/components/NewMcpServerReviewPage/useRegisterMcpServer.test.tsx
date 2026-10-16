@@ -27,6 +27,7 @@ const registration: McpServerRegistration = {
   installation: 'gazelle',
   authMode: 'own-account',
   isEdit: false,
+  startedFromEdit: false,
 };
 
 function renderRegister() {
@@ -76,7 +77,7 @@ describe('useRegisterMcpServer', () => {
     );
   });
 
-  it('updates in place on an edit and reports no addition', async () => {
+  it('updates in place within an Add run and reports nothing more', async () => {
     const { result } = renderRegister();
 
     await act(() =>
@@ -89,6 +90,31 @@ describe('useRegisterMcpServer', () => {
       'gazelle',
     );
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it("reports an update in a run started from the server's Edit as an edit", async () => {
+    const { result } = renderRegister();
+
+    await act(() =>
+      result.current.mutateAsync({
+        ...registration,
+        isEdit: true,
+        startedFromEdit: true,
+      }),
+    );
+
+    expect(callTool).toHaveBeenLastCalledWith(
+      'core_mcpserver_update',
+      definition,
+      'gazelle',
+    );
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'Muster.mcpServerUpdated',
+        attributes: {},
+      }),
+    );
   });
 
   it('writes nothing and reports nothing when validation refuses', async () => {

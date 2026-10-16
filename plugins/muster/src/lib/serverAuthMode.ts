@@ -1,4 +1,4 @@
-import { MCPServer } from './k8s';
+import { MCPServer, type MCPServerAuth } from './k8s';
 
 /**
  * How users reach a server, read from `spec.auth`. The four modes the
@@ -35,7 +35,11 @@ export const AUTH_MODE_LABELS: Record<ServerAuthMode, string> = {
  * token; sigv4 first because the CRD forbids combining it with anything else.
  */
 export function serverAuthMode(server: MCPServer): ServerAuthMode {
-  const auth = server.getAuth();
+  return authModeOf(server.getAuth());
+}
+
+/** {@link serverAuthMode} of a bare `spec.auth`, as a definition carries it. */
+export function authModeOf(auth: MCPServerAuth | undefined): ServerAuthMode {
   if (!auth) {
     return 'anonymous';
   }

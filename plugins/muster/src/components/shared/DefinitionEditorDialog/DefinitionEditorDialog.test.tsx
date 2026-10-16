@@ -34,10 +34,14 @@ function Harness({
   onClose,
   seedRef,
   parse = parseJson,
+  saveTracking = {
+    event: { name: 'Muster.mcpServerUpdated', attributes: {} },
+  },
 }: {
   onClose: jest.Mock;
   seedRef: { current: string };
   parse?: DefinitionEditorDialogProps['parse'];
+  saveTracking?: DefinitionEditorDialogProps['saveTracking'];
 }) {
   const [open, setOpen] = useState(false);
   const props: DefinitionEditorDialogProps = {
@@ -68,7 +72,7 @@ function Harness({
     ),
     validateTool: 'core_thing_validate',
     saveTool: 'core_thing_update',
-    saveEvent: { name: 'Muster.mcpServerUpdated', attributes: {} },
+    saveTracking,
     savedMessage: 'Saved the thing.',
   };
   return (
@@ -84,6 +88,7 @@ function Harness({
 async function renderDialog(
   callTool: jest.Mock = jest.fn(async () => ({})),
   parse?: DefinitionEditorDialogProps['parse'],
+  saveTracking?: DefinitionEditorDialogProps['saveTracking'],
 ) {
   const retry = jest.fn();
   const onClose = jest.fn();
@@ -102,7 +107,12 @@ async function renderDialog(
         <MusterInstanceContext.Provider
           value={makeTestMusterInstance({ retry })}
         >
-          <Harness onClose={onClose} seedRef={seedRef} parse={parse} />
+          <Harness
+            onClose={onClose}
+            seedRef={seedRef}
+            parse={parse}
+            saveTracking={saveTracking}
+          />
         </MusterInstanceContext.Provider>
       </QueryClientProvider>
     </TestApiProvider>,
@@ -149,6 +159,18 @@ describe('DefinitionEditorDialog', () => {
         attributes: {},
       }),
     );
+  });
+
+  it('reports nothing for a save its caller leaves untracked', async () => {
+    await renderDialog(undefined, undefined, {
+      event: null,
+      untrackedReason: 'A test.',
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Saved the thing.')).toBeInTheDocument();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('shows a parse error on the editor, focuses it and calls no tool', async () => {
