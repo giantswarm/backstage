@@ -67,11 +67,81 @@ export async function connectWithRetry(
   }
 }
 
+type MigrateConfig = { tableName?: string; schemaName?: string };
+
+/**
+ * Makes every `migrate.latest` and `migrate.up` of a PostgreSQL client wait
+ * for a session advisory lock named after the plugin and its migrations
+ * table, so backends started at once (a fresh install's replicas) migrate one
+ * after another: knex creates its migrations tables unlocked and fails a
+ * migration whose lock another backend holds. The lock is held on a
+ * connection of its own, outside the plugin's pool, which the migration
+ * needs; it ends with the migration, or with the backend that holds it.
+ * Other clients are returned unchanged.
+ */
+export function serializeMigrations(
+  client: DatabaseClient,
+  pluginId: string,
+  logger: LoggerService,
+): DatabaseClient {
+  const knexClient = client.client;
+  if (knexClient.dialect !== 'postgresql') {
+    return client;
+  }
+  const migrateOf = Object.getOwnPropertyDescriptor(client, 'migrate')?.get;
+  if (!migrateOf) {
+    return client;
+  }
+  const locked =
+    <A extends [MigrateConfig?, ...unknown[]], R>(
+      run: (...args: A) => Promise<R>,
+    ) =>
+    async (...args: A): Promise<R> => {
+      const { schemaName = '', tableName = 'knex_migrations' } = args[0] ?? {};
+      const key = `backstage-migrations:${pluginId}:${schemaName}:${tableName}`;
+      const connection = await knexClient.acquireRawConnection();
+      try {
+        const { rows } = await connection.query(
+          'SELECT pg_try_advisory_lock(hashtext($1)) AS locked',
+          [key],
+        );
+        if (!rows[0].locked) {
+          logger.info(
+            `Waiting for another backend's migrations of ${tableName}`,
+          );
+          await connection.query('SELECT pg_advisory_lock(hashtext($1))', [
+            key,
+          ]);
+        }
+        return await run(...args);
+      } finally {
+        // Closing the session releases its advisory lock.
+        await knexClient
+          .destroyRawConnection(connection)
+          .catch((error: Error) => {
+            logger.warn('Closing the migration lock connection failed', error);
+          });
+      }
+    };
+  Object.defineProperty(client, 'migrate', {
+    configurable: true,
+    get() {
+      const migrator = migrateOf.call(this);
+      migrator.latest = locked(migrator.latest.bind(migrator));
+      migrator.up = locked(migrator.up.bind(migrator));
+      return migrator;
+    },
+  });
+  return client;
+}
+
 /**
  * The database service of @backstage/backend-defaults, retrying a plugin's
- * first connection until the database is reachable. Without it a backend
- * started before its database (a CNPG primary still coming up) fails the
- * plugin's boot within a minute and never recovers.
+ * first connection until the database is reachable and serializing its
+ * migrations with other backends'. Without the retry a backend started
+ * before its database (a CNPG primary still coming up) fails the plugin's
+ * boot within a minute and never recovers; without the lock replicas started
+ * at once on an empty database fail their first migrations and restart.
  */
 export const databaseServiceFactory = createServiceFactory({
   service: coreServices.database,
@@ -115,6 +185,8 @@ export const databaseServiceFactory = createServiceFactory({
             delayMs: DATABASE_RETRY_DELAY_MS,
             logger,
           },
+        ).then(connected =>
+          serializeMigrations(connected, pluginMetadata.getId(), logger),
         );
         return client;
       },

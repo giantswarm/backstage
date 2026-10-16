@@ -23,8 +23,10 @@
     "postpack": "backstage-cli package postpack"
   },
   "devDependencies": {
+    "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
-    "@backstage/config-loader": "backstage:^"
+    "@backstage/config-loader": "backstage:^",
+    "knex": "^3.1.0"
   },
   "files": [
     "dist"
