@@ -185,9 +185,11 @@ test('the sign-in status read never asks for the sign-in once the portal session
     const page = await context.newPage();
     await page.clock.install();
     await signIn(page, lab.users.admin);
-    // A page that reads nothing of its own (Not Found, the chrome alone):
-    // whatever asks for the sign-in after the jump is the shell's doing.
-    await open(page, '/mcp-sign-in-row-e2e-quiet-page');
+    // A shell page that reads nothing of its own (Profile shows the identity
+    // the app already holds): whatever asks for the sign-in after the jump is
+    // the shell's doing. A path outside the agent area would render the
+    // classic chrome, which has no rail and so no bell.
+    await open(page, '/profile');
     await expect(fixtureRow(await openInbox(page), label)).toBeVisible({
       timeout: 60_000,
     });
