@@ -92,7 +92,7 @@ test('an environment without kagent explains the empty list, New agent still off
   });
   await expect(
     page.getByText(
-      `Agents run on environments with kagent. Enable the Agent Platform on ${lab.installation} to create agents there.`,
+      `Agents run on environments with kagent. Ask your platform team to enable the Agent Platform on ${lab.installation} to create agents there.`,
     ),
   ).toBeVisible();
   // The card links to Installations only where the gs Installations page is
