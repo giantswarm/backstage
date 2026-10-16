@@ -4,6 +4,7 @@ import {
   expectClearOfBottomBar,
   expectNoHorizontalScroll,
   open,
+  openReadyAgent,
   test,
 } from './fixtures';
 
@@ -20,7 +21,12 @@ const bar = (page: Page) =>
 
 test('the bottom bar holds New session · Sessions · Search · Customize · Profile, each reaching its page', async ({
   admin,
+  labAgent,
 }) => {
+  test.setTimeout(10 * 60_000);
+  // New session lands on the home Prompt, which the home shows only once the
+  // person has an agent ready for a session: the worker's own.
+  await openReadyAgent(admin, labAgent);
   await open(admin, '/agent-platform/sessions');
   const nav = bar(admin);
   await expect(nav).toHaveClass(/agent-shell-mobile-bar/);
