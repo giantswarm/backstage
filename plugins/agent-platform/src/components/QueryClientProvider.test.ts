@@ -8,6 +8,7 @@ import {
 import {
   AGENT_PLATFORM_CACHE_BUSTER,
   AGENT_PLATFORM_PERSISTER_KEY,
+  markRestoredListsStale,
   shouldDehydrateAgentPlatformQuery,
 } from './QueryClientProvider';
 
@@ -219,5 +220,88 @@ describe('AGENT_PLATFORM_CACHE_BUSTER', () => {
     const { queryClient } = await restore(AGENT_PLATFORM_CACHE_BUSTER);
 
     expect(queryClient.getQueryCache().getAll()).toHaveLength(1);
+  });
+});
+
+describe('markRestoredListsStale', () => {
+  const agentsKey = [
+    'cluster',
+    'gazelle',
+    'list',
+    'api.kagent.dev',
+    'v1alpha3',
+    'agents',
+  ];
+  const modelsKey = [
+    'cluster',
+    'gazelle',
+    'list',
+    'api.kagent.dev',
+    'v1alpha3',
+    'modelconfigs',
+  ];
+  const inventoryKey = ['gs', 'installation-inventory', 'gazelle'];
+
+  /**
+   * A client as a page load restores it: the lists as the blob held them,
+   * written seconds ago -- before the agent the list now holds was deployed.
+   */
+  function restoredClient() {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { staleTime: 60_000 } },
+    });
+    queryClient.setQueryData(agentsKey, []);
+    queryClient.setQueryData(modelsKey, [{ name: 'default-model-config' }]);
+    queryClient.setQueryData(inventoryKey, { kagent: true });
+    return queryClient;
+  }
+
+  const readAgents = (queryClient: QueryClient, agents: unknown[]) =>
+    queryClient.fetchQuery({
+      queryKey: agentsKey,
+      queryFn: async () => agents,
+    });
+
+  it('trusts a restored list for the stale time without it', async () => {
+    const queryClient = restoredClient();
+
+    expect(await readAgents(queryClient, [{ name: 'sre-agent' }])).toEqual([]);
+  });
+
+  it('reads a restored list again, so a load right after a change shows the current list', async () => {
+    const queryClient = restoredClient();
+
+    await markRestoredListsStale(queryClient);
+
+    expect(await readAgents(queryClient, [{ name: 'sre-agent' }])).toEqual([
+      { name: 'sre-agent' },
+    ]);
+  });
+
+  it('never shows a restored empty list: it waits for the read', async () => {
+    const queryClient = restoredClient();
+
+    await markRestoredListsStale(queryClient);
+
+    expect(queryClient.getQueryData(agentsKey)).toBeUndefined();
+  });
+
+  it('keeps showing a restored list with rows until the read replaces it', async () => {
+    const queryClient = restoredClient();
+
+    await markRestoredListsStale(queryClient);
+
+    expect(queryClient.getQueryData(modelsKey)).toEqual([
+      { name: 'default-model-config' },
+    ]);
+    expect(queryClient.getQueryState(modelsKey)?.isInvalidated).toBe(true);
+  });
+
+  it('keeps what is not a cluster list, such as the installation inventory, fresh', async () => {
+    const queryClient = restoredClient();
+
+    await markRestoredListsStale(queryClient);
+
+    expect(queryClient.getQueryState(inventoryKey)?.isInvalidated).toBe(false);
   });
 });
