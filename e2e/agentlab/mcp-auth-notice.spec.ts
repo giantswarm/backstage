@@ -211,7 +211,7 @@ test('on a phone the notice leaves the last content of a page reachable: Session
   await admin.setViewportSize({ width: 375, height: 812 });
   try {
     // Sessions: the page's last content scrolls clear of the notice.
-    const notice = await showNoticeOn(admin, '/agent-platform/sessions');
+    const notice = await showNoticeOn(admin, '/sessions');
     await expect(
       admin.getByRole('heading', { level: 1, name: 'Sessions' }),
     ).toBeVisible();
@@ -225,7 +225,7 @@ test('on a phone the notice leaves the last content of a page reachable: Session
     // New agent → Review: Technical details, the last thing on the step, takes
     // the tap while the notice shows. Not forced: Playwright's actionability
     // check fails a tap the notice would receive.
-    await open(admin, '/agent-platform/agents/new');
+    await open(admin, '/customize/agents/new');
     await fillAgentDetails(admin, {
       name: 'Notice clearance phone probe',
       description: 'Never created: the run only steps through the wizard.',
