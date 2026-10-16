@@ -429,16 +429,15 @@ test.describe('Hive', () => {
           const area = section.getBoundingClientRect();
           const cards = [
             ...section.querySelectorAll<HTMLElement>('[class*="bui-Card"]'),
-          ].filter(card => !card.parentElement?.closest('[class*="bui-Card"]'));
+          ].filter(el => !el.parentElement?.closest('[class*="bui-Card"]'));
           return {
             pageOverflow: page.scrollWidth - page.clientWidth,
             cards: cards.length,
             outside: cards.filter(
-              card => card.getBoundingClientRect().right > area.right + 0.5,
+              el => el.getBoundingClientRect().right > area.right + 0.5,
             ).length,
-            scrolling: cards.filter(
-              card => card.scrollWidth > card.clientWidth + 1,
-            ).length,
+            scrolling: cards.filter(el => el.scrollWidth > el.clientWidth + 1)
+              .length,
           };
         });
         expect(layout.cards, 'both history cards render').toBe(2);

@@ -125,7 +125,7 @@ function WorkflowPageContent({
   editAction,
 }: {
   workflow: MusterWorkflow;
-  installation?: string;
+  installation: string;
 } & WorkflowPageProps) {
   const paths = useCustomizePaths();
   const basePath = useSplatBasePath();
@@ -483,7 +483,7 @@ function WorkflowPageBody({
     <WorkflowPageContent
       key={`${workflow.cluster}/${name}`}
       workflow={workflow}
-      installation={workflow.cluster ?? installationParam}
+      installation={workflow.cluster}
       editAction={editAction}
     />
   );

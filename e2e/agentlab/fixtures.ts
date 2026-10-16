@@ -235,6 +235,9 @@ type TestFixtures = {
   signInAs: (user: LabUser) => Promise<Page>;
 };
 
+/** The prefix of every agent's technical name the `labAgent` fixture creates. */
+export const LAB_AGENT_PREFIX = 'e2e-roster-';
+
 /**
  * The plugins persist their react-query caches in localStorage, which the
  * worker's page keeps from one test to the next: an answer a test staged at
@@ -549,7 +552,7 @@ export async function createAgentInWizard(
   await expectWizardStep(page, 'Tools');
   // A new agent starts on "Nothing outside the chat". What is selected so far
   // shows in the docked *Selected* rail where the step keeps its column beside
-  // it (a desktop), else in the *Selected so far* bar (a phone, a tablet).
+  // it on a desktop, else in the *Selected so far* bar (a phone, a tablet).
   await expect(
     page
       .getByRole('complementary', { name: 'Selected' })
@@ -626,9 +629,6 @@ async function expectAgentsGone(page: Page, slugs: string[]): Promise<void> {
     `the roster no longer lists ${slugs.join(', ')}`,
   ).toHaveCount(0, { timeout: 150_000 });
 }
-
-/** The prefix of every agent's technical name the `labAgent` fixture creates. */
-export const LAB_AGENT_PREFIX = 'e2e-roster-';
 
 /** The `labAgent` stamp of `date`: its UTC month to second, `MMDDhhmmss`. */
 export function labAgentStamp(date: Date): string {
