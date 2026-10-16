@@ -54,8 +54,8 @@ jobs:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: postgres
     environment:
-      BACKSTAGE_CLI_CONCURRENCY: "3"
-      JEST_MAX_WORKERS: "5"
+      BACKSTAGE_CLI_CONCURRENCY: "2"
+      JEST_MAX_WORKERS: "4"
       BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING: postgresql://postgres:postgres@localhost:5432
 
 workflows:
