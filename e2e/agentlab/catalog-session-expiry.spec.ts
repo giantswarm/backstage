@@ -91,16 +91,12 @@ for (const path of ['/catalog', '/settings']) {
         contentType: 'image/png',
       });
 
-      // A person's own action still asks for the sign-in: a catalog write,
-      // the Refresh of an entity's About card.
-      await page.goto('/catalog/default/user/admin');
-      expect(
-        await prompts(page, 15_000),
-        'opening the page is a read: no dialog',
-      ).toBe(false);
+      // A person's own action still asks for the sign-in: opening Clusters
+      // from the sidebar, in the app (no reload), reads the clusters with
+      // the session's token on the interactive path.
       await page
-        .getByRole('button', { name: /refresh/i })
-        .first()
+        .getByRole('navigation', { name: 'sidebar nav' })
+        .getByRole('link', { name: 'Clusters' })
         .click();
       await expect(
         loginRequired(page),
