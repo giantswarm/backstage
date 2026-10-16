@@ -811,12 +811,15 @@ async function removeLabAgent(
 /**
  * The roster's link to the agent named `name`, on the open Agents tab
  * (Customize's): one row per agent, the whole row a link to its page, named by
- * all it shows — so the row is found by the name line itself.
+ * all it shows — so the row is found by the name line itself. Only the
+ * roster's lists ("Agents", and "Favorite agents" once the person has some):
+ * the tab's "Last used by you" cards and the rail's sessions name an agent
+ * too, once a session ran on it earlier in the run.
  */
 export function rosterLinkOf(page: Page, name: string): Locator {
   return page
     .getByRole('main')
-    .getByRole('listitem')
+    .getByRole('list', { name: /^(Favorite agents|Agents)$/ })
     .getByRole('link')
     .filter({ has: page.getByText(name, { exact: true }) });
 }
