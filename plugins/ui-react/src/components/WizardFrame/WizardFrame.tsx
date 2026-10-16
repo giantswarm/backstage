@@ -28,6 +28,10 @@ import {
   useMediaQueryMatch,
   usePhoneLayout,
 } from '../../utils/breakpoints';
+import {
+  FLOATING_NOTICE_CLEARANCE_VAR,
+  FLOATING_NOTICE_RESERVE_ATTRIBUTE,
+} from '../../utils/layout';
 
 /** The centered column's width per {@link WizardFrameProps.width}. */
 const COLUMN_WIDTHS = {
@@ -70,9 +74,9 @@ const FOOTER_HEIGHT_VAR = WIZARD_FOOTER_HEIGHT_VAR;
  * first measurement) — plus room for the label above a field, so a field
  * scrolled into view — by the focus moving to it, by tabbing, or by a failed
  * validation focusing it — never lands under the docked footer (or the
- * shell's mobile bottom bar below it).
+ * shell's mobile bottom bar below it, or a notice floating above it).
  */
-const FOOTER_CLEARANCE = `calc(var(${FOOTER_HEIGHT_VAR}, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px))`;
+const FOOTER_CLEARANCE = `calc(var(${FOOTER_HEIGHT_VAR}, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px) + var(${FLOATING_NOTICE_CLEARANCE_VAR}, 0px))`;
 
 // Phone first: the narrow padding is the default, and the two-column tier
 // (≥ 768px, where forms go to two columns) widens it.
@@ -263,6 +267,9 @@ const useStyles = makeStyles({
   },
   body: {
     flex: '1 1 auto',
+    // Room above the footer for a notice floating there (the MCP server
+    // sign-in notice), so the step's last content scrolls clear of it.
+    paddingBottom: `var(${FLOATING_NOTICE_CLEARANCE_VAR}, 0px)`,
   },
   // A docked rail: the column and the rail side by side, centred together.
   // Only ever rendered at the two-column tier (`useWizardFrameRail`).
@@ -674,6 +681,7 @@ export function WizardFrame({
         ref={rootRef}
         className={classes.root}
         data-field-validation-scope=""
+        {...{ [FLOATING_NOTICE_RESERVE_ATTRIBUTE]: '' }}
         style={asideWidth > 0 ? { paddingRight: asideWidth } : undefined}
       >
         <header className={classes.header}>

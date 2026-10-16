@@ -580,6 +580,9 @@ export interface MusterApi {
   /**
    * Per-server authentication state for the user's muster session
    * (`auth://status`). Cheap enough to poll while a sign-in is in flight.
+   * A status read is never the person's own action, so it never asks them to
+   * sign in: without a live portal session it fails with a session-expired
+   * {@link MusterTokenMintError} instead of opening the login dialog.
    */
   getAuthStatus(installation?: string): Promise<AuthStatusResponse>;
   /**
@@ -607,6 +610,14 @@ export interface MusterAuthCredentials {
   token?: string;
 }
 
+export interface MusterAuthCredentialsOptions {
+  /**
+   * Answer from the current session only: refresh it silently if it can be,
+   * and never ask the person to sign in. No token when there is no session.
+   */
+  optional?: boolean;
+}
+
 /**
  * Resolves per-user OAuth credentials for the muster MCP server's
  * `authProvider` (same semantics as ai-chat's MCPAuthProvidersApi). The
@@ -614,7 +625,10 @@ export interface MusterAuthCredentials {
  * gs auth providers.
  */
 export interface MusterAuthProvidersApi {
-  getCredentials(authProvider: string): Promise<MusterAuthCredentials>;
+  getCredentials(
+    authProvider: string,
+    options?: MusterAuthCredentialsOptions,
+  ): Promise<MusterAuthCredentials>;
 }
 
 /** One progress notification of a tool call. */

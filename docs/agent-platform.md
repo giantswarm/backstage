@@ -138,12 +138,26 @@ MCPServer's; and connectors that would read the same (two annotated alike, or
 one annotated like another's name, case aside) go by their own names
 instead, so no two read alike. URLs, `server:` selectors and tool names keep
 the technical name, which Technical details on the Details tab still shows,
-and searches match both names. Add connector cannot set the annotation:
-muster's `core_mcpserver_create` and `_update` take no annotations (their
-request parsing rejects unknown fields), so it is set on the MCPServer
-directly, for example in its GitOps source or with
-`kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`.
-An update through the wizard keeps it.
+and searches match both names.
+
+Add connector keeps the name typed into its Name field as that annotation,
+through the `displayName` argument of muster's `core_mcpserver_create` and
+`_update` (muster v5.43.0 and later). The technical name derives from it as
+before ("Stack Overflow" is registered as `stack-overflow`); a name that is the
+technical name already (`jira`) sets no annotation. Editing a connector shows
+its display name in the Name field and saves a changed one, sending
+`displayName` only when it changes (back to the technical name removes the
+annotation); the technical name stays fixed. A family member's Name stays
+read-only: its members share one display name, which a rename of one would
+split. Whether an installation's muster takes the argument is read from each
+tool's input schema (`describe_tool`, validate's and create's or update's on
+their own): on an older muster, which refuses unknown fields, the wizard
+registers without it, the Name field then shows the technical name, and an
+edit keeps it read-only, as before. A schema that cannot be read stops the
+save with an error rather than dropping the name unsaid. The annotation can also be
+set on the MCPServer directly, for example in its GitOps source or with
+`kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
+an edit that does not change the name keeps it.
 
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
@@ -1124,10 +1138,46 @@ use.
 in full; the agent's internal work folds into work summaries; older turns page
 behind "Show earlier activity".
 
-User messages follow `app.branding.theme.<mode>.primaryColor` and are **not**
-markdown, because prompts quote logs and `#` lines verbatim. Agent prose is GFM
+User messages take the fill Send carries, `--bui-bg-solid` with
+`--bui-fg-solid` (the shell's primary colour), and are **not** markdown,
+because prompts quote logs and `#` lines verbatim. The solid tokens are
+deprecated for `--bui-accent-*`, but the installed bui's primary Button still
+paints them, and the shell's accent (`#009fff`) fails contrast under white
+text; move the bubble when Send moves. Agent prose is GFM
 markdown. JSON inside result strings is inlined. Streaming auto-follow applies
 only while the page is scrolled to the end.
+
+**A long user message is cut to 10 lines** of its own text (`10lh`, so the cut
+follows the reader's font size) behind a fade, with _Show more_ centred in the
+bubble under the fade, and _Show less_ in the same place at the end of the opened
+text, in a row of its own so it never covers a line. It is a button with
+`aria-expanded`, tied to the message by `aria-controls`, drawn in the bubble's
+foreground (`CollapsibleToggle`'s `onSolid`: the bubble's `--bui-fg-solid` for
+the label and focus ring, a wash of it on hover). A continuation's opener
+carries the whole earlier conversation, and a pasted log or file can run to
+thousands of lines; either would bury the answer under it. A message that fits, or would hide no more than
+two lines (a fifth of the cut, `collapseSlack`, the rule `ShowMore` pages by),
+is shown whole with no control. The cut is visual only: the whole text stays in
+the page for screen readers, selection and copying, and keyboard focus or find
+in page reaching past the cut opens the message where the match is. _Show less_
+on a message read to its end brings it back into view rather than leaving the
+reader in a later turn.
+
+`SessionTimeline` holds which messages are open, keyed by kagent's
+`messageId`, so a message stays open when kagent's copy replaces the optimistic
+one after sending and when its turn leaves the turn window and comes back with
+"Show earlier activity". A reload starts every message cut again. The agent's
+messages, tool output and the composer are never cut. The same applies in the
+create-agent assist panel, which renders its conversation with
+`SessionTimeline`: its opener quotes the system prompt drafted so far, which
+can be long.
+
+The pieces (`useCollapsible`, `CollapsibleViewport`, `CollapsibleToggle`) live
+in `ui-react` and are the same ones `CollapsibleMarkdown` uses for an agent's
+instructions, whose toggle likewise sits centred in its own row under the cut;
+the bubble sets `--bui-bg-inherit` to its own fill so the fade
+matches it. Tests lay them out with `mockCollapsibleLayout` from
+`@giantswarm/backstage-plugin-ui-react/testUtils`.
 
 | Entry                | Where it comes from                                                        |
 | -------------------- | -------------------------------------------------------------------------- |
@@ -1956,9 +2006,10 @@ page recognises it only at the very start of the session's first user message
 and shows a "Continued session" banner above the conversation instead: "This
 session is a follow-up to an earlier session on <installation>", linked through
 `sessionDetailRouteRef` (the installation may differ from the session's own).
-The one-visit "Prepared by the portal" caption is not used for it. Links inside
-any bui `Alert` in the shell are underlined and take the shell's link colour
-(`agent-shell.css`), so they read as links on every alert background. An
+The one-visit "Prepared by the portal" caption is not used for it. The rest of
+the message, the carried conversation, is cut like any long user message. Links
+inside any bui `Alert` in the shell are underlined and take the shell's link
+colour (`agent-shell.css`), so they read as links on every alert background. An
 installation or session id outside `[a-z0-9-]` and `[A-Za-z0-9._-]` is not
 written, so a marker always reads back as written.
 

@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { musterApiRef, type ServerAuthStatus } from '../../apis';
+import {
+  isMusterTokenMintError,
+  musterApiRef,
+  type ServerAuthStatus,
+} from '../../apis';
 import { authStatusQueryKey, needsSignIn } from '../shared';
 
 /**
@@ -18,7 +22,16 @@ export type McpServersAwaitingSignIn = {
   statuses: ServerAuthStatus[];
   /** True until the first answer. */
   isLoading: boolean;
+  /**
+   * The portal session is gone: the status is not read until the person is
+   * back, and nothing reading in the background should ask for the sign-in.
+   */
+  sessionExpired: boolean;
 };
+
+function isSessionExpired(error: unknown): boolean {
+  return isMusterTokenMintError(error) && error.reason === 'session-expired';
+}
 
 /**
  * The MCP servers of one muster that wait for the person's own sign-in or
@@ -35,11 +48,14 @@ export function useMcpServersAwaitingSignIn(
   const { servers, enabled = true } = options;
   const musterApi = useApi(musterApiRef);
 
-  const { data, isPending } = useQuery({
+  const { data, error, isPending } = useQuery({
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled,
-    refetchInterval: AUTH_STATUS_REFRESH_MS,
+    // The read never asks the person to sign in (`getAuthStatus`); once the
+    // portal session is gone it stops until the person is back, on focus.
+    refetchInterval: query =>
+      isSessionExpired(query.state.error) ? false : AUTH_STATUS_REFRESH_MS,
     // As the sign-in affordances read it: re-read on return from the IdP's
     // tab, and an unreadable status is an answer, not a retry.
     refetchOnWindowFocus: true,
@@ -57,6 +73,7 @@ export function useMcpServersAwaitingSignIn(
       statuses,
       waiting: statuses.filter(needsSignIn).map(status => status.name),
       isLoading: enabled && isPending,
+      sessionExpired: isSessionExpired(error),
     };
-  }, [data, serversKey, enabled, isPending]);
+  }, [data, error, serversKey, enabled, isPending]);
 }

@@ -26,11 +26,14 @@ import {
   normalizeSessionDetail,
   normalizeTaskList,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { buildContinuationPrompt } from '../../lib/continuationPrompt';
 import { SessionDetailPage } from './SessionDetailPage';
 import {
+  mockCollapsibleLayout,
   mockDesktopLayout,
   mockIntersectionObserver,
   mockPhoneLayout,
+  type MockedCollapsibleLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
@@ -1055,6 +1058,21 @@ describe('SessionDetailPage', () => {
       );
       expect(column.style.getPropertyValue('--session-dock-height')).toMatch(
         /^\d+px$/,
+      );
+    });
+
+    it('reserves the room a floating notice covers above the dock, in place of the shell', async () => {
+      // The MCP server sign-in notice floats above the dock: the newest
+      // message scrolls clear of it, and the dock stays at the bottom.
+      await render();
+
+      const column = screen.getByTestId('session-dock').parentElement!;
+      expect(column).toHaveAttribute('data-floating-notice-reserve');
+      const styles = Array.from(document.querySelectorAll('style'))
+        .map(style => style.textContent)
+        .join('\n');
+      expect(styles).toContain(
+        'margin-bottom: var(--floating-notice-clearance, 0px)',
       );
     });
 
@@ -2686,6 +2704,53 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(screen.queryByText('Continued session')).not.toBeInTheDocument();
+    });
+
+    describe('carrying a long conversation', () => {
+      // jsdom lays nothing out: one line of the bubble's text per line of
+      // the message, and the cut's ten `lh` as ten of them.
+      let layout: MockedCollapsibleLayout;
+      beforeEach(() => {
+        layout = mockCollapsibleLayout();
+      });
+      afterEach(() => layout.restore());
+
+      it('cuts the opener under the banner behind Show more', async () => {
+        // The first message as "Continue in a new session" writes it: the
+        // marker line, the framing and sixty earlier messages.
+        const { text } = buildContinuationPrompt({
+          items: Array.from({ length: 60 }, (_, i) => ({
+            id: `m${i}`,
+            kind:
+              i % 2 ? ('agent-message' as const) : ('user-message' as const),
+            taskIndex: Math.floor(i / 2),
+            text: `Message ${i + 1}`,
+          })),
+          pendingQuestions: [],
+          continues: { installation: 'other-lab', sessionId: '0a1b2c' },
+        });
+        expect(text).toMatch(/^\[Continues session other-lab\/0a1b2c\]/);
+        mockUseSessionDetail.mockReturnValue(continuationView(text));
+        await render();
+
+        expect(screen.getByText('Continued session')).toBeInTheDocument();
+        const toggle = screen.getByRole('button', { name: 'Show more' });
+        const message = document.getElementById(
+          toggle.getAttribute('aria-controls')!,
+        )!;
+        expect(message.style.maxHeight).toBe('10lh');
+        // The marker is the banner, not the message's first line.
+        expect(message).toHaveTextContent(
+          /^I am continuing a session with you that could not be resumed/,
+        );
+        expect(message).toHaveTextContent('Message 60');
+        expect(message).not.toHaveTextContent('[Continues session');
+
+        await userEvent.click(toggle);
+        expect(
+          screen.getByRole('button', { name: 'Show less' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+      });
     });
   });
 

@@ -370,6 +370,25 @@ html[data-agent-shell] body {
   --agent-shell-mobile-bar-height: 0px;
 }
 
+/*
+ * Room under the page's last content for a notice floating over the bottom
+ * of the view (the MCP server sign-in notice): `--floating-notice-clearance`
+ * is what it covers, published on the document while it is shown (ui-react's
+ * FLOATING_NOTICE_CLEARANCE_VAR), so the last content scrolls clear of it. A
+ * layout with a bar docked at the bottom (the wizard's footer, the session's
+ * composer) reserves the room above its bar itself and carries
+ * `data-floating-notice-reserve`; padding here would lift the bar into the
+ * notice instead.
+ */
+html[data-agent-shell] #content {
+  --agent-shell-notice-clearance: var(--floating-notice-clearance, 0px);
+  padding-bottom: var(--agent-shell-notice-clearance);
+}
+
+html[data-agent-shell] #content:has([data-floating-notice-reserve]) {
+  --agent-shell-notice-clearance: 0px;
+}
+
 @media (max-width: 599.95px) {
   html[data-agent-shell] body {
     --agent-shell-mobile-bar-height: calc(56px + env(safe-area-inset-bottom));
@@ -379,7 +398,9 @@ html[data-agent-shell] body {
      inset on top of it comes from here, so in-flow content (the home
      composer) clears the whole bar. */
   html[data-agent-shell] #content {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: calc(
+      env(safe-area-inset-bottom) + var(--agent-shell-notice-clearance)
+    );
   }
 
   /* core-components tables (Sessions, Agents, Models, usage) scroll inside
