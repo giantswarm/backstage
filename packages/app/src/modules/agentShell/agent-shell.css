@@ -35,6 +35,9 @@ html[data-agent-shell] body[data-theme-mode='light'] {
   --bui-accent-bg: #009fff;
   --bui-accent-bg-hover: #0088db;
   --bui-ring: #00609c;
+  /* The shell's link colour, at rest and on hover. */
+  --agent-shell-link: #00609c;
+  --agent-shell-link-hover: #002645;
   --bui-shadow: 0 12px 32px rgba(0, 38, 69, 0.14);
   --bui-fg-success: #1f9d48;
   --bui-bg-success: #ddf5e3;
@@ -43,6 +46,11 @@ html[data-agent-shell] body[data-theme-mode='light'] {
   --bui-bg-warning: #ffe9d6;
   --bui-fg-warning-on-bg: #8f4000;
   --bui-border-warning: #f2c9a3;
+  /* bui's current names for the same warning colours (the three above are
+     deprecated), so what uses them matches the shell's warnings. */
+  --bui-warning-bg-subdued: #ffe9d6;
+  --bui-warning-fg-subdued: #8f4000;
+  --bui-warning-border: #f2c9a3;
   --bui-fg-danger: #c6283a;
   --bui-bg-info: #dff1ff;
   --bui-fg-info-on-bg: #004a7a;
@@ -84,14 +92,65 @@ html[data-agent-shell]
   html[data-agent-shell]
     body[data-theme-mode='light']
     .bui-Link[data-color='primary'] {
-    color: #00609c;
+    color: var(--agent-shell-link);
   }
 
   html[data-agent-shell]
     body[data-theme-mode='light']
     .bui-Link[data-color='primary']:hover {
-    color: #002645;
+    color: var(--agent-shell-link-hover);
   }
+}
+
+/*
+ * Links inside a banner (bui `Alert`). An alert sets its text in its status's
+ * on-background colour, and a link in it — bui's `Link` or core-components'
+ * MUI one — came out in a near copy of that colour without an underline, so
+ * it could not be told from the text. Inside every alert a link is underlined
+ * and takes the shell's link colour, which holds 4.5:1 against each light
+ * alert background (info, success, warning, danger); dark mode takes bui's
+ * info foreground, which holds it against the dark ones. Buttons rendered as
+ * links (`ButtonLink`) keep their button look. Unlayered, so it wins over
+ * MUI's link classes as well as bui's.
+ */
+html[data-agent-shell]
+  .bui-Alert
+  a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
+  color: var(--agent-shell-link);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+html[data-agent-shell]
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    [class*='MuiButton']
+  ):hover {
+  color: var(--agent-shell-link-hover);
+  text-decoration-thickness: 2px;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
+  color: var(--bui-fg-info);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    [class*='MuiButton']
+  ):hover {
+  color: var(--bui-fg-info-on-bg);
 }
 
 /*
@@ -311,6 +370,25 @@ html[data-agent-shell] body {
   --agent-shell-mobile-bar-height: 0px;
 }
 
+/*
+ * Room under the page's last content for a notice floating over the bottom
+ * of the view (the MCP server sign-in notice): `--floating-notice-clearance`
+ * is what it covers, published on the document while it is shown (ui-react's
+ * FLOATING_NOTICE_CLEARANCE_VAR), so the last content scrolls clear of it. A
+ * layout with a bar docked at the bottom (the wizard's footer, the session's
+ * composer) reserves the room above its bar itself and carries
+ * `data-floating-notice-reserve`; padding here would lift the bar into the
+ * notice instead.
+ */
+html[data-agent-shell] #content {
+  --agent-shell-notice-clearance: var(--floating-notice-clearance, 0px);
+  padding-bottom: var(--agent-shell-notice-clearance);
+}
+
+html[data-agent-shell] #content:has([data-floating-notice-reserve]) {
+  --agent-shell-notice-clearance: 0px;
+}
+
 @media (max-width: 599.95px) {
   html[data-agent-shell] body {
     --agent-shell-mobile-bar-height: calc(56px + env(safe-area-inset-bottom));
@@ -320,7 +398,9 @@ html[data-agent-shell] body {
      inset on top of it comes from here, so in-flow content (the home
      composer) clears the whole bar. */
   html[data-agent-shell] #content {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: calc(
+      env(safe-area-inset-bottom) + var(--agent-shell-notice-clearance)
+    );
   }
 
   /* core-components tables (Sessions, Agents, Models, usage) scroll inside

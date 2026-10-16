@@ -11,23 +11,29 @@ import { useState, type ReactNode } from 'react';
 import { agentsRouteRef, sessionsRouteRef } from '../../routes';
 import type { AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionDetailView } from '../../hooks/useSessionDetail';
-import type { UseAnswerConfirmationResult } from '../../hooks/useAnswerConfirmation';
+import type {
+  PendingAnswer,
+  UseAnswerConfirmationResult,
+} from '../../hooks/useAnswerConfirmation';
 import type { UseCancelTaskResult } from '../../hooks/useCancelTask';
 import type { UseCreateSessionResult } from '../../hooks/useCreateSession';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
-import { buildTimeline } from '../../lib/kagentTimeline';
+import { buildTimeline, type TimelineItem } from '../../lib/kagentTimeline';
 import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
   deriveSessionState,
   normalizeSessionDetail,
   normalizeTaskList,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { buildContinuationPrompt } from '../../lib/continuationPrompt';
 import { SessionDetailPage } from './SessionDetailPage';
 import {
+  mockCollapsibleLayout,
   mockDesktopLayout,
   mockIntersectionObserver,
   mockPhoneLayout,
+  type MockedCollapsibleLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
@@ -129,6 +135,8 @@ jest.mock('../../hooks/useSendMessage', () => ({
 const mockAnswer = jest.fn();
 const mockUseAnswerConfirmation = jest.fn<UseAnswerConfirmationResult, []>();
 jest.mock('../../hooks/useAnswerConfirmation', () => ({
+  // The real error classifier, so the page reads the hook's errors as it will.
+  ...jest.requireActual('../../hooks/useAnswerConfirmation'),
   useAnswerConfirmation: () => mockUseAnswerConfirmation(),
 }));
 
@@ -194,10 +202,19 @@ function idleConfirmation(
 // through router state, because the hook's own contract — read once, then clear the
 // state — has its own tests; what matters here is that the page dispatches it.
 const mockUseNewSessionHandoff = jest.fn();
-jest.mock('../../hooks/useNewSessionHandoff', () => ({
-  ...jest.requireActual('../../hooks/useNewSessionHandoff'),
-  useNewSessionHandoff: () => mockUseNewSessionHandoff(),
-}));
+// The images a new session is opened with, as the page hands them over.
+const mockStashHandoffImages = jest.fn();
+jest.mock('../../hooks/useNewSessionHandoff', () => {
+  const actual = jest.requireActual('../../hooks/useNewSessionHandoff');
+  return {
+    ...actual,
+    useNewSessionHandoff: () => mockUseNewSessionHandoff(),
+    stashHandoffImages: (images: unknown) => {
+      mockStashHandoffImages(images);
+      return actual.stashHandoffImages(images);
+    },
+  };
+});
 
 /** The hook's idle state, which most tests want. */
 /** An image of a message in flight, as the composer prepared it. */
@@ -308,8 +325,8 @@ async function render(
     // through `agentDetailRouteRef` — a SubRouteRef, which `mountedRoutes` does not
     // take, so its parent is what gets mounted.
     mountedRoutes: {
-      '/agent-platform/sessions': sessionsRouteRef,
-      '/agent-platform/agents': agentsRouteRef,
+      '/sessions': sessionsRouteRef,
+      '/customize/agents': agentsRouteRef,
     },
   });
 }
@@ -328,6 +345,7 @@ describe('SessionDetailPage', () => {
     mockSendMessage.mockResolvedValue(undefined);
     mockUseSendMessage.mockReturnValue(idleSend());
     mockUseNewSessionHandoff.mockReturnValue(undefined);
+    mockStashHandoffImages.mockReset();
     mockAnswer.mockReset();
     mockAnswer.mockResolvedValue(undefined);
     mockUseAnswerConfirmation.mockReturnValue(idleConfirmation());
@@ -388,7 +406,7 @@ describe('SessionDetailPage', () => {
     // agent sent — as text, so only the header one is a link.
     expect(screen.getByRole('link', { name: 'Issue tracker' })).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/kagent/issue-tracker',
+      '/customize/agents/gazelle/kagent/issue-tracker',
     );
   });
 
@@ -1043,6 +1061,21 @@ describe('SessionDetailPage', () => {
       );
     });
 
+    it('reserves the room a floating notice covers above the dock, in place of the shell', async () => {
+      // The MCP server sign-in notice floats above the dock: the newest
+      // message scrolls clear of it, and the dock stays at the bottom.
+      await render();
+
+      const column = screen.getByTestId('session-dock').parentElement!;
+      expect(column).toHaveAttribute('data-floating-notice-reserve');
+      const styles = Array.from(document.querySelectorAll('style'))
+        .map(style => style.textContent)
+        .join('\n');
+      expect(styles).toContain(
+        'margin-bottom: var(--floating-notice-clearance, 0px)',
+      );
+    });
+
     it('rests the docked bar where it sticks, pulled into all of the page’s bottom padding', async () => {
       // Live round 2 (R7): a fixed -16px left 24px of ShellPage's 40px under
       // the bar, so it lifted 24px as the scroll reached the end. ShellPage
@@ -1127,6 +1160,36 @@ describe('SessionDetailPage', () => {
         answers: [['golem']],
         text: 'golem',
       });
+    });
+
+    it('ties the answer to the status message that asked', async () => {
+      // So a not-taken verdict cannot be pinned on a follow-up question in the
+      // same task.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input',
+          toolName: 'ask_user',
+          questions: [{ question: 'Which cluster?', multiple: false }],
+          askedIn: 'status-1',
+        },
+      });
+      await render();
+
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Answer' }),
+        'golem',
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Send answer' }),
+      );
+
+      expect(mockAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: 'task-1', askedIn: 'status-1' }),
+      );
     });
 
     it('says the agent is working while a turn is in flight', async () => {
@@ -1462,7 +1525,7 @@ describe('SessionDetailPage', () => {
           );
         }
         await renderInTestApp(<Harness />, {
-          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+          mountedRoutes: { '/sessions': sessionsRouteRef },
         });
 
         expect(
@@ -2085,7 +2148,7 @@ describe('SessionDetailPage', () => {
     const composer = () => screen.getByRole('textbox', { name: 'Message' });
     const startButton = () =>
       screen.getByRole('button', {
-        name: 'Start a new session with Issue tracker',
+        name: 'Continue in a new session',
       });
     /** The message that never got its answer — the last one the person sent. */
     const lastUserMessage = [...timeline.items]
@@ -2100,6 +2163,16 @@ describe('SessionDetailPage', () => {
         },
       },
     });
+    /** What the new session was created with. */
+    const created = async () => {
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      return mockCreateSession.mock.calls[0][0] as {
+        prompt: string;
+        title?: string;
+      };
+    };
 
     it('explains the failed turn in the portal’s words and offers the new session under the box', async () => {
       mockUseSessionDetail.mockReturnValue(suspectedView);
@@ -2154,27 +2227,36 @@ describe('SessionDetailPage', () => {
 
       await userEvent.click(startButton());
 
+      const { prompt } = await created();
+      // The message is in the conversation the new session carries; its
+      // images go along with the first message.
+      expect(prompt).toContain(`User: ${lastUserMessage.trim()}`);
+      expect(prompt).toContain('[User attached a file: shot.png]');
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith(
-          '/agent-platform/sessions/gazelle/new-1',
-          {
-            state: {
-              newSession: expect.objectContaining({
-                text: lastUserMessage,
-                imagesKey: expect.any(String),
-              }),
-            },
+        expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/new-1', {
+          state: {
+            newSession: expect.objectContaining({
+              text: prompt,
+              imagesKey: expect.any(String),
+            }),
           },
-        );
+        });
       });
     });
 
-    it('starts a new session with the box’s text and hands the message over', async () => {
+    it('starts a new session on the whole conversation, not on the box’s text', async () => {
       // Create, navigate, then send — the order every entry point keeps; the
       // new page dispatches the text it finds in the router state.
       mockUseSessionDetail.mockReturnValue(suspectedView);
       await render();
 
+      expect(
+        screen.getByText(
+          /Send again to retry\. If it fails again, continue in a new session with Issue tracker\. Its first message holds this conversation \(\d+ messages?\), with tools named but not their results\./,
+        ),
+      ).toBeInTheDocument();
+
+      // The box is for the retry; the new session does not take its text.
       await userEvent.type(composer(), 'Six of them are vegetarian.');
       await userEvent.click(startButton());
 
@@ -2185,13 +2267,27 @@ describe('SessionDetailPage', () => {
             namespace: 'kagent',
             technicalName: 'issue-tracker',
           }),
-          prompt: 'Six of them are vegetarian.',
+          prompt: expect.any(String),
+          title: expect.stringMatching(/^Continued: /),
         });
       });
+      const { prompt } = await created();
+      // Its first line names this session, for the new page's banner.
+      expect(prompt).toMatch(
+        /^\[Continues session gazelle\/abc\]\n\nI am continuing a session with you that could not be resumed/,
+      );
+      const firstUserMessage = timeline.items.find(
+        item => item.kind === 'user-message',
+      )!.text;
+      expect(prompt).toContain(`User: ${firstUserMessage.trim()}`);
+      expect(prompt).toContain(`User: ${lastUserMessage.trim()}`);
+      expect(prompt).not.toContain('Six of them are vegetarian.');
+      expect(prompt).not.toContain('## Your last question');
+      expect(prompt).not.toContain('## My');
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/agent-platform/sessions/gazelle/new-1',
-          handoffTo('Six of them are vegetarian.'),
+          '/sessions/gazelle/new-1',
+          handoffTo(prompt),
         );
       });
       expect(mockSendMessage).not.toHaveBeenCalled();
@@ -2213,7 +2309,7 @@ describe('SessionDetailPage', () => {
 
       expect(
         screen.queryByRole('button', {
-          name: 'Start a new session with Issue tracker',
+          name: 'Continue in a new session',
         }),
       ).not.toBeInTheDocument();
       expect(
@@ -2223,71 +2319,165 @@ describe('SessionDetailPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('carries the message that never got its answer when the box is empty', async () => {
-      mockUseSessionDetail.mockReturnValue(suspectedView);
-      await render();
-
-      await userEvent.click(startButton());
-
-      await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith(
-          expect.objectContaining({ prompt: lastUserMessage }),
-        );
-      });
-      expect(mockNavigate).toHaveBeenCalledWith(
-        '/agent-platform/sessions/gazelle/new-1',
-        handoffTo(lastUserMessage),
-      );
-    });
-
-    it('prefers the message the failed send handed back', async () => {
+    it('carries a failed send the transcript does not hold, as the newest message', async () => {
+      // kagent refused it before it recorded the turn: only the box has it.
       mockUseSessionDetail.mockReturnValue(suspectedView);
       mockUseSendMessage.mockReturnValue(
         idleSend({
           error: new Error(ATENET),
-          failed: { messageId: 'm-1', text: 'the message that failed' },
+          failed: {
+            messageId: 'm-1',
+            text: 'the message that failed',
+            images: [PENDING_IMAGE],
+          },
         }),
       );
       await render();
 
-      // The composer restored it into the box, so the box's text and the
-      // handed-back text agree; either way the new session opens on it.
       await userEvent.click(startButton());
 
-      await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith(
-          expect.objectContaining({ prompt: 'the message that failed' }),
+      const { prompt } = await created();
+      expect(prompt).toMatch(
+        /User: the message that failed\n\n\[User attached a file: shot\.png\]$/,
+      );
+      expect(
+        (mockStashHandoffImages.mock.calls[0][0] as { name: string }[]).map(
+          image => image.name,
+        ),
+      ).toEqual(['shot.png']);
+    });
+
+    describe('the message that never got its answer', () => {
+      const message = 'Six of them are vegetarian.';
+      const items = (...after: TimelineItem[]): TimelineItem[] => [
+        {
+          id: 'u1',
+          kind: 'user-message',
+          taskIndex: 0,
+          messageId: 'm-1',
+          text: 'Plan a barbecue for twelve.',
+        },
+        { id: 'a1', kind: 'agent-message', taskIndex: 0, text: 'Sure.' },
+        {
+          id: 'u2',
+          kind: 'user-message',
+          taskIndex: 1,
+          messageId: 'm-2',
+          text: message,
+        },
+        {
+          id: 'img',
+          kind: 'attachment',
+          taskIndex: 1,
+          messageId: 'm-2',
+          isUser: true,
+          name: 'shot.png',
+          preview: {
+            kind: 'image',
+            type: 'image/png',
+            dataUrl: PENDING_IMAGE.previewUrl,
+            byteSize: PENDING_IMAGE.byteSize,
+          },
+        },
+        ...after,
+      ];
+      const failedTurn: TimelineItem = {
+        id: 'f',
+        kind: 'turn-failed',
+        taskIndex: 1,
+        state: 'failed',
+        reason: ATENET,
+      };
+      const lostWith = (timelineItems: TimelineItem[]): SessionDetailView => ({
+        ...reportedView,
+        timeline: { ...loadedView.timeline, items: timelineItems },
+      });
+      const handedImages = () =>
+        mockStashHandoffImages.mock.calls[0][0] as { name: string }[];
+
+      it('is carried once, with its images, when the failed send handed it back too', async () => {
+        // The gateway recorded the turn before the send failed: the
+        // transcript has the message, and the send handed back the same one.
+        mockUseSessionDetail.mockReturnValue(lostWith(items(failedTurn)));
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            error: new Error(ATENET),
+            failed: {
+              messageId: 'm-2',
+              text: message,
+              images: [PENDING_IMAGE],
+            },
+          }),
         );
+        await render();
+
+        await userEvent.click(startButton());
+
+        const { prompt } = await created();
+        expect(prompt.split(message)).toHaveLength(2);
+        expect(prompt).toContain('[User attached a file: shot.png]');
+        expect(handedImages().map(image => image.name)).toEqual(['shot.png']);
+      });
+
+      it('is not one once the agent answered it', async () => {
+        mockUseSessionDetail.mockReturnValue(
+          lostWith(
+            items({
+              id: 'a2',
+              kind: 'agent-message',
+              taskIndex: 1,
+              text: 'Two grills, then.',
+            }),
+          ),
+        );
+        await render();
+
+        await userEvent.click(startButton());
+
+        await created();
+        expect(handedImages()).toEqual([]);
       });
     });
 
-    it('marks the session and lets the new session take Send’s place once kagent reports the loss', async () => {
+    it('shows no message box once kagent reports the loss, and offers the new session in the notice', async () => {
       mockUseSessionDetail.mockReturnValue(reportedView);
       await render();
 
       expect(screen.getByText('Runtime lost')).toBeInTheDocument();
+      const notice = screen
+        .getByText('This session cannot continue')
+        .closest('.bui-Alert') as HTMLElement;
       expect(
-        screen.getByText('This session cannot continue'),
+        within(notice).getByText(
+          /To carry on, continue in a new session with Issue tracker\. Its first message holds this conversation \(\d+ messages?\), with tools named but not their results\./,
+        ),
       ).toBeInTheDocument();
+      // The session takes no more messages: no box, no Send.
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Send' }),
       ).not.toBeInTheDocument();
-      expect(startButton()).toBeInTheDocument();
+      // The way on is inside the notice, where the eye already is.
+      expect(
+        within(notice).getByRole('button', {
+          name: 'Continue in a new session',
+        }),
+      ).toBeInTheDocument();
 
-      // Enter does the one thing that works.
-      await userEvent.type(composer(), 'Six of them are vegetarian.{Enter}');
+      await userEvent.click(startButton());
 
-      await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith(
-          expect.objectContaining({ prompt: 'Six of them are vegetarian.' }),
-        );
-      });
+      const { prompt, title } = await created();
+      expect(prompt).toMatch(/^\[Continues session gazelle\/abc\]/);
+      expect(prompt).toContain(`User: ${lastUserMessage.trim()}`);
+      expect(title).toMatch(/^Continued: /);
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
-    it('lets the way out take the answer panel’s place', async () => {
+    it('lets the way out take the answer panel’s place, and carries the open question', async () => {
       // An answer would run into the same lost runtime; the question stays in
-      // the transcript and the box below offers the new session instead.
+      // the transcript and the notice offers the new session instead.
       mockUseSessionDetail.mockReturnValue({
         ...reportedView,
         state: awaitingInput,
@@ -2304,8 +2494,106 @@ describe('SessionDetailPage', () => {
       expect(
         screen.queryByText('How many are vegetarian?'),
       ).not.toBeInTheDocument();
-      expect(composer()).toBeEnabled();
-      expect(startButton()).toBeInTheDocument();
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /with tools named but not their results, and the open question\./,
+        ),
+      ).toBeInTheDocument();
+
+      await userEvent.click(startButton());
+
+      const { prompt } = await created();
+      expect(prompt).toMatch(
+        /## Your last question\n\n1\. How many are vegetarian\?$/,
+      );
+      expect(prompt).not.toContain('## My answer');
+    });
+
+    it('leaves the answer to the question card while the card is up', async () => {
+      // Suspected: the card stays with its retry and holds the answer itself.
+      mockUseSessionDetail.mockReturnValue({
+        ...suspectedView,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-2',
+          asks: 'input',
+          questions: [
+            { question: 'How many are vegetarian?', multiple: false },
+          ],
+          askedIn: 'status-1',
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: new Error(ATENET),
+          failed: {
+            messageId: 'answer-1',
+            taskId: 'task-2',
+            decision: 'approve',
+            answers: [['Six']],
+            text: 'Six',
+            askedIn: 'status-1',
+          },
+        }),
+      );
+      await render();
+
+      expect(
+        screen.getByText('The agent’s runtime could not be brought back'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('How many are vegetarian?')).toBeInTheDocument();
+      expect(screen.queryByText('Your answer: Six')).not.toBeInTheDocument();
+    });
+
+    it('carries the answer the lost runtime never took, and shows it', async () => {
+      // The person answered; the resume found the runtime gone, and kagent
+      // has since marked the loss. The answer is the person's, and the new
+      // session gets it.
+      mockUseSessionDetail.mockReturnValue({
+        ...reportedView,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-2',
+          asks: 'input',
+          questions: [
+            { question: 'How many are vegetarian?', multiple: false },
+          ],
+          askedIn: 'status-1',
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: new Error(ATENET),
+          failed: {
+            messageId: 'answer-1',
+            taskId: 'task-2',
+            decision: 'approve',
+            answers: [['Six']],
+            text: 'Six',
+            askedIn: 'status-1',
+          },
+        }),
+      );
+      await render();
+
+      expect(screen.getByText('Your answer: Six')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /with tools named but not their results, the open question and your answer\./,
+        ),
+      ).toBeInTheDocument();
+
+      await userEvent.click(startButton());
+
+      const { prompt } = await created();
+      expect(prompt).toContain(
+        '## Your last question\n\n1. How many are vegetarian?',
+      );
+      expect(prompt).toMatch(/## My answer\n\n1\. Six$/);
+      expect(mockAnswer).not.toHaveBeenCalled();
     });
 
     it('reports a failed start in the notice', async () => {
@@ -2338,8 +2626,425 @@ describe('SessionDetailPage', () => {
         screen.queryByText(/runtime could not be brought back/),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /Start a new session/ }),
+        screen.queryByRole('button', { name: /Continue in a new session/ }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('a session that continues another', () => {
+    const continuationView = (text: string): SessionDetailView => ({
+      ...loadedView,
+      timeline: {
+        ...loadedView.timeline,
+        items: [
+          { id: 'u1', kind: 'user-message', taskIndex: 0, text },
+          ...loadedView.timeline.items.filter(
+            item => item.kind !== 'user-message',
+          ),
+        ],
+      },
+    });
+
+    it('shows the marker as a banner linking to the original session, not as text', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        continuationView(
+          '[Continues session other-lab/0a1b2c]\n\nI am continuing a session with you.',
+        ),
+      );
+      await render();
+
+      expect(screen.getByText('Continued session')).toBeInTheDocument();
+      // The original may be on another installation.
+      expect(
+        screen.getByRole('link', { name: 'an earlier session on other-lab' }),
+      ).toHaveAttribute('href', '/sessions/other-lab/0a1b2c');
+      expect(
+        screen.getByText('I am continuing a session with you.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/\[Continues session/)).not.toBeInTheDocument();
+    });
+
+    it('names this session, not the one before, when it is carried on after a lost runtime', async () => {
+      // The new session's marker names the session it continues; the
+      // earlier one's marker is not carried along in the conversation.
+      mockUseSessionDetail.mockReturnValue({
+        ...continuationView(
+          '[Continues session other-lab/0a1b2c]\n\nI am continuing a session with you.',
+        ),
+        state: {
+          raw: 'failed',
+          key: 'failed',
+          label: 'Failed',
+          tone: 'danger' as const,
+          isActive: false,
+        },
+        runtimeLoss: { reported: true, cause: 'gone', attempts: 1 },
+      });
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Continue in a new session',
+        }),
+      );
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      const { prompt } = mockCreateSession.mock.calls[0][0];
+      expect(prompt).toMatch(/^\[Continues session gazelle\/abc\]\n/);
+      expect(prompt).toContain('User: I am continuing a session with you.');
+      expect(prompt).not.toContain('other-lab');
+    });
+
+    it('shows no banner for an ordinary first message', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        continuationView('Please continue session other-lab/0a1b2c'),
+      );
+      await render();
+
+      expect(screen.queryByText('Continued session')).not.toBeInTheDocument();
+    });
+
+    describe('carrying a long conversation', () => {
+      // jsdom lays nothing out: one line of the bubble's text per line of
+      // the message, and the cut's ten `lh` as ten of them.
+      let layout: MockedCollapsibleLayout;
+      beforeEach(() => {
+        layout = mockCollapsibleLayout();
+      });
+      afterEach(() => layout.restore());
+
+      it('cuts the opener under the banner behind Show more', async () => {
+        // The first message as "Continue in a new session" writes it: the
+        // marker line, the framing and sixty earlier messages.
+        const { text } = buildContinuationPrompt({
+          items: Array.from({ length: 60 }, (_, i) => ({
+            id: `m${i}`,
+            kind:
+              i % 2 ? ('agent-message' as const) : ('user-message' as const),
+            taskIndex: Math.floor(i / 2),
+            text: `Message ${i + 1}`,
+          })),
+          pendingQuestions: [],
+          continues: { installation: 'other-lab', sessionId: '0a1b2c' },
+        });
+        expect(text).toMatch(/^\[Continues session other-lab\/0a1b2c\]/);
+        mockUseSessionDetail.mockReturnValue(continuationView(text));
+        await render();
+
+        expect(screen.getByText('Continued session')).toBeInTheDocument();
+        const toggle = screen.getByRole('button', { name: 'Show more' });
+        const message = document.getElementById(
+          toggle.getAttribute('aria-controls')!,
+        )!;
+        expect(message.style.maxHeight).toBe('10lh');
+        // The marker is the banner, not the message's first line.
+        expect(message).toHaveTextContent(
+          /^I am continuing a session with you that could not be resumed/,
+        );
+        expect(message).toHaveTextContent('Message 60');
+        expect(message).not.toHaveTextContent('[Continues session');
+
+        await userEvent.click(toggle);
+        expect(
+          screen.getByRole('button', { name: 'Show less' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+      });
+    });
+  });
+
+  describe('an answer kagent did not take', () => {
+    // `useAnswerConfirmation` rejects with this once a silent answer (a 202,
+    // an empty stream) never reached the task: the agent could not resume,
+    // and the question is still open.
+    const notTaken = () => {
+      const error = new Error(
+        'kagent did not take the answer: the agent could not resume, and the question is still open.',
+      );
+      error.name = 'AnswerNotTakenError';
+      return error;
+    };
+    const question = 'Who exactly is the audience?';
+    const pendingQuestion = {
+      taskId: 'task-2',
+      asks: 'input' as const,
+      toolName: 'ask_user',
+      questions: [{ question, multiple: false }],
+      askedIn: 'status-1',
+    };
+    const waitingView: SessionDetailView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: awaitingInput,
+      currentTaskId: 'task-2',
+      pendingConfirmation: pendingQuestion,
+    };
+    const failedAnswer = {
+      messageId: 'answer-1',
+      taskId: 'task-2',
+      decision: 'approve' as const,
+      answers: [['Cyclists']],
+      text: 'Cyclists',
+      askedIn: 'status-1',
+    };
+    const notTakenConfirmation = (failed: PendingAnswer = failedAnswer) =>
+      idleConfirmation({ error: notTaken(), failed });
+    const composer = () => screen.getByRole('textbox', { name: 'Message' });
+    const startButton = () =>
+      screen.getByRole('button', {
+        name: 'Continue in a new session',
+      });
+
+    it('replaces the question card with the error, offers no retry and shows the answer', async () => {
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /the question is still open and this session cannot continue/,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
+      // No card, so nothing invites sending the answer again.
+      expect(
+        screen.queryByRole('form', { name: 'Question from the agent' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send answer' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send' }),
+      ).not.toBeInTheDocument();
+      // The session takes no more messages: no box, and the way on is in
+      // the notice.
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      const notice = screen
+        .getByText('Could not resume this session')
+        .closest('.bui-Alert') as HTMLElement;
+      expect(
+        within(notice).getByRole('button', {
+          name: 'Continue in a new session',
+        }),
+      ).toBeInTheDocument();
+      // kagent marked nothing, so the page does not claim a lost runtime.
+      expect(screen.queryByText('Runtime lost')).not.toBeInTheDocument();
+    });
+
+    it('starts the new session on the whole conversation, the question and the answer', async () => {
+      // An answer alone answers nothing in a session that never saw the
+      // question: the first message carries the conversation so far.
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.getByText(
+          /Its first message holds this conversation \(\d+ messages?\), with tools named but not their results, the open question and your answer/,
+        ),
+      ).toBeInTheDocument();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      const { prompt, title } = mockCreateSession.mock.calls[0][0];
+      // Its first line names this session, for the new page's banner.
+      expect(prompt).toMatch(
+        /^\[Continues session gazelle\/abc\]\n\nI am continuing a session with you that could not be resumed/,
+      );
+      expect(prompt).toContain('## Earlier conversation');
+      // The conversation's own first message, as the timeline holds it.
+      const firstUserMessage = timeline.items.find(
+        item => item.kind === 'user-message',
+      )!.text;
+      expect(prompt).toContain(`User: ${firstUserMessage.trim()}`);
+      expect(prompt).toContain(`## Your last question\n\n1. ${question}`);
+      expect(prompt).toMatch(/## My answer\n\n1\. Cyclists$/);
+      // Titled after this session, not after the framing.
+      expect(title).toMatch(/^Continued: /);
+      expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/new-1', {
+        state: {
+          newSession: expect.not.objectContaining({ prepared: true }),
+        },
+      });
+      expect(mockAnswer).not.toHaveBeenCalled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps one Continued prefix when a continued session is carried on again', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...waitingView,
+        detail: {
+          ...waitingView.detail!,
+          session: {
+            ...waitingView.detail!.session,
+            title: 'Continued: Fried potatoes',
+          },
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      expect(mockCreateSession.mock.calls[0][0].title).toBe(
+        'Continued: Fried potatoes',
+      );
+    });
+
+    it('shows no box and no button where no new session can be offered', async () => {
+      // A plain message would strand the question the answer was for, and
+      // the notice says where else to go.
+      const context = mockUseAgents();
+      mockUseAgents.mockReturnValue({
+        ...context,
+        rows: context.rows.map(row => ({
+          ...row,
+          sessionBlocker: 'Muster has no per-user sign-in here.',
+        })),
+      } as AgentsContextValue);
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Continue in a new session/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
+      expect(
+        screen.getByText(/cannot be started from this portal/),
+      ).toBeInTheDocument();
+    });
+
+    it('does not carry a declined approval’s reason into the new session', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...waitingView,
+        pendingConfirmation: {
+          taskId: 'task-2',
+          asks: 'approval',
+          toolName: 'delete_cluster',
+          questions: [],
+          askedIn: 'status-1',
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(
+        notTakenConfirmation({
+          messageId: 'answer-1',
+          taskId: 'task-2',
+          decision: 'reject',
+          rejectionReason: 'not that one',
+          text: 'not that one',
+          askedIn: 'status-1',
+        }),
+      );
+      await render();
+
+      expect(
+        screen.getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Your answer/)).not.toBeInTheDocument();
+      await userEvent.click(startButton());
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalled();
+      });
+      const { prompt } = mockCreateSession.mock.calls[0][0];
+      expect(prompt).toContain('## Earlier conversation');
+      expect(prompt).not.toContain('not that one');
+    });
+
+    it('keeps the card and its retry for any other failure', async () => {
+      // A refused or lost request can go through on a second try.
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: new Error('The streaming send failed with status 502.'),
+          failed: failedAnswer,
+        }),
+      );
+      await render();
+
+      expect(screen.getByText('Answer not sent')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Send answer' })).toBeEnabled();
+      expect(
+        screen.queryByText('Could not resume this session'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('takes the place of a suspected runtime loss, whose retry this rules out', async () => {
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          error: new Error(
+            'actor "ai-01a09e86-0da0-764b-87b1-ac52875d1e74" request timed out',
+          ),
+        }),
+      );
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('The agent’s runtime could not be brought back'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows a follow-up question in the same task rather than the error', async () => {
+      // A late resume took the answer and the agent asked again: a new
+      // question to answer, even though the task id is the same.
+      mockUseSessionDetail.mockReturnValue({
+        ...waitingView,
+        pendingConfirmation: {
+          ...pendingQuestion,
+          questions: [{ question: 'Which sport first?', multiple: false }],
+          askedIn: 'status-2',
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.queryByText('Could not resume this session'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('form', { name: 'Question from the agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('lets go of the error once the question is no longer open', async () => {
+      // A resume that lands late moves the task on; the page follows it.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: true,
+      });
+      mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
+      await render();
+
+      expect(
+        screen.queryByText('Could not resume this session'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Continue in a new session/ }),
+      ).not.toBeInTheDocument();
+      expect(composer()).toHaveValue('');
     });
   });
 
@@ -2367,7 +3072,7 @@ describe('SessionDetailPage', () => {
       });
       expect(
         within(breadcrumbs).getByRole('link', { name: 'Sessions' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions');
+      ).toHaveAttribute('href', '/sessions');
       expect(within(breadcrumbs).getByText('Session')).toBeInTheDocument();
     });
 
@@ -2429,7 +3134,7 @@ describe('SessionDetailPage', () => {
       const renderHeaderMenu = () =>
         renderInTestApp(<>{lastProvidedActions()}</>, {
           apis: [[storageApiRef, storage]],
-          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+          mountedRoutes: { '/sessions': sessionsRouteRef },
         });
       const openNotifications = async () => {
         await userEvent.click(
@@ -2766,26 +3471,42 @@ describe('SessionDetailPage', () => {
       expect(screen.getByRole('textbox', { name: 'Message' })).toBeDisabled();
     });
 
-    it('says the button starts the new session on touch, not Enter', async () => {
+    it('docks the notice with its button, and no box, once an answer was not taken', async () => {
+      // The question card goes, and the session takes no more messages: the
+      // dock holds the notice, its button and the cost chip.
       layout = mockPhoneLayout();
-      mockUseSessionDetail.mockReturnValue({
-        ...loadedView,
-        isAgentWorking: false,
-        state: {
-          raw: 'failed',
-          key: 'failed',
-          label: 'Failed',
-          tone: 'danger' as const,
-          isActive: false,
-        },
-        runtimeLoss: { reported: true, cause: 'gone', attempts: 1 },
-      });
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      const notTaken = new Error('kagent did not take the answer.');
+      notTaken.name = 'AnswerNotTakenError';
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: notTaken,
+          failed: {
+            messageId: 'answer-1',
+            taskId: 'task-1',
+            decision: 'approve',
+            answers: [['prod']],
+            text: 'prod',
+          },
+        }),
+      );
       await render();
 
+      const dock = screen.getByTestId('session-dock');
       expect(
-        screen.getByText(
-          'This session cannot continue; your message starts a new one with the same agent. Tap the button below to start it.',
-        ),
+        within(dock).getByText('Could not resume this session'),
+      ).toBeInTheDocument();
+      expect(within(dock).getByText('Your answer: prod')).toBeInTheDocument();
+      expect(
+        within(dock).queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(dock).getByRole('button', {
+          name: 'Continue in a new session',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(dock).getByRole('button', { name: /Session cost and context/ }),
       ).toBeInTheDocument();
     });
   });

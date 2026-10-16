@@ -3,7 +3,10 @@ import { createApp } from '@backstage/frontend-defaults';
 // App-level and nav modules:
 import { appOverrides } from './modules/app';
 import { navModule } from './modules/nav';
-import { agentShellModule } from './modules/agentShell';
+import {
+  agentPlatformLegacyPages,
+  agentShellModule,
+} from './modules/agentShell';
 import { customizeRouteRef, homeRouteRef } from './modules/agentShell/routes';
 
 // GS plugins:
@@ -67,13 +70,16 @@ const app = createApp({
     fluxPluginOverrides,
     aiChatPlugin,
     aiChatPluginOverrides,
-    // The Agent Platform page's sections come from both plugins: muster
-    // attaches "Connectors" and "Workflows" (`attachTo: page:agent-platform`).
-    // The page sorts them itself (agent-platform's `AGENT_PLATFORM_TAB_ORDER`),
-    // so the order here does not matter for them. Both plugins' pages are
-    // mounted only where the agent shell is available (`AGENT_SHELL_ON`): the
-    // classic portal has none of them.
+    // The Customize page's tabs come from both plugins: agent-platform
+    // attaches Agents, Skills and Models, muster Connectors and Workflows
+    // (`attachTo: page:app/agent-shell-customize`). The page orders them
+    // itself (`CUSTOMIZE_TAB_IDS`), so the order here does not matter for
+    // them. Both plugins' pages are mounted only where the agent shell is
+    // available (`AGENT_SHELL_ON`): the classic portal has none of them. The
+    // old `/agent-platform/**` addresses redirect through the app's mapping
+    // (`agentPlatformLegacyPages`).
     agentPlatformPlugin,
+    agentPlatformLegacyPages,
     musterPlugin,
     musterPluginOverrides,
     plansPluginOverrides,

@@ -24,7 +24,7 @@ import {
  * the same shapes once that release runs there. Nothing is written.
  */
 
-const SERVING = '/agent-platform/models/serving';
+const SERVING = '/customize/models/hosting';
 const GATEWAY = 'https://models.lab.example/model-serving/qwen-stub-api';
 const LLM_ENDPOINT = 'http://agentgateway.agent-platform.svc:8081';
 

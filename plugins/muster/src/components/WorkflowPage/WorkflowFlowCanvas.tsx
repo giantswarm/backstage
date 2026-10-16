@@ -41,7 +41,7 @@ import {
   stepToolEffects,
   TitleFit,
 } from '../../lib/workflowGraph';
-import { useToolCatalogue } from '../shared';
+import { EffectBadge, MarkerBadge, useToolCatalogue } from '../shared';
 import {
   accessibleName,
   quietStatus,
@@ -350,23 +350,16 @@ const useStyles = makeStyles({
   runFailed: { color: 'var(--bui-fg-negative)', fontWeight: 500 },
   runRunning: { color: 'var(--bui-announcement-fg-subdued)' },
   runQuiet: { color: 'var(--bui-fg-secondary)' },
-  // Small markers riding the node's top edge: its number on the left, what
-  // it does to the world and whether it may fail on the right.
+  // Small markers riding the node's top edge, all compact MarkerBadges: its
+  // number on the left, what it does to the world and whether it may fail on
+  // the right. The number is round and placed here; its look is MarkerBadge's.
   number: {
     position: 'absolute',
     top: -9,
     left: 10,
-    height: 18,
     minWidth: 18,
-    padding: '0 5px',
     boxSizing: 'border-box',
     borderRadius: 9,
-    border: '1px solid var(--bui-border-2)',
-    background: 'var(--bui-bg-neutral-1)',
-    fontSize: 11,
-    lineHeight: '16px',
-    textAlign: 'center',
-    color: 'var(--bui-fg-secondary)',
     fontVariantNumeric: 'tabular-nums',
   },
   numberInline: {
@@ -379,22 +372,6 @@ const useStyles = makeStyles({
     right: 10,
     display: 'flex',
     gap: 4,
-  },
-  marker: {
-    height: 18,
-    padding: '0 6px',
-    borderRadius: 6,
-    border: '1px solid var(--bui-border-2)',
-    background: 'var(--bui-bg-neutral-1)',
-    fontSize: 11,
-    lineHeight: '16px',
-    whiteSpace: 'nowrap',
-    color: 'var(--bui-fg-secondary)',
-  },
-  markerChanges: {
-    borderColor: 'var(--bui-warning-border)',
-    background: 'var(--bui-warning-bg-subdued)',
-    color: 'var(--bui-warning-fg-subdued)',
   },
   gate: {
     position: 'absolute',
@@ -485,16 +462,12 @@ function Markers({
   }
   return (
     <span className={classes.markers}>
-      {effect && (
-        <span
-          className={`${classes.marker} ${
-            effect === 'changes' ? classes.markerChanges : ''
-          }`}
-        >
-          {effect === 'changes' ? 'Changes things' : 'Reads'}
-        </span>
+      {effect && <EffectBadge effect={effect} size="compact" />}
+      {allowFailure && (
+        <MarkerBadge tone="neutral" size="compact">
+          May fail
+        </MarkerBadge>
       )}
-      {allowFailure && <span className={classes.marker}>May fail</span>}
     </span>
   );
 }
@@ -551,7 +524,11 @@ function StepNode({
       }}
       data-node={node.key}
     >
-      {node.number && <span className={classes.number}>{node.number}</span>}
+      {node.number && (
+        <MarkerBadge tone="neutral" size="compact" className={classes.number}>
+          {node.number}
+        </MarkerBadge>
+      )}
       <Markers effect={effect} allowFailure={node.allowFailure} />
       <button
         type="button"
@@ -622,9 +599,13 @@ function Group({
     <>
       <span className={classes.groupTitleRow}>
         {node?.number && (
-          <span className={`${classes.number} ${classes.numberInline}`}>
+          <MarkerBadge
+            tone="neutral"
+            size="compact"
+            className={`${classes.number} ${classes.numberInline}`}
+          >
             {node.number}
-          </span>
+          </MarkerBadge>
         )}
         <span
           className={`${classes.title} ${classes.groupTitleText}`}
@@ -632,7 +613,11 @@ function Group({
         >
           {title}
         </span>
-        {node?.allowFailure && <span className={classes.marker}>May fail</span>}
+        {node?.allowFailure && (
+          <MarkerBadge tone="neutral" size="compact">
+            May fail
+          </MarkerBadge>
+        )}
       </span>
       <span className={classes.subRow}>
         <span className={classes.groupLabel} title={group.label}>
@@ -960,10 +945,8 @@ export function WorkflowFlowCanvas({
       <Text as="span" variant="body-small" color="secondary">
         What each step's tool does:
       </Text>
-      <span className={classes.marker}>Reads</span>
-      <span className={`${classes.marker} ${classes.markerChanges}`}>
-        Changes things
-      </span>
+      <EffectBadge effect="reads" size="compact" />
+      <EffectBadge effect="changes" size="compact" />
     </span>
   );
 

@@ -31,12 +31,9 @@ const PULL_REQUEST = 'https://github.com/giantswarm/agents/pull/4242';
 
 type ToolCall = { name?: string; arguments?: Record<string, unknown> };
 
-/** The Edit agent wizard of the agent: `/agent-platform/agents/edit/<inst>/<ns>/<name>`. */
+/** The Edit agent wizard of the agent: `/customize/agents/<inst>/<ns>/<name>/edit`. */
 function editPathOf(agent: LabAgent): string {
-  return agent.detailPath.replace(
-    '/agent-platform/agents/',
-    '/agent-platform/agents/edit/',
-  );
+  return `${agent.detailPath}/edit`;
 }
 
 /** The Review step's write button: the header carries its twin. */

@@ -23,12 +23,12 @@ test('the first-agent invitation opens the New agent wizard', async ({
   test.skip(await roster.isVisible(), 'the lab holds agents: no invitation');
   await expect(
     admin.getByRole('link', { name: 'Create your first agent', exact: true }),
-  ).toHaveAttribute('href', '/agent-platform/agents/new');
+  ).toHaveAttribute('href', '/customize/agents/new');
 
   await open(admin, '/');
   await admin.getByRole('link', { name: 'Create your first agent' }).click();
 
-  await expect(admin).toHaveURL(/\/agent-platform\/agents\/new$/);
+  await expect(admin).toHaveURL(/\/customize\/agents\/new$/);
   await expectWizardStep(admin, 'Details');
   await expect(
     admin.getByRole('textbox', { name: 'Name', exact: true }),

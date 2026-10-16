@@ -28,6 +28,11 @@ const useStyles = makeStyles({
   },
 });
 
+/**
+ * Whether the item is the current one: its own page, or any page below it —
+ * the URL tree follows the rail, so every page of a destination lives under
+ * its path (giantswarm/giantswarm#38510). New session (`/`) only on itself.
+ */
 function isActivePath(pathname: string, href: string): boolean {
   if (href === '/') {
     return pathname === '/';
@@ -38,21 +43,16 @@ function isActivePath(pathname: string, href: string): boolean {
 export function RailLink({
   item,
   href,
-  currentOn = [],
   layout,
 }: {
   item: AgentShellNavItem;
   href: string;
-  /** Further paths under which the item is the current one. */
-  currentOn?: string[];
   layout: RailLayout;
 }) {
   const classes = useStyles();
   const barClasses = useBarItemStyles();
   const { pathname } = useLocation();
-  const isActive = [href, ...currentOn].some(path =>
-    isActivePath(pathname, path),
-  );
+  const isActive = isActivePath(pathname, href);
   const Icon = item.icon;
 
   if (layout === 'bar') {

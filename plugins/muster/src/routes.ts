@@ -5,21 +5,16 @@ import {
 } from '@backstage/frontend-plugin-api';
 
 /**
- * The Agent Platform's "Connectors" tab (`/agent-platform/connectors`): the
- * servers table. A tab's sub-page takes a plain route ref, so this is a root
- * of its own rather than a sub-route of a muster section.
+ * The Customize screen's Connectors tab (`/customize/connectors`): the
+ * connector pages, the tools beneath them and the registration wizard. A
+ * sub-page of the app's Customize page, so its route refs resolve under it;
+ * the list at the bare path is the Customize screen's own.
  */
 export const mcpServersRouteRef = createRouteRef();
 
-/**
- * The tab's old address (`/agent-platform/mcp-servers`), kept as a nav-less
- * redirect so every shared link resolves — the `/plans` → `/hive` pattern.
- */
-export const legacyMcpServersRouteRef = createRouteRef();
-
-// The MCP server registration wizard, sub-routes of the servers tab — the
-// same shape as agent creation's `/new` + `/new/skills` + `/new/review` under
-// the agents tab.
+// The registration wizard (`new`, `new/auth`, `new/verify`) — the same shape
+// as agent creation's `new` + `new/skills` + `new/review` under the agents
+// tab. `new` is a reserved word here: no installation can be named so.
 export const newMcpServerRouteRef = createSubRouteRef({
   path: '/new',
   parent: mcpServersRouteRef,
@@ -35,25 +30,46 @@ export const newMcpServerVerifyRouteRef = createSubRouteRef({
   parent: mcpServersRouteRef,
 });
 
-// A server's page and a tool's page beneath it. `:server` is the family name
-// for a server family, the CR name for a singular server and `muster` for
-// muster's own tools; `:tool` is the full muster tool name. The wizard's
-// static `new` segment outranks `:server`.
+// A connector's page and a tool's page beneath it, on the installation that
+// runs them: identity lives in the path, never in the query. `:server` is
+// the family name for a server family, the CR name for a singular server and
+// `muster` for muster's own tools; `:tool` is the full muster tool name. Two
+// segments, so a connector page never reads as the list's sub-tabs
+// (`infrastructure`, `internal`), which are one.
 export const mcpServerRouteRef = createSubRouteRef({
-  path: '/:server',
+  path: '/:installation/:server',
   parent: mcpServersRouteRef,
 });
 
 export const mcpServerToolRouteRef = createSubRouteRef({
-  path: '/:server/tools/:tool',
+  path: '/:installation/:server/tools/:tool',
   parent: mcpServersRouteRef,
 });
 
-/** The Agent Platform's "Workflows" tab (`/agent-platform/workflows`). */
+// Editing a registered connector: the registration wizard prefilled, its
+// steps under the connector's own address (`edit`, `edit/auth`,
+// `edit/verify`), the one edit shape agents and models share.
+export const editMcpServerRouteRef = createSubRouteRef({
+  path: '/:installation/:server/edit',
+  parent: mcpServersRouteRef,
+});
+
+export const editMcpServerAuthRouteRef = createSubRouteRef({
+  path: '/:installation/:server/edit/auth',
+  parent: mcpServersRouteRef,
+});
+
+export const editMcpServerVerifyRouteRef = createSubRouteRef({
+  path: '/:installation/:server/edit/verify',
+  parent: mcpServersRouteRef,
+});
+
+/** The Customize screen's Workflows tab (`/customize/workflows`). */
 export const workflowsRouteRef = createRouteRef();
 
+/** One workflow's page, on the installation it runs on. */
 export const workflowDetailRouteRef = createSubRouteRef({
-  path: '/:name',
+  path: '/:installation/:name',
   parent: workflowsRouteRef,
 });
 

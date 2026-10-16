@@ -47,7 +47,7 @@ async function deleteCurrentSession(page: Page): Promise<void> {
   const dialog = page.getByRole('dialog', { name: /Delete session/ });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Delete session' }).click();
-  await expect(page).toHaveURL(/\/agent-platform\/sessions$/, {
+  await expect(page).toHaveURL(/\/sessions$/, {
     timeout: 60_000,
   });
 }
@@ -80,7 +80,7 @@ test('a session started in the portal reports its state on the list', async ({
     await promptBox.fill(prompt);
     await admin.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(admin).toHaveURL(
-      new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`),
+      new RegExp(`/sessions/${lab.installation}/[^/]+$`),
       { timeout: 60_000 },
     );
     sessionPath = new URL(admin.url()).pathname;
@@ -98,7 +98,7 @@ test('a session started in the portal reports its state on the list', async ({
     ).toBeVisible({ timeout: 3 * 60_000 });
 
     // --- The list says what it is doing -----------------------------------
-    await open(admin, '/agent-platform/sessions');
+    await open(admin, '/sessions');
     // One table per day the sessions started on, each with a State column.
     const stateHeader = admin
       .getByRole('grid', { name: 'Today' })
@@ -129,7 +129,7 @@ test('a session started in the portal reports its state on the list', async ({
     // past `SEARCH_MIN` (8) rows: a short list is read, not filtered.
     const sessionRows = await admin
       .getByRole('row')
-      .filter({ has: admin.locator('a[href*="/agent-platform/sessions/"]') })
+      .filter({ has: admin.locator('a[href*="/sessions/"]') })
       .count();
     const stateFilter = admin.getByRole('button', { name: /Filter by state/ });
     if (sessionRows > SEARCH_MIN) {
@@ -225,7 +225,7 @@ test('the list distinguishes the three ways a state can be missing', async ({
     },
   );
 
-  await open(admin, '/agent-platform/sessions');
+  await open(admin, '/sessions');
 
   await expect(
     admin.getByRole('row').filter({ hasText: 'Waiting on a human' }),

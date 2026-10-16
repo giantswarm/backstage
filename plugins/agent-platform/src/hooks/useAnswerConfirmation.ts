@@ -1,8 +1,15 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/core-plugin-api';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  A2aTaskWire,
+  AWAITING_INPUT_STATES,
+  describeSessionState,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
-import { useStreamedTurn } from './useStreamedTurn';
+import { findTurnTask, useStreamedTurn } from './useStreamedTurn';
+import { sessionTasksQueryKey } from './useSessionDetail';
 
 /** One question's answers, positionally matched to the questions asked. */
 export type QuestionAnswers = string[];
@@ -16,10 +23,89 @@ export type ConfirmationAnswer = {
   rejectionReason?: string;
   /** The user's words, for the transcript. */
   text?: string;
+  /**
+   * The status message that asked (`PendingConfirmation.askedIn`). Kept here
+   * only: never sent, it tells the question this answers apart from a later
+   * one in the same task.
+   */
+  askedIn?: string;
 };
 
 /** An answer submitted locally, before kagent's copy of it has been read back. */
 export type PendingAnswer = ConfirmationAnswer & { messageId: string };
+
+/**
+ * How long the session is read, after an answer whose stream said nothing,
+ * before the answer counts as not taken; and how often within that.
+ *
+ * The backend answers 202 when the resumed turn sends no event within its
+ * request timeout (10 s by default): an approved tool can run that long before
+ * the agent speaks. But kagent answers the same way when it cannot resume the
+ * session at all, and then the answer never reaches the task: a three-day-old
+ * session took an answer that way, and its task was still waiting with no
+ * answer in its history hours later. The two read apart only
+ * in the history, so it is read: the answer in it, or the task moved on, means
+ * taken. The grace covers a resume that records the answer late.
+ */
+export const ANSWER_TAKEN_WAIT_MS = 15_000;
+export const ANSWER_TAKEN_POLL_MS = 3_000;
+
+/**
+ * The error an answer fails with when kagent did not take it: the question is
+ * still open and the answer is not in the session. Terminal for this session:
+ * sending it again goes the same way, so the page offers a new session instead
+ * of a retry.
+ */
+export const ANSWER_NOT_TAKEN_ERROR_NAME = 'AnswerNotTakenError';
+
+export function isAnswerNotTakenError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === ANSWER_NOT_TAKEN_ERROR_NAME;
+}
+
+function answerNotTakenError(): Error {
+  const error = new Error(
+    'kagent did not take the answer: the agent could not resume, and the question is still open.',
+  );
+  error.name = ANSWER_NOT_TAKEN_ERROR_NAME;
+  return error;
+}
+
+type AnswerOutcome = 'taken' | 'waiting' | 'unknown';
+
+/**
+ * What one read of the session says about an answer: `taken` once the answer
+ * is in the history or the task it answered has moved on, `waiting` while that
+ * task still waits on the same request without it, `unknown` when the read
+ * does not show the task.
+ *
+ * Moved on includes a new request in the same task: a follow-up question keeps
+ * the task id, and it means the answer was taken whether or not the history
+ * carries it under the id it was sent with.
+ */
+function readAnswerOutcome(
+  tasks: A2aTaskWire[],
+  answer: PendingAnswer,
+): AnswerOutcome {
+  if (findTurnTask(tasks, { sentMessageId: answer.messageId })) {
+    return 'taken';
+  }
+  const task = tasks.find(entry => entry.id === answer.taskId);
+  const state = task ? describeSessionState(task.status?.state) : undefined;
+  if (!state) {
+    return 'unknown';
+  }
+  if (!AWAITING_INPUT_STATES.has(state.key)) {
+    return 'taken';
+  }
+  const asking = (task!.status?.message as { messageId?: unknown } | undefined)
+    ?.messageId;
+  return answer.askedIn && asking !== answer.askedIn ? 'taken' : 'waiting';
+}
+
+const delay = (ms: number) =>
+  new Promise<void>(resolve => {
+    setTimeout(resolve, ms);
+  });
 
 /**
  * Answer the confirmation a session is suspended on.
@@ -41,6 +127,14 @@ export type PendingAnswer = ConfirmationAnswer & { messageId: string };
  * The optimistic/failed contract mirrors `useSendMessage`: `pending` is the answer
  * on its way, dropped by *recognition* once a poll returns it, and `failed` hands
  * it back so the panel can restore what the user chose instead of losing it.
+ *
+ * **An answer whose stream says nothing is checked, not trusted.** A 202, or a
+ * stream that ends without an event, is how a slow resumed turn arrives — and
+ * also how an answer kagent never took does. The session is read until the
+ * answer shows up in it (see {@link ANSWER_TAKEN_WAIT_MS}); one that does not
+ * fails with {@link isAnswerNotTakenError}, which the page reports as a session
+ * that cannot continue. Before this check that case resolved like a success:
+ * the button came back and nothing on the page changed.
  */
 export function useAnswerConfirmation(
   installation: string,
@@ -48,7 +142,60 @@ export function useAnswerConfirmation(
   agent: { namespace: string; name: string } | undefined,
 ) {
   const kagentApi = useApi(kagentApiRef);
+  const queryClient = useQueryClient();
   const turn = useStreamedTurn(installation, sessionId);
+
+  // The check below outlives a page the person left: it stops there, since
+  // nothing would show its verdict.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
+
+  /**
+   * Whether kagent took an answer whose stream said nothing. False only when
+   * the last read that succeeded, at the end of the wait, still showed the
+   * task waiting without it. A read that does not show the task cannot tell,
+   * nor can a wait whose reads all failed, and "cannot tell" is left to the
+   * poll rather than reported as a session that cannot continue.
+   *
+   * Read through the conversation's own query, so the poll and this check
+   * share their reads and a fresher one reaches the timeline too.
+   */
+  const wasAnswerTaken = useCallback(
+    async (answer: PendingAnswer): Promise<boolean> => {
+      const deadline = Date.now() + ANSWER_TAKEN_WAIT_MS;
+      let lastKnown: AnswerOutcome | undefined;
+      while (!unmountedRef.current) {
+        try {
+          lastKnown = readAnswerOutcome(
+            await queryClient.fetchQuery({
+              queryKey: sessionTasksQueryKey(installation, sessionId),
+              queryFn: () =>
+                kagentApi.listSessionTasks(installation, sessionId),
+              staleTime: 0,
+            }),
+            answer,
+          );
+        } catch {
+          // This read cannot tell; the next one may, and the last one that
+          // could still stands.
+        }
+        if (lastKnown === 'taken' || lastKnown === 'unknown') {
+          return true;
+        }
+        if (Date.now() >= deadline) {
+          return lastKnown !== 'waiting';
+        }
+        await delay(ANSWER_TAKEN_POLL_MS);
+      }
+      return true;
+    },
+    [queryClient, kagentApi, installation, sessionId],
+  );
   const [pending, setPending] = useState<PendingAnswer | null>(null);
   const [failed, setFailed] = useState<PendingAnswer | null>(null);
 
@@ -63,7 +210,7 @@ export function useAnswerConfirmation(
           'Cannot answer: the agent for this session is unknown.',
         );
       }
-      await run(answer.messageId, (onEvent, signal) =>
+      const streamed = await run(answer.messageId, (onEvent, signal) =>
         kagentApi.streamAnswer(
           installation,
           sessionId,
@@ -73,6 +220,9 @@ export function useAnswerConfirmation(
           signal,
         ),
       );
+      if (!streamed.dispatched && !(await wasAnswerTaken(answer))) {
+        throw answerNotTakenError();
+      }
     },
     onSuccess: () => {
       setPending(null);

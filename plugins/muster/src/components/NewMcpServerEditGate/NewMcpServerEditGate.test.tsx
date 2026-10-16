@@ -1,13 +1,7 @@
-import { useState } from 'react';
+import { createContext, useMemo, useState, type ReactNode } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {
-  Link,
-  Routes,
-  Route,
-  useLocation,
-  useSearchParams,
-} from 'react-router-dom';
+import { Link, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   renderInTestApp,
@@ -18,12 +12,8 @@ import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react
 import { musterApiRef } from '../../apis';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
-import {
-  MusterInstance,
-  MusterInstanceContext,
-} from '../MusterInstanceProvider';
+import type { MusterInstance } from '../MusterInstanceProvider';
 import { McpServersRouter } from '../McpServersRouter';
-import { withEditParam } from './NewMcpServerEditGate';
 
 jest.mock('../NewMcpServerPage/useTransportDetection', () => ({
   useTransportDetection: () => ({ detected: undefined, probing: false }),
@@ -60,18 +50,23 @@ const servers: Record<string, MCPServer[]> = {
   golem: [server('miro', 'golem', 'https://golem.miro.com/')],
 };
 
-function instance(active: string, isLoading = false): MusterInstance {
+function mockInstance(
+  active: string | undefined,
+  isLoading = false,
+): MusterInstance {
   return {
     installations: ['gazelle', 'golem'],
     isLoadingInstallations: false,
     installationInfos: [],
     activeInstallation: active,
-    scope: active,
+    scope: active ?? 'all',
     homeInstallation: 'gazelle',
     isSingleInstallation: false,
-    activeInstallationInfo: { name: active, requiresAuth: true },
+    activeInstallationInfo: active
+      ? { name: active, requiresAuth: true }
+      : undefined,
     setActiveInstallation: jest.fn(),
-    mcpServers: isLoading ? [] : servers[active],
+    mcpServers: isLoading || !active ? [] : servers[active],
     workflows: [],
     isLoading,
     isLoadingWorkflows: isLoading,
@@ -80,35 +75,59 @@ function instance(active: string, isLoading = false): MusterInstance {
   };
 }
 
-/**
- * The section around the wizard, with the header's installation selector.
- * Like the section's scope, it resolves to the URL's installation before the
- * stored one, where that installation runs muster.
- */
-function Section({ isLoading }: { isLoading?: boolean }) {
+/** The section's stored scope, which the header's selector changes. */
+const mockSectionContext = createContext({
+  stored: 'gazelle',
+  isLoading: false,
+});
+
+// The muster providers: pinned to the installation the address names, where
+// it runs muster, else following the section's scope — as
+// `MusterInstanceProvider` resolves them.
+jest.mock('../MusterSubPage', () => ({
+  MusterSubPage: ({
+    installation,
+    children,
+  }: {
+    installation?: string;
+    children: ReactNode;
+  }) => {
+    const { useContext } = jest.requireActual('react');
+    const { MusterInstanceContext: Context } = jest.requireActual(
+      '../MusterInstanceProvider',
+    );
+    const { stored, isLoading } = useContext(mockSectionContext);
+    const active = installation
+      ? ['gazelle', 'golem'].find(name => name === installation)
+      : stored;
+    return (
+      <Context.Provider value={mockInstance(active, isLoading)}>
+        {children}
+      </Context.Provider>
+    );
+  },
+}));
+
+/** The section around the wizard, with the header's installation selector. */
+function Section({ isLoading = false }: { isLoading?: boolean }) {
   const [stored, setStored] = useState('gazelle');
-  const [searchParams] = useSearchParams();
   const { pathname, search } = useLocation();
-  const fromUrl = searchParams.get('installation');
-  const active = fromUrl && fromUrl in servers ? fromUrl : stored;
+  const section = useMemo(() => ({ stored, isLoading }), [stored, isLoading]);
   return (
-    <MusterInstanceContext.Provider value={instance(active, isLoading)}>
+    <mockSectionContext.Provider value={section}>
       <span>
         at {pathname}
         {search}
       </span>
       <button onClick={() => setStored('golem')}>switch to golem</button>
-      <Link to="/agent-platform/connectors/new">new registration</Link>
-      <Link to="/agent-platform/connectors/new?edit=miro">edit miro</Link>
+      <Link to="/customize/connectors/new">new registration</Link>
+      <Link to="/customize/connectors/gazelle/miro/edit">edit miro</Link>
       <Routes>
-        <Route
-          path="/agent-platform/connectors/*"
-          element={<McpServersRouter />}
-        />
         {/* The list is the Customize screen's Connectors tab. */}
-        <Route path="/customize/*" element={<div>servers-list</div>} />
+        <Route path="/customize/connectors" element={<div>servers-list</div>} />
+        <Route path="/customize/connectors/*" element={<McpServersRouter />} />
       </Routes>
-    </MusterInstanceContext.Provider>
+    </mockSectionContext.Provider>
   );
 }
 
@@ -127,7 +146,7 @@ function renderSection(path: string, isLoading?: boolean) {
     {
       initialRouteEntries: [path],
       mountedRoutes: {
-        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize/connectors': mcpServersRouteRef,
         '/customize': customizeExternalRouteRef,
       },
     },
@@ -135,8 +154,8 @@ function renderSection(path: string, isLoading?: boolean) {
 }
 
 describe('NewMcpServerEditGate', () => {
-  it('seeds the wizard from ?edit on the active installation', async () => {
-    await renderSection('/agent-platform/connectors/new?edit=miro');
+  it('seeds the wizard from the edit address', async () => {
+    await renderSection('/customize/connectors/gazelle/miro/edit');
 
     expect(
       await screen.findByRole('heading', { name: 'Edit connector' }),
@@ -146,11 +165,9 @@ describe('NewMcpServerEditGate', () => {
     );
   });
 
-  it('edits the server on the installation the link names, through every step', async () => {
-    // gazelle is the stored scope and has a miro too; the link names golem's.
-    await renderSection(
-      '/agent-platform/connectors/new?edit=miro&installation=golem',
-    );
+  it('edits the server on the installation the address names, through every step', async () => {
+    // gazelle is the stored scope and has a miro too; the address names golem's.
+    await renderSection('/customize/connectors/golem/miro/edit');
 
     expect(
       await screen.findByRole('heading', { name: 'Edit connector' }),
@@ -159,13 +176,9 @@ describe('NewMcpServerEditGate', () => {
       'https://golem.miro.com/',
     );
 
-    // The next step keeps the installation, so the edit is not ended by the
-    // scope falling back to the stored gazelle.
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(
-      await screen.findByText(
-        'at /agent-platform/connectors/new/auth?edit=miro&installation=golem',
-      ),
+      await screen.findByText('at /customize/connectors/golem/miro/edit/auth'),
     ).toBeInTheDocument();
     expect(screen.queryByText('servers-list')).not.toBeInTheDocument();
     expect(
@@ -173,10 +186,8 @@ describe('NewMcpServerEditGate', () => {
     ).toBeInTheDocument();
   });
 
-  it('says so when the link names an installation the section cannot show', async () => {
-    await renderSection(
-      '/agent-platform/connectors/new?edit=miro&installation=offline',
-    );
+  it('says so when the address names an installation the section cannot show', async () => {
+    await renderSection('/customize/connectors/offline/miro/edit');
 
     expect(
       await screen.findByText('Environment not available'),
@@ -185,8 +196,14 @@ describe('NewMcpServerEditGate', () => {
     expect(screen.queryByLabelText(/^Server address/)).not.toBeInTheDocument();
   });
 
+  it('says so when there is no such connector', async () => {
+    await renderSection('/customize/connectors/gazelle/nope/edit');
+
+    expect(await screen.findByText('Connector not found')).toBeInTheDocument();
+  });
+
   it('never opens the wizard for a GitOps-managed server, even by link', async () => {
-    await renderSection('/agent-platform/connectors/new?edit=github');
+    await renderSection('/customize/connectors/gazelle/github/edit');
 
     expect(
       await screen.findByText('This connector is managed in Git'),
@@ -194,49 +211,50 @@ describe('NewMcpServerEditGate', () => {
     expect(screen.queryByLabelText(/^Server address/)).not.toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Back to connectors' }),
-    ).toBeInTheDocument();
+    ).toHaveAttribute('href', '/customize/connectors');
   });
 
   it('waits for the server list before deciding', async () => {
-    await renderSection('/agent-platform/connectors/new?edit=miro', true);
+    await renderSection('/customize/connectors/gazelle/miro/edit', true);
 
     expect(await screen.findByRole('progressbar')).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Server address/)).not.toBeInTheDocument();
     expect(screen.queryByText('Connector not found')).not.toBeInTheDocument();
   });
 
-  it('ends the edit when the header switches installation', async () => {
-    await renderSection('/agent-platform/connectors/new?edit=miro');
+  it('keeps editing the addressed server when the header switches installation', async () => {
+    await renderSection('/customize/connectors/gazelle/miro/edit');
     await screen.findByRole('heading', { name: 'Edit connector' });
 
     await userEvent.click(
       screen.getByRole('button', { name: 'switch to golem' }),
     );
 
-    // Back on the list — not quietly editing golem's server of the same name.
-    expect(await screen.findByText('servers-list')).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole('link', { name: 'new registration' }),
+    // The address names gazelle's miro: the section's scope does not move it.
+    expect(screen.getByLabelText(/^Server address/)).toHaveValue(
+      'https://mcp.miro.com/',
     );
     expect(
-      await screen.findByRole('heading', { name: 'Add connector' }),
+      screen.getByText('at /customize/connectors/gazelle/miro/edit'),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Server address/)).toHaveValue('');
   });
 
   it('brings a draft back once the edit is left', async () => {
-    await renderSection('/agent-platform/connectors/new');
+    await renderSection('/customize/connectors/new');
     await userEvent.type(
       screen.getByLabelText(/^Server address/),
       'https://draft.example.com/mcp',
     );
 
     await userEvent.click(screen.getByRole('link', { name: 'edit miro' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Edit connector' }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(/^Server address/)).toHaveValue(
       'https://mcp.miro.com/',
     );
 
-    // A /new without ?edit is a registration again: the edit ends and the
+    // A registration address is a registration again: the edit ends and the
     // draft it set aside is back.
     await userEvent.click(
       screen.getByRole('link', { name: 'new registration' }),
@@ -246,21 +264,6 @@ describe('NewMcpServerEditGate', () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/^Server address/)).toHaveValue(
       'https://draft.example.com/mcp',
-    );
-  });
-});
-
-describe('withEditParam', () => {
-  it('adds the edited server to a step path', () => {
-    expect(withEditParam('/servers/new/auth', 'my server')).toBe(
-      '/servers/new/auth?edit=my%20server',
-    );
-    expect(withEditParam('/servers/new', undefined)).toBe('/servers/new');
-  });
-
-  it('names the installation on the link that starts an edit', () => {
-    expect(withEditParam('/servers/new', 'my server', 'gazelle')).toBe(
-      '/servers/new?edit=my%20server&installation=gazelle',
     );
   });
 });

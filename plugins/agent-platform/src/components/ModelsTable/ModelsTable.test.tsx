@@ -44,7 +44,7 @@ jest.mock('react-router-dom', () => ({
 const renderTable = (element: React.ReactElement) =>
   renderInTestApp(element, {
     mountedRoutes: {
-      '/agent-platform/models': modelsRouteRef,
+      '/customize/models': modelsRouteRef,
       '/customize': customizeExternalRouteRef,
     },
   });
@@ -432,7 +432,7 @@ describe('ModelsTable serving state', () => {
 
     expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });

@@ -31,7 +31,7 @@ skipWithoutModelManager();
 test('each backend lists the running models first, then the ones that need attention, then the ones not running', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/models/serving');
+  await open(admin, '/customize/models/hosting');
   const grids = admin.getByRole('grid');
   await expect(
     grids.first(),

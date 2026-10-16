@@ -215,7 +215,7 @@ export interface LabAgent {
   /** The display name the roster and the session pages show. */
   name: string;
   slug: string;
-  /** The agent's detail page, `/agent-platform/agents/<installation>/<ns>/<slug>`. */
+  /** The agent's detail page, `/customize/agents/<installation>/<ns>/<slug>`. */
   detailPath: string;
 }
 
@@ -578,7 +578,7 @@ export async function createAgentInWizard(
   // details at the foot of Review.
   await dismissMcpSignInNotice(page);
   // --- Step 1: Details -----------------------------------------------------
-  await open(page, '/agent-platform/agents/new');
+  await open(page, '/customize/agents/new');
   await expectWizardStep(page, 'Details');
   await expect(
     page.getByText('No environments with models'),
@@ -647,9 +647,7 @@ export async function createAgentInWizard(
   // verdict agent-manager polls for it. From here on the agent exists and the
   // run deletes it again, whatever happens in between.
   await expect(page).toHaveURL(
-    new RegExp(
-      `/agent-platform/agents/${lab.installation}/[^/]+/${agentSlug}$`,
-    ),
+    new RegExp(`/customize/agents/${lab.installation}/[^/]+/${agentSlug}$`),
     { timeout: 60_000 },
   );
   return new URL(page.url()).pathname;
@@ -731,7 +729,7 @@ export function isLeftoverAgent(
  * this one.
  */
 async function removeLeftoverAgents(page: Page): Promise<void> {
-  await open(page, '/agent-platform/agents');
+  await open(page, '/customize/agents');
   const rows = page.getByRole('main').getByRole('listitem').getByRole('link');
   if (
     !(await rows
@@ -811,12 +809,15 @@ async function removeLabAgent(
 /**
  * The roster's link to the agent named `name`, on the open Agents tab
  * (Customize's): one row per agent, the whole row a link to its page, named by
- * all it shows — so the row is found by the name line itself.
+ * all it shows — so the row is found by the name line itself. Only the
+ * roster's lists ("Agents", and "Favorite agents" once the person has some):
+ * the tab's "Last used by you" cards and the rail's sessions name an agent
+ * too, once a session ran on it earlier in the run.
  */
 export function rosterLinkOf(page: Page, name: string): Locator {
   return page
     .getByRole('main')
-    .getByRole('listitem')
+    .getByRole('list', { name: /^(Favorite agents|Agents)$/ })
     .getByRole('link')
     .filter({ has: page.getByText(name, { exact: true }) });
 }
@@ -837,7 +838,7 @@ async function rosterPathOf(
   page: Page,
   name: string,
 ): Promise<string | undefined> {
-  await open(page, '/agent-platform/agents');
+  await open(page, '/customize/agents');
   await searchRoster(page, name);
   const link = rosterLinkOf(page, name);
   await link.waitFor({ timeout: 30_000 }).catch(() => undefined);
@@ -933,7 +934,7 @@ export async function startSessionOnReadyAgent(
     }
   }
   await expect(page).toHaveURL(
-    new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`),
+    new RegExp(`/sessions/${lab.installation}/[^/]+$`),
     { timeout: 60_000 },
   );
 }

@@ -230,7 +230,11 @@ export const FLOW_METRICS = {
   groupHeaderTwoLines: 70,
   /** A group head's width that is not title: padding, number, a gap. */
   groupHeadChrome: 14 + 30 + 8 + 14,
-  /** The "May fail" marker beside a group head's title. */
+  /**
+   * The "May fail" marker beside a group head's title, with the row's 8px
+   * gap. A compact MarkerBadge in Roboto at 12px measures 54px (62px with
+   * the gap); re-measure if the marker's text or padding changes.
+   */
   mayFailMarker: 72,
   /** Horizontal gap between parallel siblings. */
   parallelGap: 16,

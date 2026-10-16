@@ -28,6 +28,7 @@ function view(
     failedInstallations: new Set<string>(),
     skippedCount: 0,
     isLoading: false,
+    isComplete: true,
     isError: false,
     ...overrides,
   };

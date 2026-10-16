@@ -50,7 +50,7 @@ test('a refused kagent token shows the edge’s reason when the first message is
   await promptBox.fill('This session is refused before it starts.');
   await admin.getByRole('button', { name: 'Start', exact: true }).click();
 
-  await expect(admin).toHaveURL(/\/agent-platform\/sessions\/[^/]+\/[^/]+$/, {
+  await expect(admin).toHaveURL(/\/sessions\/[^/]+\/[^/]+$/, {
     timeout: 60_000,
   });
   await expect(admin.getByText('Message not sent')).toBeVisible({

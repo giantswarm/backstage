@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { makeStyles, Theme } from '@material-ui/core';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
-import { WIZARD_FOOTER_HEIGHT_VAR } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  FLOATING_NOTICE_CLEARANCE_VAR,
+  WIZARD_FOOTER_HEIGHT_VAR,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { McpAuthDialog } from './McpAuthDialog';
 import { useServerLabels } from './useServerLabels';
@@ -30,22 +33,26 @@ const DOCKED_BELOW = [
   'var(--session-dock-height, 0px)',
 ].join(' + ');
 
+/** The notice's distance from the view's edges, published on the notice. */
+const GAP_VAR = '--mcp-auth-notice-gap';
+
 const useStyles = makeStyles((theme: Theme) => ({
   // Fixed in the bottom right corner, over the page and under every dialog:
-  // seen on every page without moving the page's own layout, classic and
-  // agent shell alike. Lifted above whatever is docked at the bottom, so it
-  // never covers (or takes the clicks of) a page's primary action.
+  // seen on every page, classic and agent shell alike. Lifted above whatever
+  // is docked at the bottom, so it never covers (or takes the clicks of) a
+  // page's primary action; pages reserve the room it covers under their last
+  // content (`useFloatingNoticeClearance`).
   root: {
+    [GAP_VAR]: `${theme.spacing(3)}px`,
     position: 'fixed',
-    right: theme.spacing(3),
-    bottom: `calc(${theme.spacing(3)}px + ${DOCKED_BELOW})`,
+    right: `var(${GAP_VAR})`,
+    bottom: `calc(var(${GAP_VAR}) + ${DOCKED_BELOW})`,
     zIndex: theme.zIndex.snackbar,
     width: 'min(400px, calc(100vw - 32px))',
     boxShadow: theme.shadows[6],
     borderRadius: 'var(--bui-radius-3, 8px)',
     [theme.breakpoints.down('xs')]: {
-      right: 16,
-      bottom: `calc(16px + ${DOCKED_BELOW})`,
+      [GAP_VAR]: '16px',
     },
   },
 }));
@@ -71,6 +78,41 @@ function writeHidden(names: string[]) {
   }
 }
 
+/**
+ * Publishes what the shown notice covers above whatever is docked at the
+ * bottom — its height and its gap — as FLOATING_NOTICE_CLEARANCE_VAR on the
+ * document root, kept current as it wraps or the view resizes, and removed
+ * once it is hidden. Pages reserve that much under their last content, so the
+ * notice never covers it (on a phone it spans the whole width).
+ */
+function useFloatingNoticeClearance(notice: HTMLElement | null) {
+  useLayoutEffect(() => {
+    if (!notice) {
+      return undefined;
+    }
+    const documentRoot = document.documentElement;
+    const measure = () => {
+      const height = notice.getBoundingClientRect().height;
+      const gap =
+        parseFloat(getComputedStyle(notice).getPropertyValue(GAP_VAR)) || 0;
+      documentRoot.style.setProperty(
+        FLOATING_NOTICE_CLEARANCE_VAR,
+        `${Math.ceil(height + gap)}px`,
+      );
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(measure);
+    observer?.observe(notice);
+    return () => {
+      observer?.disconnect();
+      documentRoot.style.removeProperty(FLOATING_NOTICE_CLEARANCE_VAR);
+    };
+  }, [notice]);
+}
+
 function namedList(names: string[]): string {
   const shown = names.slice(0, NAMED_SERVERS);
   const more = names.length - shown.length;
@@ -81,13 +123,20 @@ function namedList(names: string[]): string {
 export function McpAuthNoticeContent() {
   const classes = useStyles();
   const installation = useNoticeInstallation();
-  const { waiting } = useMcpServersAwaitingSignIn(installation, {
-    enabled: Boolean(installation),
-  });
+  const { waiting, sessionExpired } = useMcpServersAwaitingSignIn(
+    installation,
+    {
+      enabled: Boolean(installation),
+    },
+  );
   const [hidden, setHidden] = useState<string[]>(readHidden);
   const [isDialogOpen, setDialogOpen] = useState(false);
+  const [notice, setNotice] = useState<HTMLElement | null>(null);
+  useFloatingNoticeClearance(notice);
 
-  const labelOf = useServerLabels(installation, waiting);
+  const labelOf = useServerLabels(installation, waiting, {
+    enabled: !sessionExpired,
+  });
   const isHidden = waiting.every(name => hidden.includes(name));
   const showNotice = waiting.length > 0 && !isHidden;
 
@@ -99,7 +148,11 @@ export function McpAuthNoticeContent() {
   return (
     <>
       {showNotice && !isDialogOpen && (
-        <aside className={classes.root} aria-label="MCP server sign-in">
+        <aside
+          ref={setNotice}
+          className={classes.root}
+          aria-label="MCP server sign-in"
+        >
           <Alert
             status="warning"
             icon

@@ -131,7 +131,7 @@ async function removeFixtures() {
 }
 
 async function openRuntimes(page: Page, user: LabUser = lab.users.admin) {
-  await open(page, '/agent-platform/agents/new', user);
+  await open(page, '/customize/agents/new', user);
   await fillAgentDetails(page, {
     name: 'Codex card check',
     description: 'Never created: the spec only reads the runtime cards.',

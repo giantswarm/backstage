@@ -64,14 +64,14 @@ export type ModelEdit = {
 };
 
 /**
- * Connect a model (`/agent-platform/models/new`): one step that writes a
+ * Connect a model (`/customize/models/new`): one step that writes a
  * kagent ModelConfig and its key Secret. Plain fields first — display name,
  * provider and model, the optional API key — and the technical name (filled
  * in from the display name) and TLS verification under More options, the
  * agent wizard's idiom.
  *
  * With `edit`, the same flow changes an existing model (`EditModelPage`,
- * `/agent-platform/models/edit/<installation>/<namespace>/<name>`): prefilled
+ * `/customize/models/<installation>/<namespace>/<name>/edit`): prefilled
  * from the CR, its environment and technical name fixed, the key field empty
  * meaning "keep the stored key", and **Save changes** waiting for a change.
  */

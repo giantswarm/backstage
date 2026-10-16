@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { expect, open, test } from './fixtures';
+import { expect, open, rosterLinkOf, test } from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -121,7 +121,7 @@ test('an environment without kagent explains the empty list, New agent still off
   // action stays a link, as decided for the shell.
   await expect(page.getByRole('link', { name: 'New agent' })).toHaveAttribute(
     'href',
-    '/agent-platform/agents/new',
+    '/customize/agents/new',
   );
 });
 
@@ -218,7 +218,7 @@ test('rows in while another environment is still read show the loading-more bar 
   await open(page, '/customize/agents');
 
   await expect(
-    page.getByRole('link', { name: new RegExp(labAgent.name) }),
+    rosterLinkOf(page, labAgent.name),
     'the lab’s rows are listed while the second environment is read',
   ).toBeVisible({ timeout: 60_000 });
   await expect(

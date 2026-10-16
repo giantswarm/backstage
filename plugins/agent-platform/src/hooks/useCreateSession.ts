@@ -16,6 +16,12 @@ import { usePortalStartedRecorder } from './useSessionNotificationRecord';
 export type NewSession = {
   agent: AgentRow;
   prompt: string;
+  /**
+   * What to title the session by, when the prompt would title it badly: a
+   * prompt the portal wrote opens with its framing, not with the topic.
+   * Derived from the prompt when absent.
+   */
+  title?: string;
 };
 
 /**
@@ -76,7 +82,12 @@ export function useCreateSession(
       name: 'AgentPlatform.sessionStarted',
       attributes: { entryPoint },
     }),
-    mutationFn: async ({ agent, prompt, requestId }: NewSessionRequest) => {
+    mutationFn: async ({
+      agent,
+      prompt,
+      title,
+      requestId,
+    }: NewSessionRequest) => {
       if (!musterApi) {
         // agent-manager is reached through muster only; a portal without the
         // muster plugin has no way to start a session.
@@ -86,7 +97,7 @@ export function useCreateSession(
       }
       // kagent never titles a session, so one started untitled stays that way
       // in every list: a prompt with nothing to title it by starts nothing.
-      const sessionName = deriveSessionTitle(prompt, titleMaxLength);
+      const sessionName = deriveSessionTitle(title ?? prompt, titleMaxLength);
       if (!sessionName) {
         throw new Error('A session starts with a prompt; this one is empty.');
       }

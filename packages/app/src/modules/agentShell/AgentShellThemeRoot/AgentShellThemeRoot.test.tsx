@@ -66,7 +66,7 @@ describe('AgentShellThemeRoot', () => {
   });
 
   it('follows the location, so classic pages lose the mark on navigation', async () => {
-    await renderAt('/agent-platform/sessions', { navigateTo: '/clusters' });
+    await renderAt('/sessions', { navigateTo: '/clusters' });
     expect(document.documentElement).toHaveAttribute('data-agent-shell', '');
 
     await userEvent.click(
@@ -133,7 +133,7 @@ describe('the theme providers on a crossing', () => {
           <ThemeProbe />
           <AgentShellThemeRoot />
           <GoTo to="/clusters" />
-          <GoTo to="/agent-platform/sessions" />
+          <GoTo to="/sessions" />
         </MemoryRouter>
       </TestApiProvider>,
     );
@@ -143,12 +143,12 @@ describe('the theme providers on a crossing', () => {
   // paint before this point, so no frame carries the previous theme. The old
   // MutationObserver hop would still read "classic" here.
   it('carries the shell theme before the first paint of a cold shell load', () => {
-    renderSync('/agent-platform/sessions');
+    renderSync('/sessions');
     expect(screen.getByTestId('theme')).toHaveTextContent('shell');
   });
 
   it('switches the theme before the next paint on every crossing', () => {
-    renderSync('/agent-platform/sessions');
+    renderSync('/sessions');
 
     act(() => {
       screen.getByRole('button', { name: 'go to /clusters' }).click();
@@ -157,9 +157,7 @@ describe('the theme providers on a crossing', () => {
     expect(screen.getByTestId('theme')).toHaveTextContent('classic');
 
     act(() => {
-      screen
-        .getByRole('button', { name: 'go to /agent-platform/sessions' })
-        .click();
+      screen.getByRole('button', { name: 'go to /sessions' }).click();
     });
     expect(screen.getByTestId('theme')).toHaveTextContent('shell');
   });

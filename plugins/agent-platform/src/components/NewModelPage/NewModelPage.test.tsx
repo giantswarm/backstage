@@ -60,7 +60,7 @@ function renderPage(edit?: ModelEdit) {
         />
       </Routes>
     </PageHeaderActionsProvider>,
-    { mountedRoutes: { '/agent-platform/models': modelsRouteRef } },
+    { mountedRoutes: { '/customize/models': modelsRouteRef } },
   );
 }
 
@@ -230,7 +230,7 @@ describe('NewModelPage', () => {
     await renderPage();
     expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
   });
 });

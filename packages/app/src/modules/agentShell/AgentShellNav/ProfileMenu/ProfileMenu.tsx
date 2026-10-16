@@ -25,7 +25,13 @@ import { makeStyles } from '@material-ui/core/styles';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
+import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
 import type { AgentShellNavItem } from '../../navItems';
+import {
+  UnreadBadge,
+  useNotificationInbox,
+  withUnreadCount,
+} from '../../NotificationInbox';
 import { type RailLayout, useBarItemStyles } from '../railLayout';
 import { useProfile } from './useProfile';
 
@@ -72,6 +78,11 @@ const useStyles = makeStyles({
     display: 'flex',
     flexDirection: 'column',
     minWidth: 0,
+  },
+  // The phone bar's avatar, which carries the inbox's unread badge.
+  barAvatar: {
+    position: 'relative',
+    display: 'inline-flex',
   },
   identity: {
     display: 'flex',
@@ -138,6 +149,7 @@ export function ProfileMenu({
   const inShell = destinations.filter(({ item: entry }) => !entry.newTab);
   const leaving = destinations.filter(({ item: entry }) => entry.newTab);
   const profile = useProfile();
+  const inbox = useNotificationInbox();
   const displayName = profile?.displayName?.trim() || undefined;
   const email = profile?.email?.trim() || undefined;
   const name = displayName ?? email ?? '';
@@ -190,13 +202,18 @@ export function ProfileMenu({
 
   let trigger;
   if (layout === 'bar') {
+    // The bar keeps its five items: the inbox's unread count rides on the
+    // Profile item, and its menu opens the inbox.
     trigger = (
       <AriaButton
         className={barClasses.item}
-        aria-label={item.title}
+        aria-label={withUnreadCount(item.title, inbox?.unreadCount ?? 0)}
         data-current={isCurrent ? 'true' : undefined}
       >
-        {avatar}
+        <span className={classes.barAvatar}>
+          {avatar}
+          <UnreadBadge count={inbox?.unreadCount ?? 0} />
+        </span>
         <span className={barClasses.label}>{item.barTitle ?? item.title}</span>
       </AriaButton>
     );
@@ -231,6 +248,17 @@ export function ProfileMenu({
     <MenuTrigger>
       {trigger}
       <Menu placement={layout === 'bar' ? 'top end' : 'top start'}>
+        {layout === 'bar' && inbox && (
+          <MenuItem
+            iconStart={<NotificationsNoneIcon fontSize="small" />}
+            onAction={() => inbox.setOpen(true)}
+          >
+            {inbox.unreadCount > 0
+              ? `Notifications (${inbox.unreadCount})`
+              : 'Notifications'}
+          </MenuItem>
+        )}
+        {layout === 'bar' && inbox && <MenuSeparator />}
         {name ? (
           // Who is signed in heads the group rather than being an item: it is
           // not something to choose.
