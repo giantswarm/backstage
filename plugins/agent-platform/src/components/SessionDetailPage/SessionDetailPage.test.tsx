@@ -2401,7 +2401,7 @@ describe('SessionDetailPage', () => {
       // The original may be on another installation.
       expect(
         screen.getByRole('link', { name: 'an earlier session on other-lab' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions/other-lab/0a1b2c');
+      ).toHaveAttribute('href', '/sessions/other-lab/0a1b2c');
       expect(
         screen.getByText('I am continuing a session with you.'),
       ).toBeInTheDocument();
@@ -2560,7 +2560,7 @@ describe('SessionDetailPage', () => {
       // Titled after this session, not after the framing.
       expect(title).toMatch(/^Continued: /);
       expect(mockNavigate).toHaveBeenCalledWith(
-        '/agent-platform/sessions/gazelle/new-1',
+        '/sessions/gazelle/new-1',
         {
           state: {
             newSession: expect.not.objectContaining({ prepared: true }),
