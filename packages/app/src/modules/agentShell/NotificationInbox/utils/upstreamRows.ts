@@ -90,6 +90,12 @@ export function notificationHref(
       return { href: url.href, external: true };
     }
   }
+  // A path that starts with `//` (the URL parser reads `/\` as `//` too) is
+  // protocol-relative as an href: it leads to another host. It stays the
+  // whole same-origin URL.
+  if (/^[/\\]{2}/.test(path)) {
+    return { href: url.href, external: true };
+  }
   return { href: `${path}${url.search}${url.hash}`, external: false };
 }
 

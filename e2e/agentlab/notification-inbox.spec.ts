@@ -54,3 +54,36 @@ test('a notification another feature sent is a plain row in the overlay, opened 
     overlay.getByRole('link', { name: /^E2E template run finished/ }),
   ).not.toHaveAccessibleName(/^Unread/);
 });
+
+test('a same-origin link whose path starts with // or /\\ stays on the portal', async ({
+  admin,
+}) => {
+  await open(admin, '/sessions');
+  const { origin } = new URL(admin.url());
+  await stubNotifications(admin, [
+    {
+      id: 'e2e-slashes-1',
+      title: 'E2E double slash link',
+      link: `${origin}//evil.example/x`,
+    },
+    {
+      id: 'e2e-slashes-2',
+      title: 'E2E backslash link',
+      link: `${origin}/\\evil.example`,
+    },
+  ]);
+  await admin.reload();
+
+  await admin
+    .getByRole('button', { name: /^Notifications, \d+ unread$/ })
+    .click();
+  const overlay = admin.getByRole('dialog', { name: 'Notifications' });
+  // Never a protocol-relative href, which a browser follows to another host:
+  // the row links the whole same-origin URL.
+  await expect(
+    overlay.getByRole('link', { name: /E2E double slash link/ }),
+  ).toHaveAttribute('href', `${origin}//evil.example/x`);
+  await expect(
+    overlay.getByRole('link', { name: /E2E backslash link/ }),
+  ).toHaveAttribute('href', `${origin}//evil.example`);
+});
