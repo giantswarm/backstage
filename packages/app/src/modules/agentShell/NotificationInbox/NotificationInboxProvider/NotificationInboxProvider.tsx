@@ -1,0 +1,227 @@
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  AgentPlatformProviders,
+  agentPlatformPlugin,
+  sessionsListSearch,
+  useNotifiableSessions,
+  useSessionNotificationRecord,
+  type SeenMarkReason,
+} from '@giantswarm/backstage-plugin-agent-platform';
+import {
+  usePageAttention,
+  useShellDocumentTitleCount,
+} from '@giantswarm/backstage-plugin-ui-react';
+import {
+  useDesktopNotifications,
+  type DesktopNotifications,
+} from '../hooks/useDesktopNotifications';
+import { isAt, useInboxInterruptions } from '../hooks/useInboxInterruptions';
+import { useSessionRowSource } from '../hooks/useSessionRowSource';
+import {
+  NOTIFICATIONS_HASH,
+  useToastLinkRouting,
+} from '../hooks/useToastLinkRouting';
+import type { InboxRow } from '../types';
+
+export type NotificationInboxValue = {
+  /** The rows, newest first. */
+  rows: InboxRow[];
+  /** The rows' sources have read once. */
+  ready: boolean;
+  unreadCount: number;
+  /** Marks a row read because the person opened it. */
+  markRead: (row: InboxRow) => void;
+  /** "Mark all read": every unread row, in one write. */
+  markAllRead: () => Promise<void>;
+  /** The overlay (a popover on the rail, a sheet on a phone). */
+  isOpen: boolean;
+  setOpen: (open: boolean) => void;
+  desktop: DesktopNotifications;
+};
+
+const InboxContext = createContext<NotificationInboxValue | undefined>(
+  undefined,
+);
+
+/**
+ * The Notification inbox, for the bell, the overlay and the phone's Profile
+ * menu; undefined outside a {@link NotificationInboxProvider}, or when the
+ * Agent Platform is not there to read.
+ */
+export function useNotificationInbox(): NotificationInboxValue | undefined {
+  return useContext(InboxContext);
+}
+
+/** Newest first; rows that cannot say when go last. */
+function byNewest(a: InboxRow, b: InboxRow): number {
+  return (b.at ?? -Infinity) - (a.at ?? -Infinity);
+}
+
+function Inbox({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
+  const { pathname, search, hash } = useLocation();
+  const attention = usePageAttention();
+  const sessionsRoute = useRouteRef(agentPlatformPlugin.routes.sessions);
+  const record = useSessionNotificationRecord();
+  const { markSeen, markManySeen } = record;
+
+  const source = useSessionRowSource(record);
+  const rows = useMemo(() => [...source.rows].sort(byNewest), [source.rows]);
+  const unreadCount = rows.filter(row => row.unread).length;
+
+  const [isOpen, setOpenState] = useState(false);
+  const desktop = useDesktopNotifications();
+
+  // Rows whose seen mark is on its way, so a row is written once however it
+  // was read: clicked, then on screen once its page opens.
+  const marking = useRef(new Set<string>());
+  const markOnce = useCallback(
+    (row: InboxRow, reason?: SeenMarkReason) => {
+      if (!row.unread || marking.current.has(row.id)) {
+        return;
+      }
+      marking.current.add(row.id);
+      markSeen(row.seenMark, reason)
+        .catch(() => {})
+        .finally(() => marking.current.delete(row.id));
+    },
+    [markSeen],
+  );
+
+  const markRead = useCallback(
+    (row: InboxRow) => markOnce(row, { action: 'opened', kind: row.kind }),
+    [markOnce],
+  );
+
+  const markAllRead = useCallback(async () => {
+    const targets = rows.filter(row => row.unread).map(row => row.seenMark);
+    if (targets.length > 0) {
+      await markManySeen(targets, { action: 'markedAllRead' });
+    }
+  }, [rows, markManySeen]);
+
+  // Opening the overlay, however it opens, answers the toasts that point to
+  // it; `interruptions` is read through a ref because it needs the opener.
+  const overlayOpened = useRef(() => {});
+  const setOpen = useCallback((open: boolean) => {
+    setOpenState(open);
+    if (open) {
+      overlayOpened.current();
+    }
+  }, []);
+  const openOverlay = useCallback(() => setOpen(true), [setOpen]);
+
+  const interruptions = useInboxInterruptions({
+    rows,
+    subjects: source.subjects,
+    ready: source.ready,
+    attention,
+    desktop,
+    waitingHref: sessionsRoute
+      ? `${sessionsRoute()}${sessionsListSearch({ state: 'waiting' })}`
+      : undefined,
+    openOverlay,
+  });
+  overlayOpened.current = interruptions.overlayOpened;
+
+  useToastLinkRouting(openOverlay);
+
+  // `#notifications` in the address (a link the toasts' routing did not
+  // take) opens the overlay and leaves the address as it was.
+  useEffect(() => {
+    if (hash === NOTIFICATIONS_HASH) {
+      openOverlay();
+      navigate({ pathname, search }, { replace: true });
+    }
+  }, [hash, pathname, search, navigate, openOverlay]);
+
+  // The session on screen counts as seen: opening a session marks its row
+  // read. Only while the person works in this window — a session parked in a
+  // background tab, or in a window behind another application, still
+  // notifies.
+  useEffect(() => {
+    if (!attention.visible || !attention.focused || !record.isKnown) {
+      return;
+    }
+    rows.filter(row => isAt(pathname, row.href)).forEach(row => markOnce(row));
+  }, [
+    rows,
+    pathname,
+    attention.visible,
+    attention.focused,
+    record.isKnown,
+    markOnce,
+  ]);
+
+  useShellDocumentTitleCount(unreadCount);
+
+  const value = useMemo<NotificationInboxValue>(
+    () => ({
+      rows,
+      ready: source.ready,
+      unreadCount,
+      markRead,
+      markAllRead,
+      isOpen,
+      setOpen,
+      desktop,
+    }),
+    [
+      rows,
+      source.ready,
+      unreadCount,
+      markRead,
+      markAllRead,
+      isOpen,
+      setOpen,
+      desktop,
+    ],
+  );
+
+  return (
+    <InboxContext.Provider value={value}>{children}</InboxContext.Provider>
+  );
+}
+
+/**
+ * The Notification inbox of the Agent Platform shell: rows derived in the
+ * browser from the shell's own reads (the person's sessions today), the
+ * unread count in the bell and the document title, toasts in the visible
+ * tab and opt-in desktop notifications.
+ *
+ * Mount it once per shell, around the rail: the bell and the phone's Profile
+ * menu read it, and a second mount would announce every row twice. Off the
+ * shell (classic pages) it is not mounted, so nothing shows there.
+ *
+ * Guarded like the rest of the rail for tests that mock the agent-platform
+ * plugin partially: without its data hooks the rail renders without a bell.
+ */
+export function NotificationInboxProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  if (
+    !AgentPlatformProviders ||
+    !useNotifiableSessions ||
+    !useSessionNotificationRecord
+  ) {
+    return <>{children}</>;
+  }
+  return (
+    <AgentPlatformProviders>
+      <Inbox>{children}</Inbox>
+    </AgentPlatformProviders>
+  );
+}

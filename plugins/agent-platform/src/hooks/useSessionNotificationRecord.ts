@@ -34,6 +34,20 @@ const RECORD_OPTIONS = { rereadWhenVisible: true };
 type SessionRef = { installation: string; sessionId: string };
 
 /**
+ * Why rows are marked seen, when it is the person's own doing in the
+ * Notification inbox: they opened a row (of this kind), or chose "Mark all
+ * read". Reported to analytics; a write without one is not.
+ */
+export type SeenMarkReason =
+  | { action: 'opened'; kind: 'waiting' | 'failed' | 'turnFinished' }
+  | { action: 'markedAllRead' };
+
+type SeenMarksWrite = {
+  targets: readonly SeenMarkTarget[];
+  reason?: SeenMarkReason;
+};
+
+/**
  * The person's notification settings per session — whether the portal
  * started it, and its Notification level — from the `agent-platform` bucket
  * (key `sessionNotificationSettings`, see `lib/notificationRecord`). Roams
@@ -193,7 +207,7 @@ export function useNotificationSeenMarks() {
 
   const { mutateAsync } = useTrackedMutation(
     {
-      mutationFn: (targets: readonly SeenMarkTarget[]) =>
+      mutationFn: ({ targets }: SeenMarksWrite) =>
         update<true>(current => {
           const next = withSeen(
             readNotificationSeen(current),
@@ -202,25 +216,43 @@ export function useNotificationSeenMarks() {
           );
           return next && { value: next, result: true };
         }),
-      event: null,
-      untrackedReason:
-        'Bookkeeping of what the person has seen; the inbox reports the actions that lead to it.',
+      // Only what the person did: a row opened from the inbox, "Mark all
+      // read". A session's row marked seen because its page is on screen is
+      // bookkeeping, reported by nothing.
+      event: (_, { reason }) => {
+        if (reason?.action === 'markedAllRead') {
+          return {
+            name: 'AgentPlatform.notificationsMarkedRead',
+            attributes: {},
+          };
+        }
+        if (reason?.action === 'opened') {
+          return {
+            name: 'AgentPlatform.notificationOpened',
+            attributes: { kind: reason.kind },
+          };
+        }
+        return null;
+      },
     },
     storedSettingWriteClient,
   );
 
-  /** Marks one row seen. */
+  /**
+   * Marks one row seen. `reason` reports the person's own action (opening
+   * the row); without it the write is not reported.
+   */
   const markSeen = useCallback(
-    async (target: SeenMarkTarget) => {
-      await mutateAsync([target]);
+    async (target: SeenMarkTarget, reason?: SeenMarkReason) => {
+      await mutateAsync({ targets: [target], reason });
     },
     [mutateAsync],
   );
 
   /** Marks every row seen in one write: "Mark all read". */
   const markManySeen = useCallback(
-    async (targets: readonly SeenMarkTarget[]) => {
-      await mutateAsync(targets);
+    async (targets: readonly SeenMarkTarget[], reason?: SeenMarkReason) => {
+      await mutateAsync({ targets, reason });
     },
     [mutateAsync],
   );
