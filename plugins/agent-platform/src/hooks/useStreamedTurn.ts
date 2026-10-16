@@ -37,7 +37,7 @@ type LostStream = {
  * The task a turn runs as: the one the stream named, else the one whose
  * history holds the message that opened the turn.
  */
-function findTurnTask(
+export function findTurnTask(
   tasks: A2aTaskWire[],
   turn: { sentMessageId: string; taskId?: string },
 ): A2aTaskWire | undefined {
@@ -203,9 +203,11 @@ export function useStreamedTurn(installation: string, sessionId: string) {
   /**
    * Run one streamed turn to the end of its stream, then re-read the
    * conversation. Rejects only with a failure that is known to be one.
+   * Resolves with the turn as streamed, so a caller can tell a stream that
+   * said nothing at all (`dispatched` false) from one that carried the turn.
    */
   const run = useCallback(
-    async (messageId: string, open: OpenTurnStream) => {
+    async (messageId: string, open: OpenTurnStream): Promise<StreamTurn> => {
       let turn = createStreamTurn(messageId);
       setStreamTurn(turn);
       // A new turn: whatever became of the previous one's stream is history.
@@ -253,7 +255,7 @@ export function useStreamedTurn(installation: string, sessionId: string) {
       // conversation afresh rather than trust the read from before it.
       if (unmountedRef.current) {
         markLeftBehindRef.current();
-        return;
+        return turn;
       }
 
       // The stream is over; the turn may not be. Recorded before the re-read
@@ -277,6 +279,7 @@ export function useStreamedTurn(installation: string, sessionId: string) {
       await queryClient.invalidateQueries({
         queryKey: sessionQueryKey(installation, sessionId),
       });
+      return turn;
     },
     [
       installation,

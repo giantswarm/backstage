@@ -1,6 +1,7 @@
 import { Alert } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { newSessionBlockedText, newSessionElsewhereText } from './helpers';
 
 const useStyles = makeStyles(theme => ({
   description: {
@@ -74,9 +75,9 @@ export function RuntimeLostNotice({
       ? ` It has failed ${loss.attempts} times in a row.`
       : '';
 
-  let wayOut = `Continue in a new session with ${agent} from the Sessions list.`;
+  let wayOut = newSessionElsewhereText(agent);
   if (newSessionBlocker) {
-    wayOut = `A new session with ${agent} cannot be started from this portal: sessions start through agent-manager as you. ${newSessionBlocker}`;
+    wayOut = newSessionBlockedText(agent, newSessionBlocker);
   } else if (offersNewSession && loss.reported) {
     wayOut = `Start a new session with ${agent} to carry on — the button under the message box takes your message with it.`;
   } else if (offersNewSession) {

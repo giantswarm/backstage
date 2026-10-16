@@ -1858,6 +1858,90 @@ sent choices first.
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.
 
+#### An answer kagent does not take
+
+The streaming answer route answers `202 pending` when the resumed turn sends no
+event within the request timeout (`timeoutMs`, 10 s): an approved tool can run
+that long before the agent speaks. kagent answers the same way when it cannot
+resume the session at all, and the answer then never reaches the task. Observed
+on a session left waiting for three days: the task stayed `input-required`
+with no answer in its history, and the session carried no failure.
+
+So an answer whose stream says nothing (a 202, or a stream that ends without an
+event) is checked against the history (`useAnswerConfirmation`,
+`ANSWER_TAKEN_WAIT_MS` 15 s, read every 3 s through the conversation's own
+query). It counts as taken once it is in a task's history, or once the answered
+task has left `input-required` or asks in a different status message (a
+follow-up question keeps the task id; `PendingConfirmation.askedIn` names the
+message that asked). A read that does not show the task, or a wait whose reads
+all failed, cannot tell and leaves the turn to the poll; a read that fails
+after one that could tell does not overturn it. A task still waiting on the
+same request without the answer at the end of the wait fails the answer with
+`AnswerNotTakenError`.
+
+While that request stands, the page treats it as the end of the session, as it
+does a reported runtime loss: "Could not resume this session" replaces the
+answer card and the new-session button takes Send's place. The notice shows a
+question's answer and says what the new session will start with. The answer is
+not put in the box, which would keep it beside a live Send once a late resume
+moves the task on. Where no new session can be offered, the box is disabled
+instead. No retry is offered, because a second answer goes the same way. Any
+other answer failure (a refusal, a 5xx, a lost connection) keeps the card with
+"Answer not sent" and its retry. kagent marks nothing, so the session keeps its
+"Waiting for you" state in the list and the rail, and a reload shows the card
+again.
+
+#### Carrying the session on in a new one
+
+A new session has an empty model history, so the new session's first message
+carries the conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`),
+built from the page's timeline, which holds the whole task history:
+
+- a first line naming the session it continues,
+  `[Continues session <installation>/<session id>]` (see below);
+- a short framing for the model: this continues a session that could not be
+  resumed, the earlier conversation follows, oldest first, then the open
+  question and the answer;
+- every message as `User:` or `Assistant:`, each cut at 4,000 characters;
+  questions the agent asked once (its prose echo of an `ask_user` is dropped),
+  and tool approvals with their verdict;
+- tool and agent calls **by name only**, consecutive ones on one line
+  (`[Assistant used tools: read_file, search (2×)]`): results can be any size,
+  and the new session can call a tool again rather than trust a stale result;
+- attachments by name and failed or stopped turns, one line each; not the
+  model's reasoning;
+- the open question with its choices, then the answer, or the box's text in
+  its place. An approval's words are never carried.
+
+The message stays within `MESSAGE_TEXT_MAX_LENGTH` (32,000 characters), the
+send route's bound. The question (each cut at 4,000 characters, as are its
+choices) and the answer come first; the conversation gives way from its oldest
+end and says how many messages it left out, and the notice says how many of
+them the new session gets, or that none fit. The conversation leaves 4,000
+characters (`REPLY_RESERVE`) for the answer or what the person types in its
+place, so a reply up to that length keeps the count the notice gave. The
+framing says what the message ends with: the question and the answer, or the
+question alone. The open question is found in the timeline by what it asks,
+so an answered question whose verdict the timeline could not read stays in the
+history. A session that was itself a continuation is carried on with its first
+message expanded into entries (its earlier conversation, question and answer),
+not clipped as one long message. The session is titled
+`Continued: <this session's title>`, with one prefix however often it is
+carried on.
+
+**The marker line.** The first line is one bracketed line, so it reads plainly
+to the model and wherever the raw text shows (Slack, kagent's UI). The session
+page recognises it only at the very start of the session's first user message
+(`readContinuationMarker`, `splitContinuation`), takes it out of the message
+and shows a "Continued session" banner above the conversation instead: "This
+session is a follow-up to an earlier session on <installation>", linked through
+`sessionDetailRouteRef` (the installation may differ from the session's own).
+The one-visit "Prepared by the portal" caption is not used for it. Links inside
+any bui `Alert` in the shell are underlined and take the shell's link colour
+(`agent-shell.css`), so they read as links on every alert background. An
+installation or session id outside `[a-z0-9-]` and `[A-Za-z0-9._-]` is not
+written, so a marker always reads back as written.
+
 ### Starting a session
 
 A session starts from a **composer** with a prompt and an agent; there is no
