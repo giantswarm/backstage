@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { connectorRow } from './connectors';
 import { connectToMuster, expect, open, test } from './fixtures';
 import { lab } from './lab';
 import {
@@ -38,11 +38,6 @@ spec:
 `;
 
 const scope = `?installation=${lab.installation}`;
-
-/** A connector's row in the table: its name, then its description. */
-function connectorRow(page: Page, name: string) {
-  return page.getByRole('row', { name: new RegExp(`^${name}( |$)`) });
-}
 
 test.describe('a connector with a display name', () => {
   test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);

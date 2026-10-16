@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { INSTALLATION_SCOPE_SEARCH_PARAM } from '@giantswarm/backstage-plugin-gs';
 import {
   EmptyStateCard,
   LoadingIndicator,
@@ -19,11 +20,29 @@ import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 export const EDIT_PARAM = 'edit';
 
 /**
- * A wizard step's path, carrying the server the run edits (if any) so a
- * reload, a shared link or the browser's history lands in the same edit.
+ * A wizard step's path, carrying the server the run edits (if any) and its
+ * installation, so a reload, a shared link or the browser's history lands in
+ * the same edit on the same installation. The installation is the section's
+ * scope parameter, so while the edit runs the scope stays on the server's
+ * installation even where the stored scope names another.
+ *
+ * `edit` keeps `encodeURIComponent` (not `URLSearchParams`, which writes a
+ * space as `+`): both name Kubernetes resources, where the two agree.
  */
-export function withEditParam(path: string, name: string | undefined): string {
-  return name ? `${path}?${EDIT_PARAM}=${encodeURIComponent(name)}` : path;
+export function withEditParam(
+  path: string,
+  name: string | undefined,
+  installation?: string,
+): string {
+  if (!name) {
+    return path;
+  }
+  const edit = `${path}?${EDIT_PARAM}=${encodeURIComponent(name)}`;
+  return installation
+    ? `${edit}&${INSTALLATION_SCOPE_SEARCH_PARAM}=${encodeURIComponent(
+        installation,
+      )}`
+    : edit;
 }
 
 /**
@@ -31,10 +50,14 @@ export function withEditParam(path: string, name: string | undefined): string {
  * step. The URL is the source of truth for *which* server is edited
  * (`?edit=<name>`); the form provider holds the edit itself.
  *
- * - `?edit=<name>` and the provider not editing that server on the active
- *   installation: seed it from the active installation's server list
+ * - `?edit=<name>` and the provider not editing that server on its
+ *   installation (`?installation=`, else the active one): seed it from the
+ *   active installation's server list
  *   (a progress indicator while that loads, an empty state when there is no
- *   such server or the wizard cannot edit it).
+ *   such server or the wizard cannot edit it). The scope reads the same
+ *   parameter, so the two agree unless the named installation is not one the
+ *   section can show; then an empty state says so, since the server list
+ *   read is another installation's.
  * - `?edit=<name>` for a GitOps-managed server: Git owns it, so the wizard is
  *   never offered (an empty state points back to the list, whose Edit/Remove
  *   leads to its source) — not even through a typed or shared link.
@@ -62,24 +85,35 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   const editName = searchParams.get(EDIT_PARAM) ?? undefined;
   const { activeInstallation, mcpServers, isLoading, isLoadingInstallations } =
     useMusterInstance();
+  // The installation the edited server is on: the one the Edit link names,
+  // else the active one.
+  const editInstallation =
+    searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM) ?? activeInstallation;
+  // The link names an installation the section did not resolve to (muted,
+  // or running no muster): its servers are not the ones read here.
+  const elsewhere =
+    Boolean(editName) &&
+    !isLoadingInstallations &&
+    activeInstallation !== undefined &&
+    editInstallation !== activeInstallation;
   const { registeredName, registeredInstallation, lastSave, startEdit, reset } =
     useNewMcpServerForm();
 
   const server = editName
     ? mcpServers.find(
-        s => s.getName() === editName && s.cluster === activeInstallation,
+        s => s.getName() === editName && s.cluster === editInstallation,
       )
     : undefined;
   const gitOpsManaged = server ? isGitOpsManaged(server) : false;
   // What people call the connector; the URL keeps its resource name.
   const shownName = editName
-    ? connectorDisplayNameOn(mcpServers, activeInstallation, editName)
+    ? connectorDisplayNameOn(mcpServers, editInstallation, editName)
     : undefined;
   const inSync =
     !gitOpsManaged &&
     (editName
       ? registeredName === editName &&
-        registeredInstallation === activeInstallation
+        registeredInstallation === editInstallation
       : !registeredName);
   const blocker =
     server && !gitOpsManaged ? wizardEditBlocker(server) : undefined;
@@ -106,7 +140,7 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
     }
     if (resumeSaved && registeredName) {
       navigate(
-        { search: `?${EDIT_PARAM}=${encodeURIComponent(registeredName)}` },
+        { search: withEditParam('', registeredName, registeredInstallation) },
         { replace: true },
       );
     } else if (!editName) {
@@ -117,6 +151,7 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   }, [
     activeInstallation,
     registeredName,
+    registeredInstallation,
     inSync,
     resumeSaved,
     editName,
@@ -141,12 +176,20 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   ) : undefined;
 
   let body: ReactNode;
-  if (editName && !server && !isLoading && !isLoadingInstallations) {
+  if (elsewhere) {
+    body = (
+      <EmptyStateCard
+        title="Environment not available"
+        description={`The link edits "${editName}" on ${editInstallation}, but connectors on ${editInstallation} cannot be read here. It may be turned off under Cluster access, or run no muster.`}
+        actions={backToServers}
+      />
+    );
+  } else if (editName && !server && !isLoading && !isLoadingInstallations) {
     body = (
       <EmptyStateCard
         title="Connector not found"
         description={`There is no connector "${editName}" on ${
-          activeInstallation ?? 'this environment'
+          editInstallation ?? 'this environment'
         }.`}
         actions={backToServers}
       />

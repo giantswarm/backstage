@@ -113,8 +113,14 @@ export function NewConnectorTestPage() {
   const signInLink = useRouteRef(newMcpServerAuthRouteRef);
   const connectLink = useRouteRef(newMcpServerRouteRef);
   const closeHref = useConnectorWizardCloseHref();
-  const { state, registeredName, lastSave, lastSaveAt, reset } =
-    useNewMcpServerForm();
+  const {
+    state,
+    registeredName,
+    registeredInstallation,
+    lastSave,
+    lastSaveAt,
+    reset,
+  } = useNewMcpServerForm();
   const { mcpServers, mcpServersUpdatedAt, retry } = useMusterInstance();
   const { authenticated } = useMusterSession();
 
@@ -227,9 +233,11 @@ export function NewConnectorTestPage() {
 
   const onBack = useCallback(() => {
     if (signInLink) {
-      navigate(withEditParam(signInLink(), registeredName));
+      navigate(
+        withEditParam(signInLink(), registeredName, registeredInstallation),
+      );
     }
-  }, [signInLink, navigate, registeredName]);
+  }, [signInLink, navigate, registeredName, registeredInstallation]);
 
   const actions = useMemo(
     () => (

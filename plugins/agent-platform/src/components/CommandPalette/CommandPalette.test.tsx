@@ -106,7 +106,7 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 }));
 
 let mockConnectors: {
-  rows: { page: string; displayName: string; installations: string[] }[];
+  rows: { page: string; displayName: string; installation: string }[];
   isLoading: boolean;
 };
 jest.mock('./usePaletteConnectors', () => ({
@@ -256,7 +256,7 @@ beforeEach(() => {
       {
         page: 'confluence',
         displayName: 'confluence',
-        installations: ['gazelle'],
+        installation: 'gazelle',
       },
     ],
     isLoading: false,
@@ -588,7 +588,7 @@ describe('CommandPalette', () => {
 
     await userEvent.click(screen.getByText('confluence'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/connectors/confluence',
+      '/agent-platform/connectors/confluence?installation=gazelle',
     );
   });
 
@@ -598,7 +598,7 @@ describe('CommandPalette', () => {
         {
           page: 'mcp-confluence',
           displayName: 'Team wiki',
-          installations: ['gazelle'],
+          installation: 'gazelle',
         },
       ],
       isLoading: false,
@@ -608,7 +608,25 @@ describe('CommandPalette', () => {
 
     await userEvent.click(screen.getByText('Team wiki'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/connectors/mcp-confluence',
+      '/agent-platform/connectors/mcp-confluence?installation=gazelle',
+    );
+  });
+
+  it('lists a connector once per installation, each opening there', async () => {
+    mockConnectors = {
+      rows: [
+        { page: 'jira', displayName: 'Jira', installation: 'gazelle' },
+        { page: 'jira', displayName: 'Jira', installation: 'golem' },
+      ],
+      isLoading: false,
+    };
+    const input = await openPalette();
+    await userEvent.type(input, 'jira');
+
+    expect(screen.getAllByText('Jira')).toHaveLength(2);
+    await userEvent.click(screen.getAllByText('Jira')[1]);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/agent-platform/connectors/jira?installation=golem',
     );
   });
 

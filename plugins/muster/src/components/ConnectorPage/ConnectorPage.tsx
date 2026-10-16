@@ -42,6 +42,7 @@ import {
   worstSeverity,
 } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
+import { withInstallationQuery } from '../../lib/installationLink';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
 import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
@@ -247,7 +248,7 @@ function ConnectorPageContent({
   const endpoint =
     row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
   const serversRoute = useRouteRef(mcpServersRouteRef);
-  const search = `?installation=${encodeURIComponent(installation)}`;
+  const search = withInstallationQuery('', installation) ?? '';
   const name = serverRowKey(row);
   const members = useMemo(() => rowServers(row), [row]);
   const representativeInfo = representativeServer(row, installation);
@@ -308,13 +309,14 @@ function ConnectorPageContent({
     singular!.getAuth()?.type === 'oauth' &&
     signIn.isConnected;
 
-  // Edit opens the connector wizard on this connector (`?edit=`), the flow
-  // that added it; the wizard's edit gate seeds it from the server list.
+  // Edit opens the connector wizard on this connector (`?edit=` and its
+  // `&installation=`), the flow that added it; the wizard's edit gate seeds
+  // it from the server list.
   const editBlock = connectorEditBlock(row, authenticated);
   const newConnectorRoute = useRouteRef(newMcpServerRouteRef);
   const editHref =
     singular && !editBlock && newConnectorRoute
-      ? withEditParam(newConnectorRoute(), singular.getName())
+      ? withEditParam(newConnectorRoute(), singular.getName(), installation)
       : undefined;
   const gitOpsManaged = singular ? isGitOpsManaged(singular) : false;
 
@@ -703,8 +705,9 @@ export interface ConnectorPageProps {
  * Details with its facts and technical details. `:server` names a server, a server family or
  * muster itself on the installation the section's scope selects.
  *
- * Edit opens the connector wizard pre-filled (`new?edit=<name>`), the flow
- * that added the connector, the way agents and skills are edited. Where the
+ * Edit opens the connector wizard pre-filled
+ * (`new?edit=<name>&installation=<inst>`), the flow that added the
+ * connector, the way agents and skills are edited. Where the
  * wizard cannot edit the connector — applied from Git, a family, no muster
  * session, settings the wizard cannot represent — Edit stays in place,
  * disabled, saying why.

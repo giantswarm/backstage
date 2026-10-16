@@ -578,6 +578,11 @@ export const REFUSED = {
 export const refusalText = (pool: string) =>
   `node pool ${CLUSTER.name}-${pool} still runs 1 node(s) (${REFUSED.nodes[0]}): a model is served on the cluster — unload it and re-run once the pool is empty, or pass force to delete the pool with its nodes`;
 
+/** Reads after a complete apply that still answer `creating`; the next one is `ready`. */
+export const CREATING_READS = 2;
+/** The read from which every readiness block of the cluster is Ready. */
+export const SETTLED_READ = 4;
+
 /** The reads of `list_node_pools` after an accepted delete on which the pool still reads `removing`; gone on the next. */
 export const REMOVING_READS = 3;
 
@@ -630,11 +635,6 @@ export type StubOptions = DryRunOptions & {
    */
   keptCache?: 'mounted' | 'kept';
 };
-
-/** Reads after a complete apply that still answer `creating`; the next one is `ready`. */
-export const CREATING_READS = 2;
-/** The read from which every readiness block of the cluster is Ready. */
-export const SETTLED_READ = 4;
 
 const iso = (at: number, plusSeconds: number) =>
   new Date(at + plusSeconds * 1000).toISOString();

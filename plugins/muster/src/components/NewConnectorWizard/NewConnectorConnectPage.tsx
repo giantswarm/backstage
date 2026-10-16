@@ -139,6 +139,7 @@ export function NewConnectorConnectPage() {
     detailsErrors,
     fieldErrors,
     registeredName,
+    registeredInstallation,
   } = useNewMcpServerForm();
 
   // The wizard registers onto the section's active installation, mirrored into
@@ -174,9 +175,18 @@ export function NewConnectorConnectPage() {
       return;
     }
     if (signInLink) {
-      navigate(withEditParam(signInLink(), registeredName));
+      navigate(
+        withEditParam(signInLink(), registeredName, registeredInstallation),
+      );
     }
-  }, [errorCount, reveal, signInLink, navigate, registeredName]);
+  }, [
+    errorCount,
+    reveal,
+    signInLink,
+    navigate,
+    registeredName,
+    registeredInstallation,
+  ]);
   // Problems no field on this step can show: the installation comes from the
   // section, request metadata has no field in this wizard. Named in a summary.
   const unanchoredErrors = [

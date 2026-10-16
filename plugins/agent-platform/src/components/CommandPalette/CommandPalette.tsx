@@ -467,13 +467,14 @@ function PaletteDialog({
 
     const connectorCandidates: PaletteCandidate[] = serverRoute
       ? connectors.rows.map(connector => ({
-          id: `connector:${connector.page}`,
+          id: `connector:${connector.installation}/${connector.page}`,
           title: connector.displayName,
-          meta:
-            connector.installations.length > 1
-              ? `${connector.installations.length} environments`
-              : connector.installations[0],
-          href: serverRoute({ server: connector.page }),
+          meta: connector.installation,
+          href:
+            withInstallationQuery(
+              serverRoute({ server: connector.page }),
+              connector.installation,
+            ) ?? '',
           haystack: [connector.displayName, connector.page],
         }))
       : [];
@@ -499,10 +500,11 @@ function PaletteDialog({
           title: workflow.name,
           description: workflow.description,
           meta: workflow.installation,
-          href: withInstallationQuery(
-            workflowDetailRoute({ name: workflow.name }),
-            workflow.installation,
-          ),
+          href:
+            withInstallationQuery(
+              workflowDetailRoute({ name: workflow.name }),
+              workflow.installation,
+            ) ?? '',
           haystack: [workflow.name, workflow.description],
         }))
       : [];
@@ -511,9 +513,9 @@ function PaletteDialog({
       sessions: sessionCandidates.filter(candidate => candidate.href),
       agents: agentCandidates.filter(candidate => candidate.href),
       skills: skillCandidates,
-      connectors: connectorCandidates,
+      connectors: connectorCandidates.filter(candidate => candidate.href),
       models: modelCandidates,
-      workflows: workflowCandidates,
+      workflows: workflowCandidates.filter(candidate => candidate.href),
     };
   }, [
     sessions.rows,

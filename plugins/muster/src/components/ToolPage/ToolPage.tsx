@@ -99,7 +99,11 @@ export function ToolPage() {
   // read, so an unread tool is not called one that changes things.
   const known = Boolean(described.data ?? listed);
 
-  const toolsHref = links.server(serverKey, activeInstallation, toolsView);
+  // Without an installation there is no server to go back to: the page says
+  // no environment runs muster.
+  const toolsHref = activeInstallation
+    ? links.server(serverKey, activeInstallation, toolsView)
+    : undefined;
   const representative =
     row && activeInstallation
       ? representativeServer(row, activeInstallation)?.server

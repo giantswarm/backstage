@@ -19,9 +19,7 @@ describe('withInstallationQuery', () => {
     );
   });
 
-  it('adds nothing for an empty installation', () => {
-    expect(withInstallationQuery('/workflows/deploy', '')).toBe(
-      '/workflows/deploy',
-    );
+  it('builds no link without an installation', () => {
+    expect(withInstallationQuery('/workflows/deploy', '')).toBeUndefined();
   });
 });
