@@ -18,7 +18,7 @@ import {
  * the other**: this is the same mechanism muster already uses to put its own
  * Connectors and Workflows tabs on the app's Customize page. It also means
  * the section is simply absent when muster is not registered — where a static
- * import would pull muster's whole bundle into the Usage tab regardless — and
+ * import would pull muster's whole bundle into the Usage page regardless — and
  * that it has a real extension id, so a deployment can switch it off.
  *
  * A plain `createExtension` rather than a shared blueprint: there is exactly one

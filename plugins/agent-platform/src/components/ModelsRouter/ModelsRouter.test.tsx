@@ -424,13 +424,21 @@ describe('ModelsRouter', () => {
     ['/customize/models/inst-1/kagent', '/customize/models'],
     // An unknown hosting view: Running models.
     ['/customize/models/hosting/whatever', '/customize/models/hosting'],
-    // Three segments under `hosting` are never a model on an installation
-    // named so.
-    ['/customize/models/hosting/capacity/x', '/customize/models/hosting'],
+    // Deeper addresses under `hosting` or `new` are never a model on an
+    // installation named so: the view they name, else Running models, or
+    // Connect a model.
+    [
+      '/customize/models/hosting/capacity/x',
+      '/customize/models/hosting/capacity',
+    ],
+    ['/customize/models/hosting/cache/x/y', '/customize/models/hosting/cache'],
     [
       '/customize/models/hosting/a/b/c?installation=alpha',
       '/customize/models/hosting?installation=alpha',
     ],
+    ['/customize/models/hosting/a/b/edit', '/customize/models/hosting'],
+    ['/customize/models/new/a/b', '/customize/models/new'],
+    ['/customize/models/new/a/b/edit', '/customize/models/new'],
     // An unknown step of a model's edit: the edit.
     [
       '/customize/models/inst-1/kagent/qwen3/edit/whatever',

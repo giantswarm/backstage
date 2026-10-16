@@ -1,5 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Route, Routes } from 'react-router-dom';
 
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
@@ -7,13 +6,8 @@ import { AgentsDataProvider } from '../AgentsDataProvider';
 import { ServingProvider } from '../ServingProvider';
 import { SessionsIndexPage } from '../SessionsIndexPage';
 import { SessionDetailRoute } from './SessionDetailRoute';
+import { RouteRefRedirect } from '../RouteRefRedirect';
 import { sessionsRouteRef } from '../../routes';
-
-/** An address that names no session: the nearest valid parent, the list. */
-function ListRedirect() {
-  const sessions = useRouteRef(sessionsRouteRef);
-  return sessions ? <Navigate to={sessions()} replace /> : null;
-}
 
 /**
  * Content of the Sessions page (`/sessions`): the fleet-wide list, and one
@@ -50,7 +44,11 @@ export const SessionsRouter = () => {
                 path=":installation/:sessionId"
                 element={<SessionDetailRoute />}
               />
-              <Route path="*" element={<ListRedirect />} />
+              {/* An address that names no session: the list. */}
+              <Route
+                path="*"
+                element={<RouteRefRedirect routeRef={sessionsRouteRef} />}
+              />
             </Routes>
           </AgentsDataProvider>
         </ServingProvider>

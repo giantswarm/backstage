@@ -1,7 +1,11 @@
 import sha256 from 'crypto-js/sha256';
-import { MODEL_PAGE_TABS } from '@giantswarm/backstage-plugin-agent-platform';
+import {
+  AGENT_PAGE_TABS,
+  MODEL_PAGE_TABS,
+} from '@giantswarm/backstage-plugin-agent-platform';
 import {
   CONNECTOR_GROUPS,
+  CONNECTOR_PAGE_TAB_PATHS,
   WORKFLOW_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-muster';
 import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
@@ -34,20 +38,19 @@ const MODEL_TABS: ReadonlySet<string> = new Set(
   MODEL_PAGE_TABS.map(tab => tab.path).filter(Boolean),
 );
 
-/** An agent page's tabs below its own address (Overview, the index, left out). */
-const AGENT_TABS: ReadonlySet<string> = new Set(['sessions', 'tools', 'usage']);
+/**
+ * An agent page's tabs below its own address (Overview, the index, left
+ * out), a fixed set too.
+ */
+const AGENT_TABS: ReadonlySet<string> = new Set(
+  AGENT_PAGE_TABS.map(tab => tab.path).filter(Boolean),
+);
 
 /**
  * A connector page's tabs below its own address (Tools, the index, left
  * out), a fixed set too.
  */
-const CONNECTOR_TABS: ReadonlySet<string> = new Set([
-  'resources',
-  'prompts',
-  'used-by',
-  'instances',
-  'details',
-]);
+const CONNECTOR_TABS: ReadonlySet<string> = new Set(CONNECTOR_PAGE_TAB_PATHS);
 
 /** Usage's views below its own address (Overview, the bare path, left out). */
 const USAGE_VIEWS: ReadonlySet<string> = new Set([
@@ -427,7 +430,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // segments are an installation name and an opaque session id, so
     // including them would emit a distinct page name per session — useless
     // as a metric, and it would record which installations a user reads.
-    case pathname === '/sessions':
+    // A trailing slash is the same page, as the router has it.
+    case pathname === '/sessions' || pathname === '/sessions/':
       payload = { page: 'Sessions index' };
       break;
 
@@ -439,23 +443,24 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // its name, `overview`, so the numbers stay continuous across the move
     // from `/agent-platform/usage/overview`. The views are a fixed, public
     // set; any other address only redirects to Overview.
-    case pathname === '/usage':
-      payload = { page: 'Usage', view: 'overview' };
-      break;
-
-    case pathname.startsWith('/usage/'): {
+    case pathname === '/usage' || pathname.startsWith('/usage/'): {
+      // A trailing slash is the same view, as the router has it.
       const view = pathname.split('/').slice(2).filter(Boolean).join('/');
-      payload = {
-        page: 'Usage',
-        view: USAGE_VIEWS.has(view) ? view : 'redirect',
-      };
+      let usageView = 'redirect';
+      if (view === '') {
+        usageView = 'overview';
+      } else if (USAGE_VIEWS.has(view)) {
+        usageView = view;
+      }
+      payload = { page: 'Usage', view: usageView };
       break;
     }
 
     // The shell's minimal "Profile and settings" page: who is signed in, with
     // sign out — the rail's profile menu links here instead of the classic
-    // `/settings`.
-    case pathname === '/profile':
+    // `/settings`. The page has no sub-routes: anything below it renders
+    // the same page, so it carries the same name.
+    case pathname === '/profile' || pathname.startsWith('/profile/'):
       payload = { page: 'Profile' };
       break;
 

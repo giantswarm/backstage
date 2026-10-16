@@ -146,6 +146,18 @@ describe('the page at /customize', () => {
     );
   });
 
+  it('says so when an attached sub-page names no tab', async () => {
+    // `gadgets` is no Customize tab: the real page leaves it unrouted.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    renderCustomize(FeatureFlagState.Active);
+
+    await screen.findByTestId('customize-page');
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('sub-page:gadgets/gadgets (path "gadgets")'),
+    );
+    warn.mockRestore();
+  });
+
   it('is not found while the flag is off', async () => {
     renderCustomize(FeatureFlagState.None);
 

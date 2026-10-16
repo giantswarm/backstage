@@ -119,9 +119,17 @@ describe('AgentsRouter', () => {
     expect(await screen.findByText(text)).toBeInTheDocument();
   });
 
-  it('sends an unknown create step to the first one', async () => {
-    renderTab('/customize/agents/new/whatever');
+  it.each([
+    '/customize/agents/new/whatever',
+    // Deeper still: never an agent on an installation named `new`.
+    '/customize/agents/new/review/x',
+    '/customize/agents/new/skills/extra/more',
+    '/customize/agents/new/a/b/edit/tools',
+  ])('sends %s to the first create step', async path => {
+    renderTab(path);
 
     expect(await screen.findByText('new-agent')).toBeInTheDocument();
+    expect(screen.queryByText('agent-detail')).not.toBeInTheDocument();
+    expect(screen.queryByText('agent-edit')).not.toBeInTheDocument();
   });
 });

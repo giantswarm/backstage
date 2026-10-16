@@ -3,10 +3,7 @@ import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
 import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
-import {
-  NewMcpServerEditGate,
-  useConnectorsListHref,
-} from '../NewMcpServerEditGate';
+import { NewMcpServerEditGate } from '../NewMcpServerEditGate';
 import {
   NewConnectorConnectPage,
   NewConnectorSignInPage,
@@ -14,15 +11,15 @@ import {
 } from '../NewConnectorWizard';
 import { ConnectorPage } from '../ConnectorPage';
 import { MusterSubPage } from '../MusterSubPage';
+import { RouteRefRedirect } from '../RouteRefRedirect';
+import { mcpServersRouteRef } from '../../routes';
 import { ToolPage } from '../ToolPage';
 
 const CONTEXT =
   'The connectors of an environment are read through its Kubernetes API.';
 
 /** An unknown address under the tab: the nearest valid parent, the list. */
-function ListRedirect() {
-  return <Navigate to={useConnectorsListHref()} replace />;
-}
+const listRedirect = <RouteRefRedirect routeRef={mcpServersRouteRef} />;
 
 /** The wizard's steps, for a new connector or (`edit`) a registered one. */
 const wizardSteps = (
@@ -72,7 +69,7 @@ function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
         <Route path=":server/edit/*">{wizardSteps}</Route>
         <Route path=":server/*" element={<ConnectorPage usedBy={usedBy} />} />
         {/* An installation alone names no page. */}
-        <Route path="*" element={<ListRedirect />} />
+        <Route path="*" element={listRedirect} />
       </Routes>
     </MusterSubPage>
   );
@@ -115,7 +112,7 @@ export const McpServersRouter = ({ usedBy }: { usedBy?: ReactElement }) => {
           path=":installation/*"
           element={<InstallationRoutes usedBy={usedBy} />}
         />
-        <Route path="*" element={<ListRedirect />} />
+        <Route path="*" element={listRedirect} />
       </Routes>
     </NewMcpServerFormProvider>
   );

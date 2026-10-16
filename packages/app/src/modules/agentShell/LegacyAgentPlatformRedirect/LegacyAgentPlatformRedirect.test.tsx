@@ -1,13 +1,22 @@
+import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { LegacyAgentPlatformRedirect } from './LegacyAgentPlatformRedirect';
 
-let mockScope: { scope: string; home?: string; isLoading: boolean };
+/** muster's active installation, as the old pages resolved it. */
+let mockMuster: {
+  activeInstallation?: string;
+  isLoadingInstallations: boolean;
+};
+const mockProviderMounted = jest.fn();
 
-jest.mock('@giantswarm/backstage-plugin-gs', () => ({
-  ALL_INSTALLATIONS: 'all',
-  useInstallationScope: () => mockScope,
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  CustomizeMusterProvider: ({ children }: { children: ReactNode }) => {
+    mockProviderMounted();
+    return <>{children}</>;
+  },
+  useMusterInstance: () => mockMuster,
 }));
 
 function Landed() {
@@ -31,7 +40,11 @@ function renderAt(path: string) {
 
 describe('LegacyAgentPlatformRedirect', () => {
   beforeEach(() => {
-    mockScope = { scope: 'all', home: 'gazelle', isLoading: false };
+    mockMuster = {
+      activeInstallation: 'gazelle',
+      isLoadingInstallations: false,
+    };
+    mockProviderMounted.mockClear();
   });
 
   it.each([
@@ -48,10 +61,14 @@ describe('LegacyAgentPlatformRedirect', () => {
       '/agent-platform/connectors/jira?installation=golem&q=x',
       '/customize/connectors/golem/jira?q=x',
     ],
-  ])('sends %s to %s in one hop', async (from, to) => {
+  ])('sends %s to %s in one hop, without waiting', async (from, to) => {
+    // Even while muster's installations are still being read: these
+    // addresses do not need them.
+    mockMuster = { isLoadingInstallations: true };
     await renderAt(from);
 
     expect(await screen.findByText(`landed: ${to}`)).toBeInTheDocument();
+    expect(mockProviderMounted).not.toHaveBeenCalled();
   });
 
   it('keeps the hash', async () => {
@@ -62,29 +79,40 @@ describe('LegacyAgentPlatformRedirect', () => {
     ).toBeInTheDocument();
   });
 
-  it('names the home installation where a connector link names none', async () => {
+  it("names muster's active installation where a connector link names none", async () => {
+    mockMuster = { activeInstallation: 'golem', isLoadingInstallations: false };
     await renderAt('/agent-platform/connectors/jira/tools/jira_search');
 
     expect(
       await screen.findByText(
-        'landed: /customize/connectors/gazelle/jira/tools/jira_search',
+        'landed: /customize/connectors/golem/jira/tools/jira_search',
       ),
     ).toBeInTheDocument();
   });
 
-  it('names the pinned scope over the home installation', async () => {
-    mockScope = { scope: 'golem', home: 'gazelle', isLoading: false };
+  it('waits while muster’s installations are read', async () => {
+    mockMuster = { isLoadingInstallations: true };
     await renderAt('/agent-platform/workflows/deploy/run');
-
-    expect(
-      await screen.findByText('landed: /customize/workflows/golem/deploy/run'),
-    ).toBeInTheDocument();
-  });
-
-  it('waits while the installations are read', async () => {
-    mockScope = { scope: 'all', home: undefined, isLoading: true };
-    await renderAt('/agent-platform/connectors/jira');
 
     expect(screen.queryByText(/^landed:/)).not.toBeInTheDocument();
   });
+
+  it.each([
+    [
+      '/agent-platform/connectors/jira/tools/jira_search',
+      '/customize/connectors',
+    ],
+    ['/agent-platform/workflows/deploy/run', '/customize/workflows'],
+  ])(
+    'lands %s on its list where no installation runs muster',
+    async (from, to) => {
+      mockMuster = {
+        activeInstallation: undefined,
+        isLoadingInstallations: false,
+      };
+      await renderAt(from);
+
+      expect(await screen.findByText(`landed: ${to}`)).toBeInTheDocument();
+    },
+  );
 });

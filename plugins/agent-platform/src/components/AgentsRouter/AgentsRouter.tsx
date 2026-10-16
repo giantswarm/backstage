@@ -1,4 +1,5 @@
-import { Navigate, Routes, Route } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import { Navigate, Routes, Route, useParams } from 'react-router-dom';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
@@ -10,6 +11,22 @@ import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
 import { NewAgentToolsPage } from '../NewAgentToolsPage';
 import { NewAgentReviewPage } from '../NewAgentReviewPage';
 import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
+import { RouteRefRedirect } from '../RouteRefRedirect';
+import { newAgentRouteRef } from '../../routes';
+
+/**
+ * `new` is a reserved word here: an address that starts with it is never an
+ * agent on an installation named so, however deep it goes (react-router
+ * ranks three dynamic segments above `new/*`). Such an address lands on the
+ * wizard's first step, its nearest valid parent.
+ */
+function AgentRoute({ children }: { children: ReactNode }) {
+  const { installation } = useParams();
+  if (installation?.toLowerCase() === 'new') {
+    return <RouteRefRedirect routeRef={newAgentRouteRef} />;
+  }
+  return <>{children}</>;
+}
 
 // Content of the Customize screen's Agents tab below its list: one agent's
 // page, its edit, and the create wizard. The create steps share one
@@ -47,13 +64,21 @@ export const AgentsRouter = () => {
           <Route path="new/*" element={<Navigate to="." replace />} />
           <Route
             path=":installation/:namespace/:name/*"
-            element={<AgentDetailPage />}
+            element={
+              <AgentRoute>
+                <AgentDetailPage />
+              </AgentRoute>
+            }
           />
           {/* Editing is the create wizard, prefilled; it nests its own steps
               and its own form state (see EditAgentPage). */}
           <Route
             path=":installation/:namespace/:name/edit/*"
-            element={<EditAgentPage />}
+            element={
+              <AgentRoute>
+                <EditAgentPage />
+              </AgentRoute>
+            }
           />
           <Route path="*" element={<ShellCustomizeRedirect tab="agents" />} />
         </Routes>

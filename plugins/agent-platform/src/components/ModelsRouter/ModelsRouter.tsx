@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
 import { Flex } from '@backstage/ui';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   ALL_INSTALLATIONS,
   useInstallationScope,
@@ -47,7 +52,13 @@ import { ModelHostingSharedIdentityNote } from '../ModelHostingSharedIdentity';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { isLegacyServeLink } from '../../lib/modelManagerServe';
 import { nothingCouldBeRead } from '../../lib/soleInstallation';
-import { servingRouteRef } from '../../routes';
+import {
+  gpuCapacityRouteRef,
+  modelCacheRouteRef,
+  newModelRouteRef,
+  servingRouteRef,
+} from '../../routes';
+import { RouteRefRedirect } from '../RouteRefRedirect';
 
 /**
  * Model hosting's tabs inside the shell, named per the prototype where the
@@ -237,18 +248,43 @@ const ModelsProviders = ({ children }: { children: ReactNode }) => (
 );
 
 /** A view under the tab's providers. */
-const view = (element: ReactNode) => (
+const withProviders = (element: ReactNode) => (
   <ModelsProviders>{element}</ModelsProviders>
 );
 
-/** An unknown address below `hosting`: Running models, its nearest parent. */
-const HostingRedirect = () => {
-  const servingRoute = useRouteRef(servingRouteRef);
-  const { search } = useLocation();
-  return servingRoute ? (
-    <Navigate to={{ pathname: servingRoute(), search }} replace />
-  ) : null;
+/** Model hosting's views below `hosting`, by their path segment. */
+const HOSTING_VIEW_ROUTES = {
+  capacity: gpuCapacityRouteRef,
+  cache: modelCacheRouteRef,
 };
+
+/**
+ * `new` and `hosting` are reserved words here: an address that starts with
+ * one is never a model on an installation named so, however deep it goes
+ * (react-router ranks three dynamic segments above `new` and `hosting/*`).
+ * Such an address lands on its nearest valid parent: Connect a model, or the
+ * Model hosting view it names (Running models for any other).
+ */
+function ModelRoute({ children }: { children: ReactNode }) {
+  const { installation = '', namespace = '' } = useParams();
+  const reserved = installation.toLowerCase();
+  if (reserved === 'new') {
+    return <RouteRefRedirect routeRef={newModelRouteRef} />;
+  }
+  if (reserved === 'hosting') {
+    const view = namespace.toLowerCase();
+    return (
+      <RouteRefRedirect
+        routeRef={
+          Object.hasOwn(HOSTING_VIEW_ROUTES, view)
+            ? HOSTING_VIEW_ROUTES[view as keyof typeof HOSTING_VIEW_ROUTES]
+            : servingRouteRef
+        }
+      />
+    );
+  }
+  return <>{children}</>;
+}
 
 /** An unknown step of a model's edit: the edit itself, its nearest parent. */
 const EditRedirect = () => <Navigate to="." replace />;
@@ -263,9 +299,9 @@ const EditRedirect = () => <Navigate to="." replace />;
  *
  * One `<Routes>`, so react-router ranks every path against the model page's
  * three dynamic segments: a static segment outranks a dynamic one at the
- * same depth, and `hosting/:view/:rest/*` keeps any three-segment address
- * under `hosting` from reading as a model on an installation named
- * `hosting`. ModelsRouter.test.tsx holds the rankings.
+ * same depth, and `ModelRoute` keeps any deeper address under `new` or
+ * `hosting` from reading as a model on an installation named so.
+ * ModelsRouter.test.tsx holds the rankings.
  *
  * The model's page mounts only the agent-platform data it reads
  * (`CustomizeModelPage`); the views share the tab's providers. Both share one
@@ -274,31 +310,48 @@ const EditRedirect = () => <Navigate to="." replace />;
 export const ModelsRouter = () => {
   return (
     <Routes>
-      <Route path="new" element={view(<NewModelPage />)} />
-      <Route path="hosting/serve" element={view(<ServeModelRoute />)} />
-      <Route path="hosting/import" element={view(<ImportModelRoute />)} />
-      <Route path="hosting/pull" element={view(<PullModelRoute />)} />
+      <Route path="new" element={withProviders(<NewModelPage />)} />
+      <Route
+        path="hosting/serve"
+        element={withProviders(<ServeModelRoute />)}
+      />
+      <Route
+        path="hosting/import"
+        element={withProviders(<ImportModelRoute />)}
+      />
+      <Route path="hosting/pull" element={withProviders(<PullModelRoute />)} />
       <Route
         path="hosting/add-backend"
-        element={view(<AddModelBackendRoute />)}
+        element={withProviders(<AddModelBackendRoute />)}
       />
       <Route
         path="hosting/capacity/add-pool"
-        element={view(<AddGpuNodePoolRoute />)}
+        element={withProviders(<AddGpuNodePoolRoute />)}
       />
-      <Route path="hosting/:view/:rest/*" element={<HostingRedirect />} />
-      <Route path="hosting/*" element={view(<ShellModelHosting />)} />
+      <Route path="hosting/*" element={withProviders(<ShellModelHosting />)} />
       <Route
         path=":installation/:namespace/:name/edit"
-        element={view(<EditModelPage />)}
+        element={withProviders(
+          <ModelRoute>
+            <EditModelPage />
+          </ModelRoute>,
+        )}
       />
       <Route
         path=":installation/:namespace/:name/edit/*"
-        element={<EditRedirect />}
+        element={
+          <ModelRoute>
+            <EditRedirect />
+          </ModelRoute>
+        }
       />
       <Route
         path=":installation/:namespace/:name/*"
-        element={<CustomizeModelPage />}
+        element={
+          <ModelRoute>
+            <CustomizeModelPage />
+          </ModelRoute>
+        }
       />
       <Route path="*" element={<ShellCustomizeRedirect tab="models" />} />
     </Routes>

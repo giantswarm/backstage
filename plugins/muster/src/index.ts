@@ -121,8 +121,14 @@ export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel'
 export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';
-export { useConnectorPageTarget } from './components/ConnectorPage';
-export type { ConnectorPageTarget } from './components/ConnectorPage';
+export {
+  CONNECTOR_PAGE_TAB_PATHS,
+  useConnectorPageTarget,
+} from './components/ConnectorPage';
+export type {
+  ConnectorPageTabPath,
+  ConnectorPageTarget,
+} from './components/ConnectorPage';
 export { useWorkflowPageTarget } from './components/WorkflowPage';
 export type { WorkflowPageTarget } from './components/WorkflowPage';
 export { WORKFLOW_PAGE_TABS } from './components/WorkflowPage';

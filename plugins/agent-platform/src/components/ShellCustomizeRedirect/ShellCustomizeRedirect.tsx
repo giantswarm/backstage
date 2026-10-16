@@ -1,7 +1,5 @@
-import { Navigate, useLocation } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
-
 import { agentsRouteRef, modelsRouteRef, skillsRouteRef } from '../../routes';
+import { RouteRefRedirect } from '../RouteRefRedirect';
 
 export type ShellCustomizeRedirectProps = {
   tab: 'agents' | 'skills' | 'models';
@@ -20,26 +18,15 @@ const TAB_ROUTES = {
 
 /**
  * Sends an address under one of this plugin's Customize tabs that names no
- * page to the nearest valid parent, the tab's list, keeping the query string
- * (the installation scope). The tab is this plugin's own route (the list at
- * its bare path), so it resolves wherever the tab's pages do.
+ * page to the nearest valid parent, the tab's list. The tab is this plugin's
+ * own route (the list at its bare path), so it resolves wherever the tab's
+ * pages do.
  */
 export function ShellCustomizeRedirect({
   tab,
   keepSearch = true,
 }: ShellCustomizeRedirectProps) {
-  const { search } = useLocation();
-  const list = useRouteRef(TAB_ROUTES[tab]);
-  if (!list) {
-    return null;
-  }
   return (
-    <Navigate
-      to={{
-        pathname: list(),
-        search: keepSearch ? search : undefined,
-      }}
-      replace
-    />
+    <RouteRefRedirect routeRef={TAB_ROUTES[tab]} keepSearch={keepSearch} />
   );
 }

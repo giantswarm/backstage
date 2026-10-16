@@ -41,6 +41,7 @@ export { WorkspaceOrganizationSelect } from './components/WorkspaceOrganizationS
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
 export { CustomizeModelPage } from './components/CustomizeModelPage';
 export { MODEL_PAGE_TABS } from './components/ModelDetailPage';
+export { AGENT_PAGE_TABS } from './components/AgentDetailPage';
 export { parseSkillDetailPath } from './lib/skills';
 export {
   isLegacyServeLink,

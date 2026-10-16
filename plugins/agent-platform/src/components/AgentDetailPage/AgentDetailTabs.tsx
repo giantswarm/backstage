@@ -17,3 +17,9 @@ export function agentTabs({ hasTools }: { hasTools: boolean }): RouteTabSpec[] {
     { id: 'usage', path: 'usage', title: 'Usage' },
   ];
 }
+
+/**
+ * Every tab an agent page can offer, Tools included: the one list of them,
+ * so the app's telemetry names the same set the page routes.
+ */
+export const AGENT_PAGE_TABS: RouteTabSpec[] = agentTabs({ hasTools: true });

@@ -57,6 +57,7 @@ import {
 } from '../../lib/serverGrouping';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { noToolsExplanation } from '../McpServersPage/serverDetail';
+import { type ConnectorPageTabPath } from './connectorTabs';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import {
   AdHocServerDialog,
@@ -461,21 +462,22 @@ function ConnectorPageContent({
       count: tools.isLoading ? 'loading' : tools.tools?.length,
     },
   ];
+  // Every other tab by its path, one of `CONNECTOR_PAGE_TAB_PATHS`.
+  const addTab = (
+    path: ConnectorPageTabPath,
+    title: string,
+    count?: RouteTabSpec['count'],
+  ) => tabs.push({ id: path, path, title, count });
   for (const { capability, title, count, shown } of capabilities) {
     if (shown) {
-      tabs.push({ id: capability, path: capability, title, count });
+      addTab(capability, title, count);
     }
   }
   if (usedBy && row.kind !== 'core') {
-    tabs.push({ id: 'used-by', path: 'used-by', title: 'Used by' });
+    addTab('used-by', 'Used by');
   }
   if (row.kind === 'family') {
-    tabs.push({
-      id: 'instances',
-      path: 'instances',
-      title: 'Instances',
-      count: row.servers.length,
-    });
+    addTab('instances', 'Instances', row.servers.length);
   }
 
   // The Details tab's plain facts; the address and the rest of the MCPServer
@@ -498,7 +500,7 @@ function ConnectorPageContent({
   // muster itself has neither facts nor an MCPServer, so no Details.
   const hasDetails = row.kind !== 'core';
   if (hasDetails) {
-    tabs.push({ id: 'details', path: 'details', title: 'Details' });
+    addTab('details', 'Details');
   }
 
   const breadcrumbs: BreadcrumbItem[] = [

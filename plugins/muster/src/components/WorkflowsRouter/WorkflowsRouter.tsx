@@ -1,16 +1,10 @@
 import type { ReactElement } from 'react';
-import { Navigate, Routes, Route, useParams } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Routes, Route, useParams } from 'react-router-dom';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 import { workflowsRouteRef } from '../../routes';
 import { MusterSubPage } from '../MusterSubPage';
+import { RouteRefRedirect } from '../RouteRefRedirect';
 import { WorkflowPage } from '../WorkflowPage';
-
-/** An unknown address under the tab: the nearest valid parent, the list. */
-function ListRedirect() {
-  const workflows = useRouteRef(workflowsRouteRef);
-  return workflows ? <Navigate to={workflows()} replace /> : null;
-}
 
 /**
  * One workflow's page, inside the muster providers pinned to the
@@ -49,7 +43,10 @@ export const WorkflowsRouter = ({
         path=":installation/:name/*"
         element={<WorkflowRoute editAction={editAction} />}
       />
-      <Route path="*" element={<ListRedirect />} />
+      <Route
+        path="*"
+        element={<RouteRefRedirect routeRef={workflowsRouteRef} />}
+      />
     </Routes>
   );
 };

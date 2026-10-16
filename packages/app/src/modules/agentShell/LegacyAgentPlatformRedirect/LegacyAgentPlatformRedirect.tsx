@@ -1,29 +1,20 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import {
-  ALL_INSTALLATIONS,
-  useInstallationScope,
-} from '@giantswarm/backstage-plugin-gs';
-import { legacyAgentPlatformTarget } from '../legacyPaths';
+  CustomizeMusterProvider,
+  useMusterInstance,
+} from '@giantswarm/backstage-plugin-muster';
+import {
+  legacyAgentPlatformTarget,
+  legacyTargetNeedsInstallation,
+} from '../legacyPaths';
 
-/**
- * An address of the Agent Platform's old URL tree (`/agent-platform/**`, and
- * the older `/agents/**`), sent in one hop to where it lives now
- * (`legacyAgentPlatformTarget`), its hash kept. Until the end of 2026
- * (giantswarm/giantswarm#38510): links, bookmarks and docs out there keep
- * landing on their page.
- *
- * An old connector, tool or workflow link without `?installation=` named the
- * pinned scope, else the home installation — the one the old page fell back
- * to — so the redirect waits for the installations config to know it.
- */
-export function LegacyAgentPlatformRedirect() {
+/** The target of the current old address, with the hash kept. */
+function TargetRedirect({
+  defaultInstallation,
+}: {
+  defaultInstallation?: string;
+}) {
   const { pathname, search, hash } = useLocation();
-  const { scope, home, isLoading } = useInstallationScope();
-  if (isLoading) {
-    return null;
-  }
-  const defaultInstallation =
-    (scope === ALL_INSTALLATIONS ? home : scope) ?? '';
   const target = legacyAgentPlatformTarget(pathname, search, {
     defaultInstallation,
   });
@@ -32,5 +23,42 @@ export function LegacyAgentPlatformRedirect() {
       to={target ? `${target.pathname}${target.search}${hash}` : '/'}
       replace
     />
+  );
+}
+
+/**
+ * The installation the old connector, tool and workflow pages showed for a
+ * link without `?installation=`: muster's active installation, resolved the
+ * way those pages resolved it (`MusterInstanceProvider`). Waits for it; where
+ * no installation runs muster, the link lands on its list.
+ */
+function MusterDefaultRedirect() {
+  const { activeInstallation, isLoadingInstallations } = useMusterInstance();
+  if (isLoadingInstallations) {
+    return null;
+  }
+  return <TargetRedirect defaultInstallation={activeInstallation} />;
+}
+
+/**
+ * An address of the Agent Platform's old URL tree (`/agent-platform/**`, and
+ * the older `/agents/**`), sent in one hop to where it lives now
+ * (`legacyAgentPlatformTarget`), its hash kept. Until the end of 2026
+ * (giantswarm/giantswarm#38510): links, bookmarks and docs out there keep
+ * landing on their page.
+ *
+ * Every old address redirects at once, except a connector's, tool's or
+ * workflow's link without `?installation=`, which waits for the installation
+ * its old page would have shown.
+ */
+export function LegacyAgentPlatformRedirect() {
+  const { pathname, search } = useLocation();
+  if (!legacyTargetNeedsInstallation(pathname, search)) {
+    return <TargetRedirect />;
+  }
+  return (
+    <CustomizeMusterProvider>
+      <MusterDefaultRedirect />
+    </CustomizeMusterProvider>
   );
 }

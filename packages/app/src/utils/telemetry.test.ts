@@ -288,6 +288,10 @@ describe('getTelemetryPageViewPayload', () => {
     ['/usage/connectors', { page: 'Usage', view: 'connectors' }],
     ['/usage/whatever', { page: 'Usage', view: 'redirect' }],
     ['/profile', { page: 'Profile' }],
+    ['/profile/', { page: 'Profile' }],
+    ['/profile/whatever', { page: 'Profile' }],
+    ['/sessions/', { page: 'Sessions index' }],
+    ['/usage/', { page: 'Usage', view: 'overview' }],
     ['/customize/agents/new', { page: 'Agents', view: 'agents/new' }],
     [
       '/customize/agents/new/skills',
