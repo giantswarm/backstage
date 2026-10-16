@@ -187,6 +187,19 @@ function tabRoute(
 }
 
 /**
+ * The `tab` attribute of a page whose tabs own the addresses below them, as
+ * `tabRoute` with `nested` reads them: `overview` for the index, the tab when
+ * it is one of `tabs`, `other` for anything else.
+ */
+function tabAttribute(tab: string, tabs: ReadonlySet<string>): string {
+  if (tab === '') {
+    return 'overview';
+  }
+  const [first] = tab.split('/');
+  return tabs.has(first) ? first : 'other';
+}
+
+/**
  * The `pageview` signal's attributes for a pathname (no query string, no
  * hash): the page's name, its `view` and the like, and as `path` the
  * template of the route it matched (`/sessions/:installation/:sessionId`),
@@ -195,14 +208,16 @@ function tabRoute(
  * ids; none of those may reach TelemetryDeck (see docs/telemetry.md). Every
  * attribute is a fixed string or one of a closed set; a segment outside its
  * set is reported as `other`, `redirect` or `*`, and a path no case matches
- * as `unknown`.
+ * as `Unknown page` and `unknown`.
  */
-export function getTelemetryPageViewPayload(pathname: string): {
+export function getTelemetryPageViewPayload(rawPathname: string): {
   [key: string]: string;
 } {
+  // A trailing slash is the same page, as the router has it.
+  const pathname = rawPathname.replace(/\/+$/, '') || '/';
+  const segments = segmentsOf(pathname);
   let payload = {};
   let route = UNKNOWN_ROUTE;
-  const segments = segmentsOf(pathname);
 
   switch (true) {
     case pathname === '/':
@@ -210,7 +225,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
       route = '/';
       break;
 
-    case pathname === '/catalog' || pathname === '/catalog/':
+    case pathname === '/catalog':
       payload = { page: 'Catalog index' };
       route = '/catalog';
       break;
@@ -223,29 +238,20 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // One entity: `/catalog/<namespace>/<kind>/<name>`, optionally followed
     // by one of its tabs. The namespace and the name stay out: the kind and
     // the tab are the only attributes, each from its closed set.
-    case pathname.startsWith('/catalog'): {
-      payload = { page: 'Catalog entity' };
-      if (segments[0] === 'catalog-import') {
-        route = '/catalog-import';
-      } else if (segments[0] === 'catalog' && segments.length >= 4) {
+    case pathname.startsWith('/catalog/'): {
+      if (segments.length >= 4) {
         const kind = segments[2].toLocaleLowerCase('en-US');
         const tab = segments.slice(4).join('/');
-        const [firstTab] = segments.slice(4);
-        let tabName = 'other';
-        if (tab === '') {
-          tabName = 'overview';
-        } else if (ENTITY_TABS.has(firstTab)) {
-          tabName = firstTab;
-        }
         payload = {
           page: 'Catalog entity',
           entityKind: ENTITY_KINDS.has(kind) ? kind : 'other',
-          tab: tabName,
+          tab: tabAttribute(tab, ENTITY_TABS),
         };
         route = tabRoute('/catalog/:namespace/:kind/:name', tab, ENTITY_TABS, {
           nested: true,
         });
-      } else if (segments[0] === 'catalog') {
+      } else {
+        payload = { page: 'Catalog entity' };
         route = '/catalog/*';
       }
       break;
@@ -258,8 +264,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     // One entity's docs: `/docs/<namespace>/<kind>/<name>`, then the page of
     // the docs. The kind is the only attribute.
-    case pathname.startsWith('/docs'): {
-      if (segments[0] === 'docs' && segments.length >= 4) {
+    case pathname.startsWith('/docs/'): {
+      if (segments.length >= 4) {
         const kind = segments[2].toLocaleLowerCase('en-US');
         payload = {
           page: 'Docs entity',
@@ -271,7 +277,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
             : '/docs/:namespace/:kind/:name';
       } else {
         payload = { page: 'Docs entity' };
-        route = segments[0] === 'docs' ? '/docs/*' : UNKNOWN_ROUTE;
+        route = '/docs/*';
       }
       break;
     }
@@ -283,12 +289,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     // A template's form, `/create/templates/<namespace>/<name>`, a task, or
     // one of the scaffolder's own pages. The template's names stay out.
-    case pathname.startsWith('/create'): {
+    case pathname.startsWith('/create/'): {
       payload = { page: 'Software Template' };
       const [, sub, ...rest] = segments;
-      if (segments[0] !== 'create') {
-        route = UNKNOWN_ROUTE;
-      } else if (sub === 'templates' && rest.length === 2) {
+      if (sub === 'templates' && rest.length === 2) {
         route = '/create/templates/:namespace/:templateName';
       } else if (sub === 'tasks' && rest.length === 1) {
         route = '/create/tasks/:taskId';
@@ -300,12 +304,9 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
-    case pathname.startsWith('/settings'):
+    case pathname === '/settings' || pathname.startsWith('/settings/'):
       payload = { page: 'Settings' };
-      route =
-        segments[0] === 'settings'
-          ? tabRoute('/settings', segments.slice(1).join('/'), SETTINGS_TABS)
-          : UNKNOWN_ROUTE;
+      route = tabRoute('/settings', segments.slice(1).join('/'), SETTINGS_TABS);
       break;
 
     case pathname === '/customize':
@@ -321,10 +322,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // The agent create wizard: `/customize/agents/new`, then its `skills`,
     // `tools` and `review` steps. The old generic case named it the Agents
     // page with the path as its view, `agents/new[/<step>]`; a closed set.
-    case /^\/customize\/agents\/new(\/(skills|tools|review))?\/?$/.test(
+    case /^\/customize\/agents\/new(\/(skills|tools|review))?$/.test(
       pathname,
     ): {
-      const step = pathname.split('/')[4];
+      const step = segments[3];
       payload = {
         page: 'Agents',
         view: step ? `agents/new/${step}` : 'agents/new',
@@ -339,10 +340,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // `view` — a fixed, public set like the detail page's tabs — and the
     // identifying segments stay out of every attribute. Above the
     // agent-detail case, which would read `edit` as an unknown tab.
-    case /^\/customize\/agents\/[^/]+\/[^/]+\/[^/]+\/edit(\/(skills|tools|review))?\/?$/.test(
+    case /^\/customize\/agents\/[^/]+\/[^/]+\/[^/]+\/edit(\/(skills|tools|review))?$/.test(
       pathname,
     ): {
-      const step = pathname.split('/')[7];
+      const step = segments[6];
       payload = step
         ? { page: 'Agent edit', view: step }
         : { page: 'Agent edit' };
@@ -359,7 +360,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // and carries no `view`, so the `Agent detail` numbers stay continuous;
     // any other address under the agent only redirects to Overview.
     case /^\/customize\/agents\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
-      const tab = pathname.split('/').slice(6).filter(Boolean).join('/');
+      const tab = segments.slice(5).join('/');
       if (tab === '') {
         payload = { page: 'Agent detail' };
       } else {
@@ -397,7 +398,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // `view` is the tab — a closed set, the trailing `instructions` or
     // `used-by` (the Overview, the skill's own path, has none).
     case /^\/customize\/skills\/[^/]+\/./.test(pathname): {
-      const tab = /\/(instructions|used-by)\/?$/.exec(pathname)?.[1];
+      const tab = /\/(instructions|used-by)$/.exec(pathname)?.[1];
       payload = tab
         ? { page: 'Skill detail', view: tab }
         : { page: 'Skill detail' };
@@ -410,10 +411,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // view. Both runs are the same steps, and were one page at their old
     // address (`…/new?edit=<name>`), so they keep one name. The wizard's
     // first step is its index, `server`.
-    case /^\/customize\/connectors\/(new|[^/]+\/[^/]+\/edit)(\/(auth|verify))?\/?$/.test(
+    case /^\/customize\/connectors\/(new|[^/]+\/[^/]+\/edit)(\/(auth|verify))?$/.test(
       pathname,
     ): {
-      const step = /\/(auth|verify)\/?$/.exec(pathname)?.[1];
+      const step = /\/(auth|verify)$/.exec(pathname)?.[1];
       payload = { page: 'Connector registration', view: step ?? 'server' };
       const base =
         segments[2] === 'new'
@@ -438,7 +439,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     case /^\/customize\/connectors\/(?!new\/)[^/]+\/[^/]+(\/.*)?$/.test(
       pathname,
     ): {
-      const tab = pathname.split('/').slice(5).filter(Boolean).join('/');
+      const tab = segments.slice(4).join('/');
       let view = 'redirect';
       if (tab === '') {
         view = 'tools';
@@ -459,7 +460,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // other address under it only redirects to Overview, so that momentary
     // view is a 'redirect' rather than a second Overview visit.
     case /^\/customize\/workflows\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
-      const tab = pathname.split('/').slice(5).filter(Boolean).join('/');
+      const tab = segments.slice(4).join('/');
       let view = 'redirect';
       if (tab === '') {
         view = 'overview';
@@ -476,7 +477,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     }
 
     // Connecting a model, under the name its old address carried.
-    case /^\/customize\/models\/new\/?$/.test(pathname):
+    case pathname === '/customize/models/new':
       payload = { page: 'Models', view: 'new' };
       route = '/customize/models/new';
       break;
@@ -485,34 +486,32 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // adds to: `…/models/hosting/{serve,import,pull,add-backend}` and
     // `…/models/hosting/capacity/add-pool`. One page each, so a flow is
     // counted apart from the view it was opened on. A fixed path each.
-    case /^\/customize\/models\/hosting\/(serve|import|pull|add-backend|capacity\/add-pool)\/?$/.test(
+    case /^\/customize\/models\/hosting\/(serve|import|pull|add-backend|capacity\/add-pool)$/.test(
       pathname,
     ):
-      payload = {
-        page: HOSTING_FLOW_PAGES[pathname.replace(/\/$/, '').split('/').pop()!],
-      };
-      route = `/${segments.join('/')}`;
+      payload = { page: HOSTING_FLOW_PAGES[segments[segments.length - 1]] };
+      route = pathname;
       break;
 
     // Model hosting's views, under the Models page's names: Running models,
     // the bare `hosting`, is `serving` as it was. Any other address only
     // redirects to it.
     case /^\/customize\/models\/hosting(\/.*)?$/.test(pathname): {
-      const view = pathname.split('/').slice(4).filter(Boolean).join('/');
-      payload = {
-        page: 'Models',
-        view: HOSTING_VIEWS[view] ?? 'redirect',
-      };
-      route = Object.hasOwn(HOSTING_VIEWS, view)
-        ? `/customize/models/hosting${view ? `/${view}` : ''}`
-        : '/customize/models/hosting/*';
+      const view = segments.slice(3).join('/');
+      if (Object.hasOwn(HOSTING_VIEWS, view)) {
+        payload = { page: 'Models', view: HOSTING_VIEWS[view] };
+        route = `/customize/models/hosting${view ? `/${view}` : ''}`;
+      } else {
+        payload = { page: 'Models', view: 'redirect' };
+        route = '/customize/models/hosting/*';
+      }
       break;
     }
 
     // Editing one model, `…/models/<installation>/<namespace>/<name>/edit`.
     // One page, the model in no attribute. Above the model page, which
     // would read `edit` as an unknown tab.
-    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+\/edit\/?$/.test(pathname):
+    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+\/edit$/.test(pathname):
       payload = { page: 'Model edit' };
       route = '/customize/models/:installation/:namespace/:name/edit';
       break;
@@ -523,11 +522,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // closed set; Overview, the index, carries none, so the `Model detail`
     // numbers stay continuous across the split into tabs, and any other
     // address under the model's only redirects to Overview, so it reports
-    // as a 'redirect' rather than a view named by free text from the URL. A
-    // trailing slash is the same page, as the router has it. Above the tab
-    // case, which would report it as the Models tab.
+    // as a 'redirect' rather than a view named by free text from the URL.
+    // Above the tab case, which would report it as the Models tab.
     case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
-      const tab = pathname.split('/').slice(6).filter(Boolean).join('/');
+      const tab = segments.slice(5).join('/');
       if (tab === '') {
         payload = { page: 'Model detail' };
       } else {
@@ -549,7 +547,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // The Connectors tab's sub-tabs below its own address add a `subview`; the
     // tab's own address is its default sub-tab, the customer's connectors.
     case pathname.startsWith('/customize/'): {
-      const [, , tab, sub, ...deeper] = pathname.split('/');
+      const [, tab, sub, ...deeper] = segments;
       if (!CUSTOMIZE_TABS.has(tab)) {
         payload = { page: 'Customize' };
         route = '/customize/*';
@@ -580,16 +578,13 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     // One cluster: `/clusters/<installation>/<namespace>/<name>`, optionally
     // followed by one of its tabs. The tab is the only attribute.
-    case pathname.startsWith('/clusters'): {
-      if (segments[0] === 'clusters' && segments.length >= 4) {
+    case pathname.startsWith('/clusters/'): {
+      if (segments.length >= 4) {
         const tab = segments.slice(4).join('/');
-        let tabName = 'other';
-        if (tab === '') {
-          tabName = 'overview';
-        } else if (CLUSTER_TABS.has(segments[4])) {
-          tabName = segments[4];
-        }
-        payload = { page: 'Cluster details', tab: tabName };
+        payload = {
+          page: 'Cluster details',
+          tab: tabAttribute(tab, CLUSTER_TABS),
+        };
         route = tabRoute(
           '/clusters/:installationName/:namespace/:name',
           tab,
@@ -598,7 +593,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
         );
       } else {
         payload = { page: 'Cluster details' };
-        route = segments[0] === 'clusters' ? '/clusters/*' : UNKNOWN_ROUTE;
+        route = '/clusters/*';
       }
       break;
     }
@@ -611,21 +606,15 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // One deployment: `/deployments/<installation>/<kind>/<namespace>/<name>`,
     // optionally followed by one of its tabs. The kind and the tab are the
     // only attributes, each from its closed set.
-    case pathname.startsWith('/deployments'): {
-      if (segments[0] === 'deployments' && segments.length >= 5) {
+    case pathname.startsWith('/deployments/'): {
+      if (segments.length >= 5) {
         const tab = segments.slice(5).join('/');
-        let tabName = 'other';
-        if (tab === '') {
-          tabName = 'overview';
-        } else if (DEPLOYMENT_TABS.has(segments[5])) {
-          tabName = segments[5];
-        }
         payload = {
           page: 'Deployment details',
           deploymentKind: DEPLOYMENT_KINDS.has(segments[2])
             ? segments[2]
             : 'other',
-          tab: tabName,
+          tab: tabAttribute(tab, DEPLOYMENT_TABS),
         };
         route = tabRoute(
           '/deployments/:installationName/:kind/:namespace/:name',
@@ -635,8 +624,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
         );
       } else {
         payload = { page: 'Deployment details' };
-        route =
-          segments[0] === 'deployments' ? '/deployments/*' : UNKNOWN_ROUTE;
+        route = '/deployments/*';
       }
       break;
     }
@@ -646,16 +634,13 @@ export function getTelemetryPageViewPayload(pathname: string): {
       route = '/flux';
       break;
 
-    case pathname.startsWith('/flux'): {
+    case pathname.startsWith('/flux/'): {
       const view = segments.slice(1).join('/');
       payload = {
         page: 'Flux',
         view: FLUX_VIEWS.has(view) ? view : 'other',
       };
-      route =
-        segments[0] === 'flux'
-          ? tabRoute('/flux', view, FLUX_VIEWS)
-          : UNKNOWN_ROUTE;
+      route = tabRoute('/flux', view, FLUX_VIEWS);
       break;
     }
 
@@ -664,16 +649,13 @@ export function getTelemetryPageViewPayload(pathname: string): {
       route = '/ai-chat';
       break;
 
-    case pathname.startsWith('/ai-chat'): {
+    case pathname.startsWith('/ai-chat/'): {
       const view = segments.slice(1).join('/');
       payload = {
         page: 'AI Chat',
         view: AI_CHAT_VIEWS.has(view) ? view : 'other',
       };
-      route =
-        segments[0] === 'ai-chat'
-          ? tabRoute('/ai-chat', view, AI_CHAT_VIEWS)
-          : UNKNOWN_ROUTE;
+      route = tabRoute('/ai-chat', view, AI_CHAT_VIEWS);
       break;
     }
 
@@ -682,8 +664,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // segments are an installation name and an opaque session id, so
     // including them would emit a distinct page name per session — useless
     // as a metric, and it would record which installations a user reads.
-    // A trailing slash is the same page, as the router has it.
-    case pathname === '/sessions' || pathname === '/sessions/':
+    case pathname === '/sessions':
       payload = { page: 'Sessions index' };
       route = '/sessions';
       break;
@@ -701,8 +682,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // from `/agent-platform/usage/overview`. The views are a fixed, public
     // set; any other address only redirects to Overview.
     case pathname === '/usage' || pathname.startsWith('/usage/'): {
-      // A trailing slash is the same view, as the router has it.
-      const view = pathname.split('/').slice(2).filter(Boolean).join('/');
+      const view = segments.slice(1).join('/');
       let usageView = 'redirect';
       if (view === '') {
         usageView = 'overview';
@@ -749,15 +729,12 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // One plan: `/plans/pr/<number>`. Deliberately carries no `view`: the only
     // varying segment is a pull request number, which would emit a distinct
     // page name per plan — useless as a metric.
-    case pathname.startsWith('/plans'):
+    case pathname.startsWith('/plans/'):
       payload = { page: 'Plan detail' };
-      if (segments[0] !== 'plans') {
-        route = UNKNOWN_ROUTE;
-      } else if (segments[1] === 'pr' && segments.length === 3) {
-        route = '/plans/pr/:number';
-      } else {
-        route = '/plans/*';
-      }
+      route =
+        segments[1] === 'pr' && segments.length === 3
+          ? '/plans/pr/:number'
+          : '/plans/*';
       break;
 
     // The Bot PRs page (`/bot-prs`): the team and the filters live in the
@@ -775,16 +752,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     // One roadmap item: `/roadmap/items/<id>`. No `view`, for the same reason
     // as Plan detail — the varying segment is an opaque item id.
-    case pathname.startsWith('/roadmap'):
+    // Seen navigated to with no id while the board is still resolving: the
+    // same route, its id empty.
+    case pathname.startsWith('/roadmap/'):
       payload = { page: 'Roadmap item' };
-      if (segments[0] !== 'roadmap') {
-        route = UNKNOWN_ROUTE;
-      } else if (segments[1] === 'items') {
-        // Seen navigated to with no id while the board is still resolving.
-        route = '/roadmap/items/:id';
-      } else {
-        route = '/roadmap/*';
-      }
+      route =
+        segments[1] === 'items' && segments.length <= 3
+          ? '/roadmap/items/:id'
+          : '/roadmap/*';
       break;
 
     // The Magazine page (`/product`): its tab, history window and knowledge
@@ -838,6 +813,28 @@ export function getTelemetryPageViewPayload(pathname: string): {
       route = '/hive/knowledge';
       break;
 
+    // Backstage's API explorer (`/api-docs`), a list without sub-routes.
+    case pathname === '/api-docs' || pathname.startsWith('/api-docs/'):
+      payload = { page: 'API docs' };
+      route = segments.length > 1 ? '/api-docs/*' : '/api-docs';
+      break;
+
+    // The Repositories page (`/repositories`) and its create form.
+    case pathname === '/repositories':
+      payload = { page: 'Repositories' };
+      route = '/repositories';
+      break;
+
+    case pathname === '/repositories/create':
+      payload = { page: 'Create repository' };
+      route = '/repositories/create';
+      break;
+
+    case pathname.startsWith('/repositories/'):
+      payload = { page: 'Repositories' };
+      route = '/repositories/*';
+      break;
+
     case pathname === '/metrics':
       payload = { page: 'Metrics' };
       route = '/metrics';
@@ -849,9 +846,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     default:
-      payload = { page: 'Unknown page' };
+      break;
   }
 
+  // A page with no route is no page: never a named page whose `path` is
+  // unknown, which the Sentry check for untracked page views would miss.
+  if (route === UNKNOWN_ROUTE) {
+    return { page: 'Unknown page', path: UNKNOWN_ROUTE };
+  }
   return {
     ...payload,
     path: route,

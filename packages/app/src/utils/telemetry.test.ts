@@ -597,6 +597,109 @@ describe('getTelemetryPageViewPayload', () => {
     expect(getTelemetryPageViewPayload(pathname)).toEqual(payload);
   });
 
+  // A trailing slash is the same page, as the router has it: the index, not
+  // a detail page, and never an unknown one.
+  it.each<[string, Record<string, string>]>([
+    ['/catalog/', { page: 'Catalog index', path: '/catalog' }],
+    ['/catalog-graph/', { page: 'Catalog graph', path: '/catalog-graph' }],
+    ['/docs/', { page: 'Docs index', path: '/docs' }],
+    ['/create/', { page: 'Software Templates index', path: '/create' }],
+    ['/customize/', { page: 'Customize', path: '/customize' }],
+    [
+      '/customize/connectors/infrastructure/',
+      {
+        page: 'Customize',
+        view: 'connectors',
+        subview: 'infrastructure',
+        path: '/customize/connectors/infrastructure',
+      },
+    ],
+    [
+      '/customize/agents/acme-prod/team-payments/invoice-helper/tools/',
+      {
+        page: 'Agent detail',
+        view: 'tools',
+        path: '/customize/agents/:installation/:namespace/:name/tools',
+      },
+    ],
+    [
+      '/installations/',
+      { page: 'Installations index', path: '/installations' },
+    ],
+    ['/clusters/', { page: 'Clusters index', path: '/clusters' }],
+    ['/deployments/', { page: 'Deployments index', path: '/deployments' }],
+    ['/flux/', { page: 'Flux index', path: '/flux' }],
+    ['/ai-chat/', { page: 'AI Chat', path: '/ai-chat' }],
+    ['/plans/', { page: 'Plans index', path: '/plans' }],
+    ['/roadmap/', { page: 'Roadmap index', path: '/roadmap' }],
+    ['/hive/', { page: 'Hive now', path: '/hive' }],
+    ['/hive/now/', { page: 'Hive now', path: '/hive/now' }],
+    ['/hive/history/', { page: 'Hive history', path: '/hive/history' }],
+    ['/hive/roadmap/', { page: 'Hive roadmap', path: '/hive/roadmap' }],
+    ['/bot-prs/', { page: 'Bot PRs', path: '/bot-prs' }],
+    ['/product/', { page: 'Product magazine', path: '/product' }],
+    ['/metrics/', { page: 'Metrics', path: '/metrics' }],
+    ['/search/', { page: 'Search', path: '/search' }],
+  ])('reports %s as the page without the slash', (pathname, payload) => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual(payload);
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ['/api-docs', { page: 'API docs', path: '/api-docs' }],
+    ['/repositories', { page: 'Repositories', path: '/repositories' }],
+    [
+      '/repositories/create',
+      { page: 'Create repository', path: '/repositories/create' },
+    ],
+    ['/repositories/acme', { page: 'Repositories', path: '/repositories/*' }],
+  ])('reports %s', (pathname, payload) => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual(payload);
+  });
+
+  it('reports a roadmap address deeper than an item as no item', () => {
+    expect(getTelemetryPageViewPayload('/roadmap/items/a/b/c')).toEqual({
+      page: 'Roadmap item',
+      path: '/roadmap/*',
+    });
+  });
+
+  // `Object.prototype`'s keys are no views: the view comes from the closed
+  // set's own keys, never from what an object inherits.
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])(
+    'reports the hosting address %s as a redirect',
+    key => {
+      expect(
+        getTelemetryPageViewPayload(`/customize/models/hosting/${key}`),
+      ).toEqual({
+        page: 'Models',
+        view: 'redirect',
+        path: '/customize/models/hosting/*',
+      });
+    },
+  );
+
+  // A path that only starts like a page (`/docsx`) is no page: it reports
+  // as unknown, so a registered route there would reach Sentry as untracked
+  // rather than send a page name with an unknown `path`.
+  it.each([
+    '/catalog-import',
+    '/catalogx',
+    '/docsx',
+    '/createx',
+    '/settingsx',
+    '/clustersx',
+    '/deploymentsx',
+    '/fluxx',
+    '/ai-chatx',
+    '/plansx',
+    '/roadmapx',
+  ])('reports %s as unknown', pathname => {
+    expect(getTelemetryPageViewPayload(pathname)).toEqual({
+      page: 'Unknown page',
+      path: 'unknown',
+    });
+  });
+
   it('reports an unknown path as unknown, never the path itself', () => {
     expect(
       getTelemetryPageViewPayload('/acme-prod/team-payments/invoice-helper'),
@@ -658,7 +761,6 @@ describe('getTelemetryPageViewPayload', () => {
       '/catalog',
       '/catalog/default/component/my-component',
       '/catalog-graph',
-      '/catalog-import',
       '/docs',
       '/docs/default/component/my-component',
       '/create',
@@ -760,6 +862,9 @@ describe('getTelemetryPageViewPayload', () => {
       '/hive/plans',
       '/hive/plans/pr/22',
       '/hive/knowledge',
+      '/api-docs',
+      '/repositories',
+      '/repositories/create',
       '/metrics',
       '/search',
     ];
