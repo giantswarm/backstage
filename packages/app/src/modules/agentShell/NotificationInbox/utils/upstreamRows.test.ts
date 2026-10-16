@@ -30,6 +30,21 @@ describe('notificationHref', () => {
     ],
     // Protocol-relative: another origin, not a path in the app.
     ['//other.example/x', { href: 'https://other.example/x', external: true }],
+    ['/\\other.example/x', { href: 'https://other.example/x', external: true }],
+    // A same-origin path that starts with `//` or `/\` is protocol-relative as
+    // an href: it stays the whole same-origin URL.
+    [
+      `${ORIGIN}//evil.example/x`,
+      { href: `${ORIGIN}//evil.example/x`, external: true },
+    ],
+    [
+      `${ORIGIN}/\\evil.example`,
+      { href: `${ORIGIN}//evil.example`, external: true },
+    ],
+    [
+      '/.//evil.example/x',
+      { href: `${ORIGIN}//evil.example/x`, external: true },
+    ],
     // eslint-disable-next-line no-script-url
     ['javascript:alert(1)', undefined],
     ['mailto:someone@example.com', undefined],
@@ -49,6 +64,15 @@ describe('notificationHref', () => {
     [
       `${ORIGIN}/grafana/d/1`,
       { href: `${ORIGIN}/grafana/d/1`, external: true },
+    ],
+    // Inside the app, but `//` after the base path.
+    [
+      `${ORIGIN}/portal//evil.example/x`,
+      { href: `${ORIGIN}/portal//evil.example/x`, external: true },
+    ],
+    [
+      `${ORIGIN}/portal/\\evil.example`,
+      { href: `${ORIGIN}/portal//evil.example`, external: true },
     ],
   ])('under a base path: %s → %j', (link, expected) => {
     expect(notificationHref(link, UNDER_PATH)).toEqual(expected);

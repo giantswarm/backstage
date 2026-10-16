@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { dismissMcpSignInNotice, expect, open, signIn, test } from './fixtures';
+import { dismissInboxToasts, expect, open, signIn, test } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
 
 /**
@@ -90,7 +90,7 @@ for (const path of ['/catalog', '/settings']) {
       const page = await context.newPage();
       await page.clock.install();
       await idleTab(page);
-      await dismissMcpSignInNotice(page);
+      await dismissInboxToasts(page);
       await signIn(page, lab.users.admin);
       await open(page, path);
       // The page settles and sits: what it read is past the entity
