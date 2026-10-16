@@ -8,9 +8,10 @@ import {
   PLATFORM_NAMESPACE,
 } from './kubectl';
 
-// The portal cannot set a connector's display name — muster's create and
-// update tools take no annotations — so the fixture is applied with
-// `kubectl`, the way an admin or a chart sets it.
+// The first fixture is applied with `kubectl`, the way an admin or a chart
+// sets a display name. The second is added through Add connector, which keeps
+// the typed name as the display name on a muster that takes one (v5.43.0 and
+// later): the lab runs one.
 
 /** Where the lab's muster reads its MCPServers from. */
 const NAMESPACE = PLATFORM_NAMESPACE;
@@ -101,5 +102,84 @@ test.describe('a connector with a display name', () => {
     await expect(
       admin.getByText(`${NAMESPACE}/${NAME}`, { exact: true }),
     ).toBeVisible();
+  });
+});
+
+/** What the wizard spec types, and the technical name it derives. */
+const TYPED = 'E2E Wizard Name';
+const WIZARD_NAME = 'e2e-wizard-name';
+const RENAMED = 'E2E Wizard Renamed';
+
+/** The connector's `ui.giantswarm.io/display-name`, read from its CR. */
+async function displayNameAnnotation(): Promise<string> {
+  const { stdout } = await kubectl([
+    '-n',
+    NAMESPACE,
+    'get',
+    'mcpserver',
+    WIZARD_NAME,
+    '-o',
+    'jsonpath={.metadata.annotations.ui\\.giantswarm\\.io/display-name}',
+  ]);
+  return stdout;
+}
+
+async function deleteWizardConnector() {
+  await kubectl([
+    '-n',
+    NAMESPACE,
+    'delete',
+    'mcpserver',
+    WIZARD_NAME,
+    '--ignore-not-found',
+  ]).catch(() => undefined);
+}
+
+test.describe('a connector added through the wizard', () => {
+  test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
+
+  test.beforeAll(deleteWizardConnector);
+  test.afterAll(deleteWizardConnector);
+
+  test('keeps the typed name as its display name, and an edit renames it', async ({
+    admin,
+  }) => {
+    await open(admin, `/customize/connectors/new${scope}`);
+    // muster dials an address that does not resolve, so the
+    // Test step reports it unreachable — the name is what is checked here.
+    await admin
+      .getByRole('textbox', { name: 'Server address', exact: true })
+      .fill(`http://${WIZARD_NAME}.invalid/mcp`);
+    await admin.getByRole('textbox', { name: 'Name', exact: true }).fill(TYPED);
+    await expect(admin.getByText(/^Registered as/)).toContainText(
+      `Registered as ${WIZARD_NAME}`,
+    );
+    await admin.getByRole('button', { name: 'Continue' }).click();
+    await connectToMuster(admin, admin.getByText('How do people sign in?'));
+    await admin.getByRole('radio', { name: 'No sign-in' }).click();
+    await admin.getByRole('button', { name: 'Add connector' }).click();
+    await expect(admin.getByText('Test the connection')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect.poll(displayNameAnnotation).toBe(TYPED);
+
+    await open(admin, `/customize/connectors${scope}`);
+    await connectToMuster(admin, admin.getByRole('grid'));
+    await expect(connectorRow(admin, TYPED)).toBeVisible({ timeout: 60_000 });
+
+    await open(
+      admin,
+      `/customize/connectors/${lab.installation}/${WIZARD_NAME}/edit`,
+    );
+    const name = admin.getByRole('textbox', { name: 'Name', exact: true });
+    await expect(name).toHaveValue(TYPED, { timeout: 60_000 });
+    await expect(name).toBeEditable();
+    await name.fill(RENAMED);
+    await admin.getByRole('button', { name: 'Continue' }).click();
+    await admin.getByRole('button', { name: 'Save changes' }).click();
+    await expect(admin.getByText('Test the connection')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect.poll(displayNameAnnotation).toBe(RENAMED);
   });
 });

@@ -23,7 +23,7 @@ import {
 import { musterApiRef } from '../../apis';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { WorkflowStep, WorkflowSubStep } from '../../lib/k8s';
-import type { ToolEffect } from '../../lib/toolAnnotations';
+import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { executionOutcome } from '../../lib/workflowDisplay';
 import {
@@ -540,7 +540,7 @@ function StepNode({
         aria-label={accessibleName(node, [
           line,
           gate,
-          effect && (effect === 'changes' ? 'changes things' : 'only reads'),
+          effect && TOOL_EFFECT_LABELS[effect].toLowerCase(),
           node.allowFailure && 'may fail',
           overlay && runSpoken(overlay),
         ])}
@@ -740,7 +740,7 @@ function useDetailsHeight(
  * No trigger, schedule or version: muster has none of them. With a muster
  * session the latest run's per-step records colour the nodes (done, failed,
  * skipped, not run) with durations where muster recorded them, and each
- * step's tool says whether it only reads or changes things.
+ * step's tool says whether it reads or changes things.
  *
  * The flow is the page's only step view. A step (or group head) expands in
  * place: its box grows to hold its details — plain first, technical

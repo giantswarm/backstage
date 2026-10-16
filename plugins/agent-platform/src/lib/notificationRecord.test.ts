@@ -13,6 +13,7 @@ import {
   withLevel,
   withPortalStarted,
   withSeen,
+  withSeenReplaced,
   type NotificationLevel,
   type NotificationSeenValue,
   type NotificationSettingsValue,
@@ -239,6 +240,23 @@ describe('seen marks', () => {
 
     expect(withSeen(seen, [target], NOW)).toBeUndefined();
     expect(withSeen(seen, [], NOW)).toBeUndefined();
+  });
+
+  it('replaces a mark only while it is still the one read before', () => {
+    const mcp = (mark: string) => ({
+      kind: 'mcpSignIn' as const,
+      installation: 'gazelle',
+      mark,
+    });
+    const seen = withSeen(noneSeen, [mcp('a,b')], EARLIER)!;
+
+    const narrowed = withSeenReplaced(seen, mcp('a'), 'a,b', NOW)!;
+    expect(mcpSignInSeenMarkOf(narrowed, 'gazelle')).toBe('a');
+    // Another tab wrote `a,c` since this one read `a,b`: kept.
+    const newer = withSeen(seen, [mcp('a,c')], NOW)!;
+    expect(withSeenReplaced(newer, mcp('a'), 'a,b', NOW)).toBeUndefined();
+    // Nothing stored to replace.
+    expect(withSeenReplaced(noneSeen, mcp('a'), 'a,b', NOW)).toBeUndefined();
   });
 
   it(`keeps each installation’s newest ${SEEN_MARKS_PER_INSTALLATION} session marks`, () => {

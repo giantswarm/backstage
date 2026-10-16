@@ -1,4 +1,5 @@
 import { type ReactNode, useMemo, useSyncExternalStore } from 'react';
+import type { McpServerAwaitingSignIn } from '@giantswarm/backstage-plugin-muster';
 import type {
   NotifiableSession,
   NotificationLevel,
@@ -9,8 +10,10 @@ import type { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platf
 /**
  * A fake of what the Notification inbox reads from the agent-platform plugin:
  * the person's sessions and their states (the session-states read), and the
- * person's notification record (levels, origins, seen marks). Tests mock the
- * plugin module with {@link fakeInboxPluginExports} and drive this store.
+ * person's notification record (levels, origins, seen marks); and from the
+ * muster plugin: the MCP sign-in status and its dialog. Tests mock the
+ * plugin modules with {@link fakeInboxPluginExports} and
+ * {@link fakeInboxMusterExports} and drive this store.
  *
  * Test-only. Kept beside the inbox so every shell test that renders the rail
  * fakes the same inputs the same way.
@@ -23,6 +26,14 @@ type Store = {
   levels: Map<string, NotificationLevel>;
   portalStarted: Set<string>;
   seen: Map<string, string>;
+  mcp: {
+    installation?: string;
+    waiting: McpServerAwaitingSignIn[];
+    connected: string[];
+    isRead: boolean;
+    isAvailable: boolean;
+    isDialogOpen: boolean;
+  };
 };
 
 function emptyStore(): Store {
@@ -34,6 +45,14 @@ function emptyStore(): Store {
     levels: new Map(),
     portalStarted: new Set(),
     seen: new Map(),
+    mcp: {
+      installation: 'gazelle',
+      waiting: [],
+      connected: [],
+      isRead: true,
+      isAvailable: true,
+      isDialogOpen: false,
+    },
   };
 }
 
@@ -83,6 +102,12 @@ const writes = {
   markManySeen: jest.fn(async (targets: readonly SeenMarkTarget[]) => {
     targets.forEach(target => store.seen.set(seenKey(target), target.mark));
     emit();
+  }),
+  replaceSeenMark: jest.fn(async (target: SeenMarkTarget, previous: string) => {
+    if (store.seen.get(seenKey(target)) === previous) {
+      store.seen.set(seenKey(target), target.mark);
+      emit();
+    }
   }),
 };
 
@@ -157,6 +182,36 @@ export const fakeInbox = {
   levelOf(installation: string, sessionId: string) {
     return store.levels.get(key(installation, sessionId)) ?? 'default';
   },
+  /**
+   * muster's next sign-in status read: the servers of the home installation
+   * that wait for the person's sign-in, by name or `[name, display name]`,
+   * and those it reports connected.
+   */
+  setMcpWaiting(
+    servers: Array<string | [string, string]>,
+    options: {
+      connected?: string[];
+      isRead?: boolean;
+      isAvailable?: boolean;
+    } = {},
+  ) {
+    store.mcp = {
+      ...store.mcp,
+      waiting: servers.map(server =>
+        typeof server === 'string'
+          ? { name: server, label: server }
+          : { name: server[0], label: server[1] },
+      ),
+      connected: options.connected ?? [],
+      isRead: options.isRead ?? true,
+      isAvailable: options.isAvailable ?? true,
+    };
+    emit();
+  },
+  /** The seen mark stored for the installation's MCP sign-in row. */
+  mcpSeenMark(installation = 'gazelle') {
+    return store.seen.get(`mcp:${installation}`);
+  },
 };
 
 function useNotifiableSessions() {
@@ -187,14 +242,70 @@ function useSessionNotificationRecord() {
           portalStarted.has(key(installation, sessionId)),
         isSeen: (target: SeenMarkTarget) =>
           seen.get(seenKey(target)) === target.mark,
+        mcpSignInSeenMarkOf: (installation: string) =>
+          seen.get(`mcp:${installation}`),
         setLevel: writes.setLevel,
         markSeen: writes.markSeen,
         markManySeen: writes.markManySeen,
+        replaceSeenMark: writes.replaceSeenMark,
       };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [current],
   );
+}
+
+/** Stable, as the provider's is. */
+function openSignIn() {
+  store.mcp = { ...store.mcp, isDialogOpen: true };
+  emit();
+}
+
+function useMcpSignIn() {
+  const current = useVersion();
+  return useMemo(
+    () => ({
+      installation: store.mcp.installation,
+      waiting: store.mcp.waiting,
+      connected: store.mcp.connected,
+      isRead: store.mcp.isRead,
+      isAvailable: store.mcp.isAvailable,
+      openSignIn,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [current],
+  );
+}
+
+/** muster's sign-in dialog, faked: open or not, and a way out. */
+function McpSignInProvider({ children }: { children: ReactNode }) {
+  useVersion();
+  return (
+    <>
+      {children}
+      {store.mcp.isDialogOpen && (
+        <div role="dialog" aria-label="Sign in to MCP servers">
+          <button
+            onClick={() => {
+              store.mcp = { ...store.mcp, isDialogOpen: false };
+              emit();
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * The muster plugin's exports the inbox uses, faked: its sign-in status and
+ * dialog, driven by {@link fakeInbox}'s `setMcpWaiting`. Spread into a
+ * `jest.mock('@giantswarm/backstage-plugin-muster', …)` factory.
+ */
+export function fakeInboxMusterExports() {
+  return { McpSignInProvider, useMcpSignIn };
 }
 
 /**

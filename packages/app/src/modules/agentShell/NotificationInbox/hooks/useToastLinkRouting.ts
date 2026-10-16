@@ -14,14 +14,17 @@ const TOAST_LINKS = "[class*='Toast_container'] a[href]";
  * `<a href>`, so "Open session" reloaded the whole portal: a new sign-in
  * round, the shell's reads started over, and the inbox's catch-up with them.
  * A plain click on a same-origin toast link is routed here instead, in the
- * capture phase so it is taken before the browser follows it, and
- * `#notifications` opens the overlay where the person is. Modified clicks (a
- * new tab) and links elsewhere keep the browser's behaviour.
+ * capture phase so it is taken before the browser follows it, and a hash
+ * link of `hashActions` (`#notifications` opens the overlay) acts where the
+ * person is. Modified clicks (a new tab) and links elsewhere keep the
+ * browser's behaviour.
  */
-export function useToastLinkRouting(openOverlay: () => void) {
+export function useToastLinkRouting(
+  hashActions: Readonly<Record<string, () => void>>,
+) {
   const navigate = useNavigate();
-  const openOverlayRef = useRef(openOverlay);
-  openOverlayRef.current = openOverlay;
+  const hashActionsRef = useRef(hashActions);
+  hashActionsRef.current = hashActions;
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -42,9 +45,10 @@ export function useToastLinkRouting(openOverlay: () => void) {
       if (!link || (link.target && link.target !== '_self')) {
         return;
       }
-      if (link.getAttribute('href') === NOTIFICATIONS_HASH) {
+      const action = hashActionsRef.current[link.getAttribute('href') ?? ''];
+      if (action) {
         event.preventDefault();
-        openOverlayRef.current();
+        action();
         return;
       }
       const url = new URL(link.href, window.location.href);

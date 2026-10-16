@@ -105,7 +105,8 @@ export function NotificationList({
   if (!inbox) {
     return null;
   }
-  const { rows, ready, unreadCount, markRead, markAllRead } = inbox;
+  const { rows, ready, unreadCount, markRead, openInPlace, markAllRead } =
+    inbox;
 
   const onMarkAllRead = () => {
     setMarking(true);
@@ -130,6 +131,10 @@ export function NotificationList({
             row={row}
             now={now}
             onOpen={() => {
+              if (row.action) {
+                openInPlace(row);
+                return;
+              }
               markRead(row);
               onNavigate();
             }}

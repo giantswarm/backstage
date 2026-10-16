@@ -273,6 +273,7 @@ describe('NewMcpServerFormProvider', () => {
 
     expect(result.current.definition).toEqual({
       name: 'weather-mcp',
+      displayName: 'Weather MCP',
       type: 'sse',
       url: 'https://weather.example.com/mcp',
       autoStart: true,
@@ -305,6 +306,7 @@ describe('NewMcpServerFormProvider', () => {
       act(() => result.current.startEdit(server));
 
       expect(result.current.registeredName).toBe('weather-mcp');
+      expect(result.current.startedFromEdit).toBe(true);
       expect(result.current.isComplete).toBe(true);
       expect(result.current.definition).toMatchObject({
         name: 'weather-mcp',
@@ -324,13 +326,75 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.state.installation).toBe('gaggle');
     });
 
-    it('does not require the hidden display name', () => {
+    it('requires a name, now that an edit can change it', () => {
       const { result } = renderForm();
       act(() => result.current.startEdit(server));
 
       act(() => result.current.setName(''));
 
-      expect(result.current.isComplete).toBe(true);
+      expect(result.current.fieldErrors.name).toBe(
+        'Enter a name for the connector.',
+      );
+    });
+
+    it('changes the display name, never the technical name', () => {
+      const named = new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: {
+            name: 'weather-mcp',
+            annotations: { 'ui.giantswarm.io/display-name': 'Weather' },
+          },
+          spec: { type: 'streamable-http', url: 'https://w.example.com/mcp' },
+        } as never,
+        'gaggle',
+      );
+      const { result } = renderForm();
+      act(() => result.current.startEdit(named));
+
+      expect(result.current.state.name).toBe('Weather');
+      // Unchanged: the update leaves the annotation as it is.
+      expect(result.current.definition).not.toHaveProperty('displayName');
+
+      act(() => result.current.setName('Weather forecasts'));
+      expect(result.current.state.slug).toBe('weather-mcp');
+      expect(result.current.definition).toMatchObject({
+        name: 'weather-mcp',
+        displayName: 'Weather forecasts',
+      });
+
+      // Saved, it is the name a later save compares with.
+      act(() => result.current.markSaved(result.current.definition));
+      expect(result.current.definition).not.toHaveProperty('displayName');
+
+      // Back to the technical name removes the annotation.
+      act(() => result.current.setName('weather-mcp'));
+      expect(result.current.definition.displayName).toBe('');
+    });
+
+    it('names the connector by its technical name after a save that could not keep the typed one', () => {
+      // An installation whose muster does not take a display name saves the
+      // definition without it: the connector is then called by its technical
+      // name, and the form says so rather than showing a name it does not have.
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+      const { displayName: _dropped, ...sent } = result.current.definition;
+
+      act(() => result.current.markSaved(sent));
+
+      expect(result.current.state.name).toBe('weather-mcp');
+      expect(result.current.definition).not.toHaveProperty('displayName');
+    });
+
+    it('keeps the typed name in the form after a save that kept it', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+
+      act(() => result.current.markSaved(result.current.definition));
+
+      expect(result.current.state.name).toBe('Weather MCP');
+      expect(result.current.definition).not.toHaveProperty('displayName');
     });
 
     it('lays later saves over what was saved, not over the server as it was', () => {
@@ -371,6 +435,8 @@ describe('NewMcpServerFormProvider', () => {
       expect(result.current.lastSave).toBe('create');
       expect(result.current.registeredName).toBe('weather-mcp');
       expect(result.current.registeredInstallation).toBe('gaggle');
+      // Later saves correct the registration; the run is still an Add.
+      expect(result.current.startedFromEdit).toBe(false);
     });
 
     it('brings the registered auth answer back when its mode is picked again', () => {
@@ -411,6 +477,7 @@ describe('NewMcpServerFormProvider', () => {
 
       act(() => result.current.reset());
       expect(result.current.registeredName).toBeUndefined();
+      expect(result.current.startedFromEdit).toBe(false);
       expect(result.current.state.url).toBe('https://draft.example.com/mcp');
 
       // Brought back once; the next reset is an empty form.

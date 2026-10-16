@@ -58,8 +58,8 @@ const RAIL_MARGIN_END = 32;
 /**
  * The footer's measured height, published on the frame for the clearance, and
  * on the document root while a frame is mounted, for what floats over the page
- * from outside it (the MCP server sign-in notice): it lifts itself by this,
- * so it never lands on Continue or Create.
+ * from outside it (the agent shell's toasts): it lifts itself by this, so it
+ * never lands on Continue or Create.
  */
 export const WIZARD_FOOTER_HEIGHT_VAR = '--wizard-footer-height';
 const FOOTER_HEIGHT_VAR = WIZARD_FOOTER_HEIGHT_VAR;
@@ -435,7 +435,7 @@ function useFrameMeasurements() {
         documentRoot.style.setProperty(FOOTER_HEIGHT_VAR, value);
       }
     };
-    // At once as well: the floating notice clears the footer from the first
+    // At once as well: the shell's toasts clear the footer from the first
     // paint, not from the observer's first callback.
     measure();
     const observer =
