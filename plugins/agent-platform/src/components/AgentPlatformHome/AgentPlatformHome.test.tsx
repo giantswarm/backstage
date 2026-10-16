@@ -173,6 +173,7 @@ const loadedAgents: AgentsContextValue = {
   kagentSwitchedOff: [],
   unknownPin: undefined,
   inventoryFailure: undefined,
+  retry: async () => {},
 };
 
 function environment(
@@ -437,19 +438,68 @@ describe('AgentPlatformHome', () => {
     );
   });
 
-  it('says why no session can be started when the agents could not be read', async () => {
+  it('shows a failed agent read as an error with Retry, never as no agents', async () => {
+    const retry = jest.fn().mockResolvedValue(undefined);
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      unreachableInstallations: ['gazelle'],
+      retry,
+    });
+
+    await render();
+
+    expect(
+      screen.getByRole('heading', { name: "Couldn't load your agents" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'No agents yet' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the agents once Retry reads them', async () => {
     mockUseAgents.mockReturnValue({
       ...loadedAgents,
       rows: [],
       unreachableInstallations: ['gazelle'],
     });
-
-    await render();
-
-    expect(screen.getByText(/No agents could be read/)).toBeInTheDocument();
+    await render({ rerenderable: true });
     expect(
-      screen.getByText(/Could not read 1 environment/),
+      screen.getByRole('heading', { name: "Couldn't load your agents" }),
     ).toBeInTheDocument();
+
+    mockUseAgents.mockReturnValue(loadedAgents);
+    act(() => rerenderHome());
+
+    expect(
+      screen.queryByRole('heading', { name: "Couldn't load your agents" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeInTheDocument();
+  });
+
+  it('shows No agents yet once Retry reads an empty roster', async () => {
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      unreachableInstallations: ['gazelle'],
+    });
+    await render({ rerenderable: true });
+
+    mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [] });
+    act(() => rerenderHome());
+
+    expect(
+      screen.getByRole('heading', { name: 'No agents yet' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: "Couldn't load your agents" }),
+    ).not.toBeInTheDocument();
   });
 
   describe('when the environments in scope have no agent to start', () => {

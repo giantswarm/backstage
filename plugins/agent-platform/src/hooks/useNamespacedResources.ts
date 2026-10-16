@@ -158,6 +158,22 @@ export function useNamespacedResources<R extends KubeObject<any>>(
     return presence !== 'unknown' || !agentManager.isLoading;
   };
 
+  // Known, but only as the platform namespace because muster could not say
+  // which namespaces agents land in: its agent-manager info read failed, or
+  // its server list did. An empty answer then is no answer -- the agents may
+  // be in the namespaces it could not name -- so it leaves the installation
+  // unread rather than read with none.
+  const namespacesGuessed = (index: number) => {
+    if (!musterApi) {
+      return false;
+    }
+    const presence = agentManager.presenceOf(installations[index]);
+    if (presence === 'available') {
+      return infos[index].isError;
+    }
+    return presence === 'unknown' && !agentManager.isLoading;
+  };
+
   const targets = installations.flatMap((installation, index) =>
     namespacesKnown(index)
       ? agentNamespacesOf(infos[index].data).map(namespace => ({
@@ -229,6 +245,15 @@ export function useNamespacedResources<R extends KubeObject<any>>(
       } else if (isAwaitingData(list)) {
         pending.add(installation);
       } else if (list.error?.name !== 'ForbiddenError') {
+        failed.add(installation);
+      }
+    });
+    installations.forEach((installation, index) => {
+      if (
+        namespacesGuessed(index) &&
+        !pending.has(installation) &&
+        !items.get(installation)?.length
+      ) {
         failed.add(installation);
       }
     });
