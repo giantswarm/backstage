@@ -442,6 +442,31 @@ describe('SessionActionsMenu — Notifications', () => {
     expect(levelItem('Default')).toHaveAttribute('aria-checked', 'false');
   });
 
+  it('ticks the chosen level at once, while its write is still under way', async () => {
+    // A tick that moved only once the round trip ended changed the menu as
+    // it closed: a flicker.
+    let finishWrite: () => void = () => {};
+    const onChange = jest.fn(
+      () => new Promise<void>(resolve => (finishWrite = resolve)),
+    );
+    await renderWithLevel('default', onChange);
+    await openNotifications();
+
+    await userEvent.click(levelItem('All activity'));
+    await waitFor(() =>
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument(),
+    );
+    await openNotifications();
+
+    expect(levelItem('All activity')).toHaveAttribute('aria-checked', 'true');
+    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'false');
+
+    finishWrite();
+    await waitFor(() =>
+      expect(levelItem('All activity')).toHaveAttribute('aria-checked', 'true'),
+    );
+  });
+
   it('unmutes with Default', async () => {
     const onChange = jest.fn().mockResolvedValue(undefined);
     await renderWithLevel('muted', onChange);

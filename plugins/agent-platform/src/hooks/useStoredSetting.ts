@@ -135,6 +135,21 @@ export function useStoredSettingUpdate(key: string) {
   );
 }
 
+function isSameSnapshot(
+  a: StorageValueSnapshot<StoredJson>,
+  b: StorageValueSnapshot<StoredJson>,
+): boolean {
+  if (a.presence !== b.presence) {
+    return false;
+  }
+  if (a.presence !== 'present') {
+    return true;
+  }
+  // Values of the stored JSON, small and acyclic; a different key order only
+  // costs a re-render.
+  return JSON.stringify(a.value) === JSON.stringify(b.value);
+}
+
 export type StoredSettingOptions = {
   /**
    * Read the stored value again whenever the tab becomes visible. For values
@@ -190,15 +205,19 @@ export function useStoredSetting(
   // storage, with a fresh read on subscription). A new subscription is what
   // reads the backend again, so a tab that became visible subscribes afresh.
   useEffect(() => {
-    const subscription = bucket
-      .observe$<StoredJson>(key)
-      .subscribe(next =>
-        setSnapshot(previous =>
-          next.presence === 'unknown' && previous.presence !== 'unknown'
-            ? previous
-            : next,
-        ),
-      );
+    const subscription = bucket.observe$<StoredJson>(key).subscribe(next =>
+      setSnapshot(previous => {
+        if (next.presence === 'unknown' && previous.presence !== 'unknown') {
+          return previous;
+        }
+        // A write hands out the same value up to three times (its fresh
+        // read, its own answer, the signal's re-read), each a new object.
+        // Keeping the one shown spares every reader a re-render for
+        // nothing: on the session page that re-rendered the page and its
+        // header actions.
+        return isSameSnapshot(previous, next) ? previous : next;
+      }),
+    );
     return () => subscription.unsubscribe();
   }, [bucket, key, visibleAgain]);
 
