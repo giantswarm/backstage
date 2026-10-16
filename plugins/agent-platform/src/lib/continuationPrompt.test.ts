@@ -189,12 +189,43 @@ describe('buildContinuationPrompt', () => {
     expect(text).toMatch(/## My answer\n\n1\. Egg$/);
   });
 
-  it('shortens a reply typed to the limit rather than overflowing it', () => {
+  it('never cuts a reply typed to the limit: it goes on its own', () => {
+    const maxLength = 3_000;
+    const reply = 'z'.repeat(maxLength - 100);
+    const continued = buildContinuationPrompt({
+      items: [user('hello')],
+      pendingQuestions,
+      reply,
+      continues: { installation: 'lab', sessionId: '01a1-b2c3' },
+      maxLength,
+    });
+
+    // After the marker line, so the new session still links back.
+    expect(continued.text).toBe(
+      `[Continues session lab/01a1-b2c3]\n\n${reply}`,
+    );
+    expect(continued.includedMessageCount).toBe(0);
+    expect(continued.messageCount).toBe(1);
+
+    // Without it where the marker does not fit beside the text.
+    const full = 'z'.repeat(maxLength);
+    expect(
+      buildContinuationPrompt({
+        items: [user('hello')],
+        pendingQuestions,
+        reply: full,
+        continues: { installation: 'lab', sessionId: '01a1-b2c3' },
+        maxLength,
+      }).text,
+    ).toBe(full);
+  });
+
+  it('shortens a failed answer that alone crowds the limit', () => {
     const maxLength = 3_000;
     const { text } = buildContinuationPrompt({
       items: [user('hello')],
       pendingQuestions,
-      reply: 'z'.repeat(maxLength),
+      answers: [['z'.repeat(maxLength)]],
       maxLength,
     });
 

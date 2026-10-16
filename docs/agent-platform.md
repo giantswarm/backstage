@@ -1490,12 +1490,16 @@ worker can time out once, and primary once kagent reports it, replacing Send and
 the answer panel. The new session carries this one on, as after an answer
 kagent did not take (see "Carrying the session on in a new one"): its first
 message holds the conversation, the open question if the session waits on one
-with any answer the lost runtime never took, and last the box's text, else the
-failed send's text, which the transcript does not hold. It is titled
-`Continued: <title>`, and the notice says what the first message will hold and
-shows the answer. An empty box also takes the images of the message that never
-got its answer. It follows create, navigate, send (see "Starting a session").
-`SessionDetailRoute` keys the page on the session, so the new one mounts fresh.
+with any answer the lost runtime never took, and last the box's text. A failed
+send's text is in the box because the composer restored it, so clearing the box
+leaves it out; where the transcript already holds that message, the restored
+copy is not added a second time. The images of the message that never got its
+answer (the newest message, with no reply or request after it) go along, since
+the conversation names them. It is titled `Continued: <title>`, and the notice
+says what the first message will hold and shows the answer, except while the
+question card is up and holds it. It follows create, navigate, send (see
+"Starting a session"). `SessionDetailRoute` keys the page on the session, so
+the new one mounts fresh.
 
 **Only a reported loss marks the session** (`Runtime lost` in the header, the
 Sessions table and the rail card); the suspected reading belongs to the notice.
@@ -1686,7 +1690,7 @@ There is no button to attach images with.
   turn, and the failure path hands the text and the images back to the box.
 - **Sent again.** A stalled turn's message comes back with its images when
   the turn is stopped, and a lost runtime's new session, started from an empty
-  box, takes the unanswered message's images with the conversation.
+  box or not, takes the unanswered message's images with the conversation.
 - **The transcript** shows a sent image after the message, as a thumbnail
   (at most 240 × 160 px) that opens at full size; the optimistic copy of a
   message in flight shows its images the same way, from the composer's
@@ -1848,8 +1852,9 @@ again.
 #### Carrying the session on in a new one
 
 A new session has an empty model history, so the new session's first message,
-after an answer kagent did not take or a lost runtime, carries the conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`),
-built from the page's timeline, which holds the whole task history:
+after an answer kagent did not take or a lost runtime, carries the
+conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`), built
+from the page's timeline, which holds the whole task history:
 
 - a first line naming the session it continues,
   `[Continues session <installation>/<session id>]` (see below);
@@ -1882,7 +1887,9 @@ history. A session that was itself a continuation is carried on with its first
 message expanded into entries (its earlier conversation, question and answer),
 not clipped as one long message. The session is titled
 `Continued: <this session's title>`, with one prefix however often it is
-carried on.
+carried on. What the person typed is never cut: a text too long to fit whole
+beside the rest is the first message on its own, after the marker line where
+that still fits.
 
 **The marker line.** The first line is one bracketed line, so it reads plainly
 to the model and wherever the raw text shows (Slack, kagent's UI). The session

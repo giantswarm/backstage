@@ -19,7 +19,7 @@ import type { UseCancelTaskResult } from '../../hooks/useCancelTask';
 import type { UseCreateSessionResult } from '../../hooks/useCreateSession';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
-import { buildTimeline } from '../../lib/kagentTimeline';
+import { buildTimeline, type TimelineItem } from '../../lib/kagentTimeline';
 import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
   deriveSessionState,
@@ -199,10 +199,19 @@ function idleConfirmation(
 // through router state, because the hook's own contract — read once, then clear the
 // state — has its own tests; what matters here is that the page dispatches it.
 const mockUseNewSessionHandoff = jest.fn();
-jest.mock('../../hooks/useNewSessionHandoff', () => ({
-  ...jest.requireActual('../../hooks/useNewSessionHandoff'),
-  useNewSessionHandoff: () => mockUseNewSessionHandoff(),
-}));
+// The images a new session is opened with, as the page hands them over.
+const mockStashHandoffImages = jest.fn();
+jest.mock('../../hooks/useNewSessionHandoff', () => {
+  const actual = jest.requireActual('../../hooks/useNewSessionHandoff');
+  return {
+    ...actual,
+    useNewSessionHandoff: () => mockUseNewSessionHandoff(),
+    stashHandoffImages: (images: unknown) => {
+      mockStashHandoffImages(images);
+      return actual.stashHandoffImages(images);
+    },
+  };
+});
 
 /** The hook's idle state, which most tests want. */
 /** An image of a message in flight, as the composer prepared it. */
@@ -333,6 +342,7 @@ describe('SessionDetailPage', () => {
     mockSendMessage.mockResolvedValue(undefined);
     mockUseSendMessage.mockReturnValue(idleSend());
     mockUseNewSessionHandoff.mockReturnValue(undefined);
+    mockStashHandoffImages.mockReset();
     mockAnswer.mockReset();
     mockAnswer.mockResolvedValue(undefined);
     mockUseAnswerConfirmation.mockReturnValue(idleConfirmation());
@@ -2325,7 +2335,7 @@ describe('SessionDetailPage', () => {
       expect(prompt).toMatch(/## My reply\n\nthe message that failed$/);
     });
 
-    it('carries the message the failed send handed back even once the box is cleared', async () => {
+    it('leaves out the failed send’s text once the person clears the box', async () => {
       mockUseSessionDetail.mockReturnValue(suspectedView);
       mockUseSendMessage.mockReturnValue(
         idleSend({
@@ -2339,7 +2349,116 @@ describe('SessionDetailPage', () => {
       await userEvent.click(startButton());
 
       const { prompt } = await created();
-      expect(prompt).toMatch(/## My reply\n\nthe message that failed$/);
+      expect(prompt).not.toContain('the message that failed');
+      expect(prompt).not.toContain('## My reply');
+    });
+
+    describe('the message that never got its answer', () => {
+      const message = 'Six of them are vegetarian.';
+      const items = (...after: TimelineItem[]): TimelineItem[] => [
+        {
+          id: 'u1',
+          kind: 'user-message',
+          taskIndex: 0,
+          messageId: 'm-1',
+          text: 'Plan a barbecue for twelve.',
+        },
+        { id: 'a1', kind: 'agent-message', taskIndex: 0, text: 'Sure.' },
+        {
+          id: 'u2',
+          kind: 'user-message',
+          taskIndex: 1,
+          messageId: 'm-2',
+          text: message,
+        },
+        {
+          id: 'img',
+          kind: 'attachment',
+          taskIndex: 1,
+          messageId: 'm-2',
+          isUser: true,
+          name: 'shot.png',
+          preview: {
+            kind: 'image',
+            type: 'image/png',
+            dataUrl: PENDING_IMAGE.previewUrl,
+            byteSize: PENDING_IMAGE.byteSize,
+          },
+        },
+        ...after,
+      ];
+      const failedTurn: TimelineItem = {
+        id: 'f',
+        kind: 'turn-failed',
+        taskIndex: 1,
+        state: 'failed',
+        reason: ATENET,
+      };
+      const lostWith = (timelineItems: TimelineItem[]): SessionDetailView => ({
+        ...reportedView,
+        timeline: { ...loadedView.timeline, items: timelineItems },
+      });
+      const handedImages = () =>
+        mockStashHandoffImages.mock.calls[0][0] as { name: string }[];
+
+      it('is carried once when the box holds the copy the failed send restored', async () => {
+        // The gateway recorded the turn before the send failed: the
+        // transcript has the message, and the composer put it back in the box.
+        mockUseSessionDetail.mockReturnValue(lostWith(items(failedTurn)));
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            error: new Error(ATENET),
+            failed: {
+              messageId: 'm-2',
+              text: message,
+              images: [PENDING_IMAGE],
+            },
+          }),
+        );
+        await render();
+        expect(composer()).toHaveValue(message);
+
+        await userEvent.click(startButton());
+
+        const { prompt } = await created();
+        expect(prompt.split(message)).toHaveLength(2);
+        expect(prompt).not.toContain('## My reply');
+        // Its image once, though the box and the transcript both hold it.
+        expect(handedImages().map(image => image.name)).toEqual(['shot.png']);
+      });
+
+      it('keeps its images when the person types a follow-up', async () => {
+        mockUseSessionDetail.mockReturnValue(lostWith(items(failedTurn)));
+        await render();
+
+        await userEvent.type(composer(), 'Make it a picnic.');
+        await userEvent.click(startButton());
+
+        const { prompt } = await created();
+        // The conversation names the image, so it goes along.
+        expect(prompt).toContain('[User attached a file: shot.png]');
+        expect(prompt).toMatch(/## My reply\n\nMake it a picnic\.$/);
+        expect(handedImages().map(image => image.name)).toEqual(['shot.png']);
+      });
+
+      it('is not one once the agent answered it', async () => {
+        mockUseSessionDetail.mockReturnValue(
+          lostWith(
+            items({
+              id: 'a2',
+              kind: 'agent-message',
+              taskIndex: 1,
+              text: 'Two grills, then.',
+            }),
+          ),
+        );
+        await render();
+
+        await userEvent.click(startButton());
+
+        await created();
+        expect(handedImages()).toEqual([]);
+      });
     });
 
     it('marks the session and lets the new session take Send’s place once kagent reports the loss', async () => {
@@ -2407,6 +2526,42 @@ describe('SessionDetailPage', () => {
         '## Your last question\n\n1. How many are vegetarian?',
       );
       expect(prompt).toMatch(/## My answer\n\nSix$/);
+    });
+
+    it('leaves the answer to the question card while the card is up', async () => {
+      // Suspected: the card stays with its retry and holds the answer itself.
+      mockUseSessionDetail.mockReturnValue({
+        ...suspectedView,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-2',
+          asks: 'input',
+          questions: [
+            { question: 'How many are vegetarian?', multiple: false },
+          ],
+          askedIn: 'status-1',
+        },
+      });
+      mockUseAnswerConfirmation.mockReturnValue(
+        idleConfirmation({
+          error: new Error(ATENET),
+          failed: {
+            messageId: 'answer-1',
+            taskId: 'task-2',
+            decision: 'approve',
+            answers: [['Six']],
+            text: 'Six',
+            askedIn: 'status-1',
+          },
+        }),
+      );
+      await render();
+
+      expect(
+        screen.getByText('The agent’s runtime could not be brought back'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('How many are vegetarian?')).toBeInTheDocument();
+      expect(screen.queryByText('Your answer: Six')).not.toBeInTheDocument();
     });
 
     it('carries the answer the lost runtime never took, and shows it', async () => {

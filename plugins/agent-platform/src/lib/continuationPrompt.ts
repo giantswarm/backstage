@@ -25,7 +25,8 @@ import type { TimelineItem } from './kagentTimeline';
  * The whole message stays within {@link MESSAGE_TEXT_MAX_LENGTH}, the bound the
  * send route enforces. The open question and the answer always fit; the
  * conversation gives way from its oldest end, and the message says how many
- * messages it left out.
+ * messages it left out. What the person typed is never cut: when it cannot fit
+ * whole beside the rest, it is the message on its own.
  */
 
 /** The session a continuation carries on, as the route names it. */
@@ -436,11 +437,24 @@ export function buildContinuationPrompt({
       .filter(Boolean)
       .join('\n\n');
 
+  const entries = readEntries(items, pendingQuestions);
+  const messageCount = entries.filter(entry => entry.isMessage).length;
+
   // The question and the answer are what the new session must act on, so the
   // conversation gives way first. Only a reply typed to the limit, or
-  // questions near it, can crowd the frame itself: then the answer gives way,
-  // and after it the questions.
+  // questions near it, can crowd the frame itself. The person's own text is
+  // never cut: a reply too long to fit whole beside the frame is the message
+  // on its own, after the marker line where that still fits. A failed
+  // answer's text gives way instead, and after it the questions.
   let overflow = frame('').length + SLACK - maxLength;
+  if (overflow > 0 && typed) {
+    const marked = marker && `${marker}\n\n${typed}`;
+    return {
+      text: marked && marked.length <= maxLength ? marked : typed,
+      messageCount,
+      includedMessageCount: 0,
+    };
+  }
   if (overflow > 0 && answer) {
     answer = clip(answer, Math.max(0, answer.length - overflow));
     overflow = frame('').length + SLACK - maxLength;
@@ -449,8 +463,6 @@ export function buildContinuationPrompt({
     question = clip(question, Math.max(0, question.length - overflow));
   }
 
-  const entries = readEntries(items, pendingQuestions);
-  const messageCount = entries.filter(entry => entry.isMessage).length;
   // Room held for the answer or a reply typed in its place, so a short reply
   // keeps the conversation exactly as the notice counted it.
   const reserve = Math.max(0, REPLY_RESERVE - (answer?.length ?? 0));

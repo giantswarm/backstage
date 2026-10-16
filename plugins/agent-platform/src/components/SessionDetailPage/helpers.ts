@@ -43,28 +43,33 @@ export function describeContinuationStart({
   /** Whether the message carries the person's answer to it. */
   hasAnswer: boolean;
 }): string {
-  let tail = 'and the text in the box';
-  if (hasQuestion) {
-    tail = hasAnswer
-      ? 'the open question and your answer'
-      : 'the open question and the text in the box';
-  }
+  // What follows the conversation: the open question when there is one, then
+  // the answer or the box's text.
+  const reply =
+    hasQuestion && hasAnswer ? 'your answer' : 'the text in the box';
+  const rest = hasQuestion ? `the open question and ${reply}` : reply;
   const replaces =
     hasQuestion && hasAnswer ? '; text in the box replaces the answer' : '';
+  const withConversation = (conversation: string) =>
+    `Its first message holds ${conversation}, with tools named but not their results, ${
+      hasQuestion ? rest : `and ${rest}`
+    }${replaces}.`;
   if (!continuation || continuation.messageCount === 0) {
-    return `Its first message holds this conversation, with tools named but not their results, ${tail}${replaces}.`;
+    return withConversation('this conversation');
   }
   const { messageCount, includedMessageCount } = continuation;
   const messages = countNoun(messageCount, 'message');
   // None fit beside a long answer: say so, rather than "the newest 0".
   if (includedMessageCount === 0) {
-    return `Its first message holds ${tail.replace(/^and /, '')}; this conversation's ${messages} do not fit beside ${hasQuestion ? 'them' : 'it'}.`;
+    return `Its first message holds ${rest}; this conversation's ${messages} do not fit beside ${
+      hasQuestion ? 'them' : 'it'
+    }.`;
   }
-  const conversation =
+  return withConversation(
     includedMessageCount < messageCount
       ? `the newest ${includedMessageCount} of this conversation's ${messages}`
-      : `this conversation (${messages})`;
-  return `Its first message holds ${conversation}, with tools named but not their results, ${tail}${replaces}.`;
+      : `this conversation (${messages})`,
+  );
 }
 
 /**
@@ -189,4 +194,31 @@ export function readLastUserMessage(
     return { text: item.text, images };
   }
   return undefined;
+}
+
+/**
+ * The person's last message when nothing answered it, with its images: the
+ * newest message in the conversation, followed by no reply and no request
+ * from the agent (only tool calls, reasoning or a failed turn). What a lost
+ * runtime's new session carries the images of, since the conversation it
+ * carries names them.
+ */
+export function readUnansweredUserMessage(
+  items: readonly TimelineItem[],
+): { text: string; images: ComposerImage[] } | undefined {
+  let last = -1;
+  items.forEach((item, index) => {
+    if (item.kind === 'user-message') {
+      last = index;
+    }
+  });
+  if (
+    last < 0 ||
+    items
+      .slice(last + 1)
+      .some(item => item.kind === 'agent-message' || item.kind === 'approval')
+  ) {
+    return undefined;
+  }
+  return readLastUserMessage(items);
 }

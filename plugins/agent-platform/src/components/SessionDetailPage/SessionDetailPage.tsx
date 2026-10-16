@@ -85,6 +85,7 @@ import {
   createPolledPairing,
   fresherStreamedCopy,
   readLastUserMessage,
+  readUnansweredUserMessage,
   STALLED_STATE_LABEL,
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
@@ -1018,28 +1019,55 @@ export function SessionDetailPage() {
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession } = creation;
   /**
-   * The message that never got its answer: the one the failed send handed
-   * back, which the transcript does not hold, else the last one the person
-   * sent, unless the agent answered it with the request it now waits on.
+   * The message that never got its answer, when the transcript holds it: the
+   * conversation carries its text and names its images, so the images go
+   * with the new session's first message.
    */
-  const unanswered =
-    send.failed ?? (pendingConfirmation ? undefined : lastUserMessage);
+  const unanswered = useMemo(
+    () => readUnansweredUserMessage(conversationItems),
+    [conversationItems],
+  );
+  /**
+   * The failed send's text, when the transcript holds that message too (the
+   * gateway recorded the turn before the send failed). The composer restored
+   * it into the box, where it is the same message, not a new one.
+   */
+  const failedSendInTranscript =
+    send.failed &&
+    conversationItems.some(
+      item =>
+        item.kind === 'user-message' &&
+        item.messageId === send.failed?.messageId,
+    )
+      ? send.failed.text
+      : undefined;
   const startNewSession = useCallback(
     async (draft: string, boxImages: ComposerImage[]) => {
       // The new session has none of this conversation, and a message or an
       // answer alone answers nothing in it: its first message carries the
       // conversation, then the open question with the answer that did not
       // reach the agent, then what the box holds as the person's new message
-      // (in the answer's place, when there is a question). A message the
-      // failed send handed back is not in the transcript, so an empty box
-      // carries it; an empty box also carries the unanswered message's images.
-      const isEmpty = !draft.trim() && boxImages.length === 0;
-      const images = isEmpty ? (unanswered?.images ?? []) : boxImages;
+      // (in the answer's place, when there is a question). Only what the box
+      // holds: a failed send the transcript does not have was restored into
+      // the box, and a person who cleared it meant to.
+      const typed = draft.trim();
+      const restatesTranscript =
+        typed !== '' &&
+        [unanswered?.text, failedSendInTranscript].some(
+          said => said !== undefined && said.trim() === typed,
+        );
+      // The unanswered message's images with the box's, each once: a
+      // restored copy holds the same bytes.
+      const images = [...(unanswered?.images ?? []), ...boxImages].filter(
+        (image, index, all) =>
+          all.findIndex(other => other.previewUrl === image.previewUrl) ===
+          index,
+      );
       const { text } = buildContinuationPrompt({
         items: conversationItems,
         pendingQuestions: pendingConfirmation?.questions ?? [],
         answers: failedAnswers,
-        reply: draft.trim() || send.failed?.text,
+        reply: restatesTranscript ? undefined : draft,
         continues: { installation, sessionId },
       });
       // One prefix however many times a session is carried on.
@@ -1085,7 +1113,7 @@ export function SessionDetailPage() {
       navigate,
       sessionDetailRoute,
       unanswered,
-      send.failed,
+      failedSendInTranscript,
       conversationItems,
       pendingConfirmation,
       failedAnswers,
@@ -1399,7 +1427,8 @@ export function SessionDetailPage() {
             offersNewSession={offersNewSession}
             newSessionBlocker={agentRow?.sessionBlocker}
             hasQuestion={Boolean(pendingConfirmation?.questions.length)}
-            answer={failedAnswerText}
+            // Not while the question card is up: it holds the answer itself.
+            answer={isConfirming ? undefined : failedAnswerText}
             continuation={continuation}
             startError={creation.error?.message}
           />
