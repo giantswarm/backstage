@@ -1198,13 +1198,32 @@ Costs use `gs.installations.<name>.currency`, USD otherwise.
 context, so a 4-turn session reached 1.4M prompt tokens across 14 calls. There
 is no combined total, because input and output are priced differently.
 
-**Context used is the newest turn's prompt tokens against a configured window.** No
-platform component reports a hosted model's context window, so the denominator
-is `agentPlatform.models.contextWindows` (model-name patterns with `*`, the most
-specific match wins, served through the signed-in config). An unmatched model
-shows its raw token count. The numerator is `buildTimeline`'s
-`lastTurnTokens.prompt`, summed over the newest reporting turn's calls and
-excluding delegated usage, so it is approximate.
+**Context used is the newest turn's largest model call against a configured
+window.** No platform component reports a hosted model's context window, so
+the denominator is `agentPlatform.models.contextWindows` (model-name patterns
+with `*`, the most specific match wins, served through the signed-in config).
+The numerator is `buildTimeline`'s `context`, read by `readUsageReport`:
+
+- ADK writes a usage bag per model call. A call's figure is its reported
+  total, else prompt plus output: the output is in the context from then on,
+  and both must fit the window.
+- A turn's figure is its largest call, never the sum of its calls. Each call
+  re-sends the whole context, so the sum over a long turn runs to several
+  times the window. The largest call is the newest root-agent call, and a small
+  auxiliary or sub-agent call recorded later in the turn cannot undercut it. A
+  compaction mid-turn keeps the pre-compaction size until the next turn.
+- The newest turn with a figure wins as soon as its first call reports, so the
+  indicator moves mid-turn on the API v2 line. Delegated agents' nested usage is
+  excluded.
+- The claude Harness writes one bag per turn, summed over its calls
+  (`numTurns`, with `costUsd`). Only a bag with `numTurns` exactly 1 is one
+  call's; any other, a missing or malformed count included, reads "Not
+  reported".
+
+No share shows beside a raw count, and a line under the row says why: the
+table names no window for the model, or the call was larger than the
+configured window (the setting may be too small, or the turn ran on a model the
+agent has since left). The share is never capped at 100%.
 
 Some sessions' `adk_usage_metadata` has only `promptTokenCount` and
 `candidatesTokenCount`; the total is then derived. A reported total wins,
@@ -1260,6 +1279,44 @@ requests) and posts a `ToastApi` toast when a session flips to waiting while
 the person is elsewhere. Nothing persists; sessions already waiting are left to
 the rail's dots, a toast closes when its session stops waiting or is opened,
 and the session on screen never raises one.
+
+### The compact header
+
+Once everything above the conversation has scrolled out of view, the header
+turns into one compact row at the top of the view: the session's name in a
+smaller font, its state, the agent, "Show tool activity", the pin and the
+actions menu. The environment and the start date are left out
+(`ShellPageExpandedOnly`); scrolling back up restores the full header. At
+phone width the switch is left out too: beside the state and the agent it
+wraps the row to a third line over the conversation.
+
+It is `ShellPage`'s `compactHeader` option, so another long page can opt in.
+It is the same header, not a copy: the h1 (the rename button) and the actions
+stay mounted once, so focus on them survives the switch and assistive tech
+never meets them twice. Compact, the header is `position: sticky` against the
+page, and a spacer after it takes the height it gives up, set before paint, so
+the conversation does not move. `useScrolledPast` watches a sentinel that
+reaches from where the content starts up past the top of the document (the
+document scrolls, not a container), so even an instant jump to the top is
+seen. The header stays expanded while focus is on a part the compact row
+leaves out. A `scroll-margin-top` on everything but the header keeps
+whatever is scrolled into view below the compact row, and its fade is off
+under `prefers-reduced-motion`. It is a margin on the content rather than a
+`scroll-padding-top` on the document: padding counts the stuck header's own
+top as hidden, so pressing the switch, whose input react-aria focuses on
+every press, scrolled the page to the top for a frame and back, a flicker.
+
+The switch stays usable mid-session: toggling it adds or removes work
+summaries above and below the place being read, so `useReadingAnchor` records
+the first entry in view that survives the toggle (a message or a turn marker,
+never a work summary) and its offset, turns the browser's scroll anchoring off
+for that change, and scrolls back by however far the entry moved, before
+paint. The header, its spacer and the sentinel are `overflow-anchor: none`:
+anchored on the sticky header, the browser would scroll the page when it turns
+back into the expanded header, which turns it compact again, a flicker. The
+compact header also expands only once the content's start is 24px back in
+view (`useScrolledPast`'s `hysteresis`), so a reflow that nudges it a few
+pixels cannot flip it.
 
 ### Timestamps are absolute here
 

@@ -980,6 +980,8 @@ describe('CustomizeConnectorsPanel', () => {
       expect(rowOf('github')).toBeInTheDocument();
     });
 
+    // 300 rows and a dozen menu round trips render far more than any other
+    // case here; on a loaded CI runner that outgrows jest's 5 s default.
     it('filters 300 connectors, paging the result from its first page', async () => {
       mockServers = Array.from({ length: 300 }, (_, i) =>
         makeServer(`connector-${String(i).padStart(3, '0')}`, {
@@ -1033,7 +1035,7 @@ describe('CustomizeConnectorsPanel', () => {
       expect(
         screen.getByText('20 connectors shown, 280 more'),
       ).toBeInTheDocument();
-    });
+    }, 20_000);
   });
 
   describe('at phone width (T22 B8)', () => {

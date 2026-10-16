@@ -700,7 +700,7 @@ export interface WorkflowFlowCanvasProps {
   steps: WorkflowStep[];
   onFailure: WorkflowSubStep[];
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
   /** Whether the muster session can read runs and the tool catalogue. */
   hasSession: boolean;
 }

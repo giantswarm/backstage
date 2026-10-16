@@ -132,7 +132,7 @@ function ArgumentsList({ workflow }: { workflow: MusterWorkflow }) {
 
 export type WorkflowOverviewTabProps = {
   workflow: MusterWorkflow;
-  installation?: string;
+  installation: string;
   /** Whether the muster session can read runs, for the flow's overlay. */
   hasSession: boolean;
   /** Where muster asks for a session, what to show above the sections. */
