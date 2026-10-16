@@ -1,6 +1,6 @@
 import type { SeenMarkTarget } from '@giantswarm/backstage-plugin-agent-platform';
 import type { McpServerAwaitingSignIn } from '@giantswarm/backstage-plugin-muster';
-import type { InboxRow } from '../types';
+import type { DerivedInboxRow } from '../types';
 
 /**
  * The link that opens muster's sign-in dialog where the person is: the MCP
@@ -80,7 +80,7 @@ export function toMcpSignInRow({
   waiting,
   seen,
   openSignIn,
-}: McpSignInRowInput): InboxRow | undefined {
+}: McpSignInRowInput): DerivedInboxRow | undefined {
   if (waiting.length === 0) {
     return undefined;
   }

@@ -4,7 +4,7 @@ import {
   useMcpSignIn,
   type McpSignInStatus,
 } from '@giantswarm/backstage-plugin-muster';
-import type { InboxRowSource } from '../types';
+import type { DerivedInboxRow, InboxRowSource } from '../types';
 import {
   mcpSignInMark,
   mcpSignInSubject,
@@ -41,7 +41,7 @@ export const NARROW_RETRY_MS = 60_000;
  */
 export function useMcpSignInRowSource(
   record: NotificationRecord,
-): InboxRowSource {
+): InboxRowSource<DerivedInboxRow> {
   const status = useStatus();
   const { isKnown, mcpSignInSeenMarkOf, replaceSeenMark } = record;
   const installation = status?.installation;
