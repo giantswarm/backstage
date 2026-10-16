@@ -1,6 +1,7 @@
 import { connectorRow } from './connectors';
 import { connectToMuster, expect, open, test } from './fixtures';
 import { lab } from './lab';
+import { NOTIFICATIONS, stubNotifications } from './notifications';
 import {
   KUBECONFIG,
   kubectl,
@@ -106,6 +107,29 @@ test.describe('a connector with a display name', () => {
     await expect(
       admin.getByText(`${NAMESPACE}/${NAME}`, { exact: true }),
     ).toBeVisible();
+  });
+
+  test('keeps the display name first in a title the unread count leads', async ({
+    admin,
+  }) => {
+    await stubNotifications(admin, [
+      { id: 'e2e-display-name-unread', title: 'E2E unread notification' },
+    ]);
+    try {
+      await open(
+        admin,
+        `/customize/connectors/${lab.installation}/${NAME}/details`,
+      );
+
+      await expect(
+        admin.getByRole('heading', { level: 1, name: DISPLAY_NAME }),
+      ).toBeVisible({ timeout: 60_000 });
+      await expect(admin).toHaveTitle(
+        new RegExp(`^\\(\\d+\\) ${DISPLAY_NAME} · `),
+      );
+    } finally {
+      await admin.unroute(NOTIFICATIONS);
+    }
   });
 });
 
