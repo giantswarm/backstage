@@ -38,6 +38,14 @@ child=$!
 # browser is gone.
 exec 3>&- 4>&-
 
+# unshare is started, not yet unshared: until its namespaces differ from ours,
+# pasta would try to join our own and fail ("Couldn't enter user namespace").
+own="$(readlink /proc/$$/ns/net)"
+for _ in $(seq 100); do
+  [ "$(readlink "/proc/$child/ns/net" 2>/dev/null || echo "$own")" != "$own" ] && break
+  sleep 0.05
+done
+
 # pasta configures the namespace before it detaches, and quits when the
 # namespace goes away. IPv4 only: the lab is reached over IPv4, and no IPv6
 # address the host gains or loses is copied in.
