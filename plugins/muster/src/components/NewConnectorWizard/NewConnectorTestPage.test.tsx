@@ -61,12 +61,20 @@ const callTool = jest.fn();
 const listServers = jest.fn();
 const getAuthStatus = jest.fn();
 const filterTools = jest.fn();
+// A muster whose core tools take a display name (v5.43.0 and later).
+const describeTool = jest.fn((name: string) =>
+  Promise.resolve({
+    name,
+    inputSchema: { properties: { displayName: { type: 'string' } } },
+  }),
+);
 
 const musterApi = {
   callTool,
   listServers,
   getAuthStatus,
   filterTools,
+  describeTool,
 } as unknown as jest.Mocked<import('../../apis').MusterApi>;
 
 function renderWizard(path: string) {
