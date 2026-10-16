@@ -254,7 +254,7 @@ describe('GET /avatars/:installation/v1/...', () => {
     expect(cancel).toHaveBeenCalled();
   });
 
-  it.each([
+  it.each<[string, () => Response | Promise<Response>, RegExp]>([
     [
       'answers an error',
       () => new Response('down', { status: 503 }),
@@ -267,7 +267,7 @@ describe('GET /avatars/:installation/v1/...', () => {
           `answers ${status}`,
           () => new Response('no', { status }),
           new RegExp(`answered ${status}`),
-        ] as const,
+        ] as [string, () => Response, RegExp],
     ),
     [
       'answers something that is not an image',
