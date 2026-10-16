@@ -609,7 +609,7 @@ describe('AppReadinessProcessor', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("shares one release lookup between a component's charts", async () => {
+  it('shares one release lookup between components processed at once', async () => {
     const getTags = jest.fn().mockResolvedValue({
       tags: [{ tag: '1.6.0', createdAt: null }],
       latestStableVersion: '1.6.0',

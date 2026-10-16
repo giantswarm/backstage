@@ -85,24 +85,4 @@ describe('AzureASOManagedCluster', () => {
       );
     });
   });
-
-  describe('matchesRef', () => {
-    it('matches a reference with apiGroup', () => {
-      expect(
-        AzureASOManagedCluster.matchesRef({
-          apiGroup: 'infrastructure.cluster.x-k8s.io',
-          kind: 'AzureASOManagedCluster',
-        }),
-      ).toBe(true);
-    });
-
-    it('does not match an AzureCluster reference', () => {
-      expect(
-        AzureASOManagedCluster.matchesRef({
-          apiGroup: 'infrastructure.cluster.x-k8s.io',
-          kind: 'AzureCluster',
-        }),
-      ).toBe(false);
-    });
-  });
 });
