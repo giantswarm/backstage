@@ -32,22 +32,3 @@ export const CONTENT_PADDING = 24;
  */
 export const PLUGIN_CONTENT_VIEWPORT_OFFSET =
   PLUGIN_HEADER_HEIGHT + CONTENT_PADDING;
-
-/**
- * CSS variable: how much of the view's bottom a floating notice (the MCP
- * server sign-in notice) covers above whatever is docked there, published on
- * the document root while the notice is shown and unset otherwise.
- *
- * Pages reserve it under their last content, so that content can always be
- * scrolled clear of the notice: the agent shell's content area does
- * (agent-shell.css). A layout with a bar docked at the bottom of the view
- * (WizardFrame's footer, the session's composer) reserves it above its bar
- * instead, where the notice floats, and marks itself with
- * {@link FLOATING_NOTICE_RESERVE_ATTRIBUTE} so the content area leaves it out.
- */
-export const FLOATING_NOTICE_CLEARANCE_VAR = '--floating-notice-clearance';
-
-/**
- * Marks a layout that reserves {@link FLOATING_NOTICE_CLEARANCE_VAR} itself.
- */
-export const FLOATING_NOTICE_RESERVE_ATTRIBUTE = 'data-floating-notice-reserve';

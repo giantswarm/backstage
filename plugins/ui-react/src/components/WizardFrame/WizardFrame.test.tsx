@@ -262,25 +262,11 @@ describe('WizardFrame', () => {
       .map(style => style.textContent)
       .join('\n');
     expect(styles).toContain(
-      'scroll-margin-bottom: calc(var(--wizard-footer-height, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px) + var(--floating-notice-clearance, 0px))',
+      'scroll-margin-bottom: calc(var(--wizard-footer-height, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px))',
     );
   });
 
-  it('reserves the room a floating notice covers above the footer, in place of the shell', () => {
-    const { container } = renderFrame();
-
-    const styles = Array.from(document.querySelectorAll('style'))
-      .map(style => style.textContent)
-      .join('\n');
-    expect(styles).toContain(
-      'padding-bottom: var(--floating-notice-clearance, 0px)',
-    );
-    expect(
-      container.querySelector('[data-floating-notice-reserve]'),
-    ).not.toBeNull();
-  });
-
-  it('publishes the footer’s height on the document while it is mounted, for the floating sign-in notice', () => {
+  it('publishes the footer’s height on the document while it is mounted, for the shell’s toasts', () => {
     const rect = jest
       .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
       .mockReturnValue({ width: 1200, height: 65 } as DOMRect);

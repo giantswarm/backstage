@@ -19,8 +19,6 @@ import { makeStyles } from '@material-ui/core';
 import {
   DateComponent,
   EmptyStateCard,
-  FLOATING_NOTICE_CLEARANCE_VAR,
-  FLOATING_NOTICE_RESERVE_ATTRIBUTE,
   LoadingIndicator,
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
@@ -183,12 +181,7 @@ const useStyles = makeStyles(theme => ({
     // (and of the shell's mobile bottom bar under it), however tall a question
     // card has made the dock.
     '& > :not($bottomDock) :is(button, a, input, textarea, [tabindex])': {
-      scrollMarginBottom: `calc(var(${DOCK_HEIGHT_VAR}, 0px) + var(--agent-shell-mobile-bar-height, 0px) + var(${FLOATING_NOTICE_CLEARANCE_VAR}, 0px) + ${theme.spacing(2)}px)`,
-    },
-    // Room above the dock for a notice floating there (the MCP server
-    // sign-in notice), so the newest message scrolls clear of it.
-    '& > :has(+ $bottomDock)': {
-      marginBottom: `var(${FLOATING_NOTICE_CLEARANCE_VAR}, 0px)`,
+      scrollMarginBottom: `calc(var(${DOCK_HEIGHT_VAR}, 0px) + var(--agent-shell-mobile-bar-height, 0px) + ${theme.spacing(2)}px)`,
     },
   },
   // The chat bar: the composer, its caption, and whatever must be answered or
@@ -1674,7 +1667,6 @@ export function SessionDetailPage() {
         direction="column"
         gap="4"
         className={classes.column}
-        {...{ [FLOATING_NOTICE_RESERVE_ATTRIBUTE]: '' }}
       >
         {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped

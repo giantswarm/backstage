@@ -28,10 +28,6 @@ import {
   useMediaQueryMatch,
   usePhoneLayout,
 } from '../../utils/breakpoints';
-import {
-  FLOATING_NOTICE_CLEARANCE_VAR,
-  FLOATING_NOTICE_RESERVE_ATTRIBUTE,
-} from '../../utils/layout';
 
 /** The centered column's width per {@link WizardFrameProps.width}. */
 const COLUMN_WIDTHS = {
@@ -62,8 +58,8 @@ const RAIL_MARGIN_END = 32;
 /**
  * The footer's measured height, published on the frame for the clearance, and
  * on the document root while a frame is mounted, for what floats over the page
- * from outside it (the MCP server sign-in notice): it lifts itself by this,
- * so it never lands on Continue or Create.
+ * from outside it (the agent shell's toasts): it lifts itself by this, so it
+ * never lands on Continue or Create.
  */
 export const WIZARD_FOOTER_HEIGHT_VAR = '--wizard-footer-height';
 const FOOTER_HEIGHT_VAR = WIZARD_FOOTER_HEIGHT_VAR;
@@ -74,9 +70,9 @@ const FOOTER_HEIGHT_VAR = WIZARD_FOOTER_HEIGHT_VAR;
  * first measurement) — plus room for the label above a field, so a field
  * scrolled into view — by the focus moving to it, by tabbing, or by a failed
  * validation focusing it — never lands under the docked footer (or the
- * shell's mobile bottom bar below it, or a notice floating above it).
+ * shell's mobile bottom bar below it).
  */
-const FOOTER_CLEARANCE = `calc(var(${FOOTER_HEIGHT_VAR}, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px) + var(${FLOATING_NOTICE_CLEARANCE_VAR}, 0px))`;
+const FOOTER_CLEARANCE = `calc(var(${FOOTER_HEIGHT_VAR}, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px))`;
 
 // Phone first: the narrow padding is the default, and the two-column tier
 // (≥ 768px, where forms go to two columns) widens it.
@@ -267,9 +263,6 @@ const useStyles = makeStyles({
   },
   body: {
     flex: '1 1 auto',
-    // Room above the footer for a notice floating there (the MCP server
-    // sign-in notice), so the step's last content scrolls clear of it.
-    paddingBottom: `var(${FLOATING_NOTICE_CLEARANCE_VAR}, 0px)`,
   },
   // A docked rail: the column and the rail side by side, centred together.
   // Only ever rendered at the two-column tier (`useWizardFrameRail`).
@@ -442,7 +435,7 @@ function useFrameMeasurements() {
         documentRoot.style.setProperty(FOOTER_HEIGHT_VAR, value);
       }
     };
-    // At once as well: the floating notice clears the footer from the first
+    // At once as well: the shell's toasts clear the footer from the first
     // paint, not from the observer's first callback.
     measure();
     const observer =
@@ -681,7 +674,6 @@ export function WizardFrame({
         ref={rootRef}
         className={classes.root}
         data-field-validation-scope=""
-        {...{ [FLOATING_NOTICE_RESERVE_ATTRIBUTE]: '' }}
         style={asideWidth > 0 ? { paddingRight: asideWidth } : undefined}
       >
         <header className={classes.header}>

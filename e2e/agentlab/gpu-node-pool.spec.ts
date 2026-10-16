@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import {
-  dismissMcpSignInNotice,
+  dismissInboxToasts,
   expect,
   expectWizardStep,
   open,
@@ -602,9 +602,9 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
   test('a Deploy cut short lists the pending objects and Continue re-runs the same call', async ({
     page,
   }) => {
-    // The outcome's Continue sits at the foot of the page, where the MCP
-    // sign-in notice floats while the lab's OAuth fixture waits for a sign-in.
-    await dismissMcpSignInNotice(page);
+    // The outcome's Continue sits at the foot of the page, where the inbox's
+    // toast shows while the lab's OAuth fixture waits for a sign-in.
+    await dismissInboxToasts(page);
     const { calls } = await reachReview(page, { partialApplies: 1 });
     await page.getByRole('button', { name: /^Deploy/ }).click();
 
