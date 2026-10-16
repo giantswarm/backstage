@@ -7,7 +7,12 @@ import {
   CANCELED_STATE,
   isRuntimeLostFailureText,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  CollapsibleToggle,
+  CollapsibleViewport,
+  PHONE_MEDIA,
+  useCollapsible,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { ActivityRow, InertActivityRow } from './ActivityRow';
 import { AttachmentEntry } from './AttachmentEntry';
@@ -21,6 +26,18 @@ import {
   humanizeToolName,
   summarizeArgs,
 } from './helpers';
+
+/**
+ * How many lines of a user message show before *Show more*: a continuation's
+ * opener carries the whole earlier conversation, and a pasted log or file
+ * runs to thousands of lines, either of which buries the answer under it.
+ */
+const USER_MESSAGE_LINES = 10;
+
+// The bubble's type, `userText` below: 14px at the default root size, at a
+// line height of 1.6.
+const USER_TEXT_FONT_SIZE = 14;
+const USER_TEXT_LINE_HEIGHT = 1.6;
 
 const useStyles = makeStyles(theme => ({
   // The user's message is a bubble on the right, the agent's prose plain on the
@@ -40,6 +57,8 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.primary.contrastText,
     padding: theme.spacing(1.25, 2),
     borderRadius: 'var(--bui-radius-3)',
+    // What a long message's fade fades to: the bubble, not the page.
+    '--bui-bg-inherit': theme.palette.primary.main,
   },
   // Deliberately not markdown: prompts quote logs, manifests and `#` headings
   // that must stay the characters the user typed.
@@ -47,8 +66,8 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     whiteSpace: 'pre-wrap',
     overflowWrap: 'anywhere',
-    fontSize: '0.875rem',
-    lineHeight: 1.6,
+    fontSize: `${USER_TEXT_FONT_SIZE / 16}rem`,
+    lineHeight: USER_TEXT_LINE_HEIGHT,
     fontFamily: 'inherit',
   },
   // The bubble says "you" visually; this keeps saying it to assistive tech.
@@ -182,6 +201,46 @@ export type TimelineEntryProps = {
   /** Names a tool call's connector in the plain register (UX review M2). */
   connectorOf?: ConnectorOf;
 };
+
+/**
+ * The person's message as a right-aligned bubble. A long one is cut to
+ * {@link USER_MESSAGE_LINES} lines, with *Show more* under the bubble rather
+ * than in it, where it would sit on the portal's colour. Whether it is open
+ * lasts while the page does.
+ */
+function UserMessage({ text, caption }: { text: string; caption?: string }) {
+  const classes = useStyles();
+  const collapsible = useCollapsible({
+    collapsedHeight: Math.round(
+      USER_MESSAGE_LINES * USER_TEXT_FONT_SIZE * USER_TEXT_LINE_HEIGHT,
+    ),
+  });
+
+  return (
+    <div className={classes.userRow} data-testid="timeline-user-message">
+      <div className={classes.userBubble}>
+        <span className={classes.srOnly}>You</span>
+        <CollapsibleViewport state={collapsible}>
+          <pre className={classes.userText}>{text}</pre>
+        </CollapsibleViewport>
+      </div>
+      <CollapsibleToggle
+        state={collapsible}
+        labels={{ expand: 'Show more', collapse: 'Show less' }}
+      />
+      {caption && (
+        <Text
+          as="p"
+          variant="body-x-small"
+          color="secondary"
+          data-testid="timeline-user-message-caption"
+        >
+          {caption}
+        </Text>
+      )}
+    </div>
+  );
+}
 
 /** Prose from the agent, rendered as markdown. */
 function MessageBody({ text }: { text: string }) {
@@ -408,24 +467,7 @@ export function TimelineEntry({
   // Narrowed on the kinds rather than through `isCollapsible`, so the compiler
   // knows `text` exists in this branch.
   if (item.kind === 'user-message') {
-    return (
-      <div className={classes.userRow} data-testid="timeline-user-message">
-        <div className={classes.userBubble}>
-          <span className={classes.srOnly}>You</span>
-          <pre className={classes.userText}>{item.text}</pre>
-        </div>
-        {caption && (
-          <Text
-            as="p"
-            variant="body-x-small"
-            color="secondary"
-            data-testid="timeline-user-message-caption"
-          >
-            {caption}
-          </Text>
-        )}
-      </div>
-    );
+    return <UserMessage text={item.text} caption={caption} />;
   }
 
   if (item.kind === 'agent-message') {

@@ -1525,3 +1525,141 @@ describe('TimelineEntry — the connector of a tool call (UX review M2)', () => 
     expect(row).toHaveTextContent('via Muster');
   });
 });
+
+describe('SessionTimeline — a long user message', () => {
+  // jsdom lays nothing out: the stub reports a bubble's text as one line of
+  // its type (14px at 1.6) per line of the message, and nothing for anything
+  // else observed.
+  const RealResizeObserver = globalThis.ResizeObserver;
+  beforeAll(() => {
+    globalThis.ResizeObserver = class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        const text = target.querySelector('pre')?.textContent;
+        if (text === undefined || text === null) {
+          return;
+        }
+        this.callback(
+          [
+            {
+              target,
+              contentRect: {
+                width: 600,
+                height: text.split('\n').length * 22.4,
+              },
+            } as unknown as ResizeObserverEntry,
+          ],
+          this as unknown as ResizeObserver,
+        );
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  });
+  afterAll(() => {
+    globalThis.ResizeObserver = RealResizeObserver;
+  });
+
+  const lines = (count: number, prefix = 'line') =>
+    Array.from({ length: count }, (_, i) => `${prefix} ${i + 1}`).join('\n');
+  const base = { taskIndex: 0, at: '2026-10-16T10:00:00Z' };
+  const timeline = (items: TimelineItem[]): Timeline => ({
+    items,
+    tokens: { total: 0, prompt: 0, completion: 0 },
+    skippedMessages: 0,
+  });
+
+  async function renderItems(items: TimelineItem[]) {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline(items)}
+        agentName="Issue tracker"
+        isAgentWorking={false}
+      />,
+    );
+  }
+
+  it('cuts it to ten lines behind Show more, and opens and closes it in place', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(40) },
+    ]);
+
+    const toggle = screen.getByRole('button', { name: 'Show more' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const region = panelFor(toggle);
+    expect(region).toHaveStyle({ maxHeight: '224px' });
+    // Cut, not removed: the whole message stays in the page for a screen
+    // reader and for copying.
+    expect(region).toHaveTextContent('line 40');
+    expect(screen.getByTestId('timeline-user-message')).toContainElement(
+      toggle,
+    );
+
+    await userEvent.click(toggle);
+    const less = screen.getByRole('button', { name: 'Show less' });
+    expect(less).toHaveAttribute('aria-expanded', 'true');
+    expect(panelFor(less)).not.toHaveStyle({ maxHeight: '224px' });
+
+    await userEvent.click(less);
+    expect(screen.getByRole('button', { name: 'Show more' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('opens from the keyboard', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(40) },
+    ]);
+
+    screen.getByRole('button', { name: 'Show more' }).focus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('shows a message that fits whole, with no control', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(10) },
+    ]);
+
+    expect(screen.getByText(/line 10/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show more' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps each message open or closed on its own', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u1', text: lines(40, 'first') },
+      { ...base, kind: 'agent-message', id: 'a1', text: 'Noted.' },
+      {
+        ...base,
+        taskIndex: 1,
+        kind: 'user-message',
+        id: 'u2',
+        text: lines(40, 'second'),
+      },
+    ]);
+
+    const [first, second] = screen.getAllByRole('button', {
+      name: 'Show more',
+    });
+    await userEvent.click(second);
+
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    expect(second).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('leaves the agent’s messages whole', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: 'Summarize it' },
+      { ...base, kind: 'agent-message', id: 'a', text: lines(40) },
+    ]);
+
+    expect(screen.queryByRole('button', { name: /Show more/ })).toBeNull();
+  });
+});

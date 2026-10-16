@@ -1127,6 +1127,19 @@ markdown, because prompts quote logs and `#` lines verbatim. Agent prose is GFM
 markdown. JSON inside result strings is inlined. Streaming auto-follow applies
 only while the page is scrolled to the end.
 
+**A long user message is cut to 10 lines** behind a fade, with _Show more_
+under the bubble (a button with `aria-expanded`, tied to the message by
+`aria-controls`) and _Show less_ once open. A continuation's opener carries the
+whole earlier conversation, and a pasted log or file can run to thousands of
+lines; either would bury the answer under it. A message that fits shows no
+control. The cut is visual only: the whole text stays in the page for screen
+readers, selection and copying. Each message keeps its own state while the page
+is open; a reload starts every message cut again. The agent's messages, tool
+output and the composer are never cut. The pieces (`useCollapsible`,
+`CollapsibleViewport`, `CollapsibleToggle`) live in `ui-react` and are the same
+ones `CollapsibleMarkdown` uses for an agent's instructions; the bubble sets
+`--bui-bg-inherit` to its own fill so the fade matches it.
+
 | Entry                | Where it comes from                                                        |
 | -------------------- | -------------------------------------------------------------------------- |
 | User / agent message | `role` plus text parts, rendered as markdown                               |
@@ -1885,9 +1898,10 @@ page recognises it only at the very start of the session's first user message
 and shows a "Continued session" banner above the conversation instead: "This
 session is a follow-up to an earlier session on <installation>", linked through
 `sessionDetailRouteRef` (the installation may differ from the session's own).
-The one-visit "Prepared by the portal" caption is not used for it. Links inside
-any bui `Alert` in the shell are underlined and take the shell's link colour
-(`agent-shell.css`), so they read as links on every alert background. An
+The one-visit "Prepared by the portal" caption is not used for it. The rest of
+the message, the carried conversation, is cut like any long user message. Links
+inside any bui `Alert` in the shell are underlined and take the shell's link
+colour (`agent-shell.css`), so they read as links on every alert background. An
 installation or session id outside `[a-z0-9-]` and `[A-Za-z0-9._-]` is not
 written, so a marker always reads back as written.
 

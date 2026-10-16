@@ -2450,6 +2450,69 @@ describe('SessionDetailPage', () => {
 
       expect(screen.queryByText('Continued session')).not.toBeInTheDocument();
     });
+
+    describe('carrying a long conversation', () => {
+      // jsdom lays nothing out: the stub reports a message bubble's text as
+      // one line of its type (14px at 1.6) per line, and nothing else.
+      const RealResizeObserver = globalThis.ResizeObserver;
+      beforeAll(() => {
+        globalThis.ResizeObserver = class {
+          constructor(private readonly callback: ResizeObserverCallback) {}
+          observe(target: Element) {
+            const text = target.querySelector('pre')?.textContent;
+            if (text === undefined || text === null) {
+              return;
+            }
+            this.callback(
+              [
+                {
+                  target,
+                  contentRect: {
+                    width: 600,
+                    height: text.split('\n').length * 22.4,
+                  },
+                } as unknown as ResizeObserverEntry,
+              ],
+              this as unknown as ResizeObserver,
+            );
+          }
+          unobserve() {}
+          disconnect() {}
+        } as unknown as typeof ResizeObserver;
+      });
+      afterAll(() => {
+        globalThis.ResizeObserver = RealResizeObserver;
+      });
+
+      it('cuts the opener under the banner behind Show more', async () => {
+        const earlier = Array.from(
+          { length: 60 },
+          (_, i) => `**Person:** question ${i + 1}`,
+        ).join('\n\n');
+        mockUseSessionDetail.mockReturnValue(
+          continuationView(
+            `[Continues session other-lab/0a1b2c]\n\nI am continuing a session with you.\n\n## Earlier conversation\n\n${earlier}`,
+          ),
+        );
+        await render();
+
+        expect(screen.getByText('Continued session')).toBeInTheDocument();
+        const toggle = screen.getByRole('button', { name: 'Show more' });
+        const message = document.getElementById(
+          toggle.getAttribute('aria-controls')!,
+        )!;
+        expect(message).toHaveStyle({ maxHeight: '224px' });
+        expect(message).toHaveTextContent(
+          /^I am continuing a session with you\./,
+        );
+        expect(message).not.toHaveTextContent('[Continues session');
+
+        await userEvent.click(toggle);
+        expect(
+          screen.getByRole('button', { name: 'Show less' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+      });
+    });
   });
 
   describe('an answer kagent did not take', () => {
