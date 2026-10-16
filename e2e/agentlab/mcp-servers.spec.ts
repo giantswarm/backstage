@@ -6,11 +6,7 @@ import {
   open,
   test,
 } from './fixtures';
-import {
-  connectorRow,
-  INVENTORY_REJECTED_TOKEN,
-  SHOWN,
-} from './connectors';
+import { connectorRow, INVENTORY_REJECTED_TOKEN, SHOWN } from './connectors';
 import { lab } from './lab';
 
 /**
@@ -98,7 +94,7 @@ test('Infrastructure lists the infrastructure servers, Internal the platform’s
   await connectToMuster(admin, admin.getByRole('grid').or(inventoryGate));
   await expect(
     inventoryGate,
-    'the API server accepted the portal\'s token: no inventory gate',
+    "the API server accepted the portal's token: no inventory gate",
   ).toHaveCount(0);
   await expect(connectorRow(admin, SHOWN.kubernetes)).toBeVisible();
   await expect(connectorRow(admin, SHOWN.fixture)).toHaveCount(0);
