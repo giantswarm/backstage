@@ -4,7 +4,6 @@ import {
   expectClearOfBottomBar,
   expectNoHorizontalScroll,
   open,
-  openReadyAgent,
   test,
 } from './fixtures';
 
@@ -21,12 +20,7 @@ const bar = (page: Page) =>
 
 test('the bottom bar holds New session · Sessions · Search · Customize · Profile, each reaching its page', async ({
   admin,
-  labAgent,
 }) => {
-  test.setTimeout(10 * 60_000);
-  // New session lands on the home Prompt, which the home shows only once the
-  // person has an agent ready for a session: the worker's own.
-  await openReadyAgent(admin, labAgent);
   await open(admin, '/agent-platform/sessions');
   const nav = bar(admin);
   await expect(nav).toHaveClass(/agent-shell-mobile-bar/);
@@ -64,9 +58,16 @@ test('the bottom bar holds New session · Sessions · Search · Customize · Pro
   await admin.keyboard.press('Escape');
   await expect(palette).toBeHidden();
 
+  // New session reaches the home, whose greeting stands with or without an
+  // agent; its Prompt needs a ready agent and is mobile-sessions' to prove.
   await nav.getByRole('link', { name: 'New session' }).click();
   await expect(admin).toHaveURL(/\/$/);
-  await expect(admin.getByRole('textbox', { name: 'Prompt' })).toBeVisible();
+  await expect(
+    admin.getByRole('heading', {
+      level: 1,
+      name: /^Good (morning|afternoon|evening)\b/,
+    }),
+  ).toBeVisible();
 });
 
 test('the Profile menu carries Usage and the Platform Portal on a phone', async ({
