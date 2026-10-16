@@ -15,10 +15,6 @@ export type ContinuedSessionBannerProps = {
  * start of the first message (`buildContinuationPrompt`), which is for the
  * model and for places that show the raw text.
  *
- * It also says who wrote that first message, which kagent stores no flag for:
- * unlike a hand-off's one-visit "Prepared by the portal" caption, the marker
- * is in the message, so this shows on every visit.
- *
  * The link names the installation, which may differ from this session's; the
  * page's own title ("Continued: …") already names the topic.
  */
@@ -41,8 +37,7 @@ export function ContinuedSessionBanner({
           This session is a follow-up to{' '}
           {/* core-components' `Link`, which routes client-side. */}
           {href ? <Link to={href}>{earlier}</Link> : earlier}, which could not
-          be resumed. The portal prepared its first message from that
-          conversation.
+          be resumed.
         </>
       }
       data-testid="continued-session-banner"

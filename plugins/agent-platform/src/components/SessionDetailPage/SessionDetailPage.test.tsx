@@ -2405,9 +2405,6 @@ describe('SessionDetailPage', () => {
         screen.getByRole('link', { name: 'an earlier session on other-lab' }),
       ).toHaveAttribute('href', '/agent-platform/sessions/other-lab/0a1b2c');
       expect(
-        screen.getByText(/The portal prepared its first message/),
-      ).toBeInTheDocument();
-      expect(
         screen.getByText('I am continuing a session with you.'),
       ).toBeInTheDocument();
       expect(screen.queryByText(/\[Continues session/)).not.toBeInTheDocument();

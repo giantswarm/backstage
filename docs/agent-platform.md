@@ -1764,8 +1764,9 @@ page recognises it only at the very start of the session's first user message
 and shows a "Resumed session" banner above the conversation instead: "This
 session is a follow-up to an earlier session on <installation>", linked through
 `sessionDetailRouteRef` (the installation may differ from the session's own).
-The banner also says the portal prepared the first message, on every visit;
-the one-visit "Prepared by the portal" caption is not used for it. An
+The one-visit "Prepared by the portal" caption is not used for it. Links inside
+any bui `Alert` in the shell are underlined and take the shell's link colour
+(`agent-shell.css`), so they read as links on every alert background. An
 installation or session id outside `[a-z0-9-]` and `[A-Za-z0-9._-]` is not
 written, so a marker always reads back as written.
 

@@ -79,6 +79,57 @@ html[data-agent-shell]
 }
 
 /*
+ * Links inside a banner (bui `Alert`). An alert sets its text in its status's
+ * on-background colour, and a link in it — bui's `Link` or core-components'
+ * MUI one — came out in a near copy of that colour without an underline, so
+ * it could not be told from the text. Inside every alert a link is underlined
+ * and takes the shell's link colour, which holds 4.5:1 against each light
+ * alert background (info, success, warning, danger); dark mode takes bui's
+ * info foreground, which holds it against the dark ones. Buttons rendered as
+ * links (`ButtonLink`) keep their button look. Unlayered, so it wins over
+ * MUI's link classes as well as bui's.
+ */
+html[data-agent-shell]
+  .bui-Alert
+  a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
+  color: #00609c;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+html[data-agent-shell]
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    [class*='MuiButton']
+  ):hover {
+  color: #002645;
+  text-decoration-thickness: 2px;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
+  color: var(--bui-fg-info);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    [class*='MuiButton']
+  ):hover {
+  color: var(--bui-fg-info-on-bg);
+}
+
+/*
  * Form fields. bui draws a field as a borderless fill (`--bui-bg-neutral-1`,
  * one step darker on a raised surface) with a 1px inset `--bui-ring` only
  * while focused — no token gives a field an edge at rest, so on the shell's
