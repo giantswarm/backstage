@@ -39,17 +39,17 @@ async function signOutOfFixture(page: Page) {
     page.getByRole('heading', { level: 1, name: FIXTURE }),
   );
   await page.getByRole('tab', { name: /^Tools/ }).click();
-  const signIn = page.getByRole('button', { name: 'Sign in' }).first();
+  const signInButton = page.getByRole('button', { name: 'Sign in' }).first();
   await expect(
-    signIn.or(page.getByRole('tab', { name: /^Tools \([1-9]/ })).first(),
+    signInButton.or(page.getByRole('tab', { name: /^Tools \([1-9]/ })).first(),
     'the fixture offers Sign in, or its tools once signed in',
   ).toBeVisible({ timeout: 120_000 });
-  if (await signIn.isVisible()) {
+  if (await signInButton.isVisible()) {
     return;
   }
   await page.getByRole('button', { name: 'More actions' }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(signIn).toBeVisible({ timeout: 60_000 });
+  await expect(signInButton).toBeVisible({ timeout: 60_000 });
 }
 
 test('every page names a server waiting for the sign-in, and its dialog signs in to it', async ({
