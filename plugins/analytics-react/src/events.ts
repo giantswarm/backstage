@@ -69,6 +69,15 @@ export const portalEvents = defineEvents({
       "A session's notification level was set: default, all activity or muted.",
     attributes: { level: ['default', 'all', 'muted'] },
   },
+  'AgentPlatform.notificationOpened': {
+    description:
+      'An unread row of the Notification inbox was opened, which marks it read: a session waiting, failed or with a finished turn.',
+    attributes: { kind: ['waiting', 'failed', 'turnFinished'] },
+  },
+  'AgentPlatform.notificationsMarkedRead': {
+    description: 'Every unread row of the Notification inbox was marked read.',
+    attributes: {},
+  },
   'AgentPlatform.skillProposed': {
     description:
       'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',
