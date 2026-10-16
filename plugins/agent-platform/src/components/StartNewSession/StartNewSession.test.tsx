@@ -61,8 +61,8 @@ const loadedAgents: AgentsContextValue = {
 function render(props: StartNewSessionProps, { agentsBound = true } = {}) {
   return renderInTestApp(<StartNewSession {...props} />, {
     mountedRoutes: {
-      '/agent-platform/sessions': sessionsRouteRef,
-      ...(agentsBound && { '/agent-platform/agents': agentsRouteRef }),
+      '/sessions': sessionsRouteRef,
+      ...(agentsBound && { '/customize/agents': agentsRouteRef }),
       '/installations': installationsExternalRouteRef,
     },
   });
@@ -103,7 +103,7 @@ describe('StartNewSession', () => {
       prompt: 'Why is the ingress failing?',
     });
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/new-session-id',
+      '/sessions/gazelle/new-session-id',
       {
         state: {
           [NEW_SESSION_STATE_KEY]: {
@@ -268,7 +268,7 @@ describe('StartNewSession', () => {
 
       expect(
         screen.getByRole('link', { name: 'See why on the Agents tab.' }),
-      ).toHaveAttribute('href', '/agent-platform/agents');
+      ).toHaveAttribute('href', '/customize/agents');
     });
 
     it('standalone, says only what is wrong when the Agents tab is not bound', async () => {

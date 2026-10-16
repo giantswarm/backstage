@@ -20,7 +20,15 @@ function Probe() {
       namespace: 'kagent',
       name: 'gpt',
     }),
-    usageOverview: useRouteRef(routes.usageOverview)?.(),
+    usage: useRouteRef(routes.usage)?.(),
+    modelDetail: useRouteRef(routes.modelDetail)?.({
+      installation: 'lab',
+      namespace: 'kagent',
+      name: 'gpt',
+    }),
+    serving: useRouteRef(routes.serving)?.(),
+    gpuCapacity: useRouteRef(routes.gpuCapacity)?.(),
+    modelCache: useRouteRef(routes.modelCache)?.(),
     usageCost: useRouteRef(routes.usageCost)?.(),
     usageConversations: useRouteRef(routes.usageConversations)?.(),
     usageConnectors: useRouteRef(routes.usageConnectors)?.(),
@@ -37,26 +45,30 @@ describe('the exported route refs', () => {
   it('resolve to the paths the routes describe', async () => {
     await renderInTestApp(<Probe />, {
       mountedRoutes: {
-        '/agent-platform/agents': routes.agents,
-        '/agent-platform/models': routes.models,
-        '/agent-platform/usage': routes.usage,
+        '/customize/agents': routes.agents,
+        '/customize/models': routes.models,
+        '/usage': routes.usage,
       },
     });
 
     expect(
       JSON.parse(screen.getByTestId('resolved').textContent ?? '{}'),
     ).toEqual({
-      agentEdit: '/agent-platform/agents/edit/lab/kagent/helper',
-      modelEdit: '/agent-platform/models/edit/lab/kagent/gpt',
-      usageOverview: '/agent-platform/usage/overview',
-      usageCost: '/agent-platform/usage/cost',
-      usageConversations: '/agent-platform/usage/conversations',
-      usageConnectors: '/agent-platform/usage/connectors',
-      serveModel: '/agent-platform/models/serving/serve',
-      importModel: '/agent-platform/models/serving/import',
-      pullModel: '/agent-platform/models/serving/pull',
-      addModelBackend: '/agent-platform/models/serving/add-backend',
-      addGpuNodePool: '/agent-platform/models/capacity/add-pool',
+      agentEdit: '/customize/agents/lab/kagent/helper/edit',
+      modelEdit: '/customize/models/lab/kagent/gpt/edit',
+      usage: '/usage',
+      modelDetail: '/customize/models/lab/kagent/gpt',
+      serving: '/customize/models/hosting',
+      gpuCapacity: '/customize/models/hosting/capacity',
+      modelCache: '/customize/models/hosting/cache',
+      usageCost: '/usage/cost',
+      usageConversations: '/usage/conversations',
+      usageConnectors: '/usage/connectors',
+      serveModel: '/customize/models/hosting/serve',
+      importModel: '/customize/models/hosting/import',
+      pullModel: '/customize/models/hosting/pull',
+      addModelBackend: '/customize/models/hosting/add-backend',
+      addGpuNodePool: '/customize/models/hosting/capacity/add-pool',
     });
   });
 });

@@ -42,8 +42,8 @@ export type AgentWizardLinks = {
 
 /**
  * The steps' addresses for the wizard as it is running: the create flow's
- * `/agent-platform/agents/new[/skills|/tools|/review]`, or, while editing,
- * `/agent-platform/agents/edit/<installation>/<namespace>/<name>[/…]`. Every
+ * `/customize/agents/new[/skills|/tools|/review]`, or, while editing,
+ * `/customize/agents/<installation>/<namespace>/<name>/edit[/…]`. Every
  * step navigates through these, so the same pages serve both.
  */
 export function useAgentWizardLinks(): AgentWizardLinks {

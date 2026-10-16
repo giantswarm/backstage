@@ -247,7 +247,7 @@ function makeMusterApi(scenario: Scenario = {}) {
   };
 }
 
-const BASE = '/agent-platform/agents/edit/gazelle/kagent/pr-reviewer';
+const BASE = '/customize/agents/gazelle/kagent/pr-reviewer/edit';
 
 function DetailProbe() {
   const location = useLocation();
@@ -276,11 +276,11 @@ async function renderEdit(path: string, scenario: Scenario = {}) {
         <PageHeaderActionsProvider>
           <Routes>
             <Route
-              path="/agent-platform/agents/edit/:installation/:namespace/:name/*"
+              path="/customize/agents/:installation/:namespace/:name/edit/*"
               element={<EditAgentPage />}
             />
             <Route
-              path="/agent-platform/agents/:installation/:namespace/:name"
+              path="/customize/agents/:installation/:namespace/:name"
               element={<DetailProbe />}
             />
           </Routes>
@@ -289,7 +289,7 @@ async function renderEdit(path: string, scenario: Scenario = {}) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+      mountedRoutes: { '/customize/agents': agentsRouteRef },
     },
   );
   return { callTool };

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { withInstallationQuery } from '../../lib/installationLink';
+import { withQuery } from '../../lib/installationLink';
 import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
 
 /**
@@ -41,10 +41,11 @@ export interface ServerPageLinks {
 }
 
 /**
- * Links to server and tool pages. Every one carries `?installation=`: the
- * section's scope reads it before the stored choice, so a shared link shows the
- * server on the installation it was copied from. Undefined while the routes are
- * unbound.
+ * Links to server and tool pages, on the installation that runs them: it is
+ * part of the path (`<installation>/<server>`), so a shared link shows the
+ * server where it was copied from, whatever the reader's scope. Undefined
+ * while the routes are unbound, and without an installation — never a link
+ * the reader's scope would silently resolve.
  */
 export function useServerPageLinks(): ServerPageLinks {
   const serverRoute = useRouteRef(mcpServerRouteRef);
@@ -53,22 +54,18 @@ export function useServerPageLinks(): ServerPageLinks {
   return useMemo(
     () => ({
       server: (server, installation, options = {}) => {
-        if (!serverRoute) {
+        if (!serverRoute || !installation) {
           return undefined;
         }
-        const base = serverRoute({ server });
-        return withInstallationQuery(
-          options.tab ? `${base}/${options.tab}` : base,
-          installation,
-          {
-            q: options.q,
-            effect: options.effect?.join(','),
-          },
-        );
+        const base = serverRoute({ installation, server });
+        return withQuery(options.tab ? `${base}/${options.tab}` : base, {
+          q: options.q,
+          effect: options.effect?.join(','),
+        });
       },
       tool: (server, tool, installation, options = {}) =>
-        toolRoute
-          ? withInstallationQuery(toolRoute({ server, tool }), installation, {
+        toolRoute && installation
+          ? withQuery(toolRoute({ installation, server, tool }), {
               q: options.q,
               effect: options.effect?.join(','),
             })

@@ -76,7 +76,7 @@ jest.mock('../ServingProvider', () => ({
 function renderPanel(search = '') {
   return renderInTestApp(<CustomizeModelsPanel search={search} />, {
     mountedRoutes: {
-      '/agent-platform/models': modelsRouteRef,
+      '/customize/models': modelsRouteRef,
       '/customize': customizeExternalRouteRef,
     },
   });
@@ -95,7 +95,7 @@ function RerenderablePanel() {
 function renderRerenderablePanel() {
   return renderInTestApp(<RerenderablePanel />, {
     mountedRoutes: {
-      '/agent-platform/models': modelsRouteRef,
+      '/customize/models': modelsRouteRef,
       '/customize': customizeExternalRouteRef,
     },
   });
@@ -160,7 +160,7 @@ describe('CustomizeModelsPanel', () => {
         </ShellScopeProvider>,
         {
           mountedRoutes: {
-            '/agent-platform/models': modelsRouteRef,
+            '/customize/models': modelsRouteRef,
             '/customize': customizeExternalRouteRef,
           },
         },
@@ -215,7 +215,7 @@ describe('CustomizeModelsPanel', () => {
     await renderPanel();
     expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
     expect(
       screen.queryByRole('link', { name: 'How to turn it on' }),

@@ -11,15 +11,24 @@ import {
 import { useLocation } from 'react-router-dom';
 
 /**
- * The routes the agent shell owns while the Agent Platform is available.
- * Everything else keeps the classic chrome, so the old portal stays fully
- * usable next to the shell. Keep in sync with the routes the shell's pages
- * register under.
+ * The routes the agent shell owns while the Agent Platform is available: the
+ * roots of its URL tree, which follows the rail (giantswarm/giantswarm#38510),
+ * plus `/agent-platform`, the old tree, whose addresses only redirect into
+ * it. Everything else keeps the classic chrome, so the old portal stays fully
+ * usable next to the shell. A new root needs a decision, a check against the
+ * classic routes and an entry here (the `urls` skill).
  */
-// eslint-disable-next-line giantswarm/no-restricted-syntax -- the shell's own list of its URL roots
-const AGENT_AREA_PREFIXES = ['/agent-platform', '/customize'];
+/* eslint-disable giantswarm/no-restricted-syntax -- the shell's own list of its URL roots */
+const AGENT_AREA_PREFIXES = [
+  '/sessions',
+  '/usage',
+  '/profile',
+  '/customize',
+  '/agent-platform',
+];
+/* eslint-enable giantswarm/no-restricted-syntax */
 
-/** Whether a pathname lies in the agent area (`/`, `/agent-platform/**`, `/customize/**`). */
+/** Whether a pathname lies in the agent area (`/` or under one of its roots). */
 export function isAgentArea(pathname: string): boolean {
   return (
     pathname === '/' ||

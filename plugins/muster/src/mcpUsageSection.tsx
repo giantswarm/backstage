@@ -6,17 +6,17 @@ import {
 
 /**
  * The installation-wide MCP usage section, contributed to the Agent Platform's
- * Usage tab.
+ * Usage page.
  *
  * **The contract, spelled out because it is a cross-plugin coupling by string:**
- * the target node is `sub-page:agent-platform/usage` and the input is
- * `sections`, declared there with `SubPageBlueprint.makeWithOverrides` +
+ * the target node is `page:agent-platform/usage` and the input is
+ * `sections`, declared there with `PageBlueprint.makeWithOverrides` +
  * `createExtensionInput([coreExtensionData.reactElement])`. Both ends carry this
  * comment; changing either without the other makes the section silently vanish.
  *
  * An attachment rather than a component import, so **neither plugin depends on
  * the other**: this is the same mechanism muster already uses to put its own
- * "MCP Servers" tab on `page:agent-platform`, one level deeper. It also means
+ * Connectors and Workflows tabs on the app's Customize page. It also means
  * the section is simply absent when muster is not registered — where a static
  * import would pull muster's whole bundle into the Usage tab regardless — and
  * that it has a real extension id, so a deployment can switch it off.
@@ -30,7 +30,7 @@ import {
 export const mcpUsageSection = createExtension({
   kind: 'agent-platform-usage-section',
   name: 'mcp-usage',
-  attachTo: { id: 'sub-page:agent-platform/usage', input: 'sections' },
+  attachTo: { id: 'page:agent-platform/usage', input: 'sections' },
   output: [coreExtensionData.reactElement],
   factory({ node }) {
     return [

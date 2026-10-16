@@ -146,15 +146,15 @@ function renderPage(path = 'giantswarm/skills/ticket-triage') {
     // The shell mounts the scope around its pages, as the app does.
     <ShellScopeProvider>
       <Routes>
-        <Route path="/agent-platform/skills/*" element={<SkillDetailPage />} />
+        <Route path="/customize/skills/*" element={<SkillDetailPage />} />
       </Routes>
     </ShellScopeProvider>,
     {
-      initialRouteEntries: [`/agent-platform/skills/${path}`],
+      initialRouteEntries: [`/customize/skills/${path}`],
       mountedRoutes: {
-        '/agent-platform/skills': skillsRouteRef,
-        '/agent-platform/sessions': sessionsRouteRef,
-        '/agent-platform/agents': agentsRouteRef,
+        '/customize/skills': skillsRouteRef,
+        '/sessions': sessionsRouteRef,
+        '/customize/agents': agentsRouteRef,
       },
     },
   );
@@ -266,14 +266,14 @@ describe('SkillDetailPage', () => {
         .getAllByRole('tab')
         .map(tab => [tab.textContent, tab.getAttribute('href')]),
     ).toEqual([
-      ['Overview', '/agent-platform/skills/giantswarm/skills/ticket-triage'],
+      ['Overview', '/customize/skills/giantswarm/skills/ticket-triage'],
       [
         'Instructions',
-        '/agent-platform/skills/giantswarm/skills/ticket-triage/instructions',
+        '/customize/skills/giantswarm/skills/ticket-triage/instructions',
       ],
       [
         'Used by (1)',
-        '/agent-platform/skills/giantswarm/skills/ticket-triage/used-by',
+        '/customize/skills/giantswarm/skills/ticket-triage/used-by',
       ],
     ]);
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
@@ -321,11 +321,11 @@ describe('SkillDetailPage', () => {
     ).toEqual([expect.stringContaining('triage-botgazelle')]);
     expect(screen.getByRole('link', { name: 'triage-bot' })).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/kagent/triage-bot',
+      '/customize/agents/gazelle/kagent/triage-bot',
     );
     await userEvent.click(within(list).getByText('gazelle'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/agents/gazelle/kagent/triage-bot',
+      '/customize/agents/gazelle/kagent/triage-bot',
       undefined,
     );
     expect(screen.queryByText('other-bot')).not.toBeInTheDocument();
@@ -555,7 +555,7 @@ describe('SkillDetailPage', () => {
     // The relative link opens the file here, not on GitHub.
     expect(screen.getByRole('link', { name: 'the setup' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/giantswarm/skills/ticket-triage/instructions?file=references/setup.md',
+      '/customize/skills/giantswarm/skills/ticket-triage/instructions?file=references/setup.md',
     );
   });
 
@@ -598,7 +598,7 @@ describe('SkillDetailPage', () => {
 
     await userEvent.click(edit);
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/skills/edit/giantswarm/skills/ticket-triage',
+      '/customize/skills/edit/giantswarm/skills/ticket-triage',
     );
   });
 
@@ -675,7 +675,7 @@ describe('SkillDetailPage', () => {
     // Readable all the same: its instructions are a tab away.
     expect(screen.getByRole('tab', { name: 'Instructions' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage/instructions',
+      '/customize/skills/-/gitea.lab.local/lab/skills/-/ticket-triage/instructions',
     );
   });
 
@@ -695,19 +695,16 @@ describe('SkillDetailPage', () => {
       prompt,
     });
     // The standard handoff: the session page sends the first message.
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/session-1',
-      {
-        state: {
-          newSession: {
-            text: prompt,
-            agentNamespace: 'kagent',
-            agentName: 'skill-evaluator',
-            prepared: true,
-          },
+    expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/session-1', {
+      state: {
+        newSession: {
+          text: prompt,
+          agentNamespace: 'kagent',
+          agentName: 'skill-evaluator',
+          prepared: true,
         },
       },
-    );
+    });
   }, 30_000);
 
   it('stays on the page and says why when the session could not start', async () => {
@@ -771,7 +768,7 @@ describe('SkillDetailPage at phone width', () => {
     ).toEqual(['Update agents', 'Edit']);
     await userEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/skills/edit/giantswarm/skills/ticket-triage',
+      '/customize/skills/edit/giantswarm/skills/ticket-triage',
     );
   });
 

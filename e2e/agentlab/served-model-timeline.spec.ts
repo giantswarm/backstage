@@ -353,12 +353,12 @@ async function stageModelManager(page: Page): Promise<{
       await stub.unroute();
       await page.unroute('**/served-models/try', onTry);
       await dropPersistedQueriesOnNextLoad(page);
-      await page.goto('/agent-platform/models/serving');
+      await page.goto('/customize/models/hosting');
     },
   };
 }
 
-const SERVING = '/agent-platform/models/serving';
+const SERVING = '/customize/models/hosting';
 /** One inventory poll while a served model is on its way (10 s) plus render. */
 const POLL_TIMEOUT = 30_000;
 
@@ -375,13 +375,13 @@ test.describe('serving: the served model’s step timeline', () => {
       await open(admin, SERVING);
 
       await admin.getByRole('button', { name: /Serve model/ }).click();
-      await expect(admin).toHaveURL(/\/agent-platform\/models\/serving\/serve/);
+      await expect(admin).toHaveURL(/\/customize\/models\/hosting\/serve/);
       await expect(admin.getByTestId('serve-fit-verdict')).toContainText(
         'Fits — the node comes as g6.xlarge',
       );
       await admin.getByRole('button', { name: 'Serve', exact: true }).click();
       // Accepted: back on Running models, the served model's steps open.
-      await expect(admin).toHaveURL(/\/agent-platform\/models\/serving\/?$/);
+      await expect(admin).toHaveURL(/\/customize\/models\/hosting\/?$/);
 
       const panel = admin.getByTestId('served-model-lifecycle');
       await expect(

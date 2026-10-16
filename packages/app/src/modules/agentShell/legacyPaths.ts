@@ -17,8 +17,8 @@ import {
  * dynamic one, a splat last, and every static segment compared
  * case-insensitively, as react-router does.
  *
- * Not wired up yet: the cut-over's `/agent-platform/*` and `/agents/*`
- * catch-alls call it (giantswarm/giantswarm#38573, Prep 3).
+ * The `/agent-platform/*` and `/agents/*` catch-alls call it
+ * (`LegacyAgentPlatformRedirect`), until the end of 2026.
  */
 
 /* eslint-disable giantswarm/no-restricted-syntax -- the redirect table of

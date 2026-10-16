@@ -187,7 +187,7 @@ function renderAssist() {
     </NewAgentFormProvider>,
     {
       mountedRoutes: {
-        '/agent-platform/sessions': sessionsRouteRef,
+        '/sessions': sessionsRouteRef,
       },
     },
   );

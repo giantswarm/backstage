@@ -22,7 +22,9 @@ import { lab } from './lab';
  */
 
 const scope = `?installation=${lab.installation}`;
-const connectorsPath = `/agent-platform/connectors${scope}`;
+const connectorsPath = `/customize/connectors${scope}`;
+/** The lab installation's connector pages: the installation is in the path. */
+const connectorPages = `/customize/connectors/${lab.installation}`;
 const infrastructurePath = `/customize/connectors/infrastructure${scope}`;
 const internalPath = `/customize/connectors/internal${scope}`;
 
@@ -97,7 +99,7 @@ test('Customize · Connectors lists the customer’s connectors first, on their 
   await expect(fixture.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await expect(
     admin.getByRole('link', { name: 'Add connector' }),
-  ).toHaveAttribute('href', '/agent-platform/connectors/new');
+  ).toHaveAttribute('href', '/customize/connectors/new');
 });
 
 test('Infrastructure lists the infrastructure servers, Internal the platform’s servers and muster', async ({
@@ -130,7 +132,7 @@ test('the old Families address lands on Infrastructure, query kept', async ({
   );
 });
 
-test('the tab’s old mcp-servers address redirects to connectors, path and query kept', async ({
+test('the tab’s old mcp-servers address redirects in one hop, its installation moved into the path', async ({
   admin,
 }) => {
   await open(
@@ -138,9 +140,7 @@ test('the tab’s old mcp-servers address redirects to connectors, path and quer
     `/agent-platform/mcp-servers/${KUBERNETES_FAMILY}/instances${scope}`,
   );
   await expect(admin).toHaveURL(
-    new RegExp(
-      `/agent-platform/connectors/${KUBERNETES_FAMILY}/instances\\?installation=${lab.installation}$`,
-    ),
+    new RegExp(`${connectorPages}/${KUBERNETES_FAMILY}/instances$`),
   );
 });
 
@@ -172,9 +172,7 @@ test('searching a tool name narrows the table to the connectors offering it', as
   await kubernetes.getByRole('rowheader').click();
   // Its Tools tab opens on the same search, at the tools that matched.
   await expect(admin).toHaveURL(
-    new RegExp(
-      `/agent-platform/connectors/${KUBERNETES_FAMILY}\\?.*q=cluster_health`,
-    ),
+    new RegExp(`${connectorPages}/${KUBERNETES_FAMILY}\\?.*q=cluster_health`),
   );
   await expect(
     admin.getByRole('searchbox', { name: 'Search tools', exact: true }),
@@ -186,7 +184,7 @@ test('searching a tool name narrows the table to the connectors offering it', as
   await tool.click();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/connectors/${KUBERNETES_FAMILY}/tools/[^?]+\\?.*q=cluster_health`,
+      `${connectorPages}/${KUBERNETES_FAMILY}/tools/[^?]+\\?.*q=cluster_health`,
     ),
   );
   await admin.goBack();
@@ -202,7 +200,7 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per co
   test.setTimeout(180_000);
   await open(admin, connectorsPath);
   await connectToMuster(admin, admin.getByRole('grid'));
-  await open(admin, `/agent-platform/connectors/lab-oauth-fixture${scope}`);
+  await open(admin, `${connectorPages}/lab-oauth-fixture`);
 
   // For about a minute after a muster pod roll the fixture's CR reads Failed
   // (muster dials itself before its own listener is up) and offers no sign-in;
@@ -276,9 +274,7 @@ test("a family's row opens its connector page, with the family's tabs", async ({
     }),
   ).toBeVisible();
   await expect(admin).toHaveURL(
-    new RegExp(
-      `/agent-platform/connectors/${KUBERNETES_FAMILY}\\?installation=${lab.installation}$`,
-    ),
+    new RegExp(`${connectorPages}/${KUBERNETES_FAMILY}$`),
   );
   await expect(
     admin
@@ -298,9 +294,7 @@ test("a family's row opens its connector page, with the family's tabs", async ({
   // A family's members are its Instances: the lab's own cluster among them.
   await admin.getByRole('tab', { name: /^Instances/ }).click();
   await expect(admin).toHaveURL(
-    new RegExp(
-      `/agent-platform/connectors/${KUBERNETES_FAMILY}/instances\\?installation=${lab.installation}$`,
-    ),
+    new RegExp(`${connectorPages}/${KUBERNETES_FAMILY}/instances$`),
   );
   await expect(
     admin.getByRole('link', { name: lab.mcpKubernetes, exact: true }),
@@ -316,9 +310,7 @@ test("muster's own connector page lists its core tools, and one opens on its pag
   await open(admin, internalPath);
   await connectToMuster(admin, admin.getByRole('grid'));
   await connectorRow(admin, SHOWN.muster).getByRole('rowheader').click();
-  await expect(admin).toHaveURL(
-    new RegExp(`/agent-platform/connectors/muster\\${scope}$`),
-  );
+  await expect(admin).toHaveURL(new RegExp(`${connectorPages}/muster$`));
   // Its endpoint sits above the tabs, with its copy button.
   await expect(admin.getByText(/^Endpoint https?:\/\//)).toBeVisible();
   await expect(
@@ -331,9 +323,7 @@ test("muster's own connector page lists its core tools, and one opens on its pag
   await expect(tool).toBeVisible({ timeout: 60_000 });
   await tool.click();
   await expect(admin).toHaveURL(
-    new RegExp(
-      `/agent-platform/connectors/muster/tools/core_mcpserver_list\\${scope}$`,
-    ),
+    new RegExp(`${connectorPages}/muster/tools/core_mcpserver_list$`),
   );
   await expect(
     admin.getByRole('heading', { level: 1, name: 'mcpserver_list' }),
@@ -354,16 +344,14 @@ test("muster's own connector page lists its core tools, and one opens on its pag
     .getByRole('navigation', { name: 'Breadcrumb' })
     .getByRole('link', { name: 'muster', exact: true })
     .click();
-  await expect(admin).toHaveURL(
-    new RegExp(`/agent-platform/connectors/muster\\${scope}$`),
-  );
+  await expect(admin).toHaveURL(new RegExp(`${connectorPages}/muster$`));
   await expect(admin.getByRole('tab', { name: /^Tools/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );
 });
 
-test("an old MCP servers address of a tool lands on the tool's page", async ({
+test("an old MCP servers address of a tool lands on the tool's page, in one hop", async ({
   admin,
 }) => {
   await open(
@@ -371,9 +359,7 @@ test("an old MCP servers address of a tool lands on the tool's page", async ({
     `/agent-platform/mcp-servers/muster/tools/core_mcpserver_list${scope}`,
   );
   await expect(admin).toHaveURL(
-    new RegExp(
-      `/agent-platform/connectors/muster/tools/core_mcpserver_list\\${scope}$`,
-    ),
+    new RegExp(`${connectorPages}/muster/tools/core_mcpserver_list$`),
   );
   await expect(
     admin.getByRole('heading', { level: 1, name: 'mcpserver_list' }),
@@ -383,10 +369,7 @@ test("an old MCP servers address of a tool lands on the tool's page", async ({
 test("a connector's Details tab folds its resource and auth chain, read from the CR", async ({
   admin,
 }) => {
-  await open(
-    admin,
-    `/agent-platform/connectors/lab-oauth-fixture/details${scope}`,
-  );
+  await open(admin, `${connectorPages}/lab-oauth-fixture/details`);
   await expect(
     admin.getByRole('heading', { level: 1, name: 'lab-oauth-fixture' }),
   ).toBeVisible();
@@ -404,10 +387,7 @@ test("a connector's Details tab folds its resource and auth chain, read from the
   ).toBeVisible();
 
   // A family shows one instance and leaves the rest to its Instances tab.
-  await open(
-    admin,
-    `/agent-platform/connectors/${KUBERNETES_FAMILY}/details${scope}`,
-  );
+  await open(admin, `${connectorPages}/${KUBERNETES_FAMILY}/details`);
   await openTechnicalDetails(admin);
   await expect(
     admin.getByText(/each instance's own configuration, health and/),

@@ -206,7 +206,7 @@ function targetForSeed(
  * on a pool) and answers with what it created, the fit it judged by and the
  * first step of the timeline — nothing is composed here.
  *
- * A page of its own (`/agent-platform/models/serving/serve`), the app's
+ * A page of its own (`/customize/models/hosting/serve`), the app's
  * single-step create pattern (`WizardFrame`, like Connect a model): a
  * refused load stays on it, saying so; an accepted one hands over to
  * `onServed`.

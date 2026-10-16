@@ -1,7 +1,9 @@
 # Agent Platform configuration
 
 What a deployment configures for the **Agent Platform shell**, the UI on `/`,
-`/agent-platform/**` and `/customize/**` (see [agent-platform.md](agent-platform.md)).
+`/sessions`, `/usage`, `/profile` and `/customize/**` (see
+[agent-platform.md](agent-platform.md)). The old `/agent-platform/**`
+addresses redirect there until the end of 2026.
 The classic Platform Portal is out of scope.
 
 The schemas are `packages/app/config.d.ts`, `plugins/agent-platform/config.d.ts`,
@@ -77,15 +79,20 @@ start, before sign-in, so both keys are public.
 | Mode                                                          | Result                                                                                                                                                                                                        |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Only `platformPortal` (the default; also neither or both off) | Exactly the classic portal: no Agent Platform item or route, even where `app.extensions` lists `page:agent-platform`. The `agent-platform-shell` feature flag opts one browser into the shell after a reload. |
-| Both on                                                       | The shell on `/`, `/agent-platform/**` and `/customize/**`, the classic portal everywhere else, each linking to the other in a new tab (classic to `/agent-platform`, the shell to `/clusters`).              |
+| Both on                                                       | The shell on `/`, `/sessions`, `/usage`, `/profile` and `/customize/**`, the classic portal everywhere else, each linking to the other in a new tab (classic to `/`, the shell to `/clusters`).               |
 | Only `agentPlatform`                                          | The shell is the whole navigation, without a Platform Portal item. Classic pages stay reachable by URL, and their Agent Platform item leads back in the same tab.                                             |
 
-The Sessions, Agents, Models and Usage screens live on `page:agent-platform`
-(`plugins/agent-platform/src/plugin.tsx`). It is enabled by default and mounted
-only where the shell is on, so `app.portals.agentPlatform` alone switches the
-Agent Platform on. `page:agent-platform: false` in `app.extensions` turns the
-screens off. The classic sidebar's Agent Platform item follows `app.portals`,
-not `nav-item:agent-platform`.
+The shell's pages are the app's Customize page (`page:app/agent-shell-customize`)
+with the tabs the plugins attach to it (`sub-page:agent-platform/agents`,
+`…/skills`, `…/models`, `sub-page:muster/mcp-servers`, `…/workflows`), and
+`page:agent-platform/sessions`, `…/usage` and `…/profile`
+(`plugins/agent-platform/src/plugin.tsx`). `page:agent-platform` is the old
+`/agent-platform/**` tree, which only redirects
+(`packages/app/src/modules/agentShell/legacyPagesModule.tsx`). Every one is
+enabled by default and mounted only where the shell is on, so
+`app.portals.agentPlatform` alone switches the Agent Platform on; `false` for
+one in `app.extensions` turns it off. The classic sidebar's Agent Platform item
+follows `app.portals`, not `nav-item:agent-platform`.
 
 ```yaml
 app:

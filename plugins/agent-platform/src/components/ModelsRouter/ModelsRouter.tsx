@@ -1,12 +1,7 @@
 import type { ReactNode } from 'react';
-import {
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useParams,
-} from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Flex } from '@backstage/ui';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   ALL_INSTALLATIONS,
   useInstallationScope,
@@ -46,47 +41,13 @@ import {
   type ModelHostingKpisScope,
 } from '../ModelHostingKpis';
 import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
+import { CustomizeModelPage } from '../CustomizeModelPage';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
 import { ModelHostingSharedIdentityNote } from '../ModelHostingSharedIdentity';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { isLegacyServeLink } from '../../lib/modelManagerServe';
 import { nothingCouldBeRead } from '../../lib/soleInstallation';
-
-/**
- * The ModelConfigs list, its create flow and one model used to live under a
- * `configs` view of their own (`/models/configs`, `.../configs/new`,
- * `.../configs/<installation>/<namespace>/<name>`). Redirect those so a
- * bookmarked model or a link from an older release still resolves.
- *
- * `..` climbs one *route* -- however many segments -- back to the tab root.
- */
-const LegacyConfigsRedirect = () => {
-  const { search } = useLocation();
-  return <Navigate to={{ pathname: '..', search }} replace />;
-};
-
-const LegacyNewRedirect = () => {
-  const { search } = useLocation();
-  return <Navigate to={{ pathname: '../new', search }} replace />;
-};
-
-/**
- * One model's page moved beside the Customize screen's Models tab
- * (`/customize/models/<installation>/<namespace>/<name>`), from this tab's
- * `<installation>/<namespace>/<name>` and, before that, `configs/…`. Both
- * redirect there, so a bookmark or an older release's link still resolves.
- * Where the app binds no Customize page, the link lands on the tab root
- * instead (`..`, as above), whose redirect then says there is no list.
- */
-const LegacyDetailRedirect = () => {
-  const { installation = '', namespace = '', name = '' } = useParams();
-  const { search } = useLocation();
-  const { modelDetail } = useCustomizePaths();
-  const pathname = modelDetail
-    ? modelDetail({ installation, namespace, name })
-    : '..';
-  return <Navigate to={{ pathname, search }} replace />;
-};
+import { servingRouteRef } from '../../routes';
 
 /**
  * Model hosting's tabs inside the shell, named per the prototype where the
@@ -104,7 +65,8 @@ const LegacyDetailRedirect = () => {
  */
 function shellHostingTabs(clusterManager: boolean) {
   return [
-    { id: 'serving', path: 'serving', title: 'Running models' },
+    // The bare `hosting`.
+    { id: 'serving', path: '', title: 'Running models' },
     {
       id: 'capacity',
       path: 'capacity',
@@ -218,7 +180,7 @@ const ShellModelHosting = () => {
     >
       <Routes>
         <Route
-          path="serving"
+          index
           element={
             <HostingView
               kpis={servingLayer && !servedModelsUnread ? 'all' : undefined}
@@ -243,17 +205,13 @@ const ShellModelHosting = () => {
             </HostingView>
           }
         />
-        {/* A guess or a retired view lands on the first view rather than
-            on the frame over an empty page. Absolute, from the splat base
-            path: a relative target inside a splat route would append. */}
+        {/* A guess lands on the first view, the nearest valid parent,
+            rather than on the frame over an empty page. Absolute, from the
+            splat base path: a relative target inside a splat route would
+            append. */}
         <Route
           path="*"
-          element={
-            <Navigate
-              to={{ pathname: `${basePath}/serving`, search }}
-              replace
-            />
-          }
+          element={<Navigate to={{ pathname: basePath, search }} replace />}
         />
       </Routes>
     </ShellPage>
@@ -261,93 +219,88 @@ const ShellModelHosting = () => {
 };
 
 /**
- * Model hosting's create flows, each a page of its own (`WizardFrame`) under
- * the view it adds to: Serve model, Import from Hugging Face, Pull model and
- * Add model backend under Running models (`serving`), Add GPU node pool
- * under GPU pools (`capacity`). Two segments, so the three-segment detail
- * route never takes one; listed before the views, which they frame
- * themselves instead of sitting under the hosting page's header and tabs.
+ * The Models tab's providers. They wrap every view, so switching views
+ * neither remounts them nor refetches (every route below renders this same
+ * element type, which React keeps across a switch): the served-model rows
+ * (with the auto-wiring that completes a serve) keep running whichever view
+ * is open — a model served from Running models still gets its ModelConfig
+ * while the user waits for it on the list.
  */
-const hostingFlowRoutes = [
-  <Route key="serve" path="serving/serve" element={<ServeModelRoute />} />,
-  <Route key="import" path="serving/import" element={<ImportModelRoute />} />,
-  <Route key="pull" path="serving/pull" element={<PullModelRoute />} />,
-  <Route
-    key="add-backend"
-    path="serving/add-backend"
-    element={<AddModelBackendRoute />}
-  />,
-  <Route
-    key="add-pool"
-    path="capacity/add-pool"
-    element={<AddGpuNodePoolRoute />}
-  />,
-];
-
-/**
- * The tab's views. The list is the Customize screen's, so the index sends
- * there (one model's former path redirects above, in `ModelsRouter`); the
- * create and edit flows frame themselves; everything else is model hosting.
- */
-const ModelsViews = () => (
-  <Routes>
-    <Route index element={<ShellCustomizeRedirect tab="models" />} />
-    <Route path="new" element={<NewModelPage />} />
-    <Route
-      path="edit/:installation/:namespace/:name"
-      element={<EditModelPage />}
-    />
-    {hostingFlowRoutes}
-    <Route path="*" element={<ShellModelHosting />} />
-  </Routes>
+const ModelsProviders = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider>
+    <ModelConfigsProvider>
+      <ServingProvider>
+        <ServedModelRowsProvider>{children}</ServedModelRowsProvider>
+      </ServingProvider>
+    </ModelConfigsProvider>
+  </QueryClientProvider>
 );
 
+/** A view under the tab's providers. */
+const view = (element: ReactNode) => (
+  <ModelsProviders>{element}</ModelsProviders>
+);
+
+/** An unknown address below `hosting`: Running models, its nearest parent. */
+const HostingRedirect = () => {
+  const servingRoute = useRouteRef(servingRouteRef);
+  const { search } = useLocation();
+  return servingRoute ? (
+    <Navigate to={{ pathname: servingRoute(), search }} replace />
+  ) : null;
+};
+
+/** An unknown step of a model's edit: the edit itself, its nearest parent. */
+const EditRedirect = () => <Navigate to="." replace />;
+
 /**
- * Content of the "Models" tab. Mounted as the tab's content (a descendant
- * `<Routes>`), so the paths here are relative — no leading slash — matching
- * AgentsRouter.
+ * Content of the Customize screen's Models tab below its list (a descendant
+ * `<Routes>`, so the paths here are relative — no leading slash — matching
+ * AgentsRouter): one model's page at `<installation>/<namespace>/<name>` with
+ * its tabs, its edit at `…/<name>/edit`, the create flow at `new` and Model
+ * hosting at `hosting/…`, its create flows framing themselves. `new` and
+ * `hosting` are reserved words: no installation can be named so.
  *
- * The providers wrap every view once, so switching views neither remounts them
- * nor refetches: the Model configs list needs the serving snapshot for its
- * "Served by" column as much as the Serving view does, and the served-model
- * rows (with the auto-wiring that completes a serve) keep running whichever
- * view is open — a model served from the Serving view still gets its
- * ModelConfig while the user waits for it on the Model configs view.
+ * One `<Routes>`, so react-router ranks every path against the model page's
+ * three dynamic segments: a static segment outranks a dynamic one at the
+ * same depth, and `hosting/:view/:rest/*` keeps any three-segment address
+ * under `hosting` from reading as a model on an installation named
+ * `hosting`. ModelsRouter.test.tsx holds the rankings.
  *
- * The legacy redirects are siblings of the views, not routes inside them, so the
- * tab strip never renders for a location that is about to change, and they
- * sit above the providers, so following an old link starts none of the
- * fleet-wide reads only to navigate away.
+ * The model's page mounts only the agent-platform data it reads
+ * (`CustomizeModelPage`); the views share the tab's providers. Both share one
+ * query client, so the list's reads are cache hits on the page.
  */
 export const ModelsRouter = () => {
   return (
     <Routes>
-      <Route path="configs" element={<LegacyConfigsRedirect />} />
-      <Route path="configs/new" element={<LegacyNewRedirect />} />
+      <Route path="new" element={view(<NewModelPage />)} />
+      <Route path="hosting/serve" element={view(<ServeModelRoute />)} />
+      <Route path="hosting/import" element={view(<ImportModelRoute />)} />
+      <Route path="hosting/pull" element={view(<PullModelRoute />)} />
       <Route
-        path="configs/:installation/:namespace/:name"
-        element={<LegacyDetailRedirect />}
-      />
-      {/* Three segments: no view of the tab has that many (the flows have
-          two, editing has four). */}
-      <Route
-        path=":installation/:namespace/:name"
-        element={<LegacyDetailRedirect />}
+        path="hosting/add-backend"
+        element={view(<AddModelBackendRoute />)}
       />
       <Route
-        path="*"
-        element={
-          <QueryClientProvider>
-            <ModelConfigsProvider>
-              <ServingProvider>
-                <ServedModelRowsProvider>
-                  <ModelsViews />
-                </ServedModelRowsProvider>
-              </ServingProvider>
-            </ModelConfigsProvider>
-          </QueryClientProvider>
-        }
+        path="hosting/capacity/add-pool"
+        element={view(<AddGpuNodePoolRoute />)}
       />
+      <Route path="hosting/:view/:rest/*" element={<HostingRedirect />} />
+      <Route path="hosting/*" element={view(<ShellModelHosting />)} />
+      <Route
+        path=":installation/:namespace/:name/edit"
+        element={view(<EditModelPage />)}
+      />
+      <Route
+        path=":installation/:namespace/:name/edit/*"
+        element={<EditRedirect />}
+      />
+      <Route
+        path=":installation/:namespace/:name/*"
+        element={<CustomizeModelPage />}
+      />
+      <Route path="*" element={<ShellCustomizeRedirect tab="models" />} />
     </Routes>
   );
 };

@@ -16,7 +16,7 @@ import { lab } from './lab';
  * only the negative runs: the gate is absent and the Servers view renders.
  */
 
-const serversPath = '/agent-platform/connectors';
+const serversPath = '/customize/connectors';
 /** The sentence the gate opens with for a 401 (`inventoryFailureCopy`). */
 const rejectedToken = /rejected the portal's token/;
 
@@ -78,7 +78,7 @@ test.describe('an installation whose inventory probe the API server refused', ()
       'the refused probe is not re-run on every mount of the hook',
     ).toBeLessThanOrEqual(3);
 
-    await page.goto('/agent-platform/agents');
+    await page.goto('/customize/agents');
     await expect(
       page.getByText(rejectedToken),
       'the Agents tab explains the same refusal',

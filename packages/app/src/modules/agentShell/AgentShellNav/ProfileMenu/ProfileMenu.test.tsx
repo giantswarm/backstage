@@ -34,7 +34,7 @@ async function renderMenu(
       ],
     ],
     mountedRoutes: {
-      '/agent-platform/profile': agentPlatformPlugin.routes.profile,
+      '/profile': agentPlatformPlugin.routes.profile,
     },
   });
   await userEvent.click(
@@ -65,7 +65,7 @@ describe('ProfileMenu', () => {
     const settings = within(menu).getByRole('menuitem', {
       name: 'Profile and settings',
     });
-    expect(settings).toHaveAttribute('href', '/agent-platform/profile');
+    expect(settings).toHaveAttribute('href', '/profile');
     expect(settings).not.toHaveAttribute('target');
   });
 

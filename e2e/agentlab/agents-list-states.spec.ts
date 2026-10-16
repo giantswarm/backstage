@@ -113,7 +113,7 @@ test('an environment without kagent explains the empty list, New agent still off
   // action stays a link, as decided for the shell.
   await expect(page.getByRole('link', { name: 'New agent' })).toHaveAttribute(
     'href',
-    '/agent-platform/agents/new',
+    '/customize/agents/new',
   );
 });
 

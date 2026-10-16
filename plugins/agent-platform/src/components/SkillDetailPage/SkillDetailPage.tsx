@@ -614,7 +614,7 @@ function SkillPage({
  *
  * Addressed as `<owner>/<repo>[/<skill dir>]` (github.com) or
  * `-/<host>/<repo path>[/-/<skill dir>]` (any other git repository, shown
- * read-only) under `/agent-platform/skills`, a tab as one more segment; the
+ * read-only) under `/customize/skills`, a tab as one more segment; the
  * skill itself is found in the discovered catalog, so an unknown address is a
  * not-found state, and an unreadable catalog says so instead.
  */

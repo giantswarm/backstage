@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { withInstallationQuery } from '../../../lib/installationLink';
 import { workflowDetailRouteRef } from '../../../routes';
 
 export interface WorkflowPageLinks {
@@ -9,17 +8,18 @@ export interface WorkflowPageLinks {
 }
 
 /**
- * Links to workflow pages. Every one carries `?installation=`: a workflow is
- * read by name on that installation, and the section's scope reads it before
- * the stored choice. Undefined while the route is unbound.
+ * Links to workflow pages, on the installation the workflow runs on: it is
+ * part of the path (`<installation>/<name>`), since a workflow is read by
+ * name on one installation. Undefined while the route is unbound, and
+ * without an installation.
  */
 export function useWorkflowPageLinks(): WorkflowPageLinks {
   const detailRoute = useRouteRef(workflowDetailRouteRef);
   return useMemo(
     () => ({
       workflow: (name, installation) =>
-        detailRoute
-          ? withInstallationQuery(detailRoute({ name }), installation)
+        detailRoute && installation
+          ? detailRoute({ installation, name })
           : undefined,
     }),
     [detailRoute],

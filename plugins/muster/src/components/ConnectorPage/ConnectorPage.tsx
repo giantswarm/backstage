@@ -3,7 +3,6 @@ import {
   Navigate,
   Route,
   Routes,
-  useLocation,
   useNavigate,
   useParams,
 } from 'react-router-dom';
@@ -42,10 +41,9 @@ import {
   worstSeverity,
 } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
-import { withInstallationQuery } from '../../lib/installationLink';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
-import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import { MUSTER_PAGE_DESCRIPTION } from '../../lib/connectorGroups';
 import {
   familyGroups,
@@ -59,7 +57,7 @@ import {
 } from '../../lib/serverGrouping';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { noToolsExplanation } from '../McpServersPage/serverDetail';
-import { withEditParam } from '../NewMcpServerEditGate';
+import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import {
   AdHocServerDialog,
   ConfirmActionDialog,
@@ -248,7 +246,6 @@ function ConnectorPageContent({
   const endpoint =
     row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
   const serversRoute = useRouteRef(mcpServersRouteRef);
-  const search = withInstallationQuery('', installation) ?? '';
   const name = serverRowKey(row);
   const members = useMemo(() => rowServers(row), [row]);
   const representativeInfo = representativeServer(row, installation);
@@ -256,7 +253,7 @@ function ConnectorPageContent({
   const singular = row.kind === 'server' ? row.server : undefined;
 
   // Above the tabs, so a search on Tools survives a visit to another tab:
-  // the tab links carry only `?installation=`, and the page is keyed per
+  // the tab links carry no query, and the page is keyed per
   // connector, so another connector starts afresh.
   const toolSearch = useToolSearchState();
   const tools = useServerTools(row, servers, installation, {
@@ -309,14 +306,14 @@ function ConnectorPageContent({
     singular!.getAuth()?.type === 'oauth' &&
     signIn.isConnected;
 
-  // Edit opens the connector wizard on this connector (`?edit=` and its
-  // `&installation=`), the flow that added it; the wizard's edit gate seeds
-  // it from the server list.
+  // Edit opens the connector wizard on this connector (its `edit` address),
+  // the flow that added it; the wizard's edit gate seeds it from the server
+  // list.
   const editBlock = connectorEditBlock(row, authenticated);
-  const newConnectorRoute = useRouteRef(newMcpServerRouteRef);
+  const wizardLinks = useConnectorWizardLinks();
   const editHref =
-    singular && !editBlock && newConnectorRoute
-      ? withEditParam(newConnectorRoute(), singular.getName(), installation)
+    singular && !editBlock
+      ? wizardLinks('connect', { name: singular.getName(), installation })
       : undefined;
   const gitOpsManaged = singular ? isGitOpsManaged(singular) : false;
 
@@ -510,7 +507,7 @@ function ConnectorPageContent({
     { label: displayName },
   ];
 
-  const toIndex = <Navigate to={`${basePath}${search}`} replace />;
+  const toIndex = <Navigate to={basePath} replace />;
 
   // The same two controls in the same place for every connector, whatever
   // its sign-in state or session: Edit, disabled with the reason where it
@@ -575,7 +572,6 @@ function ConnectorPageContent({
         actions={editAction}
         menu={menuAction}
         tabs={tabs}
-        tabsSearch={search}
       >
         <Flex direction="column" gap="3">
           {ssoFailure && <Alert status="danger" description={ssoFailure} />}
@@ -702,11 +698,12 @@ export interface ConnectorPageProps {
 /**
  * One connector's page in the agent-platform shell: Tools (the index), Used
  * by, a family's Instances, Resources and Prompts when it exposes any, and
- * Details with its facts and technical details. `:server` names a server, a server family or
- * muster itself on the installation the section's scope selects.
+ * Details with its facts and technical details. `:server` names a server, a
+ * server family or muster itself on the installation the address names (the
+ * muster providers are pinned to it).
  *
  * Edit opens the connector wizard pre-filled
- * (`new?edit=<name>&installation=<inst>`), the flow that added the
+ * (`<installation>/<server>/edit`), the flow that added the
  * connector, the way agents and skills are edited. Where the
  * wizard cannot edit the connector — applied from Git, a family, no muster
  * session, settings the wizard cannot represent — Edit stays in place,
@@ -750,8 +747,8 @@ function ConnectorPageBody({
 }) {
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
+  const { installation = '' } = useParams();
   const paths = useConnectorGroupPaths();
-  const { search } = useLocation();
   // The sub-tab that lists the connector: known from a cached row (or for
   // muster) even while loading; otherwise the crumb has no link rather than
   // one to a sub-tab that does not list it.
@@ -774,7 +771,6 @@ function ConnectorPageBody({
         // Tools with its count's place held, so the tab keeps its width as
         // the page and then the tools land.
         tabs={[{ id: 'tools', path: '', title: 'Tools', count: 'loading' }]}
-        tabsSearch={search}
       >
         <LoadingIndicator label="Reading the environment's connectors…" />
       </ShellPage>
@@ -791,8 +787,13 @@ function ConnectorPageBody({
         ]}
       >
         <EmptyStateCard
-          title="No muster environment"
-          description="None of this portal's environments runs muster."
+          title="Environment not available"
+          description={`Connectors on ${installation} cannot be read here. It may be turned off under Cluster access, or run no muster.`}
+          actions={
+            paths.connectors ? (
+              <Link href={paths.connectors}>Back to connectors</Link>
+            ) : undefined
+          }
         />
       </ShellPage>
     );

@@ -30,7 +30,7 @@ import {
 const renderTable = (element: React.ReactElement) =>
   renderInTestApp(element, {
     mountedRoutes: {
-      '/agent-platform/models': modelsRouteRef,
+      '/customize/models': modelsRouteRef,
       '/customize': customizeExternalRouteRef,
     },
   });

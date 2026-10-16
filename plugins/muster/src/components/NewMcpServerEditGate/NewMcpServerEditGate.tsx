@@ -1,100 +1,135 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { INSTALLATION_SCOPE_SEARCH_PARAM } from '@giantswarm/backstage-plugin-gs';
 import {
   EmptyStateCard,
   LoadingIndicator,
   WizardFrame,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
+import {
+  editMcpServerAuthRouteRef,
+  editMcpServerRouteRef,
+  editMcpServerVerifyRouteRef,
+  newMcpServerAuthRouteRef,
+  newMcpServerRouteRef,
+  newMcpServerVerifyRouteRef,
+} from '../../routes';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
 import { connectorDisplayNameOn } from '../../lib/serverGrouping';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
+import { useConnectorGroupPaths } from '../shared/hooks';
 
-/** The query parameter naming the server a wizard run edits. */
-export const EDIT_PARAM = 'edit';
+/** The connector wizard's steps, by the path segment each has. */
+export type ConnectorWizardStep = 'connect' | 'auth' | 'verify';
 
 /**
- * A wizard step's path, carrying the server the run edits (if any) and its
- * installation, so a reload, a shared link or the browser's history lands in
- * the same edit on the same installation. The installation is the section's
- * scope parameter, so while the edit runs the scope stays on the server's
- * installation even where the stored scope names another.
- *
- * `edit` keeps `encodeURIComponent` (not `URLSearchParams`, which writes a
- * space as `+`): both name Kubernetes resources, where the two agree.
+ * A wizard step's address: the registration's (`new[/<step>]`), or, for a
+ * run that edits a registered connector, the edit's under the connector's
+ * own address (`<installation>/<server>/edit[/<step>]`), so a reload, a
+ * shared link or the browser's history lands in the same edit on the same
+ * installation. Undefined while the routes are unbound.
  */
-export function withEditParam(
-  path: string,
-  name: string | undefined,
-  installation?: string,
-): string {
-  if (!name) {
-    return path;
+export type ConnectorWizardLinks = (
+  step: ConnectorWizardStep,
+  edited?: { name?: string; installation?: string },
+) => string | undefined;
+
+/**
+ * The Connectors tab's list — the customer's own connectors, its default
+ * sub-tab — where leaving the wizard lands. The wizard is routed under the
+ * tab, so the tab's own route always resolves here.
+ */
+export function useConnectorsListHref(): string {
+  const { connectors } = useConnectorGroupPaths();
+  if (!connectors) {
+    throw new Error('The connector wizard is not mounted under its tab');
   }
-  const edit = `${path}?${EDIT_PARAM}=${encodeURIComponent(name)}`;
-  return installation
-    ? `${edit}&${INSTALLATION_SCOPE_SEARCH_PARAM}=${encodeURIComponent(
-        installation,
-      )}`
-    : edit;
+  return connectors;
+}
+
+export function useConnectorWizardLinks(): ConnectorWizardLinks {
+  const newConnect = useRouteRef(newMcpServerRouteRef);
+  const newAuth = useRouteRef(newMcpServerAuthRouteRef);
+  const newVerify = useRouteRef(newMcpServerVerifyRouteRef);
+  const editConnect = useRouteRef(editMcpServerRouteRef);
+  const editAuth = useRouteRef(editMcpServerAuthRouteRef);
+  const editVerify = useRouteRef(editMcpServerVerifyRouteRef);
+  return useMemo(() => {
+    const registration = {
+      connect: newConnect,
+      auth: newAuth,
+      verify: newVerify,
+    };
+    const edit = { connect: editConnect, auth: editAuth, verify: editVerify };
+    return (step, edited) => {
+      if (edited?.name && edited.installation) {
+        return edit[step]?.({
+          installation: edited.installation,
+          server: edited.name,
+        });
+      }
+      return registration[step]?.();
+    };
+  }, [newConnect, newAuth, newVerify, editConnect, editAuth, editVerify]);
 }
 
 /**
- * Keeps the wizard's edit state and the URL in agreement, around every wizard
- * step. The URL is the source of truth for *which* server is edited
- * (`?edit=<name>`); the form provider holds the edit itself.
+ * Keeps the wizard's edit state and the address in agreement, around every
+ * wizard step. The address is the source of truth for *which* server is
+ * edited (`<installation>/<server>/edit[/<step>]`); the form provider holds
+ * the edit itself.
  *
- * - `?edit=<name>` and the provider not editing that server on its
- *   installation (`?installation=`, else the active one): seed it from the
- *   active installation's server list
- *   (a progress indicator while that loads, an empty state when there is no
- *   such server or the wizard cannot edit it). The scope reads the same
- *   parameter, so the two agree unless the named installation is not one the
- *   section can show; then an empty state says so, since the server list
- *   read is another installation's.
- * - `?edit=<name>` for a GitOps-managed server: Git owns it, so the wizard is
- *   never offered (an empty state points back to the list, whose Edit/Remove
- *   leads to its source) — not even through a typed or shared link.
- * - No `?edit` while the provider is editing: the edit is over (the browser's
- *   back button, a bookmarked "new" link), so it is reset — which brings back
- *   an unfinished registration the edit set aside. Except after this run has
- *   saved the server: a registration's earlier steps carry no `?edit`, so Back
- *   from verify lands on them without it, and the run continues as an edit of
- *   the server it just created (the param is put back) instead of emptying the
- *   form into a registration that would fail with "already exists".
- * - The header's installation switching mid-edit: the server lives on the
- *   installation it was opened on, so the edit ends and the user is sent back
- *   to the server list, rather than an update silently targeting another
- *   installation.
+ * - An edit address and the provider not editing that server on its
+ *   installation: seed it from that installation's server list (a progress
+ *   indicator while that loads, an empty state when there is no such server
+ *   or the wizard cannot edit it). The muster providers are pinned to the
+ *   address's installation (`MusterSubPage`), so where it runs no muster the
+ *   section can show, an empty state says so.
+ * - An edit address for a GitOps-managed server: Git owns it, so the wizard
+ *   is never offered (an empty state points back to the list, whose
+ *   Edit/Remove leads to its source) — not even through a typed or shared
+ *   link.
+ * - A registration address while the provider is editing: the edit is over
+ *   (the browser's back button, a bookmarked "new" link), so it is reset —
+ *   which brings back an unfinished registration the edit set aside. Except
+ *   after this run has saved the server: a registration's earlier steps are
+ *   registration addresses, so the browser's Back from verify lands on them,
+ *   and the run continues as an edit of the server it just created (sent to
+ *   the same step's edit address) instead of emptying the form into a
+ *   registration that would fail with "already exists".
+ * - The header's installation switching mid-registration after a save: the
+ *   server lives on the installation it was saved on, so the edit ends and
+ *   the user is sent back to the server list, rather than an update silently
+ *   targeting another installation.
  *
  * Its own states (reading, not found, blocked) render in the shell's wizard
  * frame with the shell's empty-state card, named like the edit frame they
  * stand in for, so the title does not shift when the wizard takes over.
  */
-export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
+export function NewMcpServerEditGate({
+  step,
+  children,
+}: {
+  /** The step this gate stands around. */
+  step: ConnectorWizardStep;
+  children: ReactNode;
+}) {
   const navigate = useNavigate();
-  const serversLink = useRouteRef(mcpServersRouteRef);
-  const customizeRoute = useRouteRef(customizeExternalRouteRef);
-  const [searchParams] = useSearchParams();
-  const editName = searchParams.get(EDIT_PARAM) ?? undefined;
+  const wizardLinks = useConnectorWizardLinks();
+  const connectorsHref = useConnectorsListHref();
+  // Set on the edit addresses only.
+  const { server: editName, installation: editInstallation } = useParams();
   const { activeInstallation, mcpServers, isLoading, isLoadingInstallations } =
     useMusterInstance();
-  // The installation the edited server is on: the one the Edit link names,
-  // else the active one.
-  const editInstallation =
-    searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM) ?? activeInstallation;
-  // The link names an installation the section did not resolve to (muted,
-  // or running no muster): its servers are not the ones read here.
+  // The address names an installation the section cannot show (muted, or
+  // running no muster): the providers, pinned to it, resolved none.
   const elsewhere =
     Boolean(editName) &&
     !isLoadingInstallations &&
-    activeInstallation !== undefined &&
     editInstallation !== activeInstallation;
   const { registeredName, registeredInstallation, lastSave, startEdit, reset } =
     useNewMcpServerForm();
@@ -130,19 +165,20 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
     previousInstallation.current = activeInstallation;
     if (switched && registeredName) {
       reset();
-      if (serversLink) {
-        navigate(serversLink());
-      }
+      navigate(connectorsHref);
       return;
     }
     if (inSync) {
       return;
     }
     if (resumeSaved && registeredName) {
-      navigate(
-        { search: withEditParam('', registeredName, registeredInstallation) },
-        { replace: true },
-      );
+      const resumed = wizardLinks(step, {
+        name: registeredName,
+        installation: registeredInstallation,
+      });
+      if (resumed) {
+        navigate(resumed, { replace: true });
+      }
     } else if (!editName) {
       reset();
     } else if (server && !blocker && !gitOpsManaged) {
@@ -160,20 +196,17 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
     blocker,
     reset,
     startEdit,
-    serversLink,
+    connectorsHref,
     navigate,
+    wizardLinks,
+    step,
   ]);
 
   if (inSync) {
     return <>{children}</>;
   }
 
-  const connectorsHref = customizeRoute
-    ? `${customizeRoute()}/connectors`
-    : serversLink?.();
-  const backToServers = connectorsHref ? (
-    <Link to={connectorsHref}>Back to connectors</Link>
-  ) : undefined;
+  const backToServers = <Link to={connectorsHref}>Back to connectors</Link>;
 
   let body: ReactNode;
   if (elsewhere) {
@@ -227,7 +260,7 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
           ? `Customize / Connectors / ${shownName}`
           : 'Customize / Connectors'
       }
-      closeHref={connectorsHref ?? '/'}
+      closeHref={connectorsHref}
     >
       {body}
     </WizardFrame>

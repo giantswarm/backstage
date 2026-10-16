@@ -1,6 +1,5 @@
 import { useCallback, useId, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
@@ -9,7 +8,6 @@ import {
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newMcpServerRouteRef, newMcpServerVerifyRouteRef } from '../../routes';
 import {
   SIGV4_SHARED_IDENTITY_WARNING,
   hasAdvancedAuthorizationServer,
@@ -22,7 +20,7 @@ import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { useRegisterMcpServer } from '../NewMcpServerReviewPage';
 import { SelectableCard } from '../SelectableCard';
 import { DisclosureAccordion, SessionGate } from '../shared';
-import { withEditParam } from '../NewMcpServerEditGate';
+import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
 
 const useStyles = makeStyles({
@@ -118,8 +116,7 @@ export function NewConnectorSignInPage() {
   const classes = useStyles();
   const credentialsHeadingId = useId();
   const navigate = useNavigate();
-  const connectLink = useRouteRef(newMcpServerRouteRef);
-  const testLink = useRouteRef(newMcpServerVerifyRouteRef);
+  const wizardLinks = useConnectorWizardLinks();
   const { activeInstallationInfo } = useMusterInstance();
   const session = useMusterSession();
   const { authenticated } = session;
@@ -211,8 +208,12 @@ export function NewConnectorSignInPage() {
         onSuccess: () => {
           // What was just written is the base of any further save in this run.
           markSaved(definition);
-          if (testLink) {
-            navigate(withEditParam(testLink(), definition.name, installation));
+          const test = wizardLinks('verify', {
+            name: definition.name,
+            installation,
+          });
+          if (test) {
+            navigate(test);
           }
         },
       },
@@ -226,7 +227,7 @@ export function NewConnectorSignInPage() {
     authMode,
     isEdit,
     markSaved,
-    testLink,
+    wizardLinks,
     navigate,
   ]);
 
@@ -247,12 +248,14 @@ export function NewConnectorSignInPage() {
   );
 
   const onBack = useCallback(() => {
-    if (connectLink) {
-      navigate(
-        withEditParam(connectLink(), registeredName, registeredInstallation),
-      );
+    const connect = wizardLinks('connect', {
+      name: registeredName,
+      installation: registeredInstallation,
+    });
+    if (connect) {
+      navigate(connect);
     }
-  }, [connectLink, navigate, registeredName, registeredInstallation]);
+  }, [wizardLinks, navigate, registeredName, registeredInstallation]);
 
   // Guarded: when this render only redirects, pushing
   // actions into the footer slot would flash controls for an unseen page.
@@ -264,13 +267,10 @@ export function NewConnectorSignInPage() {
     return (
       <Navigate
         to={
-          connectLink
-            ? withEditParam(
-                connectLink(),
-                registeredName,
-                registeredInstallation,
-              )
-            : '..'
+          wizardLinks('connect', {
+            name: registeredName,
+            installation: registeredInstallation,
+          }) ?? '..'
         }
         replace
       />

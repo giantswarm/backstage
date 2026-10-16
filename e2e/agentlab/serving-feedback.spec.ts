@@ -3,7 +3,7 @@ import { expect, open, test } from './fixtures';
 import { skipWithoutModelManager } from './model-manager.fixture';
 
 /**
- * Serve model (a page of its own, `/agent-platform/models/serving/serve`)
+ * Serve model (a page of its own, `/customize/models/hosting/serve`)
  * and the Serving list against the lab's KServe backend
  * (`platform.serving`: the CPU preset `qwen2-5-0-5b-cpu`), as the admin:
  *
@@ -47,12 +47,12 @@ function presetRow(page: Page) {
 }
 
 /** Running models: where Serve model returns after a Serve or a Cancel. */
-const SERVING_VIEW = /\/agent-platform\/models\/serving\/?$/;
+const SERVING_VIEW = /\/customize\/models\/hosting\/?$/;
 
 /** Serve model's page, opened from the view's header button. */
 async function openServePage(page: Page) {
   await page.getByRole('button', { name: 'Serve model' }).click();
-  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/serve/);
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/serve/);
   await expect(
     page.getByRole('heading', { level: 1, name: 'Serve model' }),
   ).toBeVisible();
@@ -143,7 +143,7 @@ test.describe.serial('Serve feedback on KServe', () => {
   // The KServe card goes with its last model, so without one the backend's
   // presence is read off Serve model's targets.
   test.beforeEach(async ({ admin }) => {
-    await open(admin, '/agent-platform/models/serving');
+    await open(admin, '/customize/models/hosting');
     await expect(admin.getByRole('article').first()).toBeVisible();
     await admin
       .getByRole('heading', { name: /^KServe/ })

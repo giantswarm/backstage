@@ -4,7 +4,8 @@ app:
   releaseVersion: ${VERSION}
   # Which portals this deployment serves (schema and full semantics:
   # packages/app/config.d.ts). Both on: the Agent Platform shell on `/`,
-  # `/agent-platform/**` and `/customize/**`, the classic Platform Portal
+  # `/sessions/**`, `/usage/**`, `/profile`, `/customize/**` and the old
+  # `/agent-platform/**` (redirects only), the classic Platform Portal
   # everywhere else, cross-linked in new tabs. Only agentPlatform: the shell is
   # the whole navigation (no "Platform Portal" item; classic pages reachable by
   # URL only). Only platformPortal (the default): the classic portal, where the

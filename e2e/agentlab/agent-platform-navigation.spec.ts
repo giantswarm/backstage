@@ -3,8 +3,9 @@ import { expect, open, test } from './fixtures';
 
 /**
  * The Agent Platform in the agent shell, on a lab serving both portals
- * (`AGENTLAB_PORTAL_MODE=shell`): `/agent-platform/**` renders in the shell
- * and never in classic chrome, the shell's rail reaches its sections, and the
+ * (`AGENTLAB_PORTAL_MODE=shell`): its routes (`/`, `/sessions`, `/usage`,
+ * `/profile`, `/customize/**`) render in the shell and never in classic
+ * chrome, the shell's rail reaches its sections, and the
  * two portals cross-link — the shell's Platform Portal item into the classic
  * portal, the classic sidebar's Agent Platform item into the shell, each in a
  * new tab.
@@ -17,15 +18,17 @@ test('every Agent Platform route renders in the shell, never in classic chrome',
   admin,
 }) => {
   for (const path of [
-    '/agent-platform',
-    '/agent-platform/sessions',
-    '/agent-platform/agents',
-    '/agent-platform/models',
-    '/agent-platform/connectors',
-    '/agent-platform/workflows',
-    '/agent-platform/usage',
-    '/agent-platform/profile',
+    '/',
+    '/sessions',
+    '/usage',
+    '/profile',
     '/customize',
+    '/customize/agents',
+    '/customize/skills',
+    '/customize/connectors',
+    '/customize/models',
+    '/customize/models/hosting',
+    '/customize/workflows',
   ]) {
     await open(admin, path);
     await expect(rail(admin), `${path} is in the shell`).toBeAttached();
@@ -40,25 +43,8 @@ test('every Agent Platform route renders in the shell, never in classic chrome',
   }
 });
 
-test('a bare /agent-platform lands on Sessions', async ({ admin }) => {
-  await open(admin, '/agent-platform');
-  await expect(
-    admin.getByRole('heading', { level: 1, name: 'Sessions' }),
-  ).toBeVisible();
-});
-
-test('the old MCP Servers address lands on Customize · Connectors', async ({
-  admin,
-}) => {
-  await open(admin, '/agent-platform/mcp-servers');
-  await expect(admin).toHaveURL(/\/customize\/connectors$/);
-  await expect(
-    admin.getByRole('main').getByRole('tab', { name: /^Connectors/ }),
-  ).toHaveAttribute('aria-selected', 'true');
-});
-
 test('the rail reaches the shell’s sections', async ({ admin }) => {
-  await open(admin, '/agent-platform');
+  await open(admin, '/sessions');
   const nav = rail(admin);
   // The expanded rail: its items, Search (a button: the command palette)
   // after New session, and the recent sessions under them with the link to
@@ -67,8 +53,8 @@ test('the rail reaches the shell’s sections', async ({ admin }) => {
   for (const [name, href] of [
     ['New session', '/'],
     ['Customize', '/customize'],
-    ['Usage', '/agent-platform/usage'],
-    ['All sessions', '/agent-platform/sessions'],
+    ['Usage', '/usage'],
+    ['All sessions', '/sessions'],
   ] as const) {
     await expect(nav.getByRole('link', { name, exact: true })).toHaveAttribute(
       'href',
@@ -112,7 +98,7 @@ test.describe('the rail', () => {
   test('resizes from its edge, remembers the width, and the page follows', async ({
     admin,
   }) => {
-    await open(admin, '/agent-platform/sessions');
+    await open(admin, '/sessions');
     const nav = rail(admin);
     const handle = admin.getByRole('separator', {
       name: 'Resize sidebar',
@@ -152,7 +138,7 @@ test.describe('the rail', () => {
   test('collapses narrow, with every icon on one vertical axis', async ({
     admin,
   }) => {
-    await open(admin, '/agent-platform/sessions');
+    await open(admin, '/sessions');
     const nav = rail(admin);
     await nav.getByRole('button', { name: 'Collapse sidebar' }).click();
     const expand = nav.getByRole('button', { name: 'Expand sidebar' });
@@ -188,7 +174,7 @@ test.describe('the rail', () => {
 test('the shell and the classic portal cross-link in new tabs', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform');
+  await open(admin, '/sessions');
   const portal = rail(admin).getByRole('link', { name: 'Platform Portal' });
   await expect(portal).toHaveAttribute('href', '/clusters');
   await expect(portal).toHaveAttribute('target', '_blank');
@@ -196,17 +182,18 @@ test('the shell and the classic portal cross-link in new tabs', async ({
   await open(admin, '/clusters');
   const sidebar = admin.getByRole('navigation', { name: 'sidebar nav' });
   const agentPlatform = sidebar.getByRole('link', { name: 'Agent Platform' });
-  await expect(agentPlatform).toHaveAttribute('href', '/agent-platform');
+  // The Agent Platform's address is the shell's home, the new-session screen.
+  await expect(agentPlatform).toHaveAttribute('href', '/');
   await expect(agentPlatform).toHaveAttribute('target', '_blank');
 });
 
-test('/agent-platform/usage carries Overview · Cost · Your sessions · Connectors and each renders on click', async ({
+test('/usage carries Overview · Cost · Your sessions · Connectors and each renders on click', async ({
   admin,
 }) => {
   // The PO's order (T90): Connectors last. It is offered where the muster
   // plugin contributes it, which the lab registers.
   const names = ['Overview', 'Cost', 'Your sessions', 'Connectors'];
-  await open(admin, '/agent-platform/usage');
+  await open(admin, '/usage');
   const row = admin.getByRole('main').getByRole('tablist').first();
   await expect(row.getByRole('tab')).toHaveText(names);
   for (const name of names) {

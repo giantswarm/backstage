@@ -308,8 +308,8 @@ async function render(
     // through `agentDetailRouteRef` — a SubRouteRef, which `mountedRoutes` does not
     // take, so its parent is what gets mounted.
     mountedRoutes: {
-      '/agent-platform/sessions': sessionsRouteRef,
-      '/agent-platform/agents': agentsRouteRef,
+      '/sessions': sessionsRouteRef,
+      '/customize/agents': agentsRouteRef,
     },
   });
 }
@@ -388,7 +388,7 @@ describe('SessionDetailPage', () => {
     // agent sent — as text, so only the header one is a link.
     expect(screen.getByRole('link', { name: 'Issue tracker' })).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/kagent/issue-tracker',
+      '/customize/agents/gazelle/kagent/issue-tracker',
     );
   });
 
@@ -1462,7 +1462,7 @@ describe('SessionDetailPage', () => {
           );
         }
         await renderInTestApp(<Harness />, {
-          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+          mountedRoutes: { '/sessions': sessionsRouteRef },
         });
 
         expect(
@@ -2155,17 +2155,14 @@ describe('SessionDetailPage', () => {
       await userEvent.click(startButton());
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith(
-          '/agent-platform/sessions/gazelle/new-1',
-          {
-            state: {
-              newSession: expect.objectContaining({
-                text: lastUserMessage,
-                imagesKey: expect.any(String),
-              }),
-            },
+        expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/new-1', {
+          state: {
+            newSession: expect.objectContaining({
+              text: lastUserMessage,
+              imagesKey: expect.any(String),
+            }),
           },
-        );
+        });
       });
     });
 
@@ -2190,7 +2187,7 @@ describe('SessionDetailPage', () => {
       });
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/agent-platform/sessions/gazelle/new-1',
+          '/sessions/gazelle/new-1',
           handoffTo('Six of them are vegetarian.'),
         );
       });
@@ -2235,7 +2232,7 @@ describe('SessionDetailPage', () => {
         );
       });
       expect(mockNavigate).toHaveBeenCalledWith(
-        '/agent-platform/sessions/gazelle/new-1',
+        '/sessions/gazelle/new-1',
         handoffTo(lastUserMessage),
       );
     });
@@ -2367,7 +2364,7 @@ describe('SessionDetailPage', () => {
       });
       expect(
         within(breadcrumbs).getByRole('link', { name: 'Sessions' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions');
+      ).toHaveAttribute('href', '/sessions');
       expect(within(breadcrumbs).getByText('Session')).toBeInTheDocument();
     });
 

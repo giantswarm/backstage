@@ -240,7 +240,7 @@ test('an image of the person’s message shows as a thumbnail that opens at full
   const prompt = admin.getByRole('textbox', { name: 'Prompt', exact: true });
   await prompt.fill('Answer with the word ready.');
   await admin.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(admin).toHaveURL(/\/agent-platform\/sessions\/[^/]+\/[^/]+$/, {
+  await expect(admin).toHaveURL(/\/sessions\/[^/]+\/[^/]+$/, {
     timeout: 60_000,
   });
 

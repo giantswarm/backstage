@@ -187,7 +187,7 @@ async function renderPanel(search = '', group?: ConnectorGroup) {
     {
       apis: [[musterApiRef, api]],
       mountedRoutes: {
-        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize/connectors': mcpServersRouteRef,
         '/customize': customizeExternalRouteRef,
       },
     },
@@ -264,7 +264,7 @@ describe('CustomizeConnectorsPanel', () => {
       within(github).getByText('Repositories and pull requests'),
     );
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/connectors/github?installation=gazelle',
+      '/customize/connectors/gazelle/github',
       undefined,
     );
   });
@@ -510,7 +510,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     await user.click(await within(rowOf('kubernetes')).findByText('Connected'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/connectors/kubernetes?installation=gazelle',
+      '/customize/connectors/gazelle/kubernetes',
       undefined,
     );
   });
@@ -613,15 +613,12 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(rowOf('kubernetes')).toHaveAttribute(
       'data-href',
-      '/agent-platform/connectors/kubernetes?installation=gazelle',
+      '/customize/connectors/gazelle/kubernetes',
     );
     // The name is a real link too (M21): keyboard, new tab.
     expect(
       within(rowOf('kubernetes')).getByRole('link', { name: 'kubernetes' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/connectors/kubernetes?installation=gazelle',
-    );
+    ).toHaveAttribute('href', '/customize/connectors/gazelle/kubernetes');
   });
 
   it('names a connector by its display name, linking by its name', async () => {
@@ -633,10 +630,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(
       within(rowOf('Web search')).getByRole('link', { name: 'Web search' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/connectors/mcp-websearch?installation=gazelle',
-    );
+    ).toHaveAttribute('href', '/customize/connectors/gazelle/mcp-websearch');
     expect(screen.queryByText('mcp-websearch')).not.toBeInTheDocument();
   });
 
@@ -678,7 +672,7 @@ describe('CustomizeConnectorsPanel', () => {
     // The row opens its Tools tab on the same search.
     expect(rowOf('kubernetes')).toHaveAttribute(
       'data-href',
-      '/agent-platform/connectors/kubernetes?installation=gazelle&q=pods',
+      '/customize/connectors/gazelle/kubernetes?q=pods',
     );
   });
 
@@ -688,7 +682,7 @@ describe('CustomizeConnectorsPanel', () => {
     await screen.findByText('1 tool');
     expect(rowOf('kubernetes')).toHaveAttribute(
       'data-href',
-      '/agent-platform/connectors/kubernetes?installation=gazelle',
+      '/customize/connectors/gazelle/kubernetes',
     );
   });
 
@@ -1061,10 +1055,7 @@ describe('CustomizeConnectorsPanel', () => {
       const github = itemOf('github');
       expect(
         within(github).getByRole('link', { name: 'github' }),
-      ).toHaveAttribute(
-        'href',
-        '/agent-platform/connectors/github?installation=gazelle',
-      );
+      ).toHaveAttribute('href', '/customize/connectors/gazelle/github');
       expect(within(github).getByText('Your own account')).toBeInTheDocument();
       expect(
         within(github).getByText('Repositories and pull requests'),
@@ -1315,10 +1306,7 @@ describe('CustomizeConnectorsPanel', () => {
       expect(within(muster).getByText('Connected')).toBeInTheDocument();
       expect(
         within(muster).getByRole('link', { name: 'muster' }),
-      ).toHaveAttribute(
-        'href',
-        '/agent-platform/connectors/muster?installation=gazelle',
-      );
+      ).toHaveAttribute('href', '/customize/connectors/gazelle/muster');
     });
 
     it('says an anonymous muster the probe could not reach is not connected', async () => {

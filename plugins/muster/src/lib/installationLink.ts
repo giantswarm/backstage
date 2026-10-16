@@ -1,11 +1,29 @@
 /**
- * `path` with the installation that names the page's resource as
- * `?installation=<inst>`, then any further query parameters: a workflow's,
- * connector's or tool's page reads its resource by name on that installation.
- * The one builder for these links, so every one encodes the same way
- * (`URLSearchParams`). Empty further values are left out. Without an
- * installation there is no link (undefined), never one the active
- * installation would silently scope.
+ * `path` with the query parameters, encoded the one way every link here uses
+ * (`URLSearchParams`). Empty values are left out, and so is the `?` when
+ * nothing is left.
+ */
+export function withQuery(
+  path: string,
+  query: Record<string, string | undefined> = {},
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
+}
+
+/**
+ * `path` — a list: the connectors, Usage — scoped to one installation as
+ * `?installation=<inst>`, then any further query parameters. The parameter
+ * only ever sets a section's scope: a connector's, tool's or workflow's own
+ * installation is part of its path (`useServerPageLinks`,
+ * `useWorkflowPageLinks`). Without an installation there is no link
+ * (undefined), never one the active installation would silently scope.
  */
 export function withInstallationQuery(
   path: string,
@@ -15,11 +33,5 @@ export function withInstallationQuery(
   if (!installation) {
     return undefined;
   }
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries({ installation, ...query })) {
-    if (value) {
-      params.set(key, value);
-    }
-  }
-  return `${path}?${params.toString()}`;
+  return withQuery(path, { installation, ...query });
 }

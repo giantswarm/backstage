@@ -162,7 +162,7 @@ async function startSession(sessionId: string) {
           }
         />
         <Route
-          path="/agent-platform/sessions/:installation/:sessionId"
+          path="/sessions/:installation/:sessionId"
           element={
             <QueryClientProvider key="sessions">
               <SessionDetailRoute />
@@ -177,8 +177,8 @@ async function startSession(sessionId: string) {
         [musterApiRef, musterApi],
       ],
       mountedRoutes: {
-        '/agent-platform/sessions': sessionsRouteRef,
-        '/agent-platform/agents': agentsRouteRef,
+        '/sessions': sessionsRouteRef,
+        '/customize/agents': agentsRouteRef,
       },
     },
   );

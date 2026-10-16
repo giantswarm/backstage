@@ -120,7 +120,7 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable, t
 
   try {
     await dropPersistedQueriesOnNextLoad(admin);
-    await open(admin, '/agent-platform/models/serving');
+    await open(admin, '/customize/models/hosting');
 
     const row = admin.getByRole('row', { name: /qwen3-4b-instruct/ });
     await expect(
@@ -151,6 +151,6 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable, t
     await staged.unroute();
     // Leave the page on the lab's real serving layer, the staged answer gone.
     await dropPersistedQueriesOnNextLoad(admin);
-    await admin.goto('/agent-platform/models/serving');
+    await admin.goto('/customize/models/hosting');
   }
 });

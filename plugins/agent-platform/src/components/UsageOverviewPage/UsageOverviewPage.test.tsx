@@ -147,10 +147,10 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   }),
 }));
 
-function renderPage(path = '/agent-platform/usage/overview') {
+function renderPage(path = '/usage') {
   return renderInTestApp(<UsageOverviewPage />, {
     initialRouteEntries: [path],
-    mountedRoutes: { '/agent-platform/usage': usageRouteRef },
+    mountedRoutes: { '/usage': usageRouteRef },
   });
 }
 
@@ -226,7 +226,7 @@ describe('UsageOverviewPage', () => {
     expect(screen.queryByText(/vs previous/)).toBeNull();
     expect(screen.getByRole('link', { name: 'see Cost' })).toHaveAttribute(
       'href',
-      '/agent-platform/usage/cost',
+      '/usage/cost',
     );
     // No other money on the page: not the per-agent or per-model spend.
     expect(screen.queryByText('$8.00')).toBeNull();
@@ -285,7 +285,7 @@ describe('UsageOverviewPage', () => {
       ],
     });
 
-    renderPage('/agent-platform/usage/overview?window=7d');
+    renderPage('/usage?window=7d');
 
     expect(await screen.findByText('Your sessions')).toBeInTheDocument();
     expect(screen.getByText('6')).toBeInTheDocument();
@@ -393,7 +393,7 @@ describe('UsageOverviewPage', () => {
       dataStart: { day: '2026-09-09', coveredDays: 36 },
     };
 
-    renderPage('/agent-platform/usage/overview?window=90d');
+    renderPage('/usage?window=90d');
 
     expect(
       await screen.findByText(
@@ -410,7 +410,7 @@ describe('UsageOverviewPage', () => {
   });
 
   it('reads the window from the URL', async () => {
-    renderPage('/agent-platform/usage/overview?window=7d');
+    renderPage('/usage?window=7d');
 
     // The caption and the sessions tile both follow it.
     expect(await screen.findAllByText(/over the last 7 days/)).toHaveLength(2);

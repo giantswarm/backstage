@@ -114,7 +114,7 @@ function renderRecent(
       ],
       initialRouteEntries: [path],
       ...(mounted && {
-        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        mountedRoutes: { '/sessions': sessionsRouteRef },
       }),
     },
   );
@@ -160,8 +160,8 @@ describe('RecentSessions', () => {
     const list = await screen.findByRole('list', { name: 'Recent' });
     const links = await within(list).findAllByRole('link');
     expect(links.map(link => link.getAttribute('href'))).toEqual([
-      '/agent-platform/sessions/gazelle/new',
-      '/agent-platform/sessions/gazelle/mid',
+      '/sessions/gazelle/new',
+      '/sessions/gazelle/mid',
     ]);
     expect(within(list).queryByText('Oldest')).not.toBeInTheDocument();
   });
@@ -195,7 +195,7 @@ describe('RecentSessions', () => {
   });
 
   it('marks the session open at the current location', async () => {
-    await renderRecent({ path: '/agent-platform/sessions/gazelle/mid' });
+    await renderRecent({ path: '/sessions/gazelle/mid' });
 
     const middle = (await screen.findByText('Middle')).closest('a');
     expect(middle).toHaveAttribute('aria-current', 'page');
@@ -225,13 +225,13 @@ describe('RecentSessions', () => {
       // No cutoff, so no count: the link is only the way to the full list.
       expect(screen.queryByText(/ more$/)).not.toBeInTheDocument();
       const link = screen.getByRole('link', { name: 'All sessions' });
-      expect(link).toHaveAttribute('href', '/agent-platform/sessions');
+      expect(link).toHaveAttribute('href', '/sessions');
       expect(link).not.toHaveAttribute('aria-current');
       // After the last session, not on a heading.
       const sessionLinks = screen
         .getAllByRole('link')
         .filter(element =>
-          element.getAttribute('href')?.startsWith('/agent-platform/sessions/'),
+          element.getAttribute('href')?.startsWith('/sessions/'),
         );
       expect(
         sessionLinks.every(
@@ -272,7 +272,7 @@ describe('RecentSessions', () => {
       expect(rows[7]).toContain('Session 292');
       expect(
         screen.getByRole('link', { name: 'All sessions' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions');
+      ).toHaveAttribute('href', '/sessions');
       expect(screen.getByText('292 more')).toBeInTheDocument();
     });
 
@@ -347,7 +347,7 @@ describe('RecentSessions', () => {
       // The count beside All sessions opens the list narrowed to them.
       expect(
         screen.getByRole('link', { name: '1 waiting for you' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions?state=waiting');
+      ).toHaveAttribute('href', '/sessions?state=waiting');
       expect(screen.getByText('1 waiting')).toBeInTheDocument();
     });
 
@@ -406,7 +406,7 @@ describe('RecentSessions', () => {
       await renderRecent({
         shellRail: true,
         limit: 8,
-        path: '/agent-platform/sessions',
+        path: '/sessions',
       });
 
       expect(
@@ -418,7 +418,7 @@ describe('RecentSessions', () => {
       await renderRecent({
         shellRail: true,
         limit: 8,
-        path: '/agent-platform/sessions/gazelle/mid',
+        path: '/sessions/gazelle/mid',
       });
 
       // Middle waits for input: its row settles under "Waiting for you".
@@ -519,7 +519,7 @@ describe('RecentSessions', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: '3 more pinned' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions?state=pinned');
+      ).toHaveAttribute('href', '/sessions?state=pinned');
     });
 
     it('has no overflow link while the pins fit', async () => {

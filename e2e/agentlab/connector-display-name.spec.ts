@@ -74,7 +74,7 @@ test.describe('a connector with a display name', () => {
       row.getByRole('link', { name: DISPLAY_NAME, exact: true }),
     ).toHaveAttribute(
       'href',
-      new RegExp(`/agent-platform/connectors/${NAME}\\?installation=`),
+      `/customize/connectors/${lab.installation}/${NAME}`,
     );
 
     const search = admin.getByRole('searchbox', {
@@ -89,7 +89,10 @@ test.describe('a connector with a display name', () => {
   test('heads its page with the display name and keeps its name in Technical details', async ({
     admin,
   }) => {
-    await open(admin, `/agent-platform/connectors/${NAME}/details${scope}`);
+    await open(
+      admin,
+      `/customize/connectors/${lab.installation}/${NAME}/details`,
+    );
 
     await expect(
       admin.getByRole('heading', { level: 1, name: DISPLAY_NAME }),
