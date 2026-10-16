@@ -186,6 +186,7 @@ const tree = {
   tree: [
     { path: 'knowledge/product/overview.md', type: 'blob' },
     { path: 'knowledge/architecture/data-flow.md', type: 'blob' },
+    { path: 'knowledge/architecture/diagrams.md', type: 'blob' },
     {
       path: 'knowledge/decisions/2026-09-01-0900-adr-data-branch.md',
       type: 'blob',
@@ -211,6 +212,26 @@ const documents: Record<string, string> = {
   'magazine/history-weeks.json': JSON.stringify(history),
   'knowledge/product/overview.md': '# Product overview\n\nWhat we build.',
   'knowledge/architecture/data-flow.md': '# Data flow\n\nHow it moves.',
+  'knowledge/architecture/diagrams.md': [
+    '# Diagrams',
+    '',
+    '```mermaid',
+    'graph TD',
+    '  Board --> Magazine',
+    '```',
+    '',
+    'Between the diagrams.',
+    '',
+    '```mermaid',
+    'sequenceDiagram',
+    '  Portal->>Backend: read the document',
+    '```',
+    '',
+    '```mermaid',
+    'graph TD',
+    '  A -->',
+    '```',
+  ].join('\n'),
   'knowledge/decisions/2026-09-01-0900-adr-data-branch.md':
     '# Data branch\n\nGenerated data lives on its own branch.',
 };
@@ -518,6 +539,37 @@ test.describe('Hive', () => {
     await expect(
       admin.getByRole('heading', { name: 'Data branch' }),
     ).toBeVisible();
+  });
+
+  test('Knowledge: Mermaid blocks render as diagrams, an invalid one as its source', async ({
+    admin,
+  }) => {
+    const errors = watchPageErrors(admin);
+    await open(
+      admin,
+      '/hive/knowledge?doc=knowledge%2Farchitecture%2Fdiagrams.md',
+    );
+    const article = admin.getByRole('article', { name: 'Diagrams' });
+    await expect(
+      article.getByRole('heading', { name: 'Diagrams' }),
+    ).toBeVisible();
+
+    const diagrams = article.getByTestId('mermaid-diagram');
+    await expect(diagrams).toHaveCount(2);
+    await expect(diagrams.nth(0).locator('svg')).toBeVisible();
+    await expect(diagrams.nth(0)).toContainText('Magazine');
+    await expect(diagrams.nth(1).locator('svg')).toBeVisible();
+    await expect(article.getByText('Between the diagrams.')).toBeVisible();
+    // The valid diagrams' sources do not show as code.
+    await expect(article.getByText('Board --> Magazine')).toHaveCount(0);
+
+    await expect(article.getByRole('note')).toContainText(
+      'could not be rendered',
+    );
+    await expect(article.locator('code.language-mermaid')).toHaveText(
+      'graph TD\n  A -->',
+    );
+    expect(errors).toEqual([]);
   });
 
   test('the old pages redirect into Hive', async ({ admin }) => {

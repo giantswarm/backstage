@@ -4,7 +4,9 @@ import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
 import { useInRouterContext } from 'react-router-dom';
 import { createMarkdownLinkResolver } from '../../utils/resolveMarkdownLink';
+import { MermaidDiagram } from '../MermaidDiagram';
 import { InPageAnchors } from './InPageAnchors';
+import { splitMermaid } from './splitMermaid';
 
 type Dialect = 'gfm' | 'common-mark';
 
@@ -85,6 +87,7 @@ const useStyles = makeStyles(theme => ({
  *
  * A `#heading` link jumps to its target within this document, matched the way
  * GitHub matches it, and moves focus there as the browser does for a fragment.
+ * A top-level ```mermaid block renders as its diagram, as on GitHub.
  */
 export const GSMarkdownContent = ({
   content,
@@ -100,13 +103,20 @@ export const GSMarkdownContent = ({
   // Without a router there are no links to jump from: they render through it.
   const inRouter = useInRouterContext();
 
+  const parts = useMemo(() => splitMermaid(content), [content]);
+
   const rootClassName = classNames(classes.root, className);
-  const markdown = (
-    <MarkdownContent
-      content={content}
-      dialect={dialect}
-      transformLinkUri={transformLinkUri}
-    />
+  const markdown = parts.map((part, index) =>
+    part.kind === 'mermaid' ? (
+      <MermaidDiagram key={index} source={part.source} />
+    ) : (
+      <MarkdownContent
+        key={index}
+        content={part.text}
+        dialect={dialect}
+        transformLinkUri={transformLinkUri}
+      />
+    ),
   );
 
   return inRouter ? (
