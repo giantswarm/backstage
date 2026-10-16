@@ -179,7 +179,9 @@ test('the home composer attaches pasted images and refuses other files', async (
   await expect(remove).toHaveCount(0);
   await expect(prompt, 'the focus went back to the prompt').toBeFocused();
 
-  await dropFile(admin.getByTestId('composer-card'), {
+  // The drop target is the composer's box; a drop on its text field bubbles
+  // there, as a file let go of over the box does.
+  await dropFile(prompt, {
     name: 'report.pdf',
     type: 'application/pdf',
     text: '%PDF-1.7',
