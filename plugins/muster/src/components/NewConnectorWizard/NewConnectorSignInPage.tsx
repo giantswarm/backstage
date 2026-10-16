@@ -205,11 +205,11 @@ export function NewConnectorSignInPage() {
     register(
       { definition, installation, authMode, isEdit },
       {
-        onSuccess: () => {
+        onSuccess: sent => {
           // What was just written is the base of any further save in this run.
-          markSaved(definition);
+          markSaved(sent);
           const test = wizardLinks('verify', {
-            name: definition.name,
+            name: sent.name,
             installation,
           });
           if (test) {
