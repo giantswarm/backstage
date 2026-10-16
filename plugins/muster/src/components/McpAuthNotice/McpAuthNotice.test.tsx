@@ -7,6 +7,7 @@ import {
   MusterApi,
   musterApiRef,
   ServerAuthStatus,
+  sessionExpiredError,
 } from '../../apis';
 import {
   HIDDEN_NOTICE_STORAGE_KEY,
@@ -119,8 +120,44 @@ describe('McpAuthNotice', () => {
       .map(style => style.textContent)
       .join('\n');
     expect(styles).toContain(
-      'bottom: calc(24px + var(--agent-shell-mobile-bar-height, 0px) + var(--wizard-footer-height, 0px) + var(--session-dock-height, 0px))',
+      'bottom: calc(var(--mcp-auth-notice-gap) + var(--agent-shell-mobile-bar-height, 0px) + var(--wizard-footer-height, 0px) + var(--session-dock-height, 0px))',
     );
+  });
+
+  it('has the page reserve the room it covers while it is shown, and gives it back when hidden', async () => {
+    const clearance = () =>
+      document.documentElement.style.getPropertyValue(
+        '--floating-notice-clearance',
+      );
+    jest
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ height: 120 } as DOMRect);
+    try {
+      await renderNotice(
+        makeApi({ servers: [waitingFor('workspace-manager')] }),
+      );
+      await screen.findByText('1 MCP server needs your sign-in');
+      expect(parseFloat(clearance())).toBeGreaterThanOrEqual(120);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      expect(clearance()).toBe('');
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  it('shows nothing, and reserves nothing, once the portal session has expired', async () => {
+    const api = makeApi({ servers: [] });
+    api.getAuthStatus.mockRejectedValue(sessionExpiredError('graveler'));
+    await renderNotice(api);
+    await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+    expect(
+      document.documentElement.style.getPropertyValue(
+        '--floating-notice-clearance',
+      ),
+    ).toBe('');
   });
 
   it('names a server by its display name', async () => {

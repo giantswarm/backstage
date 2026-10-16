@@ -3,7 +3,11 @@ import {
   OAuthApi,
   OpenIdConnectApi,
 } from '@backstage/core-plugin-api';
-import { MusterAuthCredentials, MusterAuthProvidersApi } from './types';
+import {
+  MusterAuthCredentials,
+  MusterAuthCredentialsOptions,
+  MusterAuthProvidersApi,
+} from './types';
 
 export const musterAuthProvidersApiRef = createApiRef<MusterAuthProvidersApi>({
   id: 'plugin.muster.auth-providers',
@@ -33,28 +37,37 @@ export class MusterAuthProviders implements MusterAuthProvidersApi {
     this.mainAuthApi = mainAuthApi;
   }
 
-  async getCredentials(authProvider: string): Promise<MusterAuthCredentials> {
+  async getCredentials(
+    authProvider: string,
+    options: MusterAuthCredentialsOptions = {},
+  ): Promise<MusterAuthCredentials> {
     const authApi = this.authProviders[authProvider];
     if (!authApi) {
-      return this.getMainCredentials();
+      return this.getMainCredentials(options);
     }
 
     try {
-      const token = await authApi.getAccessToken();
-      return { token };
+      const token = await authApi.getAccessToken(undefined, {
+        optional: options.optional,
+      });
+      return token ? { token } : {};
     } catch {
       return {};
     }
   }
 
-  private async getMainCredentials(): Promise<MusterAuthCredentials> {
+  private async getMainCredentials(
+    options: MusterAuthCredentialsOptions,
+  ): Promise<MusterAuthCredentials> {
     if (!this.mainAuthApi) {
       return {};
     }
 
     try {
-      const token = await this.mainAuthApi.getIdToken();
-      return { token };
+      const token = await this.mainAuthApi.getIdToken({
+        optional: options.optional,
+      });
+      return token ? { token } : {};
     } catch {
       return {};
     }

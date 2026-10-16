@@ -9,6 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-react';
 import { ClusterTokenError } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MusterApiClient, toolErrorDetails } from './MusterApiClient';
+import { MusterAuthProviders } from './MusterAuthProviders';
 import { MusterAnswerCutError, MusterAuthProvidersApi } from './types';
 
 const HEADER = 'backstage-muster-authorization';
@@ -549,6 +550,85 @@ describe('MusterApiClient token selection', () => {
       message: expect.stringContaining('Token validation failed'),
     });
     expect(t.sentHeaders()?.[HEADER]).toBe('brokered-token');
+  });
+});
+
+describe('MusterApiClient.getAuthStatus', () => {
+  const status = { servers: [] };
+
+  it('reads the status with the session the person has, never asking for a sign-in', async () => {
+    const t = setup();
+    t.fetchMock.mockResolvedValue(okResponse(status));
+
+    await expect(t.client.getAuthStatus('gazelle')).resolves.toEqual(status);
+    expect(t.getMainCredentials).toHaveBeenCalledWith('mcp-muster', {
+      optional: true,
+    });
+    expect(t.sentHeaders()?.[HEADER]).toBe('main-id-token');
+  });
+
+  it('fails as a gone session, before any request, once the portal session has expired', async () => {
+    const t = setup({ main: {} });
+
+    await expect(t.client.getAuthStatus('gazelle')).rejects.toMatchObject({
+      name: 'MusterTokenMintError',
+      reason: 'session-expired',
+      installation: 'gazelle',
+    });
+    expect(t.fetchMock).not.toHaveBeenCalled();
+    // Only the optional read: a plain one is what opens the login dialog.
+    expect(t.getMainCredentials).toHaveBeenCalledTimes(1);
+    expect(t.getMainCredentials).toHaveBeenCalledWith('mcp-muster', {
+      optional: true,
+    });
+  });
+
+  it('treats a main-login token past its exp as a gone session', async () => {
+    const t = setup({ main: { token: idToken(Date.now() / 1000 - 1) } });
+
+    await expect(t.client.getAuthStatus('gazelle')).rejects.toMatchObject({
+      reason: 'session-expired',
+    });
+    expect(t.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not mint a brokered token for another installation without a session', async () => {
+    const t = setup({ main: {} });
+
+    await expect(t.client.getAuthStatus('golem')).rejects.toMatchObject({
+      reason: 'session-expired',
+      installation: 'golem',
+    });
+    expect(t.getBrokeredCredentials).not.toHaveBeenCalled();
+    expect(t.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('asks the main auth API only for its optional token while the session is gone', async () => {
+    // The app's providers over a main auth API whose session is gone: the
+    // optional read answers no token, a plain one would open the dialog.
+    const getIdToken = jest.fn(async (options?: { optional?: boolean }) => {
+      if (options?.optional) {
+        return '';
+      }
+      throw new Error('the Login Required dialog opened');
+    });
+    const fetchMock = jest.fn();
+    setSignedInConfig(mockApis.config({ data: signedInConfigData(false) }));
+    const client = new MusterApiClient({
+      discoveryApi: {
+        getBaseUrl: jest.fn().mockResolvedValue('http://backend/api/muster'),
+      },
+      fetchApi: { fetch: fetchMock },
+      configApi: mockApis.config({ data: configData('oidc-gazelle') }),
+      authProvidersApi: new MusterAuthProviders({}, { getIdToken }),
+    });
+
+    await expect(client.getAuthStatus('gazelle')).rejects.toMatchObject({
+      reason: 'session-expired',
+    });
+    expect(getIdToken).toHaveBeenCalledTimes(1);
+    expect(getIdToken).toHaveBeenCalledWith({ optional: true });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

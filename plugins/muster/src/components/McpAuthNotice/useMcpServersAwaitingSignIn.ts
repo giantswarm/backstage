@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { musterApiRef, type ServerAuthStatus } from '../../apis';
+import {
+  isMusterTokenMintError,
+  musterApiRef,
+  type ServerAuthStatus,
+} from '../../apis';
 import { authStatusQueryKey, needsSignIn } from '../shared';
 
 /**
@@ -19,6 +23,10 @@ export type McpServersAwaitingSignIn = {
   /** True until the first answer. */
   isLoading: boolean;
 };
+
+function isSessionExpired(error: unknown): boolean {
+  return isMusterTokenMintError(error) && error.reason === 'session-expired';
+}
 
 /**
  * The MCP servers of one muster that wait for the person's own sign-in or
@@ -39,7 +47,10 @@ export function useMcpServersAwaitingSignIn(
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled,
-    refetchInterval: AUTH_STATUS_REFRESH_MS,
+    // The read never asks the person to sign in (`getAuthStatus`); once the
+    // portal session is gone it stops until the person is back, on focus.
+    refetchInterval: query =>
+      isSessionExpired(query.state.error) ? false : AUTH_STATUS_REFRESH_MS,
     // As the sign-in affordances read it: re-read on return from the IdP's
     // tab, and an unreadable status is an answer, not a retry.
     refetchOnWindowFocus: true,

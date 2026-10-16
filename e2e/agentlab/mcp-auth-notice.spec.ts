@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   completeDexLogin,
   connectToMuster,
@@ -6,9 +6,10 @@ import {
   expectWizardStep,
   fillAgentDetails,
   open,
+  signIn,
   test,
 } from './fixtures';
-import { lab } from './lab';
+import { contextOptionsFor, lab } from './lab';
 
 /**
  * The portal-wide notice that MCP servers wait for the person's own sign-in,
@@ -144,4 +145,180 @@ test('the notice stands clear of the wizard footer: Continue takes the click whi
   await expect(notice, 'the notice is still shown').toBeVisible();
   await footer.getByRole('button', { name: 'Continue' }).click();
   await expectWizardStep(admin, 'Tools');
+});
+
+/** The notice, shown again: a Not now earlier in the run is forgotten. */
+async function showNoticeOn(page: Page, path: string) {
+  await open(page, path);
+  await page.evaluate(() =>
+    window.sessionStorage.removeItem('muster.mcpAuthNotice.hidden'),
+  );
+  await open(page, path);
+  const notice = page.getByRole('complementary', {
+    name: 'MCP server sign-in',
+  });
+  await expect(notice).toContainText(FIXTURE, { timeout: 60_000 });
+  return notice;
+}
+
+/**
+ * The last thing the page shows in its main region: the last rendered
+ * element in document order that has a size, whatever the page put there.
+ */
+async function lastContent(page: Page): Promise<Locator> {
+  await page.getByRole('main').evaluate(main => {
+    const sized = Array.from(main.querySelectorAll('*')).filter(element => {
+      const box = element.getBoundingClientRect();
+      return box.width > 0 && box.height > 0;
+    });
+    sized[sized.length - 1]?.setAttribute('data-e2e-last-content', '');
+  });
+  return page.locator('[data-e2e-last-content]').last();
+}
+
+/**
+ * Scrolls to the end of the page and asserts `last` ends above the notice:
+ * the page reserves the room the notice covers under its last content.
+ */
+async function expectScrolledClearOfNotice(
+  page: Page,
+  notice: Locator,
+  last: Locator,
+  what: string,
+) {
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  await expect
+    .poll(
+      async () => {
+        const lastBox = await last.boundingBox();
+        const noticeBox = await notice.boundingBox();
+        return lastBox!.y + lastBox!.height - noticeBox!.y;
+      },
+      { message: `${what} ends above the notice at the end of the scroll` },
+    )
+    .toBeLessThanOrEqual(0.5);
+}
+
+test('on a phone the notice leaves the last content of a page reachable: Sessions, and Review’s Technical details', async ({
+  admin,
+}) => {
+  test.setTimeout(300_000);
+  await signOutOfFixture(admin);
+  await admin.setViewportSize({ width: 375, height: 812 });
+  try {
+    // Sessions: the page's last content scrolls clear of the notice.
+    const notice = await showNoticeOn(admin, '/agent-platform/sessions');
+    await expect(
+      admin.getByRole('heading', { level: 1, name: 'Sessions' }),
+    ).toBeVisible();
+    await expectScrolledClearOfNotice(
+      admin,
+      notice,
+      await lastContent(admin),
+      'the Sessions page’s last content',
+    );
+
+    // New agent → Review: Technical details, the last thing on the step, takes
+    // the tap while the notice shows. Not forced: Playwright's actionability
+    // check fails a tap the notice would receive.
+    await open(admin, '/agent-platform/agents/new');
+    await fillAgentDetails(admin, {
+      name: 'Notice clearance phone probe',
+      description: 'Never created: the run only steps through the wizard.',
+      instructions: 'You are a probe.',
+    });
+    for (const step of ['Skills', 'Tools', 'Review']) {
+      await admin.getByRole('button', { name: 'Continue' }).first().click();
+      await expectWizardStep(admin, step);
+    }
+    await expect(notice, 'the notice is still shown').toBeVisible();
+    const details = admin.getByText('Technical details');
+    await expectScrolledClearOfNotice(
+      admin,
+      notice,
+      details,
+      'Technical details',
+    );
+    await details.click();
+    await expect(
+      admin.getByText(/notice-clearance-phone-probe/).first(),
+      'Technical details opened',
+    ).toBeVisible();
+    await expect(notice, 'the notice was not dismissed').toBeVisible();
+
+    // Not now gives the room back.
+    await notice.getByRole('button', { name: 'Not now' }).click();
+    await expect(notice).toHaveCount(0);
+    await expect
+      .poll(() =>
+        admin.evaluate(() =>
+          document.documentElement.style.getPropertyValue(
+            '--floating-notice-clearance',
+          ),
+        ),
+      )
+      .toBe('');
+  } finally {
+    await admin.setViewportSize({ width: 1440, height: 900 });
+  }
+});
+
+test('the notice’s status poll never asks for the sign-in once the portal session has expired', async ({
+  admin,
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  await signOutOfFixture(admin);
+  const context = await browser.newContext(contextOptionsFor('desktop'));
+  try {
+    const page = await context.newPage();
+    await page.clock.install();
+    await signIn(page, lab.users.admin);
+    const notice = await showNoticeOn(page, '/catalog');
+
+    // The portal session is gone: its refresh is refused, as Dex's would be.
+    await page.route('**/api/auth/*/refresh**', route =>
+      route.fulfill({
+        status: 401,
+        json: { error: { name: 'AuthenticationError' } },
+      }),
+    );
+    const statusReads: string[] = [];
+    page.on('request', request => {
+      if (request.url().includes('/api/muster/auth/status')) {
+        statusReads.push(request.url());
+      }
+    });
+    const refreshed = page.waitForRequest(request =>
+      /\/api\/auth\/[^/]+\/refresh/.test(request.url()),
+    );
+    // Past the ID token's lifetime and several of the poll's intervals.
+    await page.clock.fastForward('02:00:00');
+    await refreshed;
+
+    const login = page.getByRole('dialog', { name: 'Login Required' });
+    const prompted = await login
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    expect(prompted, 'the poll opened no Login Required dialog').toBe(false);
+    expect(statusReads, 'no status read is sent without a session').toEqual([]);
+    await expect(notice, 'the notice stays as it was').toBeVisible();
+
+    // A person's own action that needs the session still asks for it, once.
+    await page.getByRole('link', { name: 'Customize' }).first().click();
+    await expect(login, 'the action asks for the sign-in').toBeVisible({
+      timeout: 60_000,
+    });
+    await test.info().attach('login-on-action', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+  } finally {
+    await context.close();
+  }
 });

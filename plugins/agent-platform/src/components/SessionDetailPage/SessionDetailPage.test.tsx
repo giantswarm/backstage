@@ -1043,6 +1043,21 @@ describe('SessionDetailPage', () => {
       );
     });
 
+    it('reserves the room a floating notice covers above the dock, in place of the shell', async () => {
+      // The MCP server sign-in notice floats above the dock: the newest
+      // message scrolls clear of it, and the dock stays at the bottom.
+      await render();
+
+      const column = screen.getByTestId('session-dock').parentElement!;
+      expect(column).toHaveAttribute('data-floating-notice-reserve');
+      const styles = Array.from(document.querySelectorAll('style'))
+        .map(style => style.textContent)
+        .join('\n');
+      expect(styles).toContain(
+        'margin-bottom: var(--floating-notice-clearance, 0px)',
+      );
+    });
+
     it('rests the docked bar where it sticks, pulled into all of the page’s bottom padding', async () => {
       // Live round 2 (R7): a fixed -16px left 24px of ShellPage's 40px under
       // the bar, so it lifted 24px as the scroll reached the end. ShellPage
