@@ -41,12 +41,14 @@ import {
 } from '../../lib/workflowReferences';
 import { serversOfTools, toolsOfWorkflow } from '../../lib/workflowTools';
 import { mcpServerDisplayNames } from '../../lib/serverGrouping';
-import {
-  customizeExternalRouteRef,
-  workflowDetailRouteRef,
-} from '../../routes';
+import { customizeExternalRouteRef } from '../../routes';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import { EffectBadge, SessionGate, StateBadge } from '../shared';
+import {
+  EffectBadge,
+  SessionGate,
+  StateBadge,
+  useWorkflowPageLinks,
+} from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
 import { WorkflowDetailsTab } from './WorkflowDetailsTab';
@@ -83,16 +85,9 @@ function useCustomizePaths(): { customize?: string; workflows?: string } {
   };
 }
 
-/** `?installation=<inst>`, or nothing without one. */
-function installationSearch(installation?: string): string {
-  return installation
-    ? `?installation=${encodeURIComponent(installation)}`
-    : '';
-}
-
 /** The other workflows that run this one as a step, linked to their pages. */
 function CalledBy({ workflow }: { workflow: MusterWorkflow }) {
-  const detailRoute = useRouteRef(workflowDetailRouteRef);
+  const workflowLinks = useWorkflowPageLinks();
   const { workflows } = useMusterInstance();
   const variant = useFactTextVariant();
   const name = workflow.getName();
@@ -106,15 +101,12 @@ function CalledBy({ workflow }: { workflow: MusterWorkflow }) {
   return (
     <Text variant={variant}>
       {referencedBy.map((ref, index) => {
-        const base = detailRoute?.({ name: ref.getName() });
+        const href = workflowLinks.workflow(ref.getName(), ref.cluster);
         return (
           <span key={`${ref.cluster}/${ref.getName()}`}>
             {index > 0 && ', '}
-            {base ? (
-              <Link
-                href={`${base}${installationSearch(ref.cluster)}`}
-                variant={variant}
-              >
+            {href ? (
+              <Link href={href} variant={variant}>
                 {ref.getName()}
               </Link>
             ) : (
@@ -133,7 +125,7 @@ function WorkflowPageContent({
   editAction,
 }: {
   workflow: MusterWorkflow;
-  installation?: string;
+  installation: string;
 } & WorkflowPageProps) {
   const paths = useCustomizePaths();
   const basePath = useSplatBasePath();
@@ -491,7 +483,7 @@ function WorkflowPageBody({
     <WorkflowPageContent
       key={`${workflow.cluster}/${name}`}
       workflow={workflow}
-      installation={workflow.cluster ?? installationParam}
+      installation={workflow.cluster}
       editAction={editAction}
     />
   );

@@ -29,6 +29,7 @@ import {
 import { SessionDetailPage } from './SessionDetailPage';
 import {
   mockDesktopLayout,
+  mockIntersectionObserver,
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
@@ -2838,6 +2839,93 @@ describe('SessionDetailPage', () => {
       );
     });
 
+    it('sets the session’s notifications from the ⋯ menu, and keeps them across a reload', async () => {
+      // The level is kept per person, like the pin; the menu renders in the
+      // shared header, so the element the page hands over is rendered here.
+      const storage = mockApis.storage();
+      const renderHeaderMenu = () =>
+        renderInTestApp(<>{lastProvidedActions()}</>, {
+          apis: [[storageApiRef, storage]],
+          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        });
+      const openNotifications = async () => {
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Session actions' }),
+        );
+        await userEvent.click(
+          screen.getByRole('menuitem', { name: 'Notifications' }),
+        );
+        await screen.findByRole('menu', { name: 'Notifications' });
+      };
+
+      const page = await renderShell([[storageApiRef, storage]]);
+      await waitFor(() =>
+        expect(lastProvidedActions().props.notifications.level).toBe('default'),
+      );
+      const menu = await renderHeaderMenu();
+      await openNotifications();
+      expect(
+        screen.getByRole('menuitemradio', { name: 'Default' }),
+      ).toHaveAttribute('aria-checked', 'true');
+
+      await userEvent.click(
+        screen.getByRole('menuitemradio', { name: 'All activity' }),
+      );
+      await waitFor(() =>
+        expect(lastProvidedActions().props.notifications.level).toBe('all'),
+      );
+
+      // A reload: the page and its menu start afresh from the stored record.
+      menu.unmount();
+      page.unmount();
+      providedActions.mockClear();
+      await renderShell([[storageApiRef, storage]]);
+      await waitFor(() =>
+        expect(lastProvidedActions().props.notifications.level).toBe('all'),
+      );
+      await renderHeaderMenu();
+      await openNotifications();
+      expect(
+        screen.getByRole('menuitemradio', { name: 'All activity' }),
+      ).toHaveAttribute('aria-checked', 'true');
+      expect(
+        screen.getByRole('menuitemradio', { name: 'Default' }),
+      ).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('keeps the name, the state and the agent in sight once the header scrolls away', async () => {
+      // ShellPage's compact header: the same header, at the top of the view
+      // while the conversation is read. Where the session runs and when it
+      // started stay out of it.
+      const observer = mockIntersectionObserver();
+      try {
+        await renderShell();
+
+        act(() => observer.report('above'));
+
+        const header = screen.getByTestId('shell-page-header');
+        expect(header).toHaveAttribute('data-compact');
+        // Still the one h1, its rename button and nothing twice.
+        expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+        expect(
+          within(header).getByRole('button', {
+            name: 'Rename session "Which GitHub issues..."',
+          }),
+        ).toBeVisible();
+        expect(within(header).getByText('Working')).toBeVisible();
+        expect(
+          within(header).getByRole('link', { name: 'Issue tracker' }),
+        ).toBeVisible();
+        expect(
+          screen.getAllByRole('switch', { name: 'Show tool activity' }),
+        ).toHaveLength(1);
+        expect(screen.getByTestId('installation-chip')).not.toBeVisible();
+        expect(screen.getByText(/^Started/)).not.toBeVisible();
+      } finally {
+        observer.restore();
+      }
+    });
+
     /** The "Show tool activity" switch on the session's meta line (S9). */
     const toolActivitySwitch = () =>
       screen.getByRole('switch', { name: 'Show tool activity' });
@@ -2846,8 +2934,10 @@ describe('SessionDetailPage', () => {
       await renderShell();
 
       const started = screen.getByText(/^Started/);
-      // The badge row under the title holds both, in that order.
-      expect(started.parentElement).toContainElement(toolActivitySwitch());
+      // The header holds both, the switch after the start.
+      const header = screen.getByTestId('shell-page-header');
+      expect(header).toContainElement(started);
+      expect(header).toContainElement(toolActivitySwitch());
       expect(
         started.compareDocumentPosition(toolActivitySwitch()) &
           Node.DOCUMENT_POSITION_FOLLOWING,
@@ -2871,6 +2961,91 @@ describe('SessionDetailPage', () => {
         screen.queryByRole('button', { name: /Used 2 tools/ }),
       ).not.toBeInTheDocument();
       expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+    });
+
+    describe('toggled while reading, from the compact header', () => {
+      let observer: ReturnType<typeof mockIntersectionObserver>;
+      let scrollBy: jest.SpyInstance;
+      let rect: jest.SpyInstance;
+      beforeEach(() => {
+        observer = mockIntersectionObserver();
+        scrollBy = jest
+          .spyOn(window, 'scrollBy')
+          .mockImplementation(() => undefined);
+        // jsdom lays nothing out. The agent's reply is the entry in view;
+        // every work summary is laid out above it, 80px each, and the rest
+        // is far above the view.
+        const summaries = () =>
+          document.querySelectorAll('[data-testid="timeline-work-summary"]')
+            .length;
+        rect = jest
+          .spyOn(Element.prototype, 'getBoundingClientRect')
+          .mockImplementation(function layout(this: Element) {
+            const top = this.matches('[data-testid="timeline-agent-message"]')
+              ? 200 + summaries() * 80
+              : -1000;
+            return {
+              top,
+              bottom: top + 40,
+              left: 0,
+              right: 0,
+              width: 0,
+              height: 40,
+              x: 0,
+              y: top,
+              toJSON: () => ({}),
+            };
+          });
+      });
+      afterEach(() => {
+        rect.mockRestore();
+        scrollBy.mockRestore();
+        observer.restore();
+      });
+
+      it('keeps the reply being read where it is on screen', async () => {
+        await renderShell();
+        act(() => observer.report('above'));
+        const hidden =
+          document.querySelectorAll('[data-testid="timeline-work-summary"]')
+            .length * 80;
+        expect(hidden).toBeGreaterThan(0);
+
+        await userEvent.click(toolActivitySwitch());
+
+        await waitFor(() => expect(toolActivitySwitch()).not.toBeChecked());
+        // The summaries above it went, so the page follows the reply up.
+        expect(scrollBy).toHaveBeenCalledWith({
+          top: -hidden,
+          behavior: 'instant',
+        });
+
+        scrollBy.mockClear();
+        await userEvent.click(toolActivitySwitch());
+
+        await waitFor(() => expect(toolActivitySwitch()).toBeChecked());
+        expect(scrollBy).toHaveBeenCalledWith({
+          top: hidden,
+          behavior: 'instant',
+        });
+      });
+
+      it('stays compact while the conversation reflows around the switch', async () => {
+        await renderShell();
+        act(() => observer.report('above'));
+        const header = screen.getByTestId('shell-page-header');
+
+        await userEvent.click(toolActivitySwitch());
+        // The reflow nudges the conversation's start a few pixels into view
+        // and back: no flicker.
+        act(() => observer.report(8));
+        act(() => observer.report(-4));
+        act(() => observer.report(8));
+
+        expect(header).toHaveAttribute('data-compact');
+        await waitFor(() => expect(toolActivitySwitch()).not.toBeChecked());
+        expect(header).toHaveAttribute('data-compact');
+      });
     });
 
     it('says why the switch went back when the choice could not be stored', async () => {

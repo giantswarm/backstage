@@ -16,6 +16,7 @@ import { useLocation } from 'react-router-dom';
  * usable next to the shell. Keep in sync with the routes the shell's pages
  * register under.
  */
+// eslint-disable-next-line giantswarm/no-restricted-syntax -- the shell's own list of its URL roots
 const AGENT_AREA_PREFIXES = ['/agent-platform', '/customize'];
 
 /** Whether a pathname lies in the agent area (`/`, `/agent-platform/**`, `/customize/**`). */

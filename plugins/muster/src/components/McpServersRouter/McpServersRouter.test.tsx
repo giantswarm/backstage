@@ -66,7 +66,6 @@ describe('McpServersRouter', () => {
     ['/agent-platform/connectors/new/verify', 'Wizard test'],
     ['/agent-platform/connectors/jira', 'Connector page'],
     ['/agent-platform/connectors/jira/used-by', 'Connector page'],
-    ['/agent-platform/connectors/jira/settings', 'Connector page'],
     ['/agent-platform/connectors/jira/tools/search', 'Tool page'],
   ])('routes %s', async (path, text) => {
     await renderAt(path);

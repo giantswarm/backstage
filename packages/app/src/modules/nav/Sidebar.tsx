@@ -14,6 +14,7 @@ import {
   NavContentComponentProps,
 } from '@backstage/plugin-app-react';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
+import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import type { Portals } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { useLocation } from 'react-router-dom';
 import { SidebarLogo } from './SidebarLogo';
@@ -92,6 +93,25 @@ function CreateSidebarItem({ fallback }: { fallback?: string }) {
   return <SidebarItem icon={CreateComponentIcon} to={to} text="Create..." />;
 }
 
+/**
+ * The classic portal's cross-link into the Agent Platform shell, at the
+ * section's root route; nothing while that page is not mounted.
+ */
+function AgentPlatformSidebarItem({ newTab }: { newTab: boolean }) {
+  const rootLink = useRouteRef(agentPlatformPlugin.routes.root);
+  if (!rootLink) {
+    return null;
+  }
+  return (
+    <SidebarItem
+      icon={AndroidIcon}
+      to={rootLink()}
+      target={newTab ? '_blank' : undefined}
+      text="Agent Platform"
+    />
+  );
+}
+
 function ClassicSidebar({
   navItems,
   portals,
@@ -120,12 +140,9 @@ function ClassicSidebar({
   // is never drawn here.
   nav.take('page:agent-platform');
   const agentPlatformEntry = portals.agentPlatform ? (
-    <SidebarItem
+    <AgentPlatformSidebarItem
       key="agent-platform"
-      icon={AndroidIcon}
-      to="/agent-platform"
-      target={portals.platformPortal ? '_blank' : undefined}
-      text="Agent Platform"
+      newTab={portals.platformPortal}
     />
   ) : null;
 

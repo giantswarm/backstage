@@ -14,6 +14,15 @@ export { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-co
 export { usePinnedSessions } from './hooks/usePinnedSessions';
 export type { PinnedSession } from './hooks/usePinnedSessions';
 export { useFavoriteAgents } from './hooks/useFavoriteAgents';
+export {
+  useNotificationSeenMarks,
+  useSessionNotificationRecord,
+  useSessionNotificationSettings,
+} from './hooks/useSessionNotificationRecord';
+export type {
+  NotificationLevel,
+  SeenMarkTarget,
+} from './lib/notificationRecord';
 export type { FavoriteAgent } from './hooks/useFavoriteAgents';
 export { CommandPalette } from './components/CommandPalette';
 export type { CommandPaletteProps } from './components/CommandPalette';
@@ -41,6 +50,13 @@ export { WorkspaceOrganizationSelect } from './components/WorkspaceOrganizationS
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
 export { CustomizeModelPage } from './components/CustomizeModelPage';
 export { MODEL_PAGE_TABS } from './components/ModelDetailPage';
+export { parseSkillDetailPath } from './lib/skills';
+export {
+  isLegacyServeLink,
+  parseServeSeed,
+  serveSeedSearch,
+} from './lib/modelManagerServe';
+export type { ServeSeed } from './lib/modelManagerServe';
 export { WorkflowCreateAssist } from './components/WorkflowCreateAssist';
 export type { WorkflowCreateAssistProps } from './components/WorkflowCreateAssist';
 export { EnvironmentSelect } from './components/EnvironmentSelect';

@@ -55,15 +55,19 @@ function named(name: string, message: string): Error {
 }
 
 /**
- * The person's RBAC per namespace: `read` lists one model, `forbidden`
- * refuses, `broken` fails otherwise (a timeout, a 500).
+ * The person's RBAC per namespace: `read` lists one model, `empty` lists
+ * none, `forbidden` refuses, `broken` fails otherwise (a timeout, a 500).
  */
-function namespaces(rbac: Record<string, 'read' | 'forbidden' | 'broken'>) {
+function namespaces(
+  rbac: Record<string, 'read' | 'empty' | 'forbidden' | 'broken'>,
+) {
   mockFetchResourceList.mockImplementation(
     async ({ namespace }: { namespace: string }) => {
       switch (rbac[namespace] ?? 'forbidden') {
         case 'read':
           return [modelConfigJson('default-model-config', namespace)];
+        case 'empty':
+          return [];
         case 'broken':
           throw new Error('HTTP 500');
         default:
@@ -211,6 +215,46 @@ describe('useNamespacedResources', () => {
     const { result } = renderNamespaced(['gazelle']);
 
     await waitFor(() => expect(result.current.resources).toHaveLength(1));
+    expect(result.current.unreadInstallations).toEqual([]);
+  });
+
+  it('leaves an installation unread when agent-manager fails to answer and the platform namespace is empty', async () => {
+    mockGetInfo.mockRejectedValue(new Error('agent-manager is not reachable'));
+    namespaces({ kagent: 'empty' });
+
+    const { result } = renderNamespaced(['gazelle']);
+
+    await waitFor(() =>
+      expect(result.current.unreadInstallations).toEqual(['gazelle']),
+    );
+    expect(result.current.pendingInstallations).toEqual([]);
+    expect(result.current.clustersData).toEqual([]);
+  });
+
+  it('leaves an installation unread when muster could not say whether agent-manager runs and the platform namespace is empty', async () => {
+    mockPresence = 'unknown';
+    namespaces({ kagent: 'empty' });
+
+    const { result } = renderNamespaced(['gazelle']);
+
+    await waitFor(() =>
+      expect(result.current.unreadInstallations).toEqual(['gazelle']),
+    );
+    expect(mockGetInfo).not.toHaveBeenCalled();
+    expect(result.current.clustersData).toEqual([]);
+  });
+
+  it('reads an empty platform namespace as none where muster lists no agent-manager', async () => {
+    mockPresence = 'missing';
+    namespaces({ kagent: 'empty' });
+
+    const { result } = renderNamespaced(['gazelle']);
+
+    await waitFor(() =>
+      expect(result.current.clustersData).toEqual([
+        { cluster: 'gazelle', data: [] },
+      ]),
+    );
     expect(result.current.unreadInstallations).toEqual([]);
   });
 

@@ -161,6 +161,44 @@ const queryClientConfig: QueryClientConfig = {
  */
 const queryClient = new QueryClient(queryClientConfig);
 
+/**
+ * Reads the restored Kubernetes lists (Agents, ModelConfigs and the rest, all
+ * keyed `['cluster', …]`) again as soon as each is used. The blob is written
+ * at most every `PERSIST_THROTTLE_MS`, while `staleTime` trusts an entry for a
+ * minute: a load shortly after a list changed would otherwise restore the list
+ * as it was before the change and show it without a read -- "No agents yet"
+ * for an agent that is Ready.
+ *
+ * A restored list with rows still shows at once, marked stale, and the read
+ * replaces it. A restored empty list is reset to loading instead: shown, it is
+ * the one claim the read most often overturns ("nothing here").
+ */
+export async function markRestoredListsStale(
+  client: QueryClient,
+): Promise<void> {
+  const isList = (queryKey: QueryKey) => queryKey[0] === 'cluster';
+  const isEmpty = (data: unknown) => Array.isArray(data) && data.length === 0;
+  await Promise.all([
+    client.resetQueries({
+      predicate: query => isList(query.queryKey) && isEmpty(query.state.data),
+    }),
+    client.invalidateQueries({
+      predicate: query => isList(query.queryKey) && !isEmpty(query.state.data),
+    }),
+  ]);
+}
+
+// Once per page load: every mount of the provider restores, but only the
+// first restore comes from a blob older than this page's own reads.
+let restoredListsMarkedStale = false;
+function onRestored() {
+  if (restoredListsMarkedStale) {
+    return;
+  }
+  restoredListsMarkedStale = true;
+  markRestoredListsStale(queryClient);
+}
+
 export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   const persister = useMemo(
     () =>
@@ -174,6 +212,7 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   return (
     <PersistQueryClientProvider
       client={queryClient}
+      onSuccess={onRestored}
       persistOptions={{
         persister,
         maxAge,

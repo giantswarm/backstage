@@ -5,15 +5,28 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
+import {
+  ButtonIcon,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  SubmenuTrigger,
+} from '@backstage/ui';
+import { makeStyles } from '@material-ui/core/styles';
+import CheckIcon from '@material-ui/icons/Check';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
-import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
+import NotificationsNoneOutlinedIcon from '@material-ui/icons/NotificationsNoneOutlined';
+import {
+  MENU_WIDTH,
+  usePhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
 import { sessionsRouteRef } from '../../routes';
+import type { NotificationLevel } from '../../lib/notificationRecord';
 import { PinIcon } from '../PinIcon';
 import {
   describeSessionDeleteFailure,
@@ -22,6 +35,35 @@ import {
 
 /** Long enough to read one line, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
+
+/** The Notifications submenu's choices, in the order the menu lists them. */
+const NOTIFICATION_LEVEL_LABELS: ReadonlyArray<[NotificationLevel, string]> = [
+  ['default', 'Default'],
+  ['all', 'All activity'],
+  ['muted', 'Muted'],
+];
+
+/**
+ * A session's Notification level and its setter, for the menu's Notifications
+ * submenu. `level` is undefined until the stored level has been read, and
+ * then nothing is ticked.
+ */
+export type SessionNotificationsControl = {
+  level: NotificationLevel | undefined;
+  onChange: (level: NotificationLevel) => Promise<void>;
+};
+
+const useStyles = makeStyles({
+  // The tick's place, kept empty on the unticked choices so their labels
+  // line up with the ticked one.
+  tick: {
+    display: 'inline-flex',
+    width: '1rem',
+    height: '1rem',
+    flexShrink: 0,
+    '& svg': { width: '1rem', height: '1rem' },
+  },
+});
 
 /**
  * The session details page's header actions.
@@ -50,6 +92,7 @@ export function SessionActionsMenu({
   triggerLabel = 'Session actions',
   onDeleted,
   pin,
+  notifications,
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
@@ -76,8 +119,23 @@ export function SessionActionsMenu({
    * own.
    */
   pin?: { isPinned: boolean; onToggle: () => void };
+  /**
+   * The session's Notification level and its setter, for the menu's
+   * Notifications submenu (Default / All activity / Muted, the current one
+   * ticked). `level` is undefined until the stored level has been read, and
+   * then nothing is ticked. A failed write is reported here, in a toast.
+   * Absent: no Notifications item.
+   */
+  notifications?: SessionNotificationsControl;
 }) {
+  const classes = useStyles();
+  const isPhone = usePhoneLayout();
   const [isDeleteOpen, setDeleteOpen] = useState(false);
+  // The level just chosen, until its write settles: the menu closes on the
+  // choice, and a tick that moved only once the round trip ended changed the
+  // closing menu under the pointer, a flicker.
+  const [chosenLevel, setChosenLevel] = useState<NotificationLevel>();
+  const shownLevel = chosenLevel ?? notifications?.level;
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -124,6 +182,28 @@ export function SessionActionsMenu({
     onDeleted?.();
   };
 
+  const chooseLevel = (level: NotificationLevel) => {
+    if (!notifications || level === shownLevel) {
+      return;
+    }
+    setChosenLevel(level);
+    notifications
+      .onChange(level)
+      .catch(() => {
+        // The tick goes back to the stored level; say why the choice did not
+        // hold.
+        toastApi.post({
+          title: 'Could not change the session’s notifications',
+          status: 'danger',
+          timeout: TOAST_TIMEOUT_MS,
+        });
+      })
+      .finally(() =>
+        // Only if no later choice replaced this one.
+        setChosenLevel(current => (current === level ? undefined : current)),
+      );
+  };
+
   return (
     <>
       {pin && (
@@ -145,6 +225,49 @@ export function SessionActionsMenu({
           <MenuItem iconStart={<EditOutlinedIcon />} onAction={onRename}>
             Rename session…
           </MenuItem>
+          {notifications && (
+            <SubmenuTrigger>
+              <MenuItem iconStart={<NotificationsNoneOutlinedIcon />}>
+                Notifications
+              </MenuItem>
+              <Menu
+                maxWidth={MENU_WIDTH}
+                // Beside the menu, towards the page: the menu sits at the
+                // right edge, so the default end side has no room and the
+                // submenu would drop over the menu's own items. A phone is
+                // too narrow for two menus side by side; there it takes the
+                // default and opens over the menu.
+                placement={isPhone ? undefined : 'start top'}
+                aria-label="Notifications"
+                selectionMode="single"
+                disallowEmptySelection
+                selectedKeys={shownLevel ? [shownLevel] : []}
+                onSelectionChange={keys => {
+                  if (keys === 'all') {
+                    return;
+                  }
+                  const [level] = [...keys];
+                  if (level !== undefined) {
+                    chooseLevel(level as NotificationLevel);
+                  }
+                }}
+              >
+                {NOTIFICATION_LEVEL_LABELS.map(([level, label]) => (
+                  <MenuItem
+                    key={level}
+                    id={level}
+                    iconStart={
+                      <span className={classes.tick} aria-hidden>
+                        {level === shownLevel && <CheckIcon />}
+                      </span>
+                    }
+                  >
+                    {label}
+                  </MenuItem>
+                ))}
+              </Menu>
+            </SubmenuTrigger>
+          )}
           <MenuItem
             color="danger"
             iconStart={<DeleteOutlineIcon />}

@@ -1,6 +1,10 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import type { Query } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  type Query,
+} from '@tanstack/react-query';
 import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
 import { markAgentDeployed } from '../../lib/pendingAgentCreations';
@@ -92,11 +96,17 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
   // Harness reads answer empty, so `mockUseResources` sees only the Agents
   // and the carriers.
   const MockHarness = class {};
+  const actual = jest.requireActual(
+    '@giantswarm/backstage-plugin-kubernetes-react',
+  );
   return {
     // The real module underneath: the toolset read pulls in the muster plugin,
     // whose resource classes extend this library's KubeObject at import time.
-    ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-    Agent: class {},
+    ...actual,
+    Agent: class {
+      static group = actual.Agent.group;
+      static plural = actual.Agent.plural;
+    },
     Harness: MockHarness,
     ModelConfig: class {},
     RemoteMCPServer: class {},
@@ -224,8 +234,11 @@ function inventoryEntry(
   };
 }
 
+let queryClient: QueryClient;
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <AgentsDataProvider>{children}</AgentsDataProvider>
+  <QueryClientProvider client={queryClient}>
+    <AgentsDataProvider>{children}</AgentsDataProvider>
+  </QueryClientProvider>
 );
 
 const renderUseAgents = () => renderHook(() => useAgents(), { wrapper });
@@ -233,6 +246,7 @@ const renderUseAgents = () => renderHook(() => useAgents(), { wrapper });
 describe('AgentsDataProvider', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    queryClient = new QueryClient();
     mockUseResources.mockReset();
     mockNamespacedRead = {};
     mockAgentManagerPresence = {};
@@ -405,6 +419,46 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.rows).toHaveLength(1);
     expect(hook.current.isLoading).toBe(false);
     expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('reads the agents again on Retry, with what muster says about their namespaces', async () => {
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: [], beta: [] }, failed: ['gaggle'] }),
+    );
+    const { result: hook } = renderUseAgents();
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual(['gaggle']),
+    );
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+
+    await hook.current.retry();
+
+    const keys = invalidate.mock.calls.flatMap(([filters]) =>
+      filters?.queryKey ? [filters.queryKey] : [],
+    );
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        ['muster', 'installations'],
+        ['muster', 'agent-platform', 'mcp-servers', 'gaggle'],
+        ['muster', 'agent-platform', 'agent-manager-info', 'gaggle'],
+      ]),
+    );
+    const { group, plural } = jest.requireActual(
+      '@giantswarm/backstage-plugin-kubernetes-react',
+    ).Agent;
+    const agentList = ['cluster', 'gaggle', 'list', group, 'v1alpha3', plural];
+    const predicates = invalidate.mock.calls.flatMap(([filters]) =>
+      filters?.predicate ? [filters.predicate] : [],
+    );
+    const matches = (queryKey: unknown[]) =>
+      predicates.some(predicate => predicate({ queryKey } as never));
+    expect(matches(agentList)).toBe(true);
+    expect(matches([...agentList, '/apis/x/namespaces/team-a/agents'])).toBe(
+      true,
+    );
+    expect(
+      matches(['cluster', 'gaggle', 'list', group, 'v1alpha3', 'modelconfigs']),
+    ).toBe(false);
   });
 
   // A settled fleet must not claim to be loading just because a poll is in

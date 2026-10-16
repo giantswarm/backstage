@@ -264,8 +264,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Workflows' };
       break;
 
-    // The muster section's old home: no longer a tab, and not redirected
-    // (the page renders its tab row over an empty body). One name for every
+    // The muster section's old home: no longer a page, and not redirected
+    // (the address renders an empty content area). One name for every
     // such path, so a stale bookmark neither counts as the Agents page nor
     // brings its server and tool names along as views.
     case pathname === '/agent-platform/muster' ||
@@ -329,7 +329,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // What hangs off the Models tab: the serving views (`serving`, `capacity`,
-    // the agent-platform shell's `hosting`), `new`, and the `configs` paths an
+    // `cache`), `new`, and the `configs` paths an
     // older release's links still carry. Only the first segment, so anything
     // deeper collapses to what it belongs to instead of opening the dimension
     // up.

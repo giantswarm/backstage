@@ -3,6 +3,7 @@ import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SettingsIcon from '@material-ui/icons/Settings';
+import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import type { AgentShellNavItem } from '../../navItems';
 import { ProfileMenu } from './ProfileMenu';
 
@@ -32,6 +33,9 @@ async function renderMenu(
         }),
       ],
     ],
+    mountedRoutes: {
+      '/agent-platform/profile': agentPlatformPlugin.routes.profile,
+    },
   });
   await userEvent.click(
     screen.getByRole('button', { name: 'Profile and settings' }),

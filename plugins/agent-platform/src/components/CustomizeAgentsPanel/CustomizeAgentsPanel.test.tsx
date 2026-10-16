@@ -11,7 +11,11 @@ import {
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
-import { agentsRouteRef, installationsExternalRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  installationsExternalRouteRef,
+  newSessionExternalRouteRef,
+} from '../../routes';
 import { CustomizeAgentsPanel } from './CustomizeAgentsPanel';
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
@@ -154,6 +158,7 @@ const notes = row({
 function renderPanel(search = '', storage: StorageApi = mockApis.storage()) {
   return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
     mountedRoutes: {
+      '/': newSessionExternalRouteRef,
       '/agent-platform/agents': agentsRouteRef,
       '/installations': installationsExternalRouteRef,
     },
@@ -173,7 +178,10 @@ function RerenderablePanel() {
 
 function renderRerenderablePanel() {
   return renderInTestApp(<RerenderablePanel />, {
-    mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    mountedRoutes: {
+      '/': newSessionExternalRouteRef,
+      '/agent-platform/agents': agentsRouteRef,
+    },
     apis: [[storageApiRef, mockApis.storage()]],
   });
 }

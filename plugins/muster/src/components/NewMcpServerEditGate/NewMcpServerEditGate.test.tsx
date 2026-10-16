@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Link, Routes, Route } from 'react-router-dom';
+import {
+  Link,
+  Routes,
+  Route,
+  useLocation,
+  useSearchParams,
+} from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   renderInTestApp,
@@ -74,12 +80,24 @@ function instance(active: string, isLoading = false): MusterInstance {
   };
 }
 
-/** The section around the wizard, with the header's installation selector. */
+/**
+ * The section around the wizard, with the header's installation selector.
+ * Like the section's scope, it resolves to the URL's installation before the
+ * stored one, where that installation runs muster.
+ */
 function Section({ isLoading }: { isLoading?: boolean }) {
-  const [active, setActive] = useState('gazelle');
+  const [stored, setStored] = useState('gazelle');
+  const [searchParams] = useSearchParams();
+  const { pathname, search } = useLocation();
+  const fromUrl = searchParams.get('installation');
+  const active = fromUrl && fromUrl in servers ? fromUrl : stored;
   return (
     <MusterInstanceContext.Provider value={instance(active, isLoading)}>
-      <button onClick={() => setActive('golem')}>switch to golem</button>
+      <span>
+        at {pathname}
+        {search}
+      </span>
+      <button onClick={() => setStored('golem')}>switch to golem</button>
       <Link to="/agent-platform/connectors/new">new registration</Link>
       <Link to="/agent-platform/connectors/new?edit=miro">edit miro</Link>
       <Routes>
@@ -126,6 +144,45 @@ describe('NewMcpServerEditGate', () => {
     expect(screen.getByLabelText(/^Server address/)).toHaveValue(
       'https://mcp.miro.com/',
     );
+  });
+
+  it('edits the server on the installation the link names, through every step', async () => {
+    // gazelle is the stored scope and has a miro too; the link names golem's.
+    await renderSection(
+      '/agent-platform/connectors/new?edit=miro&installation=golem',
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Edit connector' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Server address/)).toHaveValue(
+      'https://golem.miro.com/',
+    );
+
+    // The next step keeps the installation, so the edit is not ended by the
+    // scope falling back to the stored gazelle.
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(
+      await screen.findByText(
+        'at /agent-platform/connectors/new/auth?edit=miro&installation=golem',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('servers-list')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Edit connector' }),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when the link names an installation the section cannot show', async () => {
+    await renderSection(
+      '/agent-platform/connectors/new?edit=miro&installation=offline',
+    );
+
+    expect(
+      await screen.findByText('Environment not available'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Connector not found')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Server address/)).not.toBeInTheDocument();
   });
 
   it('never opens the wizard for a GitOps-managed server, even by link', async () => {
@@ -199,5 +256,11 @@ describe('withEditParam', () => {
       '/servers/new/auth?edit=my%20server',
     );
     expect(withEditParam('/servers/new', undefined)).toBe('/servers/new');
+  });
+
+  it('names the installation on the link that starts an edit', () => {
+    expect(withEditParam('/servers/new', 'my server', 'gazelle')).toBe(
+      '/servers/new?edit=my%20server&installation=gazelle',
+    );
   });
 });

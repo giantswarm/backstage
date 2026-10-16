@@ -5,7 +5,7 @@ import type {
   Response,
 } from '@playwright/test';
 import { expect, signIn, test as base } from './fixtures';
-import { contextOptionsFor, lab, type LabUser } from './lab';
+import { LEFTOVER_AGE, contextOptionsFor, lab, type LabUser } from './lab';
 
 /**
  * Workspaces in a known state on the lab, for the workspace specs.
@@ -63,12 +63,7 @@ export const RUN = (() => {
   return run;
 })();
 
-/**
- * A fixture workspace of another run is left over once that run started this
- * long ago: no run of the suite takes so long, so a run going on at the same
- * time keeps what it uses.
- */
-export const LEFTOVER_AGE = 3 * 60 * 60_000;
+export { LEFTOVER_AGE };
 
 /** The person outside the lab's Organization: the `viewers` group. */
 export const NON_MEMBER = lab.users.viewer;

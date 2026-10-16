@@ -60,6 +60,56 @@ describe('KagentApiClient', () => {
     getCredentials.mockResolvedValue({ token: 'dex-token' });
   });
 
+  describe('listSessionsIfComplete', () => {
+    const record = (id: string) => ({
+      id,
+      name: id,
+      agent: { namespace: 'kagent', name: 'sre-agent' },
+      creator: 'dev@lab.local',
+    });
+
+    it('returns every session of a complete listing', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ sessions: [record('a'), record('b')] }),
+      );
+
+      const sessions = await buildClient().listSessionsIfComplete('gazelle');
+
+      expect(sessions?.map(session => session.sessionId)).toEqual(['a', 'b']);
+    });
+
+    it('returns an empty list for a person without sessions', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}));
+
+      await expect(
+        buildClient().listSessionsIfComplete('gazelle'),
+      ).resolves.toEqual([]);
+    });
+
+    it.each`
+      read                     | body
+      ${'skipped rows'}        | ${{ sessions: [record('a'), { name: 'no id' }] }}
+      ${'a truncated listing'} | ${{ sessions: [record('a')], truncated: true }}
+      ${'an unparseable body'} | ${'<html>'}
+    `('returns nothing for $read', async ({ body }) => {
+      fetchMock.mockResolvedValue(jsonResponse(body));
+
+      await expect(
+        buildClient().listSessionsIfComplete('gazelle'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws as listSessions does on an in-band error', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: true, data: null, message: 'database down' }),
+      );
+
+      await expect(
+        buildClient().listSessionsIfComplete('gazelle'),
+      ).rejects.toThrow('database down');
+    });
+  });
+
   describe('listSessions', () => {
     it('targets the installation and forwards the minted token', async () => {
       fetchMock.mockResolvedValue(jsonResponse(v0_9_9));

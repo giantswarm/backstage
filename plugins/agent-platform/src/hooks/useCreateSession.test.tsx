@@ -1,6 +1,10 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { analyticsApiRef } from '@backstage/core-plugin-api';
+import {
+  analyticsApiRef,
+  storageApiRef,
+  type StorageApi,
+} from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import {
   InvalidateQueryFilters,
@@ -71,6 +75,7 @@ const analyticsApi = mockApis.analytics.mock();
 function renderWith(
   entryPoint: SessionEntryPoint = 'agentDetail',
   options?: UseCreateSessionOptions,
+  storage: StorageApi = mockApis.storage(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
@@ -82,6 +87,7 @@ function renderWith(
       apis={[
         [musterApiRef, musterApi],
         [analyticsApiRef, analyticsApi],
+        [storageApiRef, storage],
       ]}
     >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -438,12 +444,77 @@ describe('useCreateSession', () => {
     expect(sessionId).toBe('new-session-id');
   });
 
+  it('records the started session as portal-started in the person’s notification record', async () => {
+    const storage = mockApis.storage();
+    const { result } = renderWith('agentDetail', undefined, storage);
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check the nodes' });
+    });
+
+    await waitFor(() =>
+      expect(
+        storage
+          .forBucket('agent-platform')
+          .snapshot('sessionNotificationSettings').value,
+      ).toEqual({
+        sessions: {
+          'gazelle/new-session-id': {
+            origin: 'portal',
+            at: expect.any(Number),
+          },
+        },
+      }),
+    );
+  });
+
+  it('records nothing when the start fails', async () => {
+    const storage = mockApis.storage();
+    callTool.mockRejectedValueOnce(new Error('agent-manager is down'));
+    const { result } = renderWith('agentDetail', undefined, storage);
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({ agent, prompt: 'Check the nodes' }),
+      ).rejects.toThrow('agent-manager is down');
+    });
+
+    expect(
+      storage
+        .forBucket('agent-platform')
+        .snapshot('sessionNotificationSettings').presence,
+    ).toBe('absent');
+  });
+
+  it('still starts the session when the record cannot be written', async () => {
+    const storage = mockApis.storage();
+    jest
+      .spyOn(storage.forBucket('agent-platform'), 'set')
+      .mockRejectedValue(new Error('user-settings is down'));
+    const { result } = renderWith('agentDetail', undefined, storage);
+
+    let sessionId: string | undefined;
+    await act(async () => {
+      sessionId = await result.current.createSession({
+        agent,
+        prompt: 'Check the nodes',
+      });
+    });
+
+    expect(sessionId).toBe('new-session-id');
+  });
+
   it('fails without the muster plugin, the only way to reach agent-manager', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false } },
     });
     const wrapper = ({ children }: PropsWithChildren<{}>) => (
-      <TestApiProvider apis={[[analyticsApiRef, analyticsApi]]}>
+      <TestApiProvider
+        apis={[
+          [analyticsApiRef, analyticsApi],
+          [storageApiRef, mockApis.storage()],
+        ]}
+      >
         <QueryClientProvider client={queryClient}>
           {children}
         </QueryClientProvider>

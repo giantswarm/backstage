@@ -37,8 +37,12 @@ export {
   SignInStatusText,
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
-export { useConnectorGroupPaths, useServerSignInStatus } from './hooks';
-export type { ConnectorGroupPaths } from './hooks';
+export {
+  useConnectorGroupPaths,
+  useServerSignInStatus,
+  useWorkflowPageLinks,
+} from './hooks';
+export type { ConnectorGroupPaths, WorkflowPageLinks } from './hooks';
 export type {
   ServerSignInStatusState,
   StatusText,
