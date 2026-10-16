@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/core-plugin-api';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   A2aTaskWire,
   AWAITING_INPUT_STATES,
@@ -8,6 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { findTurnTask, useStreamedTurn } from './useStreamedTurn';
+import { sessionTasksQueryKey } from './useSessionDetail';
 
 /** One question's answers, positionally matched to the questions asked. */
 export type QuestionAnswers = string[];
@@ -21,6 +23,12 @@ export type ConfirmationAnswer = {
   rejectionReason?: string;
   /** The user's words, for the transcript. */
   text?: string;
+  /**
+   * The status message that asked (`PendingConfirmation.askedIn`). Kept here
+   * only: never sent, it tells the question this answers apart from a later
+   * one in the same task.
+   */
+  askedIn?: string;
 };
 
 /** An answer submitted locally, before kagent's copy of it has been read back. */
@@ -62,15 +70,22 @@ function answerNotTakenError(): Error {
   return error;
 }
 
+type AnswerOutcome = 'taken' | 'waiting' | 'unknown';
+
 /**
  * What one read of the session says about an answer: `taken` once the answer
  * is in the history or the task it answered has moved on, `waiting` while that
- * task still waits without it, `unknown` when the read does not show the task.
+ * task still waits on the same request without it, `unknown` when the read
+ * does not show the task.
+ *
+ * Moved on includes a new request in the same task: a follow-up question keeps
+ * the task id, and it means the answer was taken whether or not the history
+ * carries it under the id it was sent with.
  */
 function readAnswerOutcome(
   tasks: A2aTaskWire[],
   answer: PendingAnswer,
-): 'taken' | 'waiting' | 'unknown' {
+): AnswerOutcome {
   if (findTurnTask(tasks, { sentMessageId: answer.messageId })) {
     return 'taken';
   }
@@ -79,7 +94,12 @@ function readAnswerOutcome(
   if (!state) {
     return 'unknown';
   }
-  return AWAITING_INPUT_STATES.has(state.key) ? 'waiting' : 'taken';
+  if (!AWAITING_INPUT_STATES.has(state.key)) {
+    return 'taken';
+  }
+  const asking = (task!.status?.message as { messageId?: unknown } | undefined)
+    ?.messageId;
+  return answer.askedIn && asking !== answer.askedIn ? 'taken' : 'waiting';
 }
 
 const delay = (ms: number) =>
@@ -122,38 +142,59 @@ export function useAnswerConfirmation(
   agent: { namespace: string; name: string } | undefined,
 ) {
   const kagentApi = useApi(kagentApiRef);
+  const queryClient = useQueryClient();
   const turn = useStreamedTurn(installation, sessionId);
+
+  // The check below outlives a page the person left: it stops there, since
+  // nothing would show its verdict.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
 
   /**
    * Whether kagent took an answer whose stream said nothing. False only when
-   * the last read, at the end of the wait, still shows the task waiting
-   * without it. A read that does not show the task cannot tell, nor can a wait
-   * whose reads all failed, and "cannot tell" is left to the poll rather than
-   * reported as a session that cannot continue.
+   * the last read that succeeded, at the end of the wait, still showed the
+   * task waiting without it. A read that does not show the task cannot tell,
+   * nor can a wait whose reads all failed, and "cannot tell" is left to the
+   * poll rather than reported as a session that cannot continue.
+   *
+   * Read through the conversation's own query, so the poll and this check
+   * share their reads and a fresher one reaches the timeline too.
    */
   const wasAnswerTaken = useCallback(
     async (answer: PendingAnswer): Promise<boolean> => {
       const deadline = Date.now() + ANSWER_TAKEN_WAIT_MS;
-      for (;;) {
-        let outcome: ReturnType<typeof readAnswerOutcome> | undefined;
+      let lastKnown: AnswerOutcome | undefined;
+      while (!unmountedRef.current) {
         try {
-          outcome = readAnswerOutcome(
-            await kagentApi.listSessionTasks(installation, sessionId),
+          lastKnown = readAnswerOutcome(
+            await queryClient.fetchQuery({
+              queryKey: sessionTasksQueryKey(installation, sessionId),
+              queryFn: () =>
+                kagentApi.listSessionTasks(installation, sessionId),
+              staleTime: 0,
+            }),
             answer,
           );
         } catch {
-          // This read cannot tell; the next one may.
+          // This read cannot tell; the next one may, and the last one that
+          // could still stands.
         }
-        if (outcome === 'taken' || outcome === 'unknown') {
+        if (lastKnown === 'taken' || lastKnown === 'unknown') {
           return true;
         }
         if (Date.now() >= deadline) {
-          return outcome !== 'waiting';
+          return lastKnown !== 'waiting';
         }
         await delay(ANSWER_TAKEN_POLL_MS);
       }
+      return true;
     },
-    [kagentApi, installation, sessionId],
+    [queryClient, kagentApi, installation, sessionId],
   );
   const [pending, setPending] = useState<PendingAnswer | null>(null);
   const [failed, setFailed] = useState<PendingAnswer | null>(null);

@@ -49,7 +49,10 @@ import {
   imagesUnsupportedReason,
 } from '../../lib/messageImages';
 import { useRenameSession } from '../../hooks/useRenameSession';
-import { useSendMessage } from '../../hooks/useSendMessage';
+import {
+  type PendingMessage,
+  useSendMessage,
+} from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
@@ -443,26 +446,34 @@ export function SessionDetailPage() {
    * The answer kagent did not take: the agent could not resume, and the
    * question it answered is still open (`useAnswerConfirmation`). Terminal like
    * a reported runtime loss — the card goes, the composer offers the new
-   * session — but only while that question stands: a resume that lands late
-   * moves the task on, and the page follows it.
+   * session — but only while **that** question stands: the same task, asking
+   * in the same status message. A resume that lands late moves the task on,
+   * and a follow-up question in the same task is a new one to answer.
    */
+  const failedAnswer = confirmation.failed;
   const answerNotTaken =
-    isAnswerNotTakenError(confirmation.error) && Boolean(pendingConfirmation);
+    isAnswerNotTakenError(confirmation.error) &&
+    failedAnswer !== null &&
+    pendingConfirmation !== undefined &&
+    pendingConfirmation !== null &&
+    failedAnswer.taskId === pendingConfirmation.taskId &&
+    failedAnswer.askedIn === pendingConfirmation.askedIn;
   /** Nothing more can happen in this session; the way on is a new one. */
   const cannotContinue = Boolean(runtimeLoss?.reported) || answerNotTaken;
-  /** The answer that was not taken, as a draft for the message box. */
-  const failedAnswer = confirmation.failed;
-  const answerDraft = useMemo<{
-    messageId: string;
-    text: string;
-    images?: ComposerImage[];
-  } | null>(
+  /**
+   * The answer that was not taken, as the first message of the new session.
+   * Only a question's answer: an approval's words (a decline's reason) mean
+   * nothing to a session that never saw the tool call. Shown in the notice
+   * and used when the box is left empty, never put in the box: a box holding
+   * it would outlive the notice once a late resume moves the task on.
+   */
+  const answerDraft = useMemo<PendingMessage | null>(
     () =>
-      answerNotTaken && failedAnswer?.text
-        ? {
-            messageId: `answer:${failedAnswer.messageId}`,
-            text: failedAnswer.text,
-          }
+      answerNotTaken &&
+      failedAnswer?.decision === 'approve' &&
+      failedAnswer.answers?.length &&
+      failedAnswer.text
+        ? { messageId: failedAnswer.messageId, text: failedAnswer.text }
         : null,
     [answerNotTaken, failedAnswer],
   );
@@ -1218,13 +1229,28 @@ export function SessionDetailPage() {
       !agentRow.isSessionPending &&
       !isConfirming,
     );
+    // The prototype's waiting caption, naming who waits on what and pointing
+    // at the card attached just above the box. The box is disabled meanwhile,
+    // because a plain message cannot answer the card: it would open a new
+    // turn. The same holds for a question kagent did not take when no new
+    // session can be offered in Send's place: the notice says where to go.
+    let composerDisabledReason: string | undefined;
+    if (isConfirming) {
+      composerDisabledReason = `${row.agentName || 'The agent'} is waiting for your ${
+        pendingConfirmation?.asks === 'input'
+          ? 'answer above.'
+          : 'decision above.'
+      }`;
+    } else if (answerNotTaken && !offersNewSession) {
+      composerDisabledReason = 'This session cannot continue.';
+    }
     bottomControl = (
       <div
         ref={setDockElement}
         className={classes.bottomDock}
         data-testid="session-dock"
       >
-        {runtimeLoss && (
+        {runtimeLoss && (runtimeLoss.reported || !answerNotTaken) && (
           <RuntimeLostNotice
             loss={runtimeLoss}
             agentName={row.agentName || undefined}
@@ -1233,12 +1259,13 @@ export function SessionDetailPage() {
             startError={creation.error?.message}
           />
         )}
-        {!runtimeLoss && answerNotTaken && (
+        {/* Over a merely suspected loss too, whose retry this case rules out. */}
+        {answerNotTaken && !runtimeLoss?.reported && (
           <AnswerNotTakenNotice
             agentName={row.agentName || undefined}
             offersNewSession={offersNewSession}
             newSessionBlocker={agentRow?.sessionBlocker}
-            hasDraft={Boolean(answerDraft)}
+            answer={answerDraft?.text}
             startError={creation.error?.message}
           />
         )}
@@ -1274,8 +1301,16 @@ export function SessionDetailPage() {
                 isUserScoped={isUserScoped}
                 onAnswer={answer => {
                   // Errors surface through the hook's `error`, which the card
-                  // renders above the choices it hands back.
-                  confirmation.answer(answer).catch(() => {});
+                  // renders above the choices it hands back. The request it
+                  // answers goes along, so a not-taken verdict is tied to it.
+                  confirmation
+                    .answer({
+                      ...answer,
+                      ...(pendingConfirmation?.askedIn && {
+                        askedIn: pendingConfirmation.askedIn,
+                      }),
+                    })
+                    .catch(() => {});
                 }}
               />
             ) : undefined
@@ -1288,19 +1323,7 @@ export function SessionDetailPage() {
           isStalled={isStalled}
           isFinished={Boolean(shownState && !shownState.isActive)}
           agentName={row.agentName || undefined}
-          // The prototype's waiting caption, naming who waits on what and
-          // pointing at the card attached just above the box. A plain message
-          // cannot answer it (it would open a new turn), which is why the box
-          // is disabled meanwhile.
-          disabledReason={
-            isConfirming
-              ? `${row.agentName || 'The agent'} is waiting for your ${
-                  pendingConfirmation?.asks === 'input'
-                    ? 'answer above.'
-                    : 'decision above.'
-                }`
-              : undefined
-          }
+          disabledReason={composerDisabledReason}
           // A conflict has its own notice above; the composer must not also
           // report it as a generic failure. Nor must a lost runtime: the
           // notice carries the runtime's words as its evidence.
@@ -1311,9 +1334,7 @@ export function SessionDetailPage() {
           // On failure the optimistic copy is dropped, so this is the only place the
           // user's text still exists. After a stalled turn was cancelled, the
           // message it never answered comes back the same way.
-          // An answer kagent did not take comes here too, as the draft of the
-          // new session the notice above points at.
-          restore={send.failed ?? redraft ?? answerDraft}
+          restore={send.failed ?? redraft}
           onStop={isConfirming ? undefined : stopTurn}
           isStopping={cancellation.isCancelling}
           details={costChip}
