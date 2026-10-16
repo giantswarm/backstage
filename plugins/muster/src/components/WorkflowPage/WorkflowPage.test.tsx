@@ -454,6 +454,9 @@ describe('WorkflowPage', () => {
       '/customize/workflows',
     );
     expect(await within(pageHeading()).findByText('Reads')).toBeInTheDocument();
+    expect(
+      within(pageHeading()).getByText('Reads').closest('[tabindex]'),
+    ).toHaveAccessibleDescription('Every step only reads.');
     // The derived hint comes off the tools endpoint, never the CR.
     // Off the catalogue the flow canvas reads too: no request of its own.
     expect(api.filterTools).toHaveBeenCalledTimes(1);
@@ -581,6 +584,17 @@ describe('WorkflowPage', () => {
     expect(
       canvas.getByRole('button', {
         name: /^Step 2: Apply the manifests, kubernetes · apply, Only if step 1 \(fetch\) succeeded/,
+      }),
+    ).toBeInTheDocument();
+    // Each step's name says what its tool does in its badge's words.
+    expect(
+      await canvas.findByRole('button', {
+        name: /^Step 1: Read the current pods, kubernetes · get_pods, reads(,|$)/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      canvas.getByRole('button', {
+        name: /^Step 2: Apply the manifests, .*, changes things(,|$)/,
       }),
     ).toBeInTheDocument();
     // The condition is drawn as a gate on the edge into step 2, not a fork.
@@ -1239,7 +1253,8 @@ describe('WorkflowPage', () => {
     expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
     // Not described: describing a tool muster lacks is an error, not an answer.
     expect(api.describeTool).not.toHaveBeenCalled();
-    expect(screen.queryByText('Reads')).toBeNull();
+    expect(within(pageHeading()).queryByText('Reads')).toBeNull();
+    expect(within(pageHeading()).queryByText('Changes things')).toBeNull();
   });
 
   it('lets the form describe a workflow a truncated catalogue stops short of', async () => {
@@ -1517,7 +1532,10 @@ describe('WorkflowPage', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Statistics need/)).toBeNull();
-    expect(screen.queryByText('Reads')).toBeNull();
+    const heading = (await screen.findByRole('heading', { level: 1 }))
+      .parentElement!;
+    expect(within(heading).queryByText('Reads')).toBeNull();
+    expect(within(heading).queryByText('Changes things')).toBeNull();
     expect(screen.queryByTestId('workflow-last-run')).toBeNull();
     expect(api.listExecutions).not.toHaveBeenCalled();
     expect(api.getWorkflowStats).not.toHaveBeenCalled();
@@ -1655,6 +1673,17 @@ describe('WorkflowPage at phone width', () => {
       name: /^Step 1: Read the current pods, kubernetes · get_pods/,
     });
     expect(first).toHaveAttribute('aria-expanded', 'false');
+    // Its name says what its tool does in its badge's words.
+    expect(
+      await within(steps).findByRole('button', {
+        name: /^Step 1: Read the current pods, kubernetes · get_pods, reads(,|$)/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(steps).getByRole('button', {
+        name: /^Step 2: Apply the manifests, .*, changes things(,|$)/,
+      }),
+    ).toBeInTheDocument();
     // The title is written out, never cut.
     expect(first).toHaveTextContent('Read the current pods');
 

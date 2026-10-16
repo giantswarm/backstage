@@ -184,7 +184,11 @@ where Flux reconciles the workflow, where in Git to change it.
 The Workflows list and a workflow's page say what a workflow does in the same
 badges a tool has: Reads or Changes things. muster marks a workflow read-only
 only when every tool its steps can reach is, so Reads holds for all its steps;
-a workflow without that mark shows Changes things.
+a workflow muster lists without that mark shows Changes things. Without a muster
+session, or where muster offers the person no tool for the workflow, no badge is
+shown. On a workflow, the badge's
+tooltip says so ("Every step only reads." or "At least one step can change
+things."), on hover, keyboard focus or a tap; a tool's badge has none.
 
 Run it (`/customize/workflows/<installation>/<name>/run`) runs the
 workflow as a tool's page runs a tool: muster exposes each workflow as the

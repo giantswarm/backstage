@@ -31,7 +31,7 @@ import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { SessionGate, useToolCatalogue, useWorkflowPageLinks } from '../shared';
-import { EffectBadge } from '../shared';
+import { WorkflowEffectBadge } from '../shared';
 import {
   LAST_RUN_LABELS,
   LAST_RUN_ORDER,
@@ -172,7 +172,9 @@ function WorkflowRows({
       // catalogue resolves suspends the whole update. A row without a known
       // hint stays empty, claiming nothing.
       cell: row => (
-        <Cell>{row.effect ? <EffectBadge effect={row.effect} /> : null}</Cell>
+        <Cell>
+          {row.effect ? <WorkflowEffectBadge effect={row.effect} /> : null}
+        </Cell>
       ),
     },
     {
@@ -201,7 +203,9 @@ function WorkflowRows({
         id: row.id,
         title: row.name,
         ...(href ? { href } : {}),
-        ...(row.effect ? { status: <EffectBadge effect={row.effect} /> } : {}),
+        ...(row.effect
+          ? { status: <WorkflowEffectBadge effect={row.effect} /> }
+          : {}),
         facts: [row.category, row.steps, row.runs, row.source],
         ...(row.description ? { description: row.description } : {}),
       };

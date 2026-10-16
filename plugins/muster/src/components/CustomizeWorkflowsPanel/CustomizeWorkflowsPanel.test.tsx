@@ -231,6 +231,10 @@ describe('CustomizeWorkflowsPanel', () => {
     const report = screen.getByRole('row', { name: /ticket-report/ });
     expect(within(report).getByText('support')).toBeInTheDocument();
     expect(await within(report).findByText('Reads')).toBeInTheDocument();
+    // The tool's words, with what they mean for a workflow's steps.
+    expect(
+      within(report).getByText('Reads').closest('[tabindex]'),
+    ).toHaveAccessibleDescription('Every step only reads.');
     expect(within(report).getByText('GitOps')).toBeInTheDocument();
 
     // Without a derived readOnlyHint the workflow can change things — the
@@ -239,6 +243,9 @@ describe('CustomizeWorkflowsPanel', () => {
     expect(
       await within(check).findByText('Changes things'),
     ).toBeInTheDocument();
+    expect(
+      within(check).getByText('Changes things').closest('[tabindex]'),
+    ).toHaveAccessibleDescription('At least one step can change things.');
     expect(within(check).getByText('Manually added')).toBeInTheDocument();
   });
 

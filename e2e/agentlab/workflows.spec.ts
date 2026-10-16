@@ -253,7 +253,7 @@ test('a workflow runs from its Run it tab with the tool page’s form, and shows
   // The badge beside the title, in the tools' words.
   await expect(
     admin
-      .getByRole('heading', { level: 1 })
+      .getByRole('heading', { level: 1, name: WORKFLOW, exact: true })
       .locator('..')
       .getByText('Reads', { exact: true }),
   ).toBeVisible();

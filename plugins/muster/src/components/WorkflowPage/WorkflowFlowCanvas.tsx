@@ -23,7 +23,7 @@ import {
 import { musterApiRef } from '../../apis';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { WorkflowStep, WorkflowSubStep } from '../../lib/k8s';
-import type { ToolEffect } from '../../lib/toolAnnotations';
+import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { executionOutcome } from '../../lib/workflowDisplay';
 import {
@@ -540,7 +540,7 @@ function StepNode({
         aria-label={accessibleName(node, [
           line,
           gate,
-          effect && (effect === 'changes' ? 'changes things' : 'reads'),
+          effect && TOOL_EFFECT_LABELS[effect].toLowerCase(),
           node.allowFailure && 'may fail',
           overlay && runSpoken(overlay),
         ])}
