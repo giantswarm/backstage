@@ -485,11 +485,32 @@ export async function connectToMuster(page: Page, ready: Locator) {
 }
 
 /**
+ * Opens the home screen on the agents as they are now. The portal writes its
+ * cache to localStorage at most every 30 s and trusts an entry for 60 s, so a
+ * load right after the fixture agent turned Ready elsewhere would restore the
+ * list from before it existed and not ask again: the persisted cache is
+ * dropped first, and the home reads the roster afresh.
+ */
+export async function openHome(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    window.localStorage.removeItem('agent-platform-react-query-cache'),
+  );
+  await open(page, '/');
+}
+
+/**
+ * The notice's memory of a **Not now** for the browser session
+ * (`HIDDEN_NOTICE_STORAGE_KEY` in the muster plugin).
+ */
+const MCP_AUTH_NOTICE_HIDDEN_KEY = 'muster.mcpAuthNotice.hidden';
+
+/**
  * Hides the MCP sign-in notice with its **Not now**, as a person does who has
  * no use for the connector it names: it floats over the foot of every page
  * while a connector waits for the person's sign-in (the lab's
- * `lab-oauth-fixture` does), and on a phone covers what is there. It stays
- * hidden for the browser session.
+ * `lab-oauth-fixture` does), and on a phone covers what is there. Hidden on
+ * this page only: the choice is forgotten again, so the next page load of the
+ * worker's shared page shows the notice as a new browser session would.
  */
 export async function dismissMcpAuthNotice(page: Page): Promise<void> {
   const notice = page.getByRole('complementary', {
@@ -498,6 +519,10 @@ export async function dismissMcpAuthNotice(page: Page): Promise<void> {
   if (await notice.isVisible()) {
     await notice.getByRole('button', { name: 'Not now' }).click();
     await expect(notice).toBeHidden();
+    await page.evaluate(
+      key => window.sessionStorage.removeItem(key),
+      MCP_AUTH_NOTICE_HIDDEN_KEY,
+    );
   }
 }
 
