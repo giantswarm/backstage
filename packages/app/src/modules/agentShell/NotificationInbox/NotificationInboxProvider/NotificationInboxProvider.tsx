@@ -230,8 +230,9 @@ function Inbox({ children }: { children: ReactNode }) {
 /**
  * The Notification inbox of the Agent Platform shell: rows derived in the
  * browser from the shell's own reads (the person's sessions, and muster's
- * sign-in status for their home installation), the unread count in the bell and the document title, toasts in the visible
- * tab and opt-in desktop notifications.
+ * sign-in status for their home installation), the unread count in the bell
+ * and the document title, toasts in the visible tab and opt-in desktop
+ * notifications.
  *
  * Mount it once per shell, around the rail: the bell and the phone's Profile
  * menu read it, and a second mount would announce every row twice. Off the
