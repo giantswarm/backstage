@@ -139,7 +139,11 @@ under Recreate. Takes the root context.
 {{- $strategy := .Values.strategy | default dict -}}
 {{- $surge := 0 -}}
 {{- if ne (toString ($strategy.type | default "RollingUpdate")) "Recreate" -}}
-{{- $maxSurge := (($strategy.rollingUpdate | default dict).maxSurge) | default "25%" | toString -}}
+{{- $rollingUpdate := $strategy.rollingUpdate | default dict -}}
+{{- $maxSurge := "25%" -}}
+{{- if hasKey $rollingUpdate "maxSurge" -}}
+{{- $maxSurge = toString $rollingUpdate.maxSurge -}}
+{{- end -}}
 {{- if hasSuffix "%" $maxSurge -}}
 {{- $percent := trimSuffix "%" $maxSurge | int -}}
 {{- $surge = div (add (mul $replicas $percent) 99) 100 -}}

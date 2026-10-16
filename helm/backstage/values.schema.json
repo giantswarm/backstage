@@ -2748,7 +2748,7 @@
                                 },
                                 "pluginsWithDatabase": {
                                     "type": "integer",
-                                    "description": "Backend plugins that open a database pool in the image. An image that adds one raises it.",
+                                    "description": "Backend plugins that open a database pool in the image: every backend plugin does, for its service-to-service keys at least, PagerDuty's included. An image that adds a plugin raises it.",
                                     "minimum": 1
                                 }
                             }

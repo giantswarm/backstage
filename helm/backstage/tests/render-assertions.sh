@@ -307,25 +307,25 @@ expect_pool() {
     failed=1
   fi
 }
-# (200 - 3) / ((1 + 1) × 12): one replica, the default 25 % surge rounds up.
-expect_pool postgresql '{"max":8,"min":0}'
+# (300 - 3) / ((1 + 1) × 25): one replica, the default 25 % surge rounds up.
+expect_pool postgresql '{"max":5,"min":0}'
 render pool-surge --set database.engine=postgresql --set replicas=2
-expect_pool pool-surge '{"max":5,"min":0}'
+expect_pool pool-surge '{"max":3,"min":0}'
 render pool-percent --set database.engine=postgresql --set replicas=4 --set-string 'strategy.rollingUpdate.maxSurge=50%'
-expect_pool pool-percent '{"max":2,"min":0}'
+expect_pool pool-percent '{"max":1,"min":0}'
 render pool-no-surge --set database.engine=postgresql --set replicas=3 --set strategy.rollingUpdate.maxSurge=0
-expect_pool pool-no-surge '{"max":4,"min":0}'
+expect_pool pool-no-surge '{"max":3,"min":0}'
 render pool-recreate --set database.engine=postgresql --set replicas=2 --set strategy.type=Recreate
-expect_pool pool-recreate '{"max":8,"min":0}'
+expect_pool pool-recreate '{"max":5,"min":0}'
 render pool-set --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.max=3
 expect_pool pool-set '{"max":3,"min":0}'
-render_fails pool-too-large 'a pool of 10 needs 360 connections, more than max_connections 200 less 3 reserved' --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.max=10
+render_fails pool-too-large 'a pool of 10 needs 750 connections, more than max_connections 300 less 3 reserved' --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.max=10
 render_fails pool-too-many-pods '25 pods during a rollout' --set database.engine=postgresql --set replicas=20
-render pool-raised --set database.engine=postgresql --set replicas=20 --set database.postgresql.maxConnections=400
+render pool-raised --set database.engine=postgresql --set replicas=20 --set database.postgresql.maxConnections=700
 expect_pool pool-raised '{"max":1,"min":0}'
 cnpg_parameters=$(yq -o=json -I=0 'select(.kind == "Cluster") | .spec.postgresql.parameters' "${work_dir}/pool-raised.yaml")
-if [ "${cnpg_parameters}" != '{"max_connections":"400","superuser_reserved_connections":"3"}' ]; then
-  echo "FAIL: pool-raised: the CNPG parameters are ${cnpg_parameters}, want max_connections 400 with 3 reserved"
+if [ "${cnpg_parameters}" != '{"max_connections":"700","superuser_reserved_connections":"3"}' ]; then
+  echo "FAIL: pool-raised: the CNPG parameters are ${cnpg_parameters}, want max_connections 700 with 3 reserved"
   failed=1
 fi
 

@@ -325,7 +325,7 @@ database:
 
     # @schema type:integer;minimum:1
     # -- PostgreSQL `max_connections` of the CNPG cluster. The backend pods running at once during a rollout (replicas plus the rolling update's surge) share it, less `superuserReservedConnections`: the chart sizes each plugin's pool to fit, and fails the render when `pool.max` does not fit.
-    maxConnections: 200
+    maxConnections: 300
 
     # @schema type:integer;minimum:0
     # -- PostgreSQL `superuser_reserved_connections` of the CNPG cluster: the slots kept for the operator's superuser, which the backend's `app` role never gets.
@@ -338,8 +338,8 @@ database:
       max: 0
 
       # @schema type:integer;minimum:1
-      # -- Backend plugins that open a database pool in the image. An image that adds one raises it.
-      pluginsWithDatabase: 12
+      # -- Backend plugins that open a database pool in the image: every backend plugin does, for its service-to-service keys at least, PagerDuty's included. An image that adds a plugin raises it.
+      pluginsWithDatabase: 25
 
     # @schema type:string
     # -- Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation.
