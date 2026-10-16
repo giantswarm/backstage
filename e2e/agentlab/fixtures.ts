@@ -511,9 +511,10 @@ export async function openHome(admin: Page): Promise<void> {
  * what was unread at the tab's first read ("2 notifications need your
  * attention") and a new MCP sign-in row's ("1 MCP server needs your
  * sign-in"). While a connector waits for the person's sign-in (the lab's
- * `lab-oauth-fixture` does), a fresh tab raises one, at the foot of the page,
- * over what is there: a docked form footer, on a phone the foot of the
- * content.
+ * `lab-oauth-fixture` does), a fresh tab raises one at the foot of the page.
+ * It stands clear of the bottom bar, a docked composer and a wizard's footer,
+ * but covers the foot of the content: on a phone, Technical details at the
+ * foot of Review.
  */
 function inboxToast(page: Page): Locator {
   return page
@@ -568,8 +569,8 @@ export async function createAgentInWizard(
     onStep?: (step: 'Details' | 'Review') => Promise<void>;
   } = {},
 ): Promise<string> {
-  // A toast covers the footer's Continue and, on a phone, Technical details
-  // at the foot of Review.
+  // A toast covers the foot of the content: on a phone, Technical details at
+  // the foot of Review.
   await dismissInboxToasts(page);
   // --- Step 1: Details -----------------------------------------------------
   await open(page, '/customize/agents/new');

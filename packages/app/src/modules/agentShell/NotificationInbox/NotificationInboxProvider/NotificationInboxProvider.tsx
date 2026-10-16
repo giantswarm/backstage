@@ -45,6 +45,12 @@ export type NotificationInboxValue = {
   unreadCount: number;
   /** Marks a row read because the person opened it. */
   markRead: (row: InboxRow) => void;
+  /**
+   * Opens a row that acts in place (its `action`, such as the MCP sign-in
+   * row's Sign in): marks it read, closes the overlay and then acts. The one
+   * path for its button, its toast and its desktop notification.
+   */
+  openInPlace: (row: InboxRow) => void;
   /** "Mark all read": every unread row, in one write. */
   markAllRead: () => Promise<void>;
   /** The overlay (a popover on the rail, a sheet on a phone). */
@@ -92,7 +98,9 @@ function Inbox({ children }: { children: ReactNode }) {
     () => new Set([...source.subjects, ...mcp.subjects]),
     [source.subjects, mcp.subjects],
   );
-  const ready = source.ready && mcp.ready;
+  // The sessions decide the first read; the MCP sign-in row joins when
+  // muster answers, quietly unread if that is after it.
+  const { ready } = source;
   const unreadCount = rows.filter(row => row.unread).length;
 
   const [isOpen, setOpenState] = useState(false);
@@ -137,19 +145,42 @@ function Inbox({ children }: { children: ReactNode }) {
   }, []);
   const openOverlay = useCallback(() => setOpen(true), [setOpen]);
 
-  // The MCP sign-in row opened from a link (its toast, its desktop
-  // notification): read, and the sign-in dialog over the page.
+  // A row that acts in place: read, the overlay closed, and its action once
+  // the overlay is gone, so the dialog it opens is not handed the focus the
+  // closing overlay gives back.
+  const [pendingAction, setPendingAction] = useState<() => void>();
+  const openInPlace = useCallback(
+    (row: InboxRow) => {
+      markRead(row);
+      setOpen(false);
+      const act = row.action?.onAction;
+      if (act) {
+        setPendingAction(() => act);
+      }
+    },
+    [markRead, setOpen],
+  );
+  useEffect(() => {
+    if (!pendingAction || isOpen) {
+      return undefined;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      setPendingAction(undefined);
+      pendingAction();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingAction, isOpen]);
+
+  // The MCP sign-in row from a link (its toast, its desktop notification,
+  // the address): opened in place, if it is still there.
   const latestRows = useRef(rows);
   latestRows.current = rows;
-  const { openSignIn } = mcp;
   const openMcpSignIn = useCallback(() => {
     const row = latestRows.current.find(each => each.kind === 'mcpSignIn');
     if (row) {
-      markRead(row);
+      openInPlace(row);
     }
-    setOpen(false);
-    openSignIn();
-  }, [markRead, setOpen, openSignIn]);
+  }, [openInPlace]);
 
   // Links that act where the person is, instead of opening a page.
   const hashActions = useMemo<Readonly<Record<string, () => void>>>(
@@ -177,16 +208,20 @@ function Inbox({ children }: { children: ReactNode }) {
   useToastLinkRouting(hashActions);
 
   // `#notifications` or `#mcp-sign-in` in the address (a link the toasts'
-  // routing did not take) acts once and leaves the address as it was.
+  // routing did not take, a new tab, a reload) acts once and leaves the
+  // address as it was. `#mcp-sign-in` waits for the sign-in status: until it
+  // is read there is no row to open, nor an installation to sign in to.
   const latestHashActions = useRef(hashActions);
   latestHashActions.current = hashActions;
+  const isMcpRead = mcp.ready;
   useEffect(() => {
     const action = latestHashActions.current[hash];
-    if (action) {
-      action();
-      navigate({ pathname, search }, { replace: true });
+    if (!action || (hash === MCP_SIGN_IN_HASH && !isMcpRead)) {
+      return;
     }
-  }, [hash, pathname, search, navigate]);
+    action();
+    navigate({ pathname, search }, { replace: true });
+  }, [hash, pathname, search, navigate, isMcpRead]);
 
   // The session on screen counts as seen: opening a session marks its row
   // read. Only while the person works in this window — a session parked in a
@@ -214,12 +249,23 @@ function Inbox({ children }: { children: ReactNode }) {
       ready,
       unreadCount,
       markRead,
+      openInPlace,
       markAllRead,
       isOpen,
       setOpen,
       desktop,
     }),
-    [rows, ready, unreadCount, markRead, markAllRead, isOpen, setOpen, desktop],
+    [
+      rows,
+      ready,
+      unreadCount,
+      markRead,
+      openInPlace,
+      markAllRead,
+      isOpen,
+      setOpen,
+      desktop,
+    ],
   );
 
   return (

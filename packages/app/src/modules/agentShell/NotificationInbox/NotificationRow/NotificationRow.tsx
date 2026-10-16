@@ -5,6 +5,7 @@ import {
   MenuItem,
   MenuTrigger,
   Text,
+  VisuallyHidden,
 } from '@backstage/ui';
 import { Link as AriaLink } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
@@ -31,7 +32,8 @@ const useStyles = makeStyles({
   unread: {
     background: 'var(--bui-bg-neutral-2)',
   },
-  link: {
+  // The row's content, a link or (for a row that acts in place) not.
+  content: {
     flex: '1 1 auto',
     minWidth: 0,
     display: 'flex',
@@ -39,6 +41,8 @@ const useStyles = makeStyles({
     gap: 'var(--bui-space-3)',
     // 44px and up under a thumb: two lines of text and the padding.
     padding: 'var(--bui-space-2) var(--bui-space-1) var(--bui-space-2) 14px',
+  },
+  link: {
     color: 'var(--bui-fg-primary)',
     textDecoration: 'none',
     borderRadius: 'var(--bui-radius-2)',
@@ -47,15 +51,6 @@ const useStyles = makeStyles({
     '&[data-focus-visible]': {
       boxShadow: 'inset 0 0 0 2px var(--bui-ring)',
     },
-  },
-  // A row that acts in place: the same layout, not a link.
-  content: {
-    flex: '1 1 auto',
-    minWidth: 0,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--bui-space-3)',
-    padding: 'var(--bui-space-2) var(--bui-space-1) var(--bui-space-2) 14px',
   },
   unreadDot: {
     position: 'absolute',
@@ -106,14 +101,6 @@ const useStyles = makeStyles({
     flex: '0 0 auto',
     marginRight: 'var(--bui-space-2)',
   },
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    overflow: 'hidden',
-    clip: 'rect(0 0 0 0)',
-    whiteSpace: 'nowrap',
-  },
 });
 
 const ICONS = {
@@ -124,8 +111,8 @@ const ICONS = {
  * One row of the Notification inbox: the agent's Avatar, what happened, the
  * session's name, how long ago and a state chip, with its own ⋯ menu.
  * Clicking it opens what it is about; `onOpen` marks it read. A row with an
- * `action` (the MCP sign-in row's Sign in) is not a link: its button opens
- * it, in place.
+ * `action` (the MCP sign-in row's Sign in) is not a link: its button calls
+ * `onOpen`, which opens it in place.
  */
 export function NotificationRow({
   row,
@@ -170,7 +157,7 @@ export function NotificationRow({
           weight={row.unread ? 'bold' : 'regular'}
         >
           {row.action && row.unread && (
-            <span className={classes.srOnly}>Unread: </span>
+            <VisuallyHidden>Unread: </VisuallyHidden>
           )}
           {row.title}
         </Text>
@@ -203,10 +190,7 @@ export function NotificationRow({
             size="small"
             className={classes.action}
             aria-label={action.accessibleLabel}
-            onPress={() => {
-              onOpen();
-              action.onAction();
-            }}
+            onPress={onOpen}
           >
             {action.label}
           </Button>
@@ -215,7 +199,7 @@ export function NotificationRow({
         <AriaLink
           href={row.href}
           onPress={onOpen}
-          className={classes.link}
+          className={`${classes.content} ${classes.link}`}
           aria-label={row.unread ? `Unread: ${row.title}` : undefined}
         >
           {content}

@@ -15,6 +15,7 @@ import { homeRouteRef } from '../routes';
 import { DESKTOP_NOTIFICATIONS_STORAGE_KEY } from './hooks/useDesktopNotifications';
 import { fakeInbox, type FakeSession } from './testing/fakeInbox';
 import { TOAST_BURST } from './hooks/useInboxInterruptions';
+import { NARROW_RETRY_MS } from './hooks/useMcpSignInRowSource';
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef, createSubRouteRef } = jest.requireActual(
@@ -638,7 +639,11 @@ describe('Notification inbox', () => {
     /** muster's next sign-in status read answers with `servers`. */
     async function readMcp(
       servers: Array<string | [string, string]>,
-      options?: { isAvailable?: boolean },
+      options?: {
+        connected?: string[];
+        isAvailable?: boolean;
+        isRead?: boolean;
+      },
     ) {
       await act(async () => {
         fakeInbox.setMcpWaiting(servers, options);
@@ -769,24 +774,108 @@ describe('Notification inbox', () => {
       ).toBeInTheDocument();
 
       // Signed in to github: still read, and the mark keeps only what waits.
-      await readMcp(['kubernetes']);
+      await readMcp(['kubernetes'], { connected: ['github'] });
       expect(
         screen.getByRole('button', { name: 'Notifications' }),
       ).toBeInTheDocument();
       await waitFor(() =>
         expect(fakeInbox.mcpSeenMark()).toBe('mcp-sign-in:gazelle:kubernetes'),
       );
-      expect(fakeInbox.writes.markSeen).toHaveBeenCalledWith({
-        kind: 'mcpSignIn',
-        installation: 'gazelle',
-        mark: 'mcp-sign-in:gazelle:kubernetes',
-      });
+      expect(fakeInbox.writes.replaceSeenMark).toHaveBeenCalledWith(
+        {
+          kind: 'mcpSignIn',
+          installation: 'gazelle',
+          mark: 'mcp-sign-in:gazelle:kubernetes',
+        },
+        MARK,
+      );
 
       // github's grant expires: it waits again, and the row is unread.
       await readMcp(['kubernetes', 'github']);
       expect(
         screen.getByRole('button', { name: 'Notifications, 1 unread' }),
       ).toBeInTheDocument();
+    });
+
+    it('keeps a server in the seen mark that only left muster’s list, not signed in to', async () => {
+      fakeInbox.setMcpWaiting(['kubernetes', 'github']);
+      fakeInbox.seeElsewhere({
+        kind: 'mcpSignIn',
+        installation: 'gazelle',
+        mark: MARK,
+      });
+      await renderShell();
+      expect(
+        await screen.findByRole('button', { name: 'Notifications' }),
+      ).toBeInTheDocument();
+
+      // muster restarted and has not registered github yet.
+      await readMcp(['kubernetes']);
+      await readMcp(['kubernetes', 'github']);
+      expect(fakeInbox.writes.replaceSeenMark).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole('button', { name: 'Notifications' }),
+      ).toBeInTheDocument();
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('keeps a seen mark written since elsewhere when it narrows', async () => {
+      fakeInbox.setMcpWaiting(['kubernetes', 'github']);
+      fakeInbox.seeElsewhere({
+        kind: 'mcpSignIn',
+        installation: 'gazelle',
+        mark: MARK,
+      });
+      // Another device reads the row with jira while this tab still has the
+      // older mark: the write finds a mark it did not read and keeps it.
+      fakeInbox.writes.replaceSeenMark.mockImplementationOnce(async () => {
+        fakeInbox.seeElsewhere({
+          kind: 'mcpSignIn',
+          installation: 'gazelle',
+          mark: 'mcp-sign-in:gazelle:jira,kubernetes',
+        });
+      });
+      await renderShell();
+
+      await readMcp(['kubernetes'], { connected: ['github'] });
+      await waitFor(() =>
+        expect(fakeInbox.mcpSeenMark()).toBe(
+          'mcp-sign-in:gazelle:jira,kubernetes',
+        ),
+      );
+    });
+
+    it('tries a failed narrowing again', async () => {
+      jest.useFakeTimers({ doNotFake: ['requestAnimationFrame'] });
+      try {
+        fakeInbox.setMcpWaiting(['kubernetes', 'github']);
+        fakeInbox.seeElsewhere({
+          kind: 'mcpSignIn',
+          installation: 'gazelle',
+          mark: MARK,
+        });
+        fakeInbox.writes.replaceSeenMark.mockRejectedValueOnce(
+          new Error('offline'),
+        );
+        await renderShell();
+
+        await readMcp(['kubernetes'], { connected: ['github'] });
+        await waitFor(() =>
+          expect(fakeInbox.writes.replaceSeenMark).toHaveBeenCalledTimes(1),
+        );
+        expect(fakeInbox.mcpSeenMark()).toBe(MARK);
+
+        await act(async () => {
+          jest.advanceTimersByTime(NARROW_RETRY_MS);
+        });
+        await waitFor(() =>
+          expect(fakeInbox.mcpSeenMark()).toBe(
+            'mcp-sign-in:gazelle:kubernetes',
+          ),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('is covered by "Mark all read", in the same write as the session rows', async () => {
@@ -822,16 +911,21 @@ describe('Notification inbox', () => {
       expect(toastTitles()).toEqual(['2 notifications need your attention']);
     });
 
-    it('waits for the sign-in status before the first read', async () => {
-      fakeInbox.setMcpWaiting([], { isRead: false });
+    it('does not hold the first read up: a status that answers after it is quietly unread', async () => {
+      fakeInbox.setMcpWaiting([], { isRead: false, isAvailable: false });
+      fakeInbox.setSessions([
+        { sessionId: 's1', state: 'input-required', changedAt: 1000 },
+      ]);
       await renderShell();
-      expect(post).not.toHaveBeenCalled();
-
-      // The status answers: what waits is catch-up, not news.
-      await readMcp(['kubernetes']);
       await waitFor(() =>
-        expect(toastTitles()).toEqual(['1 notification needs your attention']),
+        expect(toastTitles()).toEqual(['1 session needs your attention']),
       );
+
+      await readMcp(['kubernetes']);
+      expect(toastTitles()).toEqual(['1 session needs your attention']);
+      expect(
+        screen.getByRole('button', { name: 'Notifications, 2 unread' }),
+      ).toBeInTheDocument();
     });
 
     it('toasts a server that starts to wait after the first read, with a Sign in that opens the dialog', async () => {
@@ -857,6 +951,37 @@ describe('Notification inbox', () => {
         { action: 'opened', kind: 'mcpSignIn' },
       );
       await waitFor(() => expect(close).toHaveBeenCalled());
+    });
+
+    it('waits for the sign-in status before acting on #mcp-sign-in in the address', async () => {
+      fakeInbox.setMcpWaiting([], { isRead: false, isAvailable: false });
+      await renderShell({ path: '/sessions#mcp-sign-in' });
+      expect(
+        screen.queryByRole('dialog', { name: 'Sign in to MCP servers' }),
+      ).not.toBeInTheDocument();
+
+      await readMcp(['kubernetes']);
+      expect(
+        await screen.findByRole('dialog', { name: 'Sign in to MCP servers' }),
+      ).toBeInTheDocument();
+      expect(fakeInbox.writes.markSeen).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'mcpSignIn' }),
+        { action: 'opened', kind: 'mcpSignIn' },
+      );
+      expect(screen.getByTestId('location')).toHaveTextContent('/sessions');
+    });
+
+    it('does nothing for #mcp-sign-in once nothing waits', async () => {
+      await renderShell({ path: '/sessions#mcp-sign-in' });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent(
+          /^\/sessions$/,
+        ),
+      );
+      expect(
+        screen.queryByRole('dialog', { name: 'Sign in to MCP servers' }),
+      ).not.toBeInTheDocument();
     });
 
     it('opens the sign-in dialog from #mcp-sign-in in the address', async () => {

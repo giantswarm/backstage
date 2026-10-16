@@ -1,6 +1,8 @@
 import {
   createContext,
+  lazy,
   type ReactNode,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -8,10 +10,17 @@ import {
   useState,
 } from 'react';
 import { QueryClientProvider } from '../QueryClientProvider';
-import { McpAuthDialog } from './McpAuthDialog';
-import { useMcpServersAwaitingSignIn } from './useMcpServersAwaitingSignIn';
-import { useServerLabels } from './useServerLabels';
+import { useMcpServersAwaitingSignIn } from '../McpAuthDialog/useMcpServersAwaitingSignIn';
+import { useServerLabels } from '../McpAuthDialog/useServerLabels';
 import { useSignInInstallation } from './useSignInInstallation';
+
+// Loaded on the first sign-in only: the provider is mounted on every shell
+// page, the dialog (and its per-server sign-in) is rarely opened.
+const LazyMcpAuthDialog = lazy(() =>
+  import('../McpAuthDialog/McpAuthDialog').then(m => ({
+    default: m.McpAuthDialog,
+  })),
+);
 
 /** One MCP server that waits for the person's sign-in or grant. */
 export type McpServerAwaitingSignIn = {
@@ -31,6 +40,12 @@ export type McpSignInStatus = {
   /** The servers waiting for the person's sign-in or grant, by name. */
   waiting: McpServerAwaitingSignIn[];
   /**
+   * The servers muster reports connected for the person, by name: signed in
+   * to, or connected with the portal sign-in. A server in neither list (not
+   * registered yet, still starting) is in neither state.
+   */
+  connected: string[];
+  /**
    * The status has been read once, or there is nothing to read: until then
    * `waiting` is empty for want of an answer.
    */
@@ -41,7 +56,10 @@ export type McpSignInStatus = {
    * nothing about the servers.
    */
   isAvailable: boolean;
-  /** Opens muster's sign-in dialog over the page. */
+  /**
+   * Opens muster's sign-in dialog over the page; does nothing while there is
+   * no home installation to sign in to.
+   */
   openSignIn: () => void;
 };
 
@@ -49,6 +67,7 @@ type ReadStatus = Omit<McpSignInStatus, 'openSignIn'>;
 
 const NOT_READ: ReadStatus = {
   waiting: [],
+  connected: [],
   isRead: false,
   isAvailable: false,
 };
@@ -70,37 +89,44 @@ function StatusReader({
 }) {
   const { installation, isLoading: isInstallationLoading } =
     useSignInInstallation();
-  const { waiting, isLoading, isAvailable } = useMcpServersAwaitingSignIn(
-    installation,
-    { enabled: Boolean(installation) },
-  );
+  const { waiting, statuses, isLoading, isAvailable } =
+    useMcpServersAwaitingSignIn(installation, {
+      enabled: Boolean(installation),
+    });
   const labelOf = useServerLabels(installation, waiting);
 
   const isRead = installation ? !isLoading : !isInstallationLoading;
-  // Handed up only when what it says changes: the servers as a key.
-  const serversKey = waiting
-    .map(name => `${name}\t${labelOf(name)}`)
-    .join('\n');
+  // Handed up only when what it says changes, compared as JSON: a display
+  // name may hold any character.
+  const key = JSON.stringify([
+    waiting.map(name => [name, labelOf(name)]),
+    statuses
+      .filter(status => status.status === 'connected')
+      .map(status => status.name),
+  ]);
   useEffect(() => {
+    const [servers, connected]: [Array<[string, string]>, string[]] =
+      JSON.parse(key);
     onRead({
       installation,
-      waiting: serversKey
-        ? serversKey.split('\n').map(line => {
-            const [name, label] = line.split('\t');
-            return { name, label };
-          })
-        : [],
+      waiting: servers.map(([name, label]) => ({ name, label })),
+      connected,
       isRead,
       isAvailable,
     });
-  }, [installation, serversKey, isRead, isAvailable, onRead]);
+  }, [installation, key, isRead, isAvailable, onRead]);
 
+  if (!installation || !isDialogOpen) {
+    return null;
+  }
   return (
-    <McpAuthDialog
-      isOpen={isDialogOpen}
-      onOpenChange={onDialogOpenChange}
-      installation={installation}
-    />
+    <Suspense fallback={null}>
+      <LazyMcpAuthDialog
+        isOpen
+        onOpenChange={onDialogOpenChange}
+        installation={installation}
+      />
+    </Suspense>
   );
 }
 
@@ -115,11 +141,20 @@ function StatusReader({
  * minutes and when the tab regains focus, so a sign-in finished in the
  * dialog or on a muster page updates it at once. Its children keep the query
  * client they were mounted under. Mount it once, where the inbox is.
+ *
+ * Only the home installation is read, and the dialog only opens for it:
+ * another installation's muster needs a brokered token, and its servers are
+ * signed in to where they are used.
  */
 export function McpSignInProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<ReadStatus>(NOT_READ);
   const [isDialogOpen, setDialogOpen] = useState(false);
-  const openSignIn = useCallback(() => setDialogOpen(true), []);
+  const hasInstallation = Boolean(status.installation);
+  const openSignIn = useCallback(() => {
+    if (hasInstallation) {
+      setDialogOpen(true);
+    }
+  }, [hasInstallation]);
 
   const value = useMemo(
     () => ({ ...status, openSignIn }),

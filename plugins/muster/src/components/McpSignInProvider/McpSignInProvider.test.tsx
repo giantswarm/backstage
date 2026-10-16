@@ -96,6 +96,7 @@ function Status() {
         {JSON.stringify({
           installation: signIn.installation ?? null,
           waiting: signIn.waiting,
+          connected: signIn.connected,
           isRead: signIn.isRead,
           isAvailable: signIn.isAvailable,
         })}
@@ -143,6 +144,7 @@ describe('McpSignInProvider', () => {
           { name: 'cluster-manager', label: 'cluster-manager' },
           { name: 'workspace-manager', label: 'workspace-manager' },
         ],
+        connected: ['mcp-kubernetes'],
         isRead: true,
         isAvailable: true,
       }),
@@ -169,6 +171,20 @@ describe('McpSignInProvider', () => {
     await waitFor(() =>
       expect(status().waiting).toEqual([
         { name: 'workspace-manager', label: 'Workspaces' },
+      ]),
+    );
+  });
+
+  it('keeps a display name that holds a newline or a tab whole', async () => {
+    mockServers = [annotated('workspace-manager', 'Work\tspaces\n')];
+    await renderProvider(
+      makeApi({ servers: [waitingFor('workspace-manager')] }),
+    );
+
+    await waitFor(() =>
+      expect(status().waiting).toEqual([
+        // One server, not a phantom second; the display name is trimmed.
+        { name: 'workspace-manager', label: 'Work\tspaces' },
       ]),
     );
   });
@@ -219,6 +235,7 @@ describe('McpSignInProvider', () => {
       expect(status()).toEqual({
         installation: null,
         waiting: [],
+        connected: [],
         isRead: true,
         isAvailable: false,
       }),
@@ -262,6 +279,17 @@ describe('McpSignInProvider', () => {
     expect(dialog).toHaveTextContent(
       '1 more server comes with your portal sign-in.',
     );
+  });
+
+  it('opens no dialog without a home installation to sign in to', async () => {
+    mockInstallation = { installation: undefined, isLoading: false };
+    const api = makeApi({ servers: [waitingFor('workspace-manager')] });
+    await renderProvider(api);
+    await waitFor(() => expect(status().isRead).toBe(true));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open sign-in' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(api.getAuthStatus).not.toHaveBeenCalled();
   });
 
   it('leaves nothing outside a provider', async () => {

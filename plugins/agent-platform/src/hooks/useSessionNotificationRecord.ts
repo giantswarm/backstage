@@ -19,6 +19,7 @@ import {
   withLevel,
   withPortalStarted,
   withSeen,
+  withSeenReplaced,
   type NotificationLevel,
   type SeenMarkTarget,
 } from '../lib/notificationRecord';
@@ -261,6 +262,43 @@ export function useNotificationSeenMarks() {
     [mutateAsync],
   );
 
+  const { mutateAsync: writeReplaced } = useTrackedMutation(
+    {
+      mutationFn: ({
+        target,
+        previous,
+      }: {
+        target: SeenMarkTarget;
+        previous: string;
+      }) =>
+        update<true>(current => {
+          const next = withSeenReplaced(
+            readNotificationSeen(current),
+            target,
+            previous,
+            Date.now(),
+          );
+          return next && { value: next, result: true };
+        }),
+      event: null,
+      untrackedReason:
+        'Bookkeeping of a seen mark the inbox narrows after a sign-in, not an action of the person.',
+    },
+    storedSettingWriteClient,
+  );
+
+  /**
+   * Replaces a row's seen mark with `target`'s, only while the stored mark
+   * is still `previous`: a mark written since, in another tab or on another
+   * device, is kept.
+   */
+  const replaceSeenMark = useCallback(
+    async (target: SeenMarkTarget, previous: string) => {
+      await writeReplaced({ target, previous });
+    },
+    [writeReplaced],
+  );
+
   const isKnown = snapshot.presence !== 'unknown';
   return useMemo(
     () => ({
@@ -270,6 +308,7 @@ export function useNotificationSeenMarks() {
       isSeen,
       markSeen,
       markManySeen,
+      replaceSeenMark,
     }),
     [
       isKnown,
@@ -278,6 +317,7 @@ export function useNotificationSeenMarks() {
       isSeen,
       markSeen,
       markManySeen,
+      replaceSeenMark,
     ],
   );
 }

@@ -1,6 +1,6 @@
 ---
 '@giantswarm/backstage-plugin-muster': minor
-'@giantswarm/backstage-plugin-agent-platform': patch
+'@giantswarm/backstage-plugin-agent-platform': minor
 '@giantswarm/backstage-plugin-analytics-react': patch
 ---
 
@@ -15,11 +15,13 @@ the place of the card's "Not now".
 
 `muster` no longer mounts its corner card (`McpAuthNotice`) on every page, and
 exports `McpSignInProvider` and `useMcpSignIn`: the home installation's MCP
-servers waiting for the person's sign-in, read every five minutes and when the
-tab regains focus under muster's query client, and `openSignIn` for its
-sign-in dialog. `useMcpServersAwaitingSignIn` also tells whether muster
-answered (`isAvailable`).
+servers waiting for the person's sign-in and those connected, read every five
+minutes and when the tab regains focus under muster's query client, and
+`openSignIn` for its sign-in dialog, which loads on first use and opens only
+for the home installation. `useMcpServersAwaitingSignIn` also tells whether
+muster answered (`isAvailable`).
 
-`agent-platform`'s `SeenMarkReason` and `analytics-react`'s
-`AgentPlatform.notificationOpened` take the `mcpSignIn` kind: the MCP sign-in
-row's Sign in.
+`agent-platform`'s notification record adds `replaceSeenMark`, which writes a
+seen mark only while the stored one is still the mark it replaces, and its
+`SeenMarkReason` and `analytics-react`'s `AgentPlatform.notificationOpened`
+take the `mcpSignIn` kind: the MCP sign-in row's Sign in.

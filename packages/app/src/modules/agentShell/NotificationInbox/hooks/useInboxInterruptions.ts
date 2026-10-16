@@ -94,9 +94,19 @@ type OpenToast = {
   closeOnOverlay?: boolean;
 };
 
-/** "2 sessions need your attention"; "notifications" once not all are. */
+/** The kinds of row that are about one session each. */
+const SESSION_KINDS: ReadonlySet<InboxRow['kind']> = new Set([
+  'waiting',
+  'failed',
+  'turnFinished',
+]);
+
+/**
+ * "2 sessions need your attention" while every row is a session's;
+ * "notifications" once any is not (the MCP sign-in row, any later producer).
+ */
 function attentionTitle(rows: InboxRow[]) {
-  const noun = rows.every(row => row.kind !== 'mcpSignIn')
+  const noun = rows.every(row => SESSION_KINDS.has(row.kind))
     ? 'session'
     : 'notification';
   return `${countNoun(rows.length, noun)} ${

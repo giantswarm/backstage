@@ -29,6 +29,7 @@ type Store = {
   mcp: {
     installation?: string;
     waiting: McpServerAwaitingSignIn[];
+    connected: string[];
     isRead: boolean;
     isAvailable: boolean;
     isDialogOpen: boolean;
@@ -47,6 +48,7 @@ function emptyStore(): Store {
     mcp: {
       installation: 'gazelle',
       waiting: [],
+      connected: [],
       isRead: true,
       isAvailable: true,
       isDialogOpen: false,
@@ -100,6 +102,12 @@ const writes = {
   markManySeen: jest.fn(async (targets: readonly SeenMarkTarget[]) => {
     targets.forEach(target => store.seen.set(seenKey(target), target.mark));
     emit();
+  }),
+  replaceSeenMark: jest.fn(async (target: SeenMarkTarget, previous: string) => {
+    if (store.seen.get(seenKey(target)) === previous) {
+      store.seen.set(seenKey(target), target.mark);
+      emit();
+    }
   }),
 };
 
@@ -176,11 +184,16 @@ export const fakeInbox = {
   },
   /**
    * muster's next sign-in status read: the servers of the home installation
-   * that wait for the person's sign-in, by name or `[name, display name]`.
+   * that wait for the person's sign-in, by name or `[name, display name]`,
+   * and those it reports connected.
    */
   setMcpWaiting(
     servers: Array<string | [string, string]>,
-    options: { isRead?: boolean; isAvailable?: boolean } = {},
+    options: {
+      connected?: string[];
+      isRead?: boolean;
+      isAvailable?: boolean;
+    } = {},
   ) {
     store.mcp = {
       ...store.mcp,
@@ -189,6 +202,7 @@ export const fakeInbox = {
           ? { name: server, label: server }
           : { name: server[0], label: server[1] },
       ),
+      connected: options.connected ?? [],
       isRead: options.isRead ?? true,
       isAvailable: options.isAvailable ?? true,
     };
@@ -233,6 +247,7 @@ function useSessionNotificationRecord() {
         setLevel: writes.setLevel,
         markSeen: writes.markSeen,
         markManySeen: writes.markManySeen,
+        replaceSeenMark: writes.replaceSeenMark,
       };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,6 +267,7 @@ function useMcpSignIn() {
     () => ({
       installation: store.mcp.installation,
       waiting: store.mcp.waiting,
+      connected: store.mcp.connected,
       isRead: store.mcp.isRead,
       isAvailable: store.mcp.isAvailable,
       openSignIn,
