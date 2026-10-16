@@ -215,7 +215,7 @@ export interface LabAgent {
   /** The display name the roster and the session pages show. */
   name: string;
   slug: string;
-  /** The agent's detail page, `/agent-platform/agents/<installation>/<ns>/<slug>`. */
+  /** The agent's detail page, `/customize/agents/<installation>/<ns>/<slug>`. */
   detailPath: string;
 }
 
@@ -578,7 +578,7 @@ export async function createAgentInWizard(
   // details at the foot of Review.
   await dismissMcpSignInNotice(page);
   // --- Step 1: Details -----------------------------------------------------
-  await open(page, '/agent-platform/agents/new');
+  await open(page, '/customize/agents/new');
   await expectWizardStep(page, 'Details');
   await expect(
     page.getByText('No environments with models'),
@@ -647,9 +647,7 @@ export async function createAgentInWizard(
   // verdict agent-manager polls for it. From here on the agent exists and the
   // run deletes it again, whatever happens in between.
   await expect(page).toHaveURL(
-    new RegExp(
-      `/agent-platform/agents/${lab.installation}/[^/]+/${agentSlug}$`,
-    ),
+    new RegExp(`/customize/agents/${lab.installation}/[^/]+/${agentSlug}$`),
     { timeout: 60_000 },
   );
   return new URL(page.url()).pathname;
@@ -731,7 +729,7 @@ export function isLeftoverAgent(
  * this one.
  */
 async function removeLeftoverAgents(page: Page): Promise<void> {
-  await open(page, '/agent-platform/agents');
+  await open(page, '/customize/agents');
   const rows = page.getByRole('main').getByRole('listitem').getByRole('link');
   if (
     !(await rows
@@ -837,7 +835,7 @@ async function rosterPathOf(
   page: Page,
   name: string,
 ): Promise<string | undefined> {
-  await open(page, '/agent-platform/agents');
+  await open(page, '/customize/agents');
   await searchRoster(page, name);
   const link = rosterLinkOf(page, name);
   await link.waitFor({ timeout: 30_000 }).catch(() => undefined);
@@ -933,7 +931,7 @@ export async function startSessionOnReadyAgent(
     }
   }
   await expect(page).toHaveURL(
-    new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`),
+    new RegExp(`/sessions/${lab.installation}/[^/]+$`),
     { timeout: 60_000 },
   );
 }

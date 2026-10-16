@@ -174,7 +174,7 @@ function renderPanel(
     </QueryClientProvider>,
     {
       apis: [[musterApiRef, api]],
-      mountedRoutes: { '/agent-platform/workflows': workflowsRouteRef },
+      mountedRoutes: { '/customize/workflows': workflowsRouteRef },
     },
   );
 }
@@ -208,15 +208,12 @@ describe('CustomizeWorkflowsPanel', () => {
     ).toBeInTheDocument();
     expect(report).toHaveAttribute(
       'data-href',
-      '/agent-platform/workflows/ticket-report?installation=gazelle',
+      '/customize/workflows/gazelle/ticket-report',
     );
     // The name is a real link too (M21): keyboard, new tab.
     expect(
       within(report).getByRole('link', { name: 'ticket-report' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/workflows/ticket-report?installation=gazelle',
-    );
+    ).toHaveAttribute('href', '/customize/workflows/gazelle/ticket-report');
 
     const check = screen.getByRole('row', { name: /upgrade-check/ });
     expect(within(check).getByText('1 step')).toBeInTheDocument();
@@ -403,10 +400,7 @@ describe('CustomizeWorkflowsPanel at phone width (T22 B9)', () => {
     const report = itemOf('ticket-report');
     expect(
       within(report).getByRole('link', { name: 'ticket-report' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/workflows/ticket-report?installation=gazelle',
-    );
+    ).toHaveAttribute('href', '/customize/workflows/gazelle/ticket-report');
     expect(await within(report).findByText('Only reads')).toBeInTheDocument();
     expect(within(report).getByText('support')).toBeInTheDocument();
     expect(within(report).getByText('4 steps')).toBeInTheDocument();

@@ -80,7 +80,7 @@ async function renderPage() {
     </PageHeaderActionsProvider>,
     {
       mountedRoutes: {
-        '/agent-platform/agents': agentsRouteRef,
+        '/customize/agents': agentsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
     },

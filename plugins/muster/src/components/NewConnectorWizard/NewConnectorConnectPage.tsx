@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
@@ -10,11 +9,11 @@ import {
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newMcpServerAuthRouteRef } from '../../routes';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
-import { withEditParam } from '../NewMcpServerEditGate';
+import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
+import { useTakesDisplayName } from '../NewMcpServerReviewPage';
 import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
 import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
@@ -121,14 +120,20 @@ function inStepWords(message: string | undefined): string | undefined {
  * state), the connector's name and an optional description. The transport is
  * taken from the probe rather than asked.
  *
+ * The name is the connector's display name; its technical name derives from
+ * it on create and is fixed after. An edit lets the name change only where
+ * the installation's muster takes a display name on update (v5.43.0 and
+ * later, read from the tool's input schema), and not on a family member,
+ * whose members share one name a rename of one would split.
+ *
  * The prototype's "Who can use it?" audience choice is deliberately absent:
  * muster registers a connector for the whole installation and has no
  * per-person visibility to map it to, so the wizard does not pretend to ask.
  */
 export function NewConnectorConnectPage() {
   const navigate = useNavigate();
-  const signInLink = useRouteRef(newMcpServerAuthRouteRef);
-  const { activeInstallation } = useMusterInstance();
+  const wizardLinks = useConnectorWizardLinks();
+  const { activeInstallation, mcpServers } = useMusterInstance();
   const {
     state,
     setName,
@@ -152,6 +157,28 @@ export function NewConnectorConnectPage() {
     }
   }, [registeredName, activeInstallation, state.installation, setInstallation]);
 
+  // Whether this muster's update keeps a changed name; read only for an edit.
+  // Until the schema is read the name stays read-only, as it was before
+  // muster took a display name. A family's members are named together (the
+  // name they agree on), so one member is not renamed on its own.
+  const updateTakesDisplayName = useTakesDisplayName(
+    'core_mcpserver_update',
+    registeredInstallation,
+    { enabled: Boolean(registeredName) },
+  );
+  const family = registeredName
+    ? mcpServers
+        .find(server => server.getName() === registeredName)
+        ?.getFamily()
+    : undefined;
+  const canRename = !registeredName || (updateTakesDisplayName && !family);
+  let nameDescription = 'Shown when giving an agent access.';
+  if (!canRename) {
+    nameDescription = family
+      ? `Shared with the other members of the ${family} family, so it is set where they are defined.`
+      : 'It cannot be changed after registration.';
+  }
+
   // The detected transport is applied as long as this run has not been
   // registered yet; an edit keeps the transport the server is registered with,
   // so a re-probe of the unchanged URL cannot quietly switch it.
@@ -174,15 +201,17 @@ export function NewConnectorConnectPage() {
       reveal();
       return;
     }
-    if (signInLink) {
-      navigate(
-        withEditParam(signInLink(), registeredName, registeredInstallation),
-      );
+    const signIn = wizardLinks('auth', {
+      name: registeredName,
+      installation: registeredInstallation,
+    });
+    if (signIn) {
+      navigate(signIn);
     }
   }, [
     errorCount,
     reveal,
-    signInLink,
+    wizardLinks,
     navigate,
     registeredName,
     registeredInstallation,
@@ -234,25 +263,23 @@ export function NewConnectorConnectPage() {
       <TextField
         label="Name"
         isRequired
-        isReadOnly={Boolean(registeredName)}
+        isReadOnly={!canRename}
         value={state.name}
         onChange={setName}
         placeholder="e.g. Jira"
-        description={
-          registeredName
-            ? 'It cannot be changed after registration.'
-            : 'Shown when giving an agent access.'
-        }
+        description={nameDescription}
         {...validation.textFieldProps(
           'name',
           fieldErrors.name ?? fieldErrors.slug,
         )}
       />
-      {!registeredName && state.slug && (
-        <Text variant="body-small" color="secondary">
-          Registered as <code>{state.slug}</code> — used in its tool names.
-        </Text>
-      )}
+      {state.slug &&
+        (!registeredName || canRename || state.name.trim() !== state.slug) && (
+          <Text variant="body-small" color="secondary">
+            Registered as <code>{state.slug}</code> — used in its tool names.
+            {registeredName && canRename && ' It cannot be changed.'}
+          </Text>
+        )}
 
       <TextAreaField
         label="What does it give access to?"

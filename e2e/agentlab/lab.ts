@@ -23,11 +23,12 @@ const cluster = process.env.AGENTLAB_CLUSTER ?? 'agentlab';
  *
  * - `classic` (the default): `app.portals.agentPlatform` off, the chart's
  *   default. Exactly the classic Platform Portal, with nothing of the Agent
- *   Platform in it — no sidebar item, no `/agent-platform/**` route.
+ *   Platform in it — no sidebar item, none of its routes.
  * - `shell`: the lab's Backstage runs with
  *   `APP_CONFIG_app_portals_agentPlatform=true` (both portals on). The Agent
- *   Platform is the agent shell on `/`, `/agent-platform/**` and
- *   `/customize/**`; the classic portal everywhere else, its sidebar linking
+ *   Platform is the agent shell on `/`, `/sessions`, `/usage`, `/profile`,
+ *   `/customize/**` and the old `/agent-platform/**` (redirects only); the
+ *   classic portal everywhere else, its sidebar linking
  *   into the shell.
  *
  * The switch is the deployment's, so one lab is in one mode at a time: the

@@ -137,7 +137,7 @@ async function renderStep() {
         <SelectionProbe />
       </Seed>
     </NewAgentFormProvider>,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }
 

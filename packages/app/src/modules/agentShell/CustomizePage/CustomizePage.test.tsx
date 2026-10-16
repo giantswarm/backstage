@@ -9,7 +9,13 @@ import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import { customizeRouteRef } from '../routes';
 import { CUSTOMIZE_TAB_IDS } from '../customizeTabIds';
 import { CUSTOMIZE_TABS, CustomizePage } from './CustomizePage';
@@ -53,11 +59,6 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeModelsPanel: mockPanel('Models'),
     CustomizeWorkspacesPanel: mockPanel('Workspaces'),
     WorkspaceOrganizationSelect: () => <p>Organization scope</p>,
-    CustomizeModelPage: () => {
-      const { useParams } = jest.requireActual('react-router-dom');
-      const { installation, namespace, name } = useParams();
-      return <p>{`Model ${installation}/${namespace}/${name}`}</p>;
-    },
     WorkflowCreateAssist: ({ installation }: { installation?: string }) => (
       <p>{`Create a workflow with the agent on ${installation}`}</p>
     ),
@@ -98,10 +99,6 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
         },
         internal: { id: 'internal', path: 'internal', title: 'Internal' },
       })[group],
-    connectorGroupOfPath: (segment: string) =>
-      ({ '': 'yours', infrastructure: 'infrastructure', internal: 'internal' })[
-        segment
-      ],
     LEGACY_CONNECTOR_GROUP_PATHS: { families: 'infrastructure' },
     CustomizeConnectorsPanel: (props: { search: string; group: string }) => (
       <p>{`Connectors panel, search “${props.search}”, ${props.group}`}</p>
@@ -123,16 +120,28 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
 
 const allRoutes = {
   '/customize': customizeRouteRef,
-  '/agent-platform/agents': agentPlatformPlugin.routes.agents,
-  '/agent-platform/skills': agentPlatformPlugin.routes.skills,
-  '/agent-platform/models': agentPlatformPlugin.routes.models,
-  '/agent-platform/mcp-servers': musterPlugin.routes.mcpServers,
+  '/customize/agents': agentPlatformPlugin.routes.agents,
+  '/customize/skills': agentPlatformPlugin.routes.skills,
+  '/customize/models': agentPlatformPlugin.routes.models,
+  '/customize/connectors': musterPlugin.routes.mcpServers,
 };
 
 function LocationProbe() {
   const { pathname, search } = useLocation();
   return <p data-testid="location">{`${pathname}${search}`}</p>;
 }
+
+/** A plugin's router below its tab, as the page's `pages` input hands it. */
+function SubPage({ name }: { name: string }) {
+  const rest = useParams()['*'];
+  return <p>{`${name} sub-page at ${rest}`}</p>;
+}
+
+const pages = [
+  { path: 'agents', element: <SubPage name="Agents" /> },
+  { path: 'models', element: <SubPage name="Models" /> },
+  { path: 'connectors', element: <SubPage name="Connectors" /> },
+];
 
 function renderCustomize(
   path: string,
@@ -144,7 +153,7 @@ function renderCustomize(
   return renderInTestApp(
     <>
       <Routes>
-        <Route path="/customize/*" element={<CustomizePage />} />
+        <Route path="/customize/*" element={<CustomizePage pages={pages} />} />
         <Route path="*" element={<p>Elsewhere</p>} />
       </Routes>
       <LocationProbe />
@@ -196,14 +205,41 @@ describe('CustomizePage', () => {
     );
   });
 
-  it("routes one model's page beside the Models tab, without the tab strip", async () => {
-    await renderCustomize('/customize/models/gazelle/kagent/default-model');
+  it.each([
+    [
+      '/customize/models/gazelle/kagent/default-model',
+      'Models',
+      'gazelle/kagent/default-model',
+    ],
+    ['/customize/agents/new/skills', 'Agents', 'new/skills'],
+    [
+      '/customize/connectors/gazelle/jira/edit',
+      'Connectors',
+      'gazelle/jira/edit',
+    ],
+    // An installation named like a sub-tab: deeper, so a connector's page.
+    ['/customize/connectors/internal/jira', 'Connectors', 'internal/jira'],
+  ])(
+    "routes %s below the tab's list to the plugin's sub-page, without the tab strip",
+    async (path, name, rest) => {
+      await renderCustomize(path);
 
-    expect(
-      screen.getByText('Model gazelle/kagent/default-model'),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('tab')).toBeNull();
-    expect(screen.queryByText(/^Models panel/)).toBeNull();
+      expect(
+        screen.getByText(`${name} sub-page at ${rest}`),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('tab')).toBeNull();
+      expect(screen.queryByText(/ panel, /)).toBeNull();
+    },
+  );
+
+  it('sends an address below a tab no plugin attached to that tab', async () => {
+    await renderCustomize('/customize/workspaces/a/b?installation=golem');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        /^\/customize\/workspaces\?installation=golem$/,
+      ),
+    );
   });
 
   it('leaves out a count that could not be read', async () => {
@@ -260,21 +296,15 @@ describe('CustomizePage', () => {
   });
 
   it.each([
-    ['agents', 'Agents', 'kagent', 'New agent', '/agent-platform/agents/new'],
+    ['agents', 'Agents', 'kagent', 'New agent', '/customize/agents/new'],
     [
       'connectors',
       'Connectors',
       'muster',
       'Add connector',
-      '/agent-platform/mcp-servers/new',
+      '/customize/connectors/new',
     ],
-    [
-      'models',
-      'Models',
-      'kagent',
-      'Connect a model',
-      '/agent-platform/models/new',
-    ],
+    ['models', 'Models', 'kagent', 'Connect a model', '/customize/models/new'],
   ])(
     'shows the %s panel with its environment and create action',
     async (tab, panel, component, action, href) => {
@@ -299,7 +329,7 @@ describe('CustomizePage', () => {
 
     expect(screen.getByRole('link', { name: 'Add skill' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/new',
+      '/customize/skills/new',
     );
   });
 
@@ -350,7 +380,7 @@ describe('CustomizePage', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'Connect a model' }),
-      ).toHaveAttribute('href', '/agent-platform/models/new');
+      ).toHaveAttribute('href', '/customize/models/new');
     });
 
     it('offers the search over a short tab without a create action', async () => {
@@ -698,23 +728,17 @@ describe('CustomizePage', () => {
       ).toBeInTheDocument();
     });
 
-    it('sends an unknown path under Connectors to the default sub-tab', async () => {
+    it("hands a path deeper than a sub-tab to muster's sub-page", async () => {
       await renderCustomize(
-        '/customize/connectors/nonsense?installation=golem',
+        '/customize/connectors/infrastructure/anything?installation=golem',
       );
 
-      await waitFor(() =>
-        expect(screen.getByTestId('location')).toHaveTextContent(
-          /^\/customize\/connectors\?installation=golem$/,
-        ),
-      );
+      expect(
+        screen.getByText('Connectors sub-page at infrastructure/anything'),
+      ).toBeInTheDocument();
     });
 
     it.each([
-      [
-        '/customize/connectors/infrastructure/anything?installation=golem',
-        '/customize/connectors?installation=golem',
-      ],
       // Infrastructure was "Families": an old link lands on it.
       [
         '/customize/connectors/families?installation=golem',
@@ -724,8 +748,6 @@ describe('CustomizePage', () => {
         '/customize/connectors/families/',
         '/customize/connectors/infrastructure',
       ],
-      ['/customize/connectors/', '/customize/connectors'],
-      ['/customize/connectors/internal/', '/customize/connectors/internal'],
     ])('sends %s to %s', async (from, to) => {
       await renderCustomize(from);
 
@@ -733,6 +755,25 @@ describe('CustomizePage', () => {
         expect(screen.getByTestId('location').textContent).toBe(to),
       );
     });
+
+    it.each([
+      ['/customize/connectors/', 'Your connectors', 'yours'],
+      ['/customize/connectors/internal/', 'Internal', 'internal'],
+    ])(
+      'shows %s, with its trailing slash, as its sub-tab',
+      async (path, title, group) => {
+        await renderCustomize(path);
+
+        expect(
+          await screen.findByText(`Connectors panel, search “”, ${group}`),
+        ).toBeInTheDocument();
+        await waitFor(() =>
+          expect(
+            screen.getByRole('tab', { name: new RegExp(`^${title}`) }),
+          ).toHaveAttribute('aria-selected', 'true'),
+        );
+      },
+    );
 
     it('draws no sub-tabs on the other tabs', async () => {
       await renderCustomize('/customize/models');

@@ -2,9 +2,9 @@ import { expect, expectWizardStep, open, test } from './fixtures';
 
 /**
  * The short `/agents` path people, links and docs use lands on the Agents
- * list — `/agent-platform/agents`, which the shell shows as Customize's Agents
- * tab — and a path below it on the same place under the tab, instead of a
- * not-found page.
+ * list — `/customize/agents`, the shell's Customize · Agents
+ * tab — in one hop, and a path below it on the same place under the tab,
+ * instead of a not-found page.
  */
 
 test('/agents lands on the Agents list', async ({ admin }) => {
@@ -22,7 +22,7 @@ test('/agents lands on the Agents list', async ({ admin }) => {
 
 test('/agents/new lands on the create form, query kept', async ({ admin }) => {
   await open(admin, '/agents/new?from=e2e');
-  await expect(admin).toHaveURL(/\/agent-platform\/agents\/new\?from=e2e$/);
+  await expect(admin).toHaveURL(/\/customize\/agents\/new\?from=e2e$/);
   await expectWizardStep(admin, 'Details');
   await expect(
     admin.getByRole('heading', { name: 'Describe your agent' }),

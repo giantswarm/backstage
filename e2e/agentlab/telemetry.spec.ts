@@ -51,7 +51,7 @@ test('creating an agent and starting a session send their signals, with no free 
   };
 
   try {
-    await open(admin, '/agent-platform/agents');
+    await open(admin, '/customize/agents');
     await expect
       .poll(() => sent.some(body => body.includes('"pageview"')), {
         timeout: 10_000,

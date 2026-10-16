@@ -112,8 +112,8 @@ async function renderRerenderable() {
   return renderInTestApp(<Rerenderable />, {
     mountedRoutes: {
       '/': newSessionExternalRouteRef,
-      '/agent-platform/sessions': sessionsRouteRef,
-      '/agent-platform/agents': agentsRouteRef,
+      '/sessions': sessionsRouteRef,
+      '/customize/agents': agentsRouteRef,
     },
   });
 }
@@ -122,9 +122,9 @@ async function render() {
   return renderInTestApp(<SessionsIndexPage />, {
     mountedRoutes: {
       '/': newSessionExternalRouteRef,
-      '/agent-platform/sessions': sessionsRouteRef,
+      '/sessions': sessionsRouteRef,
       // The Agents tab: the first-run state links into its create flow.
-      '/agent-platform/agents': agentsRouteRef,
+      '/customize/agents': agentsRouteRef,
     },
   });
 }

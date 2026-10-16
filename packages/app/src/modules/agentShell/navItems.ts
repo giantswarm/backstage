@@ -1,6 +1,5 @@
 import type { IconComponent, RouteRef } from '@backstage/frontend-plugin-api';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
-import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import BarChartIcon from '@material-ui/icons/BarChart';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
@@ -14,8 +13,6 @@ type AgentShellNavItemBase = {
   title: string;
   icon: IconComponent;
   position: 'top' | 'bottom';
-  /** Routes whose pages the item stands for in the rail, as their parent. */
-  currentOn?: RouteRef[];
   /** The label under the icon in the phone's bottom bar, when shorter. */
   barTitle?: string;
   /**
@@ -67,13 +64,6 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     title: 'Customize',
     icon: TuneIcon,
     routeRef: customizeRouteRef,
-    currentOn: [
-      agentPlatformPlugin.routes.agents,
-      agentPlatformPlugin.routes.skills,
-      agentPlatformPlugin.routes.models,
-      musterPlugin.routes.mcpServers,
-      musterPlugin.routes.workflows,
-    ],
     position: 'top',
   },
   {

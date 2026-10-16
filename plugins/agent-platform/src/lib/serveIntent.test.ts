@@ -214,7 +214,7 @@ describe('staleServeIntentIds', () => {
 });
 
 describe('serveIntentStep', () => {
-  const href = '/serving/serve?pool=gpu-l4';
+  const href = '/hosting/serve?pool=gpu-l4';
   const base = {
     intent: intent(),
     stackReady: false,

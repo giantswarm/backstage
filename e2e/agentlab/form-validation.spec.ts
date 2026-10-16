@@ -12,7 +12,7 @@ import { expect, expectWizardStep, open, test } from './fixtures';
 test('agent wizard: an empty Name tabbed through stays quiet until Continue', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/agents/new');
+  await open(admin, '/customize/agents/new');
   await expectWizardStep(admin, 'Details');
   const name = admin.getByRole('textbox', { name: 'Name', exact: true });
 
@@ -33,7 +33,7 @@ test('agent wizard: an empty Name tabbed through stays quiet until Continue', as
 test('connector wizard: the address is checked on leaving it and cleared once fixed', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/connectors/new');
+  await open(admin, '/customize/connectors/new');
   const address = admin.getByRole('textbox', {
     name: 'Server address',
     exact: true,

@@ -133,7 +133,7 @@ async function deleteCurrentSession(page: Page): Promise<void> {
       { timeout: 120_000, intervals: [10_000] },
     )
     .toBe('deleted');
-  await expect(page).toHaveURL(/\/agent-platform\/sessions$/, {
+  await expect(page).toHaveURL(/\/sessions$/, {
     timeout: 60_000,
   });
 }
@@ -174,7 +174,7 @@ test('a session starts from the home screen with a two-line message, its compose
   const start = admin.getByRole('button', { name: 'Start', exact: true });
   await expectClearOfBottomBar(admin, start, 'Start');
   await start.click();
-  await expect(admin).toHaveURL(/\/agent-platform\/sessions\/[^/]+\/[^/]+$/, {
+  await expect(admin).toHaveURL(/\/sessions\/[^/]+\/[^/]+$/, {
     timeout: 60_000,
   });
 
@@ -295,7 +295,7 @@ test('a session starts from the home screen with a two-line message, its compose
 test('Sessions lists stacked rows whose titles read in full', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/sessions');
+  await open(admin, '/sessions');
   await expect(
     admin.getByRole('heading', { level: 1, name: 'Sessions' }),
   ).toBeVisible();
@@ -306,7 +306,7 @@ test('Sessions lists stacked rows whose titles read in full', async ({
   const rows = admin
     .getByRole('main')
     .getByRole('listitem')
-    .filter({ has: admin.locator('a[href*="/agent-platform/sessions/"]') });
+    .filter({ has: admin.locator('a[href*="/sessions/"]') });
   await rows
     .first()
     .waitFor({ timeout: 60_000 })
@@ -315,10 +315,7 @@ test('Sessions lists stacked rows whose titles read in full', async ({
     (await rows.count()) === 0,
     'the admin has no session on this lab to list',
   );
-  const title = rows
-    .first()
-    .locator('a[href*="/agent-platform/sessions/"]')
-    .first();
+  const title = rows.first().locator('a[href*="/sessions/"]').first();
   const box = await title.boundingBox();
   expect(
     box!.width,

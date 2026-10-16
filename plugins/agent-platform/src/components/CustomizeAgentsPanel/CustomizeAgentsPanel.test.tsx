@@ -159,7 +159,7 @@ function renderPanel(search = '', storage: StorageApi = mockApis.storage()) {
   return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
     mountedRoutes: {
       '/': newSessionExternalRouteRef,
-      '/agent-platform/agents': agentsRouteRef,
+      '/customize/agents': agentsRouteRef,
       '/installations': installationsExternalRouteRef,
     },
     apis: [[storageApiRef, storage]],
@@ -180,7 +180,7 @@ function renderRerenderablePanel() {
   return renderInTestApp(<RerenderablePanel />, {
     mountedRoutes: {
       '/': newSessionExternalRouteRef,
-      '/agent-platform/agents': agentsRouteRef,
+      '/customize/agents': agentsRouteRef,
     },
     apis: [[storageApiRef, mockApis.storage()]],
   });
@@ -250,7 +250,7 @@ describe('CustomizeAgentsPanel', () => {
     const triageLink = within(items[0]).getByRole('link');
     expect(triageLink).toHaveAttribute(
       'href',
-      '/agent-platform/agents/golem/support/triage',
+      '/customize/agents/golem/support/triage',
     );
     expect(within(triageLink).getByText('Support triage')).toBeInTheDocument();
     expect(within(triageLink).getByText('Sorts tickets')).toBeInTheDocument();
@@ -375,7 +375,7 @@ describe('CustomizeAgentsPanel', () => {
       expect(screen.getByText(/An agent is an assistant/)).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'Create your first agent' }),
-      ).toHaveAttribute('href', '/agent-platform/agents/new');
+      ).toHaveAttribute('href', '/customize/agents/new');
       expect(screen.queryByRole('list')).not.toBeInTheDocument();
     });
 

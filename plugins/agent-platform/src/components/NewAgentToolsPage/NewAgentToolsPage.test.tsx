@@ -475,7 +475,7 @@ async function renderStep(
     ) : (
       tree
     ),
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }
 

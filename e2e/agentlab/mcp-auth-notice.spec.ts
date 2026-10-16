@@ -20,7 +20,7 @@ import { contextOptionsFor, lab } from './lab';
  */
 
 const FIXTURE = 'lab-oauth-fixture';
-const fixturePath = `/agent-platform/connectors/${FIXTURE}?installation=${lab.installation}`;
+const fixturePath = `/customize/connectors/${lab.installation}/${FIXTURE}`;
 
 /**
  * Leaves the fixture signed out for the admin, as the lab ships it: from its
@@ -104,7 +104,7 @@ test('Not now hides the notice for the servers it named', async ({ admin }) => {
   await expect(notice).toHaveCount(0);
 
   // Another page of the same browser session: still hidden.
-  await open(admin, '/agent-platform/agents');
+  await open(admin, '/customize/agents');
   await expect(admin.getByText('Agents').first()).toBeVisible();
   await expect(notice).toHaveCount(0);
 });
@@ -116,7 +116,7 @@ test('the notice stands clear of the wizard footer: Continue takes the click whi
   await admin.setViewportSize({ width: 1440, height: 900 });
   await signOutOfFixture(admin);
 
-  await open(admin, '/agent-platform/agents/new');
+  await open(admin, '/customize/agents/new');
   const notice = admin.getByRole('complementary', {
     name: 'MCP server sign-in',
   });

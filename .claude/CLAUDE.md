@@ -184,8 +184,9 @@ All plugins live under `plugins/` and are published under the
 - **`agent-platform`** - Agent Platform: scaffolder-driven agent creation
   (kagent), ported from the APUI prototype
 
-- **`muster`** - Muster (MCP tool aggregator) UI: the Agent Platform's MCP
-  Servers tab (servers table, a page per server and per tool) and Workflows tab
+- **`muster`** - Muster (MCP tool aggregator) UI: the Customize screen's
+  Connectors tab (a page per connector and per tool, the connector wizard) and
+  Workflows tab
 
 - **`plans`** - Plans feature
 
@@ -312,18 +313,23 @@ field for screen readers and say how to fix the problem. Build them with
 changes a form, a dialog with inputs or a field's validation checks it against
 that skill's review checklist.**
 
-#### Links into the Agent Platform shell
+#### URLs of the Agent Platform shell
 
-Plugin and shell code never writes a shell path (`/agent-platform/…`,
-`/customize/…`) by hand: a link resolves through a route ref, an external route
-ref the app binds in `packages/app/src/App.tsx`, or a helper built on one
-(`useCustomizePaths`, `useSkillPaths`, `useNewSessionHref` in agent-platform;
-`useServerPageLinks`, `useWorkflowPageLinks` in muster). The ESLint rule
+The shell's URLs follow the **`urls`** skill (`.claude/skills/urls/SKILL.md`):
+the URL tree follows the rail (`/`, `/sessions`, `/usage`, `/profile`,
+`/customize/<section>/…`; the old `/agent-platform/**` only redirects),
+identity lives in the path, create is `…/new`, edit is `<id>/edit`, every tab
+is a routed segment with the default at the bare path, and moving a URL means a
+one-hop redirect through `legacyAgentPlatformTarget` with the same telemetry
+names. Plugin and shell code never writes a shell path by hand: a link resolves
+through a route ref, an external route ref the app binds in
+`packages/app/src/App.tsx`, or a helper built on one (`useCustomizePaths`,
+`useSkillPaths`, `useNewSessionHref` in agent-platform; `useServerPageLinks`,
+`useWorkflowPageLinks` in muster). The ESLint rule
 `giantswarm/no-restricted-syntax` fails CI on such a literal in
-`plugins/*/src` and `packages/app/src/modules`; a route definition
-carries a disable comment with its reason. The shell's URLs are moving
-(giantswarm/giantswarm#38510), and this keeps that move to the route
-definitions.
+`plugins/*/src` and `packages/app/src/modules`; a route definition carries a
+disable comment with its reason. **A review of a change that adds or moves a
+route checks it against that skill's review checklist.**
 
 #### Analytics / Telemetry — keep in sync when adding pages
 

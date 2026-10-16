@@ -75,8 +75,8 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
 
 function renderPage() {
   return renderInTestApp(<UsageCostPage />, {
-    initialRouteEntries: ['/agent-platform/usage/cost'],
-    mountedRoutes: { '/agent-platform/usage': usageRouteRef },
+    initialRouteEntries: ['/usage/cost'],
+    mountedRoutes: { '/usage': usageRouteRef },
   });
 }
 

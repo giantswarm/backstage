@@ -17,8 +17,8 @@ import {
  * dynamic one, a splat last, and every static segment compared
  * case-insensitively, as react-router does.
  *
- * Not wired up yet: the cut-over's `/agent-platform/*` and `/agents/*`
- * catch-alls call it (giantswarm/giantswarm#38573, Prep 3).
+ * The `/agent-platform/*` and `/agents/*` catch-alls call it
+ * (`LegacyAgentPlatformRedirect`), until the end of 2026.
  */
 
 /* eslint-disable giantswarm/no-restricted-syntax -- the redirect table of
@@ -36,10 +36,12 @@ export type LegacyAgentPlatformTarget = {
 export type LegacyAgentPlatformTargetOptions = {
   /**
    * The installation a connector, tool or workflow link without
-   * `?installation=` names: the pinned scope, else the home installation —
-   * the one the old page fell back to.
+   * `?installation=` names: the one the old page showed, muster's active
+   * installation (the pinned scope where it runs muster, else the one the
+   * portal runs on, else the first that runs muster). Without one, such a
+   * link lands on its list.
    */
-  defaultInstallation: string;
+  defaultInstallation?: string;
 };
 
 const SHELL_ROOT = 'agent-platform';
@@ -118,9 +120,15 @@ function searchWithout(search: string, ...names: string[]): string {
   return kept.length > 0 ? `?${kept.join('&')}` : '';
 }
 
-/** The old address's `?installation=`, else the caller's default. */
-function installationOf(params: URLSearchParams, fallback: string): string {
-  return params.get('installation')?.trim() || fallback;
+/**
+ * The old address's `?installation=`, else the caller's default; undefined
+ * when neither names one.
+ */
+function installationOf(
+  params: URLSearchParams,
+  fallback: string | undefined,
+): string | undefined {
+  return params.get('installation')?.trim() || fallback?.trim() || undefined;
 }
 
 function sessionsTarget(rest: string[]): string {
@@ -191,7 +199,7 @@ function skillsTarget(rest: string[]): string {
 function connectorsTarget(
   rest: string[],
   search: string,
-  defaultInstallation: string,
+  defaultInstallation: string | undefined,
 ): LegacyAgentPlatformTarget {
   const root = '/customize/connectors';
   const params = new URLSearchParams(search);
@@ -200,6 +208,12 @@ function connectorsTarget(
   if (rest.length === 0) {
     return { pathname: root, search: searchWithout(search) };
   }
+  // Without an installation no connector's address can be built; the list
+  // is the nearest valid page.
+  const toList = {
+    pathname: root,
+    search: searchWithout(search, 'edit', 'installation'),
+  };
   // The wizard's routes are exact: `new/<anything else>` is the page of a
   // connector named `new`. The retired review step was the Sign-in step.
   const step = rest.length === 2 ? known(rest[1], CONNECTOR_WIZARD_STEPS) : '';
@@ -207,6 +221,9 @@ function connectorsTarget(
     const wizardStep = step === 'review' ? 'auth' : step;
     const edited = params.get('edit')?.trim();
     if (edited) {
+      if (!installation) {
+        return toList;
+      }
       return {
         pathname: path(
           root,
@@ -222,6 +239,9 @@ function connectorsTarget(
       pathname: path(root, 'new', wizardStep),
       search: searchWithout(search),
     };
+  }
+  if (!installation) {
+    return toList;
   }
   const [server, tab, tool] = rest;
   const connector = path(root, encodeURIComponent(installation), server);
@@ -242,7 +262,7 @@ function connectorsTarget(
 function workflowsTarget(
   rest: string[],
   search: string,
-  defaultInstallation: string,
+  defaultInstallation: string | undefined,
 ): LegacyAgentPlatformTarget {
   const root = '/customize/workflows';
   if (rest.length === 0) {
@@ -253,6 +273,11 @@ function workflowsTarget(
     new URLSearchParams(search),
     defaultInstallation,
   );
+  // Without an installation no workflow's address can be built; the list is
+  // the nearest valid page.
+  if (!installation) {
+    return { pathname: root, search: searchWithout(search, 'installation') };
+  }
   // An unknown tab, or anything deeper, is the workflow's Overview.
   return {
     pathname: path(
@@ -315,9 +340,11 @@ function usageTarget(rest: string[]): string {
   if (key(rest[0]) === 'mcp') {
     return '/usage/connectors';
   }
-  // Overview is the bare path now, and every retired or unknown view landed
+  // "Your sessions" was `conversations`; its path is its label now.
+  // Overview is the bare path, and every retired or unknown view landed
   // there.
-  return path('/usage', known(rest[0], USAGE_VIEWS));
+  const view = known(rest[0], USAGE_VIEWS);
+  return path('/usage', view === 'conversations' ? 'your-sessions' : view);
 }
 
 /**
@@ -333,7 +360,7 @@ function usageTarget(rest: string[]): string {
 export function legacyAgentPlatformTarget(
   pathname: string,
   search: string,
-  { defaultInstallation }: LegacyAgentPlatformTargetOptions,
+  { defaultInstallation }: LegacyAgentPlatformTargetOptions = {},
 ): LegacyAgentPlatformTarget | undefined {
   const segments = pathname.split('/').filter(Boolean);
   const kept = (target: string) => ({
@@ -382,4 +409,24 @@ export function legacyAgentPlatformTarget(
       // rendered an empty area under it.
       return kept('/');
   }
+}
+
+/** A name no installation has, to tell whether a target used the default. */
+const PROBE = '\u0000probe';
+
+/**
+ * Whether the target of an old address depends on the default installation:
+ * a connector's, tool's or workflow's page, or a connector's edit, whose
+ * link carried no `?installation=`. Only these need the caller to know the
+ * default; every other old address redirects at once.
+ */
+export function legacyTargetNeedsInstallation(
+  pathname: string,
+  search: string,
+): boolean {
+  const without = legacyAgentPlatformTarget(pathname, search);
+  const probed = legacyAgentPlatformTarget(pathname, search, {
+    defaultInstallation: PROBE,
+  });
+  return without?.pathname !== probed?.pathname;
 }

@@ -275,8 +275,8 @@ function render({
       ],
       ...(bound && {
         mountedRoutes: {
-          '/agent-platform/sessions': sessionsRouteRef,
-          '/agent-platform/agents': agentsRouteRef,
+          '/sessions': sessionsRouteRef,
+          '/customize/agents': agentsRouteRef,
           '/installations': installationsExternalRouteRef,
         },
       }),
@@ -643,7 +643,7 @@ describe('AgentPlatformHome', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'Create your first agent' }),
-      ).toHaveAttribute('href', '/agent-platform/agents/new');
+      ).toHaveAttribute('href', '/customize/agents/new');
       expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
     });
 
@@ -810,7 +810,7 @@ describe('AgentPlatformHome', () => {
         screen.getByRole('link', { name: 'See which tools' }),
       ).toHaveAttribute(
         'href',
-        '/agent-platform/agents/gazelle/research/research-agent/tools',
+        '/customize/agents/gazelle/research/research-agent/tools',
       );
     });
 
@@ -835,7 +835,7 @@ describe('AgentPlatformHome', () => {
         screen.getByRole('link', { name: 'See which tools' }),
       ).toHaveAttribute(
         'href',
-        '/agent-platform/agents/gazelle/kagent/sre-agent/tools',
+        '/customize/agents/gazelle/kagent/sre-agent/tools',
       );
     });
 

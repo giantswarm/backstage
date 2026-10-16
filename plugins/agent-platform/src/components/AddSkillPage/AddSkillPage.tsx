@@ -89,14 +89,14 @@ function SkillPullRequestOutcome({
 
 /**
  * Add a skill to one of the configured skill repositories
- * (`/agent-platform/skills/new`), as a pull request opened **as the signed-in
+ * (`/customize/skills/new`), as a pull request opened **as the signed-in
  * person** (decision G16 B): name, description and instructions become a
  * `<name>/SKILL.md` on a branch, and the flow ends on the opened pull request.
  * Nothing deploys from here — a teammate approves the PR, and discovery picks
  * the skill up once it merges.
  *
  * With `edit`, the same flow changes an existing skill (`EditSkillPage`,
- * `/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`): the repository and
+ * `/customize/skills/edit/<owner>/<repo>[/<dir>]`): the repository and
  * name are fixed, description and instructions start from the SKILL.md the
  * skill reads now, and the pull request rewrites `<dir>/SKILL.md` on
  * `update-skill/<directory as a slug>` (the repository name for a skill at

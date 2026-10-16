@@ -193,13 +193,15 @@ function renderPalette() {
     </>,
     {
       mountedRoutes: {
-        '/agent-platform/sessions': sessionsRouteRef,
-        '/agent-platform/agents': agentsRouteRef,
-        '/agent-platform/skills': skillsRouteRef,
-        '/agent-platform/connectors/:server': musterServerExternalRouteRef,
-        '/agent-platform/models': modelsRouteRef,
+        '/sessions': sessionsRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/customize/skills': skillsRouteRef,
+        '/customize/connectors/:installation/:server':
+          musterServerExternalRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
-        '/agent-platform/workflows/:name': musterWorkflowDetailExternalRouteRef,
+        '/customize/workflows/:installation/:name':
+          musterWorkflowDetailExternalRouteRef,
       },
     },
   );
@@ -406,7 +408,7 @@ describe('CommandPalette', () => {
 
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/agents/gazelle/kagent/support-triage',
+      '/customize/agents/gazelle/kagent/support-triage',
     );
     await waitFor(() =>
       expect(
@@ -588,7 +590,7 @@ describe('CommandPalette', () => {
 
     await userEvent.click(screen.getByText('confluence'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/connectors/confluence?installation=gazelle',
+      '/customize/connectors/gazelle/confluence',
     );
   });
 
@@ -608,7 +610,7 @@ describe('CommandPalette', () => {
 
     await userEvent.click(screen.getByText('Team wiki'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/connectors/mcp-confluence?installation=gazelle',
+      '/customize/connectors/gazelle/mcp-confluence',
     );
   });
 
@@ -626,7 +628,7 @@ describe('CommandPalette', () => {
     expect(screen.getAllByText('Jira')).toHaveLength(2);
     await userEvent.click(screen.getAllByText('Jira')[1]);
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/connectors/jira?installation=golem',
+      '/customize/connectors/golem/jira',
     );
   });
 
@@ -652,7 +654,7 @@ describe('CommandPalette', () => {
       }),
     );
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/new-session-id',
+      '/sessions/gazelle/new-session-id',
       {
         state: {
           newSession: {
@@ -696,7 +698,7 @@ describe('CommandPalette', () => {
     expect(within(listbox).getByText('Workflows')).toBeVisible();
     await userEvent.click(within(listbox).getByText('release-readiness'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/workflows/release-readiness?installation=gazelle',
+      '/customize/workflows/gazelle/release-readiness',
     );
   });
 
@@ -750,10 +752,7 @@ describe('CommandPalette', () => {
       const more = screen.getByRole('link', {
         name: 'Show 295 more sessions',
       });
-      expect(more).toHaveAttribute(
-        'href',
-        '/agent-platform/sessions?q=release',
-      );
+      expect(more).toHaveAttribute('href', '/sessions?q=release');
 
       // The Sessions chip lists more of them, still bounded.
       await userEvent.click(screen.getByRole('button', { name: 'Sessions' }));

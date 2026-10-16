@@ -15,7 +15,7 @@ import {
   usageRouteRef,
 } from '../../routes';
 import { AgentPlatformCookieAuth } from '../AgentPlatformCookieAuth';
-import { AgentPlatformPageRoutes } from '../AgentPlatformPageRoutes';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { AgentDetailPage } from './AgentDetailPage';
 
@@ -148,7 +148,7 @@ jest.mock('./AgentUpdateSkillsDialog', () => ({
   AgentUpdateSkillsDialog: () => null,
 }));
 
-const AGENT_PATH = '/agent-platform/agents/gazelle/agent-platform/pr-reviewer';
+const AGENT_PATH = '/customize/agents/gazelle/agent-platform/pr-reviewer';
 
 const AGENT_JSON = {
   apiVersion: 'api.kagent.dev/v1alpha3',
@@ -193,8 +193,7 @@ const AGENT_JSON = {
  * second agent rather than a variant of the first, because the plugin's query
  * client outlives a test and holds the first by its address.
  */
-const TOOLS_AGENT_PATH =
-  '/agent-platform/agents/gazelle/agent-platform/code-helper';
+const TOOLS_AGENT_PATH = '/customize/agents/gazelle/agent-platform/code-helper';
 const TOOLS_AGENT_JSON = {
   ...AGENT_JSON,
   metadata: { ...AGENT_JSON.metadata, name: 'code-helper' },
@@ -360,7 +359,7 @@ async function renderApp() {
       <Routes>
         <Route path="/elsewhere" element={<Elsewhere />} />
         <Route
-          path="/agent-platform/agents/:installation/:namespace/:name/*"
+          path="/customize/agents/:installation/:namespace/:name/*"
           element={
             <QueryClientProvider key="agents">
               <Leave />
@@ -373,10 +372,10 @@ async function renderApp() {
     {
       apis: [[kubernetesApiRef, { proxy }]],
       mountedRoutes: {
-        '/agent-platform/agents': agentsRouteRef,
-        '/agent-platform/models': modelsRouteRef,
-        '/agent-platform/skills': skillsRouteRef,
-        '/agent-platform/usage': usageRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/customize/models': modelsRouteRef,
+        '/customize/skills': skillsRouteRef,
+        '/usage': usageRouteRef,
       },
       initialRouteEntries: ['/elsewhere'],
     },
@@ -415,23 +414,15 @@ async function renderThroughThePage() {
     <Profiler id="agent-platform-page" onRender={recordCommit}>
       <Routes>
         <Route path="/elsewhere" element={<Elsewhere />} />
+        {/* The Customize page's tab below its list, as the app mounts it. */}
         <Route
-          path="/agent-platform/*"
+          path="/customize/agents/*"
           element={
-            <AgentPlatformPageRoutes
-              pageTitle="Agent Platform"
-              pages={[
-                {
-                  path: 'agents',
-                  title: 'Agents',
-                  element: (
-                    <Suspense fallback={<div data-testid="chunk-loading" />}>
-                      <AgentsTab />
-                    </Suspense>
-                  ),
-                },
-              ]}
-            />
+            <PageHeaderActionsProvider>
+              <Suspense fallback={<div data-testid="chunk-loading" />}>
+                <AgentsTab />
+              </Suspense>
+            </PageHeaderActionsProvider>
           }
         />
       </Routes>
@@ -439,10 +430,10 @@ async function renderThroughThePage() {
     {
       apis: [[kubernetesApiRef, { proxy }]],
       mountedRoutes: {
-        '/agent-platform/agents': agentsRouteRef,
-        '/agent-platform/models': modelsRouteRef,
-        '/agent-platform/skills': skillsRouteRef,
-        '/agent-platform/usage': usageRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/customize/models': modelsRouteRef,
+        '/customize/skills': skillsRouteRef,
+        '/usage': usageRouteRef,
       },
       initialRouteEntries: ['/elsewhere'],
     },

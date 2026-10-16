@@ -589,18 +589,18 @@ function makeGitRepository() {
  * AgentsRouter mounts this page at, so the page's own `<Routes>` sees the tab
  * segment and `useSplatBasePath` can strip it back off.
  */
-const AGENT_PATH = `/agent-platform/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
+const AGENT_PATH = `/customize/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
 
 const renderPage = (tab: string = '') =>
   renderInTestApp(<AgentDetailPage />, {
     mountedRoutes: {
-      '/agent-platform/agents': agentsRouteRef,
-      '/agent-platform/models': modelsRouteRef,
+      '/customize/agents': agentsRouteRef,
+      '/customize/models': modelsRouteRef,
       '/customize': customizeExternalRouteRef,
-      '/agent-platform/skills': skillsRouteRef,
-      '/agent-platform/usage': usageRouteRef,
+      '/customize/skills': skillsRouteRef,
+      '/usage': usageRouteRef,
     },
-    mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+    mountPath: '/customize/agents/:installation/:namespace/:name/*',
     initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
   });
 
@@ -2006,11 +2006,11 @@ describe('AgentDetailPage: the model behind the agent', () => {
   const renderPageWithModels = () =>
     renderInTestApp(<AgentDetailPage />, {
       mountedRoutes: {
-        '/agent-platform/agents': agentsRouteRef,
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
-      mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+      mountPath: '/customize/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [AGENT_PATH],
     });
 
@@ -2072,7 +2072,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
   });
 
@@ -2093,13 +2093,13 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
   const renderShell = (tab: string = '') =>
     renderInTestApp(<AgentDetailPage />, {
       mountedRoutes: {
-        '/agent-platform/agents': agentsRouteRef,
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
-        '/agent-platform/skills': skillsRouteRef,
-        '/agent-platform/usage': usageRouteRef,
+        '/customize/skills': skillsRouteRef,
+        '/usage': usageRouteRef,
       },
-      mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+      mountPath: '/customize/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
     });
 
@@ -2338,7 +2338,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(skills).getByRole('link', { name: 'PR review conventions' }),
       ).toHaveAttribute(
         'href',
-        '/agent-platform/skills/giantswarm/skills/pr-review',
+        '/customize/skills/giantswarm/skills/pr-review',
       );
       expect(
         within(skills).getByText('How we review pull requests at Giant Swarm.'),
@@ -2616,7 +2616,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(screen.getByText('$1.25')).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'Open in Usage' }),
-      ).toHaveAttribute('href', '/agent-platform/usage/cost');
+      ).toHaveAttribute('href', '/usage/cost');
     });
 
     it('says why the gateway figures are missing, and keeps your own', async () => {
