@@ -322,7 +322,7 @@ describe('legacyAgentPlatformTarget: the inventory', () => {
       ],
       ['/agent-platform/usage/overview?window=7d', '/usage?window=7d'],
       ['/agent-platform/usage/cost?window=90d', '/usage/cost?window=90d'],
-      ['/agent-platform/usage/conversations', '/usage/conversations'],
+      ['/agent-platform/usage/conversations', '/usage/your-sessions'],
       ['/agent-platform/usage/connectors', '/usage/connectors'],
       ['/agent-platform/usage/mcp', '/usage/connectors'],
       ['/agent-platform/usage/technical', '/usage'],

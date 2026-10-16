@@ -42,6 +42,7 @@ test.describe('an old Agent Platform address', () => {
     ['/agent-platform/sessions', /\/sessions$/],
     ['/agent-platform/usage', /\/usage$/],
     ['/agent-platform/usage/cost', /\/usage\/cost$/],
+    ['/agent-platform/usage/conversations', /\/usage\/your-sessions$/],
     ['/agent-platform/profile', /\/profile$/],
     ['/agents', /\/customize\/agents$/],
     ['/agent-platform/agents/new', /\/customize\/agents\/new$/],

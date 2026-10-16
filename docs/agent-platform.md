@@ -2326,16 +2326,16 @@ to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp
 environment and the window (7, 30 or 90 days, in `?window=`,
 `lib/usageWindow.ts`).
 
-| View          | Path                  | Source                          | Whose            |
-| ------------- | --------------------- | ------------------------------- | ---------------- |
-| Overview      | `usage/overview`      | agentgateway metrics, via Mimir | everyone's       |
-| Cost          | `usage/cost`          | agentgateway metrics, via Mimir | everyone's       |
-| Your sessions | `usage/conversations` | kagent's stored conversations   | the caller's own |
+| View          | Path                   | Source                          | Whose            |
+| ------------- | ---------------------- | ------------------------------- | ---------------- |
+| Overview      | `/usage`               | agentgateway metrics, via Mimir | everyone's       |
+| Cost          | `/usage/cost`          | agentgateway metrics, via Mimir | everyone's       |
+| Your sessions | `/usage/your-sessions` | kagent's stored conversations   | the caller's own |
 
 The tabs separate _whose_ usage each view reports; a sentence in a description
-was too easy to skip. The path is `conversations`, not `sessions`, so it is not
-mistaken for `/sessions` in URLs and telemetry, and stays
-scope-neutral (see [It can only ever be personal](#it-can-only-ever-be-personal)).
+was too easy to skip. The path is the tab's label, `your-sessions`, so it is
+not mistaken for `/sessions`; telemetry keeps reporting it as the `conversations`
+view (see [It can only ever be personal](#it-can-only-ever-be-personal)).
 
 ### Where each number comes from
 

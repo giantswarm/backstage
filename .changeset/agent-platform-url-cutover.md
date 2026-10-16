@@ -11,7 +11,8 @@ Customize tab, at `/customize/agents/<installation>/<namespace>/<name>`,
 flows at `…/new` and their edits at `…/edit` (skills keep
 `/customize/skills/edit/…`). Model hosting is
 `/customize/models/hosting[/capacity|/cache]`, with Running models at its
-bare path, and Usage's Overview is the bare `/usage`. An unknown address
+bare path, and Usage's Overview is the bare `/usage`, its "Your sessions"
+`/usage/your-sessions`. An unknown address
 under any of them lands on its nearest valid page. Every old
 `/agent-platform/…` and `/agents/…` address redirects to its new place in one
 hop until the end of 2026.

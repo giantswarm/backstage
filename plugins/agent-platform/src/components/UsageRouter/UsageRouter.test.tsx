@@ -151,14 +151,14 @@ describe('UsageRouter', () => {
     );
     expect(screen.getByRole('tab', { name: 'Your sessions' })).toHaveAttribute(
       'href',
-      '/usage/conversations?window=7d',
+      '/usage/your-sessions?window=7d',
     );
   });
 
   it.each([
     ['', 'overview-view'],
     ['/cost', 'cost-view'],
-    ['/conversations', 'conversations-view'],
+    ['/your-sessions', 'conversations-view'],
   ])('routes the view at "/usage%s"', async (path, marker) => {
     renderTab(`/usage${path}`);
 
@@ -221,11 +221,13 @@ describe('UsageRouter', () => {
     '/usage/sessions',
     '/usage/typo',
     '/usage/overview',
+    '/usage/conversations',
     '/usage/cost/deeper',
   ])('sends an unknown sub-path to Overview: %s', async path => {
     // Without a catch-all these rendered the tab strip over an empty page with
-    // no tab active. `/usage/sessions` is the likely guess, since the tab
-    // reads "Your sessions" while the path is `conversations`.
+    // no tab active. `/usage/sessions` is the likely guess for "Your
+    // sessions", and `conversations` was the view's path before it took its
+    // label (never released).
     renderTab(path);
 
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
@@ -283,14 +285,14 @@ describe('UsageRouter', () => {
       // (AgentUsageSection owns the honest labelling), so the control applies
       // on every view rather than vanishing on one tab.
       const user = userEvent.setup();
-      renderTab('/usage/conversations');
+      renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
       await user.click(screen.getByRole('radio', { name: '7 days' }));
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
-          '/usage/conversations?window=7d',
+          '/usage/your-sessions?window=7d',
         );
       });
       // The Environment control still applies: the fan-out is per installation.
@@ -302,7 +304,7 @@ describe('UsageRouter', () => {
       // a wider selection could only re-show the same figures under a bigger
       // number. The reason rides on the greyed button itself — a native title
       // is the one affordance a disabled control still offers.
-      renderTab('/usage/conversations');
+      renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
       const ninety = screen.getByRole('radio', { name: '90 days' });
@@ -329,7 +331,7 @@ describe('UsageRouter', () => {
       // No locked control over a guess: until a response names its window,
       // nothing is greyed out.
       sessionUsageState.usage = undefined;
-      renderTab('/usage/conversations');
+      renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
       expect(screen.getByRole('radio', { name: '90 days' })).toBeEnabled();
@@ -339,14 +341,14 @@ describe('UsageRouter', () => {
       // A shared link saying ?window=90d still lands where it pointed:
       // AgentUsageSection's note explains that the figures cover the backend's
       // own window — the control greys the option but never rewrites the URL.
-      renderTab('/usage/conversations?window=90d');
+      renderTab('/usage/your-sessions?window=90d');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
       const ninety = screen.getByRole('radio', { name: '90 days' });
       expect(ninety).toBeDisabled();
       expect(ninety).toBeChecked();
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/usage/conversations?window=90d',
+        '/usage/your-sessions?window=90d',
       );
     });
   });
@@ -417,7 +419,7 @@ describe('UsageScopeBar · the window limit on a phone', () => {
 
   it('says why the longer windows are off beside the control', async () => {
     layout = mockPhoneLayout();
-    renderTab('/usage/conversations');
+    renderTab('/usage/your-sessions');
 
     expect(await screen.findByText('conversations-view')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: '90 days' })).toBeDisabled();
@@ -426,7 +428,7 @@ describe('UsageScopeBar · the window limit on a phone', () => {
 
   it('leaves it to the button’s tooltip on a desktop with a mouse', async () => {
     layout = mockDesktopLayout();
-    renderTab('/usage/conversations');
+    renderTab('/usage/your-sessions');
 
     expect(await screen.findByText('conversations-view')).toBeInTheDocument();
     expect(screen.queryByText(REASON)).toBeNull();
@@ -438,7 +440,7 @@ describe('UsageScopeBar · the window limit on a phone', () => {
     // field); layout itself is not measured in jsdom, so this pins that the
     // controls are that row's own items rather than a row of their own.
     layout = mockPhoneLayout();
-    renderTab('/usage/conversations');
+    renderTab('/usage/your-sessions');
 
     const timeRange = await screen.findByRole('radiogroup', {
       name: 'Time range',

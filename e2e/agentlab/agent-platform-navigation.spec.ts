@@ -202,6 +202,10 @@ test('/usage carries Overview · Cost · Your sessions · Connectors and each re
       'aria-selected',
       'true',
     );
+    if (name === 'Your sessions') {
+      // The view's path is its label.
+      await expect(admin).toHaveURL(/\/usage\/your-sessions(\?|$)/);
+    }
     await expect(
       admin.getByText(/something went wrong|error boundary/i),
       `${name} renders without an error boundary`,

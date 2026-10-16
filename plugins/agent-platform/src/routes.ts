@@ -111,10 +111,10 @@ export const usageCostRouteRef = createSubRouteRef({
   parent: usageRouteRef,
 });
 
-// "Your sessions" (`/usage/conversations`): the reader's own slice of the
+// "Your sessions" (`/usage/your-sessions`, the tab's label): the reader's own slice of the
 // usage.
 export const usageConversationsRouteRef = createSubRouteRef({
-  path: '/conversations',
+  path: '/your-sessions',
   parent: usageRouteRef,
 });
 

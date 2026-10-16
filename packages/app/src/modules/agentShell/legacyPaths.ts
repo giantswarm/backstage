@@ -340,9 +340,11 @@ function usageTarget(rest: string[]): string {
   if (key(rest[0]) === 'mcp') {
     return '/usage/connectors';
   }
-  // Overview is the bare path now, and every retired or unknown view landed
+  // "Your sessions" was `conversations`; its path is its label now.
+  // Overview is the bare path, and every retired or unknown view landed
   // there.
-  return path('/usage', known(rest[0], USAGE_VIEWS));
+  const view = known(rest[0], USAGE_VIEWS);
+  return path('/usage', view === 'conversations' ? 'your-sessions' : view);
 }
 
 /**

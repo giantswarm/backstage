@@ -62,7 +62,7 @@ describe('the exported route refs', () => {
       gpuCapacity: '/customize/models/hosting/capacity',
       modelCache: '/customize/models/hosting/cache',
       usageCost: '/usage/cost',
-      usageConversations: '/usage/conversations',
+      usageConversations: '/usage/your-sessions',
       usageConnectors: '/usage/connectors',
       serveModel: '/customize/models/hosting/serve',
       importModel: '/customize/models/hosting/import',

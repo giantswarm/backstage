@@ -53,11 +53,13 @@ const AGENT_TABS: ReadonlySet<string> = new Set(
 const CONNECTOR_TABS: ReadonlySet<string> = new Set(CONNECTOR_PAGE_TAB_PATHS);
 
 /** Usage's views below its own address (Overview, the bare path, left out). */
-const USAGE_VIEWS: ReadonlySet<string> = new Set([
-  'cost',
-  'conversations',
-  'connectors',
-]);
+const USAGE_VIEWS: Record<string, string> = {
+  cost: 'cost',
+  // "Your sessions", under the view name its old `conversations` path gave
+  // it, so its numbers stay continuous.
+  'your-sessions': 'conversations',
+  connectors: 'connectors',
+};
 
 /**
  * Model hosting's views by their path below `hosting`, as the `view` names
@@ -449,8 +451,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
       let usageView = 'redirect';
       if (view === '') {
         usageView = 'overview';
-      } else if (USAGE_VIEWS.has(view)) {
-        usageView = view;
+      } else if (Object.hasOwn(USAGE_VIEWS, view)) {
+        usageView = USAGE_VIEWS[view];
       }
       payload = { page: 'Usage', view: usageView };
       break;

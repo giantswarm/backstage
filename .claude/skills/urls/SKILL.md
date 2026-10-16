@@ -21,7 +21,7 @@ change needs something the rules do not settle, it needs a decision first.
 ```
 /                                                       new session
 /sessions[/<inst>/<id>]
-/usage[/cost|/conversations|/connectors]                bare = Overview
+/usage[/cost|/your-sessions|/connectors]                bare = Overview
 /profile
 /customize/agents[/new[/skills|/tools|/review]]
 /customize/agents/<inst>/<ns>/<name>[/sessions|/tools|/usage]

@@ -36,7 +36,7 @@ type UsageView = { path: string; title: string };
 const OVERVIEW: UsageView = { path: '', title: 'Overview' };
 const COST: UsageView = { path: 'cost', title: 'Cost' };
 const CONNECTORS: UsageView = { path: 'connectors', title: 'Connectors' };
-const SESSIONS: UsageView = { path: 'conversations', title: 'Your sessions' };
+const SESSIONS: UsageView = { path: 'your-sessions', title: 'Your sessions' };
 
 /**
  * The views on offer. Connectors only when a plugin contributed its content —
@@ -94,11 +94,10 @@ const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
           )
         }
       />
-      <Route path="conversations" element={<UsageConversationsPage />} />
+      <Route path="your-sessions" element={<UsageConversationsPage />} />
       {/* Anything else lands on Overview rather than on the tab strip over
           an empty page with no tab active — `/usage/sessions` is a likely
-          guess, given the tab reads "Your sessions" while the path is
-          `conversations`. Absolute, from the splat base path, for the
+          guess for "Your sessions". Absolute, from the splat base path, for the
           reason the tab hrefs are: a relative target inside a splat route
           resolves against the whole current pathname and would append
           rather than replace. */}

@@ -284,7 +284,9 @@ describe('getTelemetryPageViewPayload', () => {
     ['/sessions/gazelle/abc123', { page: 'Session detail' }],
     ['/usage', { page: 'Usage', view: 'overview' }],
     ['/usage/cost', { page: 'Usage', view: 'cost' }],
-    ['/usage/conversations', { page: 'Usage', view: 'conversations' }],
+    ['/usage/your-sessions', { page: 'Usage', view: 'conversations' }],
+    // The view's path before it took its label, never released: no view.
+    ['/usage/conversations', { page: 'Usage', view: 'redirect' }],
     ['/usage/connectors', { page: 'Usage', view: 'connectors' }],
     ['/usage/whatever', { page: 'Usage', view: 'redirect' }],
     ['/profile', { page: 'Profile' }],
@@ -598,7 +600,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/sessions/gazelle/abc123',
       '/usage',
       '/usage/cost',
-      '/usage/conversations',
+      '/usage/your-sessions',
       '/usage/connectors',
       '/profile',
       // The old tree, redirect-only until the end of 2026.
