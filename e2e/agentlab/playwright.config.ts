@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { chromiumLaunchOptions } from './browser';
 import { contextOptions, lab, mobileContextOptions } from './lab';
 import type { Variant } from './lab';
 import { mobileSpecGlobs, shellSpecGlobs } from './portalModes';
@@ -50,6 +51,9 @@ export default defineConfig<{}, { variant: Variant }>({
     navigationTimeout: 30_000,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
+    // A network namespace of its own, so a container starting on the lab
+    // machine does not abort the browser's requests (see browser.ts).
+    launchOptions: chromiumLaunchOptions(),
   },
 
   // The classic portal's specs run against a lab in either portal mode; the
