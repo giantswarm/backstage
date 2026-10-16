@@ -292,8 +292,9 @@ if [ "${config_order}" != "app-config.yaml,app-config.production.yaml,app-config
 fi
 
 echo "--> database.postgresql: the pods of a rollout fit max_connections, or the render fails"
-# Every plugin holds its own pool: replicas plus surge, times the plugins,
-# times the pool, stays within max_connections less the reserved slots.
+# Every plugin holds its own pool and a pod one schema connection: replicas
+# plus surge, times the plugins' pools plus one, stays within max_connections
+# less the reserved slots.
 database_pool() {
   yq 'select(.kind == "ConfigMap" and .metadata.name == "backstage-database-config") | .data["app-config-database.yaml"]' "${work_dir}/$1.yaml" |
     yq -o=json -I=0 '.backend.database.knexConfig.pool'
@@ -307,7 +308,7 @@ expect_pool() {
     failed=1
   fi
 }
-# (300 - 3) / ((1 + 1) × 25): one replica, the default 25 % surge rounds up.
+# ((300 - 3) / (1 + 1) - 1) / 25: one replica, the default 25 % surge rounds up.
 expect_pool postgresql '{"max":5,"min":0}'
 render pool-surge --set database.engine=postgresql --set replicas=2
 expect_pool pool-surge '{"max":3,"min":0}'
@@ -319,7 +320,7 @@ render pool-recreate --set database.engine=postgresql --set replicas=2 --set str
 expect_pool pool-recreate '{"max":5,"min":0}'
 render pool-set --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.max=3
 expect_pool pool-set '{"max":3,"min":0}'
-render_fails pool-too-large 'a pool of 10 needs 750 connections, more than max_connections 300 less 3 reserved' --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.max=10
+render_fails pool-too-large 'a pool of 10 + 1) needs 753 connections, more than max_connections 300 less 3 reserved' --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.max=10
 render_fails pool-too-many-pods '25 pods during a rollout' --set database.engine=postgresql --set replicas=20
 render pool-raised --set database.engine=postgresql --set replicas=20 --set database.postgresql.maxConnections=700
 expect_pool pool-raised '{"max":1,"min":0}'

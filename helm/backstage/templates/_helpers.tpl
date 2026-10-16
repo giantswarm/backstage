@@ -155,10 +155,11 @@ under Recreate. Takes the root context.
 {{- end }}
 
 {{/*
-The per-plugin database pool size. Every backend plugin with a database holds
-its own pool, so the pods running at once during a rollout hold up to
-maxPods × pluginsWithDatabase × pool max connections; that stays within the
-CNPG cluster's max_connections less the superuser-reserved slots, or the
+The per-plugin database pool size. Every backend plugin holds its own pool,
+and a pod opens one more connection at a time to ensure a plugin's schema, so
+the pods running at once during a rollout hold up to
+maxPods × (pluginsWithDatabase × pool max + 1) connections; that stays within
+the CNPG cluster's max_connections less the superuser-reserved slots, or the
 render fails. pool.max 0 takes the largest size that fits. Takes the root
 context.
 */}}
@@ -169,11 +170,11 @@ context.
 {{- $available := sub (int $pg.maxConnections) (int $pg.superuserReservedConnections) -}}
 {{- $poolMax := int $pg.pool.max -}}
 {{- if eq $poolMax 0 -}}
-{{- $poolMax = div $available (mul $maxPods $plugins) -}}
+{{- $poolMax = div (sub (div $available $maxPods) 1) $plugins -}}
 {{- end -}}
-{{- $needed := mul $maxPods $plugins $poolMax -}}
+{{- $needed := mul $maxPods (add (mul $plugins $poolMax) 1) -}}
 {{- if or (lt $poolMax 1) (gt $needed $available) -}}
-{{- fail (printf "database.postgresql: %d pods during a rollout (replicas plus surge) × %d plugins × a pool of %d needs %d connections, more than max_connections %d less %d reserved: raise database.postgresql.maxConnections or lower database.postgresql.pool.max, replicas or strategy.rollingUpdate.maxSurge" $maxPods $plugins (max $poolMax 1) (mul $maxPods $plugins (max $poolMax 1)) (int $pg.maxConnections) (int $pg.superuserReservedConnections)) -}}
+{{- fail (printf "database.postgresql: %d pods during a rollout (replicas plus surge) × (%d plugins × a pool of %d + 1) needs %d connections, more than max_connections %d less %d reserved: raise database.postgresql.maxConnections or lower database.postgresql.pool.max, replicas or strategy.rollingUpdate.maxSurge" $maxPods $plugins (max $poolMax 1) (mul $maxPods (add (mul $plugins (max $poolMax 1)) 1)) (int $pg.maxConnections) (int $pg.superuserReservedConnections)) -}}
 {{- end -}}
 {{- $poolMax -}}
 {{- end }}

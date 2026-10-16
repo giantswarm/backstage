@@ -169,7 +169,7 @@ names the value. `githubAppCredentials`, `google.credentialsJson` and
 | database.postgresql.clusterNameSuffix | string | `"cnpg"` | Suffix appended to the chart name to form the CNPG cluster resource name |
 | database.postgresql.instances | int | `2` | Number of PostgreSQL instances in the CNPG cluster |
 | database.postgresql.storageSize | string | `"5Gi"` | Persistent volume size for the PostgreSQL CNPG cluster |
-| database.postgresql.maxConnections | int | `300` | PostgreSQL `max_connections` of the CNPG cluster. The backend pods running at once during a rollout (replicas plus the rolling update's surge) share it, less `superuserReservedConnections`: the chart sizes each plugin's pool to fit, and fails the render when `pool.max` does not fit. |
+| database.postgresql.maxConnections | int | `300` | PostgreSQL `max_connections` of the CNPG cluster. The backend pods running at once during a rollout (replicas plus the rolling update's surge) share it, less `superuserReservedConnections`: each holds every plugin's pool plus one connection to ensure a schema. The chart sizes each plugin's pool to fit, and fails the render when `pool.max` does not fit. |
 | database.postgresql.superuserReservedConnections | int | `3` | PostgreSQL `superuser_reserved_connections` of the CNPG cluster: the slots kept for the operator's superuser, which the backend's `app` role never gets. |
 | database.postgresql.pool | object | `{"max":0,"pluginsWithDatabase":25}` | The backend's database pools. Every backend plugin with a database holds its own pool, which releases idle connections (min 0). |
 | database.postgresql.pool.max | int | `0` | Connections per plugin pool. 0 takes the largest pool that fits `maxConnections`; a set value that does not fit fails the render. |
