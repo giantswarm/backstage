@@ -54,7 +54,9 @@ test('a Claude Code agent shows no limits, and its turn its reported cost', asyn
     // by itself while the agent is not ready and follows a change of that
     // until it is toggled: opened until the card shows.
     const details = admin.getByRole('button', { name: 'Technical details' });
-    const harnessLine = admin.getByText(/Runs on claude|Sessions run on claude/);
+    const harnessLine = admin.getByText(
+      /Runs on claude|Sessions run on claude/,
+    );
     await expect(async () => {
       if ((await details.getAttribute('aria-expanded')) !== 'true') {
         await details.click();
