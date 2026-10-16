@@ -50,9 +50,17 @@ test('a Claude Code agent shows no limits, and its turn its reported cost', asyn
 
   let failure: unknown;
   try {
-    await expect(
-      admin.getByText(/Runs on claude|Sessions run on claude/),
-    ).toBeVisible({ timeout: 60_000 });
+    // The status card sits under the page's Technical details, which opens
+    // by itself while the agent is not ready and follows a change of that
+    // until it is toggled: opened until the card shows.
+    const details = admin.getByRole('button', { name: 'Technical details' });
+    const harnessLine = admin.getByText(/Runs on claude|Sessions run on claude/);
+    await expect(async () => {
+      if ((await details.getAttribute('aria-expanded')) !== 'true') {
+        await details.click();
+      }
+      await expect(harnessLine).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 60_000 });
     await expectNoLimits(admin, "the agent's status card");
 
     await startSessionOnReadyAgent(admin, prompt);
