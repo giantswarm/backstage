@@ -313,10 +313,6 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Connector', view: 'used-by' },
     ],
     [
-      '/agent-platform/connectors/kubernetes/settings',
-      { page: 'Connector', view: 'settings' },
-    ],
-    [
       '/agent-platform/connectors/kubernetes/tools/x_kubernetes_get_pods',
       { page: 'Connector tool' },
     ],
@@ -457,6 +453,37 @@ describe('getTelemetryPageViewPayload', () => {
         path: pathname,
       });
     });
+
+    it.each([
+      ['/customize/models/gazelle/agent-platform/gpt-4o/usage', 'usage'],
+      ['/customize/models/gazelle/agent-platform/gpt-4o/used-by', 'used-by'],
+      ['/customize/models/gazelle/agent-platform/gpt-4o/used-by/', 'used-by'],
+    ])('reports the model page tab %s as the view', (pathname, view) => {
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Model detail',
+        view,
+        path: pathname,
+      });
+    });
+
+    // Anything else under the model's address only redirects to Overview, so
+    // the URL's free text never becomes a view. The former Details tab too:
+    // its Technical details are Overview's now.
+    it.each([
+      '/customize/models/gazelle/agent-platform/gpt-4o/details',
+      '/customize/models/gazelle/agent-platform/gpt-4o/overview',
+      '/customize/models/gazelle/agent-platform/gpt-4o/wp-login.php',
+      '/customize/models/gazelle/agent-platform/gpt-4o/usage/extra',
+    ])(
+      'reports an unknown address under a model as a redirect: %s',
+      pathname => {
+        expect(getTelemetryPageViewPayload(pathname)).toEqual({
+          page: 'Model detail',
+          view: 'redirect',
+          path: pathname,
+        });
+      },
+    );
 
     // The old path only redirects; the page it lands on reports Model detail.
     it("counts a model's former path apart, so an old link is one Model detail", () => {
@@ -659,6 +686,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/connectors/internal',
       '/customize/models',
       '/customize/models/gazelle/agent-platform/gpt-4o',
+      '/customize/models/gazelle/agent-platform/gpt-4o/usage',
+      '/customize/models/gazelle/agent-platform/gpt-4o/used-by',
       '/customize/workflows',
       '/installations',
       '/clusters',
@@ -675,7 +704,6 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/connectors/kubernetes',
       '/agent-platform/connectors/kubernetes/details',
       '/agent-platform/connectors/kubernetes/used-by',
-      '/agent-platform/connectors/kubernetes/settings',
       '/agent-platform/connectors/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/mcp-servers',
       '/agent-platform/workflows',

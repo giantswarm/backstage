@@ -564,6 +564,7 @@ describe('toModelRow', () => {
       endpoint: 'https://vllm.example.test/v1',
       readiness: 'notAccepted',
       readinessMessage: 'referenced Secret not found',
+      failedCondition: 'Accepted',
     });
   });
 

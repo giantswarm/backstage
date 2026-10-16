@@ -6,6 +6,7 @@ import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   serverPageResolver,
   ServerSignIn,
+  withInstallationQuery,
 } from '@giantswarm/backstage-plugin-muster';
 import {
   InfoCard,
@@ -160,6 +161,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
   const {
     servers,
     resources: serverResources,
+    labels,
     isLoading: isLoadingServers,
   } = useMusterServers(installation);
   // `preset:none` is exactly "no tools"; asking muster what it resolves to
@@ -192,14 +194,16 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       return undefined;
     }
     const pageOfTool = serverPageResolver(serverResources);
-    const scope = `?installation=${encodeURIComponent(installation)}`;
     return (name: string): string | undefined => {
       const server = pageOfTool(name);
       if (server && toolRoute) {
-        return `${toolRoute({ server, tool: name })}${scope}`;
+        return withInstallationQuery(
+          toolRoute({ server, tool: name }),
+          installation,
+        );
       }
       return serversRoute
-        ? `${serversRoute()}${scope}&q=${encodeURIComponent(name)}`
+        ? withInstallationQuery(serversRoute(), installation, { q: name })
         : undefined;
     };
   }, [
@@ -273,6 +277,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
                   noun="connector"
                   key={selector}
                   serverName={name}
+                  displayName={labels.get(name)}
                   installation={installation}
                   showName
                 />

@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -7,6 +14,11 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { sendKeyCaption } from '../../lib/sendKey';
+import {
+  mockImageEncoding,
+  pngFile,
+  TINY_PNG_BASE64,
+} from '../../lib/__fixtures__/images';
 import { MESSAGE_TEXT_MAX_LENGTH, SessionComposer } from './SessionComposer';
 
 const onSubmit = jest.fn();
@@ -59,7 +71,7 @@ describe('SessionComposer', () => {
     await userEvent.type(field(), '  why is the ingress failing?  ');
     await userEvent.click(sendButton());
 
-    expect(onSubmit).toHaveBeenCalledWith('why is the ingress failing?');
+    expect(onSubmit).toHaveBeenCalledWith('why is the ingress failing?', []);
   });
 
   it('clears the field on submit', async () => {
@@ -80,7 +92,7 @@ describe('SessionComposer', () => {
     await userEvent.type(field(), 'line one{Shift>}{Enter}{/Shift}line two');
     await userEvent.click(sendButton());
 
-    expect(onSubmit).toHaveBeenCalledWith('line one\nline two');
+    expect(onSubmit).toHaveBeenCalledWith('line one\nline two', []);
   });
 
   it('will not submit an empty or whitespace-only message', async () => {
@@ -106,7 +118,7 @@ describe('SessionComposer', () => {
 
     await userEvent.keyboard('{Enter}');
 
-    expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line');
+    expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line', []);
     expect(field()).toHaveValue('');
   });
 
@@ -116,7 +128,7 @@ describe('SessionComposer', () => {
     await userEvent.type(field(), 'hello');
     await userEvent.keyboard('{Control>}{Enter}{/Control}');
 
-    expect(onSubmit).toHaveBeenCalledWith('hello');
+    expect(onSubmit).toHaveBeenCalledWith('hello', []);
   });
 
   it('does nothing on Enter with nothing to send — no newline either', async () => {
@@ -167,7 +179,7 @@ describe('SessionComposer', () => {
     const { rerender } = renderComposer();
 
     await userEvent.type(field(), 'first{Enter}');
-    expect(onSubmit).toHaveBeenCalledWith('first');
+    expect(onSubmit).toHaveBeenCalledWith('first', []);
     rerender(
       <SessionComposer isAgentWorking isFinished={false} onSubmit={onSubmit} />,
     );
@@ -612,7 +624,7 @@ describe('SessionComposer — the way out of a lost runtime', () => {
     await userEvent.type(field(), '  six of them are vegetarian  ');
     await userEvent.click(startButton());
 
-    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian');
+    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian', []);
     // Not cleared: the create can fail, and the box is where the words are.
     expect(field()).toHaveValue('  six of them are vegetarian  ');
     expect(onSubmit).not.toHaveBeenCalled();
@@ -623,7 +635,7 @@ describe('SessionComposer — the way out of a lost runtime', () => {
 
     await userEvent.click(startButton());
 
-    expect(onStart).toHaveBeenCalledWith('');
+    expect(onStart).toHaveBeenCalledWith('', []);
   });
 
   it('keeps Enter sending while Send is still offered', async () => {
@@ -631,7 +643,7 @@ describe('SessionComposer — the way out of a lost runtime', () => {
 
     await userEvent.type(field(), 'try once more{Enter}');
 
-    expect(onSubmit).toHaveBeenCalledWith('try once more');
+    expect(onSubmit).toHaveBeenCalledWith('try once more', []);
     expect(onStart).not.toHaveBeenCalled();
   });
 
@@ -653,7 +665,7 @@ describe('SessionComposer — the way out of a lost runtime', () => {
 
     await userEvent.type(field(), 'six of them are vegetarian{Enter}');
 
-    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian');
+    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian', []);
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -750,7 +762,7 @@ describe('SessionComposer on a phone (T22)', () => {
     expect(field()).toHaveAttribute('enterkeyhint', 'enter');
 
     await userEvent.click(sendButton());
-    expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line');
+    expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line', []);
   });
 
   it('labels the Enter key "send" with a keyboard', () => {
@@ -822,5 +834,312 @@ describe('SessionComposer send-key hint', () => {
 
     expect(screen.getByText(/the limit is/)).toBeInTheDocument();
     expect(hint()).not.toBeVisible();
+  });
+});
+
+describe('SessionComposer — images', () => {
+  let encoding: ReturnType<typeof mockImageEncoding>;
+  beforeEach(() => {
+    encoding = mockImageEncoding();
+  });
+  afterEach(() => {
+    encoding.restore();
+  });
+
+  const attachedList = () =>
+    screen.queryByRole('list', { name: 'Attached images' });
+
+  /** Paste into the box as a clipboard holding `files` and these types. */
+  function paste(files: File[], types: string[] = ['Files']) {
+    fireEvent.paste(field(), {
+      clipboardData: { files, types, getData: () => '' },
+    });
+  }
+
+  function dataTransfer(files: File[]) {
+    return { files, types: ['Files'], dropEffect: 'none' };
+  }
+
+  const pdf = () =>
+    new File(['%PDF-1.7'], 'report.pdf', { type: 'application/pdf' });
+
+  const image = (name: string, byteSize = 70) => ({
+    id: `image-${name}`,
+    name,
+    mediaType: 'image/png' as const,
+    byteSize,
+    previewUrl: `data:image/png;base64,${TINY_PNG_BASE64}`,
+  });
+
+  it('attaches a pasted image instead of inserting anything', async () => {
+    renderComposer({ images: {} });
+
+    paste([pngFile('image.png')]);
+
+    // Not the browser's `image.png`, which every pasted image is called.
+    expect(await screen.findByText('Pasted image.png')).toBeInTheDocument();
+    expect(attachedList()).toBeInTheDocument();
+    expect(screen.getByText(/^PNG · /)).toBeInTheDocument();
+    expect(field()).toHaveValue('');
+  });
+
+  it('names each pasted image apart, so each remove control is announced apart', async () => {
+    renderComposer({ images: {} });
+
+    paste([pngFile('image.png')]);
+    await screen.findByText('Pasted image.png');
+    paste([pngFile('image.png')]);
+
+    expect(
+      await screen.findByRole('button', {
+        name: 'Remove Pasted image (2).png',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves a paste of rich text to the box, picture and all', async () => {
+    // A spreadsheet copies an image of the cells beside their text.
+    renderComposer({ images: {} });
+
+    paste([pngFile()], ['text/plain', 'text/html', 'Files']);
+
+    await act(async () => {});
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('leaves pasted images alone without the images option', async () => {
+    renderComposer();
+
+    paste([pngFile()]);
+
+    await act(async () => {});
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('sends the images with the text, and empties the box of both', async () => {
+    renderComposer({ images: {} });
+    paste([pngFile()]);
+    await screen.findByText('Pasted image.png');
+
+    await userEvent.type(field(), 'what is wrong here?');
+    await userEvent.click(sendButton());
+
+    expect(onSubmit).toHaveBeenCalledWith('what is wrong here?', [
+      expect.objectContaining({
+        name: 'Pasted image.png',
+        mediaType: 'image/png',
+        previewUrl: `data:image/png;base64,${TINY_PNG_BASE64}`,
+      }),
+    ]);
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('removes an image by its named control, and gives the box the focus back', async () => {
+    renderComposer({ images: {} });
+    paste([pngFile()]);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Remove Pasted image.png' }),
+    );
+
+    expect(attachedList()).not.toBeInTheDocument();
+    expect(field()).toHaveFocus();
+  });
+
+  it('takes images dropped on the box, with a drop state while they are over it', async () => {
+    renderComposer({ images: {} });
+    const box = screen.getByTestId('composer-card');
+    const files = [pngFile('dropped.png')];
+
+    fireEvent.dragEnter(box, { dataTransfer: dataTransfer(files) });
+    expect(box).toHaveAttribute('data-drop-target');
+    expect(screen.getByText('Drop images to attach them')).toBeInTheDocument();
+
+    fireEvent.drop(box, { dataTransfer: dataTransfer(files) });
+
+    expect(await screen.findByText('dropped.png')).toBeInTheDocument();
+    expect(box).not.toHaveAttribute('data-drop-target');
+  });
+
+  it('refuses a dropped file that is not an image, saying what it takes', async () => {
+    renderComposer({ images: {} });
+
+    fireEvent.drop(screen.getByTestId('composer-card'), {
+      dataTransfer: dataTransfer([pdf()]),
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'report.pdf is not an image the agent can take. Attach a PNG, JPEG, GIF or WebP image.',
+    );
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('keeps a refusal that a slower image finishing later would otherwise wipe', async () => {
+    let decoded: () => void = () => {};
+    encoding.createImageBitmap.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          decoded = () => resolve({ width: 1, height: 1, close: jest.fn() });
+        }),
+    );
+    renderComposer({ images: {} });
+
+    paste([pngFile()]);
+    fireEvent.drop(screen.getByTestId('composer-card'), {
+      dataTransfer: dataTransfer([pdf()]),
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent('report.pdf');
+
+    await waitFor(() => expect(encoding.createImageBitmap).toHaveBeenCalled());
+    await act(async () => decoded());
+
+    expect(await screen.findByText('Pasted image.png')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('report.pdf');
+  });
+
+  it('takes nothing while the box is disabled, but still keeps a dropped file from opening', () => {
+    renderComposer({
+      images: {},
+      disabledReason: 'Answer the question above to continue.',
+    });
+
+    const drop = createEvent.drop(screen.getByTestId('composer-card'), {
+      dataTransfer: dataTransfer([pngFile()]),
+    });
+    fireEvent(screen.getByTestId('composer-card'), drop);
+    const elsewhere = createEvent.drop(document.body, {
+      dataTransfer: dataTransfer([pngFile()]),
+    });
+    fireEvent(document.body, elsewhere);
+
+    expect(drop.defaultPrevented).toBe(true);
+    expect(elsewhere.defaultPrevented).toBe(true);
+    expect(attachedList()).not.toBeInTheDocument();
+  });
+
+  it('says why an agent that cannot take images takes none', async () => {
+    const reason =
+      'Coder cannot take images: its Claude Code runtime accepts text only.';
+    renderComposer({ images: { unsupportedReason: reason } });
+
+    paste([pngFile()]);
+    expect(await screen.findByRole('alert')).toHaveTextContent(reason);
+    expect(attachedList()).not.toBeInTheDocument();
+
+    // There is no button to attach images with: paste and drop only.
+    expect(
+      screen.queryByRole('button', { name: 'Attach images' }),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it('stops at the bytes the session can still carry', async () => {
+    renderComposer({
+      images: { session: { bytes: 16 * 1024 * 1024, count: 1 } },
+    });
+
+    paste([pngFile()]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Start a new session to send more images.',
+    );
+  });
+
+  it('stops at the number of images the session can still carry', async () => {
+    renderComposer({ images: { session: { bytes: 0, count: 50 } } });
+
+    paste([pngFile()]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This session already carries 50 images',
+    );
+  });
+
+  it('puts a failed message’s images back with its text', async () => {
+    const { rerender } = renderComposer({ images: {} });
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        images={{}}
+        restore={{
+          messageId: 'm1',
+          text: 'look',
+          images: [image('restored.png')],
+        }}
+      />,
+    );
+
+    expect(field()).toHaveValue('look');
+    expect(screen.getByText('restored.png')).toBeInTheDocument();
+  });
+
+  it('holds the send while restored and newer images are more than a message carries, and says so', async () => {
+    const { rerender } = renderComposer({ images: {} });
+    paste([pngFile()]);
+    await screen.findByText('Pasted image.png');
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        images={{}}
+        restore={{
+          messageId: 'm1',
+          text: 'look',
+          images: [image('big.png', 3 * 1024 * 1024)],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('big.png')).toBeInTheDocument();
+    expect(screen.getByText('Pasted image.png')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'a message can carry 3 MiB. Remove one, and send it with the next message.',
+    );
+    expect(sendButton()).toBeDisabled();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove Pasted image.png' }),
+    );
+    expect(sendButton()).toBeEnabled();
+  });
+
+  it('waits for an image still being read before starting a new session with it', async () => {
+    let decoded: () => void = () => {};
+    encoding.createImageBitmap.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          decoded = () => resolve({ width: 1, height: 1, close: jest.fn() });
+        }),
+    );
+    const onStart = jest.fn();
+    renderComposer({
+      images: {},
+      newSession: {
+        label: 'Start a new session with Coder',
+        onStart,
+        replacesSend: true,
+        caption: 'This session cannot continue.',
+      },
+    });
+
+    paste([pngFile()]);
+    const start = screen.getByRole('button', {
+      name: 'Start a new session with Coder',
+    });
+    expect(start).toBeDisabled();
+
+    await waitFor(() => expect(encoding.createImageBitmap).toHaveBeenCalled());
+    await act(async () => decoded());
+    await screen.findByText('Pasted image.png');
+    await userEvent.click(start);
+
+    expect(onStart).toHaveBeenCalledWith('', [
+      expect.objectContaining({ name: 'Pasted image.png' }),
+    ]);
   });
 });

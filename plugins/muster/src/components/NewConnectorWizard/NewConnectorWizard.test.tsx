@@ -155,14 +155,14 @@ describe('shell connector wizard', () => {
       const address = screen.getByLabelText(/^Server address/);
       expect(address).toHaveAttribute('aria-invalid', 'true');
       expect(address).toHaveAccessibleDescription(
-        expect.stringContaining('Server address is required'),
+        expect.stringContaining('Enter the server address'),
       );
       // The first invalid field takes the focus.
       expect(address).toHaveFocus();
       const name = screen.getByRole('textbox', { name: /^Name/ });
       expect(name).toHaveAttribute('aria-invalid', 'true');
       expect(name).toHaveAccessibleDescription(
-        expect.stringContaining('Name is required'),
+        expect.stringContaining('Enter a name for the connector.'),
       );
       // Every problem has a field to show it, so no summary box.
       expect(
@@ -189,6 +189,23 @@ describe('shell connector wizard', () => {
         expect.stringContaining('Server address must be an http(s) URL'),
       );
       expect(address).not.toHaveAccessibleDescription(/^URL/);
+    });
+
+    it('checks the address when the person leaves it, and clears the error once it is fixed', async () => {
+      await renderWizard('/agent-platform/connectors/new');
+      const address = screen.getByLabelText(/^Server address/);
+
+      await userEvent.type(address, 'mcp.example.com');
+      expect(address).not.toHaveAttribute('aria-invalid');
+
+      await userEvent.tab();
+      expect(address).toHaveAccessibleDescription(
+        expect.stringContaining('Server address must be an http(s) URL'),
+      );
+
+      await userEvent.clear(address);
+      await userEvent.type(address, 'https://mcp.example.com/mcp');
+      expect(address).not.toHaveAttribute('aria-invalid');
     });
 
     it('shows the probe verdict as the inline "Server found" state', async () => {
@@ -508,7 +525,7 @@ describe('shell connector wizard', () => {
       const region = screen.getByLabelText(/^Signing region/);
       expect(region).toHaveAttribute('aria-invalid', 'true');
       expect(region).toHaveAccessibleDescription(
-        expect.stringContaining('Signing region is required'),
+        expect.stringContaining('Enter the signing region'),
       );
       expect(region).toHaveFocus();
       expect(toolCalls('core_mcpserver_create')).toEqual([]);
@@ -596,6 +613,26 @@ describe('shell connector wizard', () => {
       );
     });
 
+    it('names the connector by its display name in the edit frame', async () => {
+      const server = registered();
+      server.jsonData.metadata.annotations = {
+        'ui.giantswarm.io/display-name': 'Acme Jira',
+      };
+      mockMcpServers = [server];
+      await renderWizard('/agent-platform/connectors/new?edit=jira');
+
+      expect(
+        await screen.findByText('Customize / Connectors / Acme Jira'),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(document.title).toBe('Edit Acme Jira · Connectors'),
+      );
+      // The registered name stays the CR's.
+      expect(screen.getByRole('textbox', { name: /^Name/ })).toHaveValue(
+        'jira',
+      );
+    });
+
     it('marks the invalid fields themselves on Continue, as when adding', async () => {
       await renderWizard('/agent-platform/connectors/new?edit=jira');
 
@@ -605,7 +642,7 @@ describe('shell connector wizard', () => {
 
       expect(address).toHaveAttribute('aria-invalid', 'true');
       expect(address).toHaveAccessibleDescription(
-        expect.stringContaining('Server address is required'),
+        expect.stringContaining('Enter the server address'),
       );
       expect(address).toHaveFocus();
       expect(

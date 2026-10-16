@@ -23,6 +23,7 @@ import {
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
   ShellPageBadgeSkeleton,
+  ShellPageExpandedOnly,
   ShellPageTitleSkeleton,
   StatusDot,
   TOUCH_MEDIA,
@@ -38,8 +39,13 @@ import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
 import {
   NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
   useNewSessionHandoff,
 } from '../../hooks/useNewSessionHandoff';
+import {
+  ComposerImage,
+  imagesUnsupportedReason,
+} from '../../lib/messageImages';
 import { useRenameSession } from '../../hooks/useRenameSession';
 import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
@@ -74,10 +80,12 @@ import { sessionStateDotVar } from '../../lib/stableClassNames';
 import {
   createPolledPairing,
   fresherStreamedCopy,
+  readLastUserMessage,
   STALLED_STATE_LABEL,
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
+import { useReadingAnchor } from './useReadingAnchor';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
   COLUMN_RESERVE_VAR,
@@ -246,6 +254,7 @@ function Shell({
   documentTitle,
   badges,
   meta,
+  compactHeader,
   children,
 }: {
   /** The shell header's h1; the exits leave it to the fallback "Session". */
@@ -256,6 +265,8 @@ function Shell({
   badges?: ReactNode;
   /** Muted text at the end of that row: when the session started. */
   meta?: ReactNode;
+  /** Whether the header turns compact once it has scrolled away. */
+  compactHeader?: boolean;
   children: ReactNode;
 }) {
   const sessionsRoute = useRouteRef(sessionsRouteRef);
@@ -274,6 +285,7 @@ function Shell({
       ]}
       badges={badges}
       meta={meta}
+      compactHeader={compactHeader}
     >
       {children}
     </ShellPage>
@@ -332,10 +344,12 @@ export function SessionDetailPage() {
   const { isUserScoped } = useKagentCapabilities(installation);
   // Tool calls name their connector as Customize does (UX review M2), from
   // the installation's MCPServer CRs.
-  const { servers: musterServers } = useMusterServers(installation);
+  const { servers: musterServers, labels: connectorLabelsOf } =
+    useMusterServers(installation);
   const connectorOf = useCallback(
-    (toolName: string) => connectorOfTool(toolName, musterServers),
-    [musterServers],
+    (toolName: string) =>
+      connectorOfTool(toolName, musterServers, connectorLabelsOf),
+    [musterServers, connectorLabelsOf],
   );
 
   // The prompt this session was started with, if the user arrived here by
@@ -464,6 +478,32 @@ export function SessionDetailPage() {
     rates,
   );
 
+  // What the composer needs to know about images: whether this agent can take
+  // them, and how much the conversation already carries — every turn sends
+  // the model all of it, so a session has a budget of its own.
+  // The budget counts the images the person sent, which every turn resends;
+  // a file the agent produced is not one of them.
+  const composerImages = useMemo(() => {
+    const session = { bytes: 0, count: 0 };
+    for (const item of timeline.items) {
+      if (
+        item.kind === 'attachment' &&
+        item.isUser &&
+        item.preview.kind === 'image'
+      ) {
+        session.bytes += item.preview.byteSize;
+        session.count += 1;
+      }
+    }
+    return {
+      // Not guessed while the agent is still being looked up.
+      unsupportedReason: agentRow
+        ? imagesUnsupportedReason(agentRow)
+        : 'The portal cannot tell yet whether this agent can take images: it has not read the agent. Try again in a moment.',
+      session,
+    };
+  }, [agentRow, timeline.items]);
+
   // Dispatch the session's first message, once.
   //
   // The create and the send are two kagent calls, and only the create happened
@@ -482,7 +522,7 @@ export function SessionDetailPage() {
     // Errors surface through `send.error` and `send.failed`, exactly as they do
     // for a reply typed into the composer — which is also what hands the text
     // back so it is not lost.
-    sendMessage(handoff.text).catch(() => {});
+    sendMessage(handoff.text, handoff.images).catch(() => {});
   }, [handoff, sendMessage]);
 
   // The message the user just sent, shown as the newest turn before kagent's copy
@@ -546,6 +586,27 @@ export function SessionDetailPage() {
         taskIndex,
         text: pending.text,
       });
+      // Its images after it, as kagent's copy will have them. Previewed from
+      // what the composer already checked and encoded: this runs on every
+      // streamed delta, and reading megabytes of base64 again each time would
+      // stall the stream.
+      for (const image of pending.images ?? []) {
+        items.push({
+          kind: 'attachment' as const,
+          id: `pending:${pending.messageId}:${image.id}`,
+          messageId: pending.messageId,
+          taskIndex,
+          isUser: true,
+          name: image.name,
+          declaredType: image.mediaType,
+          preview: {
+            kind: 'image',
+            type: image.mediaType,
+            dataUrl: image.previewUrl,
+            byteSize: image.byteSize,
+          },
+        });
+      }
     }
 
     if (streamVisible) {
@@ -649,8 +710,12 @@ export function SessionDetailPage() {
     isKnown: isToolActivityKnown,
     setShowToolActivity,
   } = useShowToolActivity();
+  // Adding or removing the work summaries around the place being read must
+  // not move it: from the compact header the switch is pressed mid-session.
+  const captureReadingAnchor = useReadingAnchor(showToolActivity);
   const changeToolActivity = useCallback(
     (show: boolean) => {
+      captureReadingAnchor();
       // A failed write puts the switch and the conversation back to the
       // stored choice, so say why rather than let it snap back.
       setShowToolActivity(show).catch((failure: Error) => {
@@ -664,7 +729,7 @@ export function SessionDetailPage() {
         });
       });
     },
-    [setShowToolActivity, toastApi],
+    [captureReadingAnchor, setShowToolActivity, toastApi],
   );
 
   const actions = useMemo(
@@ -790,16 +855,14 @@ export function SessionDetailPage() {
   const [redraft, setRedraft] = useState<{
     messageId: string;
     text: string;
+    images?: ComposerImage[];
   } | null>(null);
-  const lastUserMessageText = useMemo(() => {
-    for (let index = timeline.items.length - 1; index >= 0; index -= 1) {
-      const item = timeline.items[index];
-      if (item.kind === 'user-message') {
-        return item.text;
-      }
-    }
-    return undefined;
-  }, [timeline.items]);
+  // With the images it carried, as the composer holds them, so a message
+  // sent again or opened in a new session is the whole message.
+  const lastUserMessage = useMemo(
+    () => readLastUserMessage(timeline.items),
+    [timeline.items],
+  );
 
   /**
    * The way out of a lost runtime: a new session with the same agent, opened
@@ -818,10 +881,14 @@ export function SessionDetailPage() {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession } = creation;
-  const unansweredText = send.failed?.text ?? lastUserMessageText;
+  const unanswered = send.failed ?? lastUserMessage;
   const startNewSession = useCallback(
-    async (draft: string) => {
-      const text = draft.trim() || unansweredText;
+    async (draft: string, boxImages: ComposerImage[]) => {
+      // An empty box carries the unanswered message over whole: its text and
+      // its images.
+      const isEmpty = !draft.trim() && boxImages.length === 0;
+      const text = draft.trim() || unanswered?.text;
+      const images = isEmpty ? (unanswered?.images ?? []) : boxImages;
       if (!agentRow || !text) {
         return;
       }
@@ -845,11 +912,12 @@ export function SessionDetailPage() {
             text,
             agentNamespace: agentRow.namespace,
             agentName: agentRow.technicalName,
+            imagesKey: stashHandoffImages(images),
           },
         },
       });
     },
-    [agentRow, createSession, navigate, sessionDetailRoute, unansweredText],
+    [agentRow, createSession, navigate, sessionDetailRoute, unanswered],
   );
 
   const { cancelTask } = cancellation;
@@ -862,18 +930,18 @@ export function SessionDetailPage() {
    */
   const cancelTurn = useCallback(
     (taskId: string, redraftLast: boolean) => {
-      const draft = lastUserMessageText;
+      const draft = lastUserMessage;
       cancelTask(taskId)
         .then(() => {
           resetSend();
           if (redraftLast && draft) {
-            setRedraft({ messageId: `redraft:${taskId}`, text: draft });
+            setRedraft({ messageId: `redraft:${taskId}`, ...draft });
           }
         })
         // Errors surface through the hook's `error`, shown beside the composer.
         .catch(() => {});
     },
-    [cancelTask, lastUserMessageText, resetSend],
+    [cancelTask, lastUserMessage, resetSend],
   );
   const stopTurn = useMemo(() => {
     if (!runningTaskId) {
@@ -1021,7 +1089,7 @@ export function SessionDetailPage() {
       installation={row.installation}
       model={row.agentModel}
       tokens={timeline.tokens}
-      lastTurnTokens={timeline.lastTurnTokens}
+      context={timeline.context}
       taskCount={taskCount}
       estimatedCostUsd={estimatedCostUsd}
       costBasis={describeCostBasis({
@@ -1220,10 +1288,10 @@ export function SessionDetailPage() {
             offersNewSession
               ? {
                   label: `Start a new session with ${row.agentName || 'this agent'}`,
-                  onStart: draft => {
+                  onStart: (draft, images) => {
                     // Errors surface through the create hook's `error`, which
                     // the notice renders.
-                    startNewSession(draft).catch(() => {});
+                    startNewSession(draft, images).catch(() => {});
                   },
                   isStarting: creation.isCreating,
                   replacesSend: runtimeLoss!.reported,
@@ -1248,10 +1316,11 @@ export function SessionDetailPage() {
           // a session merely opened from the list gets no autofocus.
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus={Boolean(handoff)}
-          onSubmit={text => {
+          images={composerImages}
+          onSubmit={(text, images) => {
             // Errors are surfaced through the hook's `error`, which the composer
             // renders beside the text it hands back.
-            send.sendMessage(text).catch(() => {});
+            send.sendMessage(text, images).catch(() => {});
             // The optimistic echo appears at the very bottom; go where it is.
             scrollToBottom();
           }}
@@ -1340,44 +1409,39 @@ export function SessionDetailPage() {
     </>
   );
 
-  const agentIdentity = (
-    <>
-      {row.agentName && (
-        <Flex align="center" gap="2">
-          <AgentAvatar
-            size="small"
-            purpose="decoration"
-            name={row.agentName}
-            src={avatarUrl ?? ''}
-          />
-          {/* core-components' `Link`, which routes client-side — a bui
-              link would reload the page. */}
-          {agentHref ? (
-            <Link to={agentHref}>
-              {/* bui `Text` sets its own colour, which would leave a
-                  link that doesn't look like one; `inherit` hands it back
-                  to the anchor. `as="span"`: Text renders a <p> by
-                  default. */}
-              <Text
-                as="span"
-                variant="body-medium"
-                style={{ color: 'inherit' }}
-              >
-                {row.agentName}
-              </Text>
-            </Link>
-          ) : (
-            <Text variant="body-medium">{row.agentName}</Text>
-          )}
-        </Flex>
+  const agentLink = row.agentName && (
+    <Flex align="center" gap="2">
+      <AgentAvatar
+        size="small"
+        purpose="decoration"
+        name={row.agentName}
+        src={avatarUrl ?? ''}
+      />
+      {/* core-components' `Link`, which routes client-side — a bui
+          link would reload the page. */}
+      {agentHref ? (
+        <Link to={agentHref}>
+          {/* bui `Text` sets its own colour, which would leave a
+              link that doesn't look like one; `inherit` hands it back
+              to the anchor. `as="span"`: Text renders a <p> by
+              default. */}
+          <Text as="span" variant="body-medium" style={{ color: 'inherit' }}>
+            {row.agentName}
+          </Text>
+        </Link>
+      ) : (
+        <Text variant="body-medium">{row.agentName}</Text>
       )}
-      <Flex align="center" gap="1">
-        <Text variant="body-medium" color="secondary">
-          on
-        </Text>
-        <InstallationChip installation={row.installation} />
-      </Flex>
-    </>
+    </Flex>
+  );
+
+  const environment = (
+    <Flex align="center" gap="1">
+      <Text variant="body-medium" color="secondary">
+        on
+      </Text>
+      <InstallationChip installation={row.installation} />
+    </Flex>
   );
 
   /* Absolute, not relative: the list keeps the relative form, where scanning
@@ -1412,11 +1476,26 @@ export function SessionDetailPage() {
       badges={
         <>
           {stateBadges}
-          {agentIdentity}
-          {startedMeta}
-          {toolActivitySwitch}
+          {agentLink}
+          {/* The header once it has scrolled away (ShellPage's
+              `compactHeader`) keeps the name, the state, the agent, the
+              switch, the pin and the menu in sight while reading. Where the
+              session runs and when it started are read once, not while
+              reading. At phone width the switch is left out too: beside the
+              state and the agent it wraps the compact row to a third line
+              over the conversation. */}
+          <ShellPageExpandedOnly>
+            {environment}
+            {startedMeta}
+          </ShellPageExpandedOnly>
+          {toolActivitySwitch && (
+            <ShellPageExpandedOnly onlyAtPhoneWidth>
+              {toolActivitySwitch}
+            </ShellPageExpandedOnly>
+          )}
         </>
       }
+      compactHeader
     >
       <Flex
         ref={setColumnElement}

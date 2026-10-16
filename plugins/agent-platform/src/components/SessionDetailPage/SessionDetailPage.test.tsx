@@ -17,6 +17,7 @@ import type { UseCreateSessionResult } from '../../hooks/useCreateSession';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline } from '../../lib/kagentTimeline';
+import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
   deriveSessionState,
   normalizeSessionDetail,
@@ -25,6 +26,7 @@ import {
 import { SessionDetailPage } from './SessionDetailPage';
 import {
   mockDesktopLayout,
+  mockIntersectionObserver,
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
@@ -90,6 +92,7 @@ jest.mock('../../hooks/useMusterServers', () => ({
   useMusterServers: () => ({
     servers: [],
     resources: [],
+    labels: new Map(),
     isLoading: false,
     isUnavailable: false,
   }),
@@ -197,6 +200,48 @@ jest.mock('../../hooks/useNewSessionHandoff', () => ({
 }));
 
 /** The hook's idle state, which most tests want. */
+/** An image of a message in flight, as the composer prepared it. */
+const PENDING_IMAGE = {
+  id: 'image-1',
+  name: 'shot.png',
+  mediaType: 'image/png' as const,
+  byteSize: 70,
+  previewUrl: `data:image/png;base64,${TINY_PNG_BASE64}`,
+};
+
+/**
+ * The timeline with an image attached to the last message the person sent,
+ * as the poll reads one back.
+ */
+function withImageOnLastMessage(view: SessionDetailView): SessionDetailView {
+  const last = [...view.timeline.items]
+    .reverse()
+    .find(item => item.kind === 'user-message')!;
+  return {
+    ...view,
+    timeline: {
+      ...view.timeline,
+      items: [
+        ...view.timeline.items,
+        {
+          kind: 'attachment',
+          id: 'sent-image',
+          taskIndex: last.taskIndex,
+          messageId: last.messageId,
+          isUser: true,
+          name: 'shot.png',
+          preview: {
+            kind: 'image',
+            type: 'image/png',
+            dataUrl: PENDING_IMAGE.previewUrl,
+            byteSize: PENDING_IMAGE.byteSize,
+          },
+        },
+      ],
+    },
+  };
+}
+
 function idleSend(
   overrides: Partial<UseSendMessageResult> = {},
 ): UseSendMessageResult {
@@ -793,6 +838,7 @@ describe('SessionDetailPage', () => {
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         'why is the ingress failing?',
+        [],
       );
     });
 
@@ -1318,6 +1364,21 @@ describe('SessionDetailPage', () => {
         );
       });
 
+      it('puts the unanswered message’s images back with its text', async () => {
+        mockUseSessionDetail.mockReturnValue(
+          withImageOnLastMessage(stalledView),
+        );
+        await render();
+
+        await userEvent.click(
+          screen.getByText('Stop the turn', { selector: 'button, button *' }),
+        );
+
+        expect(
+          await screen.findByRole('button', { name: 'Remove shot.png' }),
+        ).toBeInTheDocument();
+      });
+
       it('does not offer the cancel when the task is not known', async () => {
         mockUseSessionDetail.mockReturnValue({
           ...stalledView,
@@ -1616,6 +1677,26 @@ describe('SessionDetailPage', () => {
       expect(screen.getByText('a message in flight')).toBeInTheDocument();
     });
 
+    it('shows the images of the message in flight with it', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          isSending: true,
+          pending: {
+            messageId: 'pending-1',
+            text: 'what is wrong here?',
+            images: [PENDING_IMAGE],
+          },
+        }),
+      );
+      await render();
+
+      expect(screen.getByRole('img', { name: 'shot.png' })).toHaveAttribute(
+        'src',
+        PENDING_IMAGE.previewUrl,
+      );
+    });
+
     it('stops showing the pending copy once kagent returns the real one', async () => {
       // Recognised by `messageId`, not by timing — a poll can deliver the stored
       // message long before the turn ends, and showing both would double it for
@@ -1841,6 +1922,21 @@ describe('SessionDetailPage', () => {
       agentName: 'issue-tracker',
     };
 
+    it('sends the images that came with it', async () => {
+      mockUseNewSessionHandoff.mockReturnValue({
+        ...handoff,
+        images: [PENDING_IMAGE],
+      });
+      await render();
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledWith(
+          'why is the ingress failing?',
+          [PENDING_IMAGE],
+        );
+      });
+    });
+
     it('sends it on arrival, so the user watches the reply appear', async () => {
       // Created on the previous screen, sent here: `message/send` blocks for the
       // whole turn, so awaiting it before navigating would have meant staring at
@@ -1851,6 +1947,7 @@ describe('SessionDetailPage', () => {
       await waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           'why is the ingress failing?',
+          undefined,
         );
       });
     });
@@ -1913,6 +2010,7 @@ describe('SessionDetailPage', () => {
       await waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           'why is the ingress failing?',
+          undefined,
         );
       });
     });
@@ -2046,6 +2144,29 @@ describe('SessionDetailPage', () => {
       ).toBeInTheDocument();
       expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
       expect(composer()).toHaveValue('Six of them are vegetarian.');
+    });
+
+    it('opens the new session on the unanswered message with its images, from an empty box', async () => {
+      mockUseSessionDetail.mockReturnValue(
+        withImageOnLastMessage(suspectedView),
+      );
+      await render();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith(
+          '/agent-platform/sessions/gazelle/new-1',
+          {
+            state: {
+              newSession: expect.objectContaining({
+                text: lastUserMessage,
+                imagesKey: expect.any(String),
+              }),
+            },
+          },
+        );
+      });
     });
 
     it('starts a new session with the box’s text and hands the message over', async () => {
@@ -2301,6 +2422,39 @@ describe('SessionDetailPage', () => {
       );
     });
 
+    it('keeps the name, the state and the agent in sight once the header scrolls away', async () => {
+      // ShellPage's compact header: the same header, at the top of the view
+      // while the conversation is read. Where the session runs and when it
+      // started stay out of it.
+      const observer = mockIntersectionObserver();
+      try {
+        await renderShell();
+
+        act(() => observer.report('above'));
+
+        const header = screen.getByTestId('shell-page-header');
+        expect(header).toHaveAttribute('data-compact');
+        // Still the one h1, its rename button and nothing twice.
+        expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+        expect(
+          within(header).getByRole('button', {
+            name: 'Rename session "Which GitHub issues..."',
+          }),
+        ).toBeVisible();
+        expect(within(header).getByText('Working')).toBeVisible();
+        expect(
+          within(header).getByRole('link', { name: 'Issue tracker' }),
+        ).toBeVisible();
+        expect(
+          screen.getAllByRole('switch', { name: 'Show tool activity' }),
+        ).toHaveLength(1);
+        expect(screen.getByTestId('installation-chip')).not.toBeVisible();
+        expect(screen.getByText(/^Started/)).not.toBeVisible();
+      } finally {
+        observer.restore();
+      }
+    });
+
     /** The "Show tool activity" switch on the session's meta line (S9). */
     const toolActivitySwitch = () =>
       screen.getByRole('switch', { name: 'Show tool activity' });
@@ -2309,8 +2463,10 @@ describe('SessionDetailPage', () => {
       await renderShell();
 
       const started = screen.getByText(/^Started/);
-      // The badge row under the title holds both, in that order.
-      expect(started.parentElement).toContainElement(toolActivitySwitch());
+      // The header holds both, the switch after the start.
+      const header = screen.getByTestId('shell-page-header');
+      expect(header).toContainElement(started);
+      expect(header).toContainElement(toolActivitySwitch());
       expect(
         started.compareDocumentPosition(toolActivitySwitch()) &
           Node.DOCUMENT_POSITION_FOLLOWING,
@@ -2334,6 +2490,91 @@ describe('SessionDetailPage', () => {
         screen.queryByRole('button', { name: /Used 2 tools/ }),
       ).not.toBeInTheDocument();
       expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+    });
+
+    describe('toggled while reading, from the compact header', () => {
+      let observer: ReturnType<typeof mockIntersectionObserver>;
+      let scrollBy: jest.SpyInstance;
+      let rect: jest.SpyInstance;
+      beforeEach(() => {
+        observer = mockIntersectionObserver();
+        scrollBy = jest
+          .spyOn(window, 'scrollBy')
+          .mockImplementation(() => undefined);
+        // jsdom lays nothing out. The agent's reply is the entry in view;
+        // every work summary is laid out above it, 80px each, and the rest
+        // is far above the view.
+        const summaries = () =>
+          document.querySelectorAll('[data-testid="timeline-work-summary"]')
+            .length;
+        rect = jest
+          .spyOn(Element.prototype, 'getBoundingClientRect')
+          .mockImplementation(function layout(this: Element) {
+            const top = this.matches('[data-testid="timeline-agent-message"]')
+              ? 200 + summaries() * 80
+              : -1000;
+            return {
+              top,
+              bottom: top + 40,
+              left: 0,
+              right: 0,
+              width: 0,
+              height: 40,
+              x: 0,
+              y: top,
+              toJSON: () => ({}),
+            };
+          });
+      });
+      afterEach(() => {
+        rect.mockRestore();
+        scrollBy.mockRestore();
+        observer.restore();
+      });
+
+      it('keeps the reply being read where it is on screen', async () => {
+        await renderShell();
+        act(() => observer.report('above'));
+        const hidden =
+          document.querySelectorAll('[data-testid="timeline-work-summary"]')
+            .length * 80;
+        expect(hidden).toBeGreaterThan(0);
+
+        await userEvent.click(toolActivitySwitch());
+
+        await waitFor(() => expect(toolActivitySwitch()).not.toBeChecked());
+        // The summaries above it went, so the page follows the reply up.
+        expect(scrollBy).toHaveBeenCalledWith({
+          top: -hidden,
+          behavior: 'instant',
+        });
+
+        scrollBy.mockClear();
+        await userEvent.click(toolActivitySwitch());
+
+        await waitFor(() => expect(toolActivitySwitch()).toBeChecked());
+        expect(scrollBy).toHaveBeenCalledWith({
+          top: hidden,
+          behavior: 'instant',
+        });
+      });
+
+      it('stays compact while the conversation reflows around the switch', async () => {
+        await renderShell();
+        act(() => observer.report('above'));
+        const header = screen.getByTestId('shell-page-header');
+
+        await userEvent.click(toolActivitySwitch());
+        // The reflow nudges the conversation's start a few pixels into view
+        // and back: no flicker.
+        act(() => observer.report(8));
+        act(() => observer.report(-4));
+        act(() => observer.report(8));
+
+        expect(header).toHaveAttribute('data-compact');
+        await waitFor(() => expect(toolActivitySwitch()).not.toBeChecked());
+        expect(header).toHaveAttribute('data-compact');
+      });
     });
 
     it('says why the switch went back when the choice could not be stored', async () => {

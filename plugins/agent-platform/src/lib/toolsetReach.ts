@@ -17,6 +17,7 @@ import {
   connectorState,
 } from '../components/NewAgentToolsPage/connectorChoice';
 import {
+  bucketLabel,
   type CatalogueGroup,
   countNoun,
   type DeclaredToolset,
@@ -87,11 +88,11 @@ export function toolsetReach(
     accounted.add(serverSelector(bucket.name));
     bucket.tools.forEach(tool => accounted.add(selectorForTool(tool)));
     if (choice === 'all' || picked === bucket.tools.length) {
-      connectors.push(bucket.name);
+      connectors.push(bucketLabel(bucket));
     } else if (choice === 'read-only') {
-      readsFrom.push(bucket.name);
+      readsFrom.push(bucketLabel(bucket));
     } else {
-      someFrom.push(bucket.name);
+      someFrom.push(bucketLabel(bucket));
     }
   }
 

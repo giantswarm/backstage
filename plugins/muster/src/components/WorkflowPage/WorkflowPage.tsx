@@ -40,12 +40,15 @@ import {
   WORKFLOW_TOOL_PREFIX,
 } from '../../lib/workflowReferences';
 import { serversOfTools, toolsOfWorkflow } from '../../lib/workflowTools';
-import {
-  customizeExternalRouteRef,
-  workflowDetailRouteRef,
-} from '../../routes';
+import { mcpServerDisplayNames } from '../../lib/serverGrouping';
+import { customizeExternalRouteRef } from '../../routes';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import { EffectBadge, SessionGate, StateBadge } from '../shared';
+import {
+  EffectBadge,
+  SessionGate,
+  StateBadge,
+  useWorkflowPageLinks,
+} from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
 import { WorkflowDetailsTab } from './WorkflowDetailsTab';
@@ -82,16 +85,9 @@ function useCustomizePaths(): { customize?: string; workflows?: string } {
   };
 }
 
-/** `?installation=<inst>`, or nothing without one. */
-function installationSearch(installation?: string): string {
-  return installation
-    ? `?installation=${encodeURIComponent(installation)}`
-    : '';
-}
-
 /** The other workflows that run this one as a step, linked to their pages. */
 function CalledBy({ workflow }: { workflow: MusterWorkflow }) {
-  const detailRoute = useRouteRef(workflowDetailRouteRef);
+  const workflowLinks = useWorkflowPageLinks();
   const { workflows } = useMusterInstance();
   const variant = useFactTextVariant();
   const name = workflow.getName();
@@ -105,15 +101,12 @@ function CalledBy({ workflow }: { workflow: MusterWorkflow }) {
   return (
     <Text variant={variant}>
       {referencedBy.map((ref, index) => {
-        const base = detailRoute?.({ name: ref.getName() });
+        const href = workflowLinks.workflow(ref.getName(), ref.cluster);
         return (
           <span key={`${ref.cluster}/${ref.getName()}`}>
             {index > 0 && ', '}
-            {base ? (
-              <Link
-                href={`${base}${installationSearch(ref.cluster)}`}
-                variant={variant}
-              >
+            {href ? (
+              <Link href={href} variant={variant}>
                 {ref.getName()}
               </Link>
             ) : (
@@ -165,6 +158,23 @@ function WorkflowPageContent({
     () => serversOfTools(stepTools, prefixes),
     [stepTools, prefixes],
   );
+  // Each MCPServer the steps call as Customize and the step lines name it: a
+  // family member by its family, whichever member a step may reach.
+  const connectorLabels = useMemo(() => {
+    const labels = mcpServerDisplayNames(mcpServers);
+    const familyOf = new Map(
+      mcpServers.map(server => [server.getName(), server.getFamily()]),
+    );
+    return new Map(
+      connectors.map(server => {
+        const surface = familyOf.get(server) ?? server;
+        return [server, labels.get(surface) ?? surface] as const;
+      }),
+    );
+  }, [connectors, mcpServers]);
+  const connectorsUsed = [...new Set(connectorLabels.values())]
+    .sort()
+    .join(', ');
   const asCaller = useMemo(
     () =>
       workflowRunsAsCaller(
@@ -245,7 +255,7 @@ function WorkflowPageContent({
       value: <Mono>{toolName}</Mono>,
     },
     ...(connectors.length > 0
-      ? [{ label: 'Connectors used', value: connectors.join(', ') }]
+      ? [{ label: 'Connectors used', value: connectorsUsed }]
       : []),
     { label: 'Called as a step by', value: <CalledBy workflow={workflow} /> },
   ];
@@ -306,6 +316,7 @@ function WorkflowPageContent({
             element={
               <WorkflowRunTab
                 installation={installation}
+                connectorLabels={connectorLabels}
                 toolName={toolName}
                 hasSession={hasSession}
                 perUserSession={perUserSession}

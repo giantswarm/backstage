@@ -70,17 +70,10 @@ export type HarnessSubstratePolicy = {
   egress?: string[];
 };
 
-/** Bounds of one turn on a Claude Code Harness. */
-export type ClaudeHarnessLimits = {
-  budgetUSD?: string;
-  maxTurns?: number;
-};
-
 export type HarnessSpec = Omit<
   GeneratedHarnessSpec,
-  'allowedAgentTemplates' | 'claude' | 'env' | 'substrate'
+  'allowedAgentTemplates' | 'env' | 'substrate'
 > & {
-  claude?: { limits?: ClaudeHarnessLimits };
   env?: HarnessEnvVar[];
   substrate: HarnessSubstratePolicy;
 };

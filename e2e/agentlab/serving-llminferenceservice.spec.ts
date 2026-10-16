@@ -4,6 +4,7 @@ import { lab } from './lab';
 import {
   dropPersistedQueriesOnNextLoad,
   installPersistedQueryDrop,
+  skipWithoutModelManager,
 } from './model-manager.fixture';
 
 /**
@@ -281,6 +282,9 @@ async function stageKServe(page: Page): Promise<Stub> {
 }
 
 test.describe('serving: an LLMInferenceService read as a CR', () => {
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
+
   test('lists the served model as a KServe row and offers to stop it by deleting the object', async ({
     admin,
   }) => {

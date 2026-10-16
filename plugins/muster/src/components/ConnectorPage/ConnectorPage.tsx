@@ -51,7 +51,9 @@ import {
   findServerRow,
   fleetManagementClusters,
   partitionServers,
+  mcpServerDisplayNames,
   ServerPageRow,
+  serverRowDisplayName,
   serverRowKey,
 } from '../../lib/serverGrouping';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
@@ -221,11 +223,14 @@ function useCallsThisMonth(
 
 function ConnectorPageContent({
   row,
+  displayName,
   servers,
   installation,
   usedBy,
 }: {
   row: ServerPageRow;
+  /** What people call it; `serverRowKey(row)` stays what links and muster use. */
+  displayName: string;
   servers: MCPServer[];
   installation: string;
   usedBy?: ReactElement;
@@ -291,7 +296,7 @@ function ConnectorPageContent({
   // it in full. Where muster asks for a sign-in, the Tools tab's gate already
   // carries the same sentence.
   const signInParts = canSignIn
-    ? authActionParts(singular!.getName(), signIn, { noun: 'connector' })
+    ? authActionParts(displayName, signIn, { noun: 'connector' })
     : undefined;
   const ssoFailure =
     signInParts?.kind === 'sso' && !signIn.needsLogin
@@ -362,7 +367,7 @@ function ConnectorPageContent({
         onAction: () =>
           openAction({
             ...deactivate,
-            label: `Turn off "${singular.getName()}"?`,
+            label: `Turn off "${displayName}"?`,
             confirmLabel: 'Turn off',
           }),
       });
@@ -375,7 +380,7 @@ function ConnectorPageContent({
         onAction: () =>
           openAction({
             ...activate,
-            label: `Turn on "${singular.getName()}"?`,
+            label: `Turn on "${displayName}"?`,
             confirmLabel: 'Turn on',
           }),
       });
@@ -387,7 +392,7 @@ function ConnectorPageContent({
       onAction: () =>
         openAction({
           ...live.remove,
-          label: `Remove "${singular.getName()}"?`,
+          label: `Remove "${displayName}"?`,
           confirmLabel: 'Remove',
         }),
     });
@@ -421,6 +426,7 @@ function ConnectorPageContent({
         <ServerAuthActions
           noun="connector"
           serverName={singular.getName()}
+          displayName={displayName}
           installation={installation}
           oauthConfigured={singular.getAuth()?.type === 'oauth'}
           signInGate={
@@ -449,7 +455,12 @@ function ConnectorPageContent({
   }));
 
   const tabs: RouteTabSpec[] = [
-    { id: 'tools', path: '', title: 'Tools', count: tools.tools?.length },
+    {
+      id: 'tools',
+      path: '',
+      title: 'Tools',
+      count: tools.isLoading ? 'loading' : tools.tools?.length,
+    },
   ];
   for (const { capability, title, count, shown } of capabilities) {
     if (shown) {
@@ -494,18 +505,10 @@ function ConnectorPageContent({
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Customize', href: paths.customize },
     { label: 'Connectors', href: listPath },
-    { label: name },
+    { label: displayName },
   ];
 
   const toIndex = <Navigate to={`${basePath}${search}`} replace />;
-  // The removed Settings tab's address, kept for links and bookmarks: to the
-  // edit it offered where the wizard can make it, to a family's instances it
-  // listed, else to the connector itself.
-  const settingsTarget =
-    editHref ??
-    (row.kind === 'family'
-      ? `${basePath}/instances${search}`
-      : `${basePath}${search}`);
 
   // The same two controls in the same place for every connector, whatever
   // its sign-in state or session: Edit, disabled with the reason where it
@@ -555,9 +558,9 @@ function ConnectorPageContent({
   return (
     <ConnectorPageTargetProvider target={target}>
       <ShellPage
-        title={name}
+        title={displayName}
         breadcrumbs={breadcrumbs}
-        leading={<ConnectorTile name={name} />}
+        leading={<ConnectorTile name={displayName} />}
         badges={<StatusBadge row={row} />}
         meta={
           row.kind === 'core'
@@ -642,12 +645,6 @@ function ConnectorPageContent({
                 }
               />
             )}
-            {row.kind !== 'core' && (
-              <Route
-                path="settings"
-                element={<Navigate to={settingsTarget} replace />}
-              />
-            )}
             <Route path="*" element={toIndex} />
           </Routes>
         </Flex>
@@ -678,7 +675,7 @@ function ConnectorPageContent({
                 // it, so the removal is acknowledged as the platform's other
                 // deletes are: a toast on the list it returns to.
                 toastApi.post({
-                  title: `Connector "${singular.getName()}" removed`,
+                  title: `Connector "${displayName}" removed`,
                   status: 'success',
                   timeout: TOAST_TIMEOUT_MS,
                 });
@@ -707,31 +704,51 @@ export interface ConnectorPageProps {
  * muster itself on the installation the section's scope selects.
  *
  * Edit opens the connector wizard pre-filled (`new?edit=<name>`), the flow
- * that added the connector, the way agents and skills are edited; the old
- * `settings` tab address redirects there. Where the wizard cannot edit the
- * connector — applied from Git, a family, no muster session, settings the
- * wizard cannot represent — Edit stays in place, disabled, saying why.
+ * that added the connector, the way agents and skills are edited. Where the
+ * wizard cannot edit the connector — applied from Git, a family, no muster
+ * session, settings the wizard cannot represent — Edit stays in place,
+ * disabled, saying why.
  */
 export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   const { server: key = '' } = useParams();
+  const { mcpServers } = useMusterInstance();
+  const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
+  // What people read: the display name once the connector is read (a cached
+  // row names it while it is read again), its URL name until then. `key`
+  // stays what links, muster and the URL use.
+  const shownName = useMemo(
+    () =>
+      row ? serverRowDisplayName(row, mcpServerDisplayNames(mcpServers)) : key,
+    [row, mcpServers, key],
+  );
   // Above every state the page can be in; the form an agent's page uses.
   return (
     <>
-      <ShellDocumentTitle title={[key, 'Connectors']} />
-      <ConnectorPageBody serverKey={key} usedBy={usedBy} />
+      <ShellDocumentTitle title={[shownName, 'Connectors']} />
+      <ConnectorPageBody
+        serverKey={key}
+        row={row}
+        shownName={shownName}
+        usedBy={usedBy}
+      />
     </>
   );
 }
 
 function ConnectorPageBody({
   serverKey: key,
+  row,
+  shownName,
   usedBy,
-}: ConnectorPageProps & { serverKey: string }) {
+}: ConnectorPageProps & {
+  serverKey: string;
+  row: ServerPageRow | undefined;
+  shownName: string;
+}) {
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const paths = useConnectorGroupPaths();
   const { search } = useLocation();
-  const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
   // The sub-tab that lists the connector: known from a cached row (or for
   // muster) even while loading; otherwise the crumb has no link rather than
   // one to a sub-tab that does not list it.
@@ -743,15 +760,17 @@ function ConnectorPageBody({
     // (T95). Tools is the one tab every connector has; the rest join it.
     return (
       <ShellPage
-        title={key}
+        title={shownName}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
           { label: 'Connectors', href: listPath },
-          { label: key },
+          { label: shownName },
         ]}
-        leading={<ConnectorTile name={key} />}
+        leading={<ConnectorTile name={shownName} />}
         badges={<ShellPageBadgeSkeleton />}
-        tabs={[{ id: 'tools', path: '', title: 'Tools' }]}
+        // Tools with its count's place held, so the tab keeps its width as
+        // the page and then the tools land.
+        tabs={[{ id: 'tools', path: '', title: 'Tools', count: 'loading' }]}
         tabsSearch={search}
       >
         <LoadingIndicator label="Reading the environment's connectors…" />
@@ -761,11 +780,11 @@ function ConnectorPageBody({
   if (!activeInstallation) {
     return (
       <ShellPage
-        title={key}
+        title={shownName}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
           { label: 'Connectors', href: listPath },
-          { label: key },
+          { label: shownName },
         ]}
       >
         <EmptyStateCard
@@ -801,6 +820,7 @@ function ConnectorPageBody({
     <ConnectorPageContent
       key={`${activeInstallation}/${key}`}
       row={row}
+      displayName={shownName}
       servers={mcpServers}
       installation={activeInstallation}
       usedBy={usedBy}

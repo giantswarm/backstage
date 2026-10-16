@@ -1,4 +1,4 @@
-import { clone, create, type JsonObject } from '@bufbuild/protobuf';
+import { clone, create, toBinary, type JsonObject } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import {
   Code,
@@ -133,6 +133,12 @@ export type FakeControllerOptions = {
     hitlActivated: boolean;
   }) => TurnScript;
   now?: () => Date;
+  /**
+   * The largest `ListTasks` answer, in bytes of its tasks, past which the call
+   * fails with `ResourceExhausted` — what the controller's gRPC server does
+   * with an answer over its 16 MiB send limit.
+   */
+  maxListTasksBytes?: number;
 };
 
 type StoredTask = {
@@ -934,15 +940,30 @@ export function createFakeController(
           storedTasks(session).map(entry => entry.task),
         );
         const offset = Number(request.pageToken || '0');
-        const page = all.slice(offset, offset + pageSize);
-        return {
-          tasks: page.map(task =>
+        const page = all
+          .slice(offset, offset + pageSize)
+          .map(task =>
             shape(
               task,
               request.historyLength,
               request.includeArtifacts ?? false,
             ),
-          ),
+          );
+        const { maxListTasksBytes } = options;
+        if (
+          maxListTasksBytes !== undefined &&
+          page.reduce(
+            (sum, task) => sum + toBinary(TaskSchema, task).length,
+            0,
+          ) > maxListTasksBytes
+        ) {
+          throw new ConnectError(
+            'trying to send message larger than max',
+            Code.ResourceExhausted,
+          );
+        }
+        return {
+          tasks: page,
           nextPageToken:
             offset + pageSize < all.length ? String(offset + pageSize) : '',
           pageSize,

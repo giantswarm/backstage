@@ -525,10 +525,13 @@ export function ServeModelPage({
         `Pick the ${noun} to serve.`),
   };
   const targetError = useSelectFieldError(
-    validation.errorFor(targets.length > 1 ? errors.target : undefined),
+    validation.errorFor(
+      'target',
+      targets.length > 1 ? errors.target : undefined,
+    ),
   );
   const choiceError = useSelectFieldError(
-    validation.errorFor(target ? errors.choice : undefined),
+    validation.errorFor('choice', target ? errors.choice : undefined),
   );
 
   const submit = async () => {

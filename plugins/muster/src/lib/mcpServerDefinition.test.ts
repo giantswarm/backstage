@@ -299,15 +299,15 @@ describe('validateNewMcpServerForm', () => {
 
   it('reports every missing field of an empty form, in form order', () => {
     expect(validateNewMcpServerForm(emptyFormState)).toEqual([
-      'Name is required',
-      'Select an installation',
-      'URL is required',
+      'Enter a name for the connector.',
+      'Choose an environment.',
+      'Enter the URL, e.g. https://mcp.example.com/mcp.',
     ]);
   });
 
   it('asks for a technical name only once the display name is set', () => {
     expect(validateNewMcpServerForm(state({ slug: '' }))).toEqual([
-      'Technical name is required',
+      'Enter a technical name.',
     ]);
   });
 
@@ -417,7 +417,7 @@ describe('validateNewMcpServerForm', () => {
 
   it('requires a signing region for AWS SigV4', () => {
     expect(validateNewMcpServerForm(sigv4State({ sigv4Region: '  ' }))).toEqual(
-      ['Signing region is required for AWS SigV4'],
+      ['Enter the signing region for AWS SigV4, e.g. eu-central-1.'],
     );
   });
 

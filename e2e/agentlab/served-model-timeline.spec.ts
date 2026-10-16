@@ -4,6 +4,7 @@ import { lab } from './lab';
 import {
   dropPersistedQueriesOnNextLoad,
   installPersistedQueryDrop,
+  skipWithoutModelManager,
   stubModelManagerTools,
   type ToolCall,
 } from './model-manager.fixture';
@@ -362,6 +363,9 @@ const SERVING = '/agent-platform/models/serving';
 const POLL_TIMEOUT = 30_000;
 
 test.describe('serving: the served model’s step timeline', () => {
+  // Model hosting is drawn only where model-manager answers.
+  skipWithoutModelManager();
+
   test('Serve opens the timeline; the steps turn done in order with the weights’ bytes, then cached; Ready shows the endpoint, the ModelConfig and Try it answering 401 without and 200 as the person', async ({
     admin,
   }) => {

@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
-import { modelManagerUnavailable } from './model-manager.fixture';
+import { skipWithoutModelManager } from './model-manager.fixture';
 
 /**
  * Add model backend and Remove backend on the Serving page: model-manager's
@@ -15,10 +15,7 @@ import { modelManagerUnavailable } from './model-manager.fixture';
  */
 test.describe.serial('model backends', () => {
   // The backends are model-manager's: a lab without it has none to add to.
-  test.beforeEach(async ({ admin }) => {
-    const unavailable = await modelManagerUnavailable(admin);
-    test.skip(!!unavailable, unavailable);
-  });
+  skipWithoutModelManager();
 
   test('Add model backend offers no kind the installation already serves', async ({
     admin,

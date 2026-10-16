@@ -301,6 +301,30 @@ See `docs/ui.md` and the **`ui`** Claude Code skill for details — the full bui
 inventory, the MUI→bui swap table, and how to read Backstage Storybook
 component/story source without cloning the monorepo.
 
+#### Forms and field validation
+
+Forms follow the **`forms`** skill (`.claude/skills/forms/SKILL.md`): a field
+is checked when the person leaves it, never while they first type; a shown
+error clears the moment it is fixed; submit stays enabled, shows every error
+next to its field and focuses the first invalid one; errors are tied to their
+field for screen readers and say how to fix the problem. Build them with
+`useFieldValidation` from `ui-react`. **A review of a change that adds or
+changes a form, a dialog with inputs or a field's validation checks it against
+that skill's review checklist.**
+
+#### Links into the Agent Platform shell
+
+Plugin and shell code never writes a shell path (`/agent-platform/…`,
+`/customize/…`) by hand: a link resolves through a route ref, an external route
+ref the app binds in `packages/app/src/App.tsx`, or a helper built on one
+(`useCustomizePaths`, `useSkillPaths`, `useNewSessionHref` in agent-platform;
+`useServerPageLinks`, `useWorkflowPageLinks` in muster). The ESLint rule
+`giantswarm/no-restricted-syntax` fails CI on such a literal in
+`plugins/*/src` and `packages/app/src/modules`; a route definition
+carries a disable comment with its reason. The shell's URLs are moving
+(giantswarm/giantswarm#38510), and this keeps that move to the route
+definitions.
+
 #### Analytics / Telemetry — keep in sync when adding pages
 
 Page views are reported via `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`,

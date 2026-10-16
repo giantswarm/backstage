@@ -16,6 +16,7 @@ import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
+  type RouteTabCount,
   RouteTabs,
   ShellDocumentTitle,
   ShellPage,
@@ -209,6 +210,19 @@ function renderWorkflowCreateAssist(installation: string) {
 }
 
 /**
+ * This page's own path, through the route ref it is mounted at, so links
+ * follow the app's mount and any base path. It always resolves on this page;
+ * rendered anywhere else, it fails loudly rather than link to a guess.
+ */
+function useCustomizePath(): string {
+  const customizeLink = useRouteRef(customizeRouteRef);
+  if (!customizeLink) {
+    throw new Error('The Customize page is not mounted at customizeRouteRef');
+  }
+  return customizeLink();
+}
+
+/**
  * The Connectors tab's sub-tabs (`CONNECTOR_GROUPS`): the customer's own
  * connectors at the tab's own address, those for the platform's
  * infrastructure and the platform's internal servers each at a path under it. Routed tabs like Model hosting's
@@ -220,11 +234,11 @@ function ConnectorGroupTabs({
 }: {
   counts: MusterCustomizeCounts['connectorGroups'];
 }) {
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const customize = useCustomizePath();
   const { search } = useLocation();
   return (
     <RouteTabs
-      basePath={`${customizeLink?.() ?? '/customize'}/connectors`}
+      basePath={`${customize}/connectors`}
       search={search}
       tabs={CONNECTOR_GROUPS.map(({ id, path, title }) => ({
         id,
@@ -266,7 +280,7 @@ function CustomizeTabContent({
     () => new URLSearchParams(location.search).get('q') ?? '',
   );
 
-  const tabCounts: Partial<Record<CustomizeTabId, number>> = {
+  const tabCounts: Partial<Record<CustomizeTabId, RouteTabCount>> = {
     ...counts,
     connectors: musterCounts.connectors,
     workflows: musterCounts.workflows,
@@ -346,11 +360,11 @@ function CustomizeTabContent({
 /** Opens the first tab, keeping the query string (the installation scope). */
 function DefaultTabRedirect() {
   const { search } = useLocation();
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const customize = useCustomizePath();
   return (
     <Navigate
       to={{
-        pathname: `${customizeLink?.() ?? '/customize'}/${DEFAULT_TAB}`,
+        pathname: `${customize}/${DEFAULT_TAB}`,
         search,
       }}
       replace
@@ -361,14 +375,12 @@ function DefaultTabRedirect() {
 /** Opens a Connectors sub-tab at its own address, keeping the query string. */
 function ConnectorsTabRedirect({ group }: { group: ConnectorGroup }) {
   const { search } = useLocation();
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const customize = useCustomizePath();
   const { path } = connectorGroupInfo(group);
   return (
     <Navigate
       to={{
-        pathname: `${customizeLink?.() ?? '/customize'}/connectors${
-          path ? `/${path}` : ''
-        }`,
+        pathname: `${customize}/connectors${path ? `/${path}` : ''}`,
         search,
       }}
       replace
@@ -457,7 +469,8 @@ function CustomizeScreen() {
 /**
  * The shell's Customize page: a tab per area at `/customize/:tab`, with
  * `/customize` opening the first, and one model's page beside the Models tab
- * (`/customize/models/<installation>/<namespace>/<name>`). The model's page
+ * (`/customize/models/<installation>/<namespace>/<name>`, its tabs under
+ * it). The model's page
  * is outside the screen's providers: it mounts only the agent-platform data
  * it reads (`CustomizeModelPage`), not the skill catalogue or muster, whose
  * errors panel would otherwise sit above it. Both share one query client, so
@@ -471,7 +484,7 @@ export function CustomizePage() {
       <ShellDocumentTitle title="Customize" />
       <Routes>
         <Route
-          path="models/:installation/:namespace/:name"
+          path="models/:installation/:namespace/:name/*"
           element={<CustomizeModelPage />}
         />
         <Route path="*" element={<CustomizeScreen />} />

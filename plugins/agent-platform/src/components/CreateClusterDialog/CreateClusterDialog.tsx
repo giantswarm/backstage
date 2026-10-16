@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -20,7 +20,11 @@ import {
   Organization,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  useFieldValidation,
+  useSelectFieldError,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerInfo,
@@ -77,7 +81,7 @@ export function defaultRelease(
   )?.version;
 }
 
-/** Why the name cannot be used, checked while typing; `undefined` when it can. */
+/** Why the name cannot be used; `undefined` when it can, or is still empty. */
 export function clusterNameProblem(
   name: string,
   taken: string[],
@@ -86,7 +90,7 @@ export function clusterNameProblem(
     return undefined;
   }
   if (!isValidClusterName(name)) {
-    return 'A lowercase DNS label of at most 20 characters, starting with a letter: letters, digits and dashes.';
+    return 'Use at most 20 lowercase letters, digits and dashes, starting with a letter.';
   }
   return taken.includes(name)
     ? `A cluster named ${name} already exists on this installation.`
@@ -119,7 +123,8 @@ export function parseValues(text: string): {
  * Create cluster — cluster-manager's `create_cluster` through muster as the
  * signed-in person. The form offers what the installation's cluster-manager
  * names (`list_releases`: the provider lines, the releases a cluster may run,
- * the newest preselected) and checks the name while typing; the review shows
+ * the newest preselected) and checks each field when the person leaves it,
+ * and every field on Review (the `forms` skill); the review shows
  * both modes' dry runs — the manifests, the values checked against the release
  * chart's schema, the pull request's files — and offers **Commit** (the pull
  * request as the person, preselected where git owns the organization) and
@@ -182,6 +187,21 @@ export function CreateClusterDialog({
     clusters.clusters.map(cluster => cluster.name),
   );
   const parsedValues = parseValues(valuesText);
+  // Each field's problem, shown once the person leaves it or presses Review.
+  const errors = {
+    provider: line ? undefined : providerProblem(releases),
+    organization: organization ? undefined : 'Choose an organization.',
+    name: name ? nameProblem : 'Enter a name for the cluster.',
+    values: parsedValues.problem,
+  };
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
+  const providerError = useSelectFieldError(
+    validation.errorFor('provider', errors.provider),
+  );
+  const organizationError = useSelectFieldError(
+    validation.errorFor('organization', errors.organization),
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -223,7 +243,11 @@ export function CreateClusterDialog({
 
   const onReview = async (event: FormEvent) => {
     event.preventDefault();
-    if (!input || judging) {
+    if (judging) {
+      return;
+    }
+    if (!input) {
+      validation.reveal();
       return;
     }
     setJudging(true);
@@ -293,7 +317,7 @@ export function CreateClusterDialog({
             </Text>
 
             {onForm && (
-              <Flex direction="column" gap="3">
+              <Flex direction="column" gap="3" ref={scope}>
                 {installations.length > 1 && (
                   <Select
                     label="Installation"
@@ -318,37 +342,46 @@ export function CreateClusterDialog({
                     description={releases.error.message}
                   />
                 )}
-                <Flex gap="3">
-                  <Select
-                    label="Provider"
-                    isRequired
-                    placeholder={
-                      releases.isLoading ? 'Reading releases…' : 'No provider'
-                    }
-                    options={releases.providers.map(id => ({ id, label: id }))}
-                    selectedKey={line ?? null}
-                    onSelectionChange={key => {
-                      if (key) {
-                        setProvider(String(key));
-                        setRelease(undefined);
-                        setIdentity(CHART_DEFAULT);
+                <Flex gap="3" align="start">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Select
+                      label="Provider"
+                      isRequired
+                      placeholder={
+                        releases.isLoading ? 'Reading releases…' : 'No provider'
                       }
-                    }}
-                  />
-                  <Select
-                    label="Release"
-                    isRequired
-                    placeholder={
-                      releases.isLoading ? 'Reading releases…' : 'No release'
-                    }
-                    options={lineReleases.map(candidate => ({
-                      id: candidate.version,
-                      label: releaseLabel(candidate),
-                      disabled: !candidate.offered,
-                    }))}
-                    selectedKey={chosenRelease ?? null}
-                    onSelectionChange={key => key && setRelease(String(key))}
-                  />
+                      options={releases.providers.map(id => ({
+                        id,
+                        label: id,
+                      }))}
+                      selectedKey={line ?? null}
+                      onSelectionChange={key => {
+                        if (key) {
+                          setProvider(String(key));
+                          setRelease(undefined);
+                          setIdentity(CHART_DEFAULT);
+                        }
+                      }}
+                      {...providerError.selectProps}
+                    />
+                    {providerError.message}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Select
+                      label="Release"
+                      isRequired
+                      placeholder={
+                        releases.isLoading ? 'Reading releases…' : 'No release'
+                      }
+                      options={lineReleases.map(candidate => ({
+                        id: candidate.version,
+                        label: releaseLabel(candidate),
+                        disabled: !candidate.offered,
+                      }))}
+                      selectedKey={chosenRelease ?? null}
+                      onSelectionChange={key => key && setRelease(String(key))}
+                    />
+                  </div>
                 </Flex>
                 <Select
                   label="Organization"
@@ -363,17 +396,16 @@ export function CreateClusterDialog({
                   onSelectionChange={key =>
                     setOrganization(key ? String(key) : undefined)
                   }
+                  {...organizationError.selectProps}
                 />
+                {organizationError.message}
                 <TextField
                   label="Name"
                   isRequired
-                  description={
-                    nameProblem ??
-                    "Prefixes the cluster's cloud resources and cannot change."
-                  }
+                  description="Use lowercase letters, digits and dashes. It prefixes the cluster's cloud resources and cannot change."
                   value={name}
                   onChange={setName}
-                  isInvalid={Boolean(nameProblem)}
+                  {...validation.textFieldProps('name', errors.name)}
                 />
                 {awsIdentity ? (
                   <Select
@@ -408,13 +440,10 @@ export function CreateClusterDialog({
                 />
                 <TextAreaField
                   label="Values"
-                  description={
-                    parsedValues.problem ??
-                    "Further values as YAML (global.controlPlane, global.nodePools, …), checked against the release chart's schema in the review."
-                  }
+                  description="Further values as YAML (global.controlPlane, global.nodePools, …), checked against the release chart's schema in the review."
                   value={valuesText}
                   onChange={setValuesText}
-                  isInvalid={Boolean(parsedValues.problem)}
+                  {...validation.textFieldProps('values', errors.values)}
                 />
               </Flex>
             )}
@@ -520,11 +549,7 @@ export function CreateClusterDialog({
               {done ? 'Close' : 'Cancel'}
             </Button>
             {onForm && (
-              <Button
-                type="submit"
-                variant="primary"
-                isDisabled={!input || judging}
-              >
+              <Button type="submit" variant="primary" isDisabled={judging}>
                 {judging ? 'Checking…' : 'Review'}
               </Button>
             )}
@@ -583,6 +608,20 @@ function ModeNotes({ verdicts }: { verdicts: ModeVerdicts }) {
 }
 
 /** The organization picker's placeholder: reading, nothing to pick, or pick one. */
+/** Why no provider is in effect: still reading, unreadable, or none offered. */
+function providerProblem(releases: {
+  isLoading: boolean;
+  error?: unknown;
+}): string {
+  if (releases.isLoading) {
+    return 'Wait until the providers are read, then choose one.';
+  }
+  if (releases.error) {
+    return 'The providers could not be read; see the warning above.';
+  }
+  return 'This installation offers no provider to create a cluster with.';
+}
+
 function organizationPlaceholder(loading: boolean, count: number): string {
   if (loading) {
     return 'Reading organizations…';

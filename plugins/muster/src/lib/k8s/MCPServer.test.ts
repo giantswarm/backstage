@@ -284,3 +284,33 @@ describe('MCPServer.isReconcilePending', () => {
     ).toBe(false);
   });
 });
+
+describe('MCPServer display name', () => {
+  const annotated = (value?: string) =>
+    new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: {
+          name: 'mcp-github',
+          ...(value === undefined
+            ? {}
+            : { annotations: { 'ui.giantswarm.io/display-name': value } }),
+        },
+        spec: {},
+      } as never,
+      'gazelle',
+    );
+
+  it('prefers the display-name annotation', () => {
+    expect(annotated('GitHub').getDisplayNameAnnotation()).toBe('GitHub');
+    expect(annotated('GitHub').getDisplayName()).toBe('GitHub');
+  });
+
+  it('falls back to the resource name when the annotation is missing or blank', () => {
+    expect(annotated().getDisplayNameAnnotation()).toBeUndefined();
+    expect(annotated().getDisplayName()).toBe('mcp-github');
+    expect(annotated('  ').getDisplayNameAnnotation()).toBeUndefined();
+    expect(annotated('  ').getDisplayName()).toBe('mcp-github');
+  });
+});

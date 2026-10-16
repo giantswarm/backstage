@@ -12,7 +12,7 @@ import {
   customizeExternalRouteRef,
   agentsRouteRef,
   modelsRouteRef,
-  musterServersExternalRouteRef,
+  musterServerExternalRouteRef,
   musterWorkflowDetailExternalRouteRef,
   sessionsRouteRef,
   skillsRouteRef,
@@ -106,7 +106,7 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 }));
 
 let mockConnectors: {
-  rows: { page: string; installations: string[] }[];
+  rows: { page: string; displayName: string; installations: string[] }[];
   isLoading: boolean;
 };
 jest.mock('./usePaletteConnectors', () => ({
@@ -196,7 +196,7 @@ function renderPalette() {
         '/agent-platform/sessions': sessionsRouteRef,
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/skills': skillsRouteRef,
-        '/agent-platform/connectors': musterServersExternalRouteRef,
+        '/agent-platform/connectors/:server': musterServerExternalRouteRef,
         '/agent-platform/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
         '/agent-platform/workflows/:name': musterWorkflowDetailExternalRouteRef,
@@ -252,7 +252,13 @@ beforeEach(() => {
     isLoading: false,
   };
   mockConnectors = {
-    rows: [{ page: 'confluence', installations: ['gazelle'] }],
+    rows: [
+      {
+        page: 'confluence',
+        displayName: 'confluence',
+        installations: ['gazelle'],
+      },
+    ],
     isLoading: false,
   };
   mockModels = {
@@ -583,6 +589,26 @@ describe('CommandPalette', () => {
     await userEvent.click(screen.getByText('confluence'));
     expect(mockNavigate).toHaveBeenCalledWith(
       '/agent-platform/connectors/confluence',
+    );
+  });
+
+  it('names a connector by its display name, found by either name', async () => {
+    mockConnectors = {
+      rows: [
+        {
+          page: 'mcp-confluence',
+          displayName: 'Team wiki',
+          installations: ['gazelle'],
+        },
+      ],
+      isLoading: false,
+    };
+    const input = await openPalette();
+    await userEvent.type(input, 'mcp-confl');
+
+    await userEvent.click(screen.getByText('Team wiki'));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/agent-platform/connectors/mcp-confluence',
     );
   });
 

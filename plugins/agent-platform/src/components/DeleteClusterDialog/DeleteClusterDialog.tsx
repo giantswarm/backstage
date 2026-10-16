@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -13,7 +13,10 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  useFieldValidation,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useClusterWrite } from '../../hooks/useClusterManager';
 import { useOpenGeneration } from '../../hooks/useOpenGeneration';
@@ -75,6 +78,13 @@ export function DeleteClusterDialog({
   const [committed, setCommitted] = useState<ClusterWriteResult>();
   const input: DeleteClusterInput = { organization, name };
   const startAnswer = useOpenGeneration(isOpen);
+  // A Delete without the name typed says so on the field and focuses it, as
+  // the app's other typed confirmations do (the `forms` skill).
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
+  const typedError =
+    // A pasted name often carries a trailing space or newline.
+    typed.trim() === name ? undefined : `Type ${name} to confirm the deletion.`;
 
   /** The dry runs, again after a refusal the person has dealt with. */
   const check = async () => {
@@ -123,8 +133,20 @@ export function DeleteClusterDialog({
     }
   };
 
+  /** Delete or Commit, once the name is typed. */
+  const onConfirm = () => {
+    if (typedError) {
+      validation.reveal();
+      return;
+    }
+    if (mode === 'commit') {
+      onCommit();
+    } else {
+      onDelete();
+    }
+  };
+
   const checking = isOpen && !verdicts;
-  const confirmed = typed === name;
   const started = Boolean(removed || committed);
   const notConnected =
     write.failure?.kind === 'not-connected'
@@ -145,7 +167,7 @@ export function DeleteClusterDialog({
     >
       <DialogHeader>Delete cluster {name}?</DialogHeader>
       <DialogBody>
-        <Flex direction="column" gap="3">
+        <Flex direction="column" gap="3" ref={scope}>
           <Text variant="body-medium">
             Removes {name} from {installation} as you, through cluster-manager:
             helm-controller uninstalls the cluster and its default apps, and
@@ -237,6 +259,7 @@ export function DeleteClusterDialog({
                 value={typed}
                 onChange={setTyped}
                 isRequired
+                {...validation.textFieldProps('typed', typedError)}
               />
             </>
           )}
@@ -351,8 +374,10 @@ export function DeleteClusterDialog({
             <Button
               variant="primary"
               destructive
-              onPress={mode === 'commit' ? onCommit : onDelete}
-              isDisabled={!preview || !mode || !confirmed || write.isBusy}
+              onPress={onConfirm}
+              // Waits only for the dry run's answer and the call in flight;
+              // a missing name is said on the field instead.
+              isDisabled={!preview || !mode || write.isBusy}
             >
               {deleteLabel(mode, write.isBusy)}
             </Button>

@@ -1,4 +1,5 @@
 import sha256 from 'crypto-js/sha256';
+import { MODEL_PAGE_TABS } from '@giantswarm/backstage-plugin-agent-platform';
 import {
   CONNECTOR_GROUPS,
   WORKFLOW_PAGE_TABS,
@@ -23,6 +24,14 @@ const CONNECTOR_SUBTABS: ReadonlySet<string> = new Set(
  */
 const WORKFLOW_TABS: ReadonlySet<string> = new Set(
   WORKFLOW_PAGE_TABS.map(tab => tab.path).filter(Boolean),
+);
+
+/**
+ * A model page's tabs below its own address (Overview, the index, left out),
+ * a fixed set too.
+ */
+const MODEL_TABS: ReadonlySet<string> = new Set(
+  MODEL_PAGE_TABS.map(tab => tab.path).filter(Boolean),
 );
 
 /** Model hosting's create flows by their last path segment, as page names. */
@@ -101,16 +110,30 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Customize' };
       break;
 
-    // One model: `/customize/models/<installation>/<namespace>/<name>`. One
-    // page, the model in neither `page` nor `view` (it is in `path`, as on
-    // every page): `page` and `view` are the dimensions TelemetryDeck
-    // aggregates on, and path segments there would make a signal per model.
-    // The former `/agent-platform/models/…` path redirects here. A trailing
-    // slash is the same page, as the router has it. Above the tab case, which
-    // would report it as the Models tab.
-    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathname):
-      payload = { page: 'Model detail' };
+    // One model: `/customize/models/<installation>/<namespace>/<name>`,
+    // optionally followed by one of its tabs. One page, the model in neither
+    // `page` nor `view` (it is in `path`, as on every page): `page` and `view`
+    // are the dimensions TelemetryDeck aggregates on, and path segments there
+    // would make a signal per model. The tab goes in `view`, a closed set;
+    // Overview, the index, carries none, so the `Model detail` numbers stay
+    // continuous across the split into tabs, and any other address under the
+    // model's only redirects to Overview, so it reports as a 'redirect'
+    // rather than a view named by free text from the URL. The former
+    // `/agent-platform/models/…` path redirects here. A trailing slash is the
+    // same page, as the router has it. Above the tab case, which would report
+    // it as the Models tab.
+    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
+      const tab = pathname.split('/').slice(6).filter(Boolean).join('/');
+      if (tab === '') {
+        payload = { page: 'Model detail' };
+      } else {
+        payload = {
+          page: 'Model detail',
+          view: MODEL_TABS.has(tab) ? tab : 'redirect',
+        };
+      }
       break;
+    }
 
     // A Customize tab, with the tab as the view. Only the known tabs: the
     // segment comes from the URL, and an unknown one redirects to the Agents tab.
@@ -241,8 +264,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Workflows' };
       break;
 
-    // The muster section's old home: no longer a tab, and not redirected
-    // (the page renders its tab row over an empty body). One name for every
+    // The muster section's old home: no longer a page, and not redirected
+    // (the address renders an empty content area). One name for every
     // such path, so a stale bookmark neither counts as the Agents page nor
     // brings its server and tool names along as views.
     case pathname === '/agent-platform/muster' ||
@@ -306,7 +329,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // What hangs off the Models tab: the serving views (`serving`, `capacity`,
-    // the agent-platform shell's `hosting`), `new`, and the `configs` paths an
+    // `cache`), `new`, and the `configs` paths an
     // older release's links still carry. Only the first segment, so anything
     // deeper collapses to what it belongs to instead of opening the dimension
     // up.

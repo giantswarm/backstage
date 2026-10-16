@@ -4,11 +4,14 @@ import { join } from 'node:path';
 import {
   test as base,
   expect,
+  type APIRequestContext,
   type BrowserContext,
   type Locator,
   type Page,
+  type TestInfo,
 } from '@playwright/test';
 import {
+  LEFTOVER_AGE,
   contextOptionsFor,
   lab,
   type LabUser,
@@ -72,18 +75,65 @@ export function portalChrome(page: Page): Locator {
 }
 
 /**
- * Fails at once, with what to change, when the lab serves other portals than
- * `AGENTLAB_PORTAL_MODE` says — rather than letting every spec fail on a
- * missing route or the other chrome. `page` is signed in and on `/`, which is
- * the shell's new-session screen exactly when the lab serves the shell.
+ * Which portals the lab's Backstage serves, from the app config it publishes
+ * before sign-in: the frontend config `app-backend` injects into `index.html`
+ * (`<script type="backstage.io/config">`), the one the app reads at start.
+ * `app.portals.agentPlatform` on is the shell; the last config that sets it
+ * wins, as in Backstage's `ConfigReader.fromConfigs`. A fresh browser context
+ * carries no person's opt-in flag, so this is what the suite's pages render.
  */
-async function expectLabPortalMode(page: Page): Promise<void> {
-  const rail = page.getByRole('navigation', { name: 'Main', exact: true });
-  const served: PortalMode = (await rail.count()) > 0 ? 'shell' : 'classic';
+export async function servedPortalMode(
+  request: APIRequestContext,
+): Promise<PortalMode> {
+  const response = await request.get('/');
+  expect(
+    response.ok(),
+    `the lab's Backstage answers / (${response.status()})`,
+  ).toBe(true);
+  const injected =
+    /<script type="backstage\.io\/config">([\s\S]*?)<\/script>/.exec(
+      await response.text(),
+    );
+  expect(
+    injected,
+    "the lab's Backstage injects its frontend config into index.html",
+  ).not.toBeNull();
+  const configs: {
+    data?: { app?: { portals?: { agentPlatform?: unknown } } };
+  }[] = JSON.parse(injected![1]);
+  const agentPlatform = configs
+    .map(config => config.data?.app?.portals?.agentPlatform)
+    .filter(value => value !== undefined)
+    .pop();
+  return agentPlatform === true || agentPlatform === 'true'
+    ? 'shell'
+    : 'classic';
+}
+
+/** The projects of the Agent Platform, which need a lab serving the shell. */
+const SHELL_PROJECTS = ['agentlab-shell', 'agentlab-mobile'];
+
+/**
+ * Settles, before a test, whether the lab serves the portals
+ * `AGENTLAB_PORTAL_MODE` says. A classic-only lab skips the Agent Platform's
+ * projects with the reason — there is nothing of the shell to prove there; any
+ * other mismatch fails at once with what to change, rather than letting every
+ * spec fail on a missing route or the other chrome.
+ */
+function expectLabPortalMode(served: PortalMode, testInfo: TestInfo): void {
+  if (served === lab.portalMode) {
+    return;
+  }
+  const classicOnly =
+    "the lab's Backstage serves the classic portal only (app.portals.agentPlatform off): run it with APP_CONFIG_app_portals_agentPlatform=true for the Agent Platform's specs (see e2e/agentlab/README.md)";
+  testInfo.skip(
+    served === 'classic' && SHELL_PROJECTS.includes(testInfo.project.name),
+    classicOnly,
+  );
   expect(
     served,
     lab.portalMode === 'shell'
-      ? 'AGENTLAB_PORTAL_MODE=shell, but the lab serves the classic portal only: run its Backstage with APP_CONFIG_app_portals_agentPlatform=true (see e2e/agentlab/README.md)'
+      ? `AGENTLAB_PORTAL_MODE=shell, but ${classicOnly}`
       : 'the lab serves the agent shell: set AGENTLAB_PORTAL_MODE=shell (the Agent Platform specs need it), or switch the lab back to the classic portal',
   ).toBe(lab.portalMode);
 }
@@ -143,14 +193,19 @@ type WorkerFixtures = {
    * per worker, no copies, is the shape that stays signed in.
    */
   adminPage: Page;
+  /** Which portals the lab serves, read once per worker ({@link servedPortalMode}). */
+  servedPortal: PortalMode;
   /**
    * An agent of the worker's own on the lab, created as the admin in the New
    * agent wizard (agent-manager's `create_agent` through muster) the first
-   * time a test asks for it, and deleted again when the worker ends. A spec
-   * that needs an agent on the roster uses this one, never whatever earlier
-   * runs left on a shared lab; one that needs it ready opens it with
-   * {@link openReadyAgent}. A failed creation fails every later request for
-   * it in the same run at once, with the first failure's message.
+   * time a test asks for it, and deleted again when the worker ends, also
+   * after a failed test, on a fresh sign-in where the worker's page cannot
+   * (`removeLabAgent`). Before creating it, the worker deletes the agents
+   * earlier runs left ({@link isLeftoverAgent}): a killed worker never reaches
+   * its teardown. A spec that needs an agent on the roster uses this one,
+   * never whatever earlier runs left on a shared lab; one that needs it ready
+   * opens it with {@link openReadyAgent}. A failed creation fails every later
+   * request for it in the same run at once, with the first failure's message.
    */
   labAgent: LabAgent;
 };
@@ -165,6 +220,11 @@ export interface LabAgent {
 }
 
 type TestFixtures = {
+  /**
+   * Run before every test (auto): whether the lab serves the portals
+   * `AGENTLAB_PORTAL_MODE` says ({@link expectLabPortalMode}).
+   */
+  labPortalMode: void;
   /** The worker's admin page; an uncaught page error during the test fails it. */
   admin: Page;
   /**
@@ -197,6 +257,29 @@ function labAgentFailureFile(outputDir: string): string {
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   variant: ['desktop', { scope: 'worker', option: true }],
 
+  servedPortal: [
+    async ({ playwright }, use) => {
+      const request = await playwright.request.newContext({
+        baseURL: lab.baseURL,
+        ignoreHTTPSErrors: true,
+      });
+      try {
+        await use(await servedPortalMode(request));
+      } finally {
+        await request.dispose();
+      }
+    },
+    { scope: 'worker' },
+  ],
+
+  labPortalMode: [
+    async ({ servedPortal }, use, testInfo) => {
+      expectLabPortalMode(servedPortal, testInfo);
+      await use();
+    },
+    { auto: true },
+  ],
+
   adminPage: [
     async ({ browser, variant }, use) => {
       const context = await browser.newContext(contextOptionsFor(variant));
@@ -211,7 +294,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         [PERSISTED_QUERY_CACHES, DROP_CACHES_FLAG] as const,
       );
       await signIn(page, lab.users.admin);
-      await expectLabPortalMode(page);
       await use(page);
       await context.close();
     },
@@ -219,7 +301,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   labAgent: [
-    async ({ adminPage }, use, workerInfo) => {
+    async ({ adminPage, browser, variant }, use, workerInfo) => {
       // One failed creation is the run's answer: a later worker fails at once
       // instead of paying the wizard and its timeouts again.
       const failureFile = labAgentFailureFile(workerInfo.project.outputDir);
@@ -228,12 +310,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           `the fixture agent could not be created earlier in this run: ${readFileSync(failureFile, 'utf8')}`,
         );
       }
+      await removeLeftoverAgents(adminPage);
       // Unique to the run, the worker and the second, so two runs against a
       // shared lab never meet on one agent.
-      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 14);
+      const stamp = labAgentStamp(new Date());
       const suffix = `${randomUUID().slice(0, 6)}-${workerInfo.workerIndex}`;
       const name = `E2E Roster ${stamp} ${suffix.replace('-', ' ')}`;
-      const slug = `e2e-roster-${stamp}-${suffix}`;
+      const slug = `${LAB_AGENT_PREFIX}${stamp}-${suffix}`;
       let detailPath: string | undefined;
       try {
         try {
@@ -245,17 +328,15 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         }
         await use({ name, slug, detailPath });
       } finally {
-        // Deploy may have created the agent even when the hand-off to its
-        // page failed: then the roster's link is the way to it.
-        detailPath ??= await rosterPathOf(adminPage, name).catch(
-          () => undefined,
+        await removeLabAgent(
+          adminPage,
+          () => browser.newContext(contextOptionsFor(variant)),
+          { name, slug, detailPath },
         );
-        if (detailPath) {
-          await deleteAgentInPortal(adminPage, detailPath, slug);
-        }
       }
     },
-    { scope: 'worker', timeout: 5 * 60_000 },
+    // The sweep, the wizard and the deletion's wait for Flux each take minutes.
+    { scope: 'worker', timeout: 10 * 60_000 },
   ],
 
   admin: async ({ adminPage }, use) => {
@@ -309,7 +390,9 @@ export async function open(
   const chrome = portalChrome(page);
   const card = page.getByRole('button', { name: 'Sign In' });
   await expect(chrome.or(card).first()).toBeAttached();
-  if (await card.isVisible()) {
+  // Signed out only without the portal's chrome: a signed-in page has its own
+  // "Sign in" buttons too (the MCP server sign-in notice and its dialog).
+  if ((await chrome.count()) === 0 && (await card.isVisible())) {
     await signIn(page, user);
     await page.goto(path);
   }
@@ -403,15 +486,26 @@ export async function connectToMuster(page: Page, ready: Locator) {
 
 /**
  * Creates an agent in the New agent wizard the way a person does, as the
- * page's user: Details (no skills, no tools, the lab's default ModelConfig),
+ * page's user: Details (no skills, no tools, the lab's default ModelConfig
+ * unless `model` names another: the model radio's name, which is the
+ * model's display name where it has one),
  * agent-manager's dry run on Review, then Create agent. Resolves on the agent's
  * detail page and returns its path; from then on the agent exists and the
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
+ *
+ * `options.harness` picks that Runtime card under More options instead of the
+ * platform Harness; `options.onStep` runs on Details (once the pick is made)
+ * and on Review (once the dry run completed), before each Continue or Create.
  */
 export async function createAgentInWizard(
   page: Page,
   agentName: string,
   agentSlug: string,
+  options: {
+    harness?: RegExp;
+    model?: string | RegExp;
+    onStep?: (step: 'Details' | 'Review') => Promise<void>;
+  } = {},
 ): Promise<string> {
   // --- Step 1: Details -----------------------------------------------------
   await open(page, '/agent-platform/agents/new');
@@ -436,8 +530,15 @@ export async function createAgentInWizard(
     .fill('You are a test agent. Answer with exactly what you are asked for.');
   await page
     .getByRole('radiogroup', { name: 'Model' })
-    .getByRole('radio', { name: /default-model-config/ })
+    .getByRole('radio', { name: options.model ?? /default-model-config/ })
     .check();
+  if (options.harness) {
+    await page
+      .getByRole('radiogroup', { name: 'Runtime' })
+      .getByRole('radio', { name: options.harness })
+      .click();
+  }
+  await options.onStep?.('Details');
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
   // --- Step 2: Skills (none) -----------------------------------------------
@@ -469,6 +570,7 @@ export async function createAgentInWizard(
     deploy,
     'the dry run through agent-manager completed and Create is offered',
   ).toBeEnabled({ timeout: 90_000 });
+  await options.onStep?.('Review');
   await deploy.click();
 
   // The review page hands the agent to its detail page, which reports the
@@ -489,6 +591,18 @@ export async function deleteAgentInPortal(
   detailPath: string,
   agentSlug: string,
 ): Promise<void> {
+  await requestAgentDeletion(page, detailPath);
+  await expectAgentsGone(page, [agentSlug]);
+}
+
+/**
+ * Deletes the agent through its actions menu and resolves back on the agents
+ * list, before the roster drops it ({@link expectAgentsGone}).
+ */
+async function requestAgentDeletion(
+  page: Page,
+  detailPath: string,
+): Promise<void> {
   await open(page, detailPath);
   await page.getByRole('button', { name: 'Agent actions' }).click();
   await page.getByRole('menuitem', { name: /Delete agent/ }).click();
@@ -499,14 +613,132 @@ export async function deleteAgentInPortal(
   await expect(page).toHaveURL(/\/customize\/agents$/, {
     timeout: 60_000,
   });
+}
+
+/** Waits on the open agents list until the roster lists none of `slugs`. */
+async function expectAgentsGone(page: Page, slugs: string[]): Promise<void> {
   // By the href: the link's name is the display name, not the slug. The
   // roster re-reads the Agents on its 60 s poll, and the Agent goes only once
   // Flux has uninstalled the release agent-manager deleted, so allow two
   // polls.
   await expect(
-    page.locator(`a[href$="/${agentSlug}"]`),
-    'the roster no longer lists the agent',
+    page.locator(slugs.map(slug => `a[href$="/${slug}"]`).join(', ')),
+    `the roster no longer lists ${slugs.join(', ')}`,
   ).toHaveCount(0, { timeout: 150_000 });
+}
+
+/** The prefix of every agent's technical name the `labAgent` fixture creates. */
+export const LAB_AGENT_PREFIX = 'e2e-roster-';
+
+/** The `labAgent` stamp of `date`: its UTC month to second, `MMDDhhmmss`. */
+export function labAgentStamp(date: Date): string {
+  return date.toISOString().replace(/[-:T]/g, '').slice(4, 14);
+}
+
+/**
+ * Whether `slug` names a `labAgent` an earlier run left: created, by its
+ * stamp, more than {@link LEFTOVER_AGE} ago. The stamp has no year: one later
+ * than an hour from now is last year's.
+ */
+export function isLeftoverAgent(
+  slug: string,
+  now: number = Date.now(),
+): boolean {
+  const stamp = slug.match(
+    new RegExp(`^${LAB_AGENT_PREFIX}(\\d{2})(\\d{2})(\\d{2})(\\d{2})(\\d{2})-`),
+  );
+  if (!stamp) {
+    return false;
+  }
+  const [month, day, hour, minute, second] = stamp.slice(1).map(Number);
+  const year = new Date(now).getUTCFullYear();
+  const at = (y: number) => Date.UTC(y, month - 1, day, hour, minute, second);
+  const created = at(year) > now + 60 * 60_000 ? at(year - 1) : at(year);
+  return now - created > LEFTOVER_AGE;
+}
+
+/**
+ * Deletes every `labAgent` earlier runs left ({@link isLeftoverAgent}) through
+ * the portal, all requested first and then awaited together. What does not go
+ * is reported, not thrown: it belongs to no run going on, so it does not fail
+ * this one.
+ */
+async function removeLeftoverAgents(page: Page): Promise<void> {
+  await open(page, '/agent-platform/agents');
+  const rows = page.getByRole('main').getByRole('listitem').getByRole('link');
+  if (
+    !(await rows
+      .first()
+      .waitFor({ timeout: 30_000 })
+      .then(
+        () => true,
+        () => false,
+      ))
+  ) {
+    return;
+  }
+  await searchRoster(page, 'E2E Roster');
+  const leftovers = (
+    await rows.evaluateAll(links =>
+      links.map(link => link.getAttribute('href') ?? ''),
+    )
+  ).filter(href => isLeftoverAgent(href.split('/').pop() ?? ''));
+  const requested: string[] = [];
+  const failed: string[] = [];
+  for (const href of leftovers) {
+    const slug = href.split('/').pop()!;
+    await requestAgentDeletion(page, href).then(
+      () => requested.push(slug),
+      (error: Error) =>
+        failed.push(`${slug} (${error.message.split('\n')[0]})`),
+    );
+  }
+  if (requested.length > 0) {
+    await expectAgentsGone(page, requested).catch((error: Error) =>
+      failed.push(error.message.split('\n')[0]),
+    );
+  }
+  if (failed.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`labAgent: leftovers not removed: ${failed.join('; ')}`);
+  }
+}
+
+/**
+ * Deletes the worker's `labAgent` at its teardown, whatever the tests left:
+ * on the worker's admin page, and where that page cannot (a test ended its
+ * session, the page crashed) again on a fresh context signed in as the admin,
+ * where the roster tells whether it is still there.
+ */
+async function removeLabAgent(
+  adminPage: Page,
+  newContext: () => Promise<BrowserContext>,
+  agent: { name: string; slug: string; detailPath?: string },
+): Promise<void> {
+  const remove = async (page: Page, detailPath?: string) => {
+    // Deploy may have created the agent even when the hand-off to its page
+    // failed: then the roster's link is the way to it.
+    const path = detailPath ?? (await rosterPathOf(page, agent.name));
+    if (path) {
+      await deleteAgentInPortal(page, path, agent.slug);
+    }
+  };
+  try {
+    await remove(adminPage, agent.detailPath);
+  } catch (first) {
+    const context = await newContext();
+    try {
+      const page = await context.newPage();
+      await signIn(page, lab.users.admin);
+      await remove(page);
+    } catch (second) {
+      throw new Error(
+        `the fixture agent ${agent.slug} could not be deleted: ${first}; on a fresh sign-in: ${second}`,
+      );
+    } finally {
+      await context.close();
+    }
+  }
 }
 
 /**

@@ -423,7 +423,10 @@ export function mcpServerDetailsProblems(
   const problems: McpServerProblem[] = [];
 
   if (!state.name.trim()) {
-    problems.push({ field: 'name', message: 'Name is required' });
+    problems.push({
+      field: 'name',
+      message: 'Enter a name for the connector.',
+    });
   }
   if (state.slug.trim()) {
     if (!isValidSlug(state.slug)) {
@@ -435,7 +438,7 @@ export function mcpServerDetailsProblems(
     }
   } else if (state.name.trim()) {
     // Only flag a missing slug once there's a name (it derives from the name).
-    problems.push({ field: 'slug', message: 'Technical name is required' });
+    problems.push({ field: 'slug', message: 'Enter a technical name.' });
   }
   if (state.description.trim().length > DESCRIPTION_MAX_LENGTH) {
     problems.push({
@@ -444,10 +447,13 @@ export function mcpServerDetailsProblems(
     });
   }
   if (!state.installation) {
-    problems.push({ field: 'installation', message: 'Select an installation' });
+    problems.push({ field: 'installation', message: 'Choose an environment.' });
   }
   if (!state.url.trim()) {
-    problems.push({ field: 'url', message: 'URL is required' });
+    problems.push({
+      field: 'url',
+      message: 'Enter the URL, e.g. https://mcp.example.com/mcp.',
+    });
   } else if (!URL_PATTERN.test(state.url.trim())) {
     problems.push({
       field: 'url',
@@ -606,7 +612,7 @@ export function mcpServerAuthProblems(
     if (!state.sigv4Region.trim()) {
       problems.push({
         field: 'sigv4Region',
-        message: 'Signing region is required for AWS SigV4',
+        message: 'Enter the signing region for AWS SigV4, e.g. eu-central-1.',
       });
     }
   }

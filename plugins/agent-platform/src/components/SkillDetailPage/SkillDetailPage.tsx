@@ -6,7 +6,6 @@ import {
   useParams,
 } from 'react-router-dom';
 
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
@@ -26,9 +25,11 @@ import {
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useMetaAgentHandoff } from '../../hooks/useMetaAgentHandoff';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillContent } from '../../hooks/useSkillContent';
+import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { skillSource } from '../../lib/customize';
 import {
   canonicalRepoUrl,
@@ -38,15 +39,13 @@ import {
   resolveSkillDetailPath,
   sameCommit,
   shortCommit,
-  skillDetailPath,
   skillSourceUrl,
   type DiscoveredSkill,
   type SkillDetailTab,
 } from '../../lib/skills';
-import { skillsRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { AgentUsageList } from '../AgentUsageList';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 import { SkillFiles } from '../SkillFiles';
 import { SkillInstructions } from '../SkillInstructions';
 import { evaluationPrompt } from './evaluationPrompt';
@@ -356,7 +355,8 @@ function SkillPage({
 }) {
   const navigate = useNavigate();
   const isPhone = usePhoneLayout();
-  const skillsRoute = useRouteRef(skillsRouteRef);
+  const skillPaths = useSkillPaths();
+  const { customize, skills } = useCustomizePaths();
   const {
     rows,
     isLoading: agentsLoading,
@@ -399,11 +399,7 @@ function SkillPage({
   // of one it cannot read would end in an error. Evaluate stays: the
   // evaluator reads the repository with its own access.
   const readable = isSkillContentReadable(skill);
-  const detailPath = skillDetailPath(skill);
-  const editHref =
-    proposable && readable && skillsRoute && detailPath
-      ? `${skillsRoute()}/edit/${detailPath}`
-      : undefined;
+  const editHref = proposable && readable ? skillPaths.edit(skill) : undefined;
   const openEdit = useCallback(() => {
     if (editHref) {
       navigate(editHref);
@@ -439,8 +435,8 @@ function SkillPage({
   ];
 
   const breadcrumbs: BreadcrumbItem[] = [
-    { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
-    { label: 'Skills', href: `${SHELL_CUSTOMIZE_PATH}/skills` },
+    { label: 'Customize', href: customize },
+    { label: 'Skills', href: skills },
     { label: skill.name },
   ];
 
@@ -455,7 +451,7 @@ function SkillPage({
       id: 'used-by',
       path: 'used-by',
       title: 'Used by',
-      count: agentsLoading ? undefined : using.length,
+      count: agentsLoading ? 'loading' : using.length,
     },
   ];
 
@@ -626,6 +622,7 @@ export function SkillDetailPage() {
   const splat = useParams()['*'] ?? '';
   const { pathname } = useLocation();
   const catalog = useSkillCatalog();
+  const { customize, skills } = useCustomizePaths();
 
   const resolved = useMemo(
     () => resolveSkillDetailPath(splat, catalog.skills),
@@ -634,7 +631,7 @@ export function SkillDetailPage() {
 
   if (!resolved) {
     // Not even `owner/repo`: nothing to look up, back to the list.
-    return <Navigate to={`${SHELL_CUSTOMIZE_PATH}/skills`} replace />;
+    return <ShellCustomizeRedirect tab="skills" keepSearch={false} />;
   }
 
   if (resolved.skill) {
@@ -651,8 +648,8 @@ export function SkillDetailPage() {
   }
 
   const breadcrumbs: BreadcrumbItem[] = [
-    { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
-    { label: 'Skills', href: `${SHELL_CUSTOMIZE_PATH}/skills` },
+    { label: 'Customize', href: customize },
+    { label: 'Skills', href: skills },
     { label: 'Skill' },
   ];
 
@@ -671,7 +668,14 @@ export function SkillDetailPage() {
         badges={<ShellPageBadgeSkeleton />}
         tabs={[
           { id: 'overview', path: '', title: 'Overview' },
-          { id: 'used-by', path: 'used-by', title: 'Used by' },
+          // Its count's place held from the first paint, as the loaded
+          // page's while the agents load.
+          {
+            id: 'used-by',
+            path: 'used-by',
+            title: 'Used by',
+            count: 'loading',
+          },
         ]}
         tabsBasePath={tab ? own.slice(0, own.lastIndexOf('/')) : own}
       >
@@ -682,9 +686,9 @@ export function SkillDetailPage() {
 
   // As the agent and model pages: a failed read is an error, a skill that is
   // not there an empty state, each with the way back.
-  const backToSkills = (
-    <Link href={`${SHELL_CUSTOMIZE_PATH}/skills`}>Back to skills</Link>
-  );
+  const backToSkills = skills ? (
+    <Link href={skills}>Back to skills</Link>
+  ) : null;
   let body;
   if (catalog.error || catalog.failedRepositories.length > 0) {
     body = (

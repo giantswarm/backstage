@@ -121,6 +121,27 @@ each person's own account, none, or AWS request signing) and registers the
 server. Connectors managed through GitOps point to their source instead of
 being editable.
 
+A connector is named for people by the `ui.giantswarm.io/display-name`
+annotation on its MCPServer, as agents, models and harnesses are: in the
+Connectors list, its page's title, breadcrumbs and document title, the tool
+page's breadcrumb, the connector wizard's edit frame, the command palette, the
+agent wizard's Tools step and review, the agent page's tools, the reach line,
+the session timeline, Usage → Connectors, the workflow pages and the sign-in
+notice and dialogs. One rule names it everywhere (`connectorDisplayNames` in
+the muster plugin): a family takes the display name its annotated members
+agree on, and members that disagree leave it its own name; without a display
+name a connector goes by its family's name (`spec.family.name`) or its
+MCPServer's; and connectors that would read the same (two annotated alike, or
+one annotated like another's name, case aside) go by their own names
+instead, so no two read alike. URLs, `server:` selectors and tool names keep
+the technical name, which Technical details on the Details tab still shows,
+and searches match both names. Add connector cannot set the annotation:
+muster's `core_mcpserver_create` and `_update` take no annotations (their
+request parsing rejects unknown fields), so it is set on the MCPServer
+directly, for example in its GitOps source or with
+`kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`.
+An update through the wizard keeps it.
+
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/agent-platform/connectors/<connector>/tools/<tool>?installation=<name>`.
@@ -267,16 +288,29 @@ one `ModelConfig`, resolved incrementally.
 The Models list (`CustomizeModelsPanel`; `/agent-platform/models` redirects to
 Customize → Models) lists the fleet's ModelConfigs through
 `ModelConfigsProvider` and lets an admin create, edit and delete them. Status
-combines the `Accepted` and `ResolvedRefs` conditions into Accepted, Not
-accepted or Pending; a ModelConfig has no workload, so there is no `Ready`.
-The controller's message for Not accepted or Pending sits in a hint beside
-the status.
+combines the `Accepted` and `ResolvedRefs` conditions, named by the one that
+failed: Not accepted (`Accepted` is False: kagent rejects the settings),
+Incomplete (`ResolvedRefs` is False: it accepts them but cannot find what they
+refer to, such as the key Secret) or Pending; a ModelConfig has no workload,
+so there is no `Ready`. The controller's message sits in a hint beside the
+status.
 
 One model's page (`ModelDetailPage`) is at
 `/customize/models/<installation>/<namespace>/<name>`, routed by the app's
 Customize page; `/agent-platform/models/<installation>/<namespace>/<name>`
-redirects there. Its Technical details fold-out lists the conditions with
-their reason and message, and opens on arrival unless the model is accepted.
+redirects there. It splits into Overview (the serving status, the facts, then
+a Technical details fold-out with the owning Helm release, the resource and
+the conditions with their reason and message), Usage (`…/usage`: the gateway's
+30-day figures and spend per day) and Used by (`…/used-by`, counted in the
+tab: the agents that use it with their spend on it). The former `…/details`
+address lands on Overview. A model agents cannot use yet says why at the top
+of Overview in plain words (`modelProblem`): what is wrong and what to do,
+from the reason kagent gives on the failed condition (a missing or incomplete
+key, an endpoint address it cannot find, settings it rejects, an unsupported
+provider, with a fallback per condition), offering Edit where the person may
+edit and naming whom to ask otherwise. Reasons, condition names and the
+controller's messages stay in Technical details, which open on arrival; the
+alert's Show conditions reopens them and scrolls them into view.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
 `EditModelPage` at `/agent-platform/models/edit/<installation>/<namespace>/<name>`)
@@ -311,9 +345,17 @@ the key and apiserver errors (`ConflictError` on a taken name) show inline. The
 
 **Ownership guards.** Edit and delete are withheld for CRs rendered by Helm,
 applied by a Flux Kustomization, or labelled `app.kubernetes.io/managed-by` by
-anything but the portal. A CR without markers (applied with kubectl) is
-editable. The portal labels what it creates
-`app.kubernetes.io/managed-by: giantswarm-backstage`.
+anything but the portal; the model page names the owner in a "Managed by"
+fact. A CR without markers (applied with kubectl) is editable. The portal
+labels what it creates `app.kubernetes.io/managed-by: giantswarm-backstage`.
+
+For a Helm-rendered model, Technical details name the release from the
+CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
+a Flux HelmRelease rendered it, the page reads that HelmRelease with the
+person's token and shows its chart, applied version and Ready state, linked to
+the gs deployment page (`deploymentDetailsExternalRouteRef`) when gs is
+enabled. A release Helm installed without Flux has no resource to read, so
+only its name shows.
 
 **Delete refuses while referenced.** The mutation lists the namespace's
 `Agent`s fresh and refuses while any references the model. A failed read also
@@ -1133,6 +1175,9 @@ config arrays, so a deployment overriding `img-src` must re-list `data:`.
 
 **Only the poll renders attachments.** The first stream event of a turn with a
 file part (`StreamTurn.carriesFile`) triggers one tasks re-read for that turn.
+An image the person sent shows as a thumbnail (see
+[Images in a message](#images-in-a-message)); one the agent sent shows at up
+to 480 px high.
 
 **Unreadable messages are counted.** `skippedMessages` counts history entries
 that failed the schema (artifact and status updates excluded), and the warning
@@ -1153,13 +1198,32 @@ Costs use `gs.installations.<name>.currency`, USD otherwise.
 context, so a 4-turn session reached 1.4M prompt tokens across 14 calls. There
 is no combined total, because input and output are priced differently.
 
-**Context used is the newest turn's prompt tokens against a configured window.** No
-platform component reports a hosted model's context window, so the denominator
-is `agentPlatform.models.contextWindows` (model-name patterns with `*`, the most
-specific match wins, served through the signed-in config). An unmatched model
-shows its raw token count. The numerator is `buildTimeline`'s
-`lastTurnTokens.prompt`, summed over the newest reporting turn's calls and
-excluding delegated usage, so it is approximate.
+**Context used is the newest turn's largest model call against a configured
+window.** No platform component reports a hosted model's context window, so
+the denominator is `agentPlatform.models.contextWindows` (model-name patterns
+with `*`, the most specific match wins, served through the signed-in config).
+The numerator is `buildTimeline`'s `context`, read by `readUsageReport`:
+
+- ADK writes a usage bag per model call. A call's figure is its reported
+  total, else prompt plus output: the output is in the context from then on,
+  and both must fit the window.
+- A turn's figure is its largest call, never the sum of its calls. Each call
+  re-sends the whole context, so the sum over a long turn runs to several
+  times the window. The largest call is the newest root-agent call, and a small
+  auxiliary or sub-agent call recorded later in the turn cannot undercut it. A
+  compaction mid-turn keeps the pre-compaction size until the next turn.
+- The newest turn with a figure wins as soon as its first call reports, so the
+  indicator moves mid-turn on the API v2 line. Delegated agents' nested usage is
+  excluded.
+- The claude Harness writes one bag per turn, summed over its calls
+  (`numTurns`, with `costUsd`). Only a bag with `numTurns` exactly 1 is one
+  call's; any other, a missing or malformed count included, reads "Not
+  reported".
+
+No share shows beside a raw count, and a line under the row says why: the
+table names no window for the model, or the call was larger than the
+configured window (the setting may be too small, or the turn ran on a model the
+agent has since left). The share is never capped at 100%.
 
 Some sessions' `adk_usage_metadata` has only `promptTokenCount` and
 `candidatesTokenCount`; the total is then derived. A reported total wins,
@@ -1215,6 +1279,44 @@ requests) and posts a `ToastApi` toast when a session flips to waiting while
 the person is elsewhere. Nothing persists; sessions already waiting are left to
 the rail's dots, a toast closes when its session stops waiting or is opened,
 and the session on screen never raises one.
+
+### The compact header
+
+Once everything above the conversation has scrolled out of view, the header
+turns into one compact row at the top of the view: the session's name in a
+smaller font, its state, the agent, "Show tool activity", the pin and the
+actions menu. The environment and the start date are left out
+(`ShellPageExpandedOnly`); scrolling back up restores the full header. At
+phone width the switch is left out too: beside the state and the agent it
+wraps the row to a third line over the conversation.
+
+It is `ShellPage`'s `compactHeader` option, so another long page can opt in.
+It is the same header, not a copy: the h1 (the rename button) and the actions
+stay mounted once, so focus on them survives the switch and assistive tech
+never meets them twice. Compact, the header is `position: sticky` against the
+page, and a spacer after it takes the height it gives up, set before paint, so
+the conversation does not move. `useScrolledPast` watches a sentinel that
+reaches from where the content starts up past the top of the document (the
+document scrolls, not a container), so even an instant jump to the top is
+seen. The header stays expanded while focus is on a part the compact row
+leaves out. A `scroll-margin-top` on everything but the header keeps
+whatever is scrolled into view below the compact row, and its fade is off
+under `prefers-reduced-motion`. It is a margin on the content rather than a
+`scroll-padding-top` on the document: padding counts the stuck header's own
+top as hidden, so pressing the switch, whose input react-aria focuses on
+every press, scrolled the page to the top for a frame and back, a flicker.
+
+The switch stays usable mid-session: toggling it adds or removes work
+summaries above and below the place being read, so `useReadingAnchor` records
+the first entry in view that survives the toggle (a message or a turn marker,
+never a work summary) and its offset, turns the browser's scroll anchoring off
+for that change, and scrolls back by however far the entry moved, before
+paint. The header, its spacer and the sentinel are `overflow-anchor: none`:
+anchored on the sticky header, the browser would scroll the page when it turns
+back into the expanded header, which turns it compact again, a flicker. The
+compact header also expands only once the content's start is 24px back in
+view (`useScrolledPast`'s `hysteresis`), so a reflow that nudges it a few
+pixels cannot flip it.
 
 ### Timestamps are absolute here
 
@@ -1461,8 +1563,84 @@ by both composers and the answer panel). The field clears on submit; on failure
 the text returns, keyed by attempt id, without overwriting an edit.
 
 **Limits.** Messages are capped at 32,000 UTF-16 code units (ours; kagent
-validates nothing), in the route and the box. The route's JSON body limit is
-256 kB, so 32,000 CJK code units (about 96 kB) never hit a 413.
+validates nothing), in the route and the box. The backend's JSON body limit is
+256 kB, so 32,000 CJK code units (about 96 kB) never hit a 413; the routes
+under a session's `messages` take 5 MB, for images.
+
+#### Images in a message
+
+Both composers take images, pasted or dropped on the box. They show as
+removable thumbnails above the text and go with the next message as A2A `raw`
+parts (`mediaType`, `filename`) after its text part. The session page's
+composer, the home and Sessions composer (`StartNewSession`) and the New
+session dialog take them; the meta-agent hand-offs and `CreateAgentAssist`
+stay text only. A new session's images travel to the session page with the
+prompt, held in memory under a key in the router state
+(`stashHandoffImages`, emptied once read), never in the router state itself.
+There is no button to attach images with.
+
+- **Paste** attaches only a clipboard without both plain text and HTML: a
+  spreadsheet or word processor copies a picture of the selection beside its
+  text, and there the text is pasted as before. A pasted image is called
+  "Pasted image" (browsers call each one `image.png`); a name already
+  attached gets " (2)", " (3)", … so every remove control is announced apart.
+- **Drop** reacts to drags that carry files only, so dragged text still lands
+  in the box. While the composer is on the page — also while it is disabled
+  or a session is being created — a file dropped anywhere else is refused
+  instead of opened by the browser in place of the page. Desktop only; on a
+  phone, paste remains.
+- **Types** are read from the bytes (`sniffImageType`), never the name: PNG,
+  JPEG, GIF, WebP — what the transcript previews. Anything else is refused
+  with a message naming them.
+- **Every image is drawn and encoded again** (`prepareImage`), which strips
+  its metadata (a photo's GPS position, device and times would otherwise reach
+  the model provider and the transcript, which share links show; the recorded
+  orientation is applied first) and bounds it to 2,000 px on its longer side:
+  models scale larger images down themselves, and Anthropic refuses images
+  over 2,000 px in a request with more than 20 and over 8,000 px in any.
+  PNG, JPEG and WebP keep their format, falling back to PNG where the browser
+  cannot encode one; a GIF is sent as a PNG of its first frame, all the models
+  read of one. A browser without `createImageBitmap` and canvas encoding cannot
+  attach images and says so.
+- **Caps** (`kagentMessageLimits.ts`): 2 MiB per image, 4 images and 3 MiB per
+  message, 50 images and 16 MiB per session (the person's images; a file the
+  agent produced does not count). The message cap is kagent's narrowest hop:
+  the controller relays to the runtime over gRPC with the 4 MiB default. The
+  session caps exist because every turn sends the model the whole
+  conversation, base64-encoded: Anthropic refuses a request over 32 MB or with
+  more than 100 images, and agentgateway buffers an LLM request up to 32 MiB.
+  The composer checks them as images are attached and again before sending
+  (a failed message's images put back beside newer ones can be too many
+  together, which blocks Send with the reason). The backend checks them all
+  again: each image's bytes against its type and its header's dimensions, and,
+  for a message with images, the session's own (one read of its tasks).
+- **Agents that cannot take images** (`imagesUnsupportedReason`): kagent's
+  Claude Code and Codex runtimes accept one text part per message and fail
+  the turn otherwise, and its Go ADK runtime hands images only to OpenAI,
+  Azure OpenAI, Foundry, Anthropic (also on Vertex AI) and Gemini models; its
+  Ollama, Bedrock, Mistral and SAP AI Core adapters drop them silently. The
+  composer says so on a paste or drop, from the agent's Harness runtime
+  (named or inline) and ModelConfig provider. While either is not read yet,
+  it says it cannot tell yet rather than guess. A custom (`byo`) runtime is
+  given images. Whether a given model takes images is recorded nowhere in
+  kagent: an OpenAI-compatible endpoint serving a text-only model refuses the
+  turn, and the failure path hands the text and the images back to the box.
+- **Sent again.** A stalled turn's message comes back with its images when
+  the turn is stopped, and a lost runtime's new session, started from an empty
+  box, takes the unanswered message with its images.
+- **The transcript** shows a sent image after the message, as a thumbnail
+  (at most 240 × 160 px) that opens at full size; the optimistic copy of a
+  message in flight shows its images the same way, from the composer's
+  preview. Each poll re-reads the images with the conversation, which the
+  session caps also bound. A conversation too large for one `ListTasks`
+  answer (the controller's 16 MiB) is read in halved pages; the size that
+  fitted is kept for the session's next reads, and a read makes at most 100
+  calls. The page token is the last task's id, so it holds across sizes.
+
+The chart's ingress raises `nginx.ingress.kubernetes.io/proxy-body-size` to
+`6m`, because ingress-nginx refuses a body over 1 MB by default. A deployment
+that replaces the chart's ingress annotations, or fronts the portal with
+another proxy, must allow the same.
 
 ### Answering the agent's question
 

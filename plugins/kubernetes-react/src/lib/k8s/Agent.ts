@@ -1,4 +1,5 @@
 import { KubeObject } from './KubeObject';
+import { harnessRuntimeOf, type HarnessRuntime } from './Harness';
 import {
   KAGENT_API_GROUP,
   type AgentCondition,
@@ -325,6 +326,15 @@ export class Agent extends KubeObject<AgentInterface> {
    */
   getHarnessName(): string | undefined {
     return this.jsonData.spec?.harnessRef?.name;
+  }
+
+  /**
+   * The runtime of the Harness inline under `spec.harness`, `undefined` when
+   * the agent names its Harness instead (read that one's) or the inline one
+   * sets no runtime this client knows.
+   */
+  getInlineHarnessRuntime(): HarnessRuntime | undefined {
+    return harnessRuntimeOf(this.jsonData.spec?.harness);
   }
 
   /**

@@ -142,7 +142,7 @@ function ConnectorName({ row, href }: { row: Row; href?: string }) {
     <Cell>
       <Flex align="center" gap="3" style={{ minWidth: 0 }}>
         <span className={classes.tile} aria-hidden>
-          {row.entry.id.charAt(0).toUpperCase()}
+          {row.entry.displayName.charAt(0).toUpperCase()}
         </span>
         <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
           {/* The name is the row's link (M21): reachable by keyboard and
@@ -153,13 +153,13 @@ function ConnectorName({ row, href }: { row: Row; href?: string }) {
               variant="body-medium"
               weight="bold"
               truncate
-              title={row.entry.id}
+              title={row.entry.displayName}
             >
-              {row.entry.id}
+              {row.entry.displayName}
             </Link>
           ) : (
             <Text variant="body-medium" weight="bold" truncate>
-              {row.entry.id}
+              {row.entry.displayName}
             </Text>
           )}
           {row.description && (
@@ -199,6 +199,7 @@ function ConnectorStatusCell({
         <ServerSignInStatus
           noun="connector"
           serverName={row.signInServer}
+          displayName={row.entry.displayName}
           installation={installation}
           status={row.status}
           signInGate={row.signInGate}
@@ -229,6 +230,7 @@ function SignInStackedRow({
   const signInStatus = useServerSignInStatus({
     noun: 'connector',
     serverName: row.signInServer,
+    displayName: row.entry.displayName,
     installation,
     status: row.status,
     signInGate: row.signInGate,
@@ -246,7 +248,7 @@ function SignInStackedRow({
       {...props}
       status={
         <SignInStatusText
-          serverName={row.signInServer}
+          serverName={row.entry.displayName}
           signInStatus={signInStatus}
         />
       }
@@ -269,12 +271,12 @@ function ConnectorStackedRow({
 }) {
   const classes = useStyles();
   const props: StackedRowProps = {
-    title: row.entry.id,
+    title: row.entry.displayName,
     ...(row.description ? { description: row.description } : {}),
     ...(href ? { href } : {}),
     leading: (
       <span className={classes.tile} aria-hidden>
-        {row.entry.id.charAt(0).toUpperCase()}
+        {row.entry.displayName.charAt(0).toUpperCase()}
       </span>
     ),
     facts: [row.auth, row.tools ?? (toolsPending ? '…' : '')],

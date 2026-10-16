@@ -19,6 +19,20 @@ import { createRouter, kagentProbeUrl, RouterOptions } from './router';
  * A reachability cache that never touches the network: every endpoint answers
  * as reachable, immediately. Tests of the reachability route build their own.
  */
+/**
+ * Base64 of bytes that start like a PNG of `width` × `height` — the signature
+ * and the IHDR chunk's dimensions, all a header check reads — padded to `size`.
+ */
+function pngBase64(size = 64, width = 1, height = 1): string {
+  const bytes = Buffer.alloc(Math.max(size, 24));
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+  bytes.writeUInt32BE(13, 8);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes.toString('base64');
+}
+
 function reachableEverywhere() {
   return new ReachabilityCache({
     probe: async () => ({ reachable: true, checkedAt: 0 }),
@@ -51,6 +65,7 @@ describe('createRouter', () => {
   const answerConfirmation = jest.fn();
   const streamAnswer = jest.fn();
   const cancelTask = jest.fn();
+  const readSessionImageUsage = jest.fn();
 
   const mockClient = {
     listSessions,
@@ -67,6 +82,7 @@ describe('createRouter', () => {
     answerConfirmation,
     streamAnswer,
     cancelTask,
+    readSessionImageUsage,
   } as unknown as KagentClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -95,6 +111,8 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     listSessions.mockReset();
+    readSessionImageUsage.mockReset();
+    readSessionImageUsage.mockResolvedValue({ bytes: 0, count: 0 });
     getMe.mockReset();
     getSession.mockReset();
     listSessionTasks.mockReset();
@@ -1686,7 +1704,7 @@ describe('createRouter', () => {
       expect(sendMessage).toHaveBeenCalledWith(
         'abc',
         { namespace: 'kagent', name: 'issue-tracker' },
-        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?', images: [] },
         { userToken: 'user-token' },
       );
     });
@@ -1699,7 +1717,7 @@ describe('createRouter', () => {
       expect(sendMessage).toHaveBeenCalledWith(
         'abc',
         expect.anything(),
-        { messageId: 'msg-1', text: 'line one\n\n  line two' },
+        { messageId: 'msg-1', text: 'line one\n\n  line two', images: [] },
         expect.anything(),
       );
     });
@@ -1715,6 +1733,101 @@ describe('createRouter', () => {
       ['missing messageId', { ...validBody, messageId: undefined }],
     ])('rejects a body with %s as a 400', async (_, body) => {
       const response = await post(body);
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('decodes the images a message carries and forwards them with it', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({
+        ...validBody,
+        images: [{ mediaType: 'image/png', data: pngBase64(), name: 'a.png' }],
+      });
+
+      expect(response.status).toBe(200);
+      const [, , message] = sendMessage.mock.calls[0];
+      expect(message.images).toEqual([
+        {
+          mediaType: 'image/png',
+          bytes: expect.any(Uint8Array),
+          name: 'a.png',
+        },
+      ]);
+      expect(Array.from(message.images[0].bytes.subarray(0, 4))).toEqual([
+        0x89, 0x50, 0x4e, 0x47,
+      ]);
+      // Checked against what the session already carries, as the person.
+      expect(readSessionImageUsage).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('reads no session usage for a message without images', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      await post();
+
+      expect(readSessionImageUsage).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['bytes', { bytes: 16 * 1024 * 1024 - 10, count: 3 }, 'of images'],
+      ['images', { bytes: 0, count: 50 }, '50 images'],
+    ])(
+      'refuses images past what the session can carry in %s, in words the composer can show',
+      async (_, usage, words) => {
+        readSessionImageUsage.mockResolvedValue(usage);
+
+        const response = await post({
+          ...validBody,
+          images: [{ mediaType: 'image/png', data: pngBase64() }],
+        });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toContain(words);
+        expect(response.body.error.message).toContain(
+          'Start a new session to send more images.',
+        );
+        expect(sendMessage).not.toHaveBeenCalled();
+      },
+    );
+
+    it('takes a body of full-size images past the general 256 kB limit', async () => {
+      // Two images filling the per-message cap, base64 in the JSON: ~4 MB.
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({
+        ...validBody,
+        text: '漢'.repeat(32_000),
+        images: [
+          { mediaType: 'image/png', data: pngBase64(2 * 1024 * 1024) },
+          { mediaType: 'image/png', data: pngBase64(1024 * 1024) },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['images that are not an array', { images: 'x' }],
+      [
+        'an image whose bytes are not its type',
+        { images: [{ mediaType: 'image/jpeg', data: pngBase64() }] },
+      ],
+      [
+        'an SVG',
+        { images: [{ mediaType: 'image/svg+xml', data: 'PHN2Zz4=' }] },
+      ],
+      [
+        'an image longer than 2000 pixels on a side',
+        { images: [{ mediaType: 'image/png', data: pngBase64(64, 2001, 10) }] },
+      ],
+    ])('rejects a body with %s as a 400', async (_, extra) => {
+      const response = await post({ ...validBody, ...extra });
 
       expect(response.status).toBe(400);
       expect(sendMessage).not.toHaveBeenCalled();
@@ -1846,7 +1959,7 @@ describe('createRouter', () => {
       expect(streamMessage).toHaveBeenCalledWith(
         'abc',
         { namespace: 'kagent', name: 'issue-tracker' },
-        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?', images: [] },
         { userToken: 'user-token' },
         expect.any(AbortSignal),
       );
@@ -1860,6 +1973,10 @@ describe('createRouter', () => {
         { ...validBody, text: 'x'.repeat(32_001) },
         { ...validBody, agentName: undefined },
         { ...validBody, messageId: undefined },
+        {
+          ...validBody,
+          images: [{ mediaType: 'image/gif', data: pngBase64() }],
+        },
       ]) {
         const response = await post(body);
         expect(response.status).toBe(400);

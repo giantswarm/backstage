@@ -70,6 +70,7 @@ function makeServer(opts: {
   state?: string;
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
+  displayName?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -78,6 +79,13 @@ function makeServer(opts: {
       metadata: {
         name: opts.name,
         namespace: 'muster',
+        ...(opts.displayName
+          ? {
+              annotations: {
+                'ui.giantswarm.io/display-name': opts.displayName,
+              },
+            }
+          : {}),
         creationTimestamp: '2026-08-04T10:00:00Z',
         labels: {
           ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
@@ -356,6 +364,21 @@ describe('ConnectorPage', () => {
     await waitFor(() => expect(document.title).toBe('jira · Connectors'));
   });
 
+  it('heads the page, its crumb and the document title with the display name', async () => {
+    mockServers = [
+      makeServer({ name: 'mcp-jira', displayName: 'Acme Jira' }),
+      ...makeServers(),
+    ];
+    await renderAt(`${BASE}/mcp-jira`);
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Acme Jira' }),
+    ).toBeInTheDocument();
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByText('Acme Jira')).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe('Acme Jira · Connectors'));
+  });
+
   it('names its place under Customize without links where Customize is not bound', async () => {
     await renderAt(`${BASE}/jira`, { customizeBound: false });
 
@@ -422,6 +445,35 @@ describe('ConnectorPage', () => {
     expect(screen.queryByRole('link', { name: /search_issues/ })).toBeNull();
   });
 
+  it('holds the Tools count’s place in the frame drawn while the connectors load', async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/jira?installation=gazelle`);
+
+    expect(
+      screen
+        .getByRole('tab', { name: 'Tools' })
+        .querySelector('[data-count="loading"]'),
+    ).not.toBeNull();
+  });
+
+  it('holds the Tools count’s place while the tools load', async () => {
+    const api = makeApi();
+    let answer: (value: unknown) => void = () => {};
+    api.filterTools.mockImplementationOnce(
+      () => new Promise(resolve => (answer = resolve)) as never,
+    );
+    await renderAt(`${BASE}/jira?installation=gazelle`, { api });
+
+    const tools = screen.getByRole('tab', { name: 'Tools' });
+    expect(tools.querySelector('[data-count="loading"]')).not.toBeNull();
+
+    answer({ total: 2, filtered_count: 2, truncated: false, tools: TOOLS });
+    expect(await screen.findByRole('tab', { name: /^Tools \(\d+\)$/ })).toBe(
+      tools,
+    );
+    expect(tools.querySelector('[data-count="loading"]')).toBeNull();
+  });
+
   it('lists a few tools without search or filter, each a link to its page', async () => {
     await renderAt(`${BASE}/jira?installation=gazelle`);
 
@@ -478,14 +530,6 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('has no Settings tab, and sends its old address to the edit', async () => {
-    await renderAt(`${BASE}/jira/settings`);
-
-    expect(
-      await screen.findByText('at /agent-platform/connectors/new?edit=jira'),
-    ).toBeInTheDocument();
-  });
-
   it('leaves the Settings tab out of the tab strip', async () => {
     await renderAt(`${BASE}/jira`);
 
@@ -519,17 +563,8 @@ describe('ConnectorPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('sends the old settings address of a connector managed in Git to its tools', async () => {
-    await renderAt(`${BASE}/grafana/settings`);
-
-    expect(
-      await screen.findByRole('tab', { name: /Tools/, selected: true }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/^at /)).not.toBeInTheDocument();
-  });
-
-  it("puts a family's instances on their own tab, where its old settings address leads", async () => {
-    await renderAt(`${BASE}/kubernetes/settings`);
+  it("puts a family's instances on their own tab", async () => {
+    await renderAt(`${BASE}/kubernetes/instances`);
 
     expect(
       await screen.findByRole('tab', { name: /Instances/, selected: true }),
@@ -747,6 +782,17 @@ describe('ConnectorPage Details tab', () => {
     expect(
       screen.getByText(/each instance's own configuration, health and/),
     ).toBeInTheDocument();
+  });
+
+  it('keeps the resource name of a connector with a display name in its technical details', async () => {
+    mockServers = [
+      makeServer({ name: 'mcp-jira', displayName: 'Acme Jira' }),
+      ...makeServers(),
+    ];
+    await renderAt(`${BASE}/mcp-jira/details`);
+    await userEvent.click(foldOut());
+
+    expect(screen.getByText('muster/mcp-jira')).toBeInTheDocument();
   });
 
   it('opens the fold-out on arrival while muster reports the connector failed', async () => {

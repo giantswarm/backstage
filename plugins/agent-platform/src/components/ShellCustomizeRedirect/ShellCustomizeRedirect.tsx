@@ -3,16 +3,13 @@ import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 
-/**
- * The shell's Customize screen, `/customize/:tab`. A page of the app, not of
- * this plugin. New code reaches it through `useCustomizePaths`, which follows
- * the app's binding; the pages still linking by this path move with the URL
- * audit.
- */
-export const SHELL_CUSTOMIZE_PATH = '/customize';
-
 export type ShellCustomizeRedirectProps = {
-  tab: 'agents' | 'models';
+  tab: 'agents' | 'skills' | 'models';
+  /**
+   * Whether the query string comes along (the installation scope). The skill
+   * pages' redirects never carried it: skills are not per-installation.
+   */
+  keepSearch?: boolean;
 };
 
 /**
@@ -21,10 +18,13 @@ export type ShellCustomizeRedirectProps = {
  * app binds (`useCustomizePaths`). Where the app binds none, there is no list
  * to send anyone to, and an empty state says so instead of a dead link.
  */
-export function ShellCustomizeRedirect({ tab }: ShellCustomizeRedirectProps) {
+export function ShellCustomizeRedirect({
+  tab,
+  keepSearch = true,
+}: ShellCustomizeRedirectProps) {
   const { search } = useLocation();
-  const { customize } = useCustomizePaths();
-  if (!customize) {
+  const target = useCustomizePaths()[tab];
+  if (!target) {
     return (
       <EmptyStateCard
         title="Not available"
@@ -32,5 +32,13 @@ export function ShellCustomizeRedirect({ tab }: ShellCustomizeRedirectProps) {
       />
     );
   }
-  return <Navigate to={{ pathname: `${customize}/${tab}`, search }} replace />;
+  return (
+    <Navigate
+      to={{
+        pathname: target,
+        search: keepSearch ? search : undefined,
+      }}
+      replace
+    />
+  );
 }

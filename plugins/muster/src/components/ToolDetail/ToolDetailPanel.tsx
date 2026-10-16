@@ -1,10 +1,11 @@
-import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import {
   SectionHeader,
   TechnicalDetailsFoldOut,
   YamlEditorFormField,
   isAwaitingData,
+  useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useToolDescription } from '../shared';
 import {
@@ -105,14 +106,19 @@ export function ToolDetailPanel({
     loadStoredArgs(storageKey),
   );
   const [jsonModes, setJsonModes] = useState<Record<string, boolean>>({});
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // Each argument shows its problem once the person leaves it having typed
+  // in it, or presses Run; a blocked Run focuses the first (the `forms`
+  // skill). Scoped to the form: a workflow's tab has its own fields around.
+  const formScope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(formScope);
+  const { reset: resetValidation } = validation;
 
   // Reload the remembered args when the selected tool changes.
   useEffect(() => {
     setValues(loadStoredArgs(storageKey));
     setJsonModes({});
-    setFieldErrors({});
-  }, [storageKey]);
+    resetValidation();
+  }, [storageKey, resetValidation]);
 
   const description = useToolDescription(name, installation);
   const { data, error } = description;
@@ -178,10 +184,14 @@ export function ToolDetailPanel({
     toolRun.run(args);
   };
 
+  const {
+    args,
+    errors: fieldErrors,
+    errorItems,
+  } = useMemo(() => buildArgs(fields, values), [fields, values]);
   const submit = () => {
-    const { args, errors } = buildArgs(fields, values);
-    setFieldErrors(errors);
-    if (Object.keys(errors).length > 0) {
+    if (Object.keys(fieldErrors).length > 0) {
+      validation.reveal();
       return;
     }
     execute(args);
@@ -247,19 +257,27 @@ export function ToolDetailPanel({
               : 'This tool takes no arguments.'}
           </Text>
         ) : (
-          fields.map(field => (
-            <ToolArgField
-              key={field.name}
-              field={field}
-              value={values[field.name]}
-              error={fieldErrors[field.name]}
-              jsonMode={
-                Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
-              }
-              onChange={value => setValue(field.name, value)}
-              onToggleJson={() => toggleJson(field)}
-            />
-          ))
+          <div ref={formScope}>
+            {fields.map(field => (
+              <ToolArgField
+                key={field.name}
+                field={field}
+                value={values[field.name]}
+                error={validation.errorFor(field.name, fieldErrors[field.name])}
+                invalidItem={errorItems[field.name]}
+                blurProps={validation.blurProps(
+                  field.name,
+                  fieldErrors[field.name],
+                  values[field.name],
+                )}
+                jsonMode={
+                  Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
+                }
+                onChange={value => setValue(field.name, value)}
+                onToggleJson={() => toggleJson(field)}
+              />
+            ))}
+          </div>
         )}
         <Box mt="2">
           {note ? (

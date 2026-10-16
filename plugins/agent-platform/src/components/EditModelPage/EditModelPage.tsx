@@ -17,6 +17,7 @@ import {
   modelConfigOwner,
 } from '../../lib/modelConfigs';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import { NewModelPage } from '../NewModelPage';
 
 /**
@@ -33,7 +34,7 @@ function editBlocker(
     return `This model is asserted by ${owner}, which would revert portal edits on its next run. Change it where ${owner} is configured.`;
   }
   if (!modelConfigFormValues(modelConfig)) {
-    return `The edit form covers OpenAI-compatible, Anthropic, Gemini and Ollama models, and this one uses ${modelConfig.getProvider()}. Manage it with kubectl.`;
+    return `The edit form covers OpenAI-compatible, Anthropic, Gemini, Vertex AI and Ollama models, and this one uses ${modelConfig.getProvider()}. Manage it with kubectl.`;
   }
   if (!mayUpdate) {
     return 'You do not have permission to change this model.';
@@ -54,6 +55,7 @@ export function EditModelPage() {
   const { installation = '', namespace = '', name = '' } = useParams();
   const { modelDetail: modelDetailLink } = useCustomizePaths();
   const detailHref = modelDetailLink?.({ installation, namespace, name });
+  const closeHref = useCloseHref(detailHref);
 
   const {
     resource: modelConfig,
@@ -117,7 +119,7 @@ export function EditModelPage() {
           edit={{
             installation,
             modelConfig,
-            detailHref: detailHref ?? '/',
+            detailHref: closeHref,
           }}
         />
       );
@@ -138,7 +140,7 @@ export function EditModelPage() {
       title="Edit model"
       documentTitle={[`Edit ${shownName}`, 'Models']}
       context={`Customize / Models / ${shownName}`}
-      closeHref={detailHref ?? '/'}
+      closeHref={closeHref}
       width="medium"
     >
       {body}

@@ -47,6 +47,12 @@ import { AgentAvatar } from '../AgentAvatar';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
+import {
+  ComposerImage,
+  imagesUnsupportedReason,
+} from '../../lib/messageImages';
+import { DROP_LABEL, useComposerImages } from '../../hooks/useComposerImages';
+import { ComposerImageList } from '../ComposerImageList';
 
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
@@ -252,8 +258,18 @@ export type NewSessionComposerProps = {
    * server instead of a dead-end message.
    */
   error?: string | Error;
-  /** Receives the chosen agent and the trimmed prompt. */
-  onStart: (agent: AgentRow, prompt: string) => void;
+  /**
+   * Lets the box take images — pasted or dropped on it — which go
+   * with the prompt as the session's first message. For the surfaces whose
+   * session page sends that message (`useNewSessionHandoff`). Off, the box
+   * takes text only.
+   */
+  acceptsImages?: boolean;
+  /**
+   * Receives the chosen agent, the trimmed prompt and the attached images
+   * (none without {@link acceptsImages}).
+   */
+  onStart: (agent: AgentRow, prompt: string, images: ComposerImage[]) => void;
 };
 
 /**
@@ -393,6 +409,7 @@ export function NewSessionComposer({
   autoFocus = false,
   isStarting,
   error,
+  acceptsImages = false,
   onStart,
 }: NewSessionComposerProps) {
   const classes = useStyles();
@@ -403,6 +420,8 @@ export function NewSessionComposer({
   const [expanded, setExpanded] = useState(!collapsible);
   const [agentMissing, setAgentMissing] = useState(false);
   const agentSelectRef = useRef<HTMLDivElement>(null);
+  // bui's field forwards its ref to the wrapper, not the textarea.
+  const fieldRef = useRef<HTMLDivElement>(null);
   // Filtered once; every decision below reads the filtered list — what is offered,
   // what counts as a sole option, and whether a default is still valid.
   const offered = useMemo(() => agents.filter(isStartableAgent), [agents]);
@@ -666,9 +685,31 @@ export function NewSessionComposer({
   // visibly, for the picker.
   const awaitingAgent = agentFirst && !selectedAgent;
 
+  // Read for the agent chosen, so one that cannot take images says so the
+  // moment an image meets it — or the moment it is chosen with images already
+  // in the box, which then cannot start until they go or the agent changes.
+  const unsupportedReason = selectedAgent
+    ? imagesUnsupportedReason(selectedAgent)
+    : undefined;
+  const attached = useComposerImages({
+    enabled: acceptsImages,
+    paused: isStarting,
+    unsupportedReason,
+  });
+  const imagesRefused =
+    unsupportedReason && attached.images.length > 0
+      ? `${unsupportedReason} Remove the images, or choose another agent.`
+      : undefined;
+
   const text = prompt.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
-  const canSubmit = Boolean(text) && !isTooLong && !isStarting;
+  const canSubmit =
+    Boolean(text) &&
+    !isTooLong &&
+    !isStarting &&
+    !imagesRefused &&
+    !attached.problem &&
+    !attached.isPreparing;
 
   const submit = () => {
     if (!canSubmit) {
@@ -679,7 +720,7 @@ export function NewSessionComposer({
       agentSelectRef.current?.querySelector('button')?.focus();
       return;
     }
-    onStart(selectedAgent, text);
+    onStart(selectedAgent, text, attached.images);
     // Deliberately not cleared here. A create can fail, and this is the only
     // place the prompt still exists — the caller clears it by unmounting this
     // component (navigating away) once the session exists.
@@ -706,6 +747,8 @@ export function NewSessionComposer({
     caption = 'Choose an agent first.';
   } else if (isTooLong) {
     caption = `That prompt is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
+  } else if (attached.isPreparing) {
+    caption = 'Reading the images…';
   } else if (isLoadingAgents) {
     caption = 'Still checking the remaining environments for agents…';
   } else {
@@ -720,8 +763,32 @@ export function NewSessionComposer({
 
   const pickerOnTop = pickerPlacement === 'top';
 
+  // Said in place of the caption, as the problem it is.
+  const imageProblem = isTooLong
+    ? undefined
+    : (imagesRefused ?? attached.notice ?? attached.problem);
+
+  // A problem to fix before starting, said in place of the caption. The
+  // missing agent first: an image problem waits until there is an agent to
+  // judge it by.
+  let problemLine: string | undefined;
+  if (showAgentMissing && !isTooLong) {
+    problemLine = 'Choose an agent to start.';
+  } else if (imageProblem && !awaitingAgent) {
+    problemLine = imageProblem;
+  }
+
+  const imageList = (
+    <ComposerImageList
+      images={attached.images}
+      onRemove={attached.remove}
+      onEmptied={() => fieldRef.current?.querySelector('textarea')?.focus()}
+    />
+  );
+
   const field = (
     <TextAreaField
+      ref={fieldRef}
       aria-label="Prompt"
       placeholder={
         promptPlaceholder?.(selectedAgent) ?? 'What should the agent do?'
@@ -730,6 +797,7 @@ export function NewSessionComposer({
       onChange={setPrompt}
       onFocus={() => setExpanded(true)}
       onKeyDown={handleKeyDown}
+      onPaste={attached.onPaste}
       enterKeyHint={sendEnterKeyHint(touch)}
       // Disabled, not just refused on submit: agent-first surfaces say
       // "this is step two" by the field itself. react-aria announces
@@ -846,52 +914,64 @@ export function NewSessionComposer({
           />
         )}
 
-        <ComposerFrame
-          className={STABLE_CLASS_NAMES.composer}
-          minRows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
-          maxRows={MAX_ROWS}
-          // Picker-first, the frame's input slot carries the picker row and
-          // then the text field: the frame stacks its children, so the row
-          // heads the box without a slot of its own.
-          input={
-            pickerOnTop ? (
+        {/* The drop target is the box, and only the box: a drop beside it
+        is refused page-wide (see `useComposerImages`). */}
+        <div {...attached.dropTargetProps}>
+          <ComposerFrame
+            className={STABLE_CLASS_NAMES.composer}
+            minRows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
+            maxRows={MAX_ROWS}
+            isDropTarget={attached.isDropTarget}
+            dropLabel={unsupportedReason ?? DROP_LABEL}
+            // Picker-first, the images sit under the picker row, with the text
+            // they go with (in the input slot below).
+            attachments={pickerOnTop ? undefined : imageList}
+            // Picker-first, the frame's input slot carries the picker row and
+            // then the text field: the frame stacks its children, so the row
+            // heads the box without a slot of its own.
+            input={
+              pickerOnTop ? (
+                <>
+                  <div className={classes.pickerRow}>
+                    {pickerLabel && (
+                      <Text
+                        as="span"
+                        variant="body-small"
+                        className={classes.pickerLabel}
+                      >
+                        {pickerLabel(selectedAgent)}
+                      </Text>
+                    )}
+                    {picker}
+                  </div>
+                  {imageList}
+                  {field}
+                </>
+              ) : (
+                field
+              )
+            }
+            leading={pickerOnTop ? undefined : picker}
+            trailing={
               <>
-                <div className={classes.pickerRow}>
-                  {pickerLabel && (
-                    <Text
-                      as="span"
-                      variant="body-small"
-                      className={classes.pickerLabel}
-                    >
-                      {pickerLabel(selectedAgent)}
-                    </Text>
-                  )}
-                  {picker}
-                </div>
-                {field}
+                <ButtonIcon
+                  type="submit"
+                  aria-label="Start"
+                  icon={<ArrowForwardIcon />}
+                  // Not disabled while starting: pending keeps the button focused,
+                  // so the wait is announced and a failure leaves focus in place.
+                  // Agent-first, it waits with the field until an agent is chosen.
+                  isDisabled={awaitingAgent || (!canSubmit && !isStarting)}
+                  isPending={isStarting}
+                />
               </>
-            ) : (
-              field
-            )
-          }
-          leading={pickerOnTop ? undefined : picker}
-          trailing={
-            <ButtonIcon
-              type="submit"
-              aria-label="Start"
-              icon={<ArrowForwardIcon />}
-              // Not disabled while starting: pending keeps the button focused,
-              // so the wait is announced and a failure leaves focus in place.
-              // Agent-first, it waits with the field until an agent is chosen.
-              isDisabled={awaitingAgent || (!canSubmit && !isStarting)}
-              isPending={isStarting}
-            />
-          }
-        />
+            }
+          />
+        </div>
 
-        {showAgentMissing && !isTooLong ? (
+        {problemLine ? (
           <Text variant="body-small" color="danger" role="alert">
-            Choose an agent to start.
+            {problemLine}
           </Text>
         ) : (
           <Text variant="body-small" color="secondary">

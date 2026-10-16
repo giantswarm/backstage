@@ -53,12 +53,19 @@ export {
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
 export {
+  connectorDisplayNames,
+  connectorNameSource,
+  mcpServerDisplayNames,
+} from './lib/serverGrouping';
+export type { ConnectorNameSource } from './lib/serverGrouping';
+export {
   CONNECTOR_GROUPS,
   connectorGroupInfo,
   connectorGroupOfPath,
   LEGACY_CONNECTOR_GROUP_PATHS,
 } from './lib/connectorGroups';
 export type { ConnectorGroup, ConnectorGroupInfo } from './lib/connectorGroups';
+export { withInstallationQuery } from './lib/installationLink';
 export {
   installationErrorLine,
   isMcpTransportText,
@@ -119,3 +126,11 @@ export type { ConnectorPageTarget } from './components/ConnectorPage';
 export { useWorkflowPageTarget } from './components/WorkflowPage';
 export type { WorkflowPageTarget } from './components/WorkflowPage';
 export { WORKFLOW_PAGE_TABS } from './components/WorkflowPage';
+export {
+  McpAuthDialog,
+  useMcpServersAwaitingSignIn,
+} from './components/McpAuthNotice';
+export type {
+  McpAuthDialogProps,
+  McpServersAwaitingSignIn,
+} from './components/McpAuthNotice';

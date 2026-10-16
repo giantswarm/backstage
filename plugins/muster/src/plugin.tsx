@@ -1,6 +1,8 @@
+import { lazy, Suspense } from 'react';
 import type { ComponentType, ReactElement } from 'react';
 import {
   ApiBlueprint,
+  AppRootElementBlueprint,
   configApiRef,
   coreExtensionData,
   createExtensionInput,
@@ -31,6 +33,7 @@ import {
   mcpServerToolRouteRef,
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
+  newMcpServerVerifyRouteRef,
   workflowDetailRouteRef,
   workflowsRouteRef,
 } from './routes';
@@ -111,6 +114,7 @@ const mcpServersRedirectPage = PageBlueprint.make({
   name: 'mcp-servers-redirect',
   if: AGENT_SHELL_ON,
   params: {
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the old address's route definition
     path: '/agent-platform/mcp-servers',
     routeRef: legacyMcpServersRouteRef,
     noHeader: true,
@@ -190,6 +194,28 @@ const musterAuthProvidersApi = ApiBlueprint.make({
     }),
 });
 
+const LazyMcpAuthNotice = lazy(() =>
+  import('./components/McpAuthNotice').then(m => ({
+    default: m.McpAuthNotice,
+  })),
+);
+
+// The notice, on every page, that MCP servers wait for the person's sign-in
+// or grant, with the dialog that signs in to them. Shell only, like every
+// other surface of muster: without the Agent Platform nothing would use the
+// servers it names.
+const mcpAuthNoticeElement = AppRootElementBlueprint.make({
+  name: 'mcp-auth-notice',
+  if: AGENT_SHELL_ON,
+  params: {
+    element: (
+      <Suspense fallback={null}>
+        <LazyMcpAuthNotice />
+      </Suspense>
+    ),
+  },
+});
+
 export const musterPlugin = createFrontendPlugin({
   pluginId: 'muster',
   extensions: [
@@ -199,6 +225,7 @@ export const musterPlugin = createFrontendPlugin({
     mcpUsageSection,
     musterApi,
     musterAuthProvidersApi,
+    mcpAuthNoticeElement,
   ],
   routes: {
     mcpServers: mcpServersRouteRef,
@@ -206,6 +233,7 @@ export const musterPlugin = createFrontendPlugin({
     mcpServerTool: mcpServerToolRouteRef,
     newMcpServer: newMcpServerRouteRef,
     newMcpServerAuth: newMcpServerAuthRouteRef,
+    newMcpServerVerify: newMcpServerVerifyRouteRef,
     workflows: workflowsRouteRef,
     workflowDetail: workflowDetailRouteRef,
   },

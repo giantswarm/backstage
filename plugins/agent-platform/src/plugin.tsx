@@ -27,14 +27,20 @@ import {
   modelManagerApiRef,
 } from './apis';
 import {
+  addGpuNodePoolRouteRef,
+  addModelBackendRouteRef,
   agentDetailRouteRef,
+  agentEditRouteRef,
   agentsRouteRef,
   customizeExternalRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
+  importModelRouteRef,
   modelCacheRouteRef,
+  modelEditRouteRef,
   installationsExternalRouteRef,
   modelsRouteRef,
+  musterServerExternalRouteRef,
   musterServersExternalRouteRef,
   musterServerToolExternalRouteRef,
   musterWorkflowDetailExternalRouteRef,
@@ -43,13 +49,20 @@ import {
   newAgentSkillsRouteRef,
   newAgentToolsRouteRef,
   newModelRouteRef,
+  newSessionExternalRouteRef,
   newSkillRouteRef,
   profileRouteRef,
+  pullModelRouteRef,
   rootRouteRef,
+  serveModelRouteRef,
   servingRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
   skillsRouteRef,
+  usageConnectorsRouteRef,
+  usageConversationsRouteRef,
+  usageCostRouteRef,
+  usageOverviewRouteRef,
   usageRouteRef,
 } from './routes';
 
@@ -86,6 +99,7 @@ const agentPlatformPage = PageBlueprint.makeWithOverrides({
     return originalFactory({
       title,
       icon: <AndroidIcon />,
+      // eslint-disable-next-line giantswarm/no-restricted-syntax -- the section's route definition
       path: '/agent-platform',
       routeRef: rootRouteRef,
       noHeader: true,
@@ -256,6 +270,7 @@ const skillsPage = PageBlueprint.make({
   name: 'skills',
   if: AGENT_SHELL_ON,
   params: {
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the skill pages' route definition
     path: '/agent-platform/skills',
     routeRef: skillsRouteRef,
     noHeader: true,
@@ -279,6 +294,7 @@ const profilePage = PageBlueprint.make({
   name: 'profile',
   if: AGENT_SHELL_ON,
   params: {
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the profile page's route definition
     path: '/agent-platform/profile',
     routeRef: profileRouteRef,
     noHeader: true,
@@ -453,6 +469,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     root: rootRouteRef,
     agents: agentsRouteRef,
     agentDetail: agentDetailRouteRef,
+    agentEdit: agentEditRouteRef,
     newAgent: newAgentRouteRef,
     newAgentSkills: newAgentSkillsRouteRef,
     newAgentTools: newAgentToolsRouteRef,
@@ -463,21 +480,33 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newSkill: newSkillRouteRef,
     profile: profileRouteRef,
     usage: usageRouteRef,
+    usageOverview: usageOverviewRouteRef,
+    usageCost: usageCostRouteRef,
+    usageConversations: usageConversationsRouteRef,
+    usageConnectors: usageConnectorsRouteRef,
     models: modelsRouteRef,
     newModel: newModelRouteRef,
+    modelEdit: modelEditRouteRef,
     serving: servingRouteRef,
+    serveModel: serveModelRouteRef,
+    importModel: importModelRouteRef,
+    pullModel: pullModelRouteRef,
+    addModelBackend: addModelBackendRouteRef,
     gpuCapacity: gpuCapacityRouteRef,
+    addGpuNodePool: addGpuNodePoolRouteRef,
     modelCache: modelCacheRouteRef,
   },
-  // All but `customize` carry a `defaultTarget`, so they resolve without an
-  // app-config binding and are simply unbound when the target plugin is
-  // disabled. `customize` targets the app's own Customize page, which no
-  // plugin can name: it resolves only through the app's `bindRoutes`
-  // (packages/app/src/App.tsx) and is unbound without it. Every call site
-  // must handle `useRouteRef` returning undefined.
+  // All but `customize` and `newSession` carry a `defaultTarget`, so they
+  // resolve without an app-config binding and are simply unbound when the
+  // target plugin is disabled. `customize` and `newSession` target the app's
+  // own Customize page and home, which no plugin can name: they resolve only
+  // through the app's `bindRoutes` (packages/app/src/App.tsx) and are unbound
+  // without it. Every call site must handle `useRouteRef` returning undefined.
   externalRoutes: {
     customize: customizeExternalRouteRef,
+    newSession: newSessionExternalRouteRef,
     musterServers: musterServersExternalRouteRef,
+    musterServer: musterServerExternalRouteRef,
     musterServerTool: musterServerToolExternalRouteRef,
     musterWorkflowDetail: musterWorkflowDetailExternalRouteRef,
     deploymentDetails: deploymentDetailsExternalRouteRef,

@@ -1,6 +1,6 @@
 import { ToolSummary } from '../apis';
 import type { MCPServer } from './k8s';
-import type { ServerPageRow } from './serverGrouping';
+import { mcpServerDisplayNames, type ServerPageRow } from './serverGrouping';
 
 /**
  * One tool-name prefix an aggregated MCP server's tools are exposed under,
@@ -12,6 +12,11 @@ export interface ServerPrefixInfo {
   prefix: string;
   serverName: string;
   family?: string;
+  /**
+   * What people call the connector it belongs to, by `connectorDisplayNames`;
+   * absent where that is the connector's own name.
+   */
+  displayName?: string;
 }
 
 /**
@@ -50,10 +55,23 @@ export function matchServers(
  * when the members' instance arguments differ.
  */
 export function serverPrefixInfos(servers: MCPServer[]): ServerPrefixInfo[] {
+  const labels = mcpServerDisplayNames(servers);
+  const families = new Set(servers.map(server => server.getFamily()));
+  const displayNameOf = (server: MCPServer): string | undefined => {
+    const surface = server.getFamily() ?? server.getName();
+    // A singular server named like a family is named by itself, not by it.
+    if (!server.getFamily() && families.has(surface)) {
+      return undefined;
+    }
+    const label = labels.get(surface);
+    return label !== surface ? label : undefined;
+  };
   return servers.flatMap(server => {
+    const displayName = displayNameOf(server);
     const info = {
       serverName: server.getName(),
       family: server.getFamily(),
+      ...(displayName ? { displayName } : {}),
     };
     const own = `x_${server.getToolPrefix() ?? server.getName()}`;
     const prefix = server.getToolNamePrefix();
@@ -182,7 +200,7 @@ export function toolsByServerKey(
 
 /**
  * Resolves the server page a tool is found on: the `<server>` segment of
- * `/agent-platform/mcp-servers/<server>/tools/<tool>`. muster's own tools
+ * `/agent-platform/connectors/<server>/tools/<tool>`. muster's own tools
  * (`core_*`, `workflow_*`) are on `muster`; any other on its `ownerOfTool`'s
  * page -- the rule the pages list tools by, so the link opens a page that shows
  * the tool. A resolved tool is undefined when no prefix matches, or when the

@@ -154,6 +154,14 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
     return this.jsonData.spec?.ollama;
   }
 
+  getAnthropicVertexAI() {
+    return this.jsonData.spec?.anthropicVertexAI;
+  }
+
+  getGeminiVertexAI() {
+    return this.jsonData.spec?.geminiVertexAI;
+  }
+
   getTls() {
     return this.jsonData.spec?.tls;
   }
@@ -190,6 +198,30 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
   /** Whether the conditions describe an older spec ({@link isModelConfigStatusStale}). */
   isStale(): boolean {
     return isModelConfigStatusStale(this.jsonData);
+  }
+
+  /**
+   * The condition that failed (`False`): the first in the order the
+   * controller evaluates them, so `ResolvedRefs` when only the references
+   * fail and `Accepted` holds, then any other the controller may add.
+   * `undefined` when none has failed, including while the status is stale,
+   * since its conditions then describe the previous spec.
+   */
+  getFailedCondition(): ModelConfigCondition | undefined {
+    if (this.isStale()) {
+      return undefined;
+    }
+    const conditions = this.getConditions();
+    const known = READINESS_CONDITIONS.map(type =>
+      conditions.find(condition => condition.type === type),
+    );
+    return [
+      ...known,
+      ...conditions.filter(
+        condition =>
+          !(READINESS_CONDITIONS as readonly string[]).includes(condition.type),
+      ),
+    ].find(condition => condition?.status === 'False');
   }
 
   /**

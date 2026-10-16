@@ -13,14 +13,12 @@ import {
   type InstallationScope,
   type InventoryFailure,
 } from '@giantswarm/backstage-plugin-gs';
-import {
-  useResources,
-  useShowErrors,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
 import { MusterInstallationInfo } from '../../apis/types';
 import { selectMusterInstallations } from './selectInstallations';
 import { useMusterInstallations } from './useMusterInstallations';
+import { useMusterResources } from './useMusterResources';
 
 // A light background refetch so the live health reads (per-MC pills, the
 // healthy count) don't drift silently from the CRD between page loads.
@@ -89,6 +87,11 @@ export type MusterInstance = {
   /** Workflow CRs of the active instance. */
   workflows: MusterWorkflow[];
   isLoading: boolean;
+  /**
+   * The workflows' own first read, which `isLoading` leaves out: true while
+   * it is pending with no workflows yet.
+   */
+  isLoadingWorkflows: boolean;
   /**
    * Epoch-ms of the most recent successful MCPServer read alone (workflows
    * left out), for a caller that must know the server list postdates a write.
@@ -159,7 +162,9 @@ type MusterInstanceProviderProps = {
  * control that scopes every tab, MCP Servers included -- so "All
  * installations" shows the home muster. CRD reads (MCPServer, Workflow) are
  * scoped to that one installation via the Backstage kubernetes proxy -- no
- * muster MCP session is needed for the reads.
+ * muster MCP session is needed for the reads -- and fall back to muster's
+ * namespace where the person may not list them cluster-wide
+ * (`useMusterResources`).
  */
 export const MusterInstanceProvider = ({
   children,
@@ -243,27 +248,18 @@ export const MusterInstanceProvider = ({
     isLoading: isLoadingServers,
     retry: retryServers,
     queries: mcpServerQueries,
-  } = useResources(
-    clusters,
-    MCPServer,
-    {},
-    {
-      refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
-    },
-  );
+  } = useMusterResources(clusters, MCPServer, {
+    refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
+  });
 
   const {
     resources: workflows,
     errors: workflowErrors,
+    isLoading: isLoadingWorkflowsQuery,
     retry: retryWorkflows,
-  } = useResources(
-    clusters,
-    MusterWorkflow,
-    {},
-    {
-      refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
-    },
-  );
+  } = useMusterResources(clusters, MusterWorkflow, {
+    refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
+  });
 
   // When the server list was last read, for a caller that must know it
   // postdates a write (the registration wizard's verify step).
@@ -314,6 +310,11 @@ export const MusterInstanceProvider = ({
         (Boolean(activeInstallation) &&
           isLoadingServers &&
           mcpServers.length === 0),
+      isLoadingWorkflows:
+        isLoadingInstallations ||
+        (Boolean(activeInstallation) &&
+          isLoadingWorkflowsQuery &&
+          workflows.length === 0),
       mcpServersUpdatedAt,
       retry: () => {
         retryServers();
@@ -335,6 +336,7 @@ export const MusterInstanceProvider = ({
       mcpServers,
       workflows,
       isLoadingServers,
+      isLoadingWorkflowsQuery,
       mcpServersUpdatedAt,
       retryServers,
       retryWorkflows,

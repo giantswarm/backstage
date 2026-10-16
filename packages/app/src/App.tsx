@@ -4,7 +4,7 @@ import { createApp } from '@backstage/frontend-defaults';
 import { appOverrides } from './modules/app';
 import { navModule } from './modules/nav';
 import { agentShellModule } from './modules/agentShell';
-import { customizeRouteRef } from './modules/agentShell/routes';
+import { customizeRouteRef, homeRouteRef } from './modules/agentShell/routes';
 
 // GS plugins:
 import gsPlugin from '@giantswarm/backstage-plugin-gs';
@@ -113,11 +113,15 @@ const app = createApp({
     githubPullRequestsNfsPlugin,
   ],
   bindRoutes({ bind }) {
-    // The shell's Customize page belongs to the app, which no plugin can name
-    // as a default target. Both plugins link to pages under it through their
-    // `customize` external route.
+    // The shell's Customize page and home belong to the app, which no plugin
+    // can name as a default target. Both plugins link to pages under
+    // Customize through their `customize` external route; agent-platform's
+    // "New session" links reach the home through `newSession`.
     bind(musterPlugin.externalRoutes, { customize: customizeRouteRef });
-    bind(agentPlatformPlugin.externalRoutes, { customize: customizeRouteRef });
+    bind(agentPlatformPlugin.externalRoutes, {
+      customize: customizeRouteRef,
+      newSession: homeRouteRef,
+    });
   },
 });
 
