@@ -37,6 +37,10 @@ spec:
   affinity:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+  postgresql:
+    parameters:
+      max_connections: {{ .Values.database.postgresql.maxConnections | quote }}
+      superuser_reserved_connections: {{ .Values.database.postgresql.superuserReservedConnections | quote }}
   storage:
     size: {{ .Values.database.postgresql.storageSize }}
   resources:

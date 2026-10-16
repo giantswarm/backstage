@@ -2717,6 +2717,11 @@
                             "description": "Number of PostgreSQL instances in the CNPG cluster",
                             "minimum": 1
                         },
+                        "maxConnections": {
+                            "type": "integer",
+                            "description": "PostgreSQL `max_connections` of the CNPG cluster. The backend pods running at once during a rollout (replicas plus the rolling update's surge) share it, less `superuserReservedConnections`: the chart sizes each plugin's pool to fit, and fails the render when `pool.max` does not fit.",
+                            "minimum": 1
+                        },
                         "operatorNamespace": {
                             "type": "string",
                             "description": "Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation."
@@ -2731,9 +2736,31 @@
                                 }
                             }
                         },
+                        "pool": {
+                            "type": "object",
+                            "description": "The backend's database pools. Every backend plugin with a database holds its own pool, which releases idle connections (min 0).",
+                            "additionalProperties": false,
+                            "properties": {
+                                "max": {
+                                    "type": "integer",
+                                    "description": "Connections per plugin pool. 0 takes the largest pool that fits `maxConnections`; a set value that does not fit fails the render.",
+                                    "minimum": 0
+                                },
+                                "pluginsWithDatabase": {
+                                    "type": "integer",
+                                    "description": "Backend plugins that open a database pool in the image. An image that adds one raises it.",
+                                    "minimum": 1
+                                }
+                            }
+                        },
                         "storageSize": {
                             "type": "string",
                             "description": "Persistent volume size for the PostgreSQL CNPG cluster"
+                        },
+                        "superuserReservedConnections": {
+                            "type": "integer",
+                            "description": "PostgreSQL `superuser_reserved_connections` of the CNPG cluster: the slots kept for the operator's superuser, which the backend's `app` role never gets.",
+                            "minimum": 0
                         }
                     }
                 }

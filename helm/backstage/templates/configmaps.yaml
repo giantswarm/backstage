@@ -51,7 +51,11 @@ CREATE DATABASE, which the default division mode requires. TLS verified
 against the cluster's CA, mounted beside it: CNPG accepts plaintext clients.
 The deployment loads this file before appConfig and extraAppConfig, so an
 operator's database block still wins. The file is plain YAML so the backend's
-tests load it as the pod does. */}}
+tests load it as the pod does; the chart adds each plugin's pool, sized to the
+connection budget, and releases idle connections (min 0). */}}
+{{- $databaseConfig := .Files.Get "files/app-config-database.yaml" | fromYaml }}
+{{- $pool := dict "min" 0 "max" (include "backstage.databasePoolMax" . | int) }}
+{{- $_ := set $databaseConfig.backend.database "knexConfig" (dict "pool" $pool) }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -63,5 +67,5 @@ metadata:
     {{- include "labels.backstage" $ | nindent 4 }}
 data:
   app-config-database.yaml: |
-    {{- .Files.Get "files/app-config-database.yaml" | nindent 4 }}
+    {{- toYaml $databaseConfig | nindent 4 }}
 {{- end }}
