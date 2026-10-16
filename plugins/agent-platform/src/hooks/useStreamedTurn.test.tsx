@@ -1,9 +1,14 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
+import { sessionTasksQueryKey } from './useSessionDetail';
 import { type OpenTurnStream, useStreamedTurn } from './useStreamedTurn';
 
 const listSessionTasks = jest.fn();
@@ -72,8 +77,60 @@ describe('useStreamedTurn', () => {
 
     expect(handle.signal?.aborted).toBe(true);
     await expect(outcome).resolves.toBeUndefined();
-    // Nothing on screen to refresh: the next visit reads the conversation.
-    expect(invalidateQueries).not.toHaveBeenCalled();
+    // Nothing on screen to refresh, so nothing is fetched now; the reads are
+    // only marked stale, for the next visit.
+    expect(listSessionTasks).not.toHaveBeenCalled();
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ refetchType: 'none' }),
+      ]),
+    );
+    invalidateQueries.mock.calls.forEach(([filters]) =>
+      expect(filters).toMatchObject({ refetchType: 'none' }),
+    );
+  });
+
+  it('has a visit back within a minute read the conversation afresh, not the read from before the turn', async () => {
+    // The app's client trusts a read for a minute.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { staleTime: 60_000, retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+    // A new session's page read its conversation before the first turn.
+    queryClient.setQueryData(sessionTasksQueryKey('gazelle', 'abc'), []);
+    const { handle, open } = hangingStream();
+    const page = renderHook(() => useStreamedTurn('gazelle', 'abc'), {
+      wrapper,
+    });
+    act(() => {
+      void page.result.current.run('message-1', open);
+    });
+    await waitFor(() => expect(handle.signal).toBeDefined());
+    act(() =>
+      handle.emit({ kind: 'task', id: 'task-1', status: { state: 'working' } }),
+    );
+
+    // The person opens another session, then comes back through the toast.
+    page.unmount();
+    const turnTask = { id: 'task-1', status: { state: 'input-required' } };
+    listSessionTasks.mockResolvedValue([turnTask]);
+    const back = renderHook(
+      () =>
+        useQuery({
+          queryKey: sessionTasksQueryKey('gazelle', 'abc'),
+          queryFn: () => kagentApi.listSessionTasks('gazelle', 'abc'),
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(back.result.current.data).toEqual([turnTask]));
+    expect(listSessionTasks).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a stream left before its first event open until that event, so the message is dispatched (R2-3)', async () => {
@@ -97,7 +154,9 @@ describe('useStreamedTurn', () => {
     expect(handle.signal?.aborted).toBe(true);
     await expect(outcome).resolves.toBeUndefined();
     expect(listSessionTasks).not.toHaveBeenCalled();
-    expect(invalidateQueries).not.toHaveBeenCalled();
+    invalidateQueries.mock.calls.forEach(([filters]) =>
+      expect(filters).toMatchObject({ refetchType: 'none' }),
+    );
   });
 
   it('still reports a failure before any event after the page went away', async () => {

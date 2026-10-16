@@ -126,10 +126,32 @@ export function useStreamedTurn(installation: string, sessionId: string) {
   // never reach kagent. A stream left before that is ended by `run` at its
   // first event instead.
   const unmountedRef = useRef(false);
+  // What the page read of the conversation predates the turn it leaves
+  // behind, and the client trusts a read for a minute (`staleTime`), so a
+  // visit back within it — from the rail, or a toast saying the agent now
+  // waits — would show the conversation as it was before the turn (for a new
+  // session: "no messages yet") until the next poll. Marking both reads stale
+  // makes that visit read afresh; nothing is fetched now, with no page to show
+  // it.
+  const markLeftBehind = useCallback(() => {
+    for (const queryKey of [
+      sessionTasksQueryKey(installation, sessionId),
+      sessionQueryKey(installation, sessionId),
+    ]) {
+      queryClient
+        .invalidateQueries({ queryKey, refetchType: 'none' })
+        .catch(() => {});
+    }
+  }, [queryClient, installation, sessionId]);
+  const markLeftBehindRef = useRef(markLeftBehind);
+  markLeftBehindRef.current = markLeftBehind;
   useEffect(() => {
     unmountedRef.current = false;
     return () => {
       unmountedRef.current = true;
+      if (streamRef.current) {
+        markLeftBehindRef.current();
+      }
       if (streamRef.current?.dispatched) {
         abortRef.current?.abort();
       }
@@ -226,9 +248,11 @@ export function useStreamedTurn(installation: string, sessionId: string) {
         abortRef.current = null;
       }
 
-      // Gone from the page: nothing here renders the outcome, and the next
-      // visit reads the conversation afresh.
+      // Gone from the page: nothing here renders the outcome. The turn is
+      // dispatched by now (or failed), so the next visit must read the
+      // conversation afresh rather than trust the read from before it.
       if (unmountedRef.current) {
+        markLeftBehindRef.current();
         return;
       }
 
