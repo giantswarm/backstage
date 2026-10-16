@@ -15,7 +15,10 @@ import { contextOptions, lab } from './lab';
  *
  * The page's clock is jumped two hours after the form is filled, past the
  * lifetime of every token the browser holds, so the cluster token Create
- * sends has to be minted at Create.
+ * sends has to be minted at Create. The jump also fires the MCP sign-in
+ * notice's status poll, which would refresh the portal's token before Create
+ * does; muster's installation is answered unreachable, so the notice never
+ * polls and Create is the only one to need a token.
  */
 const TEMPLATE = 'session-expiry-e2e';
 const SECRETS_KEY = 'USER_OIDC_TOKEN';
@@ -54,6 +57,15 @@ async function stageTemplate(page: Page): Promise<TaskRequest[]> {
   await page.route(
     `**/api/scaffolder/v2/templates/default/template/${TEMPLATE}/parameter-schema`,
     route => route.fulfill({ json: PARAMETER_SCHEMA }),
+  );
+  await page.route('**/api/muster/installations', route =>
+    route.fulfill({
+      json: {
+        installations: [
+          { name: lab.installation, requiresAuth: true, reachable: false },
+        ],
+      },
+    }),
   );
   await page.route('**/api/scaffolder/v2/tasks', async (route: Route) => {
     if (route.request().method() !== 'POST') {
