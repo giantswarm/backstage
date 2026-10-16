@@ -10,6 +10,7 @@ import type { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
 import { useMusterPluginApi } from './useMusterPluginApi';
+import { usePortalStartedRecorder } from './useSessionNotificationRecord';
 
 /** What the composer submits: an agent, and the prompt to open the session with. */
 export type NewSession = {
@@ -52,6 +53,12 @@ export type UseCreateSessionOptions = {
  * installation/namespace/name, so picking the agent picks the installation, and
  * taking both would let them disagree.
  *
+ * A started session is recorded as **portal-started** in the person's
+ * notification record (`usePortalStartedRecorder`): kagent's Session
+ * names no surface that started it, so the portal says so itself, and the
+ * Notification inbox reports a portal-started session's failures and
+ * finished turns, which a session started from Slack reports in Slack.
+ *
  * The title is derived here rather than by the caller so every entry point —
  * the sessions list, the agent detail page and the session detail page —
  * produces the same one; `entryPoint` only says which one it was.
@@ -62,6 +69,7 @@ export function useCreateSession(
 ) {
   const musterApi = useMusterPluginApi();
   const queryClient = useQueryClient();
+  const markPortalStarted = usePortalStartedRecorder();
 
   const mutation = useTrackedMutation({
     event: () => ({
@@ -96,7 +104,10 @@ export function useCreateSession(
 
       return { sessionId };
     },
-    onSuccess: (_result, { agent }) => {
+    onSuccess: ({ sessionId }, { agent }) => {
+      // Not awaited either. A lost write costs only the session's failure and
+      // finished-turn notifications, never the start of the session.
+      markPortalStarted(agent.installation, sessionId).catch(() => {});
       // With the default `refetchType: 'active'`, so observers that stay
       // mounted through the navigation — the shell rail's session history is
       // the one that matters — re-read at once instead of waiting out their
