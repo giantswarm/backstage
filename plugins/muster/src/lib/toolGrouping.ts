@@ -200,7 +200,7 @@ export function toolsByServerKey(
 
 /**
  * Resolves the server page a tool is found on: the `<server>` segment of
- * `/agent-platform/connectors/<server>/tools/<tool>`. muster's own tools
+ * `/customize/connectors/<installation>/<server>/tools/<tool>`. muster's own tools
  * (`core_*`, `workflow_*`) are on `muster`; any other on its `ownerOfTool`'s
  * page -- the rule the pages list tools by, so the link opens a page that shows
  * the tool. A resolved tool is undefined when no prefix matches, or when the

@@ -15,7 +15,6 @@ import { lab } from './lab';
  * to, so it is only validated, never saved.
  */
 
-const scope = `?installation=${lab.installation}`;
 const MUSTER_CALL = /\/api\/muster\/call(\?|$)/;
 
 /**
@@ -53,7 +52,7 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
 }) => {
   test.setTimeout(120_000);
   const server = 'lab-oauth-fixture';
-  await open(admin, `/agent-platform/connectors/${server}${scope}`);
+  await open(admin, `/customize/connectors/${lab.installation}/${server}`);
   const moreActions = admin.getByRole('button', { name: 'More actions' });
   await connectToMuster(admin, moreActions);
   const editAsJson = async () => {

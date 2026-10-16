@@ -11,8 +11,7 @@ const skill = {
   path: 'support/ticket-triage',
   commit: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
 };
-const SKILL_HREF =
-  '/agent-platform/skills/giantswarm/skills/support/ticket-triage';
+const SKILL_HREF = '/customize/skills/giantswarm/skills/support/ticket-triage';
 
 function file(path: string): SkillFile {
   return { path, size: 10, sha: path };

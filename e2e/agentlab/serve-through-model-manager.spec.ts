@@ -18,7 +18,7 @@ import {
  * Serve on a GPU pool through model-manager as the signed-in person
  * (giantswarm/backstage#2415, part 1; the reads on the same hop since
  * giantswarm/backstage#2294): Serve model — a page of its own
- * (`/agent-platform/models/serving/serve`) — lists the presets model-manager
+ * (`/customize/models/hosting/serve`) — lists the presets model-manager
  * publishes for the cluster, shows `check_fit`'s verdict before the button,
  * serves with one `load_model` over muster, and the object that comes back is
  * the `LLMInferenceService` model-manager composed — nothing is composed in
@@ -93,12 +93,12 @@ const servedModels = {
   ],
 };
 
-const SERVING = '/agent-platform/models/serving';
+const SERVING = '/customize/models/hosting';
 const SERVE = `${SERVING}/serve`;
 
 /** Serve model's page: its URL and its h1. */
 async function expectServePage(page: Page): Promise<void> {
-  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/serve/);
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/serve/);
   await expect(
     page.getByRole('heading', { level: 1, name: 'Serve model' }),
   ).toBeVisible();
@@ -107,7 +107,7 @@ async function expectServePage(page: Page): Promise<void> {
 /** Cancel is a link in the page's footer, back to Running models. */
 async function cancelServe(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Cancel' }).click();
-  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/?$/);
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/?$/);
 }
 
 /** The stubbed model-manager: the reads and the two serve tools; every other call goes through. */
@@ -184,7 +184,7 @@ test.describe('serving: through model-manager as the person', () => {
       await admin.getByRole('button', { name: 'Serve', exact: true }).click();
 
       // Accepted: a toast, and Running models with the served model's steps open.
-      await expect(admin).toHaveURL(/\/agent-platform\/models\/serving\/?$/);
+      await expect(admin).toHaveURL(/\/customize\/models\/hosting\/?$/);
       expect(
         staged.callsOf('load_model'),
         'one load_model, the preset by name, nothing composed in the browser',

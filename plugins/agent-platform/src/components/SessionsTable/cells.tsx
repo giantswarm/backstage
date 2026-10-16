@@ -14,7 +14,7 @@ const ROW_AVATAR_SIZE: AvatarSize = 48;
  */
 export const RUNTIME_LOST_LABEL = 'Runtime lost';
 export const RUNTIME_LOST_TITLE =
-  'kagent cannot bring this session’s agent back; the transcript stays readable. Start a new session to carry on.';
+  'kagent cannot bring this session’s agent back; the transcript stays readable. Continue it in a new session from its page.';
 
 /** One line, cut with an ellipsis at the width of its container. */
 export const TRUNCATE = {

@@ -235,11 +235,11 @@ async function renderAt(
           <Routes>
             {/* The connector wizard, where Edit leads. */}
             <Route
-              path="/agent-platform/connectors/new"
+              path="/customize/connectors/:installation/:server/edit"
               element={<LocationProbe />}
             />
             <Route
-              path="/agent-platform/connectors/:server/*"
+              path="/customize/connectors/:installation/:server/*"
               element={<ConnectorPage usedBy={usedBy} />}
             />
           </Routes>
@@ -250,7 +250,7 @@ async function renderAt(
       initialRouteEntries: [path],
       apis: [[musterApiRef, api as never]],
       mountedRoutes: {
-        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize/connectors': mcpServersRouteRef,
         ...(customizeBound && { '/customize': customizeExternalRouteRef }),
       },
     },
@@ -258,7 +258,7 @@ async function renderAt(
   return api;
 }
 
-const BASE = '/agent-platform/connectors';
+const BASE = '/customize/connectors/gazelle';
 
 beforeEach(() => {
   mockServers = makeServers();
@@ -379,12 +379,18 @@ describe('ConnectorPage', () => {
     await waitFor(() => expect(document.title).toBe('Acme Jira · Connectors'));
   });
 
-  it('names its place under Customize without links where Customize is not bound', async () => {
+  it('names Customize without a link where Customize is not bound', async () => {
     await renderAt(`${BASE}/jira`, { customizeBound: false });
 
+    // The Connectors list is the tab's own route, so it still links.
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(breadcrumb).getByText('Customize')).toBeInTheDocument();
-    expect(within(breadcrumb).queryByRole('link')).not.toBeInTheDocument();
+    expect(
+      within(breadcrumb)
+        .getAllByRole('link')
+        // The back arrow has no text, only its label.
+        .map(link => link.textContent || link.getAttribute('aria-label')),
+    ).toEqual(['Back to Connectors', 'Connectors']);
   });
 
   it('lists the facts on the Details tab, not beside the content', async () => {
@@ -416,7 +422,7 @@ describe('ConnectorPage', () => {
   });
 
   it('keeps the tools search across a visit to another tab', async () => {
-    await renderAt(`${BASE}/jira?installation=gazelle&q=search`);
+    await renderAt(`${BASE}/jira?q=search`);
 
     const searchbox = () =>
       screen.getByRole('searchbox', { name: 'Search tools' });
@@ -447,7 +453,7 @@ describe('ConnectorPage', () => {
 
   it('holds the Tools count’s place in the frame drawn while the connectors load', async () => {
     mockLoading = true;
-    await renderAt(`${BASE}/jira?installation=gazelle`);
+    await renderAt(`${BASE}/jira`);
 
     expect(
       screen
@@ -462,7 +468,7 @@ describe('ConnectorPage', () => {
     api.filterTools.mockImplementationOnce(
       () => new Promise(resolve => (answer = resolve)) as never,
     );
-    await renderAt(`${BASE}/jira?installation=gazelle`, { api });
+    await renderAt(`${BASE}/jira`, { api });
 
     const tools = screen.getByRole('tab', { name: 'Tools' });
     expect(tools.querySelector('[data-count="loading"]')).not.toBeNull();
@@ -475,14 +481,11 @@ describe('ConnectorPage', () => {
   });
 
   it('lists a few tools without search or filter, each a link to its page', async () => {
-    await renderAt(`${BASE}/jira?installation=gazelle`);
+    await renderAt(`${BASE}/jira`);
 
     expect(
       await screen.findByRole('link', { name: /search_issues/ }),
-    ).toHaveAttribute(
-      'href',
-      `${BASE}/jira/tools/x_jira_search_issues?installation=gazelle`,
-    );
+    ).toHaveAttribute('href', `${BASE}/jira/tools/x_jira_search_issues`);
     expect(
       screen.getByRole('link', { name: /add_comment/ }),
     ).toBeInTheDocument();
@@ -526,9 +529,7 @@ describe('ConnectorPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
     expect(
-      await screen.findByText(
-        'at /agent-platform/connectors/new?edit=jira&installation=gazelle',
-      ),
+      await screen.findByText('at /customize/connectors/gazelle/jira/edit'),
     ).toBeInTheDocument();
   });
 

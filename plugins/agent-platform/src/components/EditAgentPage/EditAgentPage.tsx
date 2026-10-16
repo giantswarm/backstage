@@ -19,7 +19,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { formStateOfAgent } from '../../lib/agentEdit';
 import type { AgentManagerAgent, WriteMode } from '../../lib/agentManager';
 import type { DiscoveredSkill } from '../../lib/skills';
-import { agentDetailRouteRef, agentEditRouteRef } from '../../routes';
+import { agentDetailRouteRef } from '../../routes';
 import {
   agentManagerAbsenceReason,
   agentWriteMode,
@@ -71,7 +71,7 @@ function EditAgentWizard({
 }
 
 /**
- * Edit an agent (`/agent-platform/agents/edit/<installation>/<namespace>/<name>`
+ * Edit an agent (`/customize/agents/<installation>/<namespace>/<name>/edit`
  * and its `/skills`, `/tools`, `/review` steps): the create wizard, prefilled.
  * Like `EditSkillPage` for skills, this page only reads what the wizard needs
  * — agent-manager's `get_agent` (its availability and, for an agent applied
@@ -212,15 +212,4 @@ export function EditAgentPage() {
       {body}
     </WizardFrame>
   );
-}
-
-/**
- * The edit page's former address (`…/<installation>/<namespace>/<name>/edit`),
- * kept so a bookmark or an old link lands in the wizard.
- */
-export function LegacyEditAgentRedirect() {
-  const { installation = '', namespace = '', name = '' } = useParams();
-  const agentEditLink = useRouteRef(agentEditRouteRef);
-  const target = agentEditLink?.({ installation, namespace, name });
-  return target ? <Navigate to={target} replace /> : null;
 }

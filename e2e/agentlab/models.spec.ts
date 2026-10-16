@@ -31,7 +31,7 @@ test('Customize · Models lists the lab default ModelConfig and offers Connect a
   ).toHaveAttribute('aria-selected', 'true');
   await expect(
     admin.getByRole('link', { name: 'Connect a model' }),
-  ).toHaveAttribute('href', '/agent-platform/models/new');
+  ).toHaveAttribute('href', '/customize/models/new');
   await expect(
     admin.getByRole('rowheader', { name: /^default-model-config/ }),
     'the ModelConfig the lab provisions is listed',
@@ -45,10 +45,7 @@ test('Customize · Models lists the lab default ModelConfig and offers Connect a
       'no serving layer: no Model hosting card',
     ).toHaveCount(0);
   } else {
-    await expect(hosting).toHaveAttribute(
-      'href',
-      '/agent-platform/models/serving',
-    );
+    await expect(hosting).toHaveAttribute('href', '/customize/models/hosting');
   }
 });
 
@@ -157,7 +154,7 @@ test('Model hosting’s Running models and GPU tabs render for the installation'
 }) => {
   const unavailable = await modelManagerUnavailable(admin);
   test.skip(!!unavailable, unavailable);
-  await open(admin, '/agent-platform/models/serving');
+  await open(admin, '/customize/models/hosting');
   await expect(
     admin.getByRole('heading', { level: 1, name: 'Model hosting' }),
   ).toBeVisible();
@@ -168,7 +165,7 @@ test('Model hosting’s Running models and GPU tabs render for the installation'
 
   // "GPU pools" where cluster-manager runs, "GPU capacity" (nodes only)
   // where it does not.
-  await open(admin, '/agent-platform/models/capacity');
+  await open(admin, '/customize/models/hosting/capacity');
   await expect(
     admin.getByRole('tab', { name: /^GPU (pools|capacity)$/ }),
   ).toHaveAttribute('aria-selected', 'true');
@@ -209,7 +206,7 @@ async function chooseProvider(page: Page, provider: VertexModel['provider']) {
 
 /** Fills Connect a model for a Vertex AI model, up to the submit. */
 async function fillVertexModel(page: Page, model: VertexModel) {
-  await open(page, '/agent-platform/models/new');
+  await open(page, '/customize/models/new');
   await chooseProvider(page, model.provider);
   await page
     .getByRole('textbox', { name: 'Name', exact: true })
@@ -297,7 +294,7 @@ test('a Vertex AI model is checked in the form, accepted by kagent, and says the
   await dismissMcpSignInNotice(admin);
 
   // kagent's own check, in the form, as soon as a file is chosen.
-  await open(admin, '/agent-platform/models/new');
+  await open(admin, '/customize/models/new');
   await chooseProvider(admin, model.provider);
   await chooseKeyFile(admin, {
     content: JSON.stringify({ type: 'authorized_user' }),

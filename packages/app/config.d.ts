@@ -9,7 +9,7 @@ export interface Config {
     description?: string;
 
     /**
-     * In-app path that `/` redirects to, e.g. `/agent-platform`. Unset renders
+     * In-app path that `/` redirects to, e.g. `/catalog`. Unset renders
      * the home page, and so does a value that does not start with `/` or that
      * is `/` itself. Set it for a single-product deployment whose landing page
      * is one plugin instead of the portal home page. The home page extension
@@ -36,7 +36,8 @@ export interface Config {
      * its pages and navigations exist when it starts, before sign-in.
      *
      * - Both on: the Agent Platform shell on its routes (`/`,
-     *   `/agent-platform/**`, `/customize/**`), the classic Platform Portal
+     *   `/sessions/**`, `/usage/**`, `/profile`, `/customize/**`, and the
+     *   old `/agent-platform/**`, which only redirects), the classic Platform Portal
      *   everywhere else, each cross-linking to the other in a new tab.
      * - Only `agentPlatform`: the shell is the navigation — `/` is the
      *   new-session screen for everyone and the rail has no "Platform Portal"
@@ -45,15 +46,16 @@ export interface Config {
      *   shell links to them.
      * - Only `platformPortal` (the default): exactly the classic portal, no
      *   agent shell, no cross-link and nothing of the Agent Platform (its
-     *   pages are routed in the shell only, so no `/agent-platform/**` route
-     *   and no sidebar item, whatever `app.extensions` lists). The person's
+     *   pages are routed in the shell only, so none of its routes and no
+     *   sidebar item, whatever `app.extensions` lists). The person's
      *   `agent-platform-shell` feature flag then opts one browser into the
      *   shell, as an override for trying it out; it is not offered while
      *   `agentPlatform` is on.
      *
-     * The shell's Sessions, Agents, Models and Usage screens live on the
-     * `page:agent-platform` extension, which is enabled by default and
-     * mounted only where the shell is on. Both off reads as the default.
+     * The shell's pages (the Customize page and the tabs attached to it,
+     * Sessions, Usage, Profile, and `page:agent-platform`, the old
+     * addresses' redirects) are enabled by default and mounted only where
+     * the shell is on. Both off reads as the default.
      */
     portals?: {
       /**

@@ -43,7 +43,7 @@ function editBlocker(
 }
 
 /**
- * Edit a model (`/agent-platform/models/edit/<installation>/<namespace>/<name>`):
+ * Edit a model (`/customize/models/<installation>/<namespace>/<name>/edit`):
  * the Connect-a-model flow, prefilled. Like `EditAgentPage` and
  * `EditSkillPage`, this page only reads what the flow needs — the ModelConfig,
  * and whether the signed-in person may update it — and then hands over to

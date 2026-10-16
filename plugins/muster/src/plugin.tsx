@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import type { ComponentType, ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import {
   ApiBlueprint,
   AppRootElementBlueprint,
@@ -9,7 +9,6 @@ import {
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
-  PageBlueprint,
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
@@ -27,48 +26,39 @@ import {
 import { mcpUsageSection } from './mcpUsageSection';
 import {
   customizeExternalRouteRef,
-  legacyMcpServersRouteRef,
   mcpServerRouteRef,
   mcpServersRouteRef,
   mcpServerToolRouteRef,
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
   newMcpServerVerifyRouteRef,
+  editMcpServerRouteRef,
+  editMcpServerAuthRouteRef,
+  editMcpServerVerifyRouteRef,
   workflowDetailRouteRef,
   workflowsRouteRef,
 } from './routes';
 
 /**
- * The loader of one muster tab: its router inside the shared muster providers
- * and the inventory-failure gate (`MusterSubPage`).
+ * The id of the app's Customize page, which muster's tabs attach to — the way
+ * upstream's `catalog-unprocessed-entities` attaches to `page:devtools`. The
+ * page routes each tab's bare path to its own list screen and everything
+ * deeper to the tab's router, so the routers here hold the connector,
+ * tool and workflow pages and the registration wizard, never the lists.
  */
-function musterTab<P extends object>(
-  context: string,
-  loadRouter: () => Promise<ComponentType<P>>,
-  props?: P,
-) {
-  return async () => {
-    const [{ MusterSubPage }, Router] = await Promise.all([
-      import('./components/MusterSubPage'),
-      loadRouter(),
-    ]);
-    return (
-      <MusterSubPage context={context}>
-        <Router {...(props as P)} />
-      </MusterSubPage>
-    );
-  };
-}
+const CUSTOMIZE_PAGE = 'page:app/agent-shell-customize';
 
-// muster contributes two of the Agent Platform page's sections:
-// "Connectors" (`/agent-platform/connectors`; MCP servers, renamed for people
-// — the extension id and the code keep `mcp-servers`) and "Workflows"
-// (`/agent-platform/workflows`). Each carries its own root route ref, so
-// muster's links resolve under the tab they belong to. Their place among the
-// Agent Platform's tabs is the page's own (agent-platform's
-// `AGENT_PLATFORM_TAB_ORDER`), keyed by these extensions' ids. They exist only
-// where that page does: in the agent shell (agent-platform's
-// `AGENT_SHELL_ON`), never in classic chrome.
+// muster contributes two of the Customize page's tabs: "Connectors"
+// (`/customize/connectors`; MCP servers, renamed for people — the extension
+// id and the code keep `mcp-servers`) and "Workflows"
+// (`/customize/workflows`). Each carries its own root route ref, so muster's
+// links resolve under the tab they belong to. They exist only where that page
+// does: in the agent shell, never in classic chrome. Attached in code, not in
+// `app.extensions`: deployments replace that list wholesale.
+//
+// Each router mounts the muster providers itself (`MusterSubPage`), pinned
+// to the installation the address names, so a connector's or workflow's page
+// reads its resource there whatever the section's scope.
 //
 // **The `usedBy` input, a cross-plugin coupling by string:** the shell's
 // connector page renders the element attached to `sub-page:muster/mcp-servers`
@@ -78,7 +68,7 @@ function musterTab<P extends object>(
 // this comment, and changing either without the other makes the tab vanish.
 const mcpServersSubPage = SubPageBlueprint.makeWithOverrides({
   name: 'mcp-servers',
-  attachTo: { id: 'page:agent-platform', input: 'pages' },
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
   inputs: {
     usedBy: createExtensionInput([coreExtensionData.reactElement], {
       singleton: true,
@@ -93,36 +83,12 @@ const mcpServersSubPage = SubPageBlueprint.makeWithOverrides({
       path: 'connectors',
       title: 'Connectors',
       routeRef: mcpServersRouteRef,
-      loader: musterTab(
-        'The connectors of an environment are read through its Kubernetes API.',
-        () =>
-          import('./components/McpServersRouter').then(m => m.McpServersRouter),
-        { usedBy },
-      ),
+      loader: async () => {
+        const { McpServersRouter } =
+          await import('./components/McpServersRouter');
+        return <McpServersRouter usedBy={usedBy} />;
+      },
     });
-  },
-});
-
-// The tab's old address stays as a nav-less redirect, so every shared link
-// resolves: `/agent-platform/mcp-servers…` → `/agent-platform/connectors…`.
-// Enabled by default on purpose: deployments replace `app.extensions`
-// wholesale (the chart does), so an opt-in entry would silently drop the
-// redirect there. Shell only, like the Agent Platform page it redirects into:
-// without the shell nothing of the Agent Platform is routed, the old address
-// included.
-const mcpServersRedirectPage = PageBlueprint.make({
-  name: 'mcp-servers-redirect',
-  if: AGENT_SHELL_ON,
-  params: {
-    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the old address's route definition
-    path: '/agent-platform/mcp-servers',
-    routeRef: legacyMcpServersRouteRef,
-    noHeader: true,
-    loader: async () => {
-      const { ConnectorsRedirect } =
-        await import('./components/ConnectorsRedirect');
-      return <ConnectorsRedirect />;
-    },
   },
 });
 
@@ -135,7 +101,7 @@ const mcpServersRedirectPage = PageBlueprint.make({
 // without the other makes the action vanish.
 const workflowsSubPage = SubPageBlueprint.makeWithOverrides({
   name: 'workflows',
-  attachTo: { id: 'page:agent-platform', input: 'pages' },
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
   inputs: {
     editAction: createExtensionInput([coreExtensionData.reactElement], {
       singleton: true,
@@ -150,12 +116,11 @@ const workflowsSubPage = SubPageBlueprint.makeWithOverrides({
       path: 'workflows',
       title: 'Workflows',
       routeRef: workflowsRouteRef,
-      loader: musterTab(
-        'The workflows of an environment are read through its Kubernetes API.',
-        () =>
-          import('./components/WorkflowsRouter').then(m => m.WorkflowsRouter),
-        { editAction },
-      ),
+      loader: async () => {
+        const { WorkflowsRouter } =
+          await import('./components/WorkflowsRouter');
+        return <WorkflowsRouter editAction={editAction} />;
+      },
     });
   },
 });
@@ -220,7 +185,6 @@ export const musterPlugin = createFrontendPlugin({
   pluginId: 'muster',
   extensions: [
     mcpServersSubPage,
-    mcpServersRedirectPage,
     workflowsSubPage,
     mcpUsageSection,
     musterApi,
@@ -234,6 +198,9 @@ export const musterPlugin = createFrontendPlugin({
     newMcpServer: newMcpServerRouteRef,
     newMcpServerAuth: newMcpServerAuthRouteRef,
     newMcpServerVerify: newMcpServerVerifyRouteRef,
+    editMcpServer: editMcpServerRouteRef,
+    editMcpServerAuth: editMcpServerAuthRouteRef,
+    editMcpServerVerify: editMcpServerVerifyRouteRef,
     workflows: workflowsRouteRef,
     workflowDetail: workflowDetailRouteRef,
   },

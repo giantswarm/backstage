@@ -21,7 +21,7 @@ let mockModelConfigs: {
 // muster's MCP Servers route, where the sign-in pointer links to.
 jest.mock('@backstage/frontend-plugin-api', () => ({
   ...jest.requireActual('@backstage/frontend-plugin-api'),
-  useRouteRef: () => () => '/agent-platform/mcp-servers',
+  useRouteRef: () => () => '/customize/connectors',
 }));
 
 jest.mock('../NewAgentFormProvider', () => ({
@@ -397,7 +397,7 @@ describe('InstallationSelect', () => {
       // Points at where that sign-in happens: muster, scoped to beta.
       expect(getByRole('link', { name: 'Sign in to muster' })).toHaveAttribute(
         'href',
-        '/agent-platform/mcp-servers?installation=beta',
+        '/customize/connectors?installation=beta',
       );
       expect(mockSetInstallation).not.toHaveBeenCalled();
     });

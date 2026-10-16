@@ -305,7 +305,7 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
         </PageHeaderActionsProvider>
       </QueryClientProvider>
     </TestApiProvider>,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
   return { callTool };
 }
@@ -574,7 +574,7 @@ describe('NewAgentReviewPage', () => {
 
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith(
-        '/agent-platform/agents/gazelle/kagent/go-service-reviewer',
+        '/customize/agents/gazelle/kagent/go-service-reviewer',
         {
           state: {
             [AGENT_CREATED_STATE_KEY]: {

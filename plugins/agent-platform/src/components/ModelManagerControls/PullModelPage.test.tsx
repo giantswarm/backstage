@@ -49,7 +49,7 @@ function render(targets: PullTarget[] = [{ name: 'lab', canWire: true }]) {
     <Wrapper>
       <PullModelPage
         targets={targets}
-        closeHref="/agent-platform/models/serving"
+        closeHref="/customize/models/hosting"
         onPulled={onPulled}
       />
     </Wrapper>,
@@ -197,7 +197,7 @@ describe('PullModelPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
 
     expect(onPulled).not.toHaveBeenCalled();

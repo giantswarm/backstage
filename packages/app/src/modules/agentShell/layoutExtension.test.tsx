@@ -2,7 +2,6 @@ import {
   createFrontendPlugin,
   FeatureFlagState,
   PageBlueprint,
-  SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
 import {
@@ -13,14 +12,14 @@ import { screen, waitFor } from '@testing-library/react';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import { navModule } from '../nav';
 import { AGENT_SHELL_FLAG } from './predicates';
+import { homeRouteRef } from './routes';
 import { agentShellModule } from './index';
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef } = jest.requireActual(
     '@backstage/frontend-plugin-api',
   );
-  // The section's own root, which the real page below mounts and the classic
-  // sidebar's cross-link resolves.
+  // The real Sessions route, which the real page below mounts.
   const { agentPlatformPlugin: actual } = jest.requireActual(
     '@giantswarm/backstage-plugin-agent-platform',
   );
@@ -28,13 +27,12 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     agentPlatformPlugin: {
       routes: {
-        sessions: createRouteRef(),
+        sessions: actual.routes.sessions,
         usage: createRouteRef(),
         agents: createRouteRef(),
         skills: createRouteRef(),
         models: createRouteRef(),
         profile: createRouteRef(),
-        root: actual.routes.root,
       },
     },
     RecentSessions: () => null,
@@ -93,10 +91,21 @@ const stubPagePlugin = createFrontendPlugin({
     PageBlueprint.make({
       name: 'agent-area',
       params: {
-        path: '/agent-platform',
-        routeRef: agentPlatformPlugin.routes.root,
+        path: '/usage',
+        routeRef: agentPlatformPlugin.routes.usage,
         noHeader: true,
         loader: async () => <StubPage testId="agent-stub-page">Agent</StubPage>,
+      },
+    }),
+    // The shell's home, where the classic sidebar's cross-link leads; the
+    // home module mounts it in the app.
+    PageBlueprint.make({
+      name: 'home',
+      params: {
+        path: '/',
+        routeRef: homeRouteRef,
+        noHeader: true,
+        loader: async () => <StubPage testId="home-stub-page">Home</StubPage>,
       },
     }),
   ],
@@ -164,7 +173,7 @@ describe('the app layout', () => {
   });
 
   it('keeps the classic chrome on agent-area routes while the flag is off', async () => {
-    renderApp(FeatureFlagState.None, { route: '/agent-platform' });
+    renderApp(FeatureFlagState.None, { route: '/usage' });
 
     expect(await screen.findByTestId('agent-stub-page')).toBeInTheDocument();
     expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
@@ -173,7 +182,7 @@ describe('the app layout', () => {
   });
 
   it('puts an agent-area page in the shell’s main region next to the rail while the flag is on', async () => {
-    renderApp(FeatureFlagState.Active, { route: '/agent-platform' });
+    renderApp(FeatureFlagState.Active, { route: '/usage' });
 
     const page = await screen.findByTestId('agent-stub-page');
     expect(screen.getByRole('main')).toContainElement(page);
@@ -186,7 +195,7 @@ describe('the app layout', () => {
   });
 
   it('ends a shell page’s document title with the product', async () => {
-    renderApp(FeatureFlagState.Active, { route: '/agent-platform' });
+    renderApp(FeatureFlagState.Active, { route: '/usage' });
 
     await screen.findByTestId('agent-stub-page');
     await waitFor(() => expect(document.title).toBe('Agent · Agent Platform'));
@@ -207,7 +216,7 @@ describe('the app layout', () => {
 
     await screen.findByTestId('stub-page');
     const crossLink = screen.getByRole('link', { name: /Agent Platform/ });
-    expect(crossLink).toHaveAttribute('href', '/agent-platform');
+    expect(crossLink).toHaveAttribute('href', '/');
     expect(crossLink).toHaveAttribute('target', '_blank');
   });
 
@@ -238,10 +247,7 @@ describe('the app layout', () => {
     }
 
     it('serves the shell with a Platform Portal cross-link when both are on', async () => {
-      renderDeployment(
-        { platformPortal: true, agentPlatform: true },
-        '/agent-platform',
-      );
+      renderDeployment({ platformPortal: true, agentPlatform: true }, '/usage');
 
       const page = await screen.findByTestId('agent-stub-page');
       expect(screen.getByRole('main')).toContainElement(page);
@@ -268,7 +274,7 @@ describe('the app layout', () => {
     it('serves the shell without a Platform Portal item on an agent-only deployment', async () => {
       renderDeployment(
         { platformPortal: false, agentPlatform: true },
-        '/agent-platform',
+        '/usage',
       );
 
       const page = await screen.findByTestId('agent-stub-page');
@@ -288,14 +294,14 @@ describe('the app layout', () => {
       expect(await screen.findByTestId('stub-page')).toBeInTheDocument();
       expect(screen.queryByRole('main')).not.toBeInTheDocument();
       const home = screen.getByRole('link', { name: /Agent Platform/ });
-      expect(home).toHaveAttribute('href', '/agent-platform');
+      expect(home).toHaveAttribute('href', '/');
       expect(home).not.toHaveAttribute('target');
     });
 
     it('is the classic portal everywhere on a platform-only deployment', async () => {
       renderDeployment(
         { platformPortal: true, agentPlatform: false },
-        '/agent-platform',
+        '/usage',
       );
 
       expect(await screen.findByTestId('agent-stub-page')).toBeInTheDocument();
@@ -313,32 +319,32 @@ describe('the app layout', () => {
 });
 
 describe('the Agent Platform per portal mode', () => {
-  // The real `page:agent-platform` (the module mock above stands in for the
-  // package everywhere else), with one stubbed section. Enabled by default, so
-  // the portal mode alone decides; the off cases also list it in
-  // `app.extensions`, as the base app-config does, to show that changes
-  // nothing. No mocked FeatureFlagsApi: the deployment's `app.portals`
-  // decides, through the shell module's own one.
+  // The real `page:agent-platform/sessions` (the module mock above stands in
+  // for the package everywhere else), its router stubbed. Enabled by default,
+  // so the portal mode alone decides; the off cases also list it in
+  // `app.extensions`, to show that changes nothing. No mocked
+  // FeatureFlagsApi: the deployment's `app.portals` decides, through the
+  // shell module's own one.
   const { agentPlatformPlugin: realAgentPlatformPlugin } = jest.requireActual(
     '@giantswarm/backstage-plugin-agent-platform',
   );
   const agentPlatform = createFrontendPlugin({
     pluginId: 'agent-platform',
     extensions: [
-      realAgentPlatformPlugin.getExtension('page:agent-platform'),
-      SubPageBlueprint.make({
-        name: 'sessions',
-        params: {
-          path: 'sessions',
-          title: 'Sessions',
-          loader: async () => <div>Sessions content</div>,
-        },
-      }),
+      realAgentPlatformPlugin
+        .getExtension('page:agent-platform/sessions')
+        .override({
+          params: {
+            path: '/sessions',
+            noHeader: true,
+            loader: async () => <div>Sessions content</div>,
+          },
+        }),
     ],
   });
 
-  // Only the classic route: the agent-area stub above would answer
-  // `/agent-platform/**` itself.
+  // The classic route and the home: the agent-area stub above would answer
+  // `/usage` itself.
   const classicPagePlugin = createFrontendPlugin({
     pluginId: 'stub',
     extensions: [
@@ -347,6 +353,16 @@ describe('the Agent Platform per portal mode', () => {
           path: '/stub',
           noHeader: true,
           loader: async () => <StubPage testId="stub-page">Stub</StubPage>,
+        },
+      }),
+      // The shell's home, where the classic sidebar's link leads.
+      PageBlueprint.make({
+        name: 'home',
+        params: {
+          path: '/',
+          routeRef: homeRouteRef,
+          noHeader: true,
+          loader: async () => <StubPage testId="home-stub-page">Home</StubPage>,
         },
       }),
     ],
@@ -375,7 +391,7 @@ describe('the Agent Platform per portal mode', () => {
     it.each([
       [{}, []],
       [{ agentPlatform: false }, []],
-      [{}, ['page:agent-platform']],
+      [{}, ['page:agent-platform/sessions']],
     ])(
       'draws nothing of it in the classic portal (%j, extensions %j)',
       async (portals, extensions) => {
@@ -387,10 +403,10 @@ describe('the Agent Platform per portal mode', () => {
       },
     );
 
-    it.each([[[]], [['page:agent-platform']]])(
+    it.each([[[]], [['page:agent-platform/sessions']]])(
       'routes none of its pages, in classic chrome or any other (extensions %j)',
       async extensions => {
-        renderPortal({}, '/agent-platform/sessions', extensions);
+        renderPortal({}, '/sessions', extensions);
 
         expect(await screen.findByText(/not found/i)).toBeInTheDocument();
         expect(screen.queryByText('Sessions content')).not.toBeInTheDocument();
@@ -408,15 +424,12 @@ describe('the Agent Platform per portal mode', () => {
       expect(await screen.findByTestId('stub-page')).toBeInTheDocument();
       const links = screen.getAllByRole('link', { name: /Agent Platform/ });
       expect(links).toHaveLength(1);
-      expect(links[0]).toHaveAttribute('href', '/agent-platform');
+      expect(links[0]).toHaveAttribute('href', '/');
       expect(links[0]).toHaveAttribute('target', '_blank');
     });
 
     it('renders its pages in the shell only, never in classic chrome, with no app.extensions entry', async () => {
-      renderPortal(
-        { platformPortal: true, agentPlatform: true },
-        '/agent-platform/sessions',
-      );
+      renderPortal({ platformPortal: true, agentPlatform: true }, '/sessions');
 
       const content = await screen.findByText('Sessions content');
       expect(screen.getByRole('main')).toContainElement(content);

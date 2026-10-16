@@ -42,18 +42,27 @@ function InventoryGate({
 export interface MusterSubPageProps {
   /** What the tab reads through the installation's Kubernetes API, for the gate. */
   context: string;
+  /**
+   * The installation the address names, which the page's resource lives on;
+   * without it the section's scope decides (see `MusterInstanceProvider`).
+   */
+  installation?: string;
   children: ReactNode;
 }
 
 /**
- * One of muster's Agent Platform tabs (MCP Servers, Workflows): the muster
- * providers around the tab's router. Each tab mounts its own providers; the
+ * A page of muster's Customize tabs (Connectors, Workflows): the muster
+ * providers around it. Each tab mounts its own providers; the
  * query client is module-level and the installation scope a shared store, so
  * switching between the tabs is a cache read, not a reconnect.
  */
-export function MusterSubPage({ context, children }: MusterSubPageProps) {
+export function MusterSubPage({
+  context,
+  installation,
+  children,
+}: MusterSubPageProps) {
   return (
-    <MusterProviders>
+    <MusterProviders installation={installation}>
       <InventoryGate context={context}>{children}</InventoryGate>
     </MusterProviders>
   );

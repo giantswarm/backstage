@@ -1,8 +1,9 @@
 /**
  * The feature flag that reads "the Agent Platform shell is available". It
  * gates availability only: while it reads as active, the shell renders on the
- * agent area's routes (`/`, `/agent-platform/**`, `/customize/**`) while every
- * other route keeps the classic portal chrome; while it does not, the app is
+ * agent area's routes (`/`, `/sessions/**`, `/usage/**`, `/profile`,
+ * `/customize/**`, and the old `/agent-platform/**`, which only redirects)
+ * while every other route keeps the classic portal chrome; while it does not, the app is
  * classic everywhere.
  *
  * The deployment decides (`app.portals.agentPlatform`, see `readPortals`):

@@ -2,8 +2,9 @@
  * Which specs prove which portal (see `PortalMode` in `lab.ts`).
  *
  * The Agent Platform lives in the agent shell only: a lab in `classic` mode
- * routes none of its pages, and in `shell` mode `/agent-platform/**` always
- * renders the shell. So every spec of the Agent Platform — its sessions,
+ * routes none of its pages, and in `shell` mode its routes (`/`, `/sessions`,
+ * `/usage`, `/profile`, `/customize/**`, and the old `/agent-platform/**`,
+ * which only redirects) always render the shell. So every spec of the Agent Platform — its sessions,
  * agents, models and serving, connectors (muster) and workflows, usage — runs
  * in the `agentlab-shell` project, against a lab in `shell` mode; every other
  * spec (the classic portal's Giant Swarm pages, sign-in, the classic sidebar)
@@ -29,6 +30,7 @@ export const SHELL_SPECS = [
   'harness-no-limits.spec.ts',
   'inventory-gate.spec.ts',
   'kagent-denial-reason.spec.ts',
+  'legacy-addresses.spec.ts',
   'mcp-auth-notice.spec.ts',
   'mcp-server-auth-modes.spec.ts',
   'mcp-servers.spec.ts',

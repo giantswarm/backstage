@@ -196,11 +196,8 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     const pageOfTool = serverPageResolver(serverResources);
     return (name: string): string | undefined => {
       const server = pageOfTool(name);
-      if (server && toolRoute) {
-        return withInstallationQuery(
-          toolRoute({ server, tool: name }),
-          installation,
-        );
+      if (server && toolRoute && installation) {
+        return toolRoute({ installation, server, tool: name });
       }
       return serversRoute
         ? withInstallationQuery(serversRoute(), installation, { q: name })
