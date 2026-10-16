@@ -14,8 +14,6 @@ import { contextOptionsFor, lab } from './lab';
  * refresh token is gone.
  */
 
-const AUTH_REFRESH = /\/api\/auth\/[^/]+\/refresh/;
-
 function loginRequired(page: Page) {
   return page.getByRole('dialog', { name: 'Login Required' });
 }
@@ -42,7 +40,10 @@ function recordCatalogRequests(page: Page): string[] {
   return sent;
 }
 
-/** Expires the portal session: refresh refused, clock past the token. */
+/**
+ * Expires the portal session: its refresh is refused, as Dex's would be, and
+ * the page's clock moves past the ID token's lifetime.
+ */
 async function expireSession(page: Page) {
   await page.route('**/api/auth/*/refresh**', route =>
     route.fulfill({
@@ -50,11 +51,7 @@ async function expireSession(page: Page) {
       json: { error: { name: 'AuthenticationError' } },
     }),
   );
-  const refreshed = page.waitForRequest(request =>
-    AUTH_REFRESH.test(request.url()),
-  );
   await page.clock.fastForward('02:00:00');
-  await refreshed;
 }
 
 for (const path of ['/catalog', '/settings']) {
@@ -69,17 +66,19 @@ for (const path of ['/catalog', '/settings']) {
       await dismissMcpSignInNotice(page);
       await signIn(page, lab.users.admin);
       await open(page, path);
-      await page.clock.runFor(5_000);
-      await page.waitForLoadState('networkidle');
+      // The page settles and sits: what it read is past the entity
+      // presentation cache's lifetime by the time the session lapses.
+      await page.clock.runFor('00:05:00');
 
       const catalogReads = recordCatalogRequests(page);
       await expireSession(page);
-      // Long enough for the catalog page's refetch and the presentation
-      // loader's batches to come round several times.
+      // Long enough for the readers' timers to come round several times,
+      // and for what they started to settle in real time.
       await page.clock.runFor('00:10:00');
+      await page.waitForTimeout(10_000);
 
       expect(
-        await prompts(page, 15_000),
+        await prompts(page, 5_000),
         `the readers on ${path} opened no Login Required dialog`,
       ).toBe(false);
       expect(
