@@ -32,6 +32,7 @@ yarn playwright show-report e2e-test-report/agentlab
 | `AGENTLAB_KIND_NODE`              | `<cluster>-control-plane`            | the kind node `serve-node-choice.spec.ts` serves on, for a lab whose node is named otherwise                                                                                             |
 | `AGENTLAB_E2E_WORKERS`            | `1`                                  | parallel workers, each with one sign-in                                                                                                                                                  |
 | `AGENTLAB_E2E_RUN`                | the run's start, base 36             | the run id the [workspace fixtures](#workspaces) name their workspaces with (`e2e-ws-<run>-…`); letters and digits only                                                                  |
+| `AGENTLAB_E2E_NETNS`              | `1`                                  | `0` launches the browser in the host's network instead of [its own](#the-browsers-network)                                                                                               |
 | `AGENTLAB_E2E_ORDER`              | `default`                            | the order of the spec files: `default` (by path), `shuffle` (a random order; the run prints its seed) or `shuffle:<seed>` (that order again) — see [Order](#order)                       |
 | `AGENTLAB_KUBECONFIG`             | unset                                | the lab's `state/kubeconfig`, for `deployment-uninstall.spec.ts`, `deployment-auto-upgrades.spec.ts` and `connector-display-name.spec.ts`, which also need `kubectl`; skipped without it |
 | `AGENTLAB_SLASH_BRANCH`           | the checkout's branch                | a pushed branch with a slash in its name for `slash-branch.spec.ts`, which reads its template fixture from it on GitHub; skipped on a branch without one                                 |
@@ -232,6 +233,19 @@ which runs that order again. The worker and its admin page are the default
 run's. The order is written as stubs into `.cache/e2e-agentlab-order/`, one
 per spec, which import the specs; the report shows each test at its spec's
 path (`order.ts`).
+
+## The browser's network
+
+On Linux the suite's Chromium runs in a network namespace of its own
+(`netns-chromium.sh`, `browser.ts`). Chromium aborts every in-flight request
+with `net::ERR_NETWORK_CHANGED` when any address on the host changes, and on a
+lab machine every docker or kind container that starts or stops changes one,
+so a full run sharing the host's network fails at a random spec. In the
+namespace the browser sees one interface that never changes; `pasta` (from
+passt) carries its traffic to the host, loopback ports included, so the lab's
+edge, Dex and the kind network are reached as before. Without `unshare` and
+`pasta` the browser shares the host's network, with a warning;
+`AGENTLAB_E2E_NETNS=0` does so on purpose.
 
 ## How it signs in
 
