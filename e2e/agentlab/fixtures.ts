@@ -8,6 +8,7 @@ import {
   type BrowserContext,
   type Locator,
   type Page,
+  type Response,
   type TestInfo,
 } from '@playwright/test';
 import {
@@ -347,9 +348,22 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   admin: async ({ adminPage }, use) => {
     const errors: string[] = [];
     const record = (error: Error) => errors.push(error.message);
+    // An agent without an avatar is a 404 the portal shows as initials; a 502
+    // is the backend failing, on whichever page lists agents.
+    const badAvatars: string[] = [];
+    const recordAvatar = (response: Response) => {
+      if (
+        response.status() === 502 &&
+        response.url().includes('/api/agent-platform/avatars/')
+      ) {
+        badAvatars.push(response.url());
+      }
+    };
     adminPage.on('pageerror', record);
+    adminPage.on('response', recordAvatar);
     await use(adminPage);
     adminPage.off('pageerror', record);
+    adminPage.off('response', recordAvatar);
     // The page outlives the test: a route a test left behind (a swapped
     // token, a stubbed answer) must not answer the next test's requests.
     await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
@@ -360,7 +374,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         DROP_CACHES_FLAG,
       )
       .catch(() => undefined);
-    expect(errors, 'no uncaught errors on the page').toEqual([]);
+    // Soft, so one failing does not hide the other.
+    expect.soft(errors, 'no uncaught errors on the page').toEqual([]);
+    expect.soft(badAvatars, 'no avatar answered 502').toEqual([]);
   },
 
   signInAs: async ({ browser, variant }, use) => {
