@@ -149,6 +149,21 @@ describe('useCreateSession', () => {
     expect(startCalls()[0].args.sessionName).toBe(prompt.trim());
   });
 
+  it('titles the session by the title it is given rather than the prompt', async () => {
+    // A prompt the portal wrote opens with its framing, not with the topic.
+    const { result } = renderWith('sessionDetail');
+
+    await act(async () => {
+      await result.current.createSession({
+        agent,
+        prompt: 'I am continuing a session with you that could not be resumed.',
+        title: 'Continued: Fried potatoes',
+      });
+    });
+
+    expect(startCalls()[0].args.sessionName).toBe('Continued: Fried potatoes');
+  });
+
   it('reports the started session with its entry point', async () => {
     const { result } = renderWith();
 

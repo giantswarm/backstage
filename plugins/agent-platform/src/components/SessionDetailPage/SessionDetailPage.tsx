@@ -49,10 +49,7 @@ import {
   imagesUnsupportedReason,
 } from '../../lib/messageImages';
 import { useRenameSession } from '../../hooks/useRenameSession';
-import {
-  type PendingMessage,
-  useSendMessage,
-} from '../../hooks/useSendMessage';
+import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
@@ -90,6 +87,7 @@ import {
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { AnswerNotTakenNotice } from './AnswerNotTakenNotice';
+import { buildContinuationPrompt } from '../../lib/continuationPrompt';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
@@ -461,21 +459,35 @@ export function SessionDetailPage() {
   /** Nothing more can happen in this session; the way on is a new one. */
   const cannotContinue = Boolean(runtimeLoss?.reported) || answerNotTaken;
   /**
-   * The answer that was not taken, as the first message of the new session.
-   * Only a question's answer: an approval's words (a decline's reason) mean
-   * nothing to a session that never saw the tool call. Shown in the notice
-   * and used when the box is left empty, never put in the box: a box holding
-   * it would outlive the notice once a late resume moves the task on.
+   * The answer that was not taken: a question's answers, positionally. Not an
+   * approval's words (a decline's reason), which say nothing as an answer to
+   * a new session. Shown in the notice, and carried into the new session's
+   * first message; never put in the box, which would keep it beside a live
+   * Send once a late resume moves the task on.
    */
-  const answerDraft = useMemo<PendingMessage | null>(
+  const notTakenAnswers =
+    answerNotTaken &&
+    failedAnswer?.decision === 'approve' &&
+    failedAnswer.answers?.length
+      ? failedAnswer.answers
+      : undefined;
+  const notTakenAnswerText = notTakenAnswers ? failedAnswer?.text : undefined;
+  /**
+   * The first message of the session that carries this one on: the whole
+   * conversation, the open question and the answer (`buildContinuationPrompt`).
+   * Built here without a typed reply, for the notice's account of what the new
+   * session gets; the start builds it again with whatever the box holds.
+   */
+  const continuation = useMemo(
     () =>
-      answerNotTaken &&
-      failedAnswer?.decision === 'approve' &&
-      failedAnswer.answers?.length &&
-      failedAnswer.text
-        ? { messageId: failedAnswer.messageId, text: failedAnswer.text }
-        : null,
-    [answerNotTaken, failedAnswer],
+      answerNotTaken
+        ? buildContinuationPrompt({
+            items: timeline.items,
+            pendingQuestions: pendingConfirmation?.questions ?? [],
+            answers: notTakenAnswers,
+          })
+        : undefined,
+    [answerNotTaken, timeline.items, pendingConfirmation, notTakenAnswers],
   );
 
   /**
@@ -914,20 +926,38 @@ export function SessionDetailPage() {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession } = creation;
-  const unanswered = send.failed ?? answerDraft ?? lastUserMessage;
+  const unanswered = send.failed ?? lastUserMessage;
   const startNewSession = useCallback(
     async (draft: string, boxImages: ComposerImage[]) => {
       // An empty box carries the unanswered message over whole: its text and
       // its images.
       const isEmpty = !draft.trim() && boxImages.length === 0;
-      const text = draft.trim() || unanswered?.text;
-      const images = isEmpty ? (unanswered?.images ?? []) : boxImages;
+      let text = draft.trim() || unanswered?.text;
+      let images = isEmpty ? (unanswered?.images ?? []) : boxImages;
+      // An answer kagent did not take carries the conversation instead: the
+      // new session has none of it, and an answer alone answers nothing. What
+      // the box holds stands in for the answer.
+      let title: string | undefined;
+      if (answerNotTaken) {
+        text = buildContinuationPrompt({
+          items: timeline.items,
+          pendingQuestions: pendingConfirmation?.questions ?? [],
+          answers: notTakenAnswers,
+          reply: draft,
+        }).text;
+        images = boxImages;
+        title = `Continued: ${sessionTitle}`;
+      }
       if (!agentRow || !text) {
         return;
       }
       let newSessionId: string;
       try {
-        newSessionId = await createSession({ agent: agentRow, prompt: text });
+        newSessionId = await createSession({
+          agent: agentRow,
+          prompt: text,
+          ...(title && { title }),
+        });
       } catch {
         // Left to the notice, which renders the hook's `error`.
         return;
@@ -946,11 +976,24 @@ export function SessionDetailPage() {
             agentNamespace: agentRow.namespace,
             agentName: agentRow.technicalName,
             imagesKey: stashHandoffImages(images),
+            // The portal wrote it, and the new page says so.
+            ...(answerNotTaken && { prepared: true }),
           },
         },
       });
     },
-    [agentRow, createSession, navigate, sessionDetailRoute, unanswered],
+    [
+      agentRow,
+      createSession,
+      navigate,
+      sessionDetailRoute,
+      unanswered,
+      answerNotTaken,
+      timeline.items,
+      pendingConfirmation,
+      notTakenAnswers,
+      sessionTitle,
+    ],
   );
 
   const { cancelTask } = cancellation;
@@ -1265,7 +1308,8 @@ export function SessionDetailPage() {
             agentName={row.agentName || undefined}
             offersNewSession={offersNewSession}
             newSessionBlocker={agentRow?.sessionBlocker}
-            answer={answerDraft?.text}
+            answer={notTakenAnswerText}
+            continuation={continuation}
             startError={creation.error?.message}
           />
         )}

@@ -2451,23 +2451,54 @@ describe('SessionDetailPage', () => {
       expect(screen.queryByText('Runtime lost')).not.toBeInTheDocument();
     });
 
-    it('starts the new session on the answer from an empty box', async () => {
+    it('starts the new session on the whole conversation, the question and the answer', async () => {
+      // An answer alone answers nothing in a session that never saw the
+      // question: the first message carries the conversation so far.
       mockUseSessionDetail.mockReturnValue(waitingView);
       mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
       await render();
 
+      expect(
+        screen.getByText(
+          /Its first message holds this conversation \(\d+ messages?\), with tools named but not their results, the open question and your answer/,
+        ),
+      ).toBeInTheDocument();
+
       await userEvent.click(startButton());
 
       await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith(
-          expect.objectContaining({ prompt: 'Cyclists' }),
-        );
+        expect(mockCreateSession).toHaveBeenCalled();
       });
+      const { prompt, title } = mockCreateSession.mock.calls[0][0];
+      expect(prompt).toMatch(
+        /^I am continuing a session with you that could not be resumed/,
+      );
+      expect(prompt).toContain('## Earlier conversation');
+      // The conversation's own first message, as the timeline holds it.
+      const firstUserMessage = timeline.items.find(
+        item => item.kind === 'user-message',
+      )!.text;
+      expect(prompt).toContain(`User: ${firstUserMessage.trim()}`);
+      expect(prompt).toContain(`## Your last question\n\n1. ${question}`);
+      expect(prompt).toMatch(/## My answer\n\n1\. Cyclists$/);
+      // Titled after this session, not after the framing.
+      expect(title).toMatch(/^Continued: /);
+      expect(mockNavigate).toHaveBeenCalledWith(
+        '/agent-platform/sessions/gazelle/new-1',
+        {
+          state: {
+            newSession: expect.objectContaining({
+              text: prompt,
+              prepared: true,
+            }),
+          },
+        },
+      );
       expect(mockAnswer).not.toHaveBeenCalled();
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
-    it('starts the new session on what the person typed instead', async () => {
+    it('carries what the person typed in place of the answer', async () => {
       mockUseSessionDetail.mockReturnValue(waitingView);
       mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
       await render();
@@ -2476,10 +2507,12 @@ describe('SessionDetailPage', () => {
       await userEvent.click(startButton());
 
       await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith(
-          expect.objectContaining({ prompt: 'A weather app for cyclists' }),
-        );
+        expect(mockCreateSession).toHaveBeenCalled();
       });
+      const { prompt } = mockCreateSession.mock.calls[0][0];
+      expect(prompt).toContain('## Earlier conversation');
+      expect(prompt).toMatch(/## My answer\n\nA weather app for cyclists$/);
+      expect(prompt).not.toContain('1. Cyclists');
     });
 
     it('withholds Send where no new session can be offered', async () => {
@@ -2538,12 +2571,11 @@ describe('SessionDetailPage', () => {
       expect(screen.queryByText(/Your answer/)).not.toBeInTheDocument();
       await userEvent.click(startButton());
       await waitFor(() => {
-        expect(mockCreateSession).toHaveBeenCalledWith(
-          expect.objectContaining({
-            prompt: expect.not.stringContaining('not that one'),
-          }),
-        );
+        expect(mockCreateSession).toHaveBeenCalled();
       });
+      const { prompt } = mockCreateSession.mock.calls[0][0];
+      expect(prompt).toContain('## Earlier conversation');
+      expect(prompt).not.toContain('not that one');
     });
 
     it('keeps the card and its retry for any other failure', async () => {

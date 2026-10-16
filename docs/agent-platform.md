@@ -1720,14 +1720,41 @@ same request without the answer at the end of the wait fails the answer with
 While that request stands, the page treats it as the end of the session, as it
 does a reported runtime loss: "Could not resume this session" replaces the
 answer card and the new-session button takes Send's place. The notice shows a
-question's answer, and the new session opens on it when the box is left empty;
-the answer is not put in the box, which would keep it beside a live Send once a
-late resume moves the task on. An approval's words are not carried. Where no
-new session can be offered, the box is disabled instead. No retry is offered,
-because a second answer goes the same way. Any other answer failure (a refusal,
-a 5xx, a lost connection) keeps the card with "Answer not sent" and its retry.
-kagent marks nothing, so the session keeps its "Waiting for you" state in the
-list and the rail, and a reload shows the card again.
+question's answer and says what the new session will start with. The answer is
+not put in the box, which would keep it beside a live Send once a late resume
+moves the task on. Where no new session can be offered, the box is disabled
+instead. No retry is offered, because a second answer goes the same way. Any
+other answer failure (a refusal, a 5xx, a lost connection) keeps the card with
+"Answer not sent" and its retry. kagent marks nothing, so the session keeps its
+"Waiting for you" state in the list and the rail, and a reload shows the card
+again.
+
+#### Carrying the session on in a new one
+
+A new session has an empty model history, so the new session's first message
+carries the conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`),
+built from the page's timeline, which holds the whole task history:
+
+- a short framing for the model: this continues a session that could not be
+  resumed, the earlier conversation follows, oldest first, then the open
+  question and the answer;
+- every message as `User:` or `Assistant:`, each cut at 4,000 characters;
+  questions the agent asked once (its prose echo of an `ask_user` is dropped),
+  and tool approvals with their verdict;
+- tool and agent calls **by name only**, consecutive ones on one line
+  (`[Assistant used tools: read_file, search (2×)]`): results can be any size,
+  and the new session can call a tool again rather than trust a stale result;
+- attachments by name and failed or stopped turns, one line each; not the
+  model's reasoning;
+- the open question with its choices, then the answer, or the box's text in
+  its place. An approval's words are never carried.
+
+The message stays within `MESSAGE_TEXT_MAX_LENGTH` (32,000 characters), the
+send route's bound. The question and the answer always fit; the conversation
+gives way from its oldest end and says how many messages it left out, and the
+notice says how many of them the new session gets. The session is titled
+`Continued: <this session's title>`, and the new page captions the message
+"Prepared by the portal".
 
 ### Starting a session
 

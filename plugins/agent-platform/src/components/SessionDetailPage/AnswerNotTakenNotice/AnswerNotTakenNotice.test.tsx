@@ -22,7 +22,7 @@ describe('AnswerNotTakenNotice', () => {
     expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Start a new session with Grill master from the message box below to carry on; with the box left empty, it opens on your answer\./,
+        /Start a new session with Grill master from the message box below to carry on\. Its first message holds this conversation, with tools named but not their results, the open question and your answer; text in the box replaces the answer\./,
       ),
     ).toBeInTheDocument();
     // Terminal: nothing suggests sending it again.
@@ -35,10 +35,40 @@ describe('AnswerNotTakenNotice', () => {
 
     expect(
       screen.getByText(
-        /Start a new session with Grill master from the message box below to carry on\./,
+        /carry on\. Its first message holds this conversation, with tools named but not their results, and the text in the box\./,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Your answer/)).not.toBeInTheDocument();
+  });
+
+  it('says how much of the conversation the new session gets', () => {
+    const { rerender } = render(
+      <AnswerNotTakenNotice
+        agentName="Grill master"
+        offersNewSession
+        answer="Cyclists"
+        continuation={{ messageCount: 12, includedMessageCount: 12 }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        /Its first message holds this conversation \(12 messages\)/,
+      ),
+    ).toBeInTheDocument();
+
+    rerender(
+      <AnswerNotTakenNotice
+        agentName="Grill master"
+        offersNewSession
+        answer="Cyclists"
+        continuation={{ messageCount: 52, includedMessageCount: 40 }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        /Its first message holds the newest 40 of this conversation's 52 messages/,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('names why no new session can start from this portal, and keeps the answer in sight', () => {

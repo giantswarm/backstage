@@ -1,5 +1,7 @@
 import { Alert } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
+import type { Continuation } from '../../../lib/continuationPrompt';
 import { newSessionBlockedText, newSessionElsewhereText } from '../helpers';
 
 const useStyles = makeStyles(theme => ({
@@ -29,14 +31,43 @@ export type AnswerNotTakenNoticeProps = {
    */
   newSessionBlocker?: string;
   /**
-   * The answer to a question that was not taken, which the new session opens
-   * on when the box is left empty. Absent for an approval, whose words mean
-   * nothing to a new session.
+   * The answer to a question that was not taken, which the new session's
+   * first message carries. Absent for an approval, whose words mean nothing
+   * to a new session.
    */
   answer?: string;
+  /**
+   * What the new session's first message carries of this conversation
+   * (`buildContinuationPrompt`), so the notice can say so before it starts.
+   */
+  continuation?: Pick<Continuation, 'messageCount' | 'includedMessageCount'>;
   /** Why the last attempt to start the new session failed, when it did. */
   startError?: string;
 };
+
+/**
+ * What the new session starts with, in a sentence: how much of this
+ * conversation, the open question, and the answer or the box's text.
+ */
+function describeStart(
+  continuation: AnswerNotTakenNoticeProps['continuation'],
+  hasAnswer: boolean,
+): string {
+  let conversation = 'this conversation';
+  if (continuation && continuation.messageCount > 0) {
+    const { messageCount, includedMessageCount } = continuation;
+    conversation =
+      includedMessageCount < messageCount
+        ? `the newest ${includedMessageCount} of this conversation's ${countNoun(
+            messageCount,
+            'message',
+          )}`
+        : `this conversation (${countNoun(messageCount, 'message')})`;
+  }
+  return hasAnswer
+    ? `Its first message holds ${conversation}, with tools named but not their results, the open question and your answer; text in the box replaces the answer.`
+    : `Its first message holds ${conversation}, with tools named but not their results, and the text in the box.`;
+}
 
 /**
  * The words for an answer kagent did not take (`isAnswerNotTakenError`): the
@@ -58,6 +89,7 @@ export function AnswerNotTakenNotice({
   offersNewSession,
   newSessionBlocker,
   answer,
+  continuation,
   startError,
 }: AnswerNotTakenNoticeProps) {
   const classes = useStyles();
@@ -66,10 +98,11 @@ export function AnswerNotTakenNotice({
   let wayOut = newSessionElsewhereText(agent);
   if (newSessionBlocker) {
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
-  } else if (offersNewSession && answer) {
-    wayOut = `Start a new session with ${agent} from the message box below to carry on; with the box left empty, it opens on your answer.`;
   } else if (offersNewSession) {
-    wayOut = `Start a new session with ${agent} from the message box below to carry on.`;
+    wayOut = `Start a new session with ${agent} from the message box below to carry on. ${describeStart(
+      continuation,
+      Boolean(answer),
+    )}`;
   }
 
   return (
