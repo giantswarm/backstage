@@ -1,3 +1,19 @@
+/*
+ * The shell's page never scrolls sideways: its pages fit the view, and what is
+ * wider (tables, code) scrolls inside its own box. Clipped rather than hidden,
+ * so the document stays the vertical scroller sticky headers stick to.
+ *
+ * It also keeps a closing popover from shifting the page. While a bui menu or
+ * select is open, react-aria's scroll lock hides the page's scrollbar, and the
+ * popover is placed against the wider view; when it closes, the scrollbar
+ * comes back before the popover's exit animation ends, so it stood a few
+ * pixels past the edge and a horizontal scrollbar took 15px off the view's
+ * height for that moment.
+ */
+html[data-agent-shell] {
+  overflow-x: clip;
+}
+
 html[data-agent-shell] body {
   --bui-font-regular: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }

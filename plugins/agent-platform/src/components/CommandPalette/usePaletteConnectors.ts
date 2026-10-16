@@ -13,14 +13,14 @@ export type PaletteConnector = {
    */
   page: string;
   /**
-   * What the Connectors tab heads the page with, by the muster plugin's
-   * naming rule (`connectorDisplayNames`) over the CRs of every installation
-   * listed: the display name its CRs agree on, unless another connector would
-   * read the same, else {@link page}.
+   * What the Connectors tab heads the page with on {@link installation}, by
+   * the muster plugin's naming rule (`mcpServerDisplayNames`) over that
+   * installation's CRs: the display name its CRs agree on, unless another
+   * connector there would read the same, else {@link page}.
    */
   displayName: string;
-  /** The installations the connector is registered on, sorted. */
-  installations: string[];
+  /** The installation the connector is registered on. */
+  installation: string;
 };
 
 export type PaletteConnectors = {
@@ -32,8 +32,9 @@ export type PaletteConnectors = {
  * The connectors across the given installations, read as MCPServer CRs
  * through the Backstage kubernetes proxy like {@link useMusterServers} — no
  * muster session needed, so the palette can search them without a sign-in
- * hop. A server family registered on several installations is one row, the
- * same way the Connectors tab shows one page for it.
+ * hop. One row per connector and installation, like agents, models and
+ * workflows: a server family is one row on each installation it is
+ * registered on, never one per family instance.
  */
 export function usePaletteConnectors(
   installations: string[],
@@ -46,21 +47,33 @@ export function usePaletteConnectors(
   );
 
   const rows = useMemo(() => {
-    const byPage = new Map<string, Set<string>>();
+    // Named per installation, as each installation's Connectors tab names
+    // them: the naming rule reads one installation's CRs.
+    const byInstallation = new Map<string, MCPServer[]>();
     for (const server of resources) {
-      const page = server.getFamily() ?? server.getName();
-      const set = byPage.get(page) ?? new Set<string>();
-      set.add(server.cluster);
-      byPage.set(page, set);
+      const servers = byInstallation.get(server.cluster) ?? [];
+      servers.push(server);
+      byInstallation.set(server.cluster, servers);
     }
-    const names = mcpServerDisplayNames(resources);
-    return [...byPage.entries()]
-      .map(([page, clusters]) => ({
-        page,
-        displayName: names.get(page) ?? page,
-        installations: [...clusters].sort(),
-      }))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    const list: PaletteConnector[] = [];
+    for (const [installation, servers] of byInstallation) {
+      const names = mcpServerDisplayNames(servers);
+      const pages = new Set(
+        servers.map(server => server.getFamily() ?? server.getName()),
+      );
+      for (const page of pages) {
+        list.push({
+          page,
+          displayName: names.get(page) ?? page,
+          installation,
+        });
+      }
+    }
+    return list.sort(
+      (a, b) =>
+        a.displayName.localeCompare(b.displayName) ||
+        a.installation.localeCompare(b.installation),
+    );
   }, [resources]);
 
   return {

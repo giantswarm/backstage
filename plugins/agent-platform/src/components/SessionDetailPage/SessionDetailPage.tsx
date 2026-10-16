@@ -54,6 +54,7 @@ import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
+import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
 import { useShowToolActivity } from '../../hooks/useShowToolActivity';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
@@ -86,6 +87,7 @@ import {
   STALLED_STATE_LABEL,
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
+import type { NotificationLevel } from '../../lib/notificationRecord';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { useReadingAnchor } from './useReadingAnchor';
 import { SessionRenameDialog } from './SessionRenameDialog';
@@ -709,6 +711,22 @@ export function SessionDetailPage() {
     [rowId, pinned, togglePin],
   );
 
+  // The menu's Notifications submenu: the session's Notification level, kept
+  // per person in the same storage as the pin.
+  const notificationSettings = useSessionNotificationSettings();
+  const notificationLevel = notificationSettings.isKnown
+    ? notificationSettings.levelOf(installation, sessionId)
+    : undefined;
+  const { setLevel } = notificationSettings;
+  const notifications = useMemo(
+    () => ({
+      level: notificationLevel,
+      onChange: (level: NotificationLevel) =>
+        setLevel(installation, sessionId, level),
+    }),
+    [notificationLevel, setLevel, installation, sessionId],
+  );
+
   // Whether the conversation shows the agent's tool activity, kept per
   // person through the StorageApi like the pin.
   const toastApi = useApi(toastApiRef);
@@ -749,9 +767,19 @@ export function SessionDetailPage() {
           isUserScoped={isUserScoped}
           runtimeLoss={runtimeLoss}
           pin={pin}
+          notifications={notifications}
         />
       ) : null,
-    [row, sessionTitle, deletion, openRename, isUserScoped, runtimeLoss, pin],
+    [
+      row,
+      sessionTitle,
+      deletion,
+      openRename,
+      isUserScoped,
+      runtimeLoss,
+      pin,
+      notifications,
+    ],
   );
   useProvidePageHeaderActions(actions);
 

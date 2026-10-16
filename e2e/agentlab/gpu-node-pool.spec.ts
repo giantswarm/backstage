@@ -1,6 +1,13 @@
 import type { Locator, Page } from '@playwright/test';
 
-import { expect, expectWizardStep, open, signIn, test } from './fixtures';
+import {
+  dismissMcpSignInNotice,
+  expect,
+  expectWizardStep,
+  open,
+  signIn,
+  test,
+} from './fixtures';
 import {
   KEPT_CLAIM,
   PRESET_SOURCE,
@@ -593,6 +600,9 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
   test('a Deploy cut short lists the pending objects and Continue re-runs the same call', async ({
     page,
   }) => {
+    // The outcome's Continue sits at the foot of the page, where the MCP
+    // sign-in notice floats while the lab's OAuth fixture waits for a sign-in.
+    await dismissMcpSignInNotice(page);
     const { calls } = await reachReview(page, { partialApplies: 1 });
     await page.getByRole('button', { name: /^Deploy/ }).click();
 
@@ -789,9 +799,9 @@ test.describe('models: the model cache is the cluster’s and billed while it st
       name: /Remove the model cache hf-cache on wc1\?/,
     });
     await expect(confirm.getByTestId('remove-cache-what')).toContainText(
-      'Deletes claim model-serving/hf-cache (100 GiB gp3 at 500 MiB/s, eu-central-1b) on wc1 of ' +
-        lab.installation +
-        ', with its volume. The $27.37/month at list prices stops.',
+      `Deletes claim model-serving/hf-cache (100 GiB gp3 at 500 MiB/s, eu-central-1b) on wc1 of ${
+        lab.installation
+      }, with its volume. The $27.37/month at list prices stops.`,
     );
     await expect(confirm).toContainText('Nothing mounts this claim');
     const remove = confirm.getByRole('button', { name: 'Remove cache' });

@@ -136,7 +136,7 @@ async function renderShell(
   storage: StorageApi = mockApis.storage(),
   path = '/agent-platform/sessions',
 ) {
-  await renderInTestApp(
+  return renderInTestApp(
     <SessionsTable
       rows={sessionRows}
       sessionStates={sessionStates}
@@ -491,6 +491,54 @@ describe('SessionsTable in the shell layout', () => {
       await screen.findByRole('menuitem', { name: 'Rename session…' }),
     ).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('sets a row’s notifications from its menu, without opening the session, and keeps them across a reload', async () => {
+    const user = userEvent.setup();
+    const storage = mockApis.storage();
+    const openNotifications = async (title: string) => {
+      await user.click(
+        screen.getByRole('button', { name: `More actions for “${title}”` }),
+      );
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Notifications' }),
+      );
+      await screen.findByRole('menu', { name: 'Notifications' });
+    };
+    const view = await renderShell(rows, states, storage);
+
+    await openNotifications('Release notes');
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Default' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('menuitemradio', { name: 'Muted' }));
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        storage
+          .forBucket('agent-platform')
+          .snapshot('sessionNotificationSettings').value,
+      ).toEqual({
+        sessions: { 'gazelle/b': { level: 'muted', at: expect.any(Number) } },
+      }),
+    );
+
+    // A reload: the list starts afresh from the stored record.
+    view.unmount();
+    await renderShell(rows, states, storage);
+    await openNotifications('Release notes');
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Muted' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    await user.keyboard('{Escape}');
+    await user.keyboard('{Escape}');
+
+    // Each row has its own level.
+    await openNotifications('Triage this week');
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Default' }),
+    ).toHaveAttribute('aria-checked', 'true');
   });
 
   it('names the agent filter by its field, inside the dropdown', async () => {

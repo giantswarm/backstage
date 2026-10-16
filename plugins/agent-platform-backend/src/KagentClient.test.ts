@@ -222,6 +222,42 @@ describe('KagentClient against a fake controller', () => {
       expect(theirs.sessions).toHaveLength(1);
     });
 
+    it('says a listing cut at the page limit is truncated', async () => {
+      const { SessionService } =
+        require('./kagent/gen/kagent/api/v1alpha1/sessions_pb') as typeof import('./kagent/gen/kagent/api/v1alpha1/sessions_pb');
+      let calls = 0;
+      const client = new KagentClient(
+        installation,
+        logger,
+        createRouterTransport(router => {
+          router.service(SessionService, {
+            listSessions() {
+              calls += 1;
+              // Always another page: a listing longer than the limit.
+              return { sessions: [], page: { nextPageToken: `p${calls}` } };
+            },
+          });
+        }),
+        500,
+        500,
+      );
+
+      expect(await client.listSessions(USER)).toEqual({ truncated: true });
+      expect(calls).toBe(20);
+    });
+
+    it('says nothing of truncation when the listing ends', async () => {
+      const { fake, client } = build();
+      created(fake, 'only');
+
+      const listing = (await client.listSessions(USER)) as Record<
+        string,
+        unknown
+      >;
+
+      expect(listing).not.toHaveProperty('truncated');
+    });
+
     it('narrows the listing to one Agent on request', async () => {
       const { fake, client } = build({
         agents: [
