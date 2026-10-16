@@ -1,14 +1,14 @@
 import { createFetchApi, FetchMiddlewares } from '@backstage/core-app-api';
-import type {
-  ConfigApi,
-  DiscoveryApi,
-  FetchApi,
-  IdentityApi,
-} from '@backstage/core-plugin-api';
 import {
-  GSDiscoveryApiClient,
-  type GSAuthProvidersApi,
-} from '@giantswarm/backstage-plugin-gs';
+  type BackstageIdentityApi,
+  type ConfigApi,
+  type DiscoveryApi,
+  type FetchApi,
+  type IdentityApi,
+  type SessionApi,
+  SessionState,
+} from '@backstage/core-plugin-api';
+import { GSDiscoveryApiClient } from '@giantswarm/backstage-plugin-gs';
 
 /**
  * The portal's fetch: `plugin://` URLs resolved through discovery, and the
@@ -22,14 +22,14 @@ import {
 export function createBackstageFetchApi(options: {
   configApi: ConfigApi;
   discoveryApi: DiscoveryApi;
-  identityApi: Pick<IdentityApi, 'getCredentials'>;
+  identityApi: IdentityApi;
 }): FetchApi {
   const { configApi, discoveryApi, identityApi } = options;
   return createFetchApi({
     middleware: [
       FetchMiddlewares.resolvePluginProtocol({ discoveryApi }),
       FetchMiddlewares.injectIdentityAuth({
-        identityApi: identityApi as IdentityApi,
+        identityApi,
         config: configApi,
         // Per-request matcher (not a static allowlist): the per-installation
         // `backendUrl` overrides are loaded from the backend after sign-in, so
@@ -45,43 +45,62 @@ export function createBackstageFetchApi(options: {
   });
 }
 
-export const PORTAL_SESSION_EXPIRED_ERROR_NAME = 'PortalSessionExpiredError';
-
 /**
  * Thrown by a silent read when the portal session is gone, before any request
- * is sent. Its message reads as session-expired to `isSessionExpiredError`.
+ * is sent. Its message is the portal's session-expired copy, which
+ * `isSessionExpiredError` recognises.
  */
 export class PortalSessionExpiredError extends Error {
   constructor() {
-    super('Your portal session expired; reload the page to sign in again.');
-    this.name = PORTAL_SESSION_EXPIRED_ERROR_NAME;
+    super('Your session expired, sign in again.');
+    this.name = 'PortalSessionExpiredError';
   }
 }
 
 /**
- * An identity whose credentials come from the live portal session only: the
+ * The app's identity, its credentials from the live portal session only: the
  * main login provider's optional path, which refreshes the session silently
  * where it can and otherwise answers "none" instead of opening the sign-in.
  * Without a session it throws {@link PortalSessionExpiredError}.
  *
- * A portal without `gs.authProvider` (local development) signs in as guest,
- * whose credentials never prompt: there the app's identity serves.
+ * - A read waits for the sign-in like the app's identity does (its
+ *   `getBackstageIdentity` resolves once the sign-in page set the identity,
+ *   from what the sign-in already holds).
+ * - Once the session is found gone, reads fail at once, without another
+ *   refresh round trip each, until the provider reports a session again (a
+ *   sign-in the person starts).
+ * - Without a main login provider (`gs.authProvider` unset: the guest sign-in
+ *   of local development, whose credentials never prompt) the app's identity
+ *   serves as it is.
  */
 export function silentIdentity(options: {
-  configApi: ConfigApi;
-  identityApi: Pick<IdentityApi, 'getCredentials'>;
-  gsAuthProvidersApi: Pick<GSAuthProvidersApi, 'getMainAuthApi'>;
-}): Pick<IdentityApi, 'getCredentials'> {
-  const { configApi, identityApi, gsAuthProvidersApi } = options;
+  identityApi: IdentityApi;
+  mainAuthApi: (BackstageIdentityApi & SessionApi) | undefined;
+}): IdentityApi {
+  const { identityApi, mainAuthApi } = options;
+  let expired = false;
+  mainAuthApi?.sessionState$().subscribe(state => {
+    if (state === SessionState.SignedIn) {
+      expired = false;
+    }
+  });
   return {
+    getProfileInfo: () => identityApi.getProfileInfo(),
+    getBackstageIdentity: () => identityApi.getBackstageIdentity(),
+    signOut: () => identityApi.signOut(),
     async getCredentials() {
-      if (!configApi.has('gs.authProvider')) {
+      if (!mainAuthApi) {
         return identityApi.getCredentials();
       }
-      const identity = await gsAuthProvidersApi
-        .getMainAuthApi()
-        .getBackstageIdentity({ optional: true });
+      await identityApi.getBackstageIdentity();
+      if (expired) {
+        throw new PortalSessionExpiredError();
+      }
+      const identity = await mainAuthApi.getBackstageIdentity({
+        optional: true,
+      });
       if (!identity?.token) {
+        expired = true;
         throw new PortalSessionExpiredError();
       }
       return { token: identity.token };
@@ -89,8 +108,16 @@ export function silentIdentity(options: {
   };
 }
 
+/** The catalog's reads that are POSTs: their filters go in the body. */
+const POST_READ_PATHS = [
+  '/entities/by-refs',
+  '/entities/by-query',
+  '/entity-facets',
+  '/locations/by-query',
+];
+
 /**
- * Sends reads (GET, HEAD and the catalog's `POST …/entities/by-refs`) through
+ * Sends reads (GET, HEAD and the catalog's POST reads) through
  * `silentFetchApi` and every other request -- a write a person starts --
  * through `fetchApi`, which may ask for the sign-in.
  */
@@ -101,35 +128,20 @@ export function createReadSilentFetchApi(options: {
   const { fetchApi, silentFetchApi } = options;
   return {
     fetch(input, init) {
-      return (isRead(input, init) ? silentFetchApi : fetchApi).fetch(
-        input,
-        init,
-      );
+      return (
+        isRead(new Request(input, init)) ? silentFetchApi : fetchApi
+      ).fetch(input, init);
     },
   };
 }
 
-function isRead(input: RequestInfo | URL, init?: RequestInit): boolean {
-  const method = (
-    init?.method ??
-    (input instanceof Request ? input.method : undefined) ??
-    'GET'
-  ).toUpperCase();
-  if (method === 'GET' || method === 'HEAD') {
+function isRead(request: Request): boolean {
+  if (request.method === 'GET' || request.method === 'HEAD') {
     return true;
   }
-  if (method !== 'POST') {
-    return false;
-  }
-  let url: string;
-  if (typeof input === 'string') {
-    url = input;
-  } else if (input instanceof URL) {
-    url = input.href;
-  } else {
-    url = input.url;
-  }
-  return new URL(url, 'http://localhost').pathname.endsWith(
-    '/entities/by-refs',
+  const { pathname } = new URL(request.url);
+  return (
+    request.method === 'POST' &&
+    POST_READ_PATHS.some(path => pathname.endsWith(path))
   );
 }

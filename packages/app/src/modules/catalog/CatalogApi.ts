@@ -15,6 +15,7 @@ import {
   type GSAuthProvidersApi,
   gsAuthProvidersApiRef,
 } from '@giantswarm/backstage-plugin-gs';
+import { getOptionalMainAuthApi } from '../auth/getOptionalMainAuthApi';
 import {
   createBackstageFetchApi,
   createReadSilentFetchApi,
@@ -33,8 +34,8 @@ export function createSilentReadCatalogClient(deps: {
   configApi: ConfigApi;
   discoveryApi: DiscoveryApi;
   fetchApi: FetchApi;
-  identityApi: Pick<IdentityApi, 'getCredentials'>;
-  gsAuthProvidersApi: Pick<GSAuthProvidersApi, 'getMainAuthApi'>;
+  identityApi: IdentityApi;
+  gsAuthProvidersApi: GSAuthProvidersApi;
 }): CatalogApi {
   const { configApi, discoveryApi, fetchApi, identityApi, gsAuthProvidersApi } =
     deps;
@@ -46,9 +47,8 @@ export function createSilentReadCatalogClient(deps: {
         configApi,
         discoveryApi,
         identityApi: silentIdentity({
-          configApi,
           identityApi,
-          gsAuthProvidersApi,
+          mainAuthApi: getOptionalMainAuthApi(gsAuthProvidersApi),
         }),
       }),
     }),
