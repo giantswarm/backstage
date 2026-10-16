@@ -130,9 +130,11 @@ Emits nothing when unset, so rendered output is unchanged for existing users.
 {{- end -}}
 
 {{/*
-The most backend pods that run at once: the replicas plus the rolling
-update's surge (Kubernetes' default 25 %, rounded up), or the replicas alone
-under Recreate. Takes the root context.
+The most backend pods that hold database connections at once: the replicas
+plus the rolling update's surge (Kubernetes' default 25 %, rounded up; none
+under Recreate), plus every old pod still terminating, which the Deployment
+controller no longer counts and which keeps its connections until it exits.
+Takes the root context.
 */}}
 {{- define "backstage.maxPods" -}}
 {{- $replicas := int .Values.replicas -}}
@@ -145,36 +147,42 @@ under Recreate. Takes the root context.
 {{- $maxSurge = toString $rollingUpdate.maxSurge -}}
 {{- end -}}
 {{- if hasSuffix "%" $maxSurge -}}
-{{- $percent := trimSuffix "%" $maxSurge | int -}}
-{{- $surge = div (add (mul $replicas $percent) 99) 100 -}}
+{{- $surge = div (add (mul $replicas (trimSuffix "%" $maxSurge | int)) 99) 100 -}}
 {{- else -}}
 {{- $surge = int $maxSurge -}}
 {{- end -}}
 {{- end -}}
-{{- add $replicas $surge -}}
+{{- add (mul $replicas 2) $surge -}}
 {{- end }}
 
 {{/*
-The per-plugin database pool size. Every backend plugin holds its own pool,
-and a pod opens one more connection at a time to ensure a plugin's schema, so
-the pods running at once during a rollout hold up to
-maxPods × (pluginsWithDatabase × pool max + 1) connections; that stays within
-the CNPG cluster's max_connections less the superuser-reserved slots, or the
-render fails. pool.max 0 takes the largest size that fits. Takes the root
+The most database connections one backend pod holds: every plugin's pool
+(`pool.max`, or the plugin's entry in `pool.plugins`), plus the events
+plugin's LISTEN connection and the one connection at a time that ensures a
+plugin's schema, both outside the pools. Takes the root context.
+*/}}
+{{- define "backstage.databaseConnectionsPerPod" -}}
+{{- $pool := .Values.database.postgresql.pool -}}
+{{- $sized := 0 -}}
+{{- range $plugin, $max := $pool.plugins -}}
+{{- $sized = add $sized (int $max) -}}
+{{- end -}}
+{{- $others := max 0 (sub (int $pool.pluginsWithDatabase) (len $pool.plugins)) -}}
+{{- add (mul $others (int $pool.max)) $sized 2 -}}
+{{- end }}
+
+{{/*
+Fails the render when the backend pods of a rollout can hold more
+connections than the CNPG cluster admits for the app role. Takes the root
 context.
 */}}
-{{- define "backstage.databasePoolMax" -}}
+{{- define "backstage.validateDatabaseBudget" -}}
 {{- $pg := .Values.database.postgresql -}}
 {{- $maxPods := include "backstage.maxPods" . | int -}}
-{{- $plugins := int $pg.pool.pluginsWithDatabase -}}
+{{- $perPod := include "backstage.databaseConnectionsPerPod" . | int -}}
 {{- $available := sub (int $pg.maxConnections) (int $pg.superuserReservedConnections) -}}
-{{- $poolMax := int $pg.pool.max -}}
-{{- if eq $poolMax 0 -}}
-{{- $poolMax = div (sub (div $available $maxPods) 1) $plugins -}}
+{{- $needed := mul $maxPods $perPod -}}
+{{- if gt $needed $available -}}
+{{- fail (printf "database.postgresql: %d backend pods during a rollout (2 × replicas %d, terminating ones included, plus the surge) × %d connections each (%d plugins with database.postgresql.pool.max %d or their database.postgresql.pool.plugins entry, plus 2) = %d, more than maxConnections %d less superuserReservedConnections %d = %d: raise database.postgresql.maxConnections (and the CNPG instance's memory with it), or lower the pools, replicas or strategy.rollingUpdate.maxSurge" $maxPods (int .Values.replicas) $perPod (int $pg.pool.pluginsWithDatabase) (int $pg.pool.max) $needed (int $pg.maxConnections) (int $pg.superuserReservedConnections) $available) -}}
 {{- end -}}
-{{- $needed := mul $maxPods (add (mul $plugins $poolMax) 1) -}}
-{{- if or (lt $poolMax 1) (gt $needed $available) -}}
-{{- fail (printf "database.postgresql: %d pods during a rollout (replicas plus surge) × (%d plugins × a pool of %d + 1) needs %d connections, more than max_connections %d less %d reserved: raise database.postgresql.maxConnections or lower database.postgresql.pool.max, replicas or strategy.rollingUpdate.maxSurge" $maxPods $plugins (max $poolMax 1) (mul $maxPods (add (mul $plugins (max $poolMax 1)) 1)) (int $pg.maxConnections) (int $pg.superuserReservedConnections)) -}}
-{{- end -}}
-{{- $poolMax -}}
 {{- end }}

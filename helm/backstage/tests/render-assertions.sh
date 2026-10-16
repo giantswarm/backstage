@@ -36,10 +36,10 @@
 # * the VerticalPodAutoscaler gated on its toggle and on the cluster serving
 #   the kind, without which a default install on a cluster without the VPA
 #   CRD fails with "no matches for kind VerticalPodAutoscaler".
-# * the per-plugin database pool sized so the pods of a rollout fit the CNPG
-#   cluster's max_connections, without which a surge pod fails its start with
-#   "remaining connection slots are reserved for roles with the SUPERUSER
-#   attribute".
+# * the plugins' database pools, fixed so a scale rolls no pod, and the render
+#   check that the pods of a rollout fit the CNPG cluster's max_connections,
+#   without which a surge pod fails its start with "remaining connection slots
+#   are reserved for roles with the SUPERUSER attribute".
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -291,44 +291,56 @@ if [ "${config_order}" != "app-config.yaml,app-config.production.yaml,app-config
   failed=1
 fi
 
-echo "--> database.postgresql: the pods of a rollout fit max_connections, or the render fails"
-# Every plugin holds its own pool and a pod one schema connection: replicas
-# plus surge, times the plugins' pools plus one, stays within max_connections
-# less the reserved slots.
-database_pool() {
+echo "--> database.postgresql: fixed plugin pools, and the pods of a rollout fit max_connections or the render fails"
+# Every plugin holds its own pool, and a pod two connections beside them
+# (events' LISTEN, the schema check): two pods per replica (the terminating
+# ones still hold theirs) plus the surge, times that, stay within
+# max_connections less the reserved slots.
+database_config_json() {
   yq 'select(.kind == "ConfigMap" and .metadata.name == "backstage-database-config") | .data["app-config-database.yaml"]' "${work_dir}/$1.yaml" |
-    yq -o=json -I=0 '.backend.database.knexConfig.pool'
+    yq -o=json -I=0 "$2"
 }
-expect_pool() {
-  local name=$1 want=$2
+expect_json() {
+  local name=$1 path=$2 want=$3
   local got
-  got=$(database_pool "${name}")
+  got=$(database_config_json "${name}" "${path}")
   if [ "${got}" != "${want}" ]; then
-    echo "FAIL: ${name}: the database pool is ${got}, want ${want}"
+    echo "FAIL: ${name}: ${path} is ${got}, want ${want}"
     failed=1
   fi
 }
-# ((300 - 3) / (1 + 1) - 1) / 25: one replica, the default 25 % surge rounds up.
-expect_pool postgresql '{"max":5,"min":0}'
-render pool-surge --set database.engine=postgresql --set replicas=2
-expect_pool pool-surge '{"max":3,"min":0}'
-render pool-percent --set database.engine=postgresql --set replicas=4 --set-string 'strategy.rollingUpdate.maxSurge=50%'
-expect_pool pool-percent '{"max":1,"min":0}'
-render pool-no-surge --set database.engine=postgresql --set replicas=3 --set strategy.rollingUpdate.maxSurge=0
-expect_pool pool-no-surge '{"max":3,"min":0}'
-render pool-recreate --set database.engine=postgresql --set replicas=2 --set strategy.type=Recreate
-expect_pool pool-recreate '{"max":5,"min":0}'
-render pool-set --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.max=3
-expect_pool pool-set '{"max":3,"min":0}'
-render_fails pool-too-large 'a pool of 10 + 1) needs 753 connections, more than max_connections 300 less 3 reserved' --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.max=10
-render_fails pool-too-many-pods '25 pods during a rollout' --set database.engine=postgresql --set replicas=20
-render pool-raised --set database.engine=postgresql --set replicas=20 --set database.postgresql.maxConnections=700
-expect_pool pool-raised '{"max":1,"min":0}'
-cnpg_parameters=$(yq -o=json -I=0 'select(.kind == "Cluster") | .spec.postgresql.parameters' "${work_dir}/pool-raised.yaml")
-if [ "${cnpg_parameters}" != '{"max_connections":"700","superuser_reserved_connections":"3"}' ]; then
-  echo "FAIL: pool-raised: the CNPG parameters are ${cnpg_parameters}, want max_connections 700 with 3 reserved"
+expect_json postgresql '.backend.database.knexConfig' '{"pool":{"max":2,"min":0}}'
+expect_json postgresql '.backend.database.plugin' '{"catalog":{"knexConfig":{"pool":{"max":10}}},"scaffolder":{"knexConfig":{"pool":{"max":5}}},"search":{"knexConfig":{"pool":{"max":5}}}}'
+cnpg_spec() {
+  yq -o=json -I=0 "select(.kind == \"Cluster\") | $2" "${work_dir}/$1.yaml"
+}
+got=$(cnpg_spec postgresql '.spec.postgresql.parameters')
+if [ "${got}" != '{"max_connections":"400","superuser_reserved_connections":"3"}' ]; then
+  echo "FAIL: postgresql: the CNPG parameters are ${got}, want max_connections 400 with 3 reserved"
   failed=1
 fi
+got=$(cnpg_spec postgresql '.spec.resources.limits.memory')
+if [ "${got}" != '"1Gi"' ]; then
+  echo "FAIL: postgresql: the CNPG memory limit is ${got}, want 1Gi for 400 connections"
+  failed=1
+fi
+# A scale changes no database config, so it rolls no pod.
+render pool-one --set database.engine=postgresql
+render pool-scaled --set database.engine=postgresql --set replicas=2
+if [ -z "$(annotation pool-one checksum/configmaps)" ] || [ "$(annotation pool-one checksum/configmaps)" != "$(annotation pool-scaled checksum/configmaps)" ]; then
+  echo "FAIL: pool-scaled: replicas 1 -> 2 changes the configmaps checksum"
+  failed=1
+fi
+# 66 connections a pod: 22 plugins × 2, catalog 10, scaffolder 5, search 5, plus 2.
+# replicas 2: 2 × 2 + 1 surge = 5 pods, 330 of 397.
+render_fails pool-replicas-3 '7 backend pods during a rollout (2 × replicas 3, terminating ones included, plus the surge) × 66 connections each (25 plugins with database.postgresql.pool.max 2 or their database.postgresql.pool.plugins entry, plus 2) = 462, more than maxConnections 400 less superuserReservedConnections 3 = 397' --set database.engine=postgresql --set replicas=3
+render pool-replicas-3-raised --set database.engine=postgresql --set replicas=3 --set database.postgresql.maxConnections=500
+render pool-no-surge --set database.engine=postgresql --set replicas=3 --set strategy.rollingUpdate.maxSurge=0
+render_fails pool-percent '8 backend pods' --set database.engine=postgresql --set replicas=3 --set-string 'strategy.rollingUpdate.maxSurge=50%'
+render pool-recreate --set database.engine=postgresql --set replicas=2 --set strategy.type=Recreate --set database.postgresql.pool.max=3
+render_fails pool-recreate-large '4 backend pods' --set database.engine=postgresql --set replicas=2 --set strategy.type=Recreate --set database.postgresql.pool.max=4
+render_fails pool-plugin-large '5 backend pods' --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.plugins.catalog=40
+render_fails pool-new-plugin '5 backend pods' --set database.engine=postgresql --set replicas=2 --set database.postgresql.pool.pluginsWithDatabase=32
 
 echo "--> backstage.args: the image's bundled config files by default, an explicit list replaces them"
 render args-default --set-string 'backstage.appConfig=app: portal'

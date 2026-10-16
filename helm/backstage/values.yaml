@@ -324,21 +324,40 @@ database:
     storageSize: 5Gi
 
     # @schema type:integer;minimum:1
-    # -- PostgreSQL `max_connections` of the CNPG cluster. The backend pods running at once during a rollout (replicas plus the rolling update's surge) share it, less `superuserReservedConnections`: each holds every plugin's pool plus one connection to ensure a schema. The chart sizes each plugin's pool to fit, and fails the render when `pool.max` does not fit.
-    maxConnections: 300
+    # -- PostgreSQL `max_connections` of the CNPG cluster. The backend pods that hold connections at once during a rollout (two per replica, the terminating ones included, plus the surge) share it less `superuserReservedConnections`, each with every plugin's pool plus two: the render fails when they do not fit. Every connection costs the instance memory: raise `resources` with it.
+    maxConnections: 400
 
     # @schema type:integer;minimum:0
     # -- PostgreSQL `superuser_reserved_connections` of the CNPG cluster: the slots kept for the operator's superuser, which the backend's `app` role never gets.
     superuserReservedConnections: 3
 
-    # -- The backend's database pools. Every backend plugin with a database holds its own pool, which releases idle connections (min 0).
+    # @schema $ref:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/refs/heads/master/v1.35.1/_definitions.json#/definitions/io.k8s.api.core.v1.ResourceRequirements;additionalProperties:true
+    # -- Resources of each CNPG instance, sized for `maxConnections`.
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+        ephemeral-storage: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+        ephemeral-storage: 2Gi
+
+    # -- The backend's database pools: every backend plugin holds its own, which releases idle connections (min 0).
     pool:
-      # @schema type:integer;minimum:0
-      # -- Connections per plugin pool. 0 takes the largest pool that fits `maxConnections`; a set value that does not fit fails the render.
-      max: 0
+      # @schema type:integer;minimum:1
+      # -- Connections per plugin pool for the plugins without an entry in `plugins`: most open one only for their service-to-service keys.
+      max: 2
+
+      # @schema type:object;additionalProperties:{"type":"integer","minimum":1}
+      # -- Connections per plugin pool by plugin id, for the busy plugins.
+      plugins:
+        catalog: 10
+        scaffolder: 5
+        search: 5
 
       # @schema type:integer;minimum:1
-      # -- Backend plugins that open a database pool in the image: every backend plugin does, for its service-to-service keys at least, PagerDuty's included. An image that adds a plugin raises it.
+      # -- Backend plugins in the image, each with a pool. The backend's tests check it against packages/backend/src/index.ts.
       pluginsWithDatabase: 25
 
     # @schema type:string
