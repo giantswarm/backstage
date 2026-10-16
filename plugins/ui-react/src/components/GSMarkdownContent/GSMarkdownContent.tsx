@@ -1,12 +1,10 @@
 import { useMemo } from 'react';
-import { MarkdownContent } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
 import { useInRouterContext } from 'react-router-dom';
 import { createMarkdownLinkResolver } from '../../utils/resolveMarkdownLink';
-import { MermaidDiagram } from '../MermaidDiagram';
 import { InPageAnchors } from './InPageAnchors';
-import { splitMermaid } from './splitMermaid';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 type Dialect = 'gfm' | 'common-mark';
 
@@ -20,7 +18,7 @@ type GSMarkdownContentProps = {
 };
 
 const useStyles = makeStyles(theme => ({
-  // `MarkdownContent` emits bare `<p>`/`<li>` tags without MUI Typography
+  // The markdown renderer emits bare `<p>`/`<li>` tags without MUI Typography
   // classes, so they fall back to the document line-height and read
   // inconsistently — both next to surrounding MUI/bui text and against each
   // other (roomy paragraphs, dense list items). Normalise both to the body1
@@ -48,7 +46,8 @@ const useStyles = makeStyles(theme => ({
     '& img': {
       maxWidth: '100%',
     },
-    '& p, & li': {
+    // Not inside a diagram: Mermaid sizes its labels in its own font.
+    '& p:not(svg p), & li:not(svg li)': {
       ...theme.typography.body1,
     },
     // Space consecutive list items apart so lists don't read as one dense block.
@@ -80,14 +79,14 @@ const useStyles = makeStyles(theme => ({
 /**
  * Shared markdown renderer for Giant Swarm plugins.
  *
- * Wraps `@backstage/core-components`' `MarkdownContent` with a consistent
- * default (GFM) and the paragraph-typography fix every caller otherwise had to
- * add by hand. Use this for rendering user/authored markdown — README and SOUL
+ * Renders as `@backstage/core-components`' `MarkdownContent` does, with a
+ * consistent default (GFM) and the paragraph-typography fix every caller
+ * otherwise had to add by hand. Use this for rendering user/authored markdown — README and SOUL
  * of catalog entities, plan documents, PR bodies and comments, etc.
  *
  * A `#heading` link jumps to its target within this document, matched the way
  * GitHub matches it, and moves focus there as the browser does for a fragment.
- * A top-level ```mermaid block renders as its diagram, as on GitHub.
+ * A ```mermaid block renders as its diagram, as on GitHub.
  */
 export const GSMarkdownContent = ({
   content,
@@ -103,20 +102,13 @@ export const GSMarkdownContent = ({
   // Without a router there are no links to jump from: they render through it.
   const inRouter = useInRouterContext();
 
-  const parts = useMemo(() => splitMermaid(content), [content]);
-
   const rootClassName = classNames(classes.root, className);
-  const markdown = parts.map((part, index) =>
-    part.kind === 'mermaid' ? (
-      <MermaidDiagram key={index} source={part.source} />
-    ) : (
-      <MarkdownContent
-        key={index}
-        content={part.text}
-        dialect={dialect}
-        transformLinkUri={transformLinkUri}
-      />
-    ),
+  const markdown = (
+    <MarkdownRenderer
+      content={content}
+      dialect={dialect}
+      transformLinkUri={transformLinkUri}
+    />
   );
 
   return inRouter ? (

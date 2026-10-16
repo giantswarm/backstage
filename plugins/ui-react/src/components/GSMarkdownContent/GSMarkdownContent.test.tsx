@@ -3,6 +3,19 @@ import { renderInTestApp } from '@backstage/test-utils';
 import { useLocation } from 'react-router-dom';
 import { GSMarkdownContent } from './GSMarkdownContent';
 
+jest.mock('mermaid', () => ({
+  __esModule: true,
+  default: {
+    initialize: jest.fn(),
+    render: jest.fn(async (id: string, source: string) => {
+      if (source.startsWith('graph oops')) {
+        throw new Error('Parse error on line 1:');
+      }
+      return { svg: `<svg id="${id}"><text>${source}</text></svg>` };
+    }),
+  },
+}));
+
 const LocationHash = () => <output>{`hash:${useLocation().hash}`}</output>;
 
 describe('GSMarkdownContent', () => {
@@ -265,6 +278,118 @@ describe('GSMarkdownContent', () => {
       expect(
         screen.getByRole('heading', { name: 'Install' }),
       ).not.toHaveFocus();
+    });
+  });
+
+  describe('Mermaid diagrams', () => {
+    const fence = (source: string, indent = '') =>
+      [
+        `${indent}${'```'}mermaid`,
+        `${indent}${source}`,
+        `${indent}${'```'}`,
+      ].join('\n');
+
+    it('renders mermaid blocks as diagrams and other languages as code', async () => {
+      const { container } = render(
+        <GSMarkdownContent
+          content={[
+            '# Architecture',
+            '',
+            fence('graph TD; A-->B'),
+            '',
+            'Between the diagrams.',
+            '',
+            fence('graph oops'),
+            '',
+            '```yaml',
+            'kind: Pod',
+            '```',
+          ].join('\n')}
+        />,
+      );
+
+      expect(
+        screen.getByRole('heading', { name: 'Architecture' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Between the diagrams.')).toBeInTheDocument();
+      expect(await screen.findAllByTestId('mermaid-diagram')).toHaveLength(1);
+      expect(await screen.findByRole('note')).toBeInTheDocument();
+      expect(container.querySelector('code.language-yaml')).toHaveTextContent(
+        'kind: Pod',
+      );
+      // A diagram never sits inside a <pre>.
+      expect(container.querySelector('pre [data-testid]')).toBeNull();
+    });
+
+    it('keeps a diagram inside the HTML block around it', async () => {
+      const { container } = render(
+        <GSMarkdownContent
+          content={[
+            '<details><summary>Diagram</summary>',
+            '',
+            fence('graph TD; A-->B'),
+            '',
+            '</details>',
+            '',
+            '<!--',
+            fence('graph TD; Hidden---Comment'),
+            '-->',
+          ].join('\n')}
+        />,
+      );
+
+      const diagram = await screen.findByTestId('mermaid-diagram');
+      expect(diagram.closest('details')).not.toBeNull();
+      expect(container.querySelectorAll('details')).toHaveLength(1);
+      // The commented-out diagram stays hidden, as on GitHub.
+      expect(screen.getAllByTestId('mermaid-diagram')).toHaveLength(1);
+      expect(container).not.toHaveTextContent('Hidden');
+    });
+
+    it('keeps a diagram in its list item, the list whole', async () => {
+      const { container } = render(
+        <GSMarkdownContent
+          content={[
+            '1. Step one:',
+            '',
+            fence('graph TD; A-->B', '   '),
+            '',
+            '2. Step two',
+          ].join('\n')}
+        />,
+      );
+
+      const diagram = await screen.findByTestId('mermaid-diagram');
+      expect(diagram.closest('li')).toHaveTextContent('Step one');
+      expect(container.querySelectorAll('ol')).toHaveLength(1);
+      expect(container.querySelectorAll('li')).toHaveLength(2);
+    });
+
+    it('resolves references and footnotes across a diagram', async () => {
+      const { container } = await renderInTestApp(
+        <GSMarkdownContent
+          content={[
+            'See [the spec][spec] and a note.[^1]',
+            '',
+            fence('graph TD; A-->B'),
+            '',
+            '[spec]:',
+            '  https://example.com/spec',
+            '',
+            '[^1]: The note.',
+          ].join('\n')}
+        />,
+      );
+
+      await screen.findByTestId('mermaid-diagram');
+      expect(screen.getByRole('link', { name: /the spec/ })).toHaveAttribute(
+        'href',
+        'https://example.com/spec',
+      );
+      // The footnote referenced before the diagram is the one note after it.
+      expect(container).not.toHaveTextContent('[^1]');
+      expect(container.querySelectorAll('sup a')).toHaveLength(1);
+      expect(screen.getByText('The note.').closest('ol li')).not.toBeNull();
     });
   });
 });

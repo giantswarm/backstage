@@ -8670,7 +8670,6 @@ __metadata:
     "@testing-library/user-event": "npm:^14.0.0"
     ai: "npm:^7.0.101"
     classnames: "npm:^2.5.1"
-    mermaid: "npm:^11.14.0"
     msw: "npm:^2.0.0"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
     react-markdown: "npm:^10.0.0"
@@ -9385,9 +9384,13 @@ __metadata:
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
     react-aria-components: "npm:~1.17.0"
     react-helmet: "npm:6.1.0"
+    react-markdown: "npm:^8.0.0"
     react-syntax-highlighter: "npm:^16.0.0"
     react-use: "npm:^17.6.0"
     recharts: "npm:^3.9.0"
+    rehype-raw: "npm:^6.0.0"
+    rehype-sanitize: "npm:^5.0.0"
+    remark-gfm: "npm:^3.0.1"
     use-local-storage-state: "npm:^19.5.0"
   peerDependencies:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Alert, Flex } from '@backstage/ui';
 import { makeStyles, useTheme } from '@material-ui/core/styles';
 
@@ -6,8 +6,8 @@ const useStyles = makeStyles(theme => ({
   diagram: {
     display: 'flex',
     justifyContent: 'center',
-    overflowX: 'auto',
     margin: theme.spacing(2, 0),
+    // Scaled to fit, as GitHub shows a diagram.
     '& svg': {
       maxWidth: '100%',
       height: 'auto',
@@ -23,10 +23,10 @@ async function renderDiagram(id: string, source: string, dark: boolean) {
     startOnLoad: false,
     theme: dark ? 'dark' : 'default',
     securityLevel: 'strict',
+    // An invalid diagram throws without leaving Mermaid's error graphic
+    // behind on the page.
+    suppressErrorRendering: true,
   });
-  // `parse` throws on an invalid diagram without touching the document;
-  // `render` would leave its error graphic behind.
-  await mermaid.parse(source);
   const { svg } = await mermaid.render(id, source);
   return svg;
 }
@@ -49,19 +49,23 @@ export const MermaidDiagram = ({ source }: { source: string }) => {
   const classes = useStyles();
   const dark = useTheme().palette.type === 'dark';
   // Mermaid needs an id usable as a CSS selector; useId returns ":r1:".
-  const id = `mermaid-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const baseId = `mermaid-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  // Each render takes a fresh id: Mermaid first removes the element with its
+  // id, which would be the diagram shown until the new one is in.
+  const renders = useRef(0);
   const [rendered, setRendered] = useState<Rendered>();
 
   useEffect(() => {
     let cancelled = false;
-    renderDiagram(id, source, dark).then(
+    renders.current += 1;
+    renderDiagram(`${baseId}-${renders.current}`, source, dark).then(
       svg => !cancelled && setRendered({ svg }),
       error => !cancelled && setRendered({ error: summarize(error) ?? '' }),
     );
     return () => {
       cancelled = true;
     };
-  }, [id, source, dark]);
+  }, [baseId, source, dark]);
 
   const code = (
     <pre>

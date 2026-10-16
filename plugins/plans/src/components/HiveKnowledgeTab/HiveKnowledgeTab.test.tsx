@@ -16,17 +16,14 @@ jest.mock('mermaid', () => ({
   __esModule: true,
   default: {
     initialize: jest.fn(),
-    parse: jest.fn(async (source: string) => {
+    render: jest.fn(async (id: string, source: string) => {
       if (!source.startsWith('graph')) {
         throw new Error(
           'No diagram type detected matching given configuration',
         );
       }
-      return { diagramType: 'flowchart-v2' };
+      return { svg: `<svg id="${id}"><g class="node"></g></svg>` };
     }),
-    render: jest.fn(async (id: string) => ({
-      svg: `<svg id="${id}"><g class="node"></g></svg>`,
-    })),
   },
 }));
 
