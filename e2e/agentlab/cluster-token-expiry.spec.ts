@@ -107,6 +107,13 @@ async function expireSession(page: Page) {
   await page.clock.fastForward('02:00:00');
 }
 
+/**
+ * The session-expired copy a Cluster access row shows: the mint's own ("--
+ * sign in again") or the portal fetch's ("Your session expired, sign in
+ * again."), whichever of them found the session gone first.
+ */
+const SESSION_EXPIRED = /Your session expired(,| --) sign in again/;
+
 function clusterAccess(page: Page) {
   return page.getByText('Cluster access', { exact: true }).first();
 }
@@ -164,7 +171,7 @@ test('a background cluster-token mint after the session expired opens no Login R
       ).toBeVisible();
     }
     await expect(
-      page.getByText('Your session expired -- sign in again').first(),
+      page.getByText(SESSION_EXPIRED).first(),
       'the popover tells the person the session expired',
     ).toBeVisible();
     await test.info().attach('background-mint-after-expiry', {
@@ -221,7 +228,7 @@ test('a background cluster-token mint after the session expired opens no Login R
       })
       .toBe(true);
     await expect(
-      page.getByText('Your session expired -- sign in again'),
+      page.getByText(SESSION_EXPIRED),
       'Cluster access no longer reports the session expired',
     ).toHaveCount(0, { timeout: 30_000 });
   } finally {
