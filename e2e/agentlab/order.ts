@@ -1,5 +1,5 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 /**
  * The order the suite runs its spec files in (`AGENTLAB_E2E_ORDER`).
@@ -11,12 +11,16 @@ import { join, relative } from 'node:path';
  * an earlier run printed, so a failure is replayed as it happened.
  *
  * A shuffled run points the config's `testDir` at a directory of stubs, one
- * per spec, each importing its spec: `0042/agent-avatars.spec.ts` holds
- * `import '<e2e/agentlab>/agent-avatars.spec';`. Playwright orders the stubs
- * by their numbered directories and reports every test at its spec's own
- * path; the stub keeps the spec's file name, so the projects' `testMatch`
- * globs (`portalModes.ts`) select it as they select the spec. The workers are
- * the default run's: one admin page each, kept across the files.
+ * per spec, each importing its spec: `0042/e2e/agentlab/agent-avatars.spec.ts`
+ * holds `import '<e2e/agentlab>/agent-avatars.spec';`. Playwright orders the
+ * stubs by their numbered directories and reports every test at its spec's
+ * own path. Under its number the stub keeps the spec's path from the
+ * repository root, so the projects' `testMatch` globs (`portalModes.ts`) select
+ * it as they select the spec, and a file filter on the command line
+ * (`e2e/agentlab/agents.spec.ts:25`), which Playwright matches against the
+ * loaded file's path before it matches the line against the test's, selects
+ * the stub that loads that spec. The workers are the default run's: one admin
+ * page each, kept across the files.
  */
 export type SpecOrder = { kind: 'default' } | { kind: 'shuffle'; seed: number };
 
@@ -65,23 +69,32 @@ export function shuffled<T>(items: readonly T[], seed: number): T[] {
 
 /**
  * Writes the stubs of `specDir`'s `*.spec.ts` files in the seed's order into
- * `stubDir`, replacing what an earlier run left there, and returns `stubDir`.
+ * `stubDir`, each under its position and the spec's path from `root`,
+ * replacing what an earlier run left there, and returns `stubDir`.
  */
 export function writeShuffledSpecs(
   specDir: string,
   stubDir: string,
   seed: number,
+  root: string,
 ): string {
   const specs = readdirSync(specDir)
     .filter(name => name.endsWith('.spec.ts'))
     .sort();
   rmSync(stubDir, { recursive: true, force: true });
   shuffled(specs, seed).forEach((spec, index) => {
-    const dir = join(stubDir, String(index).padStart(4, '0'));
-    mkdirSync(dir, { recursive: true });
-    const target = relative(dir, join(specDir, spec.replace(/\.ts$/, '')));
+    const stub = join(
+      stubDir,
+      String(index).padStart(4, '0'),
+      relative(root, join(specDir, spec)),
+    );
+    mkdirSync(dirname(stub), { recursive: true });
+    const target = relative(
+      dirname(stub),
+      join(specDir, spec.replace(/\.ts$/, '')),
+    );
     writeFileSync(
-      join(dir, spec),
+      stub,
       `// AGENTLAB_E2E_ORDER=shuffle:${seed}, position ${index}.\nimport '${target}';\n`,
     );
   });

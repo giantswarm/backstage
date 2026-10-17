@@ -2,7 +2,11 @@ import { CatalogClient } from '@backstage/catalog-client';
 import { ConfigReader } from '@backstage/core-app-api';
 import { SessionState } from '@backstage/core-plugin-api';
 import { DefaultEntityPresentationApi } from '@backstage/plugin-catalog';
-import { isSessionExpiredError } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { LOGIN_REQUESTED_BY_ATTRIBUTE } from '@giantswarm/backstage-plugin-gs';
+import {
+  isSessionExpiredError,
+  SESSION_EXPIRED_MESSAGE,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { createBackstageFetchApi } from './backstageFetch';
 
 const BASE = 'http://backend.test/api/catalog';
@@ -30,10 +34,17 @@ function setup(
   });
   // The app identity: its getBackstageIdentity resolves once the sign-in page
   // set it; its getCredentials is the interactive path, which may prompt.
+  const requestedBy: (string | null)[] = [];
   const identityApi = {
     getProfileInfo: jest.fn(async () => ({})),
     getBackstageIdentity: jest.fn(() => signInDone),
-    getCredentials: jest.fn(async () => ({ token: 'interactive-token' })),
+    // What `data-login-requested-by` names while the interactive path asks.
+    getCredentials: jest.fn(async () => {
+      requestedBy.push(
+        document.body.getAttribute(LOGIN_REQUESTED_BY_ATTRIBUTE),
+      );
+      return { token: 'interactive-token' };
+    }),
     signOut: jest.fn(async () => {}),
   };
   const getBackstageIdentity = jest.fn(async (_?: { optional?: boolean }) =>
@@ -79,6 +90,7 @@ function setup(
   return {
     catalogApi,
     identityApi,
+    requestedBy,
     getBackstageIdentity,
     sent,
     signIn: () => signedIn(),
@@ -134,7 +146,7 @@ describe('createBackstageFetchApi', () => {
       const error = await catalogApi.getEntities().catch(e => e);
 
       expect(isSessionExpiredError(error)).toBe(true);
-      expect(error.message).toBe('Your session expired, sign in again.');
+      expect(error.message).toBe(SESSION_EXPIRED_MESSAGE);
       expect(getBackstageIdentity).toHaveBeenCalledWith({ optional: true });
       expect(getBackstageIdentity).not.toHaveBeenCalledWith();
       expect(identityApi.getCredentials).not.toHaveBeenCalled();
@@ -197,8 +209,14 @@ describe('createBackstageFetchApi', () => {
     ])(
       'takes the interactive path for %s, which may ask for the sign-in',
       async (_, kind) => {
-        const { catalogApi, identityApi, getBackstageIdentity, sent, signIn } =
-          setup({ session: false, gesture: true });
+        const {
+          catalogApi,
+          identityApi,
+          requestedBy,
+          getBackstageIdentity,
+          sent,
+          signIn,
+        } = setup({ session: false, gesture: true });
         signIn();
 
         if (kind === 'read') {
@@ -208,6 +226,11 @@ describe('createBackstageFetchApi', () => {
         }
 
         expect(identityApi.getCredentials).toHaveBeenCalledTimes(1);
+        // A sign-in it opens is the portal fetch’s.
+        expect(requestedBy).toEqual(['portal-fetch']);
+        expect(document.body.hasAttribute(LOGIN_REQUESTED_BY_ATTRIBUTE)).toBe(
+          false,
+        );
         expect(getBackstageIdentity).not.toHaveBeenCalled();
         expect(sent[0].headers.get('X-Backstage-Token')).toBe(
           'Bearer interactive-token',

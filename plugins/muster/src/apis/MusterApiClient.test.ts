@@ -7,7 +7,10 @@ import {
   __resetSignedInConfigForTests,
   setSignedInConfig,
 } from '@giantswarm/backstage-plugin-gs-react';
-import { ClusterTokenError } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ClusterTokenError,
+  SESSION_EXPIRED_MESSAGE,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MusterApiClient, toolErrorDetails } from './MusterApiClient';
 import { MusterAuthProviders } from './MusterAuthProviders';
 import { MusterAnswerCutError, MusterAuthProvidersApi } from './types';
@@ -477,7 +480,7 @@ describe('MusterApiClient token selection', () => {
       name: 'MusterTokenMintError',
       reason: 'session-expired',
       installation: 'gazelle',
-      message: 'Your session expired, sign in again.',
+      message: SESSION_EXPIRED_MESSAGE,
     });
     expect(t.fetchMock).not.toHaveBeenCalled();
   });
@@ -506,7 +509,7 @@ describe('MusterApiClient token selection', () => {
       name: 'MusterTokenMintError',
       reason: 'session-expired',
       installation: 'gazelle',
-      message: 'Your session expired, sign in again.',
+      message: SESSION_EXPIRED_MESSAGE,
     });
   });
 
@@ -528,7 +531,7 @@ describe('MusterApiClient token selection', () => {
     ).rejects.toMatchObject({
       name: 'MusterTokenMintError',
       reason: 'session-expired',
-      message: 'Your session expired, sign in again.',
+      message: SESSION_EXPIRED_MESSAGE,
     });
   });
 

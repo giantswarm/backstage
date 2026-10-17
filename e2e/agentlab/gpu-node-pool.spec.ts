@@ -35,8 +35,10 @@ import {
 /**
  * GPU node pools on the Models pages, against a lab whose agent-platform chart
  * carries cluster-manager (giantswarm/agent-platform#316, chart 4.26.0 with
- * `components.cluster-manager.enabled: true`). The suite is skipped with the
- * reason until AGENTLAB_CLUSTER_MANAGER=1 says the lab has it.
+ * `components.cluster-manager.enabled: true`). This first describe calls the
+ * real cluster-manager and is skipped with the reason until
+ * AGENTLAB_CLUSTER_MANAGER=1 says the lab has it; the describes below stub
+ * cluster-manager at the browser and run on any lab.
  *
  * The lab's kind cluster does not serve the Cluster API (`cluster.x-k8s.io`),
  * and cluster-manager 0.4.1+ says so: `list_clusters` answers no clusters and
