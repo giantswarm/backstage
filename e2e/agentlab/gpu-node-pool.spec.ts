@@ -242,17 +242,25 @@ async function snapshot(page: Page, name: string): Promise<void> {
   }
 }
 
-/** Toggle a size in the picker: the react-aria input is visually hidden, its label is what a person clicks. */
-/** Click the label of a visually hidden bui checkbox or switch input. */
-async function toggleByLabel(input: Locator): Promise<void> {
-  await input.locator('xpath=ancestor::label[1]').click();
+/**
+ * Set a bui checkbox or switch to `checked`, whatever its start state, and
+ * assert the end state: the react-aria input is visually hidden, its label is
+ * what a person clicks, and only when the state differs.
+ */
+async function setCheckedByLabel(
+  input: Locator,
+  checked: boolean,
+): Promise<void> {
+  if ((await input.isChecked()) !== checked) {
+    await input.locator('xpath=ancestor::label[1]').click();
+  }
+  await expect(input).toBeChecked({ checked });
 }
 
+/** Toggle a size in the picker. */
 async function toggleSize(picker: Locator, size: RegExp): Promise<void> {
   const checkbox = picker.getByRole('checkbox', { name: size });
-  const before = await checkbox.isChecked();
-  await checkbox.locator('xpath=ancestor::label[1]').click();
-  await expect(checkbox).toBeChecked({ checked: !before });
+  await setCheckedByLabel(checkbox, !(await checkbox.isChecked()));
 }
 
 /**
@@ -653,6 +661,9 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
   test('the form offers every zone of the cluster chosen and the cache off; two zones and the cache on travel to the dry run, the review, Deploy and the lifecycle panel', async ({
     page,
   }) => {
+    // The zones picker sits at the foot of the form, where the inbox's toast
+    // shows while the lab's OAuth fixture waits for a sign-in.
+    await dismissInboxToasts(page);
     const { calls } = await reachForm(page);
     // The zones are under More options, their default every zone (T67).
     await page.getByText('More options').click();
@@ -682,13 +693,12 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
     expect(dryRuns(calls)[0].arguments).not.toHaveProperty('teleport');
     await snapshot(page, 'gpu-pool-zones-cache-defaults');
 
-    // bui's checkbox and switch inputs are visually hidden under their labels: click the label.
-    await toggleByLabel(zones.getByRole('checkbox', { name: 'eu-central-1b' }));
-    await toggleByLabel(cache);
-    await expect(
+    // Two zones and the cache on, set from whatever state the form holds.
+    await setCheckedByLabel(
       zones.getByRole('checkbox', { name: 'eu-central-1b' }),
-    ).not.toBeChecked();
-    await expect(cache).toBeChecked();
+      false,
+    );
+    await setCheckedByLabel(cache, true);
     await expect(page.getByTestId('zones-choice')).toContainText(
       'The nodes launch in eu-central-1a, eu-central-1c only.',
     );
@@ -764,8 +774,9 @@ test.describe('models: the model cache is the cluster’s and billed while it st
       'The existing cache hf-cache ($27.37/month) stays and keeps costing until it is removed under Model cache.',
       { timeout: 60_000 },
     );
-    await toggleByLabel(
+    await setCheckedByLabel(
       page.getByRole('switch', { name: 'Keep a model cache' }),
+      true,
     );
     await expect(page.getByTestId('cache-cost')).toContainText(
       '$27.37/month at list prices — billed while the claim exists, after this pool is removed too, until the cache is removed under Model cache.',
@@ -814,7 +825,7 @@ test.describe('models: the model cache is the cluster’s and billed while it st
         'Acknowledge that the cached weights go with the cache.',
       ),
     ).toBeVisible();
-    await toggleByLabel(confirm.getByRole('checkbox'));
+    await setCheckedByLabel(confirm.getByRole('checkbox'), true);
     await snapshot(page, 'gpu-pool-cache-remove-confirm');
     await remove.click();
     await expect(confirm).toBeHidden({ timeout: 30_000 });
