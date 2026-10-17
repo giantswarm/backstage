@@ -28,24 +28,30 @@ import {
 // this plugin's existing imports.
 export { formatBytes, formatCount, formatSeconds };
 
+/** Thousands, millions, billions: each unit 1000 times the one before. */
+const TOKEN_UNITS = ['k', 'M', 'B'];
+
 /**
- * Format a token count compactly (`1.5k`, `1.2M`), rounded half up to a tenth
- * of its unit: 48,478 reads `48.5k`, and so does 48,450.
+ * Format a token count compactly (`1.5k`, `1.2M`, `2.3B`), rounded half up to
+ * a tenth of its unit: 48,478 reads `48.5k`, and so does 48,450.
  *
  * Rounded in whole tenths rather than by `toFixed` on the quotient, whose
  * binary fraction rounds some halves down (`48.05.toFixed(1)` is `48.0`). The
- * unit is picked after rounding, so 999,950 reads `1.0M`, not `1000.0k`.
+ * unit is picked after rounding, so 999,950 reads `1.0M`, not `1000.0k`. An
+ * installation's input over a month can pass a billion, hence `B`.
  */
 export function formatTokens(total: number): string {
   const tokens = Math.round(total);
   if (tokens < 1000) {
     return String(tokens);
   }
-  const thousandTenths = Math.round(tokens / 100);
-  if (thousandTenths < 10_000) {
-    return `${(thousandTenths / 10).toFixed(1)}k`;
+  let unit = 0;
+  let tenths = Math.round(tokens / 100);
+  while (tenths >= 10_000 && unit < TOKEN_UNITS.length - 1) {
+    unit += 1;
+    tenths = Math.round(tokens / (100 * 1000 ** unit));
   }
-  return `${(Math.round(tokens / 100_000) / 10).toFixed(1)}M`;
+  return `${(tenths / 10).toFixed(1)}${TOKEN_UNITS[unit]}`;
 }
 
 /** A currency to show costs in; see `InstallationCurrency` in the gs plugin. */

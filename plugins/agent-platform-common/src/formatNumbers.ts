@@ -59,6 +59,16 @@ export function formatBytes(bytes: number | undefined): string {
   }
   // Whole bytes are exact; above that one decimal until the figure has three
   // digits, where a decimal is noise ("498 MiB", "6.1 GiB").
-  const digits = unit === 0 || value >= 100 ? 0 : 1;
-  return `${value.toFixed(digits)} ${BYTE_UNITS[unit]}`;
+  const digitsFor = (figure: number, at: number) =>
+    at === 0 || figure >= 100 ? 0 : 1;
+  // The unit is settled after rounding: 1,048,575 bytes is 1023.999 KiB,
+  // which rounds to "1024 KiB" — a whole MiB.
+  if (
+    unit < BYTE_UNITS.length - 1 &&
+    Number(value.toFixed(digitsFor(value, unit))) >= 1024
+  ) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(digitsFor(value, unit))} ${BYTE_UNITS[unit]}`;
 }

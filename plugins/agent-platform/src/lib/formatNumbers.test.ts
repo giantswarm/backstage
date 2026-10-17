@@ -46,6 +46,9 @@ describe('formatTokens', () => {
     expect(formatTokens(999_949)).toBe('999.9k');
     expect(formatTokens(999_950)).toBe('1.0M');
     expect(formatTokens(999_999)).toBe('1.0M');
+    expect(formatTokens(999_949_999)).toBe('999.9M');
+    expect(formatTokens(999_950_000)).toBe('1.0B');
+    expect(formatTokens(2_300_000_000)).toBe('2.3B');
   });
 
   it('rounds a fractional count, an average say, to whole tokens', () => {
@@ -170,6 +173,13 @@ describe('formatBytes', () => {
     expect(formatBytes(6594474711)).toBe('6.1 GiB');
     expect(formatBytes(34254796848)).toBe('31.9 GiB');
     expect(formatBytes(120 * 1024 ** 3)).toBe('120 GiB');
+  });
+
+  it('moves to the next unit when the figure rounds up into it', () => {
+    // 1023.999 KiB rounds to 1024 KiB, which is a MiB.
+    expect(formatBytes(1_048_575)).toBe('1.0 MiB');
+    expect(formatBytes(1023 * 1024)).toBe('1023 KiB');
+    expect(formatBytes(1500 * 1024 ** 4)).toBe('1500 TiB');
   });
 });
 

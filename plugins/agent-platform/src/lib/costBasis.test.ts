@@ -33,6 +33,46 @@ describe('describeCostBasis', () => {
     expect(text).not.toContain('beside it');
   });
 
+  it('names the tokens the estimate does not price', () => {
+    // A model that reports thinking separately counts it in kagent's total
+    // and in neither part, so the estimate leaves it out and says so.
+    const text = describeCostBasis({ ...base, unpricedTokens: 20_000 });
+
+    expect(text).toContain('63.4k input and 481 output tokens.');
+    expect(text).toContain(
+      'kagent also counted 20.0k other tokens, such as thinking, which the estimate does not price.',
+    );
+    for (const tier of ['agent', 'installation'] as const) {
+      expect(
+        describeCostBasis({ ...base, tier, unpricedTokens: 20_000 }),
+      ).toContain('20.0k other tokens');
+    }
+  });
+
+  it('says nothing of unpriced tokens when there are none', () => {
+    for (const unpricedTokens of [undefined, 0, -3]) {
+      expect(describeCostBasis({ ...base, unpricedTokens })).not.toContain(
+        'other tokens',
+      );
+    }
+    // A diagnosis without a figure names no counts at all.
+    expect(
+      describeCostBasis({ ...base, tier: 'none', unpricedTokens: 20_000 }),
+    ).not.toContain('other tokens');
+  });
+
+  it('names the counts as the estimate prices them', () => {
+    // `estimateCost` prices a negative or non-finite count as none; the line
+    // must not read "NaNM" or "-12" beside that price.
+    const text = describeCostBasis({
+      ...base,
+      inputTokens: NaN,
+      outputTokens: -12,
+    });
+
+    expect(text).toContain('applied to the 0 input and 0 output tokens.');
+  });
+
   it('says a blend is a blend, per tier', () => {
     expect(
       describeCostBasis({ ...base, tier: 'agent', model: undefined }),

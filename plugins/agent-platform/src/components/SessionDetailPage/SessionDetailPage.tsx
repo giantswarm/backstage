@@ -1250,6 +1250,10 @@ export function SessionDetailPage() {
         window: rateWindow,
         inputTokens: timeline.tokens.prompt,
         outputTokens: timeline.tokens.completion,
+        unpricedTokens:
+          timeline.tokens.total -
+          timeline.tokens.prompt -
+          timeline.tokens.completion,
       })}
     />
   );

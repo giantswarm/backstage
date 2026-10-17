@@ -545,6 +545,31 @@ describe('SessionDetailPage', () => {
       ),
     ).toBeInTheDocument();
     expect(within(dialog).queryByText(/48,478/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/other tokens/)).not.toBeInTheDocument();
+  });
+
+  it('says how many tokens the estimate leaves unpriced', async () => {
+    // Thinking a model reports apart from its output is in kagent's total and
+    // in neither part, so the estimate does not price it, and the line says so.
+    mockPricedRate = 0.000003;
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: {
+        ...timeline,
+        tokens: { total: 68_478, prompt: 48_012, completion: 466 },
+      },
+    });
+    await render();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Session cost and context/ }),
+    );
+
+    expect(
+      within(
+        screen.getByRole('dialog', { name: 'Session cost and context' }),
+      ).getByText(/kagent also counted 20\.0k other tokens, such as thinking/),
+    ).toBeInTheDocument();
   });
 
   it('shows no reported cost when the runtime reports none', async () => {
