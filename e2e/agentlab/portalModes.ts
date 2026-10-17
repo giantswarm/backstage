@@ -32,6 +32,7 @@ export const SHELL_SPECS = [
   'inventory-gate.spec.ts',
   'kagent-denial-reason.spec.ts',
   'legacy-addresses.spec.ts',
+  'markdown-footnotes.spec.ts',
   'mcp-server-auth-modes.spec.ts',
   'mcp-servers.spec.ts',
   'mcp-sign-in-row.spec.ts',

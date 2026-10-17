@@ -276,23 +276,27 @@ describe('RecentSessions', () => {
       expect(screen.getByText('292 more')).toBeInTheDocument();
     });
 
-    it('orders by last activity: a session continued today leads, under Today (T91)', async () => {
-      const now = Date.now();
+    /**
+     * Renders the rail at a pinned local clock, with one session whose
+     * newest turn finished `secondsAgo` before it: the rows' times and the
+     * day boundaries they are grouped by come from the same clock.
+     */
+    async function renderContinuedSession(now: Date, secondsAgo: number) {
+      jest.useFakeTimers({ now, advanceTimers: true });
       const daysAgo = (days: number) =>
-        new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+        new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
       listSessions.mockResolvedValue([
         session('started', daysAgo(1), 'Started yesterday'),
-        session('continued', daysAgo(5), 'Continued today'),
+        session('continued', daysAgo(5), 'Continued'),
         session('idle', daysAgo(3), 'Untouched'),
       ]);
       listSessionStates.mockResolvedValue({
         evaluatedAt: 0,
         states: [
-          // Its newest turn finished a minute ago.
           {
             sessionId: 'continued',
             state: 'completed',
-            changedAt: now - 60_000,
+            changedAt: now.getTime() - secondsAgo * 1000,
           },
         ],
         unreadable: [],
@@ -300,16 +304,35 @@ describe('RecentSessions', () => {
       });
 
       await renderRecent({ shellRail: true, limit: 2 });
+    }
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('orders by last activity: a session continued today leads, under Today (T91)', async () => {
+      // Its newest turn finished a minute ago, at midday.
+      await renderContinuedSession(new Date(2026, 9, 9, 12, 0), 60);
 
       const today = await screen.findByRole('list', { name: 'Today' });
-      expect(
-        await within(today).findByText('Continued today'),
-      ).toBeInTheDocument();
+      expect(await within(today).findByText('Continued')).toBeInTheDocument();
       const week = screen.getByRole('list', { name: 'Previous 7 days' });
       expect(within(week).getByText('Started yesterday')).toBeInTheDocument();
       // Past the cutoff of two.
       expect(screen.queryByText('Untouched')).not.toBeInTheDocument();
       expect(screen.getByText('1 more')).toBeInTheDocument();
+    });
+
+    it('just after midnight, groups a turn that finished before it under Previous 7 days', async () => {
+      // At 00:00:30, a minute ago was yesterday.
+      await renderContinuedSession(new Date(2026, 9, 9, 0, 0, 30), 60);
+
+      const week = await screen.findByRole('list', { name: 'Previous 7 days' });
+      expect(await within(week).findByText('Continued')).toBeInTheDocument();
+      expect(within(week).getByText('Started yesterday')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('list', { name: 'Today' }),
+      ).not.toBeInTheDocument();
     });
 
     it('keeps a waiting session in view above the recent ones, however old (T100 H5)', async () => {
