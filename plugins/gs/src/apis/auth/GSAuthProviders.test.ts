@@ -6,6 +6,7 @@ import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { InstallationConfig } from '../installations';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { Config, ConfigReader } from '@backstage/config';
+import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 jest.mock('@backstage/core-app-api', () => ({
   ...jest.requireActual('@backstage/core-app-api'),
@@ -631,11 +632,11 @@ describe('GSAuthProviders cluster-token mint', () => {
     expect(clusterTokenRequests()).toEqual([]);
     expect(statusApi.recordSessionExpired).toHaveBeenCalledWith(
       'b',
-      'Your session expired -- sign in again',
+      SESSION_EXPIRED_MESSAGE,
     );
     expect(statusApi.recordSessionExpired).toHaveBeenCalledWith(
       'c',
-      'Your session expired -- sign in again',
+      SESSION_EXPIRED_MESSAGE,
     );
   });
 
@@ -655,7 +656,7 @@ describe('GSAuthProviders cluster-token mint', () => {
     expect(clusterTokenRequests()).toEqual([]);
     expect(statusApi.recordSessionExpired).toHaveBeenCalledWith(
       'b',
-      'Your session expired -- sign in again',
+      SESSION_EXPIRED_MESSAGE,
     );
   });
 

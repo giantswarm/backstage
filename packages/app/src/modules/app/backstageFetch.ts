@@ -9,6 +9,7 @@ import {
   SessionState,
 } from '@backstage/core-plugin-api';
 import { GSDiscoveryApiClient } from '@giantswarm/backstage-plugin-gs';
+import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type MainAuthApi = BackstageIdentityApi & SessionApi;
 
@@ -82,12 +83,12 @@ function gestureAwareIdentity(options: {
 
 /**
  * Thrown by a silent request when the portal session is gone, before it is
- * sent. Its message is the portal's session-expired copy, which
+ * sent. Its message is the portal's {@link SESSION_EXPIRED_MESSAGE}, which
  * `isSessionExpiredError` recognises.
  */
 export class PortalSessionExpiredError extends Error {
   constructor() {
-    super('Your session expired, sign in again.');
+    super(SESSION_EXPIRED_MESSAGE);
     this.name = 'PortalSessionExpiredError';
   }
 }

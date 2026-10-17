@@ -1,11 +1,12 @@
 import type { Page, Request } from '@playwright/test';
 import { connectToMuster, expect, open, signIn, test } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
+import { SESSION_EXPIRED_MESSAGE } from '../../plugins/kubernetes-react/src/lib/clusterTokenError';
 
 /**
  * A portal tab left open past the Dex ID token's lifetime: the token the
  * portal forwards to muster is refreshed before it lapses, and when no fresh
- * one can be had the person reads "Your session expired, sign in again." with
+ * one can be had the person reads the session-expired message with
  * the Sign in again action, never muster's raw "token has expired …
  * re-authenticate".
  *
@@ -18,7 +19,6 @@ const scope = `?installation=${lab.installation}`;
 const yourConnectorsPath = `/customize/connectors${scope}`;
 const internalPath = `/customize/connectors/internal${scope}`;
 const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
-const EXPIRED_COPY = 'Your session expired, sign in again.';
 
 function jwtExp(token: string): number {
   const payload = token.split('.')[1];
@@ -87,7 +87,7 @@ test('an ID token near its exp is refreshed before it is forwarded to muster', a
     expect(token, 'the lapsing token is never forwarded again').not.toBe(first);
     expect(jwtExp(token), 'a forwarded token is valid').toBeGreaterThan(at);
   }
-  await expect(page.getByText(EXPIRED_COPY)).toHaveCount(0);
+  await expect(page.getByText(SESSION_EXPIRED_MESSAGE)).toHaveCount(0);
   await expect(page.getByText(/token has expired/i)).toHaveCount(0);
   await context.close();
 });
@@ -110,7 +110,7 @@ test('a tab past the token’s lifetime offers Sign in again, never the raw must
   const before = sent.length;
   await openConnectorInApp(page, 'workspace-manager');
 
-  await expect(page.getByText(EXPIRED_COPY).first()).toBeVisible({
+  await expect(page.getByText(SESSION_EXPIRED_MESSAGE).first()).toBeVisible({
     timeout: 60_000,
   });
   await expect(
@@ -147,7 +147,7 @@ test("muster's expired-token answer reads as Sign in again", async ({
   );
   await open(admin, internalPath);
 
-  await expect(admin.getByText(EXPIRED_COPY).first()).toBeVisible({
+  await expect(admin.getByText(SESSION_EXPIRED_MESSAGE).first()).toBeVisible({
     timeout: 60_000,
   });
   await expect(
