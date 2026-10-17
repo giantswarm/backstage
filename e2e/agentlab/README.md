@@ -72,9 +72,10 @@ AGENTLAB_PORTAL_MODE=shell yarn test:e2e:agentlab --project agentlab-mobile
 
 Before every test the suite reads which portals the lab serves from the
 frontend config Backstage injects into its public `index.html`
-(`app.portals.agentPlatform`). A lab serving the classic portal only skips
-`agentlab-shell` and `agentlab-mobile` with that reason; any other mismatch
-with `AGENTLAB_PORTAL_MODE` fails at once, saying what to change.
+(`app.portals.agentPlatform`). Any mismatch with `AGENTLAB_PORTAL_MODE` fails
+at once, saying what to change: a `shell` run on a lab serving the classic
+portal only — a Backstage before 3.x, which has no shell, or one with it off —
+fails every test, never skips, so a green `shell` run proves the shell.
 
 Model hosting exists only where model-manager answers (`platform.modelManager`
 in the lab's `agentlab.yaml`): without it, every Model hosting and serving spec
