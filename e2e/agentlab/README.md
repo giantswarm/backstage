@@ -258,6 +258,17 @@ Dex rotates the refresh token on every silent re-login, so contexts sharing a
 cookie sign each other out. Tests that need another user open their own
 context (`signInAs`).
 
+## An idle tab
+
+Playwright's own calls (a locator's, the fake clock's) count as user gestures,
+so under it `navigator.userActivation.isActive` stays true and every request
+reads as one a person started. A spec that covers background reads — a timer,
+a poll, a refetch that must not open Login Required — calls `idleTab(page)`
+from `userActivation.ts` before the page's first navigation: the tab then
+reports no user activation until `touch(page)`, the person's own action, and
+`hasUserGesture(page)` asserts it. Without it such a spec never reaches the
+portal's silent path and passes or fails for the wrong reason.
+
 ## Lab conditions that are not portal bugs
 
 - A Backstage pod roll (a dev-image swap) drops every session, because the lab

@@ -8,6 +8,7 @@ import {
   test,
 } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
+import { hasUserGesture, idleTab, touch } from './userActivation';
 
 /**
  * The broker-backed cluster-token mint after the portal session expired, on a
@@ -106,30 +107,6 @@ async function expireSession(page: Page) {
   await page.clock.fastForward('02:00:00');
 }
 
-/**
- * Reports the tab's user activation as a browser does for a tab nobody
- * touches, until {@link touch}: Playwright's own calls count as gestures, so
- * under it a page reads as just clicked all the time.
- */
-async function idleTab(page: Page) {
-  await page.addInitScript(() => {
-    Object.defineProperty(Navigator.prototype, 'userActivation', {
-      configurable: true,
-      get: () => ({
-        isActive: Boolean((window as any).__e2eUserGesture),
-        hasBeenActive: true,
-      }),
-    });
-  });
-}
-
-/** The person acts: the tab's next requests carry a user gesture. */
-async function touch(page: Page) {
-  await page.evaluate(() => {
-    (window as any).__e2eUserGesture = true;
-  });
-}
-
 function clusterAccess(page: Page) {
   return page.getByText('Cluster access', { exact: true }).first();
 }
@@ -160,6 +137,10 @@ test('a background cluster-token mint after the session expired opens no Login R
       .poll(() => reads.length, { timeout: 30_000 })
       .toBeGreaterThanOrEqual(STAGED.length);
 
+    expect(
+      await hasUserGesture(page),
+      'the tab reports no user gesture while nobody touches it',
+    ).toBe(false);
     mints.length = 0;
     reads.length = 0;
     await expireSession(page);
