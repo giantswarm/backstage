@@ -4,9 +4,9 @@ import { contextOptionsFor, lab } from './lab';
 import { idleTab, touch } from './userActivation';
 
 /**
- * The Installations page left open after the portal session expired: the
- * management cluster versions query (`GET /api/gs/installations/versions`)
- * refetches on its own and never opens the Login Required dialog; the page
+ * The Installations page after the portal session expired: the management
+ * cluster versions query (`GET /api/gs/installations/versions`) refetches in
+ * the background when the page remounts and never opens the Login Required dialog; the page
  * shows its installations as not signed in instead. A read the person starts
  * still asks for the sign-in.
  *
@@ -115,14 +115,18 @@ test('a versions refetch on the Installations page after the session expired ope
       }
     });
     await expireSession(page);
-    // The page loses and regains focus, as a tab the person comes back to
-    // does: the versions query refetches with no gesture behind it.
-    await page.evaluate(() => {
-      window.dispatchEvent(new Event('blur'));
-      document.dispatchEvent(new Event('visibilitychange'));
-      window.dispatchEvent(new Event('focus'));
-    });
     await page.clock.runFor('00:10:00');
+    // The page leaves for the catalog and comes back without a gesture (the
+    // history's own navigation, as a redirect or a back step does): the
+    // Installations page remounts and its stale versions query refetches in
+    // the background.
+    for (const path of ['/catalog', '/installations']) {
+      await page.evaluate(to => {
+        window.history.pushState({}, '', to);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, path);
+      await page.waitForTimeout(3_000);
+    }
     await page.waitForTimeout(10_000);
 
     expect(
