@@ -13,6 +13,13 @@ export type ClusterTokenErrorReason =
   | 'unknown';
 
 /**
+ * What the person reads when their main portal session is gone: the one
+ * sentence every session-expired notice in the portal shows, and which
+ * {@link isSessionExpiredError} recognises.
+ */
+export const SESSION_EXPIRED_MESSAGE = 'Your session expired, sign in again.';
+
+/**
  * Typed error thrown by a broker-backed `clusterTokenProvider`/refresh. Carries
  * the affected installation and a coarse reason so the cluster-access status
  * UI can show what went wrong without per-cluster login popups.

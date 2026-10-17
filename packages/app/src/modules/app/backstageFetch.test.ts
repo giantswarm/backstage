@@ -3,7 +3,10 @@ import { ConfigReader } from '@backstage/core-app-api';
 import { SessionState } from '@backstage/core-plugin-api';
 import { DefaultEntityPresentationApi } from '@backstage/plugin-catalog';
 import { LOGIN_REQUESTED_BY_ATTRIBUTE } from '@giantswarm/backstage-plugin-gs';
-import { isSessionExpiredError } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  isSessionExpiredError,
+  SESSION_EXPIRED_MESSAGE,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { createBackstageFetchApi } from './backstageFetch';
 
 const BASE = 'http://backend.test/api/catalog';
@@ -143,7 +146,7 @@ describe('createBackstageFetchApi', () => {
       const error = await catalogApi.getEntities().catch(e => e);
 
       expect(isSessionExpiredError(error)).toBe(true);
-      expect(error.message).toBe('Your session expired, sign in again.');
+      expect(error.message).toBe(SESSION_EXPIRED_MESSAGE);
       expect(getBackstageIdentity).toHaveBeenCalledWith({ optional: true });
       expect(getBackstageIdentity).not.toHaveBeenCalledWith();
       expect(identityApi.getCredentials).not.toHaveBeenCalled();

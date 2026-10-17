@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
+import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   MusterApi,
   musterApiRef,
@@ -395,12 +396,12 @@ describe('classifySessionFailure', () => {
     );
     expect(failure).toEqual({
       kind: 'session-expired',
-      message: 'Your session expired, sign in again.',
+      message: SESSION_EXPIRED_MESSAGE,
     });
     expect(
       sessionGateCopy({ authenticated: false, pending: false, failure }),
     ).toEqual({
-      sentence: 'Your session expired, sign in again.',
+      sentence: SESSION_EXPIRED_MESSAGE,
       action: 'Sign in again',
     });
   });

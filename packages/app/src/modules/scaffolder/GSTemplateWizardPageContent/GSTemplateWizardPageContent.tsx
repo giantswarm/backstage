@@ -22,7 +22,7 @@ import {
   useFilteredSchemaProperties,
   useTemplateParameterSchema,
 } from '@backstage/plugin-scaffolder-react/alpha';
-import { MarkdownContent, Progress } from '@backstage/core-components';
+import { Progress } from '@backstage/core-components';
 import {
   errorApiRef,
   useApi,
@@ -44,6 +44,7 @@ import {
   TemplateSignInError,
   useStartTemplateTask,
 } from '@giantswarm/backstage-plugin-gs';
+import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
 
 const useStyles = makeStyles({
   markdown: {
@@ -156,7 +157,7 @@ function TemplateWizard(props: WizardProps & { templateRef: string }) {
                 <Text as="h2" variant="title-small" weight="bold">
                   {sortedManifest.title}
                 </Text>
-                <MarkdownContent
+                <GSMarkdownContent
                   className={styles.markdown}
                   linkTarget="_blank"
                   content={

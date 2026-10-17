@@ -14,6 +14,11 @@ type GSMarkdownContentProps = {
   dialect?: Dialect;
   /** URL the markdown was loaded from; relative links resolve against it. */
   sourceUrl?: string;
+  /**
+   * Target of links that leave the document, `_blank` to open them in a new
+   * tab. A `#fragment` link, a footnote's for one, stays in the page.
+   */
+  linkTarget?: string;
   className?: string;
 };
 
@@ -92,6 +97,7 @@ export const GSMarkdownContent = ({
   content,
   dialect = 'gfm',
   sourceUrl,
+  linkTarget,
   className,
 }: GSMarkdownContentProps) => {
   const classes = useStyles();
@@ -108,6 +114,7 @@ export const GSMarkdownContent = ({
       content={content}
       dialect={dialect}
       transformLinkUri={transformLinkUri}
+      linkTarget={linkTarget}
     />
   );
 
