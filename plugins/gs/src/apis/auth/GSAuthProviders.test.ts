@@ -4,6 +4,7 @@ import { GSAuthProviders } from './GSAuthProviders';
 import { SIGN_IN_CONNECTOR_STORAGE_KEY } from './signInConnectorMemory';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { InstallationConfig } from '../installations';
+import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { Config, ConfigReader } from '@backstage/config';
 
 jest.mock('@backstage/core-app-api', () => ({
@@ -499,6 +500,182 @@ describe('GSAuthProviders cluster token broker coverage', () => {
       'oidc-a',
       'oidc-b',
       'oidc-c',
+    ]);
+  });
+});
+
+describe('GSAuthProviders cluster-token mint', () => {
+  const installations = {
+    a: { authProvider: 'oidc', oidcTokenProvider: 'oidc-a' },
+    b: {
+      authProvider: 'oidc',
+      oidcTokenProvider: 'oidc-b',
+      clusterTokenAudience: 'b',
+    },
+    c: {
+      authProvider: 'oidc',
+      oidcTokenProvider: 'oidc-c',
+      clusterTokenAudience: 'c',
+    },
+  };
+
+  const mainSession = {
+    providerInfo: {
+      idToken: 'main-id-token',
+      accessToken: 'main-access-token',
+      scope: 'openid',
+      expiresInSeconds: 3600,
+    },
+    backstageIdentity: {
+      token: 'backstage-token',
+      identity: {
+        type: 'user',
+        userEntityRef: 'user:default/someone',
+        ownershipEntityRefs: [],
+      },
+      expiresInSeconds: 3600,
+    },
+    profile: {},
+  };
+
+  // The main sign-in (Login Required): every prompt is recorded, and the
+  // person declines it.
+  let signInPrompts: jest.Mock;
+  let fetchSpy: jest.SpyInstance;
+
+  function createMintApi(options: {
+    sessionAlive: boolean;
+    hasUserGesture: () => boolean;
+  }) {
+    getSignedInConfig.mockResolvedValue(
+      new ConfigReader({
+        gs: {
+          installations,
+          clusterTokenBroker: {
+            tokenUrl: 'https://muster.example.com/oauth/token',
+          },
+        },
+      }),
+    );
+    fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async input => {
+      const url = String(input);
+      if (url.includes('/oidc-a/refresh')) {
+        return options.sessionAlive
+          ? new Response(JSON.stringify(mainSession))
+          : new Response('', { status: 401, statusText: 'Unauthorized' });
+      }
+      if (url.includes('/api/auth/cluster-token/')) {
+        return new Response(
+          JSON.stringify({ token: 'cluster-token', expiresInSeconds: 600 }),
+        );
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const statusApi = {
+      recordSessionExpired: jest.fn(),
+      recordDegraded: jest.fn(),
+    };
+    const api = GSAuthProviders.create({
+      configApi: {
+        ...configApi,
+        getOptionalString: jest.fn((key: string) =>
+          key === 'gs.authProvider' ? 'oidc-a' : undefined,
+        ),
+      } as unknown as ConfigApi,
+      discoveryApi,
+      oauthRequestApi: {
+        createAuthRequester: jest.fn(() => signInPrompts),
+        authRequest$: jest.fn(),
+      },
+      clusterAccessStatusApi: statusApi as unknown as ClusterAccessStatusApi,
+      hasUserGesture: options.hasUserGesture,
+    });
+    return { api, statusApi };
+  }
+
+  function clusterTokenRequests(): string[] {
+    return fetchSpy.mock.calls
+      .map(([input]) => String(input))
+      .filter(url => url.includes('/api/auth/cluster-token/'));
+  }
+
+  beforeEach(() => {
+    getSignedInConfig.mockReset();
+    signInPrompts = jest.fn().mockRejectedValue(new Error('Login failed'));
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('ends a background mint after the session is gone without a sign-in prompt', async () => {
+    const { api, statusApi } = createMintApi({
+      sessionAlive: false,
+      hasUserGesture: () => false,
+    });
+
+    // Every covered installation, read the way a poll reads it (optional) and
+    // the way a probe reads it (not optional): none opens the sign-in.
+    for (const providerName of ['oidc-b', 'oidc-c']) {
+      const clusterApi = await api.getKubernetesAuthApi(providerName);
+      await expect(clusterApi!.getIdToken({ optional: true })).resolves.toBe(
+        '',
+      );
+      await expect(clusterApi!.getIdToken()).rejects.toMatchObject({
+        name: 'ClusterTokenError',
+        reason: 'session-expired',
+      });
+    }
+
+    expect(signInPrompts).not.toHaveBeenCalled();
+    expect(clusterTokenRequests()).toEqual([]);
+    expect(statusApi.recordSessionExpired).toHaveBeenCalledWith(
+      'b',
+      'Your session expired -- sign in again',
+    );
+    expect(statusApi.recordSessionExpired).toHaveBeenCalledWith(
+      'c',
+      'Your session expired -- sign in again',
+    );
+  });
+
+  it('opens the sign-in for a read a person starts after the session is gone', async () => {
+    const { api, statusApi } = createMintApi({
+      sessionAlive: false,
+      hasUserGesture: () => true,
+    });
+
+    const clusterApi = await api.getKubernetesAuthApi('oidc-b');
+    await expect(clusterApi!.getIdToken()).rejects.toMatchObject({
+      name: 'ClusterTokenError',
+      reason: 'session-expired',
+    });
+
+    expect(signInPrompts).toHaveBeenCalled();
+    expect(clusterTokenRequests()).toEqual([]);
+    expect(statusApi.recordSessionExpired).toHaveBeenCalledWith(
+      'b',
+      'Your session expired -- sign in again',
+    );
+  });
+
+  it('mints silently in the background while the session is alive', async () => {
+    const { api } = createMintApi({
+      sessionAlive: true,
+      hasUserGesture: () => false,
+    });
+
+    const b = await api.getKubernetesAuthApi('oidc-b');
+    const c = await api.getKubernetesAuthApi('oidc-c');
+    await expect(b!.getIdToken()).resolves.toBe('cluster-token');
+    await expect(c!.getIdToken({ optional: true })).resolves.toBe(
+      'cluster-token',
+    );
+
+    expect(signInPrompts).not.toHaveBeenCalled();
+    expect(clusterTokenRequests()).toEqual([
+      'http://backend/api/auth/cluster-token/b',
+      'http://backend/api/auth/cluster-token/c',
     ]);
   });
 });

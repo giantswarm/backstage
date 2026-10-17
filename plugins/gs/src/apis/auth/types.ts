@@ -109,4 +109,10 @@ export type GSAuthProvidersApiCreateOptions = {
    * to localStorage; tests pass their own.
    */
   signInConnectorMemory?: SignInConnectorMemory;
+  /**
+   * Whether a person started what runs now. Only then may a broker-backed
+   * cluster-token mint open the main sign-in; a background read without a
+   * session fails as session-expired. Defaults to the page's user activation.
+   */
+  hasUserGesture?: () => boolean;
 };
