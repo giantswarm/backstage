@@ -28,6 +28,28 @@ describe('GSMarkdownContent', () => {
     expect(screen.getByText('A paragraph of text.')).toBeInTheDocument();
   });
 
+  it('links a footnote reference to its note and back', async () => {
+    const { container } = await renderInTestApp(
+      <GSMarkdownContent content={'A claim[^1].\n\n[^1]: The source.'} />,
+    );
+    const fragmentOf = (link: Element | null) =>
+      link?.getAttribute('href')?.split('#')[1];
+
+    const reference = screen.getByRole('link', { name: '1' });
+    const note = screen.getByText('The source.').closest('li');
+    expect(note).toHaveAttribute('id', 'user-content-fn-1');
+    expect(fragmentOf(reference)).toBe(note!.id);
+
+    const backReference = screen.getByRole('link', {
+      name: 'Back to content',
+    });
+    expect(reference).toHaveAttribute('id', 'user-content-fnref-1');
+    expect(fragmentOf(backReference)).toBe(reference.id);
+    expect(
+      container.querySelector('[id^="user-content-user-content-"]'),
+    ).toBeNull();
+  });
+
   it('renders GFM tables by default', () => {
     render(<GSMarkdownContent content={'| a | b |\n| - | - |\n| 1 | 2 |'} />);
 
@@ -208,6 +230,16 @@ describe('GSMarkdownContent', () => {
       const note = document.activeElement;
       expect(note).toHaveTextContent('The source.');
       await waitFor(() => expect(scrolledTo).toEqual([note]));
+    });
+
+    it('jumps back from a footnote to its reference', async () => {
+      await renderMarkdown('A claim[^1].\n\n[^1]: The source.');
+
+      fireEvent.click(screen.getByRole('link', { name: 'Back to content' }));
+
+      const reference = screen.getByRole('link', { name: '1' });
+      expect(reference).toHaveFocus();
+      await waitFor(() => expect(scrolledTo).toEqual([reference]));
     });
 
     it.each(['#', '#top'])(
