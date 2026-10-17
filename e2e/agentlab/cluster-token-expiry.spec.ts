@@ -1,5 +1,12 @@
 import type { Page, Request } from '@playwright/test';
-import { dismissInboxToasts, expect, open, signIn, test } from './fixtures';
+import {
+  completeDexLogin,
+  dismissInboxToasts,
+  expect,
+  open,
+  signIn,
+  test,
+} from './fixtures';
 import { contextOptionsFor, lab } from './lab';
 
 /**
@@ -184,26 +191,58 @@ test('a background cluster-token mint after the session expired opens no Login R
       contentType: 'image/png',
     });
 
-    // The person switches an installation off and on again: its probe runs at
-    // once, started by the person's gesture, and its mint asks for the
-    // sign-in before anything reaches the apiserver.
+    // The person acts: switching an installation off asks for the sign-in
+    // (the portal's reads and the mint share the main session, so the dialog
+    // does not name which of them asked; the unit tests pin the mint's own
+    // prompt). Nothing reaches the staged apiservers before it.
     await touch(page);
-    const toggle = page.getByRole('switch', {
-      name: `Enable installation ${STAGED[0]}`,
+    // The bui switch's input is visually hidden: its label takes the click.
+    const toggle = page.locator('label').filter({
+      has: page.getByRole('switch', {
+        name: `Enable installation ${STAGED[0]}`,
+      }),
     });
-    await toggle.click();
     await toggle.click();
     await expect(
       loginRequired(page),
-      'the person’s read asks for the sign-in',
+      'the person’s action asks for the sign-in',
     ).toBeVisible({ timeout: 60_000 });
+    expect(mints, 'nothing is minted before the sign-in').toEqual([]);
     expect(reads, 'nothing reached the apiserver before the sign-in').toEqual(
       [],
     );
-    await test.info().attach('person-read-prompts', {
+    await test.info().attach('person-action-prompts', {
       body: await page.screenshot(),
       contentType: 'image/png',
     });
+
+    // Signed in again, the person's read of the installation mints its token
+    // through the main login and reaches its apiserver.
+    await page.unroute('**/api/auth/*/refresh**');
+    const popup = page.waitForEvent('popup');
+    await loginRequired(page)
+      .getByRole('button', { name: 'Log in' })
+      .first()
+      .click();
+    await completeDexLogin(await popup, lab.users.admin);
+    await expect(loginRequired(page)).toBeHidden({ timeout: 30_000 });
+    await toggle.click();
+    await expect
+      .poll(() => mints, {
+        message: 'the person’s read mints the installation’s token',
+        timeout: 60_000,
+      })
+      .toContain(STAGED[0]);
+    await expect
+      .poll(() => reads.some(read => read.startsWith(`${STAGED[0]} `)), {
+        message: 'and reads its apiserver',
+        timeout: 30_000,
+      })
+      .toBe(true);
+    await expect(
+      page.getByText('Your session expired -- sign in again'),
+      'Cluster access no longer reports the session expired',
+    ).toHaveCount(0, { timeout: 30_000 });
   } finally {
     await context.close();
   }
