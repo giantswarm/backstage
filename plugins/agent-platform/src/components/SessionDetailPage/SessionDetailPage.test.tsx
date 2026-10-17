@@ -111,11 +111,13 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
 // Stubbed for the same reason as the write hooks below: it reaches Mimir
 // through the gs plugin's api ref, and this test mounts no APIs. An empty
 // `rates` makes the estimated cost read "—", which is asserted explicitly in
-// one test rather than assumed away here.
+// one test rather than assumed away here. A test that needs a priced estimate
+// sets `mockPricedRate`; `beforeEach` clears it.
+let mockPricedRate: number | undefined;
 jest.mock('../../hooks/useTokenRates', () => ({
   useTokenRates: () => ({
-    rates: {},
-    tier: 'none',
+    rates: mockPricedRate === undefined ? {} : { blended: mockPricedRate },
+    tier: mockPricedRate === undefined ? 'none' : 'installation',
     model: undefined,
     isLoading: false,
     isAvailable: true,
@@ -339,6 +341,7 @@ function lastProvidedActions() {
 
 describe('SessionDetailPage', () => {
   beforeEach(() => {
+    mockPricedRate = undefined;
     providedActions.mockClear();
     mockRenameSession.mockReset();
     mockSendMessage.mockReset();
@@ -512,6 +515,36 @@ describe('SessionDetailPage', () => {
     // Twice on purpose: the chip leads with the reported figure, and the
     // popover row repeats it beside its label.
     expect(screen.getAllByText('$0.131').length).toBeGreaterThan(0);
+  });
+
+  it('names the tokens the estimate priced as the rows above it show them', async () => {
+    // The reported session: kagent's total of 48,478 tokens, in exact digits
+    // in the basis line, sat under an input count reading 48.0k and looked
+    // like a rounding error. The basis now names the counts the rows show.
+    mockPricedRate = 0.000003;
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: {
+        ...timeline,
+        tokens: { total: 48_478, prompt: 48_012, completion: 466 },
+      },
+    });
+    await render();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Session cost and context/ }),
+    );
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Session cost and context',
+    });
+    expect(within(dialog).getByText('48.0k / 466')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /applied to the 48\.0k input and 466 output tokens/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/48,478/)).not.toBeInTheDocument();
   });
 
   it('shows no reported cost when the runtime reports none', async () => {

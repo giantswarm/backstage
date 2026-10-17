@@ -28,15 +28,24 @@ import {
 // this plugin's existing imports.
 export { formatBytes, formatCount, formatSeconds };
 
-/** Format a token count compactly (`1.5k`, `1.2M`). */
+/**
+ * Format a token count compactly (`1.5k`, `1.2M`), rounded half up to a tenth
+ * of its unit: 48,478 reads `48.5k`, and so does 48,450.
+ *
+ * Rounded in whole tenths rather than by `toFixed` on the quotient, whose
+ * binary fraction rounds some halves down (`48.05.toFixed(1)` is `48.0`). The
+ * unit is picked after rounding, so 999,950 reads `1.0M`, not `1000.0k`.
+ */
 export function formatTokens(total: number): string {
-  if (total < 1000) {
-    return String(total);
+  const tokens = Math.round(total);
+  if (tokens < 1000) {
+    return String(tokens);
   }
-  if (total < 1_000_000) {
-    return `${(total / 1000).toFixed(1)}k`;
+  const thousandTenths = Math.round(tokens / 100);
+  if (thousandTenths < 10_000) {
+    return `${(thousandTenths / 10).toFixed(1)}k`;
   }
-  return `${(total / 1_000_000).toFixed(1)}M`;
+  return `${(Math.round(tokens / 100_000) / 10).toFixed(1)}M`;
 }
 
 /** A currency to show costs in; see `InstallationCurrency` in the gs plugin. */

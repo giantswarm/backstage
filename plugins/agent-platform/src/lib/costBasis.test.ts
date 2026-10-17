@@ -5,7 +5,8 @@ const base: CostBasis = {
   model: 'claude-opus-5',
   installation: 'gazelle',
   window: '7d',
-  tokens: 63883,
+  inputTokens: 63_402,
+  outputTokens: 481,
 };
 
 describe('describeCostBasis', () => {
@@ -15,7 +16,21 @@ describe('describeCostBasis', () => {
     expect(text).toContain('claude-opus-5');
     expect(text).toContain('gazelle');
     expect(text).toContain('7d');
-    expect(text).toContain('63,883 tokens');
+    expect(text).toContain('63.4k input and 481 output tokens');
+  });
+
+  it('names the counts the stats beside it show, the way they show them', () => {
+    // The reported case: a total of 48,478 in exact digits beside an input
+    // stat reading 48.0k looked like a rounding error. It was another figure.
+    const text = describeCostBasis({
+      ...base,
+      inputTokens: 48_012,
+      outputTokens: 466,
+    });
+
+    expect(text).toContain('applied to the 48.0k input and 466 output tokens.');
+    expect(text).not.toContain('48,478');
+    expect(text).not.toContain('beside it');
   });
 
   it('says a blend is a blend, per tier', () => {

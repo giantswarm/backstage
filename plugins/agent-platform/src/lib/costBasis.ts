@@ -1,5 +1,5 @@
 import type { TokenRateTier } from '../hooks/useTokenRates';
-import { formatCount } from './formatNumbers';
+import { formatTokens } from './formatNumbers';
 
 export type CostBasis = {
   tier: TokenRateTier;
@@ -8,8 +8,10 @@ export type CostBasis = {
   installation: string;
   /** The window the rate was averaged over, e.g. `7d`. */
   window: string;
-  /** The session's total tokens, which the rate is applied to. */
-  tokens: number;
+  /** The input tokens the estimate priced, as the stats beside it count them. */
+  inputTokens: number;
+  /** The output tokens the estimate priced, as the stats beside it count them. */
+  outputTokens: number;
 };
 
 /**
@@ -30,10 +32,19 @@ export type CostBasis = {
  * rate would be wrong, and closed with "Not a billed figure" — the first is
  * the code's job to know rather than the reader's to be told, and the second
  * is what the stat's own "Est." prefix already says.
+ *
+ * **It names the input and output counts `estimateCost` priced, formatted as
+ * the stats beside it show them.** A single total in exact digits ("the 48,478
+ * tokens beside it") named a figure no stat shows, so it read as the input
+ * stat's own count (48.0k) badly rounded. kagent's reported total can also
+ * hold thinking tokens, which the estimate does not price.
  */
 export function describeCostBasis(basis: CostBasis): string {
-  const { tier, model, installation, window, tokens } = basis;
-  const applied = `applied to the ${formatCount(tokens)} tokens beside it`;
+  const { tier, model, installation, window, inputTokens, outputTokens } =
+    basis;
+  const applied = `applied to the ${formatTokens(
+    inputTokens,
+  )} input and ${formatTokens(outputTokens)} output tokens`;
 
   switch (tier) {
     case 'model':

@@ -1248,7 +1248,8 @@ export function SessionDetailPage() {
         model: row.agentModel,
         installation: row.installation,
         window: rateWindow,
-        tokens: timeline.tokens.total,
+        inputTokens: timeline.tokens.prompt,
+        outputTokens: timeline.tokens.completion,
       })}
     />
   );

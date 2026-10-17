@@ -336,7 +336,8 @@ export function AgentUsageSection() {
             model: undefined,
             installation: installation ?? '',
             window: rateWindow,
-            tokens: stripTotals.inputTokens + stripTotals.outputTokens,
+            inputTokens: stripTotals.inputTokens,
+            outputTokens: stripTotals.outputTokens,
           })}
         />
         <div className={classes.row}>
