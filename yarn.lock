@@ -9809,11 +9809,13 @@ __metadata:
   dependencies:
     "@backstage/backend-defaults": "backstage:^"
     "@backstage/backend-plugin-api": "backstage:^"
+    "@backstage/backend-test-utils": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
     "@backstage/config-loader": "backstage:^"
     "@backstage/errors": "backstage:^"
     "@backstage/integration": "backstage:^"
+    knex: "npm:^3.1.0"
     undici: "npm:^8.10.2"
     winston: "npm:^3.17.0"
     winston-sentry-log: "npm:^1.0.26"
