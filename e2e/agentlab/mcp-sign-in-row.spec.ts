@@ -10,6 +10,7 @@ import {
   test,
 } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
+import { idleTab, touch } from './userActivation';
 
 /**
  * The Notification inbox's MCP sign-in row, and muster's sign-in dialog it
@@ -46,10 +47,15 @@ async function signOutOfFixture(page: Page): Promise<string> {
   return label;
 }
 
-/** Opens the bell's overlay on the rail's Profile row. */
+/**
+ * Opens the bell's overlay on the rail's Profile row, or takes it as it is
+ * when it is open already (its underlay then takes a click on the bell).
+ */
 async function openInbox(page: Page): Promise<Locator> {
-  await page.getByRole('button', { name: /^Notifications/ }).click();
   const overlay = page.getByRole('dialog', { name: 'Notifications' });
+  if (!(await overlay.isVisible())) {
+    await page.getByRole('button', { name: /^Notifications/ }).click();
+  }
   await expect(overlay).toBeVisible();
   return overlay;
 }
@@ -184,14 +190,17 @@ test('the sign-in status read never asks for the sign-in once the portal session
   try {
     const page = await context.newPage();
     await page.clock.install();
+    await idleTab(page);
     await signIn(page, lab.users.admin);
-    // A page that reads nothing of its own (Not Found, the chrome alone):
-    // whatever asks for the sign-in after the jump is the shell's doing.
-    await open(page, '/mcp-sign-in-row-e2e-quiet-page');
+    // A shell page that reads nothing of its own (Profile shows the identity
+    // the app already holds): whatever asks for the sign-in after the jump is
+    // the shell's doing. A path outside the agent area would render the
+    // classic chrome, which has no rail and so no bell.
+    await open(page, '/profile');
+    // The overlay stays open: the reads below run with the row on screen.
     await expect(fixtureRow(await openInbox(page), label)).toBeVisible({
       timeout: 60_000,
     });
-    await page.keyboard.press('Escape');
 
     // What the page itself has queued (a catalog lookup batches on a timer)
     // runs while the session is still good.
@@ -232,6 +241,7 @@ test('the sign-in status read never asks for the sign-in once the portal session
 
     // A person's own action still asks for the session: Sign in on the row,
     // then on the server's row in the dialog.
+    await touch(page);
     const row = fixtureRow(await openInbox(page), label);
     await expect(row, 'the row stays as it was').toBeVisible();
     await row.getByRole('button', { name: 'Sign in to MCP servers' }).click();
