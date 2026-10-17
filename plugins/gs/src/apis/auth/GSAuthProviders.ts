@@ -27,6 +27,7 @@ import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { InstallationConfig, readInstallationsConfig } from '../installations';
 import { hasUserGesture } from './userGesture';
+import { asLoginRequestCaller } from './loginRequestCaller';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -314,13 +315,17 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       // as session-expired without prompting. A declined/failed login
       // surfaces as the same typed session-expired error.
       const optional = !this.hasUserGesture();
-      let idToken: Awaited<ReturnType<typeof mainAuthApi.getIdToken>>;
-      let identity: Awaited<
-        ReturnType<typeof mainAuthApi.getBackstageIdentity>
-      >;
+      // A sign-in a person's read opens is named as the mint's
+      // (`data-login-requested-by`), apart from the portal fetch's.
+      const askMainLogin = async () => ({
+        idToken: await mainAuthApi.getIdToken({ optional }),
+        identity: await mainAuthApi.getBackstageIdentity({ optional }),
+      });
+      let main: Awaited<ReturnType<typeof askMainLogin>>;
       try {
-        idToken = await mainAuthApi.getIdToken({ optional });
-        identity = await mainAuthApi.getBackstageIdentity({ optional });
+        main = await (optional
+          ? askMainLogin()
+          : asLoginRequestCaller('cluster-token-mint', askMainLogin));
       } catch (error) {
         throw new ClusterTokenError(
           installationName,
@@ -328,6 +333,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
           'Main session expired and re-login did not complete',
         );
       }
+      const { idToken, identity } = main;
       if (!idToken || !identity) {
         throw new ClusterTokenError(installationName, 'session-expired');
       }
