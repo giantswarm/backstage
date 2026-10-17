@@ -197,12 +197,15 @@ export type MarkdownRendererProps = {
   content: string;
   dialect: 'gfm' | 'common-mark';
   transformLinkUri?: ComponentProps<typeof ReactMarkdown>['transformLinkUri'];
+  /** Target of links that leave the document; in-page fragments stay. */
+  linkTarget?: string;
 };
 
 export const MarkdownRenderer = ({
   content,
   dialect,
   transformLinkUri,
+  linkTarget,
 }: MarkdownRendererProps) => {
   const classes = useStyles();
   return (
@@ -212,6 +215,11 @@ export const MarkdownRenderer = ({
       className={classes.markdown}
       components={components}
       transformLinkUri={transformLinkUri}
+      linkTarget={
+        linkTarget
+          ? (href: string) => (href.startsWith('#') ? undefined : linkTarget)
+          : undefined
+      }
     >
       {content}
     </ReactMarkdown>

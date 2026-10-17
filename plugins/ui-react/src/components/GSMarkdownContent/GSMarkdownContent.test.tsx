@@ -50,6 +50,28 @@ describe('GSMarkdownContent', () => {
     ).toBeNull();
   });
 
+  it('opens links out of the document in the link target, footnotes in the page', async () => {
+    await renderInTestApp(
+      <GSMarkdownContent
+        linkTarget="_blank"
+        content={
+          'See [the docs](/docs/default/component/backstage)[^1].\n\n[^1]: The source.'
+        }
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'the docs' })).toHaveAttribute(
+      'target',
+      '_blank',
+    );
+    expect(screen.getByRole('link', { name: '1' })).not.toHaveAttribute(
+      'target',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Back to content' }),
+    ).not.toHaveAttribute('target');
+  });
+
   it('renders GFM tables by default', () => {
     render(<GSMarkdownContent content={'| a | b |\n| - | - |\n| 1 | 2 |'} />);
 
