@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { SessionUsageResponse } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentUsageSection } from './AgentUsageSection';
 
@@ -56,10 +57,13 @@ jest.mock('../../hooks/useMusterServers', () => ({
   }),
 }));
 
+// A test that needs a priced estimate, to read the basis line, sets
+// `mockPricedRate`; `beforeEach` clears it.
+let mockPricedRate: number | undefined;
 jest.mock('../../hooks/useTokenRates', () => ({
   useTokenRates: () => ({
-    rates: {},
-    tier: 'none',
+    rates: mockPricedRate === undefined ? {} : { blended: mockPricedRate },
+    tier: mockPricedRate === undefined ? 'none' : 'installation',
     model: undefined,
     isLoading: false,
     isAvailable: true,
@@ -140,7 +144,20 @@ function usage(overrides: Partial<SessionUsageResponse> = {}) {
 
 beforeEach(() => {
   Object.assign(state, DEFAULTS);
+  mockPricedRate = undefined;
 });
+
+/** The text of the hint behind the Est. cost stat, once its tooltip opens. */
+async function costBasisText() {
+  const user = userEvent.setup();
+  // react-aria opens a tooltip on hover only once it has seen the pointer
+  // move, so the pointer enters the page before it reaches the button.
+  await user.hover(document.body);
+  await user.hover(
+    screen.getByRole('button', { name: 'How Est. cost is calculated' }),
+  );
+  return (await screen.findByRole('tooltip')).textContent ?? '';
+}
 
 describe('AgentUsageSection', () => {
   it('renders the totals and both charts once there is usage', () => {
@@ -151,6 +168,27 @@ describe('AgentUsageSection', () => {
     expect(screen.getByText('8.4M')).toBeInTheDocument();
     expect(screen.getByText('Input tokens per day')).toBeInTheDocument();
     expect(screen.getByText('Output tokens per day')).toBeInTheDocument();
+  });
+
+  it('names the full-window totals behind the estimate, and what it leaves unpriced', async () => {
+    mockPricedRate = 0.000003;
+    state.usage = usage({
+      totals: {
+        sessions: 2,
+        turns: 5,
+        inputTokens: 8_400_000,
+        outputTokens: 104_000,
+        totalTokens: 8_524_000,
+        toolCalls: 231,
+      },
+    });
+    render(<AgentUsageSection />);
+
+    const basis = await costBasisText();
+    expect(basis).toContain(
+      'applied to the 8.4M input and 104.0k output tokens',
+    );
+    expect(basis).toContain('kagent also counted 20.0k other tokens');
   });
 
   it('says so when the window is empty, rather than showing zeros', () => {
@@ -406,6 +444,35 @@ describe('AgentUsageSection', () => {
       expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
       // And the tables below keep the full window, said plainly.
       expect(screen.getByText(/window, not 7\s+days/i)).toBeInTheDocument();
+    });
+
+    it('names the narrowed totals behind the estimate, as the strip shows them', async () => {
+      // The basis line names the counts the stats beside it show: in a
+      // narrowed window those are the re-totalled buckets, not the backend's
+      // full-window totals, and the buckets carry no total to say what else
+      // kagent counted.
+      mockPricedRate = 0.000003;
+      state.selectedDays = 7;
+      state.usage = usage({
+        daily: [
+          {
+            day: dayKey(20),
+            inputTokens: 1_000_000,
+            outputTokens: 100,
+            turns: 2,
+          },
+          { day: dayKey(1), inputTokens: 48_012, outputTokens: 466, turns: 3 },
+        ],
+      });
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('48.0k')).toBeInTheDocument();
+      expect(screen.getByText('466')).toBeInTheDocument();
+      const basis = await costBasisText();
+      expect(basis).toContain(
+        'applied to the 48.0k input and 466 output tokens',
+      );
+      expect(basis).not.toContain('other tokens');
     });
 
     it('says a wider selection shows the same backend window', () => {

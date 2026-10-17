@@ -336,7 +336,15 @@ export function AgentUsageSection() {
             model: undefined,
             installation: installation ?? '',
             window: rateWindow,
-            tokens: stripTotals.inputTokens + stripTotals.outputTokens,
+            inputTokens: stripTotals.inputTokens,
+            outputTokens: stripTotals.outputTokens,
+            // The daily buckets carry no reported total, so a narrowed window
+            // cannot say what it holds beyond the two parts.
+            unpricedTokens: narrowed
+              ? undefined
+              : stripTotals.totalTokens -
+                stripTotals.inputTokens -
+                stripTotals.outputTokens,
           })}
         />
         <div className={classes.row}>
