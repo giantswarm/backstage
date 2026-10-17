@@ -51,11 +51,16 @@ async function openSignedInWithClock(
 /**
  * Opens a connector's page from the Internal sub-tab in the app, without a
  * reload: the page asks muster for that connector's tools, a query no earlier
- * view has cached.
+ * view has cached. The row links the server by its display name where its
+ * chart gives one ("Workspace Manager"), else by `name`.
  */
 async function openConnectorInApp(page: Page, name: string) {
   await page.getByRole('tab', { name: /^Internal/ }).click();
-  await page.getByRole('link', { name, exact: true }).click();
+  await page
+    .getByRole('link', {
+      name: new RegExp(`^${name.replace(/-/g, '[- ]')}$`, 'i'),
+    })
+    .click();
   await expect(page).toHaveURL(new RegExp(`/${name}`));
 }
 

@@ -24,9 +24,14 @@ import { LEFTOVER_AGE, contextOptionsFor, lab, type LabUser } from './lab';
  *   in the manifest, and deleted when the worker ends.
  * - {@link WorkspaceFixtures.refusalWorkspace}: a workspace whose last sync
  *   holds the private `agentlab-org/platform-infra`, which the developer, a
- *   member of the Organization, cannot read. The developer and the admin are
- *   connected to the provider: the developer's Session start is refused
- *   naming it, the admin's is granted.
+ *   member of the Organization, cannot read. The developer and the admin
+ *   granted the provider's App in muster: the developer's Session start is
+ *   refused naming it, the admin's is granted.
+ * - Where the lab pins the workspace-manager to the App of its GitHub (muster
+ *   asks the person to sign in to the server), every person the fixtures use
+ *   who holds no grant yet grants that App in muster first, the way a person
+ *   does ({@link WorkspaceTools.grantInMuster}), and signs out of it at the
+ *   end.
  * - The non-member is the lab's viewer ({@link NON_MEMBER}): the `viewers`
  *   group is outside the lab's Organization.
  *
@@ -124,10 +129,26 @@ export type WorkspaceAuthorization = {
   outcome: 'granted' | 'refused' | 'connect_required';
   reason?: string;
   unreadable?: string[];
-  connect?: { provider: string; url: string }[];
+  /** The providers to grant in muster, with how in a sentence. */
+  connect?: { provider: string; signIn: string }[];
 };
 
-type Provider = { name: string; kind: string; connected: boolean };
+/**
+ * A provider instance; `connected` when muster attached the App's token for
+ * the person, `signIn` saying how to grant it while they have not.
+ */
+type Provider = {
+  name: string;
+  kind: string;
+  connected: boolean;
+  signIn?: string;
+};
+
+/** muster's answer to a server sign-in (`/auth/login`). */
+type ServerSignIn = { status: string; authUrl?: string; message?: string };
+
+/** muster's server states that wait for each person's own sign-in. */
+const SIGN_IN_STATES = /^(auth[ _]required|reauth[ _]required)$/i;
 
 /** A workspace-manager tool the portal's muster route refused or failed. */
 export class WorkspaceToolError extends Error {
@@ -286,6 +307,73 @@ export class WorkspaceTools {
     ).toBe(true);
     const body = await response.json();
     return body?.mcpServers ?? [];
+  }
+
+  /** muster's sign-in or sign-out of the workspace-manager for the person. */
+  private async serverAuth(action: 'login' | 'logout'): Promise<ServerSignIn> {
+    const response = await this.request('POST', `/auth/${action}`, {
+      server: WORKSPACE_MANAGER,
+    });
+    expect(
+      response.ok(),
+      `muster's ${action} of ${WORKSPACE_MANAGER} for ${this.user.email} (${response.status()})`,
+    ).toBe(true);
+    return response.json();
+  }
+
+  /**
+   * Grants the App of the lab's GitHub (`fake`) to the person in muster, the
+   * way a person does where the workspace-manager is pinned to it: muster's
+   * sign-in for the server (`core_auth_login`), the App's consent, muster's
+   * callback in the person's browser. The lab's GitHub consents at once for
+   * the user its `login` parameter names; the browser cannot reach it by its
+   * lab name, so the consent is fetched from {@link lab.workspaces.githubFakeURL}.
+   * False when muster asks no sign-in: the grant is held already, or the
+   * registration is not pinned to an App.
+   */
+  async grantInMuster(): Promise<boolean> {
+    const start = await this.serverAuth('login');
+    if (start.status !== 'auth_required' || !start.authUrl) {
+      // Granted already, or a registration that asks no sign-in.
+      return false;
+    }
+    const proxy = await this.page.request.get(start.authUrl!, {
+      maxRedirects: 0,
+    });
+    const authorize = proxy.headers().location;
+    expect(
+      authorize,
+      `muster's sign-in sends ${this.user.email} to the App's consent (${proxy.status()})`,
+    ).toBeTruthy();
+    const consent = new URL(authorize!, start.authUrl);
+    const local = new URL(lab.workspaces.githubFakeURL!);
+    consent.protocol = local.protocol;
+    consent.host = local.host;
+    consent.searchParams.set('login', this.user.email.split('@')[0]);
+    const answer = await this.page.request.get(consent.toString(), {
+      maxRedirects: 0,
+    });
+    const callback = answer.headers().location;
+    expect(
+      callback,
+      `the lab's GitHub consents for ${this.user.email} (${answer.status()} ${await answer.text().catch(() => '')})`,
+    ).toBeTruthy();
+    const landed = await this.page.goto(callback!);
+    expect(
+      landed?.ok(),
+      `muster's callback takes ${this.user.email}'s grant (${landed?.status()})`,
+    ).toBe(true);
+    const after = await this.serverAuth('login');
+    expect(
+      after.status,
+      `muster holds ${this.user.email}'s grant (${JSON.stringify(after)})`,
+    ).toBe('connected');
+    return true;
+  }
+
+  /** Withdraws the person's grant in muster. */
+  async revokeInMuster(): Promise<void> {
+    await this.serverAuth('logout');
   }
 
   /**
@@ -515,48 +603,6 @@ export async function removeLeftovers(tools: WorkspaceTools): Promise<Sweep> {
   return { removed: leftovers.filter(name => !stuck.includes(name)), stuck };
 }
 
-/**
- * Connects `tools`' person to the lab's GitHub (`fake`) the way a person
- * does: `connect_provider`'s link, the provider's consent, the manager's
- * callback in the person's browser (signing in to the manager through Dex
- * first). The lab's GitHub consents at once for the user its `login`
- * parameter names; the browser cannot reach it by its lab name, so the
- * consent is fetched from {@link lab.workspaces.githubFakeURL} and the
- * browser follows its redirect to the callback.
- */
-async function connectToLabGitHub(tools: WorkspaceTools): Promise<void> {
-  const { authorizationURL } = await tools.call<{ authorizationURL: string }>(
-    'connect_provider',
-    { provider: lab.workspaces.provider },
-  );
-  const consent = new URL(authorizationURL);
-  const local = new URL(lab.workspaces.githubFakeURL!);
-  consent.protocol = local.protocol;
-  consent.host = local.host;
-  consent.searchParams.set('login', tools.user.email.split('@')[0]);
-  const answer = await tools.page.request.get(consent.toString(), {
-    maxRedirects: 0,
-  });
-  const callback = answer.headers().location;
-  expect(
-    callback,
-    `the lab's GitHub consents for ${tools.user.email} (${answer.status()} ${await answer.text().catch(() => '')})`,
-  ).toBeTruthy();
-
-  const page = tools.page;
-  await page.goto(callback!);
-  if (new URL(page.url()).pathname.includes('/dex/')) {
-    // The manager's own sign-in, in this tab (not a popup to close).
-    await page.locator('input[name="login"]').fill(tools.user.email);
-    await page.locator('input[name="password"]').fill(lab.password);
-    await page.getByRole('button', { name: 'Login' }).click();
-  }
-  await expect(
-    page.getByText(`${lab.workspaces.provider} connected`).first(),
-    `the manager's callback connects ${tools.user.email} to ${lab.workspaces.provider}`,
-  ).toBeVisible({ timeout: 60_000 });
-}
-
 /** The worker's workspaces; each created on first use, removed at the end. */
 export interface WorkspaceLab {
   /** Why the specs skip, or undefined when the lab serves what they need. */
@@ -584,19 +630,21 @@ export interface WorkspaceLab {
 export type RefusalWorkspace = SyncedWorkspace & {
   /** A member of the Organization who cannot read {@link unreadable}. */
   refused: LabUser;
-  /** A member who reads every repository of it, connected too. */
+  /** A member who reads every repository of it, granted too. */
   granted: LabUser;
   unreadable: string[];
 };
 
 /**
  * Whether the lab serves what the specs need, and why not: the
- * workspace-manager listed and connected in the admin's muster, answering
- * `list_providers` with structured content, with the provider instance the
- * sources name.
+ * workspace-manager listed in the admin's muster, answering `list_providers`
+ * with structured content, with the provider instance the sources name; the
+ * refusal also needs the admin's grant of that instance's App, which `grant`
+ * makes where muster asks for it.
  */
 async function availability(
   admin: WorkspaceTools,
+  grant: (person: WorkspaceTools) => Promise<void>,
 ): Promise<{ unavailable?: string; refusalUnavailable?: string }> {
   const server = (await admin.listServers()).find(
     s => s.name === WORKSPACE_MANAGER,
@@ -606,7 +654,20 @@ async function availability(
       unavailable: `the lab's muster serves no ${WORKSPACE_MANAGER} (platform.workspaces off): \`agentlab configure --workspaces\`, then \`agentlab platform\``,
     };
   }
-  if (server.state && !/^(connected|running)$/i.test(server.state)) {
+  if (!lab.workspaces.githubFakeURL) {
+    if (SIGN_IN_STATES.test(server.state ?? '')) {
+      return {
+        unavailable: `the lab's muster serves ${WORKSPACE_MANAGER} after each person's grant of the App of its GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (see e2e/agentlab/README.md)`,
+      };
+    }
+  } else {
+    await grant(admin);
+  }
+  if (
+    server.state &&
+    !/^(connected|running)$/i.test(server.state) &&
+    !SIGN_IN_STATES.test(server.state)
+  ) {
     return {
       unavailable: `the lab's muster lists ${WORKSPACE_MANAGER} as ${server.state}, not connected: \`kubectl -n agent-platform get pods\``,
     };
@@ -619,14 +680,20 @@ async function availability(
       unavailable: `the lab's ${WORKSPACE_MANAGER} does not answer list_providers: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  if (!providers.some(p => p.name === lab.workspaces.provider)) {
+  const provider = providers.find(p => p.name === lab.workspaces.provider);
+  if (!provider) {
     return {
       unavailable: `the lab's ${WORKSPACE_MANAGER} has no provider instance "${lab.workspaces.provider}" (it lists ${providers.map(p => p.name).join(', ') || 'none'}): \`agentlab configure --workspaces-provider fake\` (or fake,github), or AGENTLAB_WORKSPACE_PROVIDER`,
     };
   }
   if (!lab.workspaces.githubFakeURL) {
     return {
-      refusalUnavailable: `the refusal needs people connected to the lab's GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (see e2e/agentlab/README.md)`,
+      refusalUnavailable: `the refusal needs people granted the App of the lab's GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (see e2e/agentlab/README.md)`,
+    };
+  }
+  if (!provider.connected) {
+    return {
+      refusalUnavailable: `the refusal needs the admin's grant of the App of ${provider.name} in muster, and the lab's ${WORKSPACE_MANAGER} answers: ${provider.signIn ?? 'no signIn (a workspace-manager before 0.10, whose sign-in is its own)'}`,
     };
   }
   return {};
@@ -646,6 +713,12 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
     async ({ adminPage, browser, variant }, use, workerInfo) => {
       const contexts: BrowserContext[] = [];
       const people = new Map<string, Promise<WorkspaceTools>>();
+      const granted: WorkspaceTools[] = [];
+      const grant = async (person: WorkspaceTools) => {
+        if (await person.grantInMuster()) {
+          granted.push(person);
+        }
+      };
       const tools = (user: LabUser) => {
         let entry = people.get(user.email);
         if (!entry) {
@@ -664,6 +737,9 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
                     user,
                   );
                   await person.signIn();
+                  if (lab.workspaces.githubFakeURL) {
+                    await grant(person);
+                  }
                   return person;
                 })();
           people.set(user.email, entry);
@@ -671,10 +747,12 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
         return entry;
       };
       const admin = await tools(lab.users.admin);
-      const { unavailable, refusalUnavailable } = await availability(admin);
+      const { unavailable, refusalUnavailable } = await availability(
+        admin,
+        grant,
+      );
 
       const created = new Set<string>();
-      const connected: WorkspaceTools[] = [];
       const once = <T>(make: () => Promise<T>) => {
         let result: Promise<T> | undefined;
         return () => (result ??= make());
@@ -707,11 +785,8 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
             [REFUSAL_SOURCE],
             [`${OWNER}/platform-api`, PRIVATE_REPOSITORY],
           );
-          for (const user of [lab.users.dev, lab.users.admin]) {
-            const person = await tools(user);
-            connected.push(person);
-            await connectToLabGitHub(person);
-          }
+          // Both granted the App in muster as tools() opened them.
+          await tools(lab.users.dev);
           return {
             ...synced,
             refused: lab.users.dev,
@@ -724,10 +799,8 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
       // Everything the worker made goes, a failed test's worker included;
       // the first failure is reported once every removal was tried.
       const failures: unknown[] = [];
-      for (const person of connected) {
-        await person
-          .call('disconnect_provider', { provider: lab.workspaces.provider })
-          .catch(error => failures.push(error));
+      for (const person of granted) {
+        await person.revokeInMuster().catch(error => failures.push(error));
       }
       if (created.size > 0) {
         await deleteWorkspaces(admin, [...created])
