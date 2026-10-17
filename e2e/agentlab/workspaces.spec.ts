@@ -148,8 +148,7 @@ test.describe('workspaces', () => {
     });
     expect(authorization.unreadable).toEqual(refusalWorkspace.unreadable);
 
-    // A member who reads every repository, connected too, is granted on the
-    // same one.
+    // A member who reads every repository is granted on the same one.
     const granted = await workspaceLab.tools(refusalWorkspace.granted);
     const grant = await granted.authorizeWorkspace(refusalWorkspace.name);
     expect(grant, JSON.stringify(grant)).toMatchObject({

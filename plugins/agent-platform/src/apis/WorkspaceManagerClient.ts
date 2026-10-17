@@ -5,10 +5,8 @@ import {
   WorkspaceManagerError,
   classifyWorkspaceManagerError,
   workspaceManagerToolName,
-  type ConnectProviderResult,
   type CreateWorkspaceInput,
   type DeleteWorkspaceResult,
-  type DisconnectProviderResult,
   type ListRepositoriesInput,
   type PreviewWorkspaceInput,
   type RepositoriesPage,
@@ -158,28 +156,12 @@ export class WorkspaceManagerClient {
     );
   }
 
-  /** The installation's provider instances, with the person's connection. */
+  /** The installation's provider instances, with the person's App grant. */
   async listProviders(): Promise<WorkspaceProvider[]> {
     const result = await this.call<{ providers?: WorkspaceProvider[] }>(
       WORKSPACE_MANAGER_TOOLS.listProviders,
       {},
     );
     return result.providers ?? [];
-  }
-
-  /** The person's sign-in link at the provider. */
-  connectProvider(provider: string): Promise<ConnectProviderResult> {
-    return this.call<ConnectProviderResult>(
-      WORKSPACE_MANAGER_TOOLS.connectProvider,
-      { provider },
-    );
-  }
-
-  /** Revokes the person's grant at the provider and forgets the sign-in. */
-  disconnectProvider(provider: string): Promise<DisconnectProviderResult> {
-    return this.call<DisconnectProviderResult>(
-      WORKSPACE_MANAGER_TOOLS.disconnectProvider,
-      { provider },
-    );
   }
 }

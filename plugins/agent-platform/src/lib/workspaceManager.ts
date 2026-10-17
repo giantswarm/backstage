@@ -5,9 +5,10 @@
  * (one owner on one provider instance each, selected by name, language and
  * topics), synced on a cycle into bare mirrors on the workspace's one
  * read-write-many volume, with a directory per Session on it. It checks on
- * every call that the caller is a member of the workspace's Organization and
- * keeps the person's own provider sign-ins, against which `authorize_workspace`
- * checks the person reads every repository before a Session starts. It speaks
+ * every call that the caller is a member of the workspace's Organization;
+ * `authorize_workspace` checks, with the provider App token muster attaches
+ * for the person, that they read every repository before a Session starts. The
+ * person grants that App in muster, never in the manager. It speaks
  * MCP only; the portal reaches it as the signed-in person through the
  * installation's muster, where its tools appear as `x_workspace-manager_<tool>`.
  * The shapes here mirror `internal/api` of giantswarm/workspace-manager.
@@ -30,8 +31,6 @@ export const WORKSPACE_MANAGER_TOOLS = {
   previewWorkspace: 'preview_workspace',
   authorizeWorkspace: 'authorize_workspace',
   listProviders: 'list_providers',
-  connectProvider: 'connect_provider',
-  disconnectProvider: 'disconnect_provider',
 } as const;
 
 export type WorkspaceManagerTool =
@@ -356,38 +355,34 @@ export type WorkspacePreview = {
   repositories: PreviewRepository[];
 };
 
-/** A provider instance, with whether the person is connected to it. */
+/**
+ * A provider instance, with whether the person granted its App in muster
+ * (muster attached the App's token to the call).
+ */
 export type WorkspaceProvider = {
   name: string;
   kind: string;
   connected: boolean;
-  connectURL: string;
+  /** How the person grants the App, while they have not; a sentence. */
+  signIn?: string;
 };
 
-/** `connect_provider`: the person's own sign-in link, valid for minutes. */
-export type ConnectProviderResult = {
-  provider: string;
-  authorizationURL: string;
-  expiresAt: string;
-};
-
-/** `disconnect_provider`: false when there was nothing left to revoke. */
-export type DisconnectProviderResult = {
-  provider: string;
-  revoked: boolean;
-};
-
-/** A provider the person connects before the workspace is theirs. */
+/** A provider whose App the person grants in muster before the workspace is theirs. */
 export type ProviderConnect = {
   provider: string;
-  url: string;
+  /**
+   * How, in a sentence: muster's `core_auth_login` for the provider the
+   * manager is pinned to, or that muster holds no grant for this one.
+   */
+  signIn: string;
 };
 
 /**
  * `authorize_workspace`: may the person start a Session on the workspace?
  * Granted carries the grant, opaque to the portal, which `start_session`
  * takes; refused names the unreadable repositories or why the workspace cannot
- * be started on yet; connect_required names the providers to connect first.
+ * be started on yet; connect_required names the providers to grant in muster
+ * first.
  */
 export type WorkspaceAuthorization = {
   workspace: string;
@@ -410,8 +405,8 @@ export type WorkspaceAuthorization = {
  * (workspace-manager's own check from the forwarded groups, or, once
  * workspaces live in the Organization's namespace, the Kubernetes permission
  * refusal); `refused` — the person cannot read the repositories named;
- * `not_connected` — the person has not connected the provider instances
- * named, each with its connect link; `invalid` — the manager's validation
+ * `not_connected` — the person has not granted the App of the provider
+ * instances named in muster, each with how to sign in; `invalid` — the manager's validation
  * message; `not_found`, `already_exists`, `conflict` (changed since read);
  * `unavailable` — the installation's muster does not reach workspace-manager
  * for this person; `failed` — anything else, verbatim.
@@ -435,7 +430,7 @@ export class WorkspaceManagerError extends Error {
     message: string,
     /** `refused`: the repositories the person cannot read. */
     readonly repositories: string[] = [],
-    /** `not_connected`: the providers to connect, with their links. */
+    /** `not_connected`: the providers to grant, with how to sign in. */
     readonly connect: ProviderConnect[] = [],
   ) {
     super(message);
@@ -486,7 +481,7 @@ export function classifyWorkspaceManagerError(
 
 /**
  * An `authorize_workspace` answer other than granted, as the error a Session
- * start shows: `not_connected` with the providers and their links, or
+ * start shows: `not_connected` with the providers and how to sign in, or
  * `refused` with the unreadable repositories (none when the workspace cannot
  * be started on yet, the reason says why). `undefined` for a grant.
  */
