@@ -189,10 +189,11 @@ test('a background cluster-token mint after the session expired opens no Login R
       loginRequired(page),
       'the person’s action asks for the sign-in',
     ).toBeVisible({ timeout: 60_000 });
-    expect(
-      await loginRequestedBy(page),
-      'the installation’s token mint asked for the sign-in',
-    ).toContain('cluster-token-mint');
+    await expect
+      .poll(() => loginRequestedBy(page), {
+        message: 'the installation’s token mint asked for the sign-in',
+      })
+      .toContain('cluster-token-mint');
     expect(mints, 'nothing is minted before the sign-in').toEqual([]);
     expect(reads, 'nothing reached the apiserver before the sign-in').toEqual(
       [],
@@ -212,10 +213,11 @@ test('a background cluster-token mint after the session expired opens no Login R
       .click();
     await completeDexLogin(await popup, lab.users.admin);
     await expect(loginRequired(page)).toBeHidden({ timeout: 30_000 });
-    expect(
-      await loginRequestedBy(page),
-      'no caller waits on the sign-in once it completed',
-    ).toEqual([]);
+    await expect
+      .poll(() => loginRequestedBy(page), {
+        message: 'no caller waits on the sign-in once it completed',
+      })
+      .toEqual([]);
     await toggle.click();
     await expect
       .poll(() => mints, {

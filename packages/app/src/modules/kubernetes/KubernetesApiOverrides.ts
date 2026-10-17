@@ -12,6 +12,7 @@ import {
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
 import {
+  asLoginRequestCaller,
   gsAuthProvidersApiRef,
   GSAuthProvidersApi,
   GSDiscoveryApiClient,
@@ -62,9 +63,12 @@ export class GSKubernetesAuthProviders implements KubernetesAuthProvidersApi {
     }
     // Only a person's action may open the sign-in (Login Required), as in
     // the portal's fetch: a poll or a refetch takes the live session's token
-    // or fails as session-expired.
+    // or fails as session-expired. A sign-in the person's read opens is named
+    // as the Kubernetes token's (`data-login-requested-by`).
     if (this.hasUserGesture()) {
-      return authApi.getIdToken();
+      return asLoginRequestCaller('kubernetes-token', () =>
+        authApi.getIdToken(),
+      );
     }
     const token = await authApi.getIdToken({ optional: true });
     if (!token) {

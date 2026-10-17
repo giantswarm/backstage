@@ -1,3 +1,4 @@
+import type { Locator, Page } from '@playwright/test';
 import { connectorRow } from './connectors';
 import { connectToMuster, expect, open, test } from './fixtures';
 import { lab } from './lab';
@@ -152,6 +153,23 @@ async function displayNameAnnotation(): Promise<string> {
   return stdout;
 }
 
+/**
+ * Clicks the wizard's Continue until `next` shows. The footer takes the
+ * step's Continue in an effect, after the fields render, and the step takes
+ * its installation from the section once that has loaded: a click right
+ * after typing can still run a handler that only reveals the problems the
+ * step had a moment before, and never moves on.
+ */
+async function continueTo(page: Page, next: Locator) {
+  const proceed = page.getByRole('button', { name: 'Continue' });
+  await expect(async () => {
+    if (!(await next.isVisible())) {
+      await proceed.click({ timeout: 5_000 });
+    }
+    await expect(next).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 60_000 });
+}
+
 async function deleteWizardConnector() {
   await kubectl([
     '-n',
@@ -182,8 +200,15 @@ test.describe('a connector added through the wizard', () => {
     await expect(admin.getByText(/^Registered as/)).toContainText(
       `Registered as ${WIZARD_NAME}`,
     );
-    await admin.getByRole('button', { name: 'Continue' }).click();
-    await connectToMuster(admin, admin.getByText('How do people sign in?'));
+    const signInStep = admin.getByText('How do people sign in?');
+    await continueTo(
+      admin,
+      admin
+        .getByRole('button', { name: 'Connect to muster' })
+        .or(signInStep)
+        .first(),
+    );
+    await connectToMuster(admin, signInStep);
     await admin.getByRole('radio', { name: 'No sign-in' }).click();
     await admin.getByRole('button', { name: 'Add connector' }).click();
     await expect(admin.getByText('Test the connection')).toBeVisible({
@@ -203,8 +228,9 @@ test.describe('a connector added through the wizard', () => {
     await expect(name).toHaveValue(TYPED, { timeout: 60_000 });
     await expect(name).toBeEditable();
     await name.fill(RENAMED);
-    await admin.getByRole('button', { name: 'Continue' }).click();
-    await admin.getByRole('button', { name: 'Save changes' }).click();
+    const save = admin.getByRole('button', { name: 'Save changes' });
+    await continueTo(admin, save);
+    await save.click();
     await expect(admin.getByText('Test the connection')).toBeVisible({
       timeout: 60_000,
     });

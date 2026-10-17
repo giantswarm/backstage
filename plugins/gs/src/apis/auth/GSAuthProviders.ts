@@ -28,7 +28,10 @@ import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes
 import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { InstallationConfig, readInstallationsConfig } from '../installations';
 import { hasUserGesture } from './userGesture';
-import { asLoginRequestCaller } from './loginRequestCaller';
+import {
+  asLoginRequestCaller,
+  asLoginRequestCallerApi,
+} from './loginRequestCaller';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -619,7 +622,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       this.githubAuthApi = OAuth2.create({
         authConnector: new GithubGrantAuthConnector({
           backendBaseUrl,
-          mainAuthApi,
+          mainAuthApi: asLoginRequestCallerApi('github-grant', mainAuthApi),
         }),
         // What the portal's plugins ask for (see the app's github-auth
         // factory); echoed by the connector, since a GitHub App user token

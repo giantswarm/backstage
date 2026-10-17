@@ -66,6 +66,18 @@ describe('GSKubernetesAuthProviders', () => {
     expect(getIdToken).toHaveBeenCalledWith();
   });
 
+  it('names the Kubernetes token as the caller while its sign-in waits', async () => {
+    const { providers, getIdToken } = setup({ session: false, gesture: true });
+    let requestedBy: string | null = null;
+    getIdToken.mockImplementationOnce(async () => {
+      requestedBy = document.body.getAttribute('data-login-requested-by');
+      return 'token-after-sign-in';
+    });
+    await providers.getCredentials('oidc.oidc-agent-platform');
+    expect(requestedBy).toBe('kubernetes-token');
+    expect(document.body.getAttribute('data-login-requested-by')).toBeNull();
+  });
+
   it('leaves non-OIDC providers to the upstream implementation', async () => {
     const { providers, base } = setup({ session: false, gesture: false });
     await expect(providers.getCredentials('google')).resolves.toEqual({

@@ -124,7 +124,10 @@ export const appOverrides = createFrontendModule({
               configApi,
               discoveryApi,
               identityApi,
-              mainAuthApi: getOptionalMainAuthApi(gsAuthProvidersApi),
+              mainAuthApi: getOptionalMainAuthApi(
+                gsAuthProvidersApi,
+                'portal-fetch',
+              ),
             }),
         }),
     }),
