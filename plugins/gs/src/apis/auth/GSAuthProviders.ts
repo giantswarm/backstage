@@ -26,6 +26,7 @@ import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { InstallationConfig, readInstallationsConfig } from '../installations';
+import { hasUserGesture } from './userGesture';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -126,6 +127,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // read it. Per-installation and MCP providers have no say in it.
   private readonly signInConnectorMemory: SignInConnectorMemory;
 
+  // Whether a person started what runs now: only then may a cluster-token
+  // mint open the main sign-in.
+  private readonly hasUserGesture: () => boolean;
+
   constructor(options: GSAuthProvidersApiCreateOptions) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
@@ -133,6 +138,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     this.clusterAccessStatusApi = options.clusterAccessStatusApi;
     this.signInConnectorMemory =
       options.signInConnectorMemory ?? new LocalStorageSignInConnectorMemory();
+    this.hasUserGesture = options.hasUserGesture ?? hasUserGesture;
 
     this.mainAuthApi = this.createMainAuthApi();
 
@@ -300,17 +306,21 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     const mint = async (): Promise<ClusterToken | undefined> => {
       const mainAuthApi = this.getMainAuthApi();
 
-      // Auto re-auth: the non-optional getters return silently when the main
-      // Dex session exists and trigger the single main SSO login when it is
-      // gone -- the only popup a broker-backed cluster ever causes. A
-      // declined/failed login surfaces as a typed session-expired error.
+      // Auto re-auth, only when a person acts: the interactive getters return
+      // silently when the main Dex session exists and trigger the single main
+      // SSO login when it is gone -- the only popup a broker-backed cluster
+      // ever causes. A background read (a poll, a refetch, a probe) takes the
+      // optional path instead, which refreshes silently where it can and ends
+      // as session-expired without prompting. A declined/failed login
+      // surfaces as the same typed session-expired error.
+      const optional = !this.hasUserGesture();
       let idToken: Awaited<ReturnType<typeof mainAuthApi.getIdToken>>;
       let identity: Awaited<
         ReturnType<typeof mainAuthApi.getBackstageIdentity>
       >;
       try {
-        idToken = await mainAuthApi.getIdToken();
-        identity = await mainAuthApi.getBackstageIdentity();
+        idToken = await mainAuthApi.getIdToken({ optional });
+        identity = await mainAuthApi.getBackstageIdentity({ optional });
       } catch (error) {
         throw new ClusterTokenError(
           installationName,
