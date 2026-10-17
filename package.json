@@ -28,7 +28,7 @@
     "ci:lint": "yarn run lint:all && yarn run prettier:check",
     "ci:patches": "yarn patch-package --error-on-fail",
     "ci:workspace-links": "node scripts/check-workspace-links.mjs",
-    "ci:verify": "yarn run ci:patches && concurrently --names tsc,lint,test -c blue,magenta,green \"yarn run tsc --noEmit\" \"yarn run ci:lint\" \"yarn run test:all\"",
+    "ci:verify": "yarn run ci:patches && concurrently --group --names test,tsc,lint -c green,blue,magenta \"yarn run test:all\" \"yarn run tsc --noEmit\" \"yarn run ci:lint\"",
     "ci:build": "yarn run ci:patches && yarn run ci:workspace-links && touch github-app-credentials.yaml && NODE_ENV=production yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml && NODE_ENV=production yarn run build:backend-headless-service --config ../../app-config.yaml --config ../../app-config.production.yaml",
     "new": "backstage-cli new",
     "storybook": "storybook dev -p 6006",

@@ -29,9 +29,13 @@ test('Customize · Workflows lists the lab workflow and opens its page', async (
   const row = admin.getByRole('row', { name: new RegExp(`^${WORKFLOW}`) });
   await expect(row).toBeVisible({ timeout: 60_000 });
   await expect(row.getByRole('gridcell', { name: '2 steps' })).toBeVisible();
-  await expect(
-    row.getByRole('gridcell', { name: 'Reads', exact: true }),
-  ).toBeVisible();
+  // The Access cell: the tools' "Reads" badge, with its hint as the badge's
+  // description, which the cell's name also takes in.
+  const access = row.getByRole('gridcell', { name: /^Reads\b/ });
+  await expect(access.getByText('Reads', { exact: true })).toBeVisible();
+  await expect(access.locator('[tabindex="0"]')).toHaveAccessibleDescription(
+    'Every step only reads.',
+  );
 
   // The name is a real link (M21): keyboard-reachable, opens in a new tab.
   await expect(

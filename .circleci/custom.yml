@@ -47,6 +47,12 @@ jobs:
   # workers 6 GiB, tsc 4.2 GiB, the rest 2.3 GiB, 11.4 GiB anonymous in all.
   # BACKSTAGE_CLI_CONCURRENCY sizes the lint (and the later build),
   # JEST_MAX_WORKERS the jest pool `test:all` starts.
+  #
+  # CircleCI keeps only the tail of a step's output (about 400 KB), and jest's
+  # output alone outgrows it. `ci:verify` therefore runs the three with
+  # `concurrently --group`, jest first: jest streams live, tsc's and the lint's
+  # output is held back and printed after it, so a type or lint error is always
+  # at the end of the Verify log.
   node-build:
     resource_class: xlarge
     docker:
