@@ -797,17 +797,19 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
       });
 
       // Everything the worker made goes, a failed test's worker included;
-      // the first failure is reported once every removal was tried.
+      // the first failure is reported once every removal was tried. The
+      // workspaces go before the grants: where the manager is pinned to the
+      // App, the admin's deletion needs the admin's grant.
       const failures: unknown[] = [];
-      for (const person of granted) {
-        await person.revokeInMuster().catch(error => failures.push(error));
-      }
       if (created.size > 0) {
         await deleteWorkspaces(admin, [...created])
           .then(stuck =>
             expect(stuck, 'the worker removes its workspaces').toEqual([]),
           )
           .catch(error => failures.push(error));
+      }
+      for (const person of granted) {
+        await person.revokeInMuster().catch(error => failures.push(error));
       }
       await Promise.all(contexts.map(context => context.close()));
       if (failures.length > 0) {
