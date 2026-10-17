@@ -8,7 +8,11 @@ import {
   type SessionApi,
   SessionState,
 } from '@backstage/core-plugin-api';
-import { GSDiscoveryApiClient } from '@giantswarm/backstage-plugin-gs';
+import {
+  asLoginRequestCaller,
+  GSDiscoveryApiClient,
+} from '@giantswarm/backstage-plugin-gs';
+import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type MainAuthApi = BackstageIdentityApi & SessionApi;
 
@@ -21,7 +25,9 @@ type MainAuthApi = BackstageIdentityApi & SessionApi;
  * it: while the page has a user gesture (`navigator.userActivation`), the
  * token takes the app identity's interactive path; a request a timer, a poll
  * or a refetch sends takes the live session's token or fails as
- * session-expired ({@link silentIdentity}), without prompting.
+ * session-expired ({@link silentIdentity}), without prompting. A sign-in the
+ * person's request opens is named as the portal fetch's
+ * (`data-login-requested-by`), apart from the cluster-token mint's.
  */
 export function createBackstageFetchApi(options: {
   configApi: ConfigApi;
@@ -75,19 +81,21 @@ function gestureAwareIdentity(options: {
     ...delegate(identityApi),
     getCredentials: () =>
       options.hasUserGesture()
-        ? identityApi.getCredentials()
+        ? asLoginRequestCaller('portal-fetch', () =>
+            identityApi.getCredentials(),
+          )
         : silentIdentityApi.getCredentials(),
   };
 }
 
 /**
  * Thrown by a silent request when the portal session is gone, before it is
- * sent. Its message is the portal's session-expired copy, which
+ * sent. Its message is the portal's {@link SESSION_EXPIRED_MESSAGE}, which
  * `isSessionExpiredError` recognises.
  */
 export class PortalSessionExpiredError extends Error {
   constructor() {
-    super('Your session expired, sign in again.');
+    super(SESSION_EXPIRED_MESSAGE);
     this.name = 'PortalSessionExpiredError';
   }
 }

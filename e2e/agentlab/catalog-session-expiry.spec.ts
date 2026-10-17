@@ -2,13 +2,14 @@ import type { Page } from '@playwright/test';
 import { dismissInboxToasts, expect, open, signIn, test } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
 import { hasUserGesture, idleTab, touch } from './userActivation';
+import { loginRequestedBy } from './loginRequest';
 
 /**
  * A portal tab left open on `/catalog` or `/settings` after the portal session
  * expired: the catalog's own readers (the entity-presentation loader, the
  * catalog page's getEntities refetch) run on their own timers and never open
  * the Login Required dialog. An action the person starts still asks for the
- * sign-in.
+ * sign-in, through the portal's own fetch.
  *
  * The page's clock is moved past the ID token's lifetime (Playwright's fake
  * clock) and the session's refresh is refused, as Dex's would be once the
@@ -108,6 +109,10 @@ for (const path of ['/catalog', '/settings']) {
         loginRequired(page),
         'the person’s action asks for the sign-in',
       ).toBeVisible({ timeout: 60_000 });
+      expect(
+        await loginRequestedBy(page),
+        'the portal’s own request asked for the sign-in, no token mint',
+      ).toEqual(['portal-fetch']);
       await test.info().attach(`login-on-action-${path.slice(1)}`, {
         body: await page.screenshot(),
         contentType: 'image/png',

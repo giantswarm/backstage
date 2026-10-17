@@ -8,7 +8,9 @@ import {
   test,
 } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
+import { SESSION_EXPIRED_MESSAGE } from '../../plugins/kubernetes-react/src/lib/clusterTokenError';
 import { hasUserGesture, idleTab, touch } from './userActivation';
+import { loginRequestedBy } from './loginRequest';
 
 /**
  * The broker-backed cluster-token mint after the portal session expired, on a
@@ -107,13 +109,6 @@ async function expireSession(page: Page) {
   await page.clock.fastForward('02:00:00');
 }
 
-/**
- * The session-expired copy a Cluster access row shows: the mint's own ("--
- * sign in again") or the portal fetch's ("Your session expired, sign in
- * again."), whichever of them found the session gone first.
- */
-const SESSION_EXPIRED = /Your session expired(,| --) sign in again/;
-
 function clusterAccess(page: Page) {
   return page.getByText('Cluster access', { exact: true }).first();
 }
@@ -171,7 +166,7 @@ test('a background cluster-token mint after the session expired opens no Login R
       ).toBeVisible();
     }
     await expect(
-      page.getByText(SESSION_EXPIRED).first(),
+      page.getByText(SESSION_EXPIRED_MESSAGE).first(),
       'the popover tells the person the session expired',
     ).toBeVisible();
     await test.info().attach('background-mint-after-expiry', {
@@ -179,10 +174,9 @@ test('a background cluster-token mint after the session expired opens no Login R
       contentType: 'image/png',
     });
 
-    // The person acts: switching an installation off asks for the sign-in
-    // (the portal's reads and the mint share the main session, so the dialog
-    // does not name which of them asked; the unit tests pin the mint's own
-    // prompt). Nothing reaches the staged apiservers before it.
+    // The person acts: switching an installation off asks for the sign-in,
+    // and the mint is among the callers the open dialog names. Nothing
+    // reaches the staged apiservers before it.
     await touch(page);
     // The bui switch's input is visually hidden: its label takes the click.
     const toggle = page.locator('label').filter({
@@ -195,6 +189,10 @@ test('a background cluster-token mint after the session expired opens no Login R
       loginRequired(page),
       'the person’s action asks for the sign-in',
     ).toBeVisible({ timeout: 60_000 });
+    expect(
+      await loginRequestedBy(page),
+      'the installation’s token mint asked for the sign-in',
+    ).toContain('cluster-token-mint');
     expect(mints, 'nothing is minted before the sign-in').toEqual([]);
     expect(reads, 'nothing reached the apiserver before the sign-in').toEqual(
       [],
@@ -214,6 +212,10 @@ test('a background cluster-token mint after the session expired opens no Login R
       .click();
     await completeDexLogin(await popup, lab.users.admin);
     await expect(loginRequired(page)).toBeHidden({ timeout: 30_000 });
+    expect(
+      await loginRequestedBy(page),
+      'no caller waits on the sign-in once it completed',
+    ).toEqual([]);
     await toggle.click();
     await expect
       .poll(() => mints, {
@@ -228,7 +230,7 @@ test('a background cluster-token mint after the session expired opens no Login R
       })
       .toBe(true);
     await expect(
-      page.getByText(SESSION_EXPIRED),
+      page.getByText(SESSION_EXPIRED_MESSAGE),
       'Cluster access no longer reports the session expired',
     ).toHaveCount(0, { timeout: 30_000 });
   } finally {
