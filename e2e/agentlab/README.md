@@ -17,6 +17,7 @@ yarn test:e2e:agentlab
 
 yarn test:e2e:agentlab --grep-invert lifecycle   # the pages only, ~1 min
 yarn test:e2e:agentlab -g 'MCP servers'          # one spec
+yarn test:e2e:agentlab e2e/agentlab/agents.spec.ts:25 # the test at that line
 yarn test:e2e:agentlab --headed                  # watch it
 AGENTLAB_E2E_ORDER=shuffle yarn test:e2e:agentlab # spec files in a random order
 yarn playwright show-report e2e-test-report/agentlab
@@ -234,8 +235,11 @@ any order. `AGENTLAB_E2E_ORDER=shuffle` checks that: it runs a project's spec
 files in a random order and prints `replay with AGENTLAB_E2E_ORDER=shuffle:<seed>`,
 which runs that order again. The worker and its admin page are the default
 run's. The order is written as stubs into `.cache/e2e-agentlab-order/`, one
-per spec, which import the specs; the report shows each test at its spec's
-path (`order.ts`).
+per spec at `<position>/e2e/agentlab/<spec>`, which import the specs; the
+report shows each test at its spec's path (`order.ts`). A spec's path from the
+repository root or its file name, with or without `:<line>`, selects in either
+order as it does in the default one (`e2e/agentlab/agents.spec.ts:25`,
+`agents.spec.ts:25`); an absolute path selects in the default order only.
 
 ## The browser's network
 

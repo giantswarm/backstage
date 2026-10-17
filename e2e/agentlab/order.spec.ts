@@ -42,27 +42,30 @@ test('one seed is one order of every item, another seed another', () => {
   expect(items[0], 'the input keeps its order').toBe('spec-0');
 });
 
-test('the stubs import every spec once, in the seed’s order, under the spec’s own file name', () => {
+test('the stubs import every spec once, in the seed’s order, under the spec’s path from the root', () => {
   const root = mkdtempSync(join(tmpdir(), 'e2e-agentlab-order-'));
-  const specDir = join(root, 'specs');
+  const specDir = join(root, 'e2e', 'specs');
   const stubDir = join(root, 'stubs');
   const specs = ['a.spec.ts', 'b.spec.ts', 'c.spec.ts', 'd.spec.ts'];
-  mkdirSync(specDir);
+  mkdirSync(specDir, { recursive: true });
   for (const spec of [...specs, 'fixtures.ts', 'README.md']) {
     writeFileSync(join(specDir, spec), '');
   }
 
-  writeShuffledSpecs(specDir, stubDir, 5);
+  writeShuffledSpecs(specDir, stubDir, 5, root);
   // A second run replaces the first one's stubs.
-  writeShuffledSpecs(specDir, stubDir, 9);
+  writeShuffledSpecs(specDir, stubDir, 9, root);
 
   const positions = readdirSync(stubDir).sort();
   expect(positions).toEqual(['0000', '0001', '0002', '0003']);
   const order = positions.map(position => {
-    const [stub] = readdirSync(join(stubDir, position));
-    const source = readFileSync(join(stubDir, position, stub), 'utf8');
+    // `e2e/specs/<spec>`, so a command line's `e2e/specs/a.spec.ts:12`
+    // matches the stub's path as it matches the spec's.
+    const dir = join(stubDir, position, 'e2e', 'specs');
+    const [stub] = readdirSync(dir);
+    const source = readFileSync(join(dir, stub), 'utf8');
     expect(source).toContain(
-      `import '../../specs/${stub.replace(/\.ts$/, '')}';`,
+      `import '../../../../e2e/specs/${stub.replace(/\.ts$/, '')}';`,
     );
     return stub;
   });
