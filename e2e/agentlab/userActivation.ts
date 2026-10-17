@@ -25,3 +25,8 @@ export async function touch(page: Page) {
     (window as any).__e2eUserGesture = true;
   });
 }
+
+/** Whether the tab reports a user gesture now, as the portal reads it. */
+export function hasUserGesture(page: Page): Promise<boolean> {
+  return page.evaluate(() => navigator.userActivation?.isActive ?? true);
+}

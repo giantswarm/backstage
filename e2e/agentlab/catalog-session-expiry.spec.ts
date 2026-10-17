@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { dismissInboxToasts, expect, open, signIn, test } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
-import { idleTab, touch } from './userActivation';
+import { hasUserGesture, idleTab, touch } from './userActivation';
 
 /**
  * A portal tab left open on `/catalog` or `/settings` after the portal session
@@ -71,6 +71,10 @@ for (const path of ['/catalog', '/settings']) {
       // The page settles and sits: what it read is past the entity
       // presentation cache's lifetime by the time the session lapses.
       await page.clock.runFor('00:05:00');
+      expect(
+        await hasUserGesture(page),
+        'the tab reports no user gesture while nobody touches it',
+      ).toBe(false);
 
       const catalogReads = recordCatalogRequests(page);
       await expireSession(page);
