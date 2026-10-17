@@ -10,7 +10,6 @@ import {
   type Page,
   type Request,
   type Response,
-  type TestInfo,
 } from '@playwright/test';
 import {
   LEFTOVER_AGE,
@@ -112,30 +111,19 @@ export async function servedPortalMode(
     : 'classic';
 }
 
-/** The projects of the Agent Platform, which need a lab serving the shell. */
-const SHELL_PROJECTS = ['agentlab-shell', 'agentlab-mobile'];
-
 /**
  * Settles, before a test, whether the lab serves the portals
- * `AGENTLAB_PORTAL_MODE` says. A classic-only lab skips the Agent Platform's
- * projects with the reason — there is nothing of the shell to prove there; any
- * other mismatch fails at once with what to change, rather than letting every
- * spec fail on a missing route or the other chrome.
+ * `AGENTLAB_PORTAL_MODE` says, and fails at once with what to change on any
+ * mismatch, rather than letting every spec fail on a missing route or the
+ * other chrome. A run that asks for the shell on a lab serving the classic
+ * portal only fails too, never skips: a green run of the Agent Platform's
+ * projects then proves the shell.
  */
-function expectLabPortalMode(served: PortalMode, testInfo: TestInfo): void {
-  if (served === lab.portalMode) {
-    return;
-  }
-  const classicOnly =
-    "the lab's Backstage serves the classic portal only (app.portals.agentPlatform off): run it with APP_CONFIG_app_portals_agentPlatform=true for the Agent Platform's specs (see e2e/agentlab/README.md)";
-  testInfo.skip(
-    served === 'classic' && SHELL_PROJECTS.includes(testInfo.project.name),
-    classicOnly,
-  );
+function expectLabPortalMode(served: PortalMode): void {
   expect(
     served,
     lab.portalMode === 'shell'
-      ? `AGENTLAB_PORTAL_MODE=shell, but ${classicOnly}`
+      ? "AGENTLAB_PORTAL_MODE=shell, but the lab's Backstage serves the classic portal only: its frontend config carries no app.portals.agentPlatform. A Backstage before 3.x has no Agent Platform shell and injects none; on 3.x, turn it on (agentlab's backstage.portal: agent-platform, or APP_CONFIG_app_portals_agentPlatform=true, see e2e/agentlab/README.md)"
       : 'the lab serves the agent shell: set AGENTLAB_PORTAL_MODE=shell (the Agent Platform specs need it), or switch the lab back to the classic portal',
   ).toBe(lab.portalMode);
 }
@@ -316,8 +304,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   labPortalMode: [
-    async ({ servedPortal }, use, testInfo) => {
-      expectLabPortalMode(servedPortal, testInfo);
+    async ({ servedPortal }, use) => {
+      expectLabPortalMode(servedPortal);
       await use();
     },
     { auto: true },
