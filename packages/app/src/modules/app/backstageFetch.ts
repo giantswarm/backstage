@@ -60,7 +60,7 @@ export function createBackstageFetchApi(options: {
  * open a popup: the person started what runs now. A browser without the API
  * counts as yes, which keeps the interactive path it always had.
  */
-export function hasUserGesture(): boolean {
+function hasUserGesture(): boolean {
   return navigator.userActivation?.isActive ?? true;
 }
 
