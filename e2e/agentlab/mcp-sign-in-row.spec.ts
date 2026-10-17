@@ -98,7 +98,21 @@ test('the inbox names a server waiting for the sign-in, and its Sign in signs in
     server,
     'the server turns Connected without a reload',
   ).toContainText('Connected', { timeout: 60_000 });
-  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  // Other servers may wait for the admin's sign-in too (one pinned to a
+  // provider App, for one): the footer reads Done only once none does. The
+  // footer's button carries its label as text; the header's × only as
+  // aria-label.
+  const stillWaiting = await dialog
+    .getByRole('list', { name: 'MCP servers' })
+    .getByRole('listitem')
+    .filter({ hasNotText: 'Connected' })
+    .count();
+  const footerButton = dialog
+    .getByRole('button')
+    .filter({ hasText: /^(Done|Close)$/ });
+  await expect(footerButton).toHaveText(stillWaiting === 0 ? 'Done' : 'Close');
+  await footerButton.click();
+  await expect(dialog).toBeHidden();
   await expect(
     fixtureRow(await openInbox(admin), label),
     'the fixture no longer waits',
