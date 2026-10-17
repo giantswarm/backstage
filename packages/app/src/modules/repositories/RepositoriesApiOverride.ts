@@ -18,6 +18,8 @@ export const RepositoriesApiOverride = ApiBlueprint.make({
       api: repositoriesAuthApiRef,
       deps: { gsAuthProvidersApi: gsAuthProvidersApiRef },
       factory: ({ gsAuthProvidersApi }) =>
-        new RepositoriesMainAuth(getOptionalMainAuthApi(gsAuthProvidersApi)),
+        new RepositoriesMainAuth(
+          getOptionalMainAuthApi(gsAuthProvidersApi, 'repositories'),
+        ),
     }),
 });

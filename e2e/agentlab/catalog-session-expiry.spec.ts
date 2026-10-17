@@ -109,10 +109,18 @@ for (const path of ['/catalog', '/settings']) {
         loginRequired(page),
         'the person’s action asks for the sign-in',
       ).toBeVisible({ timeout: 60_000 });
+      // The dialog can show before the portal's request is the one waiting
+      // on it (the Clusters page's Kubernetes read may ask first), so the
+      // callers are polled rather than read once.
+      await expect
+        .poll(() => loginRequestedBy(page), {
+          message: 'the portal’s own request asked for the sign-in',
+        })
+        .toContain('portal-fetch');
       expect(
         await loginRequestedBy(page),
-        'the portal’s own request asked for the sign-in, no token mint',
-      ).toEqual(['portal-fetch']);
+        'no cluster-token mint asked for the sign-in',
+      ).not.toContain('cluster-token-mint');
       await test.info().attach(`login-on-action-${path.slice(1)}`, {
         body: await page.screenshot(),
         contentType: 'image/png',

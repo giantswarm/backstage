@@ -8,6 +8,7 @@ import type {
 import type { SignalApi } from '@backstage/plugin-signals-react';
 import type { JsonValue, Observable } from '@backstage/types';
 import ObservableImpl from 'zen-observable';
+import { asLoginRequestCaller } from '@giantswarm/backstage-plugin-gs';
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -220,7 +221,9 @@ export class RoamingSettingsStorage implements StorageApi {
 
   private async isSignedIn(): Promise<boolean> {
     try {
-      const credentials = await this.options.identityApi.getCredentials();
+      const credentials = await asLoginRequestCaller('user-settings', () =>
+        this.options.identityApi.getCredentials(),
+      );
       return Boolean(credentials?.token);
     } catch {
       return false;

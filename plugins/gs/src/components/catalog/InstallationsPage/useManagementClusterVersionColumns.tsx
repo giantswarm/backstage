@@ -22,7 +22,10 @@ import {
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
-import { gsAuthProvidersApiRef } from '../../../apis/auth';
+import {
+  asLoginRequestCallerApi,
+  gsAuthProvidersApiRef,
+} from '../../../apis/auth';
 import { hasUserGesture } from '../../../apis/auth/userGesture';
 import { useInstallations } from '../../../apis/installations';
 import { getClusterReleaseVersion } from '../../clusters/utils';
@@ -227,7 +230,10 @@ export function useManagementClusterVersions(): Record<
       // not signed in instead of opening Login Required.
       const optional = !hasUserGesture();
       const [idToken, baseUrl] = await Promise.all([
-        gsAuthProvidersApi.getMainAuthApi().getIdToken({ optional }),
+        asLoginRequestCallerApi(
+          'installations-versions',
+          gsAuthProvidersApi.getMainAuthApi(),
+        ).getIdToken({ optional }),
         discoveryApi.getBaseUrl('gs'),
       ]);
       if (!idToken) {

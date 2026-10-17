@@ -1,5 +1,6 @@
 import {
   asLoginRequestCaller,
+  asLoginRequestCallerApi,
   LOGIN_REQUESTED_BY_ATTRIBUTE,
 } from './loginRequestCaller';
 
@@ -61,5 +62,56 @@ describe('asLoginRequestCaller', () => {
     fetchTwo.settle(true);
     await calls[2];
     expect(requestedBy()).toBeNull();
+  });
+});
+
+describe('asLoginRequestCallerApi', () => {
+  /** An auth API whose getters record the callers named while they run. */
+  function authApi() {
+    const seen: (string | null)[] = [];
+    const record = async (..._args: unknown[]) => {
+      seen.push(requestedBy());
+      return 'token';
+    };
+    return {
+      seen,
+      api: {
+        getIdToken: jest.fn(record),
+        getAccessToken: jest.fn(record),
+        getBackstageIdentity: jest.fn(record),
+        signOut: jest.fn(async () => requestedBy()),
+      },
+    };
+  }
+
+  it('names the caller while an interactive getter waits', async () => {
+    const { api, seen } = authApi();
+    const labelled = asLoginRequestCallerApi('plans', api);
+
+    await labelled.getIdToken();
+    await labelled.getAccessToken('repo');
+    await labelled.getBackstageIdentity({ optional: false });
+
+    expect(seen).toEqual(['plans', 'plans', 'plans']);
+    expect(requestedBy()).toBeNull();
+    expect(api.getAccessToken).toHaveBeenCalledWith('repo');
+  });
+
+  it('leaves an optional call unnamed: it never opens the sign-in', async () => {
+    const { api, seen } = authApi();
+    const labelled = asLoginRequestCallerApi('plans', api);
+
+    await labelled.getIdToken({ optional: true });
+    await labelled.getAccessToken('repo', { optional: true });
+
+    expect(seen).toEqual([null, null]);
+  });
+
+  it('passes every other member through', async () => {
+    const { api } = authApi();
+    await expect(
+      asLoginRequestCallerApi('plans', api).signOut(),
+    ).resolves.toBeNull();
+    expect(api.signOut).toHaveBeenCalledTimes(1);
   });
 });
