@@ -8,6 +8,7 @@ import {
   test,
 } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
+import { SESSION_EXPIRED_MESSAGE } from '../../plugins/kubernetes-react/src/lib/clusterTokenError';
 import { hasUserGesture, idleTab, touch } from './userActivation';
 import { loginRequestedBy } from './loginRequest';
 
@@ -108,13 +109,6 @@ async function expireSession(page: Page) {
   await page.clock.fastForward('02:00:00');
 }
 
-/**
- * The session-expired copy a Cluster access row shows: the mint's own ("--
- * sign in again") or the portal fetch's ("Your session expired, sign in
- * again."), whichever of them found the session gone first.
- */
-const SESSION_EXPIRED = /Your session expired(,| --) sign in again/;
-
 function clusterAccess(page: Page) {
   return page.getByText('Cluster access', { exact: true }).first();
 }
@@ -172,7 +166,7 @@ test('a background cluster-token mint after the session expired opens no Login R
       ).toBeVisible();
     }
     await expect(
-      page.getByText(SESSION_EXPIRED).first(),
+      page.getByText(SESSION_EXPIRED_MESSAGE).first(),
       'the popover tells the person the session expired',
     ).toBeVisible();
     await test.info().attach('background-mint-after-expiry', {
@@ -236,7 +230,7 @@ test('a background cluster-token mint after the session expired opens no Login R
       })
       .toBe(true);
     await expect(
-      page.getByText(SESSION_EXPIRED),
+      page.getByText(SESSION_EXPIRED_MESSAGE),
       'Cluster access no longer reports the session expired',
     ).toHaveCount(0, { timeout: 30_000 });
   } finally {

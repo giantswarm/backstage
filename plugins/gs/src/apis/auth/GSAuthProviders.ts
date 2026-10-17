@@ -24,6 +24,7 @@ import {
 } from './signInConnectorMemory';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
+import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { InstallationConfig, readInstallationsConfig } from '../installations';
 import { hasUserGesture } from './userGesture';
@@ -44,8 +45,8 @@ function mainProviderDisplayName(providerName: string): string {
 
 /** Human-readable text shown in the cluster-access status popover. */
 const CLUSTER_TOKEN_ERROR_MESSAGES: Record<ClusterTokenErrorReason, string> = {
-  'session-expired': 'Your session expired -- sign in again',
-  subject_invalid: 'Your session was rejected -- sign in again',
+  'session-expired': SESSION_EXPIRED_MESSAGE,
+  subject_invalid: 'Your session was rejected, sign in again.',
   broker_unreachable: 'Token broker is unreachable',
   broker_unavailable:
     'Token broker is briefly unavailable -- try again shortly',
