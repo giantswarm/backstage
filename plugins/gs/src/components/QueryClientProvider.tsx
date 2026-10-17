@@ -30,6 +30,7 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
 
             if (
               name === 'RejectedError' ||
+              name === 'PortalSessionExpiredError' ||
               name === 'NotFoundError' ||
               name === 'UnauthorizedError' ||
               name === 'ForbiddenError'
