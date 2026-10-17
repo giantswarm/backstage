@@ -2,6 +2,7 @@ import { ConfigApi, OAuthRequestApi } from '@backstage/core-plugin-api';
 import { openLoginPopup } from '@backstage/core-app-api';
 import { GSAuthProviders } from './GSAuthProviders';
 import { SIGN_IN_CONNECTOR_STORAGE_KEY } from './signInConnectorMemory';
+import { LOGIN_REQUESTED_BY_ATTRIBUTE } from './loginRequestCaller';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { InstallationConfig } from '../installations';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
@@ -542,6 +543,8 @@ describe('GSAuthProviders cluster-token mint', () => {
   // The main sign-in (Login Required): every prompt is recorded, and the
   // person declines it.
   let signInPrompts: jest.Mock;
+  // What `data-login-requested-by` named at each prompt.
+  let requestedBy: (string | null)[];
   let fetchSpy: jest.SpyInstance;
 
   function createMintApi(options: {
@@ -602,7 +605,13 @@ describe('GSAuthProviders cluster-token mint', () => {
 
   beforeEach(() => {
     getSignedInConfig.mockReset();
-    signInPrompts = jest.fn().mockRejectedValue(new Error('Login failed'));
+    requestedBy = [];
+    signInPrompts = jest.fn(async () => {
+      requestedBy.push(
+        document.body.getAttribute(LOGIN_REQUESTED_BY_ATTRIBUTE),
+      );
+      throw new Error('Login failed');
+    });
   });
 
   afterEach(() => {
@@ -653,6 +662,11 @@ describe('GSAuthProviders cluster-token mint', () => {
     });
 
     expect(signInPrompts).toHaveBeenCalled();
+    // Every sign-in it opens is named as the mint’s while it is open.
+    expect(new Set(requestedBy)).toEqual(new Set(['cluster-token-mint']));
+    expect(document.body.hasAttribute(LOGIN_REQUESTED_BY_ATTRIBUTE)).toBe(
+      false,
+    );
     expect(clusterTokenRequests()).toEqual([]);
     expect(statusApi.recordSessionExpired).toHaveBeenCalledWith(
       'b',

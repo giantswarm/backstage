@@ -23,10 +23,11 @@ process.env.AGENTLAB_E2E_RUN ??= Date.now().toString(36);
 // stubs and pins its seed in the environment; the workers, which load this
 // config again, inherit the seed and only read the stubs.
 const order = parseSpecOrder(process.env.AGENTLAB_E2E_ORDER);
-const ORDER_STUBS = join(__dirname, '../../.cache/e2e-agentlab-order');
+const REPO_ROOT = join(__dirname, '../..');
+const ORDER_STUBS = join(REPO_ROOT, '.cache/e2e-agentlab-order');
 if (order.kind === 'shuffle' && process.env.TEST_WORKER_INDEX === undefined) {
   process.env.AGENTLAB_E2E_ORDER = `shuffle:${order.seed}`;
-  writeShuffledSpecs(__dirname, ORDER_STUBS, order.seed);
+  writeShuffledSpecs(__dirname, ORDER_STUBS, order.seed, REPO_ROOT);
   // eslint-disable-next-line no-console
   console.log(
     `Spec files in shuffled order; replay with AGENTLAB_E2E_ORDER=shuffle:${order.seed}`,

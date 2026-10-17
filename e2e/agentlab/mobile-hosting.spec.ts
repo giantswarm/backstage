@@ -19,7 +19,8 @@ import {
  * their destructive actions — Remove pool, Remove cache — live in each row's
  * ⋯ menu ("Actions for pool …" / "Actions for cache …") instead of the
  * desktop table's buttons (`gpu-node-pool.spec.ts`). cluster-manager stubbed
- * at the browser as there (the lab serves no Cluster API).
+ * at the browser as there (the lab serves no Cluster API), so these run on any
+ * lab, with or without cluster-manager.
  */
 
 async function openHosting(
@@ -36,11 +37,6 @@ async function openHosting(
 }
 
 test.describe('models on a phone (cluster-manager stubbed)', () => {
-  test.skip(
-    !process.env.AGENTLAB_CLUSTER_MANAGER,
-    'needs a lab with cluster-manager registered in muster; set AGENTLAB_CLUSTER_MANAGER=1',
-  );
-
   test('a GPU pool is a stacked row whose ⋯ menu removes it', async ({
     page,
   }) => {
