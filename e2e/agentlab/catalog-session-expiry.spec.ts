@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { dismissInboxToasts, expect, open, signIn, test } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
+import { idleTab, touch } from './userActivation';
 
 /**
  * A portal tab left open on `/catalog` or `/settings` after the portal session
@@ -52,32 +53,6 @@ async function expireSession(page: Page) {
     }),
   );
   await page.clock.fastForward('02:00:00');
-}
-
-/**
- * Reports the tab's user activation (`navigator.userActivation.isActive`) as
- * a browser does for a tab nobody touches, until {@link touch}: Playwright's
- * own calls (the fake clock's, a locator's) count as gestures, so under it a
- * page reads as just clicked all the time. The portal lets only a request a
- * person's gesture starts open the sign-in.
- */
-async function idleTab(page: Page) {
-  await page.addInitScript(() => {
-    Object.defineProperty(Navigator.prototype, 'userActivation', {
-      configurable: true,
-      get: () => ({
-        isActive: Boolean((window as any).__e2eUserGesture),
-        hasBeenActive: true,
-      }),
-    });
-  });
-}
-
-/** The person acts: the tab's next requests carry a user gesture. */
-async function touch(page: Page) {
-  await page.evaluate(() => {
-    (window as any).__e2eUserGesture = true;
-  });
 }
 
 for (const path of ['/catalog', '/settings']) {

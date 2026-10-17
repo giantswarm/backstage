@@ -18,6 +18,7 @@ import { MermaidDiagram } from '../MermaidDiagram';
 // styles), which takes no component override, plus one: a ```mermaid block
 // renders as its diagram. One parse keeps every document-wide construct
 // (HTML blocks, footnotes, lists, reference definitions) intact around it.
+// Footnotes get one `user-content-` prefix, so their links land.
 
 type Components = ComponentProps<typeof ReactMarkdown>['components'];
 
@@ -107,6 +108,29 @@ const heading = ({
   return createElement(`h${level}`, { id: slug }, children);
 };
 
+const CLOBBER_PREFIX = defaultSchema.clobberPrefix ?? 'user-content-';
+
+/**
+ * remark-rehype already prefixes a footnote's ids and links with
+ * `user-content-`; rehype-sanitize prefixes every id once more, so the note
+ * became `user-content-user-content-fn-1` while its reference still links to
+ * `#user-content-fn-1`. Dropping the second prefix leaves each id prefixed
+ * once, as its link expects, and still out of the page's own id space.
+ */
+const rehypeSingleClobberPrefix = () => (tree: HastNode) => {
+  const visit = (node: HastNode) => {
+    const properties = node.properties as { id?: unknown } | undefined;
+    if (
+      typeof properties?.id === 'string' &&
+      properties.id.startsWith(CLOBBER_PREFIX.repeat(2))
+    ) {
+      properties.id = properties.id.slice(CLOBBER_PREFIX.length);
+    }
+    node.children?.forEach(visit);
+  };
+  visit(tree);
+};
+
 const components: Components = {
   pre: ({ node, children, ...props }) => {
     const source = mermaidSource(node as HastNode);
@@ -133,10 +157,14 @@ const components: Components = {
   h4: heading,
   h5: heading,
   h6: heading,
-  a: ({ href, children, title, target, rel }) =>
+  // The id stays, so a footnote's back-reference lands on its reference, and
+  // so does its label ("Back to content"), so it reads as more than "↩".
+  a: ({ href, children, id, title, target, rel, 'aria-label': ariaLabel }) =>
     href ? (
       <Link
         to={href}
+        id={id}
+        aria-label={ariaLabel}
         title={title}
         {...(target ? { target } : {})}
         {...(rel ? { rel } : {})}
@@ -162,6 +190,7 @@ const gfmRehypePlugins: ComponentProps<typeof ReactMarkdown>['rehypePlugins'] =
         },
       },
     ],
+    rehypeSingleClobberPrefix,
   ];
 
 export type MarkdownRendererProps = {
