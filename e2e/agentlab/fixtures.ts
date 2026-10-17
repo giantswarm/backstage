@@ -228,7 +228,7 @@ type WorkerFixtures = {
    * agent wizard (agent-manager's `create_agent` through muster) the first
    * time a test asks for it, and deleted again when the worker ends, also
    * after a failed test, on a fresh sign-in where the worker's page cannot
-   * (`removeLabAgent`). Before creating it, the worker deletes the agents
+   * ({@link removeAgent}). Before creating it, the worker deletes the agents
    * earlier runs left ({@link isLeftoverAgent}): a killed worker never reaches
    * its teardown. A spec that needs an agent on the roster uses this one,
    * never whatever earlier runs left on a shared lab; one that needs it ready
@@ -361,7 +361,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         }
         await use({ name, slug, detailPath });
       } finally {
-        await removeLabAgent(
+        await removeAgent(
           adminPage,
           () => browser.newContext(contextOptionsFor(variant)),
           { name, slug, detailPath },
@@ -691,6 +691,25 @@ export async function createAgentInWizard(
   return new URL(page.url()).pathname;
 }
 
+/**
+ * How long an agent the wizard created may stay Deploying before its page
+ * renders it. The first agent in a namespace waits for Flux to pull the agent
+ * chart from the registry (its OCIRepository "building artifact"), which on a
+ * cold lab takes minutes.
+ */
+export const AGENT_RENDER_TIMEOUT = 6 * 60_000;
+
+/**
+ * On an agent's open detail page: waits until the page renders the Agent, past
+ * Deploying — the header's actions menu, which the page offers only then.
+ */
+export async function expectAgentRendered(page: Page): Promise<void> {
+  await expect(
+    page.getByRole('button', { name: 'Agent actions' }),
+    'the agent leaves Deploying once Flux pulled the agent chart and helm-controller rendered the Agent: `kubectl get ocirepositories,helmreleases -A` and the source-controller log',
+  ).toBeVisible({ timeout: AGENT_RENDER_TIMEOUT });
+}
+
 /** Deletes the agent through its actions menu — the portal's own path. */
 export async function deleteAgentInPortal(
   page: Page,
@@ -703,13 +722,16 @@ export async function deleteAgentInPortal(
 
 /**
  * Deletes the agent through its actions menu and resolves back on the agents
- * list, before the roster drops it ({@link expectAgentsGone}).
+ * list, before the roster drops it ({@link expectAgentsGone}). An agent still
+ * Deploying has no menu yet: the deletion waits for it
+ * ({@link expectAgentRendered}), so a test that failed early still removes it.
  */
 async function requestAgentDeletion(
   page: Page,
   detailPath: string,
 ): Promise<void> {
   await open(page, detailPath);
+  await expectAgentRendered(page);
   await page.getByRole('button', { name: 'Agent actions' }).click();
   await page.getByRole('menuitem', { name: /Delete agent/ }).click();
   const dialog = page.getByRole('dialog', { name: /Delete agent/ });
@@ -808,12 +830,13 @@ async function removeLeftoverAgents(page: Page): Promise<void> {
 }
 
 /**
- * Deletes the worker's `labAgent` at its teardown, whatever the tests left:
- * on the worker's admin page, and where that page cannot (a test ended its
+ * Deletes an agent a test or fixture created in the wizard, whatever happened
+ * since: on the admin's page, and where that page cannot (a test ended its
  * session, the page crashed) again on a fresh context signed in as the admin,
- * where the roster tells whether it is still there.
+ * where the roster tells whether it is still there. Without `detailPath` (the
+ * hand-off to the agent's page failed) the roster's link is the way to it.
  */
-async function removeLabAgent(
+export async function removeAgent(
   adminPage: Page,
   newContext: () => Promise<BrowserContext>,
   agent: { name: string; slug: string; detailPath?: string },
@@ -836,7 +859,7 @@ async function removeLabAgent(
       await remove(page);
     } catch (second) {
       throw new Error(
-        `the fixture agent ${agent.slug} could not be deleted: ${first}; on a fresh sign-in: ${second}`,
+        `the agent ${agent.slug} could not be deleted: ${first}; on a fresh sign-in: ${second}`,
       );
     } finally {
       await context.close();
