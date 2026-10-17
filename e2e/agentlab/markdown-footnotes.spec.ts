@@ -1,9 +1,12 @@
 import {
+  AGENT_RENDER_TIMEOUT,
   createAgentInWizard,
-  deleteAgentInPortal,
   expect,
+  expectAgentRendered,
+  removeAgent,
   test,
 } from './fixtures';
+import { contextOptionsFor } from './lab';
 
 /**
  * Footnotes in rendered markdown, on the page that renders a person's own
@@ -26,20 +29,27 @@ const fragmentOf = (href: string | null) => href?.split('#')[1];
 
 test('a footnote reference and its note link to each other', async ({
   admin,
+  browser,
+  variant,
 }) => {
-  test.setTimeout(6 * 60_000);
+  // The wizard, the agent's first render (a cold lab pulls the agent chart
+  // first) and, should the test fail before it renders, the deletion's own
+  // wait for it, then the roster's wait for Flux to uninstall.
+  test.setTimeout(6 * 60_000 + 2 * AGENT_RENDER_TIMEOUT);
 
-  const detailPath = await createAgentInWizard(admin, agentName, agentSlug, {
-    onStep: async step => {
-      if (step === 'Details') {
-        await admin
-          .getByRole('textbox', { name: 'Instructions' })
-          .fill(instructions);
-      }
-    },
-  });
-
+  let detailPath: string | undefined;
   try {
+    detailPath = await createAgentInWizard(admin, agentName, agentSlug, {
+      onStep: async step => {
+        if (step === 'Details') {
+          await admin
+            .getByRole('textbox', { name: 'Instructions' })
+            .fill(instructions);
+        }
+      },
+    });
+    await expectAgentRendered(admin);
+
     const reference = admin.getByRole('link', { name: '1', exact: true });
     await expect(reference).toBeVisible({ timeout: 60_000 });
     const note = admin.locator('li', { hasText: 'The lab’s own answers.' });
@@ -66,7 +76,15 @@ test('a footnote reference and its note link to each other', async ({
     ).toBeFocused();
     await expect(admin).toHaveURL(new RegExp(`${detailPath}$`));
   } finally {
-    await deleteAgentInPortal(admin, detailPath, agentSlug);
+    await removeAgent(
+      admin,
+      () => browser.newContext(contextOptionsFor(variant)),
+      {
+        name: agentName,
+        slug: agentSlug,
+        detailPath,
+      },
+    );
   }
 });
 
