@@ -28,9 +28,10 @@ import { LEFTOVER_AGE, contextOptionsFor, lab, type LabUser } from './lab';
  *   granted the provider's App in muster: the developer's Session start is
  *   refused naming it, the admin's is granted.
  * - Where the lab pins the workspace-manager to the App of its GitHub (muster
- *   lists the server as needing each person's sign-in), every person the
- *   fixtures use grants that App in muster first, the way a person does
- *   ({@link WorkspaceTools.grantInMuster}), and signs out of it at the end.
+ *   asks the person to sign in to the server), every person the fixtures use
+ *   who holds no grant yet grants that App in muster first, the way a person
+ *   does ({@link WorkspaceTools.grantInMuster}), and signs out of it at the
+ *   end.
  * - The non-member is the lab's viewer ({@link NON_MEMBER}): the `viewers`
  *   group is outside the lab's Organization.
  *
@@ -327,17 +328,15 @@ export class WorkspaceTools {
    * callback in the person's browser. The lab's GitHub consents at once for
    * the user its `login` parameter names; the browser cannot reach it by its
    * lab name, so the consent is fetched from {@link lab.workspaces.githubFakeURL}.
-   * False when muster holds the grant already.
+   * False when muster asks no sign-in: the grant is held already, or the
+   * registration is not pinned to an App.
    */
   async grantInMuster(): Promise<boolean> {
     const start = await this.serverAuth('login');
-    if (start.status === 'connected') {
+    if (start.status !== 'auth_required' || !start.authUrl) {
+      // Granted already, or a registration that asks no sign-in.
       return false;
     }
-    expect(
-      start.authUrl,
-      `muster's sign-in link for ${this.user.email} (${JSON.stringify(start)})`,
-    ).toBeTruthy();
     const proxy = await this.page.request.get(start.authUrl!, {
       maxRedirects: 0,
     });
@@ -640,40 +639,37 @@ export type RefusalWorkspace = SyncedWorkspace & {
  * Whether the lab serves what the specs need, and why not: the
  * workspace-manager listed in the admin's muster, answering `list_providers`
  * with structured content, with the provider instance the sources name; the
- * refusal also needs the admin's grant of that instance's App. `pinned`: muster
- * lists the manager as waiting for each person's sign-in, so every person
- * grants the App through `grant` first, the admin here.
+ * refusal also needs the admin's grant of that instance's App, which `grant`
+ * makes where muster asks for it.
  */
 async function availability(
   admin: WorkspaceTools,
   grant: (person: WorkspaceTools) => Promise<void>,
-): Promise<{
-  unavailable?: string;
-  refusalUnavailable?: string;
-  pinned: boolean;
-}> {
+): Promise<{ unavailable?: string; refusalUnavailable?: string }> {
   const server = (await admin.listServers()).find(
     s => s.name === WORKSPACE_MANAGER,
   );
   if (!server) {
     return {
       unavailable: `the lab's muster serves no ${WORKSPACE_MANAGER} (platform.workspaces off): \`agentlab configure --workspaces\`, then \`agentlab platform\``,
-      pinned: false,
     };
   }
-  const pinned = SIGN_IN_STATES.test(server.state ?? '');
-  if (pinned) {
-    if (!lab.workspaces.githubFakeURL) {
+  if (!lab.workspaces.githubFakeURL) {
+    if (SIGN_IN_STATES.test(server.state ?? '')) {
       return {
         unavailable: `the lab's muster serves ${WORKSPACE_MANAGER} after each person's grant of the App of its GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (see e2e/agentlab/README.md)`,
-        pinned,
       };
     }
+  } else {
     await grant(admin);
-  } else if (server.state && !/^(connected|running)$/i.test(server.state)) {
+  }
+  if (
+    server.state &&
+    !/^(connected|running)$/i.test(server.state) &&
+    !SIGN_IN_STATES.test(server.state)
+  ) {
     return {
       unavailable: `the lab's muster lists ${WORKSPACE_MANAGER} as ${server.state}, not connected: \`kubectl -n agent-platform get pods\``,
-      pinned,
     };
   }
   let providers: Provider[];
@@ -682,23 +678,25 @@ async function availability(
   } catch (error) {
     return {
       unavailable: `the lab's ${WORKSPACE_MANAGER} does not answer list_providers: ${error instanceof Error ? error.message : String(error)}`,
-      pinned,
     };
   }
   const provider = providers.find(p => p.name === lab.workspaces.provider);
   if (!provider) {
     return {
       unavailable: `the lab's ${WORKSPACE_MANAGER} has no provider instance "${lab.workspaces.provider}" (it lists ${providers.map(p => p.name).join(', ') || 'none'}): \`agentlab configure --workspaces-provider fake\` (or fake,github), or AGENTLAB_WORKSPACE_PROVIDER`,
-      pinned,
+    };
+  }
+  if (!lab.workspaces.githubFakeURL) {
+    return {
+      refusalUnavailable: `the refusal needs people granted the App of the lab's GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (see e2e/agentlab/README.md)`,
     };
   }
   if (!provider.connected) {
     return {
       refusalUnavailable: `the refusal needs the admin's grant of the App of ${provider.name} in muster, and the lab's ${WORKSPACE_MANAGER} answers: ${provider.signIn ?? 'no signIn (a workspace-manager before 0.10, whose sign-in is its own)'}`,
-      pinned,
     };
   }
-  return { pinned };
+  return {};
 }
 
 type WorkerFixtures = { workspaceLab: WorkspaceLab };
@@ -721,7 +719,6 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
           granted.push(person);
         }
       };
-      let pinned = false;
       const tools = (user: LabUser) => {
         let entry = people.get(user.email);
         if (!entry) {
@@ -740,7 +737,7 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
                     user,
                   );
                   await person.signIn();
-                  if (pinned) {
+                  if (lab.workspaces.githubFakeURL) {
                     await grant(person);
                   }
                   return person;
@@ -750,9 +747,10 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
         return entry;
       };
       const admin = await tools(lab.users.admin);
-      const availableNow = await availability(admin, grant);
-      pinned = availableNow.pinned;
-      const { unavailable, refusalUnavailable } = availableNow;
+      const { unavailable, refusalUnavailable } = await availability(
+        admin,
+        grant,
+      );
 
       const created = new Set<string>();
       const once = <T>(make: () => Promise<T>) => {

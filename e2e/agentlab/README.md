@@ -186,11 +186,12 @@ A spec asks for:
 - `NON_MEMBER`: the viewer. The lab's Organization is the Dex groups
   `platform-admins` and `developers`; `viewers` are outside it.
 - `workspaceLab.tools(user)`: the manager's tools as any lab user, on a page of
-  their own. Where muster lists the workspace-manager as waiting for each
-  person's sign-in (the manager pinned to the App of the lab's GitHub), the
-  person grants that App in muster first: muster's sign-in link, the lab
-  GitHub's consent fetched from `AGENTLAB_GITHUB_FAKE_URL`, muster's callback
-  in the person's browser. The worker signs each of them out of it at the end.
+  their own. Where muster asks the person to sign in to the workspace-manager
+  (the manager pinned to the App of the lab's GitHub) and they hold no grant
+  yet, the person grants that App in muster first: muster's sign-in link, the
+  lab GitHub's consent fetched from `AGENTLAB_GITHUB_FAKE_URL`, muster's
+  callback in the person's browser. The worker signs the people it granted out
+  of it at the end.
 - `workspaceLab.create(kind, sources, repositories)`: a synced workspace of
   this run for a spec that needs one of its own, created the fixtures' way.
 
