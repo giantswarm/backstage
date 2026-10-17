@@ -9,6 +9,7 @@ import {
 } from './fixtures';
 import { contextOptionsFor, lab } from './lab';
 import { hasUserGesture, idleTab, touch } from './userActivation';
+import { loginRequestedBy } from './loginRequest';
 
 /**
  * The broker-backed cluster-token mint after the portal session expired, on a
@@ -179,10 +180,9 @@ test('a background cluster-token mint after the session expired opens no Login R
       contentType: 'image/png',
     });
 
-    // The person acts: switching an installation off asks for the sign-in
-    // (the portal's reads and the mint share the main session, so the dialog
-    // does not name which of them asked; the unit tests pin the mint's own
-    // prompt). Nothing reaches the staged apiservers before it.
+    // The person acts: switching an installation off asks for the sign-in,
+    // and the mint is among the callers the open dialog names. Nothing
+    // reaches the staged apiservers before it.
     await touch(page);
     // The bui switch's input is visually hidden: its label takes the click.
     const toggle = page.locator('label').filter({
@@ -195,6 +195,10 @@ test('a background cluster-token mint after the session expired opens no Login R
       loginRequired(page),
       'the person’s action asks for the sign-in',
     ).toBeVisible({ timeout: 60_000 });
+    expect(
+      await loginRequestedBy(page),
+      'the installation’s token mint asked for the sign-in',
+    ).toContain('cluster-token-mint');
     expect(mints, 'nothing is minted before the sign-in').toEqual([]);
     expect(reads, 'nothing reached the apiserver before the sign-in').toEqual(
       [],
@@ -214,6 +218,10 @@ test('a background cluster-token mint after the session expired opens no Login R
       .click();
     await completeDexLogin(await popup, lab.users.admin);
     await expect(loginRequired(page)).toBeHidden({ timeout: 30_000 });
+    expect(
+      await loginRequestedBy(page),
+      'no caller waits on the sign-in once it completed',
+    ).toEqual([]);
     await toggle.click();
     await expect
       .poll(() => mints, {
