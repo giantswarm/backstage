@@ -28,6 +28,7 @@ export const SHELL_SPECS = [
   'gpu-node-pool.spec.ts',
   'harness-codex-card.spec.ts',
   'harness-codex-turn.spec.ts',
+  'harness-omp-turn.spec.ts',
   'harness-no-limits.spec.ts',
   'inventory-gate.spec.ts',
   'kagent-denial-reason.spec.ts',
