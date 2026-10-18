@@ -2,6 +2,7 @@ export * from './display/ConditionMessage';
 export * from './display/FiltersLayout';
 export * from './AsyncValue';
 export * from './Breadcrumbs';
+export * from './BusyDialog';
 export * from './CatalogFilters';
 export * from './Autocomplete';
 export * from './CodeBlock';

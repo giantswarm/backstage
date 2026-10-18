@@ -7,9 +7,8 @@
  * click and Escape, but not `DialogHeader`'s close button, which bui renders
  * unconditionally and routes through `onOpenChange`.
  *
- * ```tsx
- * <Dialog isOpen={isOpen} {...dialogDismissLock(isBusy, onOpenChange)}>
- * ```
+ * Internal to `BusyDialog`, which is what a dialog uses: a spread each call
+ * site must remember is a close path some call site forgets.
  */
 export function dialogDismissLock(
   isBusy: boolean,

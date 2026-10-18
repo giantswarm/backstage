@@ -1,6 +1,6 @@
-import { Dialog, DialogBody, DialogHeader } from '@backstage/ui';
+import { DialogBody, DialogHeader } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import { BusyDialog } from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../AgentsDataProvider';
 import type { ComposerImage } from '../../lib/messageImages';
 import { NewSessionComposer } from '../NewSessionComposer';
@@ -50,9 +50,10 @@ export function NewSessionDialog({
 }: NewSessionDialogProps) {
   const classes = useStyles();
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
-      {...dialogDismissLock(isStarting, onOpenChange)}
+      onOpenChange={onOpenChange}
+      isBusy={isStarting}
       width="min(90vw, 560px)"
       className={classes.dialog}
     >
@@ -71,6 +72,6 @@ export function NewSessionDialog({
           autoFocus
         />
       </DialogBody>
-    </Dialog>
+    </BusyDialog>
   );
 }
