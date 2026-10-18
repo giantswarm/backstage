@@ -1,5 +1,55 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.22.0
+
+### Minor Changes
+
+- 21ae39b: Export `ReleaseReadinessFlags` and `releaseReadinessFlagNames` — the release
+  blockers `AppReadinessProcessor` writes into `giantswarm.io/readiness-flags`.
+
+  That annotation has two authors: `backstage-catalog-importer` merges its enforced
+  chart-metadata gaps into the same list. Consumers have to tell the two apart to
+  attribute each flag to the verdict it came from, and they do so by recognising
+  these names, so they belong in one shared place rather than being duplicated on
+  each side of the package boundary.
+
+- 2fa183d: New `BuildStatusProcessor`: records whether a component's default branch
+  builds, as the `giantswarm.io/build-status` label (`passing` / `failing` /
+  `unknown`), the confirmed failing checks in `giantswarm.io/build-failing-checks`
+  (a JSON array, since check names contain commas),
+  the branch in `giantswarm.io/default-branch`, and `BUILD-RED` merged into
+  `giantswarm.io/readiness-flags` when failing. Off by default
+  (`catalog.processors.buildStatus.enabled`).
+
+  GitHub hangs commit statuses off a SHA, so a red from a branch cut off main, a
+  merge-queue branch or a tag shows up on main. Each failing status is therefore
+  resolved through the CircleCI build behind it and counted only when that build
+  really ran on the default branch and really reached a verdict; tag builds and
+  other branches' builds are set aside. `passing` needs positive evidence: a
+  context still running, cancelled or pending on the default branch, a red that
+  cannot be resolved, or a rollup whose every context was set aside is `unknown`,
+  never `failing` and never `passing`; a skipped or neutral check is not evidence
+  either, and where CircleCI reports to the commit only a green CircleCI build of
+  the default branch is (a green pre-commit or scorecard workflow says nothing
+  about whether the build runs). When a lookup fails (GitHub 5xx, CircleCI rate limit) the last known
+  verdict is kept for up to a day with its original `build-status-checked`, rather than every
+  affected component flipping to `unknown` for a pass. A repository GitHub cannot find writes
+  nothing, and a missing GitHub token is warned about once per owner rather than
+  written as `unknown`. The release verdict in `giantswarm.io/readiness` is not
+  touched.
+
+  `gs-common` exports `BuildReadinessFlags` / `buildReadinessFlagNames` next to the
+  release flags, so the frontend can attribute the flag to the build rather than
+  to the release or to chart metadata. `TtlCache` moves to
+  `catalog-backend-module-gs/src/util` and is shared by both processors.
+
+- e5bd97a: The Installations page shows every installation's versions again. The backend reads only the installations it can read as the signed-in person (the main installation, the ones the cluster token broker covers, the ones the Kubernetes plugin authenticates to itself) within one 15-second deadline per installation, and leaves the others (their own OIDC sign-in, a `backendUrl` override) to the browser, as before. An expired session shows "Not signed in", a failed read a short status with the details on hover, and the answer is no longer persisted to the browser's storage, where the next person to sign in on the same browser saw it. The subject token header and the endpoint's types live in `gs-common`.
+- 103014c: The Version History card and tab list only stable releases by default. A "Show all" switch brings back release candidates and dev builds. Stable means a semantic version without a pre-release part (`isStableVersion` in `gs-common`).
+
+  The backend parses and compares versions with `@giantswarm/semver-ts` instead of npm `semver`, so tags are read the way Flux reads them (Masterminds/semver): `sortVersions` in `gs-node` now also drops tags that are no version, and accepts incomplete ones such as `1.2`. GitHub release tags in the app readiness check are still parsed strictly, so a date-named release is not mistaken for a version.
+
+  `ContainerRegistryService.getTags` without a `limit` now follows the registry's pagination (`Link: rel="next"`), so the version history lists every tag instead of the 100 most recent ones ACR returns on its first page. With a `limit` it stops once it holds that many tags, which for the catalog processors' limit of 500 is a single request. The OCI path now honours `limit` and asks for pages of 1000 tags, as the ACR path asks for 999.
+
 ## 0.21.1
 
 ### Patch Changes
