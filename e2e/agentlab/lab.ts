@@ -98,11 +98,13 @@ export const lab = {
      */
     organization: process.env.AGENTLAB_WORKSPACE_ORGANIZATION ?? 'lab',
     /**
-     * The provider instance the fixtures' sources name: `fake`, the lab's
-     * own GitHub (`agentlab github-fake --workspaces`), whose fixture
-     * repositories and per-user access are the same on every lab.
+     * The provider instance the fixtures' sources name, one of the lab's own
+     * GitHub (`agentlab github-fake --workspaces`), whose fixture
+     * repositories and per-user access are the same on every lab. Unset, the
+     * fixtures take the instance the lab grants in muster: `fake`, or
+     * `fake-bearer` on a lab whose grant provider it is.
      */
-    provider: process.env.AGENTLAB_WORKSPACE_PROVIDER ?? 'fake',
+    provider: process.env.AGENTLAB_WORKSPACE_PROVIDER || undefined,
     /**
      * The lab's GitHub as this host reaches it: the loopback port its
      * container publishes (`docker port <cluster>-lab-github`, served over

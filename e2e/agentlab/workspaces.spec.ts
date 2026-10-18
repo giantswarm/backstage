@@ -5,7 +5,6 @@ import {
   NON_MEMBER,
   OWNER,
   PUBLIC_REPOSITORIES,
-  PUBLIC_SOURCE,
   test,
   WORKSPACE_PREFIX,
   WorkspaceToolError,
@@ -26,7 +25,7 @@ test.describe('workspaces', () => {
 
     const synced = await workspaceLab.create(
       'smoke',
-      [PUBLIC_SOURCE],
+      [workspaceLab.publicSource],
       PUBLIC_REPOSITORIES,
     );
     testInfo.annotations.push({
@@ -64,7 +63,7 @@ test.describe('workspaces', () => {
       organization: lab.workspaces.organization,
       sources: [
         {
-          provider: lab.workspaces.provider,
+          provider: workspaceLab.provider,
           owner: OWNER,
           repositories: ['platform-api'],
         },
@@ -74,7 +73,7 @@ test.describe('workspaces', () => {
       // The fixtures' own creation sweeps before it creates.
       const synced = await workspaceLab.create(
         'rerun',
-        [PUBLIC_SOURCE],
+        [workspaceLab.publicSource],
         PUBLIC_REPOSITORIES,
       );
       expect(

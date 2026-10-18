@@ -38,7 +38,7 @@ yarn playwright show-report e2e-test-report/agentlab
 | `AGENTLAB_KUBECONFIG`             | unset                                | the lab's `state/kubeconfig`, for `deployment-uninstall.spec.ts`, `deployment-auto-upgrades.spec.ts` and `connector-display-name.spec.ts`, which also need `kubectl`; skipped without it |
 | `AGENTLAB_SLASH_BRANCH`           | the checkout's branch                | a pushed branch with a slash in its name for `slash-branch.spec.ts`, which reads its template fixture from it on GitHub; skipped on a branch without one                                 |
 | `AGENTLAB_WORKSPACE_ORGANIZATION` | `lab`                                | the Organization the lab gives the workspace-manager, which the [workspace fixtures](#workspaces) create in                                                                              |
-| `AGENTLAB_WORKSPACE_PROVIDER`     | `fake`                               | the provider instance the workspace fixtures' sources name: the lab's own GitHub                                                                                                         |
+| `AGENTLAB_WORKSPACE_PROVIDER`     | the instance the lab grants          | the lab GitHub's instance (`fake`, `fake-bearer`) the [workspace fixtures](#workspaces) name; set, the refusal fails naming it where the lab grants the other                            |
 | `AGENTLAB_GITHUB_FAKE_URL`        | unset                                | the lab's GitHub as this host reaches it, `https://127.0.0.1:<port>` (`docker port <cluster>-lab-github`, first line); the [refusal](#workspaces) skips without it                       |
 
 The suite ignores TLS errors from the lab CA, so no `agentlab trust` is needed.
@@ -213,9 +213,13 @@ What the lab needs:
 
 - Workspaces on (`agentlab configure --workspaces`, then `agentlab platform`),
   on an agentlab that gives the workspace-manager the Organization `lab`, with
-  the provider instance `fake` (`--workspaces-provider fake` or `fake,github`).
-  Without the workspace-manager, or without `fake`, every workspace spec skips
-  with that reason.
+  a provider instance of the lab's own GitHub (`--workspaces-provider fake`,
+  `fake,github` or `fake,fake-bearer`). The sources name the one the lab
+  grants in muster: `fake`, or `fake-bearer` on a lab configured with
+  `--workspaces-grant-provider fake-bearer`. `AGENTLAB_WORKSPACE_PROVIDER`
+  pins it; the refusal fails, naming the variable, where the lab grants the
+  other. Without the workspace-manager, or without either instance, every
+  workspace spec skips with that reason.
 - A Backstage whose muster route answers a tool's structured content where the
   tool's text is prose (this repository's main): the workspace-manager answers
   every tool that way. A workspace-manager that muster lists but does not
