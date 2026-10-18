@@ -44,11 +44,13 @@ export async function completeDexLogin(
     () => true,
     () => false,
   );
+  // The popup closing rejects the URL wait at once: a closed popup has left
+  // Dex too, so it counts as sent on.
   const leftDex = dex
     .waitForURL(url => !url.pathname.includes('/dex/'), { timeout: 60_000 })
     .then(
       () => true,
-      () => false,
+      () => dex.isClosed(),
     );
   await dex.getByRole('button', { name: 'Login' }).click();
   const done = await Promise.race([closed, leftDex]);
