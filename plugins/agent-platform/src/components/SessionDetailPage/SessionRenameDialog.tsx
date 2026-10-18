@@ -2,7 +2,6 @@ import { FormEvent, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
@@ -11,7 +10,7 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
-  dialogDismissLock,
+  BusyDialog,
   useFieldValidation,
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -106,55 +105,60 @@ export function SessionRenameDialog({
   };
 
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
       // While the rename is in flight, closing would leave the mutation
       // running with nowhere to report a failure, and the user looking at the
       // old title believing the rename worked.
-      {...dialogDismissLock(isRenaming, onOpenChange)}
+      onOpenChange={onOpenChange}
+      isBusy={isRenaming}
       width="min(90vw, 520px)"
     >
-      <form onSubmit={handleSubmit} noValidate style={DIALOG_FORM_STYLE}>
-        <DialogHeader>Rename session</DialogHeader>
-        <DialogBody>
-          <Flex direction="column" gap="3" ref={scope}>
-            <TextField
-              label="Session name"
-              value={value}
-              onChange={setValue}
-              maxLength={SESSION_NAME_MAX_LENGTH}
-              {...validation.textFieldProps('name', nameError)}
-              // The rule guards against stealing focus on page load. This is a
-              // modal the user just opened in order to type a name, and react-aria
-              // focuses the dialog container rather than the field — so without
-              // this the cursor is nowhere and the field has to be clicked first.
-              // Focusing the first meaningful control is what the ARIA dialog
-              // pattern asks for. Pinned by a test.
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-            />
-            {isUserScoped === false && (
-              <Text variant="body-medium">
-                This kagent does not scope sessions to users, so someone else
-                may have started this session.
-              </Text>
-            )}
-            {error ? <Alert status="danger" description={error} /> : null}
-          </Flex>
-        </DialogBody>
-        <DialogFooter>
-          <Button
-            variant="secondary"
-            isDisabled={isRenaming}
-            onClick={() => onOpenChange(false)}
-          >
-            Cancel
-          </Button>
-          <Button variant="primary" type="submit" isPending={isRenaming}>
-            {isRenaming ? 'Saving…' : 'Save'}
-          </Button>
-        </DialogFooter>
-      </form>
-    </Dialog>
+      {close => (
+        <>
+          <form onSubmit={handleSubmit} noValidate style={DIALOG_FORM_STYLE}>
+            <DialogHeader>Rename session</DialogHeader>
+            <DialogBody>
+              <Flex direction="column" gap="3" ref={scope}>
+                <TextField
+                  label="Session name"
+                  value={value}
+                  onChange={setValue}
+                  maxLength={SESSION_NAME_MAX_LENGTH}
+                  {...validation.textFieldProps('name', nameError)}
+                  // The rule guards against stealing focus on page load. This is a
+                  // modal the user just opened in order to type a name, and react-aria
+                  // focuses the dialog container rather than the field — so without
+                  // this the cursor is nowhere and the field has to be clicked first.
+                  // Focusing the first meaningful control is what the ARIA dialog
+                  // pattern asks for. Pinned by a test.
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
+                  autoFocus
+                />
+                {isUserScoped === false && (
+                  <Text variant="body-medium">
+                    This kagent does not scope sessions to users, so someone
+                    else may have started this session.
+                  </Text>
+                )}
+                {error ? <Alert status="danger" description={error} /> : null}
+              </Flex>
+            </DialogBody>
+            <DialogFooter>
+              <Button
+                variant="secondary"
+                isDisabled={isRenaming}
+                onClick={close}
+              >
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" isPending={isRenaming}>
+                {isRenaming ? 'Saving…' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </>
+      )}
+    </BusyDialog>
   );
 }

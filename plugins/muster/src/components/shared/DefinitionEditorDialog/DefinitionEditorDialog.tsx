@@ -2,7 +2,6 @@ import { ReactNode, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
@@ -12,7 +11,7 @@ import {
 import {
   ALERT_MESSAGE_STYLE,
   ConfirmDialog,
-  dialogDismissLock,
+  BusyDialog,
   useFieldValidation,
   useOnDialogOpen,
   type FieldBlurProps,
@@ -181,9 +180,10 @@ export function DefinitionEditorDialog({
   };
 
   return (
-    <Dialog
+    <BusyDialog
       isOpen={open}
-      {...dialogDismissLock(Boolean(busy), next => {
+      isBusy={Boolean(busy)}
+      onOpenChange={next => {
         if (!next) {
           if (isDirty) {
             setDiscardOpen(true);
@@ -191,7 +191,7 @@ export function DefinitionEditorDialog({
             onClose();
           }
         }
-      })}
+      }}
       width="min(90vw, 860px)"
     >
       <DialogHeader>{title}</DialogHeader>
@@ -259,6 +259,6 @@ export function DefinitionEditorDialog({
       >
         <Text variant="body-medium">What you entered will not be saved.</Text>
       </ConfirmDialog>
-    </Dialog>
+    </BusyDialog>
   );
 }

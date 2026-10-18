@@ -2,13 +2,12 @@ import { CSSProperties, ReactNode } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
   Flex,
 } from '@backstage/ui';
-import { dialogDismissLock } from '../../utils/dialogDismissLock';
+import { BusyDialog } from '../BusyDialog';
 
 /**
  * For an error message inside a bui `Alert`, which neither keeps line breaks
@@ -92,43 +91,44 @@ export function ConfirmDialog({
   width = 'min(90vw, 520px)',
 }: ConfirmDialogProps) {
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
-      {...dialogDismissLock(isBusy, onOpenChange)}
+      onOpenChange={onOpenChange}
+      isBusy={isBusy}
       width={width}
     >
-      <DialogHeader>{title}</DialogHeader>
-      <DialogBody>
-        <Flex direction="column" gap="3">
-          {children}
-          {error ? (
-            <Alert
-              status="danger"
-              description={<span style={ALERT_MESSAGE_STYLE}>{error}</span>}
-            />
-          ) : null}
-        </Flex>
-      </DialogBody>
-      <DialogFooter>
-        <Button
-          variant="secondary"
-          isDisabled={isBusy}
-          onClick={() => onOpenChange(false)}
-        >
-          {isDone ? 'Close' : cancelLabel}
-        </Button>
-        {isDone ? null : (
-          <Button
-            variant="primary"
-            destructive={destructive}
-            isPending={isBusy}
-            isDisabled={isConfirmDisabled}
-            onClick={onConfirm}
-          >
-            {isBusy ? (busyLabel ?? confirmLabel) : confirmLabel}
-          </Button>
-        )}
-      </DialogFooter>
-    </Dialog>
+      {close => (
+        <>
+          <DialogHeader>{title}</DialogHeader>
+          <DialogBody>
+            <Flex direction="column" gap="3">
+              {children}
+              {error ? (
+                <Alert
+                  status="danger"
+                  description={<span style={ALERT_MESSAGE_STYLE}>{error}</span>}
+                />
+              ) : null}
+            </Flex>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" isDisabled={isBusy} onClick={close}>
+              {isDone ? 'Close' : cancelLabel}
+            </Button>
+            {isDone ? null : (
+              <Button
+                variant="primary"
+                destructive={destructive}
+                isPending={isBusy}
+                isDisabled={isConfirmDisabled}
+                onClick={onConfirm}
+              >
+                {isBusy ? (busyLabel ?? confirmLabel) : confirmLabel}
+              </Button>
+            )}
+          </DialogFooter>
+        </>
+      )}
+    </BusyDialog>
   );
 }
