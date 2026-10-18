@@ -18,7 +18,7 @@ import { LEFTOVER_AGE, contextOptionsFor, lab, type LabUser } from './lab';
  *
  * - {@link WorkspaceFixtures.labWorkspace}: a workspace of the lab's
  *   Organization, created as the admin, with one source of public
- *   repositories on the lab's GitHub ({@link PUBLIC_SOURCE}): `platform-api`
+ *   repositories on the lab's GitHub ({@link publicSource}): `platform-api`
  *   by name and `monorepo` by its language (Go) and topic (`monorepo`). It is
  *   handed to the test once its first sync succeeded with both repositories
  *   in the manifest, and deleted when the worker ends.
@@ -42,7 +42,9 @@ import { LEFTOVER_AGE, contextOptionsFor, lab, type LabUser } from './lab';
  * a run going on at the same time against the same lab keeps its own. A lab
  * without the workspace-manager, with one that does not answer, or without
  * the provider instance the sources name, skips every spec that asks for a
- * workspace, with the reason.
+ * workspace, with the reason. The sources name the lab GitHub's instance the
+ * lab grants in muster, unless `AGENTLAB_WORKSPACE_PROVIDER` names one: then
+ * a refusal on a lab that grants another fails, naming the variable.
  */
 
 export const WORKSPACE_MANAGER = 'workspace-manager';
@@ -76,13 +78,20 @@ export const NON_MEMBER = lab.users.viewer;
 /** The lab GitHub's owner the sources select from (`agentlab github-fake`). */
 export const OWNER = 'agentlab-org';
 
-/** The public workspace's selection. */
-export const PUBLIC_SOURCE = {
-  provider: lab.workspaces.provider,
+/**
+ * The provider instances of the lab's own GitHub, in the order the fixtures
+ * prefer them: the lab grants one of them in muster
+ * (`--workspaces-grant-provider`).
+ */
+const LAB_GITHUB_INSTANCES = ['fake', 'fake-bearer'];
+
+/** The public workspace's selection on `provider`. */
+export const publicSource = (provider: string) => ({
+  provider,
   owner: OWNER,
   repositories: ['platform-api'],
   filters: { languages: ['Go'], topics: { names: ['monorepo'] } },
-};
+});
 /** The manifest the public selection's first sync holds. */
 export const PUBLIC_REPOSITORIES = [
   `${OWNER}/monorepo`,
@@ -91,11 +100,11 @@ export const PUBLIC_REPOSITORIES = [
 
 /** The private repository only the admin and the App's installation read. */
 const PRIVATE_REPOSITORY = `${OWNER}/platform-infra`;
-const REFUSAL_SOURCE = {
-  provider: lab.workspaces.provider,
+const refusalSource = (provider: string) => ({
+  provider,
   owner: OWNER,
   repositories: ['platform-api', 'platform-infra'],
-};
+});
 
 const FIRST_SYNC_TIMEOUT = 5 * 60_000;
 const DELETION_TIMEOUT = 3 * 60_000;
@@ -609,6 +618,15 @@ export interface WorkspaceLab {
   unavailable?: string;
   /** Why the refusal specs skip, or undefined when the lab can refuse. */
   refusalUnavailable?: string;
+  /**
+   * Why the refusal specs fail: the lab can refuse, on another provider
+   * instance than `AGENTLAB_WORKSPACE_PROVIDER` names.
+   */
+  refusalMisconfigured?: string;
+  /** The provider instance the sources name (see `lab.workspaces.provider`). */
+  provider: string;
+  /** The public workspace's selection on {@link provider}. */
+  publicSource: ReturnType<typeof publicSource>;
   /** workspace-manager's tools as a lab user, on a page of their own. */
   tools(user: LabUser): Promise<WorkspaceTools>;
   /**
@@ -635,30 +653,55 @@ export type RefusalWorkspace = SyncedWorkspace & {
   unreadable: string[];
 };
 
+type Availability = Pick<
+  WorkspaceLab,
+  'unavailable' | 'refusalUnavailable' | 'refusalMisconfigured'
+> & { provider: string };
+
+/**
+ * The provider instance the sources name: `AGENTLAB_WORKSPACE_PROVIDER`, or
+ * else the lab GitHub's instance the admin is connected to (the one the lab
+ * grants in muster), or else the first of them the manager lists.
+ */
+function chooseProvider(providers: Provider[]): Provider | undefined {
+  if (lab.workspaces.provider) {
+    return providers.find(p => p.name === lab.workspaces.provider);
+  }
+  const own = LAB_GITHUB_INSTANCES.flatMap(
+    name => providers.find(p => p.name === name) ?? [],
+  );
+  return own.find(p => p.connected) ?? own[0];
+}
+
 /**
  * Whether the lab serves what the specs need, and why not: the
  * workspace-manager listed in the admin's muster, answering `list_providers`
- * with structured content, with the provider instance the sources name; the
- * refusal also needs the admin's grant of that instance's App, which `grant`
- * makes where muster asks for it.
+ * with structured content, with the provider instance the sources name
+ * ({@link chooseProvider}); the refusal also needs the admin's grant of that
+ * instance's App, which `grant` makes where muster asks for it.
  */
 async function availability(
   admin: WorkspaceTools,
   grant: (person: WorkspaceTools) => Promise<void>,
-): Promise<{ unavailable?: string; refusalUnavailable?: string }> {
+): Promise<Availability> {
+  const fallback = lab.workspaces.provider ?? LAB_GITHUB_INSTANCES[0];
+  const unavailable = (reason: string) => ({
+    unavailable: reason,
+    provider: fallback,
+  });
   const server = (await admin.listServers()).find(
     s => s.name === WORKSPACE_MANAGER,
   );
   if (!server) {
-    return {
-      unavailable: `the lab's muster serves no ${WORKSPACE_MANAGER} (platform.workspaces off): \`agentlab configure --workspaces\`, then \`agentlab platform\``,
-    };
+    return unavailable(
+      `the lab's muster serves no ${WORKSPACE_MANAGER} (platform.workspaces off): \`agentlab configure --workspaces\`, then \`agentlab platform\``,
+    );
   }
   if (!lab.workspaces.githubFakeURL) {
     if (SIGN_IN_STATES.test(server.state ?? '')) {
-      return {
-        unavailable: `the lab's muster serves ${WORKSPACE_MANAGER} after each person's grant of the App of its GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (see e2e/agentlab/README.md)`,
-      };
+      return unavailable(
+        `the lab's muster serves ${WORKSPACE_MANAGER} after each person's grant of the App of its GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (see e2e/agentlab/README.md)`,
+      );
     }
   } else {
     await grant(admin);
@@ -668,35 +711,49 @@ async function availability(
     !/^(connected|running)$/i.test(server.state) &&
     !SIGN_IN_STATES.test(server.state)
   ) {
-    return {
-      unavailable: `the lab's muster lists ${WORKSPACE_MANAGER} as ${server.state}, not connected: \`kubectl -n agent-platform get pods\``,
-    };
+    return unavailable(
+      `the lab's muster lists ${WORKSPACE_MANAGER} as ${server.state}, not connected: \`kubectl -n agent-platform get pods\``,
+    );
   }
   let providers: Provider[];
   try {
     providers = await admin.listProviders();
   } catch (error) {
-    return {
-      unavailable: `the lab's ${WORKSPACE_MANAGER} does not answer list_providers: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    return unavailable(
+      `the lab's ${WORKSPACE_MANAGER} does not answer list_providers: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
-  const provider = providers.find(p => p.name === lab.workspaces.provider);
+  const provider = chooseProvider(providers);
   if (!provider) {
-    return {
-      unavailable: `the lab's ${WORKSPACE_MANAGER} has no provider instance "${lab.workspaces.provider}" (it lists ${providers.map(p => p.name).join(', ') || 'none'}): \`agentlab configure --workspaces-provider fake\` (or fake,github), or AGENTLAB_WORKSPACE_PROVIDER`,
-    };
+    const wanted = lab.workspaces.provider
+      ? `"${lab.workspaces.provider}" (AGENTLAB_WORKSPACE_PROVIDER)`
+      : LAB_GITHUB_INSTANCES.map(name => `"${name}"`).join(' or ');
+    return unavailable(
+      `the lab's ${WORKSPACE_MANAGER} has no provider instance ${wanted} (it lists ${providers.map(p => p.name).join(', ') || 'none'}): \`agentlab configure --workspaces-provider fake\` (or fake,github or fake,fake-bearer)`,
+    );
   }
   if (!lab.workspaces.githubFakeURL) {
     return {
+      provider: provider.name,
       refusalUnavailable: `the refusal needs people granted the App of the lab's GitHub, which this host reaches only on its loopback port: set AGENTLAB_GITHUB_FAKE_URL to it (see e2e/agentlab/README.md)`,
     };
   }
   if (!provider.connected) {
+    const connected = providers.find(
+      p => p.connected && LAB_GITHUB_INSTANCES.includes(p.name),
+    );
+    if (connected) {
+      return {
+        provider: provider.name,
+        refusalMisconfigured: `AGENTLAB_WORKSPACE_PROVIDER names ${provider.name}, which the admin is not connected to, while the lab grants ${connected.name} in muster: unset AGENTLAB_WORKSPACE_PROVIDER, or set it to ${connected.name}`,
+      };
+    }
     return {
+      provider: provider.name,
       refusalUnavailable: `the refusal needs the admin's grant of the App of ${provider.name} in muster, and the lab's ${WORKSPACE_MANAGER} answers: ${provider.signIn ?? 'no signIn (a workspace-manager before 0.10, whose sign-in is its own)'}`,
     };
   }
-  return {};
+  return { provider: provider.name };
 }
 
 type WorkerFixtures = { workspaceLab: WorkspaceLab };
@@ -747,10 +804,12 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
         return entry;
       };
       const admin = await tools(lab.users.admin);
-      const { unavailable, refusalUnavailable } = await availability(
-        admin,
-        grant,
-      );
+      const {
+        unavailable,
+        refusalUnavailable,
+        refusalMisconfigured,
+        provider,
+      } = await availability(admin, grant);
 
       const created = new Set<string>();
       const once = <T>(make: () => Promise<T>) => {
@@ -774,15 +833,18 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
       await use({
         unavailable,
         refusalUnavailable: unavailable ?? refusalUnavailable,
+        refusalMisconfigured,
+        provider,
+        publicSource: publicSource(provider),
         tools,
         create,
         workspace: once(() =>
-          create('public', [PUBLIC_SOURCE], PUBLIC_REPOSITORIES),
+          create('public', [publicSource(provider)], PUBLIC_REPOSITORIES),
         ),
         refusal: once(async () => {
           const synced = await create(
             'refusal',
-            [REFUSAL_SOURCE],
+            [refusalSource(provider)],
             [`${OWNER}/platform-api`, PRIVATE_REPOSITORY],
           );
           // Both granted the App in muster as tools() opened them.
@@ -835,6 +897,9 @@ export const test = base.extend<WorkspaceFixtures, WorkerFixtures>({
         !!workspaceLab.refusalUnavailable,
         workspaceLab.refusalUnavailable,
       );
+      if (workspaceLab.refusalMisconfigured) {
+        throw new Error(workspaceLab.refusalMisconfigured);
+      }
       await use(await workspaceLab.refusal());
     },
     { timeout: FIRST_SYNC_TIMEOUT + DELETION_TIMEOUT + 2 * 60_000 },
