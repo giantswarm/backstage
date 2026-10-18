@@ -1,5 +1,1120 @@
 # app
 
+## 0.41.0
+
+### Minor Changes
+
+- 2b79a0c: The Agent Platform lives in the agent shell only. Its pages (`page:agent-platform`
+  with its sections, muster's Connectors and Workflows among them,
+  `page:agent-platform/skills`, `page:agent-platform/profile` and muster's
+  `/agent-platform/mcp-servers` redirect) carry the new `AGENT_SHELL_ON`
+  extension predicate from `agent-platform-common`, so they are mounted only
+  where the shell is available (`app.portals.agentPlatform`, or a person's
+  `agent-platform-shell` opt-in).
+
+  - **Agent Platform off** (`app.portals.agentPlatform` unset or `false`): the
+    classic portal has nothing of the Agent Platform — no sidebar item, no
+    `/agent-platform/**` route, no classic-chrome Agent Platform page — even
+    where `app.extensions` lists `page:agent-platform`. Deployments that used
+    the classic-chrome Agent Platform section lose it by design.
+  - **Agent Platform on**: `/agent-platform/**` always renders in the shell; the
+    classic sidebar carries only an **Agent Platform** link to `/agent-platform`
+    (a new tab while the classic portal is served), and the shell's **Platform
+    Portal** item links back.
+
+  The classic-chrome rendering of `page:agent-platform` (its header and tab
+  strip) is gone. Create cluster and Delete cluster on the classic Clusters
+  pages are unchanged.
+
+- e49717c: Customize gains a **Workspaces** tab, last after Workflows, on
+  installations whose muster lists the workspace-manager (absent elsewhere). It
+  lists the workspaces of one Organization: their sources, repository count,
+  what the shared volume stores (with the share's size where its class
+  provisions one), the last sync's result (when it happened and why it failed
+  behind its info icon), and the Sessions with a directory on it, searchable. A
+  person in several Organizations picks one with the Organization control beside
+  the Environment; a person in one never sees it. Each row offers Sync now and
+  Delete; Delete asks first, naming the workspace and the Sessions still using
+  it, which keep their directories until each is cleaned up. Open, Edit and
+  Create workspace come with the workspace page and editor. New exports:
+  `CustomizeWorkspacesPanel` and `WorkspaceOrganizationSelect`.
+- 2b79a0c: Make the agent shell and the classic portal coexist in one app, chosen by URL.
+  The `agent-platform-shell` feature flag now only gates the shell's
+  availability; which chrome renders is decided per location at render time:
+
+  - With the flag on, the agent area (`/`, `/agent-platform/**`, `/customize/**`)
+    renders the new shell — rail navigation and the agent theme (`data-agent-shell`
+    CSS overrides and the agent MUI palette) — while every other route
+    (`/clusters`, `/catalog`, `/deployments`, `/settings`, …) keeps the classic
+    sidebar and classic theme, so the old portal stays fully usable. Deep links
+    and "open in new tab" pick the right shell from the URL alone.
+  - With the flag off, nothing changes: the app behaves exactly as before,
+    classic everywhere.
+  - Cross-links between the two shells, each opening in a new tab: the rail
+    gains a "Platform Portal" entry linking to `/clusters`, and the classic
+    sidebar — while the flag is on — replaces its in-place Agent Platform entry
+    with an "Agent Platform" link to the shell's home at `/`.
+
+- 2b79a0c: Agent shell rail: the expanded rail is resizable from its right edge, by drag
+  or with the arrow keys, Home and End once the edge has keyboard focus, between
+  224px and 480px (at most 40% of the window). Each browser remembers its width,
+  and a double click on the edge returns the default. The collapsed rail is
+  narrower (53px instead of 72px), and its icons, the logo, the menu items,
+  Search, the profile avatar and the expand button, all sit centred on one
+  vertical axis.
+- e9a6141: Add the optional `app.rootRedirect` key. When set, `/` redirects to that in-app path (for example `/agent-platform`) instead of rendering the home page; unset keeps the home page, and so does a value that does not start with `/` or that is `/` itself. It lets a single-product deployment land on that product's page without a code change. The home page extension (`page:home`) must stay enabled, since it owns the `/` route.
+- a1292a5: The login page signs in through the main OIDC login provider only; the
+  `gs.signInProviders` list and its GitHub-provider card are gone. Which Dex
+  connector a sign-in lands on is now a deployment choice: the provider's
+  `startUrlSearchParams.connector_id` pins the default connector, and
+  `gs.signInFallbackProvider` adds a second card that signs in through the same
+  provider pinned to another connector (for people the default one cannot
+  authenticate). The Giant Swarm OIDC authenticator forwards a `connector_id`
+  passed on `/start` to Dex for that request; `gsFallbackSignInAuthApiRef`
+  exposes the fallback sign-in API.
+- 364fd54: Pin the public frontend config: `frontendVisibility.test.ts` enumerates every
+  frontend-visible path of the app's merged config schema and compares it with
+  the committed `frontendVisiblePaths.golden.json`, so a new field, plugin or
+  dependency bump that widens what the unauthenticated `index.html` carries
+  fails CI until the golden file is regenerated and the diff reviewed. The same
+  test refuses `@deepVisibility frontend` in every `config.d.ts` of the
+  repository; the app's own schema annotates the theme colors, the Sentry and
+  the TelemetryDeck fields one by one instead.
+- 8967f50: Backstage's standard GitHub auth API (`githubAuthApiRef`) runs on the person's own
+  GitHub grant in muster when `gs.github` is configured -- no GitHub App and no GitHub
+  login in the portal. The GitHub Actions and Pull Requests tabs, `ScmAuth` and the
+  scaffolder pickers work unchanged with their own GitHub clients; only the token
+  source changed.
+
+  - `plugins/gs`: `GSAuthProviders.getGithubAuthApi()` builds `OAuth2` over a
+    `GithubGrantAuthConnector` that mints from `POST /api/auth/github-token` with the
+    Backstage token and the main Dex ID token, echoes the requested scopes as granted
+    (a GitHub App user token carries none) and sets `expiresAt` from the token's
+    remaining lifetime, so the session re-mints three minutes before it ends while
+    muster refreshes the grant underneath. A person without a grant is sent through
+    muster's connect once -- a full-page bounce with `redirect=<current page>` that
+    GitHub answers without a prompt for the App already authorized at the Dex login
+    -- never the "Login Required" dialog; a bounce that comes back without a grant is
+    not repeated. Signing out (`removeSession`) revokes the grant in muster for every
+    session and every server of that issuer. `gs.github.brokerAudience` (frontend
+    visible) switches the API on; `gs.github.muster` names the installation and
+    MCPServer.
+  - `plugins/auth-backend-module-gs`: `POST /api/auth/github-token` exchanges the
+    caller's Dex ID token through the muster token broker (`gs.clusterTokenBroker`
+    credentials, RFC 8693, audience `gs.github.brokerAudience`) for the grant's access
+    token, cached per user with 240 s skew; `invalid_target` is disambiguated through
+    muster's `core_auth_login` on `gs.github.muster`: a connect that succeeds retries
+    the exchange, `auth_required` answers 401 with `reason: no_grant` and muster's
+    connect URL, anything else is 502 like the cluster-token route.
+    `POST /api/auth/github-token/logout` runs `core_auth_logout`.
+  - `plugins/gs-node`: `MusterServerGateway.logout()` (`core_auth_logout`).
+  - `packages/app`: the `github-auth` factory uses the GS API when `gs.github` is
+    configured and upstream `GithubAuth.create` otherwise; customer portals are
+    unchanged.
+  - `plans`, `roadmap`: a missing GitHub grant bounces the page through muster's connect
+    on its own instead of showing a "Connect GitHub" button and polling a popup; the
+    button remains as the fallback when a bounce comes back without a grant.
+
+- 0a21beb: The Grafana dashboards card on entities carrying `grafana/dashboard-selector`
+  is disabled by default and enabled per portal through `app.extensions`
+  (`entity-card:catalog/grafana-dashboards: true`). The card works only where the
+  plugin is wired, a `proxy.endpoints` entry at `/grafana/api` with a
+  service-account token for the `grafana` host; the section itself is required
+  by the plugin's schema on every portal and the annotated team Groups reach every
+  portal through the shared catalog, so until now every portal without the proxy
+  entry showed `Request failed with 404 Not Found` on every team page. Portals
+  that wire the plugin add the switch; everywhere else the team pages show
+  neither the card nor the error. Documented in `docs/configuration.md`.
+- 2b79a0c: The agent-platform shell's Customize screen is a tab per area (Agents, Skills, Connectors, Models, Workflows) with each tab's count, an Environment select, an Organization select on Agents and Models, a search and the area's create action. `/customize` opens the Agents tab.
+- 4dd47fb: Page views sent to TelemetryDeck carry the template of the route they matched
+  (`/sessions/:installation/:sessionId`) as `path`, never the address itself, so
+  no installation, namespace, agent, model, connector, cluster or catalog entity
+  name, session id, query string or hash leaves the portal; a path no page
+  matches is sent as `unknown`. Catalog entity, docs, cluster, deployment and
+  software template page views no longer carry the names they used to
+  (`entityName`, `entityNamespace`, `installation`, `clusterName`,
+  `clusterNamespace`, `deploymentName`, `deploymentNamespace`, `templateName`,
+  `templateNamespace`), and their kind and tab are sent only from a closed set,
+  anything else as `other`. `page` and `view` are unchanged for every page and tab the app has, so
+  dashboards built on them keep working; dashboards built on `path` change.
+
+  A trailing slash now reports the same page as the address without it, and
+  the API explorer (`/api-docs`) and Repositories pages report their names
+  instead of `Unknown page`.
+
+- d817adf: The plans plugin reaches GitHub through muster as the signed-in person; the
+  portal holds no GitHub credential. The frontend forwards the user's main
+  login (Dex) ID token in `backstage-muster-authorization`, and the plans
+  backend runs the GitHub MCP server's tools through muster with it
+  (`plans.muster: { installation, server, toolPrefix? }`), which holds the
+  person's GitHub grant. A person without a grant gets a "Connect GitHub" step
+  (`GET /api/plans/connection`, a 401 `GithubNotConnectedError` carrying
+  muster's sign-in URL) instead of a GitHub App login; inline review comments
+  are written through a pending review. The `X-GitHub-Token` header and the
+  Backstage `github` auth provider are no longer used by plans. The app wires
+  `plansAuthApiRef` to the main login provider (`PlansMainAuth`).
+
+  The muster MCP client and its auth-tool parsing move from
+  `@giantswarm/backstage-plugin-muster-backend` to
+  `@giantswarm/backstage-plugin-gs-node` (`MusterMcpClient`,
+  `readMusterInstallationsFromConfig`, `parseAuthLoginResult`,
+  `MUSTER_AUTH_HEADER`, new `callToolContent`), so every backend plugin that
+  calls muster on the user's behalf shares one implementation.
+
+- 3cea21c: Add Hive (`/hive`), one sidebar entry that merges Plans, Roadmap and the product magazine: routed tabs Now, History, Roadmap, Plans and Knowledge, with the team and the search in the page header. History shows the last three weeks, epic by epic. Hive takes over the extension id `page:plans`, so a portal that enabled the Plans page shows Hive. `/plans` (extension `page:plans/plans-redirect`), `/roadmap` (`page:roadmap`) and `/product` (`page:plans/magazine`) redirect into Hive with their paths and parameters. `plans.fixtures` and `roadmap.fixtures` serve built-in fixtures for local development.
+- 59e31d6: Add the product magazine: a Magazine page at `/product` (extension `page:plans/magazine`) with Now, History (3 days, 3 weeks, 3 months) and Knowledge views, read from the repository in `plans.magazine` through the plans backend, and a Product group in the sidebar with Plans, Roadmap and Magazine.
+- 2b79a0c: Deployment config now decides which portals exist: `app.portals.platformPortal`
+  (default `true`) and `app.portals.agentPlatform` (default `false`), documented in
+  `packages/app/config.d.ts` and `app-config.yaml`. Both are public config, since
+  the app decides its pages and navigation at start, before sign-in.
+
+  - **Both on**: the Agent Platform shell on `/`, `/agent-platform/**` and
+    `/customize/**`, the classic portal everywhere else, cross-linked in new tabs
+    ("Platform Portal" in the rail, "Agent Platform" in the classic sidebar) — for
+    everyone, no flag needed.
+  - **Only `agentPlatform`**: the shell is the navigation. `/` is the new-session
+    screen for everyone and the rail has no "Platform Portal" item. Classic pages
+    stay reachable by URL, in classic chrome, whose "Agent Platform" item leads
+    back home in the same tab; nothing in the shell links to them.
+  - **Only `platformPortal`** (the default): exactly the classic portal — no agent
+    shell, no cross-link. The `agent-platform-shell` feature flag remains as a
+    per-browser opt-in here only; it is not listed in the settings while the
+    deployment has the Agent Platform on. Both off reads as the default.
+
+  The app's FeatureFlagsApi reports `agent-platform-shell` from this config (with
+  the person's flag as the opt-in), so the shell's extension predicates and every
+  plugin reading the flag follow the deployment. `agent-platform-common` gains
+  `readPortals`, `isAgentShellOptInOffered` and the `Portals` type; the app gains
+  `usePortals()`. `agentPlatform` still needs `page:agent-platform` enabled in
+  `app.extensions`.
+
+- 2b79a0c: Add the `agent-platform-shell` feature flag: when a user turns it on, the classic sidebar is replaced by the Agent Platform rail (New session, Sessions, Customize, Usage, recent sessions and a profile menu).
+
+  Under the flag, `/` is the new-session screen (a greeting and the session composer) instead of the classic home page, and `app.rootRedirect` does not apply.
+
+  Under the flag, the portal uses the Agent Platform look in light mode: Roboto, navy text and primary colour, white background and blue links (Roboto applies in dark mode too). The rail opens with the Giant Swarm mark and the Agent Platform name, linking home, and in light mode the rail, its items, the avatar, status colours and menus take the Agent Platform palette, as do toggle chips, badges and tags, the composers, selectable cards, recent-session titles, chat text and the dots of completed and neutral session states.
+
+  Under the flag, the Agent Platform page shows no tab strip and a session's page no session switcher of its own: the rail navigates between them.
+
+  Under the flag, the rail's Customize item opens `/customize`, a tabbed screen (`/customize/:tab`) with a tab per area — Agents, Skills, Connectors, Models and Workflows — each showing its count in the tab strip. Every tab has a search field, an Environment selector where the area is per-installation, an Organization filter on Agents and Models, and a create action where one exists (New agent, Add connector, Add model). The Skills tab hides when no skill repositories are configured, and `/customize` opens the first tab.
+
+- d7b3983: The roadmap plugin reads and changes the board through muster as the
+  signed-in person; the portal holds no GitHub credential and no bot reads the
+  board on the user's behalf. The frontend forwards the user's main login (Dex)
+  ID token in `backstage-muster-authorization` on every request, and the
+  roadmap backend runs pro's board tools (`list_issues`, `get_board_schema`,
+  `get_item_by_issue`, `get_issue_details`, sub-issue and field tools) through
+  muster with it (`roadmap.muster: { installation, server, toolPrefix? }`),
+  which holds the person's GitHub grant. Board reads are cached per person. A
+  person without a grant gets a "Connect GitHub" step (`GET
+/api/roadmap/connection`, a 401 `MusterServerNotConnectedError` carrying
+  muster's sign-in URL). The `X-GitHub-Token` header, the Backstage `github`
+  auth provider and the GitHub App installation token are no longer used by
+  the roadmap plugin; the pro library dependency is gone.
+
+  `@giantswarm/backstage-plugin-gs-node` gains the shared
+  `MusterServerGateway`/`MusterServerClient`, `readMusterServerRef`,
+  `asConnected` and `MusterServerNotConnectedError` for backend plugins that
+  run one MCP server's tools through muster on the user's behalf.
+
+- 2b79a0c: Under the `agent-platform-shell` flag, `/customize/agents`, `/customize/connectors`, `/customize/models` and `/customize/workflows` show the Customize page with a tab per area, each tab listing that area's cards. `/customize` stays the overview, and an unknown tab returns to it.
+- 2b79a0c: Under the `agent-platform-shell` flag, the home page's "Manage agents" link
+  leads to the Agents tab of Customize, and the profile menu shows the
+  signed-in email under the name.
+- 2b79a0c: `RecentSessions` takes a `shellRail` prop that adds an "All sessions" link to the sessions list next to its label and a dot before each session whose agent is working.
+
+  Under the `agent-platform-shell` flag, the rail drops its Sessions item: the recent sessions' "All sessions" link opens the list instead. The mobile bar, which lists no recent sessions, keeps the item.
+
+- eb337fb: Serve the config the signed-in frontend reads from the authenticated
+  `GET /api/gs/config` instead of the public `index.html`.
+
+  The unauthenticated page carried every `@visibility frontend` path, and the gs
+  plugin marked whole blocks `@deepVisibility frontend`: the admin groups, the
+  cluster token broker URL, the link templates with the fleet's hostnames, the
+  friendly labels and annotations, the Kubernetes end-of-life table and the proxy
+  knobs were readable by anyone who could reach the portal. They now keep the
+  default (backend) visibility and reach the browser once, after sign-in, as one
+  payload in app-config shape: `GET /api/gs/config` replaces
+  `GET /api/gs/installations` and serves the paths listed in the gs-backend's
+  `SIGNED_IN_CONFIG_PATHS`.
+
+  - New `@giantswarm/backstage-plugin-gs-react`: the module-level source of the
+    signed-in config, `useSignedInConfig()` for components and
+    `getSignedInConfig()` for the utility APIs built at app boot.
+  - The gs plugin's `SignedInConfigLoader` (replacing `InstallationsConfigLoader`)
+    publishes the payload; `useInstallations` and the boot-time APIs read the
+    installations from it; the cluster-access, tools, resources, labels and
+    Kubernetes-version views read their keys from it.
+  - `@visibility frontend` stays, per field, only on what the sign-in page needs:
+    `gs.authProvider`, `gs.auth.scopes`, `gs.auth.extraScopes`, the two sign-in
+    cards and `gs.github.brokerAudience` (read when the app constructs its
+    GitHub auth API, before sign-in). `@deepVisibility frontend` is gone from
+    the gs plugin.
+
+### Patch Changes
+
+- 2b9d403: `/agents` (and anything below it, query and hash kept) redirects to the same place under the Agents tab, `/agent-platform/agents`, instead of answering 404. Where the Agent Platform section is not enabled, `/agents` stays a not-found page.
+- 2b79a0c: Customize's Agents, Skills and Models tabs fit a phone. Models drops the Used by column at phone width, and its count joins the model's line ("Anthropic · claude-sonnet-4-5 · Used by 2 agents"); the status column keeps room for its label. Agents wraps a long name, the description and the facts instead of cutting them, says inline why an agent that is not Ready needs a look, and gives the star a 44px target. A skill card breaks a long name inside the card. The tab's search and its create action (New agent, Add connector, Connect a model, Add skill) take a full-width line each on a phone, instead of the action wrapping under the search, left-aligned.
+- 2b79a0c: Sessions and the new-session home work on a phone. All Sessions, and an agent's Sessions tab, list stacked rows at phone width instead of a table that left the title ~31px: the title (the link, wrapping to two lines) with its pin and ⋯ menu, then the agent, state, environment and start time under it; the agent's tab shows a page of rows at a time instead of the table's paging. On touch input Enter breaks the line in the session composer, the home composer and a question's answer box, and the Send button sends; the captions say "Tap …" instead of naming Shift+Enter, and the soft keyboard's Enter key is labelled to match. While the agent waits on a question or a permission, the disabled message box folds to its one-line caption (the cost chip stays beside it), and the card's proposed arguments scroll with the card instead of in a box of their own, so the conversation keeps its room. The session's docked composer publishes its height, so a toast lands above it. Tool payloads and reasoning scroll in boxes no taller than two fifths of the view. The command palette's agent rows carry a "Start a session" button on touch, and its keyboard hints are left out there; the new-session dialog is full screen on a phone. The home page no longer scrolls by its own bottom margin, the Slack banner leaves out its decorative thread on a phone, a long email wraps on the profile, and the shell's sign-in page fills the dynamic viewport.
+- 2b79a0c: The Agent Platform shell is light-only: on agent-area routes (where `data-agent-shell` is set) the app now renders the light theme regardless of the user's dark theme preference — the MUI theme is built from the light agent-shell palette and the body's `data-theme-mode` follows it, so bui renders light too. Classic routes keep honoring the user's theme choice.
+- 2b79a0c: Agent shell on a phone (T22 wave 1B):
+
+  - **Bottom bar**: five labelled items — New session, Sessions, Search,
+    Customize, Profile — each a 48px-tall target with its label under the icon
+    and the current one marked along the top edge. Usage and the Platform Portal
+    link move into the Profile menu, and Profile is marked current on the pages
+    only its menu leads to.
+  - **Typing a message**: on a touch screen Enter starts a new line and the Send
+    button sends; a keyboard keeps Enter to send and Shift+Enter for a new line.
+    `isSendKey` answers for the input in use, and `sendKeyCaption` /
+    `sendEnterKeyHint` word and label it for the box.
+  - **Form fields** are 16px at phone width, so iOS Safari no longer zooms into
+    a field on focus.
+  - **The bar steps aside** while a text field has focus on a touch phone, so
+    the soft keyboard does not leave it eating the conversation's height.
+  - **Toasts** sit above the bottom bar, and above the session's docked composer
+    wherever the page publishes its height.
+  - **bui tables** that still show four or more columns at phone width scroll
+    sideways inside themselves instead of clipping their values and action
+    buttons, and their sort arrows show on touch screens.
+  - **Recent sessions** in the rail keep their pin button visible on touch
+    screens, which have no hover to reveal it.
+
+- 2b79a0c: The Agent Platform's sign-in card puts the Giant Swarm ant beside the "Agent Platform" title, as one heading (read as "Giant Swarm Agent Platform"), instead of above it. The pinned rail's profile entry lines up left like the other rail items and shows "Profile and settings" under the name, so it reads as something to open; the phone's bottom-bar Profile item is unchanged.
+- 2b79a0c: The Agent Platform's sign-in card drops two lines that only repeated what the
+  card already says: "Sign in to continue." under the title, and the default
+  message under each button ("Sign in using Dex" under "Sign in with Dex", and
+  the fallback option's "Sign in through another identity provider"), also when
+  a deployment configures that same text. A message of its own the deployment
+  configures (`gs.signInProvider.message`, `gs.signInFallbackProvider.message`)
+  still shows beneath its button. The classic sign-in page is unchanged and
+  keeps the default messages.
+- 2b79a0c: Sign-in window in the Agent Platform's style. A deployment that serves the
+  Agent Platform (`app.portals.agentPlatform: true`) now greets people with one
+  centered card on the shell's light tinted background: the shell's logo, "Agent
+  Platform", and a "Sign in with …" button per sign-in option (the configured
+  Dex connector first, the fallback connector as a secondary button) with each
+  option's message beneath. It is light whatever the theme preference and on
+  any URL, including a deep link to a classic page. A failed sign-in, or an
+  error the auth backend redirects back with, shows on the card; a blocked
+  sign-in popup gets its own hint. Sign-in behaves as before: the option used
+  last is remembered and its session picked up silently, signing out forgets
+  it. Classic-only deployments keep the existing sign-in page unchanged, also
+  for people who opted into the Agent Platform in their own browser, and local
+  guest sign-in is unchanged everywhere.
+- 2b79a0c: Agent shell at phone width: the "Skip to content" link no longer floats over
+  the page above the bottom bar and takes the clicks meant for what is under it
+  (the wizard's Cancel among them). It sits outside the bar now, clipped out of
+  sight and out of hit testing until it takes the keyboard focus, when it shows
+  at the top left. Tab labels keep their count on the same line — "Agents (6)",
+  not "Agents" over "(6)" — with tighter tab padding on phones; when a strip
+  still does not fit, whole tabs move to a second row.
+- 2b79a0c: Add "Help and feedback" to the agent shell's profile menu, linking to the
+  public docs (the same default the homepage Resources card links first) in a
+  new tab — completing the prototype's menu alongside the existing name/email
+  header, "Profile and settings" (`/settings`), "Feature flags" and "Sign out".
+  The prototype's Budgets and Organizations menu variants stay out (deferred by
+  decision D3/D4).
+- 2b79a0c: The agent-platform shell's tab strips no longer wrap to a second row or
+  shrink Customize's labels at phone width: the strip scrolls sideways (from
+  ui-react's `RouteTabs`), so the shell stylesheet drops its five-tab squeeze.
+- 2b79a0c: Make form fields easy to spot in the agent shell. bui draws its fields as
+  borderless fills that vanish on the shell's white surfaces; every field inside
+  the shell (text, number, password, multi-line, search, select, combobox and
+  date fields, plus the hand-rolled multi-line and secret fields of the creation
+  flows) now gets a visible gray-blue edge, a white fill, a 10px radius, and an
+  accent edge with a soft halo while focused, per the prototype's input style.
+  Invalid fields keep their danger edge. The chat composer keeps its own framed
+  look.
+- 2b79a0c: The fade above "Show all instructions" on an agent's Overview now blends into the page instead of drawing a grey band. bui's `--bui-bg-inherit` is resolved again wherever a theme is applied, so outside a card it follows the theme's app background (white in the agent shell, bui's dark background in a dark theme) instead of bui's light default.
+- 2b79a0c: Live round 2 fixes in the agent shell:
+
+  - Customize's five tabs fit on one row at 375px. A strip of five or more tabs
+    sets its labels a size smaller, pads them tighter and reaches a little into
+    the page gutter at phone width; whole tabs still wrap to a second row when
+    even that does not fit.
+  - Each Customize tab titles the browser tab after itself ("Agents · Customize"),
+    where every tab said "Customize".
+
+- 2b79a0c: Toggling the Agent Platform opt-in in the settings now takes effect after a reload instead of mixing the shell and classic chrome. With both portals on, the classic logo leads to `app.rootRedirect` when it names a classic page and otherwise opens the Agent Platform in a new tab. Crossing between classic pages and the shell no longer paints a frame in the previous theme.
+- 2b79a0c: Agent Platform on a phone: the first tap on **Continue**, **Send** or another button docked above the bottom bar works while the keyboard is up. The tap used to blur the text field first, the layout jumped back 56px under the finger, and the tap was lost.
+- 2b79a0c: The StorageApi override is scoped to the agent platform: only the
+  `agent-platform` bucket (pinned sessions, favorite agents, dismissed hints) is
+  kept per user in `@backstage/plugin-user-settings-backend`. Every other bucket
+  (starred entities, home-page visits, …) stays in the browser's localStorage as
+  with Backstage's default storage, so the classic portal keeps its behaviour and
+  its data. Nothing is migrated between the two.
+- aa30d71: TelemetryDeck: an empty `app.telemetrydeck.appID` no longer breaks the frontend's initialisation silently. The app skips TelemetryDeck with one console warning and sends nothing; an initialisation failure (a missing salt, for one) is logged to the console once instead of dropping every signal without a word.
+- 2b79a0c: Condense UI copy: the agent platform's descriptions, helper lines, empty states, hints, alerts and dialogs say only what the surrounding UI does not already make clear, and every sentence is complete and grammatical (no half sentences or telegram-style cuts, e.g. the skill form's hand-off banner).
+- 8fef703: The GitHub Actions and Pull Requests tabs of a Component, and the GitHub
+  Actions recent-runs card, are offered only on a portal with a GitHub login:
+  `gs.github` (the person's GitHub grant in muster) or `auth.providers.github`.
+  A portal with neither showed both tabs, and opening one led to a "Login
+  Required: GitHub" dialog whose popup failed with `No auth provider registered
+for 'github'`, over and over. Such a portal now shows neither tab, without
+  any `app.extensions` entry. Documented in `docs/configuration.md`.
+- 698fb08: Links inside banners in the Agent Platform are underlined and drawn in the link colour, so they stand out from the banner text on every banner colour.
+- 2b79a0c: Lists in Customize and the new-agent flow now fit both a handful of entries and hundreds. The Customize search shows only on tabs with more than eight entries, or when a search is already set (a `?q=` link can now open a tab with that search). The Models and Connectors tabs show 20 rows at a time, and the model picker shows 12 cards at a time and always keeps the selected model visible. In the new-agent Tools step, a catalogue of 20 entries or fewer opens straight away, with no search and no _Browse the catalogue_ toggle.
+- 0373fb1: While a person's action waits on the main sign-in, `<body>` names the callers
+  that asked for the Login Required dialog in `data-login-requested-by`:
+  `portal-fetch` for the portal's own requests, `cluster-token-mint` for a
+  broker-backed installation's token. The dialog's text is unchanged. New
+  exports: `asLoginRequestCaller`, `LOGIN_REQUESTED_BY_ATTRIBUTE` and the
+  `LoginRequestCaller` type.
+- 2b79a0c: Agent shell attention signals and list scale:
+
+  - The "is waiting for you" toast now shows however the shell is laid out:
+    with the rail collapsed and in the phone's bottom bar too, where it used to
+    appear only while the rail was expanded. `NeedsInputToasts` is exported and
+    mounted once per shell beside the rail, so it never fires twice.
+  - More than three sessions starting to wait at once raise one "N sessions need
+    your input" toast that opens Sessions on its Waiting chip, instead of a
+    stack.
+  - The rail lists the latest 8 pinned sessions; the rest are a "N more pinned"
+    link to Sessions on its Pinned chip.
+  - The ⌘K palette offers a filter chip only for kinds that have entries (none
+    over a single kind), lists up to 50 rows while one kind's chip is on, and
+    its "+N more" opens that kind's list searching for the same thing.
+  - The shell's Sessions list opens narrowed when a link asks for it
+    (`?q=` searches, `?state=` picks a chip).
+
+- 610d01d: Every session-expired notice reads "Your session expired, sign in again.",
+  from the one `SESSION_EXPIRED_MESSAGE` the kubernetes-react plugin exports; the
+  Cluster access popover no longer says "Your session expired -- sign in again",
+  and a rejected session reads "Your session was rejected, sign in again."
+- 40e0039: Raise the transitive-dependency CVE `resolutions` to the currently-fixed versions so the High count in the published image is cut substantially (the previous pass cleared all fixable Critical findings but pinned to point-in-time versions that newer CVEs have since flagged). Updated/added pins: `tar` 7.5.11, `undici` v5 line to 6.27.0 and v7 lines to 7.28.0, `axios` v1 line to 1.16.0 and v0 line to 0.32.0, `protobufjs` 7.6.1, `basic-ftp` 5.3.1, `form-data` v2 to 2.5.6 and v4 to 4.0.6, `multer` 2.2.0, `node-forge` 1.4.0, `ws` 8.21.0, `fast-xml-builder` 1.1.7, and `minimatch` (3.x→3.1.4, 5.x→5.1.8, 7.4.x→7.4.8, 9.x→9.0.7, 10.x→10.2.3).
+- dcdc3ec: Force fixed versions of vulnerable transitive npm dependencies via yarn `resolutions` to remediate the Critical/High CVEs that dominate the published `giantswarm/backstage` image scan. The OS base (`node:24-trixie-slim`) was already clean; every finding was in the bundled Node.js dependency layer. Pinned: `vm2` 3.11.5, `sha.js` 2.4.12, `protobufjs` 7.5.5, `basic-ftp` 5.2.0, `jsonpath-plus` 10.3.0; `fast-xml-parser` v4 line to 4.5.4 (v5 consumers untouched), `form-data` v2 line to 2.5.4 (v4 already fixed), `path-to-regexp` `~0.1.12` to 0.1.13, `axios` v1 line to 1.8.2, `tar` v6 line to 7.5.3, `undici` v5 line to 6.21.2, and `minimatch` `^10.0.0` to 10.0.3.
+- 2b79a0c: Remove the session notifications bell from the agent shell's rail and mobile bar:
+  the colored session dots in the rail are the notification mechanism. Removed
+  exports: `SessionNotificationsBell`, `SessionNotificationsBellProps`,
+  `useSessionNotifications` and `SessionNotificationSetting`. The mute/read
+  markers stored under `sessionNotifications` in the `agent-platform` storage
+  bucket are no longer read or written. The dots and their polling are unchanged.
+- 2b79a0c: Telemetry page names for the Connectors tab follow its route rename
+  (`Connectors`, `Connector`, `Connector tool`, `Connector registration`).
+- 2b79a0c: The agent shell now works at phone width (375px). The shell publishes how much
+  of the viewport's bottom edge its fixed mobile bar covers as
+  `--agent-shell-mobile-bar-height` — the bar's 56px plus the iOS home-indicator
+  inset — and the session view's docked composer sticks above it instead of
+  being covered by it; in-flow pages (the home composer) clear the inset too.
+  Tables built on core-components scroll inside their own box at phone width
+  instead of widening the page. In the session view, long tool names in timeline
+  rows ellipsize rather than overflowing, and the approval card's caption and
+  buttons wrap onto separate lines. A workflow step's arguments grid on the
+  workflow detail page folds to one column below 420px, like the steps section's
+  grid already did.
+- 87c03d2: The Agent Platform sign-in page leads with the full Giant Swarm logo, in the brand's own colors, instead of the ant beside "Agent Platform". A branded deployment sees its own logo there instead: its home page logo (`home-logo-light|dark.*`, `home-logo.*`), else its expanded sidebar logo (`logo-full.*`), named after the portal's `app.title`.
+- 2b79a0c: Name the agent-platform shell's new pages in page-view telemetry: the Customize tabs (`/customize/<tab>`, the tab as the view), model hosting, the technical usage view and a connector's Used by and Settings tabs.
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [b2a4e74]
+- Updated dependencies [d93da36]
+- Updated dependencies [6c82397]
+- Updated dependencies [2e425c5]
+- Updated dependencies [6c096fb]
+- Updated dependencies [60b2c76]
+- Updated dependencies [322e58c]
+- Updated dependencies [d19ad0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [004bdfe]
+- Updated dependencies [5859267]
+- Updated dependencies [d7b570d]
+- Updated dependencies [e62dd24]
+- Updated dependencies [2b9d403]
+- Updated dependencies [382f7cc]
+- Updated dependencies [7740b89]
+- Updated dependencies [f3ab798]
+- Updated dependencies [343d4b2]
+- Updated dependencies [7b43a16]
+- Updated dependencies [244719a]
+- Updated dependencies [863da43]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [8988eeb]
+- Updated dependencies [d6bec76]
+- Updated dependencies [a59b04c]
+- Updated dependencies [2c4e7eb]
+- Updated dependencies [e59a84c]
+- Updated dependencies [b097034]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [17f51ca]
+- Updated dependencies [dc97358]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [e0f7ae7]
+- Updated dependencies [74e4a0b]
+- Updated dependencies [37c3eb0]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2494c9a]
+- Updated dependencies [83ad03b]
+- Updated dependencies [0a2a223]
+- Updated dependencies [0395e2d]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [a47a299]
+- Updated dependencies [86f7998]
+- Updated dependencies [1f3fb8f]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [69979f8]
+- Updated dependencies [6e0bd9d]
+- Updated dependencies [1c1f579]
+- Updated dependencies [fb7354b]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [986b054]
+- Updated dependencies [3f7455f]
+- Updated dependencies [113606d]
+- Updated dependencies [b9433d4]
+- Updated dependencies [a1e3699]
+- Updated dependencies [b02b541]
+- Updated dependencies [b6f72fb]
+- Updated dependencies [1698bc1]
+- Updated dependencies [91c421b]
+- Updated dependencies [2d333a6]
+- Updated dependencies [32f943c]
+- Updated dependencies [f335a7f]
+- Updated dependencies [19d8e11]
+- Updated dependencies [48cf35b]
+- Updated dependencies [55b2dd9]
+- Updated dependencies [247709d]
+- Updated dependencies [757d619]
+- Updated dependencies [b0a1bd2]
+- Updated dependencies [a59b04c]
+- Updated dependencies [85b1ac8]
+- Updated dependencies [4eaec47]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [9a71810]
+- Updated dependencies [551e5d5]
+- Updated dependencies [c5b9c46]
+- Updated dependencies [0c2f870]
+- Updated dependencies [7654695]
+- Updated dependencies [1a05f26]
+- Updated dependencies [f088683]
+- Updated dependencies [4cdc2c0]
+- Updated dependencies [e06dec9]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [7a49e7f]
+- Updated dependencies [bff30cb]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [9c53996]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [a036f84]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [335f7fe]
+- Updated dependencies [335f7fe]
+- Updated dependencies [ab3560e]
+- Updated dependencies [7273a37]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [3373287]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [a776d8b]
+- Updated dependencies [2d1f914]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [c65731d]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [03a24b1]
+- Updated dependencies [a4c4ba2]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [808fb08]
+- Updated dependencies [30e503d]
+- Updated dependencies [bf367f1]
+- Updated dependencies [5804cd2]
+- Updated dependencies [cf61946]
+- Updated dependencies [052624a]
+- Updated dependencies [b65a95b]
+- Updated dependencies [cb06b6c]
+- Updated dependencies [e80ae14]
+- Updated dependencies [9c69597]
+- Updated dependencies [6052701]
+- Updated dependencies [9e84495]
+- Updated dependencies [2c2d773]
+- Updated dependencies [fe372f7]
+- Updated dependencies [2e38e0b]
+- Updated dependencies [4dfd71d]
+- Updated dependencies [6b1e119]
+- Updated dependencies [573c689]
+- Updated dependencies [42f645b]
+- Updated dependencies [5b5d408]
+- Updated dependencies [335f7fe]
+- Updated dependencies [27e64aa]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [6ab4cbf]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [befc0c2]
+- Updated dependencies [aa77803]
+- Updated dependencies [dfce475]
+- Updated dependencies [2aaf08d]
+- Updated dependencies [d6bec76]
+- Updated dependencies [d6bec76]
+- Updated dependencies [e5a5106]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [69bba88]
+- Updated dependencies [335f7fe]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [328ebcb]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [6fe3050]
+- Updated dependencies [335f7fe]
+- Updated dependencies [7715042]
+- Updated dependencies [fda0620]
+- Updated dependencies [3e4bc2a]
+- Updated dependencies [28d3fe0]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [9ea8cf0]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [6ce4a71]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [c4f3eca]
+- Updated dependencies [2c4e7eb]
+- Updated dependencies [9eab10f]
+- Updated dependencies [a021ef9]
+- Updated dependencies [e1f1c38]
+- Updated dependencies [2bb7acd]
+- Updated dependencies [839cf0a]
+- Updated dependencies [d7c8277]
+- Updated dependencies [f47e1e7]
+- Updated dependencies [8bcea5e]
+- Updated dependencies [e807fa6]
+- Updated dependencies [9e57736]
+- Updated dependencies [4f45e35]
+- Updated dependencies [88d2fa8]
+- Updated dependencies [69eaff0]
+- Updated dependencies [54925ab]
+- Updated dependencies [3980275]
+- Updated dependencies [83cc49a]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [59f12a0]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [fedd5d8]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2e5ece2]
+- Updated dependencies [e49717c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [9188650]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [3452758]
+- Updated dependencies [b30a7fc]
+- Updated dependencies [408bdfe]
+- Updated dependencies [d4ea92f]
+- Updated dependencies [aad1e93]
+- Updated dependencies [1e1e0e3]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [9c0ba49]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [281d787]
+- Updated dependencies [ef01d42]
+- Updated dependencies [9dcfef0]
+- Updated dependencies [85e7d8c]
+- Updated dependencies [bf3b759]
+- Updated dependencies [3a5d5e3]
+- Updated dependencies [293e889]
+- Updated dependencies [be7bd04]
+- Updated dependencies [8f3cd85]
+- Updated dependencies [9602074]
+- Updated dependencies [577c542]
+- Updated dependencies [8425eed]
+- Updated dependencies [73bc416]
+- Updated dependencies [f90366e]
+- Updated dependencies [f6f1d50]
+- Updated dependencies [55db519]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [464f5ad]
+- Updated dependencies [2fa183d]
+- Updated dependencies [9e00143]
+- Updated dependencies [d87fd9d]
+- Updated dependencies [aad1e93]
+- Updated dependencies [602f2a7]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [4f6d765]
+- Updated dependencies [698fb08]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [ea12ebb]
+- Updated dependencies [158457a]
+- Updated dependencies [600a4c3]
+- Updated dependencies [d0bf6da]
+- Updated dependencies [c3409fb]
+- Updated dependencies [4048e91]
+- Updated dependencies [67a32ef]
+- Updated dependencies [9fd228e]
+- Updated dependencies [4c4b507]
+- Updated dependencies [f905068]
+- Updated dependencies [4bcdf2e]
+- Updated dependencies [86eec55]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [e928a56]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [205d9b4]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [99cede2]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [f088683]
+- Updated dependencies [884bd42]
+- Updated dependencies [a2443de]
+- Updated dependencies [884bd42]
+- Updated dependencies [6b84a5f]
+- Updated dependencies [884bd42]
+- Updated dependencies [2f5598e]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [23bfca0]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [e33193b]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [bebda60]
+- Updated dependencies [d82c4c6]
+- Updated dependencies [13225d7]
+- Updated dependencies [87b1c2e]
+- Updated dependencies [3dbde6e]
+- Updated dependencies [a1292a5]
+- Updated dependencies [6822ed1]
+- Updated dependencies [ee7fe5a]
+- Updated dependencies [d29ac2a]
+- Updated dependencies [573b34d]
+- Updated dependencies [b4dc429]
+- Updated dependencies [d19ad0c]
+- Updated dependencies [75cb9fa]
+- Updated dependencies [526dd01]
+- Updated dependencies [2c383a6]
+- Updated dependencies [2789f3d]
+- Updated dependencies [3043a1d]
+- Updated dependencies [0a05757]
+- Updated dependencies [66ac70b]
+- Updated dependencies [8967f50]
+- Updated dependencies [6720990]
+- Updated dependencies [cfb48ae]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [d14ebda]
+- Updated dependencies [0811b1e]
+- Updated dependencies [74e4a0b]
+- Updated dependencies [e807fa6]
+- Updated dependencies [e9a6141]
+- Updated dependencies [b79cf20]
+- Updated dependencies [104d1bc]
+- Updated dependencies [5e54675]
+- Updated dependencies [1f1b881]
+- Updated dependencies [0d6360e]
+- Updated dependencies [faaf78e]
+- Updated dependencies [0d6d9f3]
+- Updated dependencies [6e1050e]
+- Updated dependencies [0edc1c4]
+- Updated dependencies [bbb9e16]
+- Updated dependencies [2c6f671]
+- Updated dependencies [0b2fa7f]
+- Updated dependencies [a9b5795]
+- Updated dependencies [e447f16]
+- Updated dependencies [b431a04]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [8402eee]
+- Updated dependencies [6a5c0d4]
+- Updated dependencies [e5bd97a]
+- Updated dependencies [381d16d]
+- Updated dependencies [ea5fd6f]
+- Updated dependencies [5c82125]
+- Updated dependencies [b820660]
+- Updated dependencies [871a9cb]
+- Updated dependencies [c25dd0b]
+- Updated dependencies [553814b]
+- Updated dependencies [4f6d765]
+- Updated dependencies [ea12ebb]
+- Updated dependencies [2e425c5]
+- Updated dependencies [322e58c]
+- Updated dependencies [d19ad0c]
+- Updated dependencies [61b4c34]
+- Updated dependencies [b2c5996]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [4114dde]
+- Updated dependencies [0373fb1]
+- Updated dependencies [32f7b03]
+- Updated dependencies [731296e]
+- Updated dependencies [56d8c05]
+- Updated dependencies [ee2786b]
+- Updated dependencies [b628d71]
+- Updated dependencies [ad90805]
+- Updated dependencies [f806f76]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [4f6d765]
+- Updated dependencies [87b1c2e]
+- Updated dependencies [5b9c5f4]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [0fd7769]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [cfb83c6]
+- Updated dependencies [b990251]
+- Updated dependencies [9e57736]
+- Updated dependencies [578b163]
+- Updated dependencies [57d8d40]
+- Updated dependencies [7b4b7ae]
+- Updated dependencies [2b14d41]
+- Updated dependencies [55db519]
+- Updated dependencies [607d514]
+- Updated dependencies [d200952]
+- Updated dependencies [578b163]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [94a61cb]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [28aada8]
+- Updated dependencies [ee800aa]
+- Updated dependencies [578b163]
+- Updated dependencies [7c9e6d6]
+- Updated dependencies [c8743f8]
+- Updated dependencies [f2cc1f8]
+- Updated dependencies [7b63a47]
+- Updated dependencies [5851bba]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [6f4d55e]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [4b7522d]
+- Updated dependencies [69eaff0]
+- Updated dependencies [159c276]
+- Updated dependencies [75cb9fa]
+- Updated dependencies [1642eed]
+- Updated dependencies [578b163]
+- Updated dependencies [c4a1640]
+- Updated dependencies [9a71810]
+- Updated dependencies [4cdc2c0]
+- Updated dependencies [c1c65ee]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [f9644fb]
+- Updated dependencies [6205cca]
+- Updated dependencies [578b163]
+- Updated dependencies [f410853]
+- Updated dependencies [7ff288f]
+- Updated dependencies [ff6278b]
+- Updated dependencies [578b163]
+- Updated dependencies [28aada8]
+- Updated dependencies [5f09b20]
+- Updated dependencies [e97558c]
+- Updated dependencies [c3a9998]
+- Updated dependencies [ab9b7a0]
+- Updated dependencies [f8be62f]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [1305e9e]
+- Updated dependencies [c604256]
+- Updated dependencies [6b18a17]
+- Updated dependencies [70eeb29]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [d68f887]
+- Updated dependencies [92f025f]
+- Updated dependencies [65d8d60]
+- Updated dependencies [0bed874]
+- Updated dependencies [6b3ac77]
+- Updated dependencies [ff8b3f1]
+- Updated dependencies [2995471]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [954a810]
+- Updated dependencies [8d67e83]
+- Updated dependencies [f90366e]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [54ea033]
+- Updated dependencies [728d50e]
+- Updated dependencies [c482453]
+- Updated dependencies [5e9b874]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [32f943c]
+- Updated dependencies [4aa60ba]
+- Updated dependencies [71d7a44]
+- Updated dependencies [5cf5f33]
+- Updated dependencies [3383e35]
+- Updated dependencies [578b163]
+- Updated dependencies [578b163]
+- Updated dependencies [f47797c]
+- Updated dependencies [28aada8]
+- Updated dependencies [59f12a0]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [28aada8]
+- Updated dependencies [b8afa37]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [d19ad0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [578b163]
+- Updated dependencies [d95e52d]
+- Updated dependencies [578b163]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [bbb9406]
+- Updated dependencies [9180429]
+- Updated dependencies [12aaa8b]
+- Updated dependencies [610d01d]
+- Updated dependencies [ca6ffd8]
+- Updated dependencies [398c4b1]
+- Updated dependencies [d419735]
+- Updated dependencies [cd1b0b0]
+- Updated dependencies [f14f7ab]
+- Updated dependencies [8fe23f0]
+- Updated dependencies [06a9c19]
+- Updated dependencies [d817adf]
+- Updated dependencies [d1826fa]
+- Updated dependencies [22b2ad6]
+- Updated dependencies [7174a9c]
+- Updated dependencies [3cea21c]
+- Updated dependencies [59e31d6]
+- Updated dependencies [fd7799f]
+- Updated dependencies [b15951d]
+- Updated dependencies [0987634]
+- Updated dependencies [0bba1e6]
+- Updated dependencies [f2af09f]
+- Updated dependencies [aed0b9c]
+- Updated dependencies [1ed9e31]
+- Updated dependencies [7c5e287]
+- Updated dependencies [d63665c]
+- Updated dependencies [6909d96]
+- Updated dependencies [583fb43]
+- Updated dependencies [a47a299]
+- Updated dependencies [582faca]
+- Updated dependencies [f73f82e]
+- Updated dependencies [33a02dc]
+- Updated dependencies [221d872]
+- Updated dependencies [a69dadf]
+- Updated dependencies [ce9e155]
+- Updated dependencies [7edb60f]
+- Updated dependencies [104f638]
+- Updated dependencies [1f00656]
+- Updated dependencies [7e92eb9]
+- Updated dependencies [fa65c45]
+- Updated dependencies [5c843a9]
+- Updated dependencies [2a02d2f]
+- Updated dependencies [a8bb5a6]
+- Updated dependencies [5b036fc]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [e8c6d73]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [c81464c]
+- Updated dependencies [a6c427b]
+- Updated dependencies [b9aff1b]
+- Updated dependencies [741669e]
+- Updated dependencies [7a6b30e]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [564456f]
+- Updated dependencies [34d161d]
+- Updated dependencies [a7a9a6e]
+- Updated dependencies [bfa597e]
+- Updated dependencies [f46a45f]
+- Updated dependencies [3199a67]
+- Updated dependencies [ea1324f]
+- Updated dependencies [b6a5641]
+- Updated dependencies [93210e4]
+- Updated dependencies [f6f1d50]
+- Updated dependencies [6ead0ab]
+- Updated dependencies [a47a299]
+- Updated dependencies [bb9134b]
+- Updated dependencies [3c8bcd0]
+- Updated dependencies [7a5904a]
+- Updated dependencies [b863d7c]
+- Updated dependencies [bfe6914]
+- Updated dependencies [beda76b]
+- Updated dependencies [296a1e0]
+- Updated dependencies [d3378b3]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [92d42d6]
+- Updated dependencies [a8bb5a6]
+- Updated dependencies [1ec7387]
+- Updated dependencies [bddd1c9]
+- Updated dependencies [389a40b]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [0ca1de7]
+- Updated dependencies [13e335e]
+- Updated dependencies [d7b3983]
+- Updated dependencies [77d7831]
+- Updated dependencies [f568ed3]
+- Updated dependencies [fd05081]
+- Updated dependencies [ee7fe5a]
+- Updated dependencies [fa4ae37]
+- Updated dependencies [b4a3dee]
+- Updated dependencies [ebd7572]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [bf1e9b2]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [eb7ed35]
+- Updated dependencies [69e07c8]
+- Updated dependencies [12aaa8b]
+- Updated dependencies [eb2bbd1]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [aecc202]
+- Updated dependencies [4f6d765]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [f205e33]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [f985210]
+- Updated dependencies [ba553f1]
+- Updated dependencies [eb337fb]
+- Updated dependencies [5d7602c]
+- Updated dependencies [14e878c]
+- Updated dependencies [90f37c4]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [bce6f2c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [14e878c]
+- Updated dependencies [14e878c]
+- Updated dependencies [a2443de]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [a5ec0eb]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [b44a375]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [49263b7]
+- Updated dependencies [1893681]
+- Updated dependencies [f94930d]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [0bed874]
+- Updated dependencies [e807fa6]
+- Updated dependencies [b097034]
+- Updated dependencies [2e425c5]
+- Updated dependencies [6e0bd9d]
+- Updated dependencies [b9433d4]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [322e58c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [0d6360e]
+- Updated dependencies [d19ad0c]
+- Updated dependencies [b990251]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [d9673e8]
+- Updated dependencies [9e57736]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [d95e52d]
+- Updated dependencies [ff8b3f1]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [a8bb5a6]
+- Updated dependencies [1ec7387]
+- Updated dependencies [d63665c]
+- Updated dependencies [6ce4a71]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [9fab6b1]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [3130bf4]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [600a4c3]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [ebb3d7a]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [e6ced92]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [103014c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [2b79a0c]
+- Updated dependencies [d9673e8]
+- Updated dependencies [b773056]
+- Updated dependencies [b032f65]
+- Updated dependencies [0388b0e]
+- Updated dependencies [d400274]
+- Updated dependencies [849157e]
+- Updated dependencies [2b79a0c]
+  - @giantswarm/backstage-plugin-agent-platform@1.0.0
+  - @giantswarm/backstage-plugin-muster@0.4.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.0.0
+  - @giantswarm/backstage-plugin-ui-react@0.9.0
+  - @giantswarm/backstage-plugin-flux-react@0.15.0
+  - @giantswarm/backstage-plugin-gs@0.71.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.0.0
+  - @giantswarm/backstage-plugin-analytics-react@0.2.0
+  - @giantswarm/backstage-plugin-ai-chat@0.15.0
+  - @giantswarm/backstage-plugin-bot-prs@0.1.0
+  - @giantswarm/backstage-plugin-plans@0.1.0
+  - @giantswarm/backstage-plugin-platform-capabilities@0.1.0
+  - @giantswarm/backstage-plugin-repositories@0.1.0
+  - @giantswarm/backstage-plugin-roadmap@0.1.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.6.0
+  - @giantswarm/backstage-plugin-flux@0.10.0
+
 ## 0.40.7
 
 ### Patch Changes

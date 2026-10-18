@@ -1,5 +1,48 @@
 # backend-headless-service
 
+## 0.7.3
+
+### Patch Changes
+
+- 89e1d7d: The backend routes Node's native `fetch` through the `GLOBAL_AGENT_HTTP_PROXY` / `GLOBAL_AGENT_HTTPS_PROXY` proxy, honouring `GLOBAL_AGENT_NO_PROXY`. `global-agent` only patches the `http`/`https` modules, so behind an egress proxy the catalog's URL reads (locations, templates) failed with `fetch failed`. `@internal/backend-common` exports `configureFetchProxy`, which installs undici's `EnvHttpProxyAgent` as the global dispatcher; with `NODE_USE_ENV_PROXY=1` Node's own proxy support stays in charge.
+- db58c71: Replace the `@devangelista/backstage-scaffolder-kubernetes` and
+  `@aws/aws-core-plugin-for-backstage-scaffolder-actions` scaffolder plugins with
+  an in-repo `kube:apply` action in the GS scaffolder backend module.
+
+  - `kube:apply` keeps the exact action ID and input schema
+    (`manifest`, `namespaced`, `clusterName`, `token`), so existing templates —
+    including the hidden `agent-deployment` template driven by the Agent Platform
+    create flow — keep working unchanged. It resolves clusters from
+    `kubernetes.clusterLocatorMethods` (type `config`) the same way as before:
+    OIDC clusters use the per-task user token, `serviceAccount` clusters their
+    static token, with a fallback to the default kubeconfig.
+  - The other actions from those plugins (`kube:delete`, `kube:job:wait`,
+    `aws:cloudcontrol:create`, `aws:codecommit:publish`, `aws:eventbridge:event`,
+    `aws:s3:cp`) have no usage in any template and are dropped.
+  - The devangelista plugin pinned old `@backstage/*` and
+    `@kubernetes/client-node` ranges, nesting ~185MB of duplicate dependencies
+    (including the deprecated `@backstage/backend-common`, which is now gone
+    entirely); the AWS plugin nested another ~80MB of duplicate `@aws-sdk`
+    clients. Together with a `yarn dedupe`, `node_modules` shrinks by roughly
+    850MB, most of which was shipped in the backend image.
+
+- efa48a7: The backend reads GitHub files and trees from branches and tags whose name contains a slash, such as a scaffolder template at `https://github.com/<org>/<repo>/blob/feat/x/templates/t/template.yaml`. The default GitHub URL reader took `feat` for the branch and `x/templates/...` for the path, so the read failed with not found. `@internal/backend-common` exports `githubUrlReaderFactory`. It reads every URL as before and only when that finds nothing looks up the longest branch, else tag, that the path starts with, and reads its commit; files found by a search keep the ref in their URL.
+- Updated dependencies [9c3a9c4]
+- Updated dependencies [89e1d7d]
+- Updated dependencies [0a10f54]
+- Updated dependencies [9fd228e]
+- Updated dependencies [db58c71]
+- Updated dependencies [a1292a5]
+- Updated dependencies [8967f50]
+- Updated dependencies [efa48a7]
+- Updated dependencies [e9a6141]
+- Updated dependencies [e5bd97a]
+- Updated dependencies [4785d59]
+- Updated dependencies [c3ec30a]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.16.0
+  - @internal/backend-common@0.6.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.13.0
+
 ## 0.7.2
 
 ### Patch Changes
