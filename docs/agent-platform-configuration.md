@@ -247,6 +247,13 @@ Git repositories to discover skills from. Every `SKILL.md` is one skill (its
 directory is the skill root; frontmatter `name` and `description` are shown).
 An agent's skill is pinned to the commit discovery read.
 
+The same read lists the repository's **plugins**, which the skills step offers
+beside the skills: every directory holding a `plugin.json` (an Agent Plugins
+package, whose skills under `skills/` the person selects) or a
+`.claude-plugin/plugin.json` (a Claude Code plugin, which loads whole). A
+plugin is pinned to the commit discovery read, as a skill is. A repository of
+plugins is configured here like any skill repository.
+
 **Without it**, the Skills tab is hidden (links redirect away), and the agent
 create and edit flows skip their skills step.
 

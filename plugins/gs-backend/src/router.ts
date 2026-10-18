@@ -400,6 +400,10 @@ export async function createRouter({
    *   contentReadable } — `contentReadable` is false for a skill whose
    *   SKILL.md the portal could not read (listed from the tree, with the
    *   metadata at hand; the portal cannot show or edit it)
+   * - plugins: Array of { name, description, repoUrl, path, ref, commit,
+   *   format, skills, manifestReadable } — every directory holding a
+   *   `plugin.json` (format `agent-plugins`) or a `.claude-plugin/plugin.json`
+   *   (format `claude`), with the skills under its `skills/` directory
    * - ref, commit: the ref read and the commit it resolved to
    * - truncated: true when some skills may be missing (repo too large)
    * - readAt: when the listing was read upstream (ISO time)

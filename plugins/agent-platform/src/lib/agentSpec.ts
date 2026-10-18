@@ -52,6 +52,9 @@ export function agentSpecOf(
   if (state.selectedSkills.length > 0) {
     spec.skills = state.selectedSkills.map(skillEntryOf);
   }
+  if (state.plugins.length > 0) {
+    spec.plugins = state.plugins;
+  }
   const egress = parseEgressText(state.egressText);
   if (egress.length > 0) {
     spec.egress = egress;

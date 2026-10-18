@@ -3,6 +3,12 @@ import { InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { parseFrontmatter } from './frontmatter';
 import { assignSkillFiles, SkillFile, SkillFileList } from './skillFiles';
+import {
+  DiscoveredPlugin,
+  discoveredPlugins,
+  PluginRoot,
+  pluginRootsFromPaths,
+} from './plugins';
 
 /**
  * A skill discovered in a GitHub repository. Each `SKILL.md` file defines one
@@ -50,6 +56,12 @@ export interface DiscoveredSkill {
  */
 export interface DiscoverAgentSkillsResult {
   skills: DiscoveredSkill[];
+  /**
+   * The plugins of the same listing (see `plugins.ts`), each with the skills
+   * under its `skills/` directory. Absent from a snapshot made before plugins
+   * were listed.
+   */
+  plugins?: DiscoveredPlugin[];
   ref: string;
   commit: string;
   truncated: boolean;
@@ -469,14 +481,22 @@ export async function discoverAgentSkills(options: {
 
   let skillDirs: string[];
   let files: Map<string, SkillFileList>;
+  let pluginRoots: PluginRoot[] = [];
+  let reusedPlugins: DiscoveredPlugin[] | undefined;
   let treeTruncated = false;
-  if (unchanged && previous.files) {
-    // The same commit: the same tree, so the same skills and files.
+  if (unchanged && previous.files && previous.plugins) {
+    // The same commit: the same tree, so the same skills, files and plugins.
     skillDirs = previous.skills.map(s => s.path);
     files = previous.files;
+    reusedPlugins = previous.plugins;
   } else {
     const tree = await readGitHubTree(owner, repo, commit, token, signal);
     ({ skillDirs, files } = skillFilesFromTree(tree.entries, tree.truncated));
+    pluginRoots = pluginRootsFromPaths(
+      tree.entries
+        .filter(entry => entry.type === 'blob' && entry.mode !== SYMLINK_MODE)
+        .map(entry => entry.path),
+    );
     // GitHub caps the recursive tree (~100k entries / 7MB); past that some
     // SKILL.md files are missing.
     treeTruncated = tree.truncated;
@@ -559,10 +579,50 @@ export async function discoverAgentSkills(options: {
 
   return {
     skills,
+    plugins:
+      reusedPlugins ??
+      (await readPlugins({
+        roots: pluginRoots,
+        skills,
+        read: manifest =>
+          fetchRawContent(owner, repo, manifest, commit, token, signal),
+        repoUrl: canonicalRepoUrl,
+        repoName: repo,
+        ref: branch,
+        commit,
+      })),
     ref: branch,
     commit,
     truncated: treeTruncated,
     contents,
     files,
   };
+}
+
+/**
+ * The plugins of a tree, each manifest read with bounded concurrency: one that
+ * cannot be read keeps its plugin, named after its directory.
+ */
+async function readPlugins(options: {
+  roots: PluginRoot[];
+  skills: DiscoveredSkill[];
+  read: (manifest: string) => Promise<string>;
+  repoUrl: string;
+  repoName: string;
+  ref: string;
+  commit: string;
+}): Promise<DiscoveredPlugin[]> {
+  const { roots, read, ...rest } = options;
+  const settled = await mapWithConcurrency(
+    roots,
+    CONTENT_FETCH_CONCURRENCY,
+    root => read(root.manifest),
+  );
+  const manifests = new Map<string, string>();
+  settled.forEach((result, i) => {
+    if (result.status === 'fulfilled') {
+      manifests.set(roots[i].manifest, result.value);
+    }
+  });
+  return discoveredPlugins({ roots, manifests, ...rest });
 }

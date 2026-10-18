@@ -372,6 +372,7 @@ const BASE_STATE: NewAgentFormState = {
   egressText: '',
   selectedSkills: [],
   keptSkills: [],
+  plugins: [],
   toolset: [],
 };
 

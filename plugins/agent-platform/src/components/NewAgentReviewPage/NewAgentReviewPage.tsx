@@ -29,6 +29,7 @@ import { agentSpecOf } from '../../lib/agentSpec';
 import { harnessTitle } from '../../lib/harnesses';
 import { parseEgressText } from '../../lib/egress';
 import { shortCommit } from '../../lib/skills';
+import { pluginRuntimeProblems, pluginSummary } from '../../lib/plugins';
 import {
   buildCatalogue,
   declaredToolset,
@@ -43,6 +44,7 @@ import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { EditAgentReview } from './EditAgentReview';
 import {
+  PluginPins,
   ConnectAgentManager,
   Notes,
   PlainRow,
@@ -83,7 +85,7 @@ function CreateAgentReview() {
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
   // Only to number the steps: with no skill repositories configured the skills
   // step doesn't exist. Cached by the time this page renders.
-  const { hasRepositories } = useSkillCatalog();
+  const { hasRepositories, plugins: pluginCatalog } = useSkillCatalog();
 
   // The toolset as the Tools step showed it — the same resolution for the same
   // person, from the same cached queries — so what is reviewed is exactly what
@@ -148,7 +150,12 @@ function CreateAgentReview() {
   >();
 
   const dryRun = validation.result;
-  const violations = dryRun?.errors ?? [];
+  // A Claude Code plugin on a runtime that reads Agent Plugins only passes
+  // agent-manager's dry run and fails the agent at boot: refused here.
+  const violations = [
+    ...pluginRuntimeProblems(state.plugins, pluginCatalog, state.harness),
+    ...(dryRun?.errors ?? []),
+  ];
   const notes = dryRun?.notes ?? [];
   const canWrite =
     Boolean(dryRun) && violations.length === 0 && !validation.failure;
@@ -309,6 +316,11 @@ function CreateAgentReview() {
               {state.selectedSkills.length === 0
                 ? 'None'
                 : state.selectedSkills.map(skill => skill.name).join(', ')}
+            </PlainRow>
+          )}
+          {state.plugins.length > 0 && (
+            <PlainRow label="Plugins">
+              {state.plugins.map(pluginSummary).join('; ')}
             </PlainRow>
           )}
           <PlainRow label="Tools">
@@ -499,6 +511,9 @@ function CreateAgentReview() {
                     ))}
                   </Text>
                 </SummaryItem>
+              )}
+              {state.plugins.length > 0 && (
+                <PluginPins entries={state.plugins} />
               )}
             </div>
 

@@ -27,6 +27,7 @@ import {
 } from '../../lib/agentEdit';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
+import { pluginRuntimeProblems, pluginSummary } from '../../lib/plugins';
 import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { shortPin } from '../AgentDetailPage/helpers';
@@ -37,6 +38,7 @@ import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { type AgentWizardEdit, useNewAgentForm } from '../NewAgentFormProvider';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import {
+  PluginPins,
   Notes,
   PlainRow,
   SectionTitle,
@@ -90,7 +92,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const navigate = useNavigate();
   const { details: detailsLink, tools: toolsLink } = useAgentWizardLinks();
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
-  const { hasRepositories } = useSkillCatalog();
+  const { hasRepositories, plugins: pluginCatalog } = useSkillCatalog();
   const { agent, installation, writeMode, detailHref } = edit;
   const { info } = useAgentManagerInfo(installation);
   const viaPullRequest = writeMode === 'commit';
@@ -115,7 +117,12 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     isReady && dirty ? update : undefined,
     writeMode,
   );
-  const violations = dryRun.result?.errors ?? [];
+  // A Claude Code plugin on a runtime that reads Agent Plugins only passes
+  // agent-manager's dry run and fails the agent at boot: refused here.
+  const violations = [
+    ...pluginRuntimeProblems(state.plugins, pluginCatalog, state.harness),
+    ...(dryRun.result?.errors ?? []),
+  ];
   const notes = dryRun.result?.notes ?? [];
   const canWrite =
     dirty &&
@@ -271,6 +278,14 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
               {skillNames.length === 0 ? 'None' : skillNames.join(', ')}
             </PlainRow>
           )}
+          {(editState.plugins.length > 0 ||
+            (agent.plugins ?? []).length > 0) && (
+            <PlainRow label="Plugins">
+              {editState.plugins.length === 0
+                ? 'None'
+                : editState.plugins.map(pluginSummary).join('; ')}
+            </PlainRow>
+          )}
           <PlainRow label="Tools">
             {keepsImplicitAccess
               ? 'Every tool the gateway exposes (no toolset declared)'
@@ -407,6 +422,9 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                     ))}
                   </Text>
                 </SummaryItem>
+              )}
+              {editState.plugins.length > 0 && (
+                <PluginPins entries={editState.plugins} />
               )}
             </div>
 

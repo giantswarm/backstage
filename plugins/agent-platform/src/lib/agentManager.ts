@@ -80,6 +80,20 @@ export type AgentSkillEntry =
   | { name: string; oci: string };
 
 /**
+ * One `plugins[]` entry of the contract (chart 2.1 values): a plugin's
+ * directory and exactly one source, plus, for an Agent Plugins format
+ * package, the skills it enables. A Claude Code format plugin loads whole and
+ * carries no selection. The portal writes git plugins pinned to the commit the
+ * skills step showed; the OCI shape is rendered when agent-manager reports it.
+ */
+export type AgentPluginEntry = {
+  path?: string;
+  git?: GitSkillSource;
+  oci?: string;
+  skills?: string[];
+};
+
+/**
  * What the portal sends to `validate_agent` and `create_agent` — the form
  * model. Everything but `name`, `modelConfig` and `toolset` is optional and an
  * omitted field keeps the chart's default. There is no per-skill credential.
@@ -103,6 +117,7 @@ export type AgentSpec = {
   /** Avatar URL (chart `agent.iconUrl`, rendered as an annotation). */
   iconUrl?: string;
   skills?: AgentSkillEntry[];
+  plugins?: AgentPluginEntry[];
   /** The toolset selectors exactly as the Tools step composed them. */
   toolset: string[];
   /**
@@ -545,6 +560,8 @@ export type AgentManagerAgent = {
   iconUrl?: string;
   systemMessage?: string;
   skills?: AgentSkillEntry[];
+  /** The plugins as pinned (a git commit or an OCI digest). */
+  plugins?: AgentPluginEntry[];
   /** The declared toolset; absent for an agent without one. */
   toolset?: string[];
   /** No toolset declared, muster bound: sees every tool the gateway exposes. */
@@ -575,9 +592,9 @@ export type AgentManagerModelConfig = {
 /**
  * `update_agent` (and `validate_agent` with `update: true`): a partial change.
  * Only the fields present change; an empty string clears a field back to the
- * chart's default; `skills` and `toolset` replace their whole list;
- * `refreshSkills` re-pins every git skill to its repository's default-branch
- * head and changes nothing else. The portal never sends `force`.
+ * chart's default; `skills`, `plugins` and `toolset` replace their whole list;
+ * `refreshSkills` re-pins every git skill and git plugin to its repository's
+ * default-branch head and changes nothing else. The portal never sends `force`.
  */
 export type AgentUpdate = {
   namespace: string;
@@ -588,6 +605,8 @@ export type AgentUpdate = {
   modelConfig?: string;
   iconUrl?: string;
   skills?: AgentSkillEntry[];
+  /** Replaces the whole list; an empty list clears it. */
+  plugins?: AgentPluginEntry[];
   toolset?: string[];
   /** Replaces the whole list; an empty list clears it. */
   egress?: string[];

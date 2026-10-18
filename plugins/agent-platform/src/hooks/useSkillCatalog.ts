@@ -7,9 +7,12 @@ import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { DiscoveredSkill } from '../lib/skills';
+import type { DiscoveredPlugin } from '../lib/plugins';
 
 export type SkillCatalog = {
   skills: DiscoveredSkill[];
+  /** The plugins the same repositories hold (see `lib/plugins`). */
+  plugins: DiscoveredPlugin[];
   isLoading: boolean;
   error: Error | null;
   /** Whether any skill repository is configured at all. */
@@ -25,7 +28,7 @@ export type SkillCatalog = {
 /**
  * Discovers agent skills across every configured repository
  * (`agentPlatform.skills.repositories`) via the gs-backend `/agent-skills`
- * endpoint, and aggregates them. One repository failing does not fail the
+ * endpoint, and aggregates them, with the plugins the same read found. One repository failing does not fail the
  * whole catalog — the others still load and the failed ones are reported.
  */
 export function useSkillCatalog(): SkillCatalog {
@@ -66,6 +69,7 @@ export function useSkillCatalog(): SkillCatalog {
           }
           const body = (await response.json()) as {
             skills: DiscoveredSkill[];
+            plugins?: DiscoveredPlugin[];
             truncated?: boolean;
           };
           return body;
@@ -73,12 +77,15 @@ export function useSkillCatalog(): SkillCatalog {
       );
 
       const skills: DiscoveredSkill[] = [];
+      const plugins: DiscoveredPlugin[] = [];
       const failedRepositories: string[] = [];
       const failureMessages: Record<string, string> = {};
       let truncated = false;
       perRepo.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           skills.push(...result.value.skills);
+          // Absent from a backend that predates plugin discovery.
+          plugins.push(...(result.value.plugins ?? []));
           truncated = truncated || Boolean(result.value.truncated);
         } else {
           failedRepositories.push(repositories[index]);
@@ -89,13 +96,20 @@ export function useSkillCatalog(): SkillCatalog {
         }
       });
 
-      return { skills, failedRepositories, failureMessages, truncated };
+      return {
+        skills,
+        plugins,
+        failedRepositories,
+        failureMessages,
+        truncated,
+      };
     },
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return {
     skills: data?.skills ?? [],
+    plugins: data?.plugins ?? [],
     isLoading: configIsLoading || isLoading,
     error: (error as Error) ?? null,
     hasRepositories: repositories.length > 0,

@@ -36,6 +36,8 @@ import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { SkillsFilterBar, useSkillFilters } from '../SkillsFilterBar';
 import { KeptSkills } from './KeptSkills';
+import { PluginPicker } from './PluginPicker';
+import { claudePluginProblem, pluginRuntimeProblems } from '../../lib/plugins';
 import { AUTO_EXPAND_MAX } from '../ToolsetResolutionList';
 import {
   SelectableCard,
@@ -325,10 +327,20 @@ function NewAgentSkillsPageContent() {
   const links = useAgentWizardLinks();
   const newAgentLink = links.details;
   const toolsLink = links.tools;
-  const { state, edit, toggleSkill, removeKeptSkill, isComplete } =
-    useNewAgentForm();
+  const {
+    state,
+    edit,
+    toggleSkill,
+    removeKeptSkill,
+    togglePlugin,
+    togglePluginSkill,
+    removePlugin,
+    pluginProblems,
+    isComplete,
+  } = useNewAgentForm();
   const {
     skills,
+    plugins,
     isLoading,
     error,
     hasRepositories,
@@ -416,17 +428,29 @@ function NewAgentSkillsPageContent() {
   );
 
   // The frame's footer carries Cancel and Back; only the primary lives here.
+  // A skill name enabled twice cannot be written: the step's alert says which,
+  // and Continue stays put until it is resolved.
+  const problems = useMemo(
+    () => [
+      ...pluginProblems,
+      ...pluginRuntimeProblems(state.plugins, plugins, state.harness),
+    ],
+    [pluginProblems, state.plugins, plugins, state.harness],
+  );
+  const canContinue = problems.length === 0;
   const actions = useMemo(
     () => (
       <Button
         variant="primary"
-        onPress={() => toolsLink && navigate(toolsLink())}
+        onPress={() => canContinue && toolsLink && navigate(toolsLink())}
       >
         Continue
       </Button>
     ),
-    [toolsLink, navigate],
+    [canContinue, toolsLink, navigate],
   );
+  const hasPlugins = plugins.length > 0 || state.plugins.length > 0;
+  const title = hasPlugins ? 'Select skills and plugins' : 'Select skills';
 
   const onBack = useCallback(() => {
     if (newAgentLink) {
@@ -457,7 +481,7 @@ function NewAgentSkillsPageContent() {
   return (
     <AgentWizardFrame step="skills" onBack={onBack}>
       {edit ? (
-        <WizardStepHeading title="Select skills">
+        <WizardStepHeading title={title}>
           Packaged instructions the agent can reuse for specific kinds of tasks,
           discovered from the configured skill repositories. The agent's skills
           stay at the commit they are pinned to; a skill you add is pinned to
@@ -465,7 +489,7 @@ function NewAgentSkillsPageContent() {
           the pins.
         </WizardStepHeading>
       ) : (
-        <WizardStepHeading title="Select skills">
+        <WizardStepHeading title={title}>
           Packaged instructions the agent can reuse for specific kinds of tasks,
           discovered from the configured skill repositories. Each skill is
           pinned to the commit shown on its card — the head of its repository
@@ -505,12 +529,21 @@ function NewAgentSkillsPageContent() {
           />
         )}
 
-        {!isLoading && !error && skills.length === 0 && (
-          <Alert
-            status="info"
-            title="No skills found"
-            description="No SKILL.md files were found in the configured repositories."
-          />
+        {!isLoading &&
+          !error &&
+          skills.length === 0 &&
+          plugins.length === 0 && (
+            <Alert
+              status="info"
+              title="No skills found"
+              description="No SKILL.md files were found in the configured repositories."
+            />
+          )}
+
+        {hasPlugins && skills.length > 0 && (
+          <Text as="h3" weight="bold">
+            Skills
+          </Text>
         )}
 
         {skills.length > 0 && (
@@ -558,6 +591,16 @@ function NewAgentSkillsPageContent() {
             )}
           </>
         )}
+
+        <PluginPicker
+          catalog={plugins}
+          entries={state.plugins}
+          problems={problems}
+          claudeProblem={claudePluginProblem(state.harness)}
+          onToggle={togglePlugin}
+          onToggleSkill={togglePluginSkill}
+          onRemove={removePlugin}
+        />
       </Flex>
 
       <Text as="p" color="secondary">

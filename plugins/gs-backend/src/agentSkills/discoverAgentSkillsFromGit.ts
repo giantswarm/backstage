@@ -15,6 +15,7 @@ import { InputError } from '@backstage/errors';
 import { createHash } from 'node:crypto';
 import { parseFrontmatter } from './frontmatter';
 import { DiscoveredSkill, SkillDiscoverySnapshot } from './discoverAgentSkills';
+import { discoveredPlugins, pluginRootsFromPaths } from './plugins';
 import {
   assignSkillFiles,
   gitBlobSha,
@@ -499,8 +500,33 @@ export async function discoverAgentSkillsFromGit(options: {
         (a, b) => a.path.localeCompare(b.path) || a.name.localeCompare(b.name),
       );
 
+    // A manifest that cannot be read keeps its plugin, named after its
+    // directory; the walk listed regular files only.
+    const roots = pluginRootsFromPaths(walked.files.map(f => f.path));
+    const manifests = new Map<string, string>();
+    for (const root of roots) {
+      try {
+        manifests.set(
+          root.manifest,
+          await readFile(path.join(dir, ...root.manifest.split('/')), 'utf8'),
+        );
+      } catch {
+        // Listed by the walk, gone or unreadable now: no manifest.
+      }
+    }
+    const plugins = discoveredPlugins({
+      roots,
+      manifests,
+      skills,
+      repoUrl,
+      repoName: repoBasename(repoUrl),
+      ref: cloned.ref,
+      commit: cloned.commit,
+    });
+
     return {
       skills,
+      plugins,
       ref: cloned.ref,
       commit: cloned.commit,
       // A full checkout was scanned; nothing can be missing.

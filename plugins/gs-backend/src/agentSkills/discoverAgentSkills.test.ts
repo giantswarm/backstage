@@ -164,6 +164,51 @@ describe('discoverAgentSkills', () => {
     ]);
   });
 
+  it('lists the plugins of the same tree with their manifests and skills', async () => {
+    global.fetch = mockGitHub(
+      [
+        { path: 'kit/plugin.json', type: 'blob' },
+        { path: 'kit/skills/lint/SKILL.md', type: 'blob' },
+        { path: 'cc/.claude-plugin/plugin.json', type: 'blob' },
+      ],
+      {
+        'kit/plugin.json': '{"name":"kit","description":"A kit."}',
+        'kit/skills/lint/SKILL.md': '---\nname: lint\ndescription: L.\n---\n',
+        'cc/.claude-plugin/plugin.json': '{"name":"cc"}',
+      },
+    ) as unknown as typeof fetch;
+
+    const { plugins } = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+    });
+
+    expect(plugins).toEqual([
+      {
+        name: 'cc',
+        description: '',
+        repoUrl: 'https://github.com/giantswarm/agent-skills',
+        path: 'cc',
+        ref: 'main',
+        commit: HEAD,
+        format: 'claude',
+        skills: [],
+        manifestReadable: true,
+      },
+      {
+        name: 'kit',
+        description: 'A kit.',
+        repoUrl: 'https://github.com/giantswarm/agent-skills',
+        path: 'kit',
+        ref: 'main',
+        commit: HEAD,
+        format: 'agent-plugins',
+        skills: [{ name: 'lint', description: 'L.' }],
+        manifestReadable: true,
+      },
+    ]);
+  });
+
   it('reads the tree and every SKILL.md at the resolved commit, not at the branch', async () => {
     // What the picker shows is what the agent pins: a push to the branch
     // between the tree read and the content read must not slip in.

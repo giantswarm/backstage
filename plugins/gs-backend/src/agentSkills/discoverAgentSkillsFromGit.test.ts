@@ -134,6 +134,7 @@ describe('discoverAgentSkillsFromGit', () => {
       ref: 'main',
       commit: HEAD,
       truncated: false,
+      plugins: [],
       skills: [
         {
           // Directory basename when the frontmatter has no name.
@@ -164,6 +165,42 @@ describe('discoverAgentSkillsFromGit', () => {
       files: expect.any(Map),
       fileContents: expect.any(Map),
     });
+  });
+
+  it('lists the checkout’s plugins with their manifests and skills', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/plugins.git',
+      gitClient: fakeCloneFiles({
+        'kit/plugin.json': '{"name":"kit","description":"A kit."}',
+        'kit/skills/lint/SKILL.md': '---\nname: lint\ndescription: L.\n---\n',
+        'cc/.claude-plugin/plugin.json': 'not json',
+      }),
+    });
+
+    expect(result.plugins).toEqual([
+      {
+        name: 'cc',
+        description: '',
+        repoUrl: 'http://gitserver.lab.local/plugins.git',
+        path: 'cc',
+        ref: 'main',
+        commit: HEAD,
+        format: 'claude',
+        skills: [],
+        manifestReadable: true,
+      },
+      {
+        name: 'kit',
+        description: 'A kit.',
+        repoUrl: 'http://gitserver.lab.local/plugins.git',
+        path: 'kit',
+        ref: 'main',
+        commit: HEAD,
+        format: 'agent-plugins',
+        skills: [{ name: 'lint', description: 'L.' }],
+        manifestReadable: true,
+      },
+    ]);
   });
 
   describe('file lists', () => {

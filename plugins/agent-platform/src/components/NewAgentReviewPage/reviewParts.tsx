@@ -4,7 +4,12 @@ import { makeStyles } from '@material-ui/core';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
 import { useUnderlyingModel } from '../../hooks/useUnderlyingModel';
-import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
+import {
+  AGENT_MANAGER_SERVER,
+  type AgentPluginEntry,
+} from '../../lib/agentManager';
+import { pluginEntryKey, pluginLabel, pluginPin } from '../../lib/plugins';
+import { shortPin } from '../AgentDetailPage/helpers';
 import { countNoun, parseSelector } from '../../lib/toolset';
 import { presetPhrase } from '../../lib/toolsetReach';
 
@@ -181,6 +186,24 @@ export function UnderlyingModelItem({
   return (
     <SummaryItem label="Underlying model">
       <span className={classes.code}>{model}</span>
+    </SummaryItem>
+  );
+}
+
+/** Each plugin at the commit (or digest) it is pinned to: what is written. */
+export function PluginPins({ entries }: { entries: AgentPluginEntry[] }) {
+  const classes = useReviewStyles();
+  return (
+    <SummaryItem label="Plugin pins">
+      <Text variant="body-small">
+        {entries.map((entry, index) => (
+          <span key={pluginEntryKey(entry)}>
+            {index > 0 ? ', ' : ''}
+            {pluginLabel(entry)}{' '}
+            <span className={classes.code}>@{shortPin(pluginPin(entry))}</span>
+          </span>
+        ))}
+      </Text>
     </SummaryItem>
   );
 }

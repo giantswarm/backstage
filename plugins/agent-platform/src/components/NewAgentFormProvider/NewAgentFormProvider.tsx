@@ -8,6 +8,7 @@ import {
 
 import type {
   AgentManagerAgent,
+  AgentPluginEntry,
   AgentSkillEntry,
   WriteMode,
 } from '../../lib/agentManager';
@@ -16,11 +17,19 @@ import {
   editStateOfForm,
   skillEntryKey,
 } from '../../lib/agentEdit';
+import { skillEntryOf } from '../../lib/agentSpec';
 import { slugify } from '../../lib/slugify';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
 import type { HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
+import {
+  DiscoveredPlugin,
+  pluginEntryKey,
+  pluginEntryOf,
+  pluginPlace,
+  skillNameClashes,
+} from '../../lib/plugins';
 import {
   normalizeSelection,
   toggleSelector,
@@ -67,6 +76,12 @@ export type NewAgentFormState = {
    * empty when creating.
    */
   keptSkills: AgentSkillEntry[];
+  /**
+   * The plugins as the contract carries them, in selection order: a picked
+   * plugin pinned to the commit its card showed, with its skill selection;
+   * while editing, the agent's own entries as pinned. Optional — may be empty.
+   */
+  plugins: AgentPluginEntry[];
   /**
    * The agent's toolset as selected: inline selectors (`preset:`, `server:`,
    * `workflow:`, `tool:`), in selection order. Starts empty on purpose —
@@ -127,6 +142,22 @@ export type NewAgentFormContextValue = {
   toggleSkill: (skill: DiscoveredSkill) => void;
   /** Editing only: drops one of the kept skills (see `keptSkills`). */
   removeKeptSkill: (skill: AgentSkillEntry) => void;
+  /**
+   * Adds the plugin if no entry has its place, removes that entry if one
+   * does. An Agent Plugins package starts with every skill of it whose name
+   * is not taken yet.
+   */
+  togglePlugin: (plugin: DiscoveredPlugin) => void;
+  /** Enables or disables one skill of an Agent Plugins entry. */
+  togglePluginSkill: (entry: AgentPluginEntry, skill: string) => void;
+  /** Drops one plugin entry (one the catalogue does not list). */
+  removePlugin: (entry: AgentPluginEntry) => void;
+  /**
+   * Why the skills and plugins cannot be written together: a skill name
+   * enabled twice. Empty when they can; what the skills step's Continue
+   * gates on.
+   */
+  pluginProblems: string[];
   /**
    * Adds the selector if absent, removes it if present. `preset:full` replaces
    * the whole selection and adding anything else drops it; `preset:none` clears
@@ -198,6 +229,7 @@ const initialState: NewAgentFormState = {
   egressText: '',
   selectedSkills: [],
   keptSkills: [],
+  plugins: [],
   toolset: [],
   // A new agent starts at the Tools step's *Nothing outside the chat* (T81):
   // nothing the author did not consciously add.
@@ -225,6 +257,7 @@ function hasCreateInput(state: NewAgentFormState): boolean {
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
     state.selectedSkills.length > 0 ||
+    state.plugins.length > 0 ||
     state.toolset.length > 0 ||
     state.toolsChatOnly !== initialState.toolsChatOnly
   );
@@ -301,6 +334,11 @@ export function NewAgentFormProvider({
     // and only when it cannot be applied; nothing selected is no tools.
     const problems = toolsetProblems(state.toolset);
     const isToolsetValid = problems.length === 0;
+
+    const pluginProblems = skillNameClashes(
+      [...state.selectedSkills.map(skillEntryOf), ...state.keptSkills],
+      state.plugins,
+    );
 
     const isDirty = edit
       ? changedFields(edit.agent, editStateOfForm(edit.agent, state)).length > 0
@@ -386,6 +424,53 @@ export function NewAgentFormProvider({
               : [...prev.selectedSkills, skill],
           };
         }),
+      togglePlugin: plugin =>
+        setState(prev => {
+          const place = pluginPlace(plugin);
+          if (prev.plugins.some(entry => pluginPlace(entry) === place)) {
+            return {
+              ...prev,
+              plugins: prev.plugins.filter(
+                entry => pluginPlace(entry) !== place,
+              ),
+            };
+          }
+          const taken = new Set([
+            ...prev.selectedSkills.map(skill => skillEntryOf(skill).name),
+            ...prev.keptSkills.map(skill => skill.name),
+            ...prev.plugins.flatMap(entry => entry.skills ?? []),
+          ]);
+          const skills = plugin.skills
+            .map(skill => skill.name)
+            .filter(name => !taken.has(name));
+          return {
+            ...prev,
+            plugins: [...prev.plugins, pluginEntryOf(plugin, skills)],
+          };
+        }),
+      togglePluginSkill: (target, skill) =>
+        setState(prev => ({
+          ...prev,
+          plugins: prev.plugins.map(entry => {
+            if (pluginEntryKey(entry) !== pluginEntryKey(target)) {
+              return entry;
+            }
+            const current = entry.skills ?? [];
+            const skills = current.includes(skill)
+              ? current.filter(name => name !== skill)
+              : [...current, skill];
+            const { skills: _previous, ...rest } = entry;
+            return skills.length > 0 ? { ...rest, skills } : rest;
+          }),
+        })),
+      removePlugin: target =>
+        setState(prev => ({
+          ...prev,
+          plugins: prev.plugins.filter(
+            entry => pluginEntryKey(entry) !== pluginEntryKey(target),
+          ),
+        })),
+      pluginProblems,
       removeKeptSkill: skill =>
         setState(prev => ({
           ...prev,

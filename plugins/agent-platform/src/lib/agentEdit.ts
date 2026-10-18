@@ -1,5 +1,6 @@
 import type {
   AgentManagerAgent,
+  AgentPluginEntry,
   AgentSkillEntry,
   AgentUpdate,
 } from './agentManager';
@@ -7,6 +8,7 @@ import { declaredToolset, normalizeSelection } from './toolset';
 import { egressTextOf, parseEgressText, sameEgress } from './egress';
 import { skillEntryOf } from './agentSpec';
 import { canonicalSkillId, type DiscoveredSkill } from './skills';
+import { pluginEntryKey } from './plugins';
 import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**
@@ -29,6 +31,8 @@ export type AgentEditState = {
   toolset: string[];
   /** The skills as pinned; adding one pins it to the commit chosen at selection. */
   skills: AgentSkillEntry[];
+  /** The plugins as pinned, each with its skill selection. */
+  plugins: AgentPluginEntry[];
   /** Extra HTTP(S) origins the agent may reach, one per line as typed. */
   egressText: string;
   /**
@@ -47,6 +51,7 @@ export const AGENT_EDIT_FIELDS = [
   'modelConfig',
   'toolset',
   'skills',
+  'plugins',
   'egress',
 ] as const;
 
@@ -61,6 +66,7 @@ export function editStateOf(agent: AgentManagerAgent): AgentEditState {
     modelConfig: agent.modelConfig ?? '',
     toolset: normalizeSelection(agent.toolset ?? []),
     skills: [...(agent.skills ?? [])],
+    plugins: [...(agent.plugins ?? [])],
     egressText: egressTextOf(agent.egress),
   };
 }
@@ -79,6 +85,10 @@ function sameSkills(a: AgentSkillEntry[], b: AgentSkillEntry[]): boolean {
   return a.every(
     (skill, index) => skillEntryKey(skill) === skillEntryKey(b[index]),
   );
+}
+
+function samePlugins(a: AgentPluginEntry[], b: AgentPluginEntry[]): boolean {
+  return sameList(a.map(pluginEntryKey), b.map(pluginEntryKey));
 }
 
 function sameList(a: string[], b: string[]): boolean {
@@ -132,6 +142,9 @@ export function changedFields(
   if (!sameSkills(edit.skills, baseline.skills)) {
     changed.push('skills');
   }
+  if (!samePlugins(edit.plugins, baseline.plugins)) {
+    changed.push('plugins');
+  }
   if (!sameEgress(parseEgressText(edit.egressText), agent.egress ?? [])) {
     changed.push('egress');
   }
@@ -143,8 +156,8 @@ export function changedFields(
  *
  * A string field the person emptied is sent as `""`, which agent-manager reads
  * as "back to the chart's default" (an omitted field would mean "unchanged").
- * `toolset`, `skills` and `egress` replace their whole list (an empty
- * `egress` clears it); the empty selection is sent
+ * `toolset`, `skills`, `plugins` and `egress` replace their whole list (an
+ * empty `plugins` or `egress` clears it); the empty selection is sent
  * as `preset:none`, never as an empty list (agent-manager refuses that).
  * Nothing else is ever sent — no `force`, no runtime.
  */
@@ -169,6 +182,9 @@ export function updateOf(
       case 'skills':
         update.skills = edit.skills;
         break;
+      case 'plugins':
+        update.plugins = edit.plugins;
+        break;
       case 'egress':
         update.egress = parseEgressText(edit.egressText);
         break;
@@ -192,6 +208,7 @@ export const EDIT_FIELD_LABELS: Record<AgentEditField, string> = {
   modelConfig: 'Model',
   toolset: 'Tools',
   skills: 'Skills',
+  plugins: 'Plugins',
   egress: 'Extra egress origins',
 };
 
@@ -215,6 +232,8 @@ function placeOfEntry(entry: AgentSkillEntry): string | undefined {
  *   skill but at the commit the agent is pinned to, so its card reads
  *   "pinned at" and an untouched skill is written back unmoved. Every other
  *   skill (another repository, an OCI digest) is kept as it is.
+ * - The plugins are the agent's entries as pinned: the skills step matches
+ *   them to the catalogue's plugins by place.
  */
 export function formStateOfAgent(
   agent: AgentManagerAgent,
@@ -259,6 +278,7 @@ export function formStateOfAgent(
     egressText: baseline.egressText,
     selectedSkills,
     keptSkills,
+    plugins: baseline.plugins,
     toolset: baseline.toolset,
     // An agent declaring no tools is *Nothing outside the chat* on the Tools
     // step; one declaring no toolset at all (implicit full access) is not.
@@ -314,6 +334,7 @@ export function editStateOfForm(
     modelConfig: form.modelConfigName ?? '',
     toolset: form.toolset,
     skills: skillEntriesOfForm(agent, form),
+    plugins: form.plugins,
     egressText: form.egressText,
     chatOnly: Boolean(form.toolsChatOnly),
   };

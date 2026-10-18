@@ -49,6 +49,7 @@ describe('editStateOf', () => {
       modelConfig: 'opus-4-7',
       toolset: ['preset:read-only'],
       skills: [PR_REVIEW, OCI_SKILL],
+      plugins: [],
       egressText: '',
     });
     // No runtime: every agent runs on the platform Harness.
@@ -79,6 +80,36 @@ describe('editStateOf', () => {
 });
 
 describe('updateOf', () => {
+  const KIT = {
+    path: 'kit',
+    git: { url: 'https://github.com/acme/plugins', commit: HEAD },
+    skills: ['lint'],
+  };
+
+  it('replaces the whole plugin list when a plugin, its pin or its selection changed', () => {
+    const current = agent({ plugins: [KIT] });
+    expect(editStateOf(current).plugins).toEqual([KIT]);
+    expect(changedFields(current, editStateOf(current))).toEqual([]);
+
+    const reselected = { ...KIT, skills: ['lint', 'docs'] };
+    expect(
+      updateOf(current, { ...editStateOf(current), plugins: [reselected] }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      plugins: [reselected],
+    });
+
+    const moved = { ...KIT, git: { ...KIT.git, commit: OTHER } };
+    expect(
+      changedFields(current, { ...editStateOf(current), plugins: [moved] }),
+    ).toEqual(['plugins']);
+
+    expect(updateOf(current, { ...editStateOf(current), plugins: [] })).toEqual(
+      { namespace: 'kagent', name: 'pr-reviewer', plugins: [] },
+    );
+  });
+
   it('replaces the whole egress list, and clears it with an empty list', () => {
     const withEgress = agent({ egress: ['https://github.com:443'] });
     expect(editStateOf(withEgress).egressText).toBe('https://github.com:443');

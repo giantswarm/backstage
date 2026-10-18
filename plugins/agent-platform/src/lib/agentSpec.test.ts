@@ -27,6 +27,7 @@ const state: NewAgentFormState = {
   egressText: '',
   selectedSkills: [skill],
   keptSkills: [],
+  plugins: [],
   toolset: ['preset:read-only'],
 };
 
@@ -108,7 +109,20 @@ describe('agentSpecOf', () => {
     expect(spec).not.toHaveProperty('systemMessage');
     expect(spec).not.toHaveProperty('iconUrl');
     expect(spec).not.toHaveProperty('skills');
+    expect(spec).not.toHaveProperty('plugins');
     expect(spec.toolset).toEqual(['preset:none']);
+  });
+
+  it('sends the plugins as the skills step pinned them', () => {
+    const plugin = {
+      path: 'kit',
+      git: { url: 'https://github.com/acme/plugins', commit: HEAD },
+      skills: ['lint'],
+    };
+    expect(
+      agentSpecOf({ ...state, plugins: [plugin] }, { toolset: ['preset:none'] })
+        .plugins,
+    ).toEqual([plugin]);
   });
 
   it('carries no runtime and no credential', () => {

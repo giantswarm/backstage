@@ -7,6 +7,8 @@ import userEvent, {
 
 import { agentsRouteRef } from '../../routes';
 import { canonicalSkillId, type DiscoveredSkill } from '../../lib/skills';
+import type { DiscoveredPlugin } from '../../lib/plugins';
+import type { HarnessChoice } from '../../lib/harnesses';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentSkillsPage } from './NewAgentSkillsPage';
 
@@ -39,8 +41,35 @@ const SKILLS: DiscoveredSkill[] = [
   },
 ];
 
+const PLUGINS: DiscoveredPlugin[] = [
+  {
+    name: 'review-kit',
+    description: 'Review helpers.',
+    repoUrl: 'https://github.com/acme/plugins',
+    path: 'kit',
+    ref: 'main',
+    commit: HEAD,
+    format: 'agent-plugins',
+    skills: [
+      { name: 'lint', description: '' },
+      { name: 'docs', description: '' },
+    ],
+  },
+  {
+    name: 'commit-commands',
+    description: 'Git commit commands.',
+    repoUrl: 'https://github.com/anthropics/claude-code',
+    path: 'plugins/commit-commands',
+    ref: 'main',
+    commit: OTHER,
+    format: 'claude',
+    skills: [],
+  },
+];
+
 const RESOLVED = {
   skills: SKILLS,
+  plugins: [] as DiscoveredPlugin[],
   isLoading: false,
   error: null,
   hasRepositories: true,
@@ -104,14 +133,25 @@ async function pickFilter(field: string, option: string) {
   await userEvent.keyboard('{Escape}');
 }
 
+/** The Harness step 1 picked; undefined is the platform Harness. */
+let seedHarness: HarnessChoice | undefined;
+
 /** Fills the step-1 fields the skills step requires, then renders its child. */
 function Seed({ children }: { children: ReactNode }) {
-  const { setName, setInstallation, selectModelConfig, isComplete } =
-    useNewAgentForm();
+  const {
+    setName,
+    setInstallation,
+    selectModelConfig,
+    selectHarness,
+    isComplete,
+  } = useNewAgentForm();
   useEffect(() => {
     setName('Reviewer');
     setInstallation('gazelle');
     selectModelConfig('opus', 'kagent');
+    if (seedHarness) {
+      selectHarness(seedHarness);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return isComplete ? <>{children}</> : null;
@@ -121,12 +161,19 @@ function Seed({ children }: { children: ReactNode }) {
 function SelectionProbe() {
   const { state } = useNewAgentForm();
   return (
-    <output data-testid="selection">
-      {state.selectedSkills
-        .map(skill => `${skill.path}@${skill.commit}`)
-        .join(' | ')}
-    </output>
+    <>
+      <output data-testid="selection">
+        {state.selectedSkills
+          .map(skill => `${skill.path}@${skill.commit}`)
+          .join(' | ')}
+      </output>
+      <output data-testid="plugins">{JSON.stringify(state.plugins)}</output>
+    </>
   );
+}
+
+function pluginsOfForm() {
+  return JSON.parse(screen.getByTestId('plugins').textContent ?? '[]');
 }
 
 async function renderStep() {
@@ -140,6 +187,127 @@ async function renderStep() {
     { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }
+
+describe('NewAgentSkillsPage plugins', () => {
+  beforeEach(() => {
+    Object.assign(mockCatalog, { plugins: PLUGINS });
+    seedHarness = { name: 'claude', runtime: 'claude' };
+  });
+
+  afterEach(() => {
+    seedHarness = undefined;
+  });
+
+  it('offers a Claude Code plugin on the platform Harness disabled, and says why', async () => {
+    seedHarness = undefined;
+    const user = userEvent.setup();
+    await renderStep();
+
+    const card = await screen.findByRole('checkbox', {
+      name: 'Plugin commit-commands',
+    });
+    expect(card).toHaveAttribute('aria-disabled', 'true');
+    expect(card).toHaveTextContent(
+      'Loads on a Claude Code runtime only; this agent runs on Declarative (Go ADK).',
+    );
+    await user.click(card);
+    expect(pluginsOfForm()).toEqual([]);
+    // An Agent Plugins package loads on every runtime.
+    expect(
+      screen.getByRole('checkbox', { name: 'Plugin review-kit' }),
+    ).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('titles the step for skills and plugins and says what each format does', async () => {
+    await renderStep();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Select skills and plugins' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('checkbox', { name: 'Plugin commit-commands' }),
+    ).toHaveTextContent(/loads whole/);
+    expect(
+      screen.getByRole('checkbox', { name: 'Plugin review-kit' }),
+    ).toHaveTextContent(/enables only the skills you select/);
+  });
+
+  it('pins a Claude Code plugin to the commit shown, with no selection', async () => {
+    const user = userEvent.setup();
+    await renderStep();
+
+    await user.click(
+      await screen.findByRole('checkbox', { name: 'Plugin commit-commands' }),
+    );
+
+    expect(pluginsOfForm()).toEqual([
+      {
+        path: 'plugins/commit-commands',
+        git: {
+          url: 'https://github.com/anthropics/claude-code',
+          commit: OTHER,
+        },
+      },
+    ]);
+    // Nothing to select in a plugin that loads whole.
+    expect(screen.queryByRole('group', { name: /Skills of/ })).toBeNull();
+  });
+
+  it('starts an Agent Plugins package with every skill enabled, and unchecks one', async () => {
+    const user = userEvent.setup();
+    await renderStep();
+
+    await user.click(
+      await screen.findByRole('checkbox', { name: 'Plugin review-kit' }),
+    );
+    expect(pluginsOfForm()).toEqual([
+      {
+        path: 'kit',
+        git: { url: 'https://github.com/acme/plugins', commit: HEAD },
+        skills: ['lint', 'docs'],
+      },
+    ]);
+
+    const skills = screen.getByRole('group', { name: /Skills of review-kit/ });
+    await user.click(within(skills).getByRole('checkbox', { name: 'lint' }));
+    expect(pluginsOfForm()[0].skills).toEqual(['docs']);
+
+    // Unchecking the last one leaves the plugin without a selection.
+    await user.click(within(skills).getByRole('checkbox', { name: 'docs' }));
+    expect(pluginsOfForm()[0].skills).toBeUndefined();
+
+    // Unpicking the plugin drops its entry.
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Plugin review-kit' }),
+    );
+    expect(pluginsOfForm()).toEqual([]);
+  });
+
+  it('refuses to continue while a skill name is enabled twice', async () => {
+    Object.assign(mockCatalog, {
+      skills: [{ ...SKILLS[0], name: 'lint', path: 'lint' }],
+    });
+    const user = userEvent.setup();
+    await renderStep();
+
+    await user.click(
+      await screen.findByRole('checkbox', { name: 'Skill lint' }),
+    );
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Plugin review-kit' }),
+    );
+    // A name already taken is not preselected.
+    expect(pluginsOfForm()[0].skills).toEqual(['docs']);
+
+    const skills = screen.getByRole('group', { name: /Skills of review-kit/ });
+    await user.click(within(skills).getByRole('checkbox', { name: 'lint' }));
+    expect(
+      screen.getByText(
+        /enables the skill lint, which the skill lint already provides/,
+      ),
+    ).toBeInTheDocument();
+  });
+});
 
 describe('NewAgentSkillsPage', () => {
   it('shows the commit each skill is pinned to, next to its branch', async () => {
