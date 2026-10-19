@@ -648,6 +648,11 @@ export async function createAgentInWizard(
   // The Select's name is its value and its label: "Select an option Tenant".
   const tenantPicker = page.getByRole('button', { name: /\bTenant$/ });
   await expect(model.or(tenantPicker).first()).toBeVisible({ timeout: 60_000 });
+  // Until agent-manager's get_info answers, the models are offered before the
+  // tenants are known: decide on the tenant only once they are.
+  await expect(
+    page.getByText('Reading where you may create agents…'),
+  ).toBeHidden({ timeout: 60_000 });
   if (await tenantPicker.isVisible()) {
     await tenantPicker.click();
     await page

@@ -65,6 +65,14 @@ function binding(name: string, role: string, subject: object) {
 }
 
 async function applyTenant() {
+  // A run right after another finds the namespace still terminating, where
+  // the API server takes no new RoleBinding.
+  await kubectl([
+    'wait',
+    '--for=delete',
+    `namespace/${namespace}`,
+    '--timeout=3m',
+  ]);
   const objects = [
     {
       apiVersion: 'v1',
@@ -125,17 +133,21 @@ test.describe('agents per tenant', () => {
     signInAs,
   }) => {
     test.setTimeout(rosterWait + 60_000);
-    expect(
-      await platformAgents(),
-      'the platform tenant holds no agent: run this file before any spec that uses the labAgent fixture (-g "agents per tenant")',
-    ).toEqual([]);
+    const platform = await platformAgents();
+    test.skip(
+      platform.length > 0,
+      `the platform tenant holds ${platform.join(', ')} (the labAgent of an earlier spec in this worker): run this file alone (-g "agents per tenant") for the empty state`,
+    );
     const bob = await signInAs(users.bob);
     await open(bob, '/customize/agents', users.bob);
     await expect(
       bob.getByText('No agents for you yet'),
       'the empty state for a person no tenant binds',
     ).toBeVisible({ timeout: rosterWait });
-    await expect(bob.getByText(/agent-platform:user/)).toBeVisible();
+    await expect(
+      bob.getByText(/agent-platform:user.*agent-platform:editor/),
+      'it names the roles that grant access',
+    ).toBeVisible();
     await expect(
       bob.getByText('Create your first agent'),
       'no invitation to create where the person may not',
@@ -149,23 +161,30 @@ test.describe('agents per tenant', () => {
     });
 
     test.afterAll(async ({ browser }) => {
-      if (detailPath) {
-        const context = await browser.newContext(contextOptions);
-        try {
-          const page = await context.newPage();
-          await open(page, detailPath, lab.users.dev);
-          await deleteAgentInPortal(page, detailPath, agent.slug);
-        } finally {
-          await context.close();
+      // The portal's delete and Flux's uninstall take minutes.
+      test.setTimeout(6 * 60_000);
+      try {
+        if (detailPath) {
+          const context = await browser.newContext(contextOptions);
+          try {
+            const page = await context.newPage();
+            await open(page, detailPath, lab.users.dev);
+            await deleteAgentInPortal(page, detailPath, agent.slug);
+          } finally {
+            await context.close();
+          }
         }
+      } finally {
+        // Also removes an agent the portal could not delete, or one created
+        // after a failed hand-off to its page.
+        await kubectl([
+          'delete',
+          'namespace',
+          namespace,
+          '--ignore-not-found',
+          '--wait=false',
+        ]);
       }
-      await kubectl([
-        'delete',
-        'namespace',
-        namespace,
-        '--ignore-not-found',
-        '--wait=false',
-      ]);
     });
 
     test('the editor of one organization creates there: the tenant is picked and named, the page names tenant and creator', async ({
@@ -215,18 +234,20 @@ test.describe('agents per tenant', () => {
         ),
       ).toBeVisible();
       await expect(fact(alice, 'Tenant')).toHaveText(tenant);
+      await expectAgentRendered(alice);
       await expect(editButton(alice), 'no Edit for a user').toHaveCount(0);
-      const actions = alice.getByRole('button', { name: 'Agent actions' });
-      if (await actions.isVisible()) {
-        await actions.click();
-        await expect(
-          alice.getByRole('menuitem', {
-            name: /Edit agent|Update skills|Delete agent/,
-          }),
-          'no write in the actions menu for a user',
-        ).toHaveCount(0);
-        await alice.keyboard.press('Escape');
-      }
+      await alice.getByRole('button', { name: 'Agent actions' }).click();
+      await expect(
+        alice.getByRole('menuitem', { name: /View manifest/ }),
+        'the menu is open',
+      ).toBeVisible();
+      await expect(
+        alice.getByRole('menuitem', {
+          name: /Update all skills|Delete agent/,
+        }),
+        'no write in the actions menu for a user',
+      ).toHaveCount(0);
+      await alice.keyboard.press('Escape');
     });
 
     test('each person’s roster names the tenants; another organization’s agent is not listed', async ({
@@ -261,6 +282,25 @@ test.describe('agents per tenant', () => {
       ).toHaveCount(0);
     });
 
+    test('a user’s deep link to the edit page is refused up front', async ({
+      signInAs,
+    }) => {
+      test.skip(!detailPath, 'the agent was not created');
+      test.setTimeout(rosterWait + 60_000);
+      const alice = await signInAs(users.alice);
+      await open(alice, `${detailPath}/edit`, users.alice);
+      await expect(
+        alice.getByText('You cannot change this agent'),
+        'the refusal naming the role, not a failed read',
+      ).toBeVisible({ timeout: rosterWait });
+      await expect(
+        alice.getByText(
+          `Changing the agents of ${tenant} needs the agent-platform:editor role`,
+          { exact: false },
+        ),
+      ).toBeVisible();
+    });
+
     test('“Created by: Me” keeps the person’s own agents', async ({
       labAgent,
       signInAs,
@@ -280,25 +320,6 @@ test.describe('agents per tenant', () => {
         rosterLinkOf(dev, labAgent.name),
         'the admin’s platform agent is not the developer’s',
       ).toHaveCount(0);
-    });
-
-    test('a user’s deep link to the edit page is refused up front', async ({
-      signInAs,
-    }) => {
-      test.skip(!detailPath, 'the agent was not created');
-      test.setTimeout(rosterWait + 60_000);
-      const alice = await signInAs(users.alice);
-      await open(alice, `${detailPath}/edit`, users.alice);
-      await expect(
-        alice.getByText('You cannot change this agent'),
-        'the refusal naming the role, not a failed read',
-      ).toBeVisible({ timeout: rosterWait });
-      await expect(
-        alice.getByText(
-          `Changing the agents of ${tenant} needs the agent-platform:editor role`,
-          { exact: false },
-        ),
-      ).toBeVisible();
     });
   });
 });
