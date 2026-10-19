@@ -125,6 +125,12 @@ jest.mock('../../hooks/useTokenRates', () => ({
   }),
 }));
 
+// Stubbed like `useTokenRates`: it reads Mimir through the gs plugin's api ref.
+// The refusals on a timeline are covered in SessionTimeline's tests.
+jest.mock('../../hooks/useSessionEgressRefusals', () => ({
+  useSessionEgressRefusals: () => [],
+}));
+
 // Stubbed for the same reason as the mutations above: no query client is mounted.
 const mockSendMessage = jest.fn();
 const mockUseSendMessage = jest.fn<UseSendMessageResult, []>();
