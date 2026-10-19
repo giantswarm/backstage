@@ -49,6 +49,9 @@ jest.mock('../../hooks/useTokenRates', () => ({
     window: '7d',
   }),
 }));
+jest.mock('../../hooks/useSessionEgressRefusals', () => ({
+  useSessionEgressRefusals: () => [],
+}));
 
 jest.mock('../../hooks/useMusterServers', () => ({
   useMusterServers: () => ({

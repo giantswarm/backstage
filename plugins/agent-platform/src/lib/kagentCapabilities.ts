@@ -37,12 +37,12 @@ export type KagentCapabilities = {
    */
   isUserScoped?: boolean;
   /**
-   * The signed-in person as kagent knows them (the email agentgateway sets),
-   * when sessions are scoped to them (`isUserScoped`): the identity
-   * agent-manager records as an agent's creator, which "created by me"
-   * compares with.
+   * The signed-in person as agent-manager records an agent's creator
+   * (`agent-platform.giantswarm.io/created-by`): the token's email, else its
+   * subject. Set when sessions are scoped to them (`isUserScoped`); "created
+   * by me" compares with it.
    */
-  subject?: string;
+  caller?: string;
 };
 
 /** Capabilities assumed before (or instead of) a successful probe: claim nothing. */

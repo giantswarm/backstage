@@ -182,6 +182,25 @@ export function EditAgentPage() {
     (agent && isCatalogPending)
   ) {
     body = <LoadingIndicator label="Reading the agent…" />;
+  } else if (
+    asksAccess &&
+    !updateAccess.allowed &&
+    failure?.kind !== 'not-connected'
+  ) {
+    // Before the read's failure: a person without the role may not read the
+    // agent's HelmRelease either, so agent-manager's get_agent fails as them,
+    // and the refusal is the answer that says why. Not before a muster
+    // session that must first connect to agent-manager: that is the answer
+    // then, and agent-manager may write as its ServiceAccount there.
+    body = (
+      <EmptyStateCard
+        title="You cannot change this agent"
+        description={`Changing the agents of ${tenantOf(
+          namespace,
+        )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
+        actions={backLink}
+      />
+    );
   } else if (failure) {
     body = (
       <Flex direction="column" gap="3">
@@ -206,16 +225,6 @@ export function EditAgentPage() {
       <EmptyStateCard
         title="Agent not found"
         description={`agent-manager on ${installation} knows no agent "${name}" in namespace "${namespace}".`}
-        actions={backLink}
-      />
-    );
-  } else if (asksAccess && !updateAccess.allowed) {
-    body = (
-      <EmptyStateCard
-        title="You cannot change this agent"
-        description={`Changing the agents of ${tenantOf(
-          namespace,
-        )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
         actions={backLink}
       />
     );

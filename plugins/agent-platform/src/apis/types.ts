@@ -51,6 +51,8 @@ export type ConfirmationAnswerRequest = {
 export type KagentIdentity = {
   /** The `sub` kagent used to scope the session query, when it reported one. */
   sub?: string;
+  /** The token's `email` claim, when kagent reported one. */
+  email?: string;
 };
 
 export interface KagentApi {

@@ -154,9 +154,33 @@ describe('useKagentCapabilitiesMap', () => {
       expect(result.current('golem').isUserScoped).toBe(false);
     });
     // The person, where kagent knows them; never unsecure mode's shared user.
-    expect(result.current('gazelle').subject).toBe('marian@giantswarm.io');
-    expect(result.current('golem').subject).toBeUndefined();
+    expect(result.current('gazelle').caller).toBe('marian@giantswarm.io');
+    expect(result.current('golem').caller).toBeUndefined();
   });
+
+  it.each([
+    [
+      'the email, beside Dex’s opaque subject',
+      { sub: 'CiQxYjFlYjVmMS0SBWxvY2Fs', email: 'dev@lab.local' },
+      'dev@lab.local',
+    ],
+    [
+      'the subject, without an email',
+      { sub: 'marian@giantswarm.io' },
+      'marian@giantswarm.io',
+    ],
+  ])(
+    'names the person as agent-manager records an agent’s creator: %s',
+    async (_case, identity, caller) => {
+      getIdentity.mockResolvedValue(identity);
+
+      const { result } = renderWith(['gazelle']);
+
+      await waitFor(() =>
+        expect(result.current('gazelle').caller).toBe(caller),
+      );
+    },
+  );
 
   it('probes each installation once', async () => {
     getIdentity.mockResolvedValue({ sub: 'marian@giantswarm.io' });

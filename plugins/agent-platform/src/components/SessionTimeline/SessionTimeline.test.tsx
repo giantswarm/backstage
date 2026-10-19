@@ -1740,3 +1740,77 @@ describe('SessionTimeline — a long user message', () => {
     expect(screen.queryByRole('button', { name: /Show more/ })).toBeNull();
   });
 });
+
+describe('egress refusals', () => {
+  const at = '2026-10-19T10:42:00Z';
+  const timeline = (refusal: Partial<TimelineItem>): Timeline => ({
+    ...timelineFor(tasksEmpty),
+    items: [
+      { kind: 'user-message', id: 'u', taskIndex: 0, at, text: 'update' },
+      {
+        kind: 'egress-refused',
+        id: 'r',
+        taskIndex: 0,
+        at,
+        scheme: 'https',
+        host: 'proxy.golang.org',
+        port: 443,
+        count: 3,
+        ...refusal,
+      } as TimelineItem,
+      { kind: 'agent-message', id: 'a', taskIndex: 0, at, text: 'no' },
+    ],
+  });
+
+  it('names the host, the reason, the count and links the egress settings', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline({})}
+        agentName="otter-coder"
+        agentEgressHref="/customize/agents/lab/agents/otter-coder/edit"
+      />,
+    );
+
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText('Egress refused: proxy.golang.org:443'),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        /Not in otter-coder’s egress settings · .* · 3 requests in this turn/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        /can add https:\/\/proxy\.golang\.org to its Extra egress origins/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByRole('link', {
+        name: 'otter-coder’s egress settings',
+      }),
+    ).toHaveAttribute('href', '/customize/agents/lab/agents/otter-coder/edit');
+  });
+
+  it('says raw TCP is not available, with no origin to add', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline({
+          scheme: 'tcp',
+          host: '10.0.0.7',
+          port: 22,
+          count: 1,
+        })}
+        agentName="otter-coder"
+      />,
+    );
+
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        /Raw TCP connections are not available to agents · .* · 1 request$/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByRole('link')).not.toBeInTheDocument();
+  });
+});
