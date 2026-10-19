@@ -2301,7 +2301,9 @@ describe('createRouter', () => {
 
   describe('GET /kagent/agent-namespaces', () => {
     it('asks as the person and answers the namespaces', async () => {
-      listAgentNamespaces.mockResolvedValue({ namespaces: ['kagent', 'org-a'] });
+      listAgentNamespaces.mockResolvedValue({
+        namespaces: ['kagent', 'org-a'],
+      });
 
       const response = await request(app)
         .get('/kagent/agent-namespaces')

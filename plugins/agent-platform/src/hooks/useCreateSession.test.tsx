@@ -380,7 +380,11 @@ describe('useCreateSession', () => {
     await act(async () => {
       await expect(
         result.current.createSession({
-          agent: { ...agent, namespace: 'org-acme', tenant: 'organization acme' },
+          agent: {
+            ...agent,
+            namespace: 'org-acme',
+            tenant: 'organization acme',
+          },
           prompt: 'Check',
         }),
       ).rejects.toMatchObject({

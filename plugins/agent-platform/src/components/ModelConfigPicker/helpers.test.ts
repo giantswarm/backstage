@@ -1,4 +1,4 @@
-import { preselectedModelConfig } from './helpers';
+import { preselectedModelConfig, tenantModelConfigs } from './helpers';
 
 function modelConfig(namespace: string, name: string) {
   return { getName: () => name, getNamespace: () => namespace };
@@ -47,5 +47,52 @@ describe('preselectedModelConfig', () => {
     expect(
       preselectedModelConfig([first, modelConfig('kagent', 'opus')]),
     ).toEqual({ modelConfig: first, reason: 'first' });
+  });
+});
+
+describe('tenantModelConfigs', () => {
+  const model = (name: string, namespace: string) => ({
+    getName: () => name,
+    getNamespace: () => namespace,
+    getDisplayName: () => `${name} (${namespace})`,
+    getModel: () => 'claude',
+    getProvider: () => 'Anthropic',
+  });
+  const where = (choices: ReturnType<typeof tenantModelConfigs>) =>
+    choices.map(mc => `${mc.getNamespace()}/${mc.getName()}`);
+  const platformDefault = model('default-model-config', 'kagent');
+
+  it('offers a tenant without its copy yet the platform default, in the tenant', () => {
+    const choices = tenantModelConfigs(
+      [platformDefault, model('own-key', 'org-acme'), model('x', 'org-b')],
+      'org-acme',
+    );
+
+    expect(where(choices)).toEqual([
+      'org-acme/default-model-config',
+      'org-acme/own-key',
+    ]);
+    expect(choices[0].getDisplayName()).toBe(platformDefault.getDisplayName());
+  });
+
+  it('offers a tenant its own copy once it exists, and nothing twice', () => {
+    expect(
+      where(
+        tenantModelConfigs(
+          [platformDefault, model('default-model-config', 'org-acme')],
+          'org-acme',
+        ),
+      ),
+    ).toEqual(['org-acme/default-model-config']);
+  });
+
+  it('offers the models of the tenants the person may create in until one is picked', () => {
+    expect(
+      where(
+        tenantModelConfigs([platformDefault, model('x', 'org-b')], undefined, [
+          'org-b',
+        ]),
+      ),
+    ).toEqual(['org-b/x']);
   });
 });

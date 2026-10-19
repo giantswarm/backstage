@@ -78,9 +78,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   // A new agent's are those of the tenant it is created in.
   const listed = installation ? modelConfigsFor(installation) : [];
   const modelConfigs: ModelChoice[] = edit
-    ? listed.filter(
-        mc => (mc.getNamespace() ?? '') === edit.agent.namespace,
-      )
+    ? listed.filter(mc => (mc.getNamespace() ?? '') === edit.agent.namespace)
     : tenantModelConfigs(listed, state.tenant, state.tenantChoices);
   // The agent's current model, when the list does not carry it (a ModelConfig
   // the person may not read, or one that is gone): the picker still says what

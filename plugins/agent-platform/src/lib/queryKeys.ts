@@ -368,5 +368,10 @@ export function musterWorkspaceQueryKey(installation: string, name: string) {
  * `QueryClientProvider`'s never-persist list.
  */
 export function kagentAgentNamespacesQueryKey(installation: string) {
-  return ['agent-platform', 'kagent', 'agent-namespaces', installation] as const;
+  return [
+    'agent-platform',
+    'kagent',
+    'agent-namespaces',
+    installation,
+  ] as const;
 }

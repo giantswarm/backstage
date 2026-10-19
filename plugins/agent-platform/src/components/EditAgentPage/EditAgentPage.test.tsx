@@ -114,9 +114,18 @@ jest.mock('../../hooks/useToolsetResolution', () => ({
     status: 'resolved',
   }),
 }));
+/** The HelmRelease verbs the person may not use on the agent's release. */
+let mockDeniedVerbs = new Set<string>();
+afterEach(() => {
+  mockDeniedVerbs = new Set();
+});
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: () => ({ resources: [], isLoading: false, errors: [] }),
+  useSelfSubjectAccessReview: (
+    _cluster: string,
+    attributes: { verb: string },
+  ) => ({ allowed: !mockDeniedVerbs.has(attributes.verb), isLoading: false }),
 }));
 // The review fold-out's targeted ModelConfig read: what the agent's model runs.
 jest.mock('../../hooks/useUnderlyingModel', () => ({
@@ -636,6 +645,19 @@ describe('EditAgentPage', () => {
 
     expect(
       await screen.findByText('This agent cannot be edited from here'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+  });
+
+  it('has no form for a person who may not update the agent’s release, and says whose role may', async () => {
+    mockDeniedVerbs = new Set(['update']);
+    await renderEdit(BASE);
+
+    expect(
+      await screen.findByText('You cannot change this agent'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/needs the agent-platform:editor role/),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
   });

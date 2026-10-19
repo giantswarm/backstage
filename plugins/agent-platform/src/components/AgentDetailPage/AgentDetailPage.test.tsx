@@ -29,9 +29,18 @@ import { AgentDetailPage } from './AgentDetailPage';
 // derivation and provenance helpers rather than a duck-typed stand-in.
 const mockUseResource = jest.fn();
 
+/** The HelmRelease verbs the person may not use on the agent's release. */
+let mockDeniedVerbs = new Set<string>();
+afterEach(() => {
+  mockDeniedVerbs = new Set();
+});
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResource: (...args: unknown[]) => mockUseResource(...args),
+  useSelfSubjectAccessReview: (
+    _cluster: string,
+    attributes: { verb: string },
+  ) => ({ allowed: !mockDeniedVerbs.has(attributes.verb), isLoading: false }),
 }));
 
 // `GitOpsCard` is deliberately *not* mocked: it reports its Flux lookups through
@@ -2244,6 +2253,27 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeInTheDocument();
     });
 
+    it('offers a tenant’s user no Edit, and says whose editors may change the agent', async () => {
+      withAgentManager();
+      mockDeniedVerbs = new Set(['update', 'delete']);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(
+        await screen.findByText('You can use this agent, not change it'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /agents of namespace agent-platform needs the agent-platform:editor role/,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+    });
+
     it('offers no Edit to a viewer who cannot write the agent', async () => {
       stubResources({ resource: makeAgent() });
 
@@ -2401,6 +2431,25 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(facts).getByText('claude-opus-4-7 · Anthropic'),
       ).toBeInTheDocument();
       expect(within(facts).getByText('gazelle')).toBeInTheDocument();
+    });
+
+    it('names the agent’s tenant and its creator beside the overview', async () => {
+      const agent = makeAgent();
+      agent.jsonData.metadata.annotations = {
+        ...agent.jsonData.metadata.annotations,
+        'agent-platform.giantswarm.io/created-by': 'ana@example.com',
+      };
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(
+        within(facts).getByText('namespace agent-platform'),
+      ).toBeInTheDocument();
+      expect(within(facts).getByText('ana@example.com')).toBeInTheDocument();
     });
 
     it('keeps the ModelConfig name without a display name, the model below it', async () => {

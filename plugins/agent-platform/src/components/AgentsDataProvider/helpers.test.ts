@@ -284,6 +284,19 @@ describe('toAgentRow', () => {
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
       readinessMessage: undefined,
+      tenant: 'namespace sre-team',
+    });
+  });
+
+  it('carries the creator agent-manager recorded, for display and filtering', () => {
+    const agent = makeAgent({ name: 'triager', namespace: 'org-acme' });
+    agent.jsonData.metadata.annotations = {
+      'agent-platform.giantswarm.io/created-by': 'ana@acme.example',
+    };
+
+    expect(toAgentRow(agent, [])).toMatchObject({
+      tenant: 'organization acme',
+      createdBy: 'ana@acme.example',
     });
   });
 

@@ -215,8 +215,8 @@ export type CustomizeAgentsPanelProps = {
  *   Harness facet is offered only when there are two or more.
  * @param tenants how many tenants the rows belong to; the Tenant facet is
  *   offered only from two on, as the Harness one.
- * @param isMine whether the person created the row's agent; the "Created by"
- *   facet is offered only when some row is theirs.
+ * @param isMine whether the person created the row's agent: the "Created by"
+ *   facet, which the bar shows only when some row is theirs.
  */
 export function agentFacets(
   isFavorite: (id: string) => boolean,
@@ -228,7 +228,13 @@ export function agentFacets(
 ): CatalogFacet<AgentRow>[] {
   return [
     ...(tenants > 1
-      ? [{ id: 'tenant', label: 'Tenant', value: (row: AgentRow) => row.tenant }]
+      ? [
+          {
+            id: 'tenant',
+            label: 'Tenant',
+            value: (row: AgentRow) => row.tenant,
+          },
+        ]
       : []),
     { id: 'model', label: 'Model', value: row => row.model || undefined },
     // Sanctioned exception to the bar's dropdown-of-one (T64): main's
@@ -527,14 +533,9 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       row.createdBy === capabilitiesFor(row.installation).subject,
     [capabilitiesFor],
   );
-  const hasMine = rows.some(isMine);
   const facets = useMemo(
-    () =>
-      agentFacets(isFavorite, harnesses, {
-        tenants: tenantCount,
-        isMine: hasMine ? isMine : undefined,
-      }),
-    [isFavorite, harnesses, tenantCount, hasMine, isMine],
+    () => agentFacets(isFavorite, harnesses, { tenants: tenantCount, isMine }),
+    [isFavorite, harnesses, tenantCount, isMine],
   );
   const filters = useCatalogFilters({ items: rows, searched, facets });
   // A Harness pick outlives its dropdown when the fleet settles on one

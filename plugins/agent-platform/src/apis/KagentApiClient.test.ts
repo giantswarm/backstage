@@ -1229,7 +1229,9 @@ describe('KagentApiClient', () => {
       ).resolves.toEqual(['kagent', 'org-a']);
 
       const [url, init] = fetchMock.mock.calls[0];
-      expect(String(url)).toContain('/kagent/agent-namespaces?installation=gazelle');
+      expect(String(url)).toContain(
+        '/kagent/agent-namespaces?installation=gazelle',
+      );
       expect(init.headers[KAGENT_AUTH_HEADER]).toBeDefined();
     });
   });

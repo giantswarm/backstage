@@ -220,10 +220,12 @@ export function useNamespacedResources<R extends KubeObject<any>>(
 
   const targets = installations.flatMap((installation, index) =>
     namespacesKnown(index)
-      ? agentNamespacesOf(infos[index].data, listedOf(index)).map(namespace => ({
-          installation,
-          namespace,
-        }))
+      ? agentNamespacesOf(infos[index].data, listedOf(index)).map(
+          namespace => ({
+            installation,
+            namespace,
+          }),
+        )
       : [],
   );
 

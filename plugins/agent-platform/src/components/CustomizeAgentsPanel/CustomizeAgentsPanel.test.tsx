@@ -65,11 +65,21 @@ jest.mock('../AgentsDataProvider', () => {
               (mockAgents.installations ?? []).length === 0,
           },
         ),
+        noAccessInstallations: [],
         ...mockAgents,
       };
     },
   };
 });
+// The person as kagent knows them on every installation: whom "created by
+// me" compares an agent's creator with.
+const mockSubject = 'me@example.com';
+jest.mock('../../hooks/useKagentCapabilities', () => ({
+  useKagentCapabilitiesMap: () => () => ({
+    isUserScoped: true,
+    subject: mockSubject,
+  }),
+}));
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   useInstallationInventory: () => ({ refresh: () => {} }),
@@ -377,6 +387,25 @@ describe('CustomizeAgentsPanel', () => {
         screen.getByRole('link', { name: 'Create your first agent' }),
       ).toHaveAttribute('href', '/customize/agents/new');
       expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    });
+
+    it('says who grants access where no tenant binds the person, instead of inviting a first agent', async () => {
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        noAccessInstallations: ['golem'],
+      };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'No agents for you yet' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/no tenant’s agents on golem\. .*agent-platform:user/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: 'Create your first agent' }),
+      ).not.toBeInTheDocument();
     });
 
     it('says when no environments are configured', async () => {
@@ -1005,6 +1034,49 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
   beforeEach(() => {
     mockSessions = [];
     mockMetaAgent = undefined;
+  });
+
+  it('filters by tenant and by who created the agent, each row naming its tenant', async () => {
+    mockAgents = {
+      rows: [
+        row({
+          name: 'SRE',
+          technicalName: 'sre',
+          namespace: 'kagent',
+          tenant: 'platform',
+        }),
+        row({
+          name: 'Billing',
+          technicalName: 'billing',
+          namespace: 'org-acme',
+          tenant: 'organization acme',
+          createdBy: mockSubject,
+        }),
+        row({
+          name: 'Sales',
+          technicalName: 'sales',
+          namespace: 'org-acme',
+          tenant: 'organization acme',
+          createdBy: 'other@example.com',
+        }),
+      ],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    await renderPanel();
+
+    expect(listed()[0]).toHaveTextContent('platform');
+    expect(await filterOptions('tenant')).toEqual([
+      'organization acme 2',
+      'platform 1',
+    ]);
+    expect(await filterOptions('created by')).toEqual(['Me 1']);
+
+    await pickFilter('created by', 'Me 1');
+    expect(listed().map(item => item.textContent)).toEqual([
+      expect.stringContaining('Billing'),
+    ]);
   });
 
   it('offers the model dropdown over three agents on one model, none starred', async () => {

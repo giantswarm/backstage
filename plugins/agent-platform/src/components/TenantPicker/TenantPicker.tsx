@@ -48,9 +48,7 @@ export function TenantPicker({ error }: TenantPickerProps = {}) {
 
   let body;
   if (isLoading && !managed) {
-    body = (
-      <Text color="secondary">Reading where you may create agents…</Text>
-    );
+    body = <Text color="secondary">Reading where you may create agents…</Text>;
   } else if (!managed) {
     // agent-manager did not answer: the environment's own notes say why, and
     // the create call gets agent-manager's answer.
