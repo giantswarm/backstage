@@ -142,6 +142,25 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
 }
 
 /**
+ * How many connectors one `/usage` read may narrow to: a family's instances,
+ * one per management cluster, with room to spare.
+ */
+const MAX_USAGE_SERVERS = 256;
+
+/**
+ * A Kubernetes resource name (a DNS-1123 subdomain), which an MCPServer's is.
+ * Checked before it goes into a PromQL selector, which escapes it as well.
+ */
+function isResourceName(value: string): boolean {
+  return (
+    value.length <= 253 &&
+    /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/.test(
+      value,
+    )
+  );
+}
+
+/**
  * Every value of a query parameter that may repeat (`?toolset=a&toolset=b`),
  * in order, read from the raw query string. `req.query` is the root router's
  * `qs` parse, which turns more than 20 repeats into an index-keyed object and
@@ -768,26 +787,34 @@ export async function createRouter(
    * behind the same muster (no separate Prometheus access path). Answers
    * `available: false` with a reason instead of erroring when the
    * installation has no queryable prometheus server.
+   *
+   * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
+   * family's instances included, and lists every tool they were called with.
    */
   router.get('/usage', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const window = req.query.window;
-    if (window !== undefined && window !== 'month') {
-      throw new InputError('window must be month');
-    }
     const hours = parseOptionalInt(req.query.hours, 'hours');
-    if (window !== undefined && hours !== undefined) {
-      throw new InputError('Give hours or window, not both');
-    }
     if (hours !== undefined && (hours < 1 || hours > 24 * 90)) {
       throw new InputError('hours must be between 1 and 2160');
+    }
+    const servers = repeatedQueryValues(req, 'server') ?? [];
+    if (servers.length > MAX_USAGE_SERVERS) {
+      throw new InputError(
+        `server may be given at most ${MAX_USAGE_SERVERS} times`,
+      );
+    }
+    for (const server of servers) {
+      if (!isResourceName(server)) {
+        throw new InputError('server must be an MCPServer name');
+      }
     }
     res.json(
       await getMcpUsage(
         client,
         installation,
         readCallOptions(req, installation),
-        window ?? hours ?? 24,
+        hours ?? 24,
+        servers,
       ),
     );
   });
