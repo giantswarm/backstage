@@ -183,6 +183,8 @@ const PULL_REQUEST = 'https://github.com/giantswarm/agents/pull/42';
 
 type Scenario = {
   agent?: AgentManagerAgent;
+  /** What `get_agent` fails with, as agent-manager answers a refused read. */
+  getAgentError?: string;
   info?: Partial<AgentManagerInfo>;
   violations?: string[];
   /** What `/installations` reports for gazelle; true unless said otherwise. */
@@ -197,6 +199,9 @@ function makeMusterApi(scenario: Scenario = {}) {
         case 'x_agent-manager_get_info':
           return { ...INFO, ...scenario.info };
         case 'x_agent-manager_get_agent':
+          if (scenario.getAgentError) {
+            throw new Error(scenario.getAgentError);
+          }
           return agent;
         case 'x_agent-manager_get_agent_status':
           return { agent: { generation: 3 } };
@@ -660,6 +665,28 @@ describe('EditAgentPage', () => {
       screen.getByText(/needs the agent-platform:editor role/),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+  });
+
+  it('refuses a person who may not update the agent’s release, rather than reporting the read their role does not allow', async () => {
+    // agent-platform:user may not get HelmReleases, so agent-manager's
+    // get_agent fails as them before the page knows the agent.
+    mockDeniedVerbs = new Set(['update']);
+    await renderEdit(BASE, {
+      getAgentError:
+        'get helmrelease kagent/pr-reviewer: helmreleases.helm.toolkit.fluxcd.io "pr-reviewer" is forbidden: User "oidc:alice@lab.local" cannot get resource "helmreleases"',
+    });
+
+    expect(
+      await screen.findByText('You cannot change this agent'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Changing the agents of platform needs the agent-platform:editor role/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('agent-manager could not read this agent'),
+    ).not.toBeInTheDocument();
   });
 
   it('has no form, and says why, where muster runs under its shared identity', async () => {

@@ -1,14 +1,20 @@
 import { type ReactNode, useState } from 'react';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { TestApiProvider } from '@backstage/test-utils';
 import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
 import {
@@ -71,13 +77,13 @@ jest.mock('../AgentsDataProvider', () => {
     },
   };
 });
-// The person as kagent knows them on every installation: whom "created by
-// me" compares an agent's creator with.
-const mockSubject = 'me@example.com';
+// The person as agent-manager names a creator, on every installation: whom
+// "created by me" compares an agent's creator with.
+const mockCaller = 'me@example.com';
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilitiesMap: () => () => ({
     isUserScoped: true,
-    subject: mockSubject,
+    caller: mockCaller,
   }),
 }));
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
@@ -165,15 +171,57 @@ const notes = row({
   readiness: 'failed',
 });
 
-function renderPanel(search = '', storage: StorageApi = mockApis.storage()) {
-  return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
-    mountedRoutes: {
-      '/': newSessionExternalRouteRef,
-      '/customize/agents': agentsRouteRef,
-      '/installations': installationsExternalRouteRef,
+function renderPanel(
+  search = '',
+  storage: StorageApi = mockApis.storage(),
+  musterApi?: MusterApi,
+) {
+  const panel = (
+    // The first-agent card asks agent-manager where the person may create.
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <CustomizeAgentsPanel search={search} />
+    </QueryClientProvider>
+  );
+  return renderInTestApp(
+    musterApi ? (
+      <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+        {panel}
+      </TestApiProvider>
+    ) : (
+      panel
+    ),
+    {
+      mountedRoutes: {
+        '/': newSessionExternalRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/installations': installationsExternalRouteRef,
+      },
+      apis: [[storageApiRef, storage]],
     },
-    apis: [[storageApiRef, storage]],
-  });
+  );
+}
+
+/**
+ * muster on golem, reaching agent-manager as the person, whose `get_info`
+ * names `managed`: the tenants the person may create agents in.
+ */
+function musterWhereCreatableIn(managed: string[]): MusterApi {
+  return {
+    listInstallations: async () => ({
+      installations: [{ name: 'golem', requiresAuth: true }],
+    }),
+    listServers: async () => ({ mcpServers: [{ name: 'agent-manager' }] }),
+    callTool: async (name: string) => {
+      if (name !== 'x_agent-manager_get_info') {
+        throw new Error(`unexpected tool ${name}`);
+      }
+      return { namespaces: { default: 'kagent', managed } };
+    },
+  } as unknown as MusterApi;
 }
 
 // Re-render the panel from inside the test app (its own `rerender` would drop
@@ -187,13 +235,18 @@ function RerenderablePanel() {
 }
 
 function renderRerenderablePanel() {
-  return renderInTestApp(<RerenderablePanel />, {
-    mountedRoutes: {
-      '/': newSessionExternalRouteRef,
-      '/customize/agents': agentsRouteRef,
+  return renderInTestApp(
+    <QueryClientProvider client={new QueryClient()}>
+      <RerenderablePanel />
+    </QueryClientProvider>,
+    {
+      mountedRoutes: {
+        '/': newSessionExternalRouteRef,
+        '/customize/agents': agentsRouteRef,
+      },
+      apis: [[storageApiRef, mockApis.storage()]],
     },
-    apis: [[storageApiRef, mockApis.storage()]],
-  });
+  );
 }
 
 /** A storage with these agents already favorited. */
@@ -407,6 +460,33 @@ describe('CustomizeAgentsPanel', () => {
         screen.queryByRole('link', { name: 'Create your first agent' }),
       ).not.toBeInTheDocument();
     });
+
+    it.each([
+      ['in no tenant', [], 'No agents for you yet', false],
+      ['in a tenant', ['org-acme'], 'No agents yet', true],
+    ])(
+      'follows where the person may create, though every tenant answered: %s',
+      async (_case, managed, title, invited) => {
+        // The platform tenant answers everyone (bound to all authenticated
+        // people), so nothing was refused; agent-manager decides the offer.
+        mockAgents = { ...mockAgents, rows: [], noAccessInstallations: [] };
+        await renderPanel(
+          '',
+          mockApis.storage(),
+          musterWhereCreatableIn(managed),
+        );
+
+        expect(
+          await screen.findByRole('heading', { name: title }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryAllByRole('link', { name: 'Create your first agent' }),
+        ).toHaveLength(invited ? 1 : 0);
+        expect(
+          screen.queryAllByText(/agent-platform:user.*agent-platform:editor/),
+        ).toHaveLength(invited ? 0 : 1);
+      },
+    );
 
     it('says when no environments are configured', async () => {
       mockInventoryEntries = [];
@@ -1050,7 +1130,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
           technicalName: 'billing',
           namespace: 'org-acme',
           tenant: 'organization acme',
-          createdBy: mockSubject,
+          createdBy: mockCaller,
         }),
         row({
           name: 'Sales',

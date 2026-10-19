@@ -1168,13 +1168,19 @@ describe('KagentApiClient', () => {
   });
 
   describe('getIdentity', () => {
-    it('reads the subject kagent resolved', async () => {
+    it('reads the subject and the email kagent resolved', async () => {
+      // kagent 1.19 answers the token's claims: Dex's opaque subject, and the
+      // email agent-manager records as an agent's creator.
       fetchMock.mockResolvedValue(
-        jsonResponse({ sub: 'marian@giantswarm.io' }),
+        jsonResponse({
+          sub: 'CiQxYjFlYjVmMS0SBWxvY2Fs',
+          email: 'dev@lab.local',
+        }),
       );
 
       await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
-        sub: 'marian@giantswarm.io',
+        sub: 'CiQxYjFlYjVmMS0SBWxvY2Fs',
+        email: 'dev@lab.local',
       });
     });
 
@@ -1214,6 +1220,7 @@ describe('KagentApiClient', () => {
 
       await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
         sub: undefined,
+        email: 'marian@example.com',
       });
     });
   });

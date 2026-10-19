@@ -525,14 +525,14 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const showHarness = harnesses.size > 1;
   const tenantCount = new Set(rows.map(row => row.tenant)).size;
   // "Created by me": the creator agent-manager recorded against the person as
-  // kagent knows them on the agent's installation.
+  // agent-manager names them (their email) on the agent's installation.
   const capabilitiesFor = useKagentCapabilitiesMap(installations);
   // Emails, compared as the IdP may write them in either case.
   const isMine = useCallback(
     (row: AgentRow) =>
       row.createdBy !== undefined &&
       row.createdBy.toLowerCase() ===
-        capabilitiesFor(row.installation).subject?.toLowerCase(),
+        capabilitiesFor(row.installation).caller?.toLowerCase(),
     [capabilitiesFor],
   );
   const facets = useMemo(
@@ -639,7 +639,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
         />
       );
     } else if (installations.length > 0) {
-      body = <FirstAgentCard />;
+      body = <FirstAgentCard installations={installations} />;
     } else if (kagentSwitchedOff.length > 0) {
       body = (
         <EmptyStateCard

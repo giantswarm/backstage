@@ -691,7 +691,9 @@ export class KagentApiClient implements KagentApi {
       tokenRequired: false,
     });
     const parsed = kagentMeWireSchema.safeParse(body);
-    return { sub: parsed.success ? parsed.data.sub : undefined };
+    return parsed.success
+      ? { sub: parsed.data.sub, email: parsed.data.email }
+      : { sub: undefined };
   }
 
   async listAgentNamespaces(installation: string): Promise<string[]> {
