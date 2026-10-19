@@ -1,4 +1,6 @@
-import type { Page } from '@playwright/test';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { BrowserContext, Page } from '@playwright/test';
 import {
   createAgentInWizard,
   deleteAgentInPortal,
@@ -26,7 +28,13 @@ import { RUN } from './workspaces.fixture';
  *
  * Every test stands alone, so a red one leaves the others run: the ones on
  * the organization's agent ask for {@link TenantFixtures.tenantAgent}, which
- * the worker sets up once, and again in the next worker after a failure.
+ * the worker sets up once, and again in the next worker after a red test.
+ *
+ * One worker, one run per lab: the developer must be the editor of exactly
+ * one organization, the only tenant the wizard names, so the spec has one
+ * organization namespace, and a second worker's or run's teardown would
+ * delete it under the first. The fixture refuses `AGENTLAB_E2E_WORKERS` above
+ * 1; two runs on one lab are not detected.
  *
  * Needs a lab with `platform.tenants` (`AGENTLAB_TENANTS=1`: alice and bob,
  * kagent 1.19 with `kagent.controller.authorization.mode: kubernetes`) and
@@ -59,46 +67,91 @@ type TenantFixtures = {
   /**
    * The organization's agent, created by its editor in the New agent wizard
    * the first time a test of the worker asks for it, in the namespace this
-   * spec labels and binds ({@link applyTenant}); its detail page's path. One
-   * the run made already (an earlier worker's teardown that did not remove
-   * it) is used as it is. When the worker ends, also after a failed test, the
-   * editor deletes it in the portal and the namespace goes with its
-   * RoleBindings, whatever the deletion did.
+   * spec labels and binds ({@link applyTenant}), and rendered past Deploying;
+   * its detail page's path. One the run made already (an earlier worker's
+   * teardown that did not remove it) is used as it is. When the worker ends,
+   * also after a red test, the editor deletes it in the portal where the
+   * wizard put it, and the namespace goes with its RoleBindings, whatever the
+   * deletion did. A failed setup fails the later workers of the run at once.
    */
   tenantAgent: string;
 };
 
+/** Where a worker records a failed `tenantAgent` setup for the rest of the run. */
+function setupFailureFile(outputDir: string): string {
+  return join(outputDir, 'tenant-agent-setup-failed.txt');
+}
+
 const test = base.extend<{}, TenantFixtures>({
   tenantAgent: [
-    async ({ browser, variant }, use) => {
-      await applyTenant();
-      const context = await browser.newContext(contextOptionsFor(variant));
+    async ({ browser, variant }, use, workerInfo) => {
+      if (workerInfo.config.workers > 1) {
+        throw new Error(
+          `tenants.spec.ts runs on one worker, not ${workerInfo.config.workers}: its one organization namespace would be deleted by one worker's teardown under another (set AGENTLAB_E2E_WORKERS=1)`,
+        );
+      }
+      // A failed setup is the run's answer: the next worker (after a red
+      // test) fails at once instead of paying the wizard and the deploy again.
+      const failureFile = setupFailureFile(workerInfo.project.outputDir);
+      if (existsSync(failureFile)) {
+        throw new Error(
+          `the organization's agent could not be set up earlier in this run: ${readFileSync(failureFile, 'utf8')}`,
+        );
+      }
+      let context: BrowserContext | undefined;
+      let dev: Page | undefined;
+      let createdAt: string | undefined;
       try {
-        const dev = await context.newPage();
-        await signIn(dev, lab.users.dev);
         try {
-          if (!(await agentExists())) {
-            await createAgentInWizard(dev, agent.name, agent.slug);
-          }
-          await use(detailPath);
-        } finally {
+          await applyTenant();
+          context = await browser.newContext(contextOptionsFor(variant));
+          dev = await context.newPage();
+          await signIn(dev, lab.users.dev);
           if (await agentExists()) {
-            await deleteAgentInPortal(dev, detailPath, agent.slug);
+            createdAt = detailPath;
+            await open(dev, createdAt);
+          } else {
+            createdAt = await createAgentInWizard(dev, agent.name, agent.slug);
+            expect(
+              createdAt,
+              'the wizard creates in the only organization its editor may create in',
+            ).toContain(`/${namespace}/${agent.slug}`);
           }
+          // The first agent in a new namespace waits for Flux to pull the
+          // agent chart: the tests then find it rendered.
+          await expectAgentRendered(dev);
+        } catch (error) {
+          mkdirSync(workerInfo.project.outputDir, { recursive: true });
+          writeFileSync(failureFile, String(error));
+          throw error;
         }
+        await use(createdAt);
       } finally {
-        await context.close();
-        await kubectl([
-          'delete',
-          'namespace',
-          namespace,
-          '--ignore-not-found',
-          '--wait=false',
-        ]);
+        try {
+          // Where the wizard put it, a wrong tenant too; without the wizard's
+          // hand-off, the organization's, if Create got that far.
+          const at =
+            createdAt ?? ((await agentExists()) ? detailPath : undefined);
+          if (dev && at) {
+            await deleteAgentInPortal(dev, at, agent.slug);
+          }
+        } finally {
+          await context?.close();
+          await kubectl([
+            'delete',
+            'namespace',
+            namespace,
+            '--ignore-not-found',
+            '--wait=false',
+          ]);
+        }
       }
     },
-    // The wizard, the agent's first deploy and Flux's uninstall take minutes.
-    { scope: 'worker', timeout: 15 * 60_000 },
+    // One budget for setup and teardown, and the teardown does not run once
+    // it is spent: the wizard and the agent's first render on a cold lab (up
+    // to AGENT_RENDER_TIMEOUT), then the deletion's render and roster waits
+    // and Flux's uninstall.
+    { scope: 'worker', timeout: 25 * 60_000 },
   ],
 });
 
@@ -214,7 +267,7 @@ test.describe('agents per tenant', () => {
     const platform = await platformAgents();
     test.skip(
       platform.length > 0,
-      `the platform tenant holds ${platform.join(', ')} (the labAgent of an earlier spec in this worker): run this file alone (-g "agents per tenant") for the empty state`,
+      `the platform tenant holds ${platform.join(', ')} (a platform agent an earlier run left, or the labAgent of a parallel worker or run): the empty state needs a platform tenant with no agent`,
     );
     const bob = await signInAs(users.bob);
     await open(bob, '/customize/agents', users.bob);
