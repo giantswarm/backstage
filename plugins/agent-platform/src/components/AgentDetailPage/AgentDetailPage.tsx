@@ -40,7 +40,10 @@ import {
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
 import { useCreateSession } from '../../hooks/useCreateSession';
-import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
+import {
+  AGENT_CREATED_STATE_KEY,
+  type AgentWriteAction,
+} from '../../hooks/useAgentCreatedHandoff';
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -505,16 +508,15 @@ function AgentDetailPageContent() {
     }
   }, [commitDeletion]);
 
-  // After Update skills the page watches the new revision converge exactly as
-  // it does after a create — through the same handoff, on the same URL.
-  const onSkillsUpdated = useCallback(
-    (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
-      toastApi.post({
-        title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
-        description: 'Its Harness compiles a new revision.',
-        status: 'success',
-        timeout: TOAST_TIMEOUT_MS,
-      });
+  // After Update skills or Change Harness the page watches the new revision
+  // converge exactly as it does after a create — through the same handoff, on
+  // the same URL.
+  const followRevision = useCallback(
+    (
+      action: AgentWriteAction,
+      requestedBy?: string,
+      fromGeneration?: number,
+    ) => {
       navigate(
         { pathname: location.pathname, search: location.search },
         {
@@ -525,7 +527,7 @@ function AgentDetailPageContent() {
               namespace,
               name,
               requestedBy,
-              action: 'skills-updated',
+              action,
               fromGeneration,
             },
           },
@@ -533,21 +535,31 @@ function AgentDetailPageContent() {
       );
     },
     [
-      toastApi,
-      agent,
-      name,
       navigate,
       location.pathname,
       location.search,
       installation,
       namespace,
+      name,
     ],
   );
 
-  // After a Harness change the page watches the new revision converge like
-  // after Update skills. The toast is where the person learns that running
-  // Sessions stay where they are; on the Sessions tab they carry the
-  // "Earlier revision" mark until deleted.
+  const onSkillsUpdated = useCallback(
+    (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
+      toastApi.post({
+        title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
+        description: 'Its Harness compiles a new revision.',
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+      followRevision('skills-updated', requestedBy, fromGeneration);
+    },
+    [toastApi, agent, name, followRevision],
+  );
+
+  // The toast is where the person learns that running Sessions stay where
+  // they are; on the Sessions tab they carry the "Earlier revision" mark until
+  // deleted.
   const onHarnessChanged = useCallback(
     (
       from: string,
@@ -561,33 +573,9 @@ function AgentDetailPageContent() {
         status: 'success',
         timeout: TOAST_TIMEOUT_MS,
       });
-      navigate(
-        { pathname: location.pathname, search: location.search },
-        {
-          replace: true,
-          state: {
-            [AGENT_CREATED_STATE_KEY]: {
-              installation,
-              namespace,
-              name,
-              requestedBy,
-              action: 'harness-changed',
-              fromGeneration,
-            },
-          },
-        },
-      );
+      followRevision('harness-changed', requestedBy, fromGeneration);
     },
-    [
-      toastApi,
-      agent,
-      name,
-      navigate,
-      location.pathname,
-      location.search,
-      installation,
-      namespace,
-    ],
+    [toastApi, agent, name, followRevision],
   );
 
   const { createSession } = creation;
