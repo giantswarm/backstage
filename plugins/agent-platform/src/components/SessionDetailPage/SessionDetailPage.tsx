@@ -68,6 +68,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   agentDetailRouteRef,
+  agentEditRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
 } from '../../routes';
@@ -114,6 +115,8 @@ import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
+import { useSessionEgressRefusals } from '../../hooks/useSessionEgressRefusals';
+import { withEgressRefusals } from '../../lib/egressRefusals';
 import { AgentAvatar } from '../AgentAvatar';
 
 /** Long enough to read why the switch went back, like the other failure toasts. */
@@ -432,6 +435,11 @@ export function SessionDetailPage() {
   }, [row?.agentNamespace, row?.agentTechnicalName, handoff]);
   // The agent's own page, for the link on its name in the header below.
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
+  // Its edit page, where an egress refusal on the timeline points.
+  const agentEditRoute = useRouteRef(agentEditRouteRef);
+  const agentEgressHref = agent
+    ? agentEditRoute?.({ installation, ...agent })
+    : undefined;
 
   const send = useSendMessage(installation, sessionId, agent);
   const confirmation = useAnswerConfirmation(installation, sessionId, agent);
@@ -773,9 +781,20 @@ export function SessionDetailPage() {
     () => splitContinuation(timelineWithLive.items),
     [timelineWithLive.items],
   );
+  // The Session's egress refusals, on the turns that met them: counted by the
+  // egress gateway, not kagent, so read beside the conversation.
+  const egressRefusals = useSessionEgressRefusals({
+    installation,
+    sessionId,
+    agentNamespace: agent?.namespace,
+    createdAt: row?.createdAt,
+  });
   const shownTimeline = useMemo(
-    () => ({ ...timelineWithLive, items: shownItems }),
-    [timelineWithLive, shownItems],
+    () => ({
+      ...timelineWithLive,
+      items: withEgressRefusals(shownItems, egressRefusals),
+    }),
+    [timelineWithLive, shownItems, egressRefusals],
   );
 
   // Owned by the page, unlike the delete dialog's state, because two things open
@@ -1694,6 +1713,7 @@ export function SessionDetailPage() {
           <SessionTimeline
             timeline={shownTimeline}
             agentName={row.agentName}
+            agentEgressHref={agentEgressHref}
             agentAvatarUrl={avatarUrl}
             isAgentWorking={showWorking}
             streamLost={streamLost}

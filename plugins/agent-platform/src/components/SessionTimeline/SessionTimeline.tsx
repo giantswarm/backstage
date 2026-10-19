@@ -177,6 +177,8 @@ export type SessionTimelineProps = {
   timeline: Timeline;
   /** Display name of the session's agent, used to label its messages. */
   agentName?: string;
+  /** The agent's edit page, where an egress refusal points. */
+  agentEgressHref?: string;
   /** The agent's avatar, shown where its side of a turn begins. */
   agentAvatarUrl?: string;
   /**
@@ -240,6 +242,7 @@ export type SessionTimelineProps = {
 export function SessionTimeline({
   timeline,
   agentName,
+  agentEgressHref,
   agentAvatarUrl,
   isAgentWorking = false,
   streamLost,
@@ -394,6 +397,7 @@ export function SessionTimeline({
   const firstUserMessageId = firstMessageCaption
     ? timeline.items.find(item => item.kind === 'user-message')?.id
     : undefined;
+  const egressSettings = { agentName, href: agentEgressHref };
   const renderEntry = (item: TimelineItem, technical = false) => {
     const messageKey =
       item.kind === 'user-message' ? (item.messageId ?? item.id) : undefined;
@@ -417,6 +421,7 @@ export function SessionTimeline({
             : expanded => setMessageExpanded(messageKey, expanded)
         }
         connectorOf={connectorOf}
+        egressSettings={egressSettings}
       />
     );
   };
