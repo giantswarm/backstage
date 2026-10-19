@@ -2,7 +2,8 @@ import { createTheme } from '@material-ui/core';
 import { categoricalColors } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
- * The palette slots `McpUsageSection` uses for its data bars.
+ * The palette slots the usage tables (`useUsageColumns`) use for their data
+ * bars, on the Usage page and a connector's Usage tab alike.
  *
  * Duplicated from `agent-platform`'s `lib/measures.ts` on purpose — these two
  * plugins must not depend on each other, because muster attaches its section

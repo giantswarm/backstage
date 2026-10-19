@@ -376,6 +376,7 @@ describe('McpUsageSection connectors table', () => {
         server: `connector-${String(i).padStart(3, '0')}`,
         calls: 1_000 - i,
         errors: 0,
+        p95_seconds: null,
       })),
     };
   }
@@ -478,7 +479,9 @@ describe('McpUsageSection tables at phone width', () => {
         p95_seconds: 1.2,
       },
     ],
-    servers: [{ server: 'kubernetes', calls: 1_000, errors: 3 }],
+    servers: [
+      { server: 'kubernetes', calls: 1_000, errors: 3, p95_seconds: 0.4 },
+    ],
   };
 
   async function renderSection() {

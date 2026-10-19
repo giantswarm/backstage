@@ -226,8 +226,15 @@ describe('createRouter', () => {
   });
 
   it.each([
-    ['a window other than the month', '/usage?window=week'],
-    ['both hours and a window', '/usage?hours=24&window=month'],
+    ['too many hours', '/usage?hours=2161'],
+    // Gone: a stale client must not read 24 hours as the month.
+    ['the month window', '/usage?window=month'],
+    ['a server that is not a resource name', '/usage?server=a%22b'],
+    ['an empty server', '/usage?server='],
+    [
+      'more servers than a read may name',
+      `/usage?${Array.from({ length: 257 }, (_, i) => `server=s${i}`).join('&')}`,
+    ],
   ])('rejects usage with %s', async (_, path) => {
     const response = await request(app).get(path);
 
@@ -236,20 +243,44 @@ describe('createRouter', () => {
   });
 
   it.each([
-    ['/usage?window=month', 'month'],
     ['/usage?hours=72', 72],
     ['/usage', 24],
-  ])('reads %s as the range %s', async (path, range) => {
-    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+  ])(
+    'reads %s as the last %s hours of every connector',
+    async (path, hours) => {
+      mockGetMcpUsage.mockResolvedValueOnce({ available: false });
 
-    const response = await request(app).get(path);
+      const response = await request(app).get(path);
+
+      expect(response.status).toBe(200);
+      expect(mockGetMcpUsage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        hours,
+        [],
+      );
+    },
+  );
+
+  it("narrows usage to every server named, past the query parser's 20 repeats", async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+    const servers = Array.from(
+      { length: 25 },
+      (_, i) => `mc${i}-mcp-kubernetes`,
+    );
+
+    const response = await request(app).get(
+      `/usage?hours=720&${servers.map(name => `server=${name}`).join('&')}`,
+    );
 
     expect(response.status).toBe(200);
     expect(mockGetMcpUsage).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      range,
+      720,
+      servers,
     );
   });
 

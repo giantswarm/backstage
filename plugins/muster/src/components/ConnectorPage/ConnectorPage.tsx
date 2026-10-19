@@ -14,7 +14,6 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { useQuery } from '@tanstack/react-query';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
@@ -33,7 +32,6 @@ import {
   type StatusDotTone,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
 import {
   MCPServer,
   MCPServerSeverity,
@@ -96,6 +94,9 @@ import {
 } from './connectorPageTarget';
 import { ConnectorToolsTab, useToolSearchState } from './ConnectorToolsTab';
 import { ConnectorDetailsTab } from './ConnectorDetailsTab';
+import { ConnectorUsageTab } from './ConnectorUsageTab';
+import { useConnectorUsage } from './hooks/useConnectorUsage';
+import { CONNECTOR_USAGE_DAYS, rowServers } from './utils/connectorUsage';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
 /** How long a success toast stays, as on the platform's other deletes. */
@@ -193,34 +194,6 @@ function StatusBadge({ row }: { row: ServerPageRow }) {
   return null;
 }
 
-function rowServers(row: ServerPageRow): MCPServer[] {
-  if (row.kind === 'server') {
-    return [row.server];
-  }
-  if (row.kind === 'family') {
-    return row.servers;
-  }
-  return [];
-}
-
-/**
- * The calls muster dispatched to the connector since the 1st of the month
- * (UTC). Undefined while unread, and where usage cannot be queried.
- */
-function useCallsThisMonth(
-  installation: string,
-  serverNames: string[],
-  enabled: boolean,
-): string | undefined {
-  const musterApi = useApi(musterApiRef);
-  const { data } = useQuery({
-    queryKey: ['muster', 'mcp-usage', installation, 'month'],
-    queryFn: () => musterApi.getMcpUsage({ installation, window: 'month' }),
-    enabled: enabled && serverNames.length > 0,
-  });
-  return data ? callsLine(data, serverNames) : undefined;
-}
-
 function ConnectorPageContent({
   row,
   displayName,
@@ -272,11 +245,15 @@ function ConnectorPageContent({
     () => [...new Set([name, ...members.map(server => server.getName())])],
     [name, members],
   );
-  const calls = useCallsThisMonth(
-    installation,
-    row.kind === 'core' ? [] : serverNames,
-    authenticated,
-  );
+  // One read for the Usage tab and the Details' calls, so the two agree;
+  // none for muster itself, whose own tools no connector counts. Only on
+  // those two tabs: Tools, where a connector opens, shows no usage, and
+  // each connector's read repeats the installation-wide `data_start` query.
+  const { '*': tabPath = '' } = useParams();
+  const usage = useConnectorUsage(row, installation, {
+    enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
+  });
+  const calls = usage.usage ? callsLine(usage.usage) : undefined;
 
   // The person's own sign-in to the connector. Signing in is offered where its
   // absence shows — the Tools tab's gate, in place of the hidden tools — so
@@ -473,6 +450,12 @@ function ConnectorPageContent({
       addTab(capability, title, count);
     }
   }
+  // Before Used by, as on the model page; muster's own tools are counted
+  // under no connector, so muster has none.
+  const hasUsage = row.kind !== 'core';
+  if (hasUsage) {
+    addTab('usage', 'Usage');
+  }
   if (usedBy && row.kind !== 'core') {
     addTab('used-by', 'Used by');
   }
@@ -490,7 +473,10 @@ function ConnectorPageContent({
     facts.push({ label: 'Health', value: healthLine(members) });
   }
   if (calls !== undefined) {
-    facts.push({ label: 'Calls this month', value: calls });
+    facts.push({
+      label: `Calls, last ${CONNECTOR_USAGE_DAYS} days`,
+      value: calls,
+    });
   }
   const added = addedLine(members);
   if (added) {
@@ -616,6 +602,30 @@ function ConnectorPageContent({
                 }
               />
             ))}
+            {hasUsage && (
+              <Route
+                path="usage"
+                element={
+                  <ConnectorUsageTab
+                    row={row}
+                    server={name}
+                    installation={installation}
+                    usage={usage}
+                    tools={tools}
+                    ownsTool={target.ownsTool}
+                    sessionGate={
+                      authenticated ? undefined : (
+                        <SessionGate
+                          session={session}
+                          installation={installation}
+                          context="Usage figures need a muster session."
+                        />
+                      )
+                    }
+                  />
+                }
+              />
+            )}
             {usedBy && row.kind !== 'core' && (
               <Route path="used-by" element={usedBy} />
             )}

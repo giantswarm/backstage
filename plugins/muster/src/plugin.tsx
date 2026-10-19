@@ -23,6 +23,7 @@ import {
 import { mcpUsageSection } from './mcpUsageSection';
 import {
   customizeExternalRouteRef,
+  usageConnectorsExternalRouteRef,
   mcpServerRouteRef,
   mcpServersRouteRef,
   mcpServerToolRouteRef,
@@ -180,5 +181,6 @@ export const musterPlugin = createFrontendPlugin({
   },
   externalRoutes: {
     customize: customizeExternalRouteRef,
+    usageConnectors: usageConnectorsExternalRouteRef,
   },
 });

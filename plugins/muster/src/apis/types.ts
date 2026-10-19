@@ -117,6 +117,11 @@ export interface McpUsageServerRow {
   server: string;
   calls: number;
   errors: number;
+  /**
+   * Only where the usage is read for several servers (a family's instances)
+   * or one (its totals); null for the installation-wide read.
+   */
+  p95_seconds: number | null;
 }
 
 /**
@@ -146,6 +151,10 @@ export interface McpUsage {
     p95_seconds: number | null;
     distinct_tools: number;
   };
+  /**
+   * The busiest 15 tools, or every tool called in the window when the usage
+   * is read for some `servers` only.
+   */
   top_tools: McpUsageToolRow[];
   servers: McpUsageServerRow[];
 }
@@ -517,10 +526,10 @@ export interface MusterApi {
     installation?: string;
     hours?: number;
     /**
-     * `month`: the UTC calendar month so far by the backend's clock, in
-     * daily steps, in place of `hours`.
+     * Narrows every figure to these MCPServers (a connector, or a family's
+     * instances), and lists every tool they were called with.
      */
-    window?: 'month';
+    servers?: readonly string[];
   }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;

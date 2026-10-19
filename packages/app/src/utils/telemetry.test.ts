@@ -423,6 +423,11 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/connectors/:installation/:server/details',
     ],
     [
+      '/customize/connectors/acme-prod/acme-jira/usage',
+      { page: 'Connector', view: 'usage' },
+      '/customize/connectors/:installation/:server/usage',
+    ],
+    [
       '/customize/connectors/acme-prod/acme-jira/whatever',
       { page: 'Connector', view: 'redirect' },
       '/customize/connectors/:installation/:server/*',
@@ -804,6 +809,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/connectors/new/verify',
       '/customize/connectors/gazelle/kubernetes',
       '/customize/connectors/gazelle/kubernetes/details',
+      '/customize/connectors/gazelle/kubernetes/usage',
       '/customize/connectors/gazelle/kubernetes/used-by',
       '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods',
       '/customize/connectors/gazelle/jira/edit',
