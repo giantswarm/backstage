@@ -11,6 +11,7 @@ import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { ActivityRow, InertActivityRow } from './ActivityRow';
 import { AttachmentEntry } from './AttachmentEntry';
+import { EgressRefusedEntry, EgressSettingsLink } from './EgressRefusedEntry';
 import { MessageMarkdown } from './MessageMarkdown';
 import { PayloadBlock } from './PayloadBlock';
 import { UserMessage } from './UserMessage';
@@ -148,6 +149,8 @@ export type TimelineEntryProps = {
   onMessageExpandedChange?: (expanded: boolean) => void;
   /** Names a tool call's connector in the plain register (UX review M2). */
   connectorOf?: ConnectorOf;
+  /** An egress refusal only: where the agent's egress is set. */
+  egressSettings?: EgressSettingsLink;
 };
 
 /** Prose from the agent, rendered as markdown. */
@@ -371,6 +374,7 @@ export function TimelineEntry({
   isMessageExpanded,
   onMessageExpandedChange,
   connectorOf,
+  egressSettings,
 }: TimelineEntryProps) {
   const classes = useStyles();
 
@@ -397,6 +401,10 @@ export function TimelineEntry({
 
   if (item.kind === 'attachment') {
     return <AttachmentEntry item={item} />;
+  }
+
+  if (item.kind === 'egress-refused') {
+    return <EgressRefusedEntry item={item} egressSettings={egressSettings} />;
   }
 
   // The turn ended without answering — it failed, was rejected, or was canceled.

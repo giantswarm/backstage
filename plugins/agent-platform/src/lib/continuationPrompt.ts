@@ -353,6 +353,14 @@ function readEntries(
           isMessage: false,
         });
         return;
+      case 'egress-refused':
+        entries.push({
+          text: `[The agent's egress was refused ${item.scheme}://${
+            item.host ?? 'a host'
+          }${item.port ? `:${item.port}` : ''}]`,
+          isMessage: false,
+        });
+        return;
       case 'turn-failed':
         entries.push({
           text:
