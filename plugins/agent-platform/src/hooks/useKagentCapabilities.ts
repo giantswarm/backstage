@@ -94,7 +94,10 @@ export function useKagentCapabilitiesMap(
           ? isUserScopedSubject(identityQuery.data?.sub)
           : undefined;
 
-      result.set(installation, { isUserScoped });
+      result.set(installation, {
+        isUserScoped,
+        ...(isUserScoped && { subject: identityQuery.data?.sub }),
+      });
     });
 
     return result;

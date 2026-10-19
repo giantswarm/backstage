@@ -200,6 +200,29 @@ describe('KagentClient against a fake controller', () => {
     });
   });
 
+  describe('agent namespaces', () => {
+    it('answers the namespaces of the Agents the caller may list, once each and sorted', async () => {
+      const { client } = build({
+        agents: [
+          { namespace: 'org-b', name: 'sales', ready: true },
+          { namespace: 'kagent', name: 'sre-agent', ready: true },
+          { namespace: 'org-a', name: 'triage', ready: true },
+          { namespace: 'org-a', name: 'review', ready: true },
+        ],
+        listableNamespaces: { 'dev@lab.local': ['kagent', 'org-a'] },
+      });
+
+      await expect(client.listAgentNamespaces(USER)).resolves.toEqual({
+        namespaces: ['kagent', 'org-a'],
+      });
+      // A person the authorizer does not narrow lists every namespace, as
+      // `noop` mode answers.
+      await expect(client.listAgentNamespaces(OTHER)).resolves.toEqual({
+        namespaces: ['kagent', 'org-a', 'org-b'],
+      });
+    });
+  });
+
   describe('sessions are Session records', () => {
     it('lists only the caller’s sessions, walking every page', async () => {
       const { fake, client } = build();

@@ -5,7 +5,11 @@ import {
   type PortalEventAttributes,
 } from '@giantswarm/backstage-plugin-analytics-react';
 import { AgentManagerClient } from '../apis/AgentManagerClient';
-import { AgentManagerNotConnectedError } from '../lib/agentManager';
+import {
+  AgentManagerError,
+  AgentManagerNotConnectedError,
+} from '../lib/agentManager';
+import { tenantOf } from '../lib/tenants';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
@@ -42,6 +46,23 @@ export type UseCreateSessionOptions = {
   /** Passed to `deriveSessionTitle`; its default applies when absent. */
   titleMaxLength?: number;
 };
+
+/**
+ * The controller's refusal of a session (`PermissionDenied`, agent-manager's
+ * `forbidden`) said as a refusal that names the agent's tenant, not as a
+ * generic failure: the person may not use that tenant's agents. Any other
+ * error as it is.
+ */
+function refusalNamingTenant(error: unknown, agent: AgentRow): unknown {
+  if (!(error instanceof AgentManagerError) || error.code !== 'forbidden') {
+    return error;
+  }
+  const tenant = agent.tenant ?? tenantOf(agent.namespace);
+  return new AgentManagerError(
+    'forbidden',
+    `You may not start a session with ${agent.name}: it belongs to ${tenant}, and you have no access to that tenant’s agents on ${agent.installation}. Ask your platform team for the agent-platform:user role in its namespace.`,
+  );
+}
 
 /**
  * Start a session with an agent: agent-manager's `start_session`, through
@@ -101,19 +122,22 @@ export function useCreateSession(
       if (!sessionName) {
         throw new Error('A session starts with a prompt; this one is empty.');
       }
-      const { sessionId } = await new AgentManagerClient(
-        musterApi,
-        agent.installation,
-      ).startSession({
-        // The agent's *technical* name, the `Agent` object's name. `name` is
-        // the display annotation and would not match anything.
-        namespace: agent.namespace,
-        name: agent.technicalName,
-        requestId,
-        sessionName,
-      });
-
-      return { sessionId };
+      try {
+        const { sessionId } = await new AgentManagerClient(
+          musterApi,
+          agent.installation,
+        ).startSession({
+          // The agent's *technical* name, the `Agent` object's name. `name` is
+          // the display annotation and would not match anything.
+          namespace: agent.namespace,
+          name: agent.technicalName,
+          requestId,
+          sessionName,
+        });
+        return { sessionId };
+      } catch (error) {
+        throw refusalNamingTenant(error, agent);
+      }
     },
     onSuccess: ({ sessionId }, { agent }) => {
       // Not awaited either. A lost write costs only the session's failure and

@@ -17,6 +17,7 @@ import {
   skillEntryKey,
 } from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
+import { PLATFORM_TENANT_NAMESPACE } from '../../lib/tenants';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
 import type { HarnessChoice } from '../../lib/harnesses';
@@ -32,6 +33,18 @@ export type NewAgentFormState = {
   slug: string;
   description: string;
   installation: string | undefined;
+  /**
+   * Creating only: the tenants (namespaces) on the installation in which the
+   * person may create an agent, as agent-manager's `get_info` answers them
+   * for the caller (`namespaces.managed`, a `SelfSubjectAccessReview` per
+   * namespace). `undefined` until it has answered: then nothing is required.
+   */
+  tenantChoices?: string[];
+  /**
+   * Creating only: the tenant, one of {@link tenantChoices}, the agent is
+   * created in -- the namespace its model, Harness and release live in.
+   */
+  tenant?: string;
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
   /**
@@ -114,6 +127,14 @@ export type NewAgentFormContextValue = {
   setSlug: (slug: string) => void;
   setDescription: (description: string) => void;
   setInstallation: (installation: string | undefined) => void;
+  /**
+   * Sets {@link NewAgentFormState.tenantChoices}. A tenant picked before
+   * stays when it is still a choice; otherwise the platform tenant is picked
+   * when it is one, else the only choice.
+   */
+  setTenantChoices: (choices: string[]) => void;
+  /** Picks the tenant; a model of another namespace is dropped. */
+  selectTenant: (tenant: string) => void;
   selectModelConfig: (
     name: string,
     namespace: string,
@@ -178,7 +199,13 @@ export type NewAgentFormContextValue = {
 
 /** The step-1 fields a validation problem can belong to. */
 export type NewAgentField =
-  'name' | 'systemMessage' | 'installation' | 'model' | 'slug' | 'egress';
+  | 'name'
+  | 'systemMessage'
+  | 'installation'
+  | 'tenant'
+  | 'model'
+  | 'slug'
+  | 'egress';
 
 export type NewAgentFieldErrors = Partial<Record<NewAgentField, string>>;
 
@@ -230,6 +257,32 @@ function hasCreateInput(state: NewAgentFormState): boolean {
   );
 }
 
+/**
+ * The state with `tenant` picked: the agent's namespace, so a model (and the
+ * Harness it brought) of another namespace is dropped, and the model picker
+ * preselects the tenant's default instead.
+ */
+function withTenant(
+  state: NewAgentFormState,
+  tenant: string | undefined,
+): NewAgentFormState {
+  if (state.tenant === tenant) {
+    return state;
+  }
+  if (!state.modelConfigNamespace || state.modelConfigNamespace === tenant) {
+    return { ...state, tenant };
+  }
+  return {
+    ...state,
+    tenant,
+    modelConfigName: undefined,
+    modelConfigNamespace: undefined,
+    modelDisplayName: undefined,
+    harness: undefined,
+    droppedHarness: state.harness?.name ?? state.droppedHarness,
+  };
+}
+
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
 );
@@ -277,6 +330,13 @@ export function NewAgentFormProvider({
     if (!state.installation) {
       fieldErrors.installation = 'Choose an environment.';
     }
+    if (!edit && state.installation && state.tenantChoices) {
+      if (state.tenantChoices.length === 0) {
+        fieldErrors.tenant = `You may create agents in no tenant on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
+      } else if (!state.tenant) {
+        fieldErrors.tenant = 'Choose a tenant.';
+      }
+    }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
       fieldErrors.model = 'Choose a model.';
     }
@@ -288,6 +348,7 @@ export function NewAgentFormProvider({
         'name',
         'slug',
         'installation',
+        'tenant',
         'model',
       ] as const
     )
@@ -328,12 +389,33 @@ export function NewAgentFormProvider({
         setState(prev => ({
           ...prev,
           installation,
+          tenantChoices: undefined,
+          tenant: undefined,
           modelConfigName: undefined,
           modelConfigNamespace: undefined,
           modelDisplayName: undefined,
           harness: undefined,
           droppedHarness: prev.harness?.name ?? prev.droppedHarness,
         })),
+      setTenantChoices: choices =>
+        setState(prev => {
+          if (
+            prev.tenantChoices?.join(',') === choices.join(',') &&
+            (prev.tenant === undefined || choices.includes(prev.tenant))
+          ) {
+            return prev;
+          }
+          let tenant = prev.tenant;
+          if (!tenant || !choices.includes(tenant)) {
+            if (choices.includes(PLATFORM_TENANT_NAMESPACE)) {
+              tenant = PLATFORM_TENANT_NAMESPACE;
+            } else {
+              tenant = choices.length === 1 ? choices[0] : undefined;
+            }
+          }
+          return withTenant({ ...prev, tenantChoices: choices }, tenant);
+        }),
+      selectTenant: tenant => setState(prev => withTenant(prev, tenant)),
       // The ModelConfig's namespace is the agent's, and an Agent names a
       // Harness of its own namespace, so a model in another namespace drops
       // the Harness pick.

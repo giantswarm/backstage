@@ -694,6 +694,19 @@ export class KagentApiClient implements KagentApi {
     return { sub: parsed.success ? parsed.data.sub : undefined };
   }
 
+  async listAgentNamespaces(installation: string): Promise<string[]> {
+    const body = await this.get<{ namespaces?: unknown }>(
+      '/kagent/agent-namespaces',
+      installation,
+    );
+    return Array.isArray(body?.namespaces)
+      ? body.namespaces.filter(
+          (namespace): namespace is string =>
+            typeof namespace === 'string' && namespace !== '',
+        )
+      : [];
+  }
+
   /** GET a backend route, forwarding the target installation's Dex token. */
   private async get<T>(
     path: string,

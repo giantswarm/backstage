@@ -36,6 +36,13 @@ export type KagentCapabilities = {
    * treat `undefined` as "stay silent" rather than as either answer.
    */
   isUserScoped?: boolean;
+  /**
+   * The signed-in person as kagent knows them (the email agentgateway sets),
+   * when sessions are scoped to them (`isUserScoped`): the identity
+   * agent-manager records as an agent's creator, which "created by me"
+   * compares with.
+   */
+  subject?: string;
 };
 
 /** Capabilities assumed before (or instead of) a successful probe: claim nothing. */

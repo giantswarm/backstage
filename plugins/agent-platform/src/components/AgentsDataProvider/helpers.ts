@@ -38,6 +38,7 @@ import {
   type ToolsetCarrier,
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
+import { CREATED_BY_ANNOTATION, tenantOf } from '../../lib/tenants';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -261,6 +262,18 @@ export type AgentRow = {
    * nothing is preselected or started that the answer then withdraws.
    */
   isSessionPending?: boolean;
+  /**
+   * The tenant the agent belongs to ({@link tenantOf} its namespace):
+   * `platform`, `organization <name>`, or `namespace <name>`.
+   */
+  tenant?: string;
+  /**
+   * Who created the agent ({@link CREATED_BY_ANNOTATION}, the caller's email
+   * agent-manager recorded): for display and the "created by me" filter only.
+   * `undefined` for an agent created before agent-manager recorded it, or
+   * not through agent-manager.
+   */
+  createdBy?: string;
 };
 
 /**
@@ -394,6 +407,7 @@ export function toAgentRow(
       pin: skill.pin,
     }));
   const skillIds = gitSkills.map(skill => skill.id);
+  const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
   const skillPins = Object.fromEntries(
     gitSkills.map(skill => [skill.id, skill.pin]),
   );
@@ -420,6 +434,8 @@ export function toAgentRow(
       : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
+    tenant: tenantOf(namespace),
+    ...(createdBy ? { createdBy } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
     ...(carriers

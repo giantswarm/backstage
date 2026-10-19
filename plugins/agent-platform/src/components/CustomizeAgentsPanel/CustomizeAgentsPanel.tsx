@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useId, useMemo } from 'react';
+import { ReactNode, useCallback, useEffect, useId, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Progress } from '@backstage/core-components';
 import { ButtonIcon, Flex, Link, Text } from '@backstage/ui';
@@ -14,6 +14,7 @@ import {
   CatalogFilterBar,
   CatalogNoMatch,
   EmptyStateCard,
+  joinNames,
   LoadingIndicator,
   PHONE_MEDIA,
   StatusDot,
@@ -23,6 +24,8 @@ import {
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
+import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
+import { ACCESS_GRANT_HINT } from '../../lib/tenants';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
   agentHarnesses,
@@ -201,20 +204,32 @@ export type CustomizeAgentsPanelProps = {
 };
 
 /**
- * The Agents tab's facets (T49): the model an agent runs on, its Harness, and
- * the person's favorites. The environment is not one of them: the page's
- * Environment select already scopes the tab to one installation, and shows
- * only where there is more than one — a second control for the same thing
- * would be two answers to one question.
+ * The Agents tab's facets (T49): the tenant an agent belongs to, the model it
+ * runs on, its Harness, who created it and the person's favorites. The
+ * environment is not one of them: the page's Environment select already
+ * scopes the tab to one installation, and shows only where there is more than
+ * one — a second control for the same thing would be two answers to one
+ * question.
  *
  * @param harnesses the fleet's Harnesses ({@link agentHarnesses}); the
  *   Harness facet is offered only when there are two or more.
+ * @param tenants how many tenants the rows belong to; the Tenant facet is
+ *   offered only from two on, as the Harness one.
+ * @param isMine whether the person created the row's agent; the "Created by"
+ *   facet is offered only when some row is theirs.
  */
 export function agentFacets(
   isFavorite: (id: string) => boolean,
   harnesses: ReadonlyMap<string, string | undefined>,
+  {
+    tenants = 0,
+    isMine,
+  }: { tenants?: number; isMine?: (row: AgentRow) => boolean } = {},
 ): CatalogFacet<AgentRow>[] {
   return [
+    ...(tenants > 1
+      ? [{ id: 'tenant', label: 'Tenant', value: (row: AgentRow) => row.tenant }]
+      : []),
     { id: 'model', label: 'Model', value: row => row.model || undefined },
     // Sanctioned exception to the bar's dropdown-of-one (T64): main's
     // `singleHarness` rule (#2858) — most fleets run every agent on one
@@ -228,6 +243,16 @@ export function agentFacets(
             value: (row: AgentRow) => row.harness,
             optionLabel: (name: string) =>
               harnessLabel(name, harnesses.get(name)),
+          },
+        ]
+      : []),
+    ...(isMine
+      ? [
+          {
+            id: 'createdBy',
+            label: 'Created by',
+            value: (row: AgentRow) => (isMine(row) ? 'me' : undefined),
+            optionLabel: () => 'Me',
           },
         ]
       : []),
@@ -251,6 +276,7 @@ function AgentListItem({
   href,
   avatarUrl,
   showHarness,
+  showTenant,
   showInstallation,
   isFavorite,
   onToggleFavorite,
@@ -260,6 +286,8 @@ function AgentListItem({
   href?: string;
   avatarUrl?: string;
   showHarness: boolean;
+  /** More than one tenant in the list: each row names its own. */
+  showTenant: boolean;
   showInstallation: boolean;
   /** The phone layout: texts wrap rather than truncate behind a `title`. */
   isPhone: boolean;
@@ -293,6 +321,9 @@ function AgentListItem({
         ]
       : []),
     { key: 'parts', text: parts, label: 'Skills and connectors' },
+    ...(showTenant && row.tenant
+      ? [{ key: 'tenant', text: row.tenant, label: 'Tenant' }]
+      : []),
     ...(showInstallation
       ? [{ key: 'installation', text: row.installation, label: 'Environment' }]
       : []),
@@ -454,10 +485,10 @@ function AgentGroup({
  * agent (when configured), the person's "Last used by you" cards, then the
  * rounded list of the agents in scope — the person's favorites (starred, per
  * person) in a group of their own on top — an avatar row each with what it is
- * for, its model and its parts, each row opening the agent's page. Global,
- * with no organization grouping or filter (D4): the Kubernetes namespace an
- * agent lives in is a technical detail of its own page. Must be mounted inside
- * a `CustomizeDataProvider`.
+ * for, its model and its parts, each row opening the agent's page. One list,
+ * not grouped by tenant (D4); where the agents belong to more than one tenant,
+ * each row names its tenant and the bar filters by it (giantswarm#36698, D6).
+ * Must be mounted inside a `CustomizeDataProvider`.
  */
 export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const classes = useStyles();
@@ -468,6 +499,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     isLoadingMore,
     hasInstallations,
     unreachableInstallations,
+    noAccessInstallations,
     kagentMissing,
     kagentSwitchedOff,
     unknownPin,
@@ -485,9 +517,24 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   // Main's `singleHarness` rule (#2858): one Harness for every agent shows
   // neither the Harness fact nor its filter.
   const showHarness = harnesses.size > 1;
+  const tenantCount = new Set(rows.map(row => row.tenant)).size;
+  // "Created by me": the creator agent-manager recorded against the person as
+  // kagent knows them on the agent's installation.
+  const capabilitiesFor = useKagentCapabilitiesMap(installations);
+  const isMine = useCallback(
+    (row: AgentRow) =>
+      row.createdBy !== undefined &&
+      row.createdBy === capabilitiesFor(row.installation).subject,
+    [capabilitiesFor],
+  );
+  const hasMine = rows.some(isMine);
   const facets = useMemo(
-    () => agentFacets(isFavorite, harnesses),
-    [isFavorite, harnesses],
+    () =>
+      agentFacets(isFavorite, harnesses, {
+        tenants: tenantCount,
+        isMine: hasMine ? isMine : undefined,
+      }),
+    [isFavorite, harnesses, tenantCount, hasMine, isMine],
   );
   const filters = useCatalogFilters({ items: rows, searched, facets });
   // A Harness pick outlives its dropdown when the fleet settles on one
@@ -526,6 +573,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
         size: ROW_AVATAR_SIZE,
       })}
       showHarness={showHarness}
+      showTenant={tenantCount > 1}
       showInstallation={showInstallation}
       isPhone={isPhone}
       isFavorite={isFavorite(row.id)}
@@ -576,6 +624,17 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       // it runs kagent, which is not nothing there: the read warning or the
       // inventory gate is the whole answer.
       body = null;
+    } else if (noAccessInstallations.length > 0) {
+      // Every namespace refused the person: no tenant binds them there, so
+      // there is nothing to create a first agent in either.
+      body = (
+        <EmptyStateCard
+          title="No agents for you yet"
+          description={`You have access to no tenant’s agents on ${joinNames(
+            noAccessInstallations,
+          )}. ${ACCESS_GRANT_HINT}`}
+        />
+      );
     } else if (installations.length > 0) {
       body = <FirstAgentCard />;
     } else if (kagentSwitchedOff.length > 0) {

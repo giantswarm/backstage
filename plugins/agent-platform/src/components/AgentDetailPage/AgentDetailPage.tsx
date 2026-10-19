@@ -17,9 +17,11 @@ import { Alert, Button, Flex } from '@backstage/ui';
 import {
   Agent,
   ErrorsProvider,
+  HelmRelease,
   isNotFoundError,
   ModelConfig,
   useResource,
+  useSelfSubjectAccessReview,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
@@ -79,6 +81,7 @@ import {
 } from '../AgentsTable/readinessStatus';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { isStartableAgent } from '../../lib/startableAgent';
+import { tenantOf } from '../../lib/tenants';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { toneOfIntent } from '../../lib/customize';
 import {
@@ -336,6 +339,30 @@ function AgentDetailPageContent() {
   const isGitOpsOwned = managerAgent?.managed === 'gitops';
   const canCommit = agentManagerInfo?.capabilities?.commit === true;
 
+  // A live write runs as the person against the agent's HelmRelease in its
+  // tenant's namespace, so the API server answers whether they may make it:
+  // a tenant's user sees no Edit or Delete, its editor does. Not asked for an
+  // agent applied from git, which changes through a pull request instead.
+  const asksAccess =
+    isAgentManagerReachable && !isReadingManagerAgent && !isGitOpsOwned;
+  const helmRelease = {
+    group: HelmRelease.group,
+    resource: HelmRelease.plural,
+    namespace,
+    // Named, so a grant restricted via `resourceNames` answers accurately.
+    name: managerAgent?.helmRelease?.name ?? name,
+  };
+  const updateAccess = useSelfSubjectAccessReview(
+    installation,
+    { ...helmRelease, verb: 'update' },
+    { enabled: asksAccess },
+  );
+  const deleteAccess = useSelfSubjectAccessReview(
+    installation,
+    { ...helmRelease, verb: 'delete' },
+    { enabled: asksAccess },
+  );
+
   const agentManagerGate = useMemo(
     () => ({
       presence,
@@ -343,7 +370,11 @@ function AgentDetailPageContent() {
       isGitOpsOwned,
       canCommit,
       isVerdictPending:
-        isReadingManagerAgent || (isGitOpsOwned && isReadingManagerInfo),
+        isReadingManagerAgent ||
+        (isGitOpsOwned && isReadingManagerInfo) ||
+        (asksAccess && (updateAccess.isLoading || deleteAccess.isLoading)),
+      mayUpdate: isGitOpsOwned || updateAccess.allowed,
+      mayDelete: isGitOpsOwned || deleteAccess.allowed,
     }),
     [
       presence,
@@ -352,6 +383,11 @@ function AgentDetailPageContent() {
       canCommit,
       isReadingManagerAgent,
       isReadingManagerInfo,
+      asksAccess,
+      updateAccess.isLoading,
+      updateAccess.allowed,
+      deleteAccess.isLoading,
+      deleteAccess.allowed,
     ],
   );
 
@@ -361,7 +397,13 @@ function AgentDetailPageContent() {
    * agent-manager can commit: the Edit agent page and the Update skills dialog
    * then open a pull request instead of writing live.
    */
-  const canEditAgent = writeMode !== undefined;
+  const canEditAgent = writeMode !== undefined && agentManagerGate.mayUpdate;
+  // A person who may use the agent but change nothing about it: said once,
+  // naming the tenant whose editors may.
+  const isReadOnly =
+    writeMode === 'apply' &&
+    !agentManagerGate.mayUpdate &&
+    !agentManagerGate.mayDelete;
 
   const deletion = useAgentDeletion(installation, namespace, name);
   const updating = useUpdateAgent(installation);
@@ -382,7 +424,7 @@ function AgentDetailPageContent() {
     // The menu's answer, fixed while the dialog is open, so a re-read of the
     // verdict cannot swap its action under the cursor.
     const mode = agentWriteMode(agentManagerGate);
-    if (!mode) {
+    if (!mode || !agentManagerGate.mayDelete) {
       return;
     }
     // Clear a previous attempt's error, so the dialog does not open still
@@ -400,7 +442,7 @@ function AgentDetailPageContent() {
     // Fixed while the dialog is open, like Delete's: a re-read of the verdict
     // cannot swap a live write for a pull request (or back) under the cursor.
     const mode = agentWriteMode(agentManagerGate);
-    if (!mode) {
+    if (!mode || !agentManagerGate.mayUpdate) {
       return;
     }
     resetUpdating();
@@ -769,6 +811,17 @@ function AgentDetailPageContent() {
         onEdit={canEditAgent ? openEdit : undefined}
         isGitOpsOwned={agentManagerGate.isGitOpsOwned}
       />
+
+      {isReadOnly && (
+        <Alert
+          status="info"
+          icon
+          title="You can use this agent, not change it"
+          description={`Editing and deleting the agents of ${tenantOf(
+            namespace,
+          )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
+        />
+      )}
 
       {sessionBlocker && (
         <Alert

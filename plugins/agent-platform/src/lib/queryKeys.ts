@@ -361,3 +361,12 @@ export function musterWorkspacesQueryKey(installation: string) {
 export function musterWorkspaceQueryKey(installation: string, name: string) {
   return ['muster', 'agent-platform', 'workspace', installation, name] as const;
 }
+
+/**
+ * The namespaces of the Agents the person may list on an installation
+ * (`ListAgents` as the person). One person's view: `'agent-namespaces'` is on
+ * `QueryClientProvider`'s never-persist list.
+ */
+export function kagentAgentNamespacesQueryKey(installation: string) {
+  return ['agent-platform', 'kagent', 'agent-namespaces', installation] as const;
+}

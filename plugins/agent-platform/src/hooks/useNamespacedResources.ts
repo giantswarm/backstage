@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
+import { useApi, useApiHolder } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQueries } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
@@ -13,9 +13,13 @@ import {
   type UseResourcesQueryOptions,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
+import { kagentApiRef } from '../apis';
 import { AgentManagerClient } from '../apis/AgentManagerClient';
 import type { AgentManagerInfo } from '../lib/agentManager';
-import { musterAgentManagerInfoQueryKey } from '../lib/queryKeys';
+import {
+  kagentAgentNamespacesQueryKey,
+  musterAgentManagerInfoQueryKey,
+} from '../lib/queryKeys';
 import { DEFAULT_MODEL_CONFIG_NAMESPACE } from '../components/ModelConfigPicker/helpers';
 import { useAgentManagerAvailability } from './useAgentManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
@@ -37,6 +41,11 @@ export type ResourcesResult<R> = {
   clustersData: ClusterData[];
   errors: ErrorInfoUnion[];
   isLoading: boolean;
+  /**
+   * After the fallback: the installations whose cluster-wide list and every
+   * namespaced list were refused (403). Their 403 stays in `errors`.
+   */
+  refusedInstallations?: string[];
 };
 
 export type NamespacedResources<R> = {
@@ -57,20 +66,32 @@ export type NamespacedResources<R> = {
    * refusal, or whose every namespace refused the list.
    */
   unreadInstallations: string[];
+  /**
+   * Of the unread installations, those whose every namespace refused the
+   * list (403): the person may read none of them, which is not a failure to
+   * read.
+   */
+  refusedInstallations: string[];
 };
 
 /**
  * The namespaces to read an installation's kagent resources in: the platform
- * namespace, where the platform's own agents and default model live, and
- * agent-manager's default and managed namespaces, where agents land.
+ * namespace, where the platform's own agents and default model live,
+ * agent-manager's default and managed namespaces, where agents land (managed:
+ * the ones the person may create in), and the namespaces of the Agents the
+ * controller lets the person list (`listed`, their tenants that hold one).
  */
-export function agentNamespacesOf(info: AgentManagerInfo | undefined) {
+export function agentNamespacesOf(
+  info: AgentManagerInfo | undefined,
+  listed: readonly string[] = [],
+) {
   const namespaces = info?.namespaces;
   return Array.from(
     new Set([
       DEFAULT_MODEL_CONFIG_NAMESPACE,
       namespaces?.default,
       ...(namespaces?.managed ?? []),
+      ...listed,
     ]),
   ).filter((namespace): namespace is string => Boolean(namespace));
 }
@@ -115,6 +136,7 @@ export function mergeNamespaced<R extends { cluster: string }>(
         !(read.has(e.cluster) || pending.has(e.cluster)),
     ),
     isLoading: base.isLoading || namespaced.pendingInstallations.length > 0,
+    refusedInstallations: namespaced.refusedInstallations,
   };
 }
 
@@ -131,6 +153,7 @@ export function useNamespacedResources<R extends KubeObject<any>>(
   queryOptions: UseResourcesQueryOptions<KubeObjectInterface[]> = {},
 ): NamespacedResources<R> {
   const kubernetesApi = useApi(kubernetesApiRef);
+  const kagentApi = useApiHolder().get(kagentApiRef);
   const musterApi = useMusterPluginApi();
   const agentManager = useAgentManagerAvailability(installations);
 
@@ -148,9 +171,30 @@ export function useNamespacedResources<R extends KubeObject<any>>(
     })),
   });
 
-  // An installation's namespaces are known once agent-manager answered, or
-  // once it is known not to answer: then the platform namespace alone.
+  // The namespaces of the Agents the controller lets the person list, asked
+  // as the person: with its Kubernetes authorizer, the person's tenants that
+  // hold an agent -- including the ones agent-manager leaves out because the
+  // person may not create there. A failure (a controller without the route,
+  // a refusal) adds none.
+  const listed = useQueries({
+    queries: installations.map(installation => ({
+      queryKey: kagentAgentNamespacesQueryKey(installation),
+      enabled: Boolean(kagentApi),
+      queryFn: () => kagentApi!.listAgentNamespaces(installation),
+      staleTime: 60_000,
+      retry: false,
+      meta: { persist: false },
+    })),
+  });
+  const listedOf = (index: number) => listed[index]?.data ?? [];
+
+  // An installation's namespaces are known once agent-manager and the
+  // controller answered, or once they are known not to answer: then the
+  // platform namespace alone.
   const namespacesKnown = (index: number) => {
+    if (kagentApi && isAwaitingData(listed[index])) {
+      return false;
+    }
     const presence = agentManager.presenceOf(installations[index]);
     if (presence === 'available') {
       return !isAwaitingData(infos[index]);
@@ -164,7 +208,7 @@ export function useNamespacedResources<R extends KubeObject<any>>(
   // be in the namespaces it could not name -- so it leaves the installation
   // unread rather than read with none.
   const namespacesGuessed = (index: number) => {
-    if (!musterApi) {
+    if (!musterApi || listedOf(index).length > 0) {
       return false;
     }
     const presence = agentManager.presenceOf(installations[index]);
@@ -176,7 +220,7 @@ export function useNamespacedResources<R extends KubeObject<any>>(
 
   const targets = installations.flatMap((installation, index) =>
     namespacesKnown(index)
-      ? agentNamespacesOf(infos[index].data).map(namespace => ({
+      ? agentNamespacesOf(infos[index].data, listedOf(index)).map(namespace => ({
           installation,
           namespace,
         }))
@@ -217,6 +261,7 @@ export function useNamespacedResources<R extends KubeObject<any>>(
 
   const signature = [
     ...infos.map(info => `${info.status}:${info.dataUpdatedAt}`),
+    ...listed.map(list => `${list.status}:${list.dataUpdatedAt}`),
     ...lists.map(list => `${list.status}:${list.dataUpdatedAt}`),
   ].join(',');
   const targetsKey = targets
@@ -230,6 +275,8 @@ export function useNamespacedResources<R extends KubeObject<any>>(
     const items = new Map<string, KubeObjectInterface[]>();
     const pending = new Set<string>();
     const failed = new Set<string>();
+    // Installations with a namespace that refused the list.
+    const refusing = new Set<string>();
     installations.forEach((installation, index) => {
       if (!namespacesKnown(index)) {
         pending.add(installation);
@@ -246,6 +293,8 @@ export function useNamespacedResources<R extends KubeObject<any>>(
         pending.add(installation);
       } else if (list.error?.name !== 'ForbiddenError') {
         failed.add(installation);
+      } else {
+        refusing.add(installation);
       }
     });
     installations.forEach((installation, index) => {
@@ -271,6 +320,13 @@ export function useNamespacedResources<R extends KubeObject<any>>(
       unreadInstallations: installations.filter(
         name => !pending.has(name) && (failed.has(name) || !items.has(name)),
       ),
+      refusedInstallations: installations.filter(
+        name =>
+          !pending.has(name) &&
+          !failed.has(name) &&
+          !items.has(name) &&
+          refusing.has(name),
+      ),
     };
     // `infos`, `lists`, `targets` and `namespacesKnown` are fresh every
     // render; key on their contents.
@@ -281,6 +337,7 @@ export function useNamespacedResources<R extends KubeObject<any>>(
     installationsKey,
     agentManager.isLoading,
     Resource,
+    kagentApi,
   ]);
 }
 

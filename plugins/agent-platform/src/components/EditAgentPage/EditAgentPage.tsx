@@ -4,6 +4,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import {
+  HelmRelease,
+  useSelfSubjectAccessReview,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
   EmptyStateCard,
   LoadingIndicator,
   WizardFrame,
@@ -19,6 +23,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { formStateOfAgent } from '../../lib/agentEdit';
 import type { AgentManagerAgent, WriteMode } from '../../lib/agentManager';
 import type { DiscoveredSkill } from '../../lib/skills';
+import { tenantOf } from '../../lib/tenants';
 import { agentDetailRouteRef } from '../../routes';
 import {
   agentManagerAbsenceReason,
@@ -120,6 +125,20 @@ export function EditAgentPage() {
     isVerdictPending: isLoading || (isGitOpsOwned && isInfoLoading),
   };
   const writeMode = agentWriteMode(gate);
+  // A live save runs as the person against the agent's HelmRelease, so a
+  // deep link from someone who may not update it answers with the refusal
+  // up front rather than at the end of the wizard.
+  const updateAccess = useSelfSubjectAccessReview(
+    installation,
+    {
+      group: HelmRelease.group,
+      resource: HelmRelease.plural,
+      namespace,
+      name: agent?.helmRelease?.name ?? name,
+      verb: 'update',
+    },
+    { enabled: writeMode === 'apply' },
+  );
   const reason = agentManagerAbsenceReason(
     { ...gate, isGitOpsOwned: isGitOpsOwned && !canCommit },
     installation,
@@ -156,6 +175,7 @@ export function EditAgentPage() {
   } else if (
     presence === 'unknown' ||
     gate.isVerdictPending ||
+    (writeMode === 'apply' && updateAccess.isLoading) ||
     (agent && isCatalogPending)
   ) {
     body = <LoadingIndicator label="Reading the agent…" />;
@@ -183,6 +203,16 @@ export function EditAgentPage() {
       <EmptyStateCard
         title="Agent not found"
         description={`agent-manager on ${installation} knows no agent "${name}" in namespace "${namespace}".`}
+        actions={backLink}
+      />
+    );
+  } else if (writeMode === 'apply' && !updateAccess.allowed) {
+    body = (
+      <EmptyStateCard
+        title="You cannot change this agent"
+        description={`Changing the agents of ${tenantOf(
+          namespace,
+        )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
         actions={backLink}
       />
     );

@@ -37,6 +37,7 @@ import {
   type SessionShare,
 } from './kagent/gen/kagent/api/v1alpha1/sessions_pb';
 import { SystemService } from './kagent/gen/kagent/api/v1alpha1/system_pb';
+import { AgentService } from './kagent/gen/kagent/api/v1alpha1/agents_pb';
 import {
   ErrorContext,
   httpStatusOf,
@@ -395,6 +396,7 @@ export class KagentClient {
   private sessions?: Client<typeof SessionService>;
   private a2a?: Client<typeof A2AService>;
   private system?: Client<typeof SystemService>;
+  private agentsService?: Client<typeof AgentService>;
   /** The Agent of each session this client has seen, by session id. */
   private readonly agents = new Map<string, AgentRef>();
   /**
@@ -426,6 +428,11 @@ export class KagentClient {
   private get a2aService() {
     this.a2a ??= createClient(A2AService, this.transport);
     return this.a2a;
+  }
+
+  private get agentService() {
+    this.agentsService ??= createClient(AgentService, this.transport);
+    return this.agentsService;
   }
 
   private get systemService() {
@@ -1112,6 +1119,42 @@ export class KagentClient {
       },
     );
     return toJson(RevokeSessionShareResponseSchema, response);
+  }
+
+  /**
+   * `AgentService/ListAgents` with no namespace — the namespaces of the
+   * Agents the caller may list, as `{namespaces: […]}`, sorted.
+   *
+   * With the controller's Kubernetes authorizer, a collection read answers
+   * the Agents of the namespaces in which the caller may `list` them, so this
+   * names the caller's tenants that hold an agent. The roster still reads the
+   * Agents themselves through the Kubernetes API as the person: this only
+   * tells it where to look when the person may not list Agents
+   * cluster-wide. Only the namespaces leave the backend.
+   */
+  async listAgentNamespaces(
+    options: KagentRequestOptions,
+  ): Promise<{ namespaces: string[] }> {
+    const response = await this.call(
+      () =>
+        this.agentService.listAgents(
+          { namespace: '' },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'agent list',
+        missingResource: `The kagent API for installation '${this.installation.name}' has no agent list.`,
+      },
+      { call: 'AgentService/ListAgents', requestId: options.requestId },
+    );
+    const namespaces = new Set<string>();
+    for (const agent of response.agents) {
+      const namespace = agent.ref?.namespace;
+      if (namespace) {
+        namespaces.add(namespace);
+      }
+    }
+    return { namespaces: [...namespaces].sort() };
   }
 
   /**

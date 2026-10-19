@@ -153,6 +153,9 @@ describe('useKagentCapabilitiesMap', () => {
       expect(result.current('gazelle').isUserScoped).toBe(true);
       expect(result.current('golem').isUserScoped).toBe(false);
     });
+    // The person, where kagent knows them; never unsecure mode's shared user.
+    expect(result.current('gazelle').subject).toBe('marian@giantswarm.io');
+    expect(result.current('golem').subject).toBeUndefined();
   });
 
   it('probes each installation once', async () => {
