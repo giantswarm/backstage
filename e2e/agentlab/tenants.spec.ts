@@ -91,8 +91,9 @@ const test = base.extend<{}, TenantFixtures>({
           `tenants.spec.ts runs on one worker, not ${workerInfo.config.workers}: its one organization namespace would be deleted by one worker's teardown under another (run with AGENTLAB_E2E_WORKERS=1 and no --workers above 1)`,
         );
       }
-      // A failed creation is the run's answer: the next worker (after a red
-      // test) fails at once instead of paying the wizard and the deploy again.
+      // A failed creation or render is the run's answer: the next worker (after
+      // a red test) fails at once instead of paying the wizard and the deploy
+      // again.
       const failureFile = setupFailureFile(workerInfo.project.outputDir);
       if (existsSync(failureFile)) {
         throw new Error(
