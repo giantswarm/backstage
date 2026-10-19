@@ -4,14 +4,15 @@ import {
   deleteAgentInPortal,
   expect,
   expectAgentRendered,
-  labAgentStamp,
   open,
   rosterLinkOf,
   searchRoster,
-  test,
+  signIn,
+  test as base,
 } from './fixtures';
 import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
-import { contextOptions, lab, type LabUser } from './lab';
+import { contextOptionsFor, lab, type LabUser } from './lab';
+import { RUN } from './workspaces.fixture';
 
 /**
  * Agents per tenant (giantswarm/giantswarm#36698 D6, giantswarm/backstage#2606),
@@ -22,6 +23,10 @@ import { contextOptions, lab, type LabUser } from './lab';
  * `agent-platform:user`; bob (`tenant-b`) is bound in no organization. The
  * kagent controller's Kubernetes authorizer and agent-manager's tenant
  * reconciler decide; the lab's API server spells a subject `oidc:<name>`.
+ *
+ * Every test stands alone, so a red one leaves the others run: the ones on
+ * the organization's agent ask for {@link TenantFixtures.tenantAgent}, which
+ * the worker sets up once, and again in the next worker after a failure.
  *
  * Needs a lab with `platform.tenants` (`AGENTLAB_TENANTS=1`: alice and bob,
  * kagent 1.19 with `kagent.controller.authorization.mode: kubernetes`) and
@@ -43,12 +48,59 @@ const tenant = `organization ${organization}`;
 const subjectPrefix = 'oidc:';
 const rosterWait = 2 * 60_000;
 
-const stamp = labAgentStamp(new Date());
+/** The organization's agent: named by the run (`AGENTLAB_E2E_RUN`). */
 const agent = {
-  name: `E2E Tenant ${stamp}`,
-  slug: `e2e-tenant-${stamp}`,
+  name: `E2E Tenant ${RUN}`,
+  slug: `e2e-tenant-${RUN}`,
 };
-let detailPath: string | undefined;
+const detailPath = `/customize/agents/${lab.installation}/${namespace}/${agent.slug}`;
+
+type TenantFixtures = {
+  /**
+   * The organization's agent, created by its editor in the New agent wizard
+   * the first time a test of the worker asks for it, in the namespace this
+   * spec labels and binds ({@link applyTenant}); its detail page's path. One
+   * the run made already (an earlier worker's teardown that did not remove
+   * it) is used as it is. When the worker ends, also after a failed test, the
+   * editor deletes it in the portal and the namespace goes with its
+   * RoleBindings, whatever the deletion did.
+   */
+  tenantAgent: string;
+};
+
+const test = base.extend<{}, TenantFixtures>({
+  tenantAgent: [
+    async ({ browser, variant }, use) => {
+      await applyTenant();
+      const context = await browser.newContext(contextOptionsFor(variant));
+      try {
+        const dev = await context.newPage();
+        await signIn(dev, lab.users.dev);
+        try {
+          if (!(await agentExists())) {
+            await createAgentInWizard(dev, agent.name, agent.slug);
+          }
+          await use(detailPath);
+        } finally {
+          if (await agentExists()) {
+            await deleteAgentInPortal(dev, detailPath, agent.slug);
+          }
+        }
+      } finally {
+        await context.close();
+        await kubectl([
+          'delete',
+          'namespace',
+          namespace,
+          '--ignore-not-found',
+          '--wait=false',
+        ]);
+      }
+    },
+    // The wizard, the agent's first deploy and Flux's uninstall take minutes.
+    { scope: 'worker', timeout: 15 * 60_000 },
+  ],
+});
 
 function binding(name: string, role: string, subject: object) {
   return {
@@ -64,15 +116,26 @@ function binding(name: string, role: string, subject: object) {
   };
 }
 
+/** The organization namespace and its two RoleBindings, applied again as they are. */
 async function applyTenant() {
-  // A run right after another finds the namespace still terminating, where
-  // the API server takes no new RoleBinding.
-  await kubectl([
-    'wait',
-    '--for=delete',
-    `namespace/${namespace}`,
-    '--timeout=3m',
+  // A worker right after another's teardown finds the namespace still
+  // terminating, where the API server takes no new RoleBinding.
+  const { stdout: phase } = await kubectl([
+    'get',
+    'namespace',
+    namespace,
+    '--ignore-not-found',
+    '-o',
+    'jsonpath={.status.phase}',
   ]);
+  if (phase === 'Terminating') {
+    await kubectl([
+      'wait',
+      '--for=delete',
+      `namespace/${namespace}`,
+      '--timeout=3m',
+    ]);
+  }
   const objects = [
     {
       apiVersion: 'v1',
@@ -95,6 +158,21 @@ async function applyTenant() {
     ['apply', '-f', '-'],
     JSON.stringify({ apiVersion: 'v1', kind: 'List', items: objects }),
   );
+}
+
+/** Whether the run's agent has a HelmRelease in the organization namespace. */
+async function agentExists(): Promise<boolean> {
+  const { stdout } = await kubectl([
+    'get',
+    'helmreleases.helm.toolkit.fluxcd.io',
+    '-n',
+    namespace,
+    agent.slug,
+    '--ignore-not-found',
+    '-o',
+    'name',
+  ]);
+  return stdout.trim() !== '';
 }
 
 /** The platform tenant's Agents, as `namespace/name`. */
@@ -154,58 +232,22 @@ test.describe('agents per tenant', () => {
     ).toHaveCount(0);
   });
 
-  // Each step reads the agent the first one creates. Serial: a red step
-  // leaves the ones after it unrun; run one alone with -g to see it.
-  test.describe.serial('an organization’s agent', () => {
-    test.beforeAll(async () => {
-      await applyTenant();
-    });
-
-    test.afterAll(async ({ browser }) => {
-      // The portal's delete and Flux's uninstall take minutes.
-      test.setTimeout(6 * 60_000);
-      try {
-        if (detailPath) {
-          const context = await browser.newContext(contextOptions);
-          try {
-            const page = await context.newPage();
-            await open(page, detailPath, lab.users.dev);
-            await deleteAgentInPortal(page, detailPath, agent.slug);
-          } finally {
-            await context.close();
-          }
-        }
-      } finally {
-        // Also removes an agent the portal could not delete, or one created
-        // after a failed hand-off to its page.
-        await kubectl([
-          'delete',
-          'namespace',
-          namespace,
-          '--ignore-not-found',
-          '--wait=false',
-        ]);
-      }
-    });
-
-    test('the editor of one organization creates there: the tenant is picked and named, the page names tenant and creator', async ({
+  test.describe('an organization’s agent', () => {
+    test('the editor of one organization creates there: the wizard names the only tenant, the agent’s page its tenant and creator, Edit and Delete', async ({
+      tenantAgent,
       signInAs,
     }) => {
-      test.setTimeout(10 * 60_000);
+      test.setTimeout(rosterWait + 60_000);
       const dev = await signInAs(lab.users.dev);
-      detailPath = await createAgentInWizard(dev, agent.name, agent.slug, {
-        onStep: async step => {
-          if (step === 'Details') {
-            await expect(
-              dev.getByText(
-                `Created in ${tenant}, the only tenant you may create agents in on ${lab.installation}.`,
-              ),
-              'the only tenant is picked and named, not offered',
-            ).toBeVisible();
-          }
-        },
-      });
-      expect(detailPath).toContain(`/${namespace}/${agent.slug}`);
+      await open(dev, '/customize/agents/new', lab.users.dev);
+      await expect(
+        dev.getByText(
+          `Created in ${tenant}, the only tenant you may create agents in on ${lab.installation}.`,
+        ),
+        'the only tenant is picked and named, not offered',
+      ).toBeVisible({ timeout: 60_000 });
+
+      await open(dev, tenantAgent, lab.users.dev);
       await expectAgentRendered(dev);
       await expect(fact(dev, 'Tenant')).toHaveText(tenant);
       await expect(fact(dev, 'Created by')).toHaveText(lab.users.dev.email);
@@ -219,12 +261,12 @@ test.describe('agents per tenant', () => {
     });
 
     test('a user of the organization may use the agent, not change it', async ({
+      tenantAgent,
       signInAs,
     }) => {
-      test.skip(!detailPath, 'the agent was not created');
       test.setTimeout(rosterWait + 60_000);
       const alice = await signInAs(users.alice);
-      await open(alice, detailPath!, users.alice);
+      await open(alice, tenantAgent, users.alice);
       await expect(
         alice.getByText('You can use this agent, not change it'),
       ).toBeVisible({ timeout: rosterWait });
@@ -252,10 +294,10 @@ test.describe('agents per tenant', () => {
     });
 
     test('each person’s roster names the tenants; another organization’s agent is not listed', async ({
+      tenantAgent: _tenantAgent,
       labAgent,
       signInAs,
     }) => {
-      test.skip(!detailPath, 'the agent was not created');
       test.setTimeout(rosterWait * 2 + 60_000);
       const alice = await signInAs(users.alice);
       await open(alice, '/customize/agents', users.alice);
@@ -284,12 +326,12 @@ test.describe('agents per tenant', () => {
     });
 
     test('a user’s deep link to the edit page is refused up front', async ({
+      tenantAgent,
       signInAs,
     }) => {
-      test.skip(!detailPath, 'the agent was not created');
       test.setTimeout(rosterWait + 60_000);
       const alice = await signInAs(users.alice);
-      await open(alice, `${detailPath}/edit`, users.alice);
+      await open(alice, `${tenantAgent}/edit`, users.alice);
       await expect(
         alice.getByText('You cannot change this agent'),
         'the refusal naming the role, not a failed read',
@@ -303,10 +345,10 @@ test.describe('agents per tenant', () => {
     });
 
     test('“Created by: Me” keeps the person’s own agents', async ({
+      tenantAgent: _tenantAgent,
       labAgent,
       signInAs,
     }) => {
-      test.skip(!detailPath, 'the agent was not created');
       test.setTimeout(rosterWait + 60_000);
       const dev = await signInAs(lab.users.dev);
       await open(dev, '/customize/agents', lab.users.dev);
