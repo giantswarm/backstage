@@ -154,7 +154,8 @@ test.describe('agents per tenant', () => {
     ).toHaveCount(0);
   });
 
-  // Each step reads the agent the first one creates.
+  // Each step reads the agent the first one creates. Serial: a red step
+  // leaves the ones after it unrun; run one alone with -g to see it.
   test.describe.serial('an organization’s agent', () => {
     test.beforeAll(async () => {
       await applyTenant();
