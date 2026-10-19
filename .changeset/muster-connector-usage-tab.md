@@ -17,9 +17,11 @@ all three read one request, so their numbers agree.
 
 The muster backend's `/usage` takes `?server=` (repeatable) to narrow every
 figure to those MCPServers, and then lists every tool they were called with
-instead of the busiest 15. Each connector row carries its `p95_seconds`. Where
-the records start (`data_start`) stays the installation's. `window=month`,
-which only the Details fact used, is gone.
+instead of the busiest 15. Narrowed to several (a family's instances), each
+connector row carries its `p95_seconds`. Where the records start
+(`data_start`) stays the installation's. `window=month`, which only the
+Details fact used, is gone, and a request that still sends `window` is refused
+with a 400 instead of being answered for 24 hours.
 
 The muster plugin's external route `usageConnectors` is bound by the app to
 agent-platform's Usage → Connectors.

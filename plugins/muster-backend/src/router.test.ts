@@ -227,6 +227,8 @@ describe('createRouter', () => {
 
   it.each([
     ['too many hours', '/usage?hours=2161'],
+    // Gone: a stale client must not read 24 hours as the month.
+    ['the month window', '/usage?window=month'],
     ['a server that is not a resource name', '/usage?server=a%22b'],
     ['an empty server', '/usage?server='],
     [

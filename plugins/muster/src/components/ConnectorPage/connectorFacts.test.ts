@@ -88,6 +88,8 @@ describe('connectorFacts', () => {
 
   it('says plainly when there were no calls, and nothing without usage', () => {
     expect(callsLine(usage(0, 0))).toBe('0');
+    // An estimate that rounds to no calls is none, as the Usage tab says.
+    expect(callsLine(usage(0.4, 0.4))).toBe('0');
     expect(callsLine(usage(0, 0, false))).toBeUndefined();
   });
 

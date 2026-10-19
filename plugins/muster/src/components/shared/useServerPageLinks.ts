@@ -1,14 +1,14 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { withQuery } from '../../lib/installationLink';
+import type { ConnectorPageTabPath } from '../ConnectorPage/connectorTabs';
 import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
 
 /**
- * A server page's tabs, by their path segment. Tools is the index, so a link
- * to it names no tab.
+ * A server page's tabs, by their path segment: the connector page's own list.
+ * Tools is the index, so a link to it names no tab.
  */
-export type ServerPageTab =
-  'instances' | 'resources' | 'prompts' | 'usage' | 'details';
+export type ServerPageTab = ConnectorPageTabPath;
 
 /**
  * The Tools tab's search and "What it does" filter, as an address carries

@@ -297,6 +297,15 @@ describe('ToolPage usage', () => {
     expect(within(section).getByText('—')).toBeInTheDocument();
   });
 
+  it('reads no usage for a tool its connector does not offer', async () => {
+    const api = await renderAt(`${BASE}/gazelle/jira/tools/x_jira_gone`);
+
+    expect(
+      await screen.findByText('No tool “x_jira_gone” on gazelle'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
+  });
+
   it("has none for muster's own tools, which no connector counts", async () => {
     const api = await renderAt(
       `${BASE}/gazelle/muster/tools/core_service_list`,

@@ -31,6 +31,10 @@ export interface McpUsageServerRow {
   server: string;
   calls: number;
   errors: number;
+  /**
+   * Only where the usage is read for several servers (a family's instances)
+   * or one (its totals); null for the installation-wide read.
+   */
   p95_seconds: number | null;
 }
 
@@ -370,6 +374,14 @@ export async function getMcpUsage(
   const step = `${stepHours}h`;
   const selector = serverSelector(servers);
   const filtered = selector !== '';
+  const serverCount = new Set(servers).size;
+  // The per-server rollups only where a row is shown for them: unnarrowed,
+  // the Usage page's connector table shows calls and errors, not latency; a
+  // family's Instances table shows all three. Narrowed to one server, its row
+  // is the totals, so neither query runs.
+  const serverOutcomes = serverCount !== 1;
+  const serverLatency = serverCount > 1;
+  const none = Promise.resolve<PromSeries[]>([]);
   const calls = `${METRIC_CALLS}${selector}`;
   const duration = `${METRIC_DURATION}${selector}`;
 
@@ -486,20 +498,24 @@ export async function getMcpUsage(
       optional(
         rangeQuery(`sum by (tool, outcome) (increase(${calls}[${step}]))`),
       ),
-      optional(
-        rangeQuery(
-          `sum by (mcpserver_name, outcome) (increase(${calls}[${step}]))`,
-        ),
-      ),
+      serverOutcomes
+        ? optional(
+            rangeQuery(
+              `sum by (mcpserver_name, outcome) (increase(${calls}[${step}]))`,
+            ),
+          )
+        : none,
       optional(rangeQuery(`sum by (le) (increase(${duration}[${step}]))`)),
       optional(
         rangeQuery(`sum by (tool, le) (increase(${duration}[${step}]))`),
       ),
-      optional(
-        rangeQuery(
-          `sum by (mcpserver_name, le) (increase(${duration}[${step}]))`,
-        ),
-      ),
+      serverLatency
+        ? optional(
+            rangeQuery(
+              `sum by (mcpserver_name, le) (increase(${duration}[${step}]))`,
+            ),
+          )
+        : none,
     ]);
   } catch (error) {
     return unavailable(
@@ -635,7 +651,19 @@ export async function getMcpUsage(
     byOutcomeOverTime.filter(series => series.labels.outcome !== 'ok'),
   );
   const overallBuckets = bucketTotals(latencyBuckets).get('');
+  const p95Seconds = overallBuckets
+    ? quantileFromBuckets(0.95, overallBuckets)
+    : null;
   const tools = [...toolRows.values()].sort((a, b) => b.calls - a.calls);
+  // Narrowed to one server, its row is the totals, once muster counted it.
+  if (!serverOutcomes && byOutcomeOverTime.length > 0) {
+    serverRows.set(servers[0], {
+      server: servers[0],
+      calls: totalCalls,
+      errors: totalErrors,
+      p95_seconds: p95Seconds,
+    });
+  }
 
   return {
     available: true,
@@ -651,9 +679,7 @@ export async function getMcpUsage(
       calls: totalCalls,
       errors: totalErrors,
       error_ratio: totalCalls > 0 ? totalErrors / totalCalls : null,
-      p95_seconds: overallBuckets
-        ? quantileFromBuckets(0.95, overallBuckets)
-        : null,
+      p95_seconds: p95Seconds,
       distinct_tools: toolRows.size,
     },
     top_tools: filtered ? tools : tools.slice(0, TOP_TOOLS_LIMIT),

@@ -15,7 +15,7 @@ import {
   usageConnectorsExternalRouteRef,
 } from '../../../routes';
 import type { ServerTools } from '../../ServerPage/useServerPageData';
-import type { ConnectorUsage } from '../useConnectorUsage';
+import type { ConnectorUsage } from '../hooks/useConnectorUsage';
 import {
   ConnectorUsageTab,
   instanceUsageRows,
@@ -97,12 +97,15 @@ async function renderTab({
   server = 'kagi',
   read = { usage: usage(), isLoading: false },
   offered = ['x_kagi_search', 'x_kagi_extract'],
+  toolList = {},
   sessionGate,
 }: {
   row?: ServerPageRow;
   server?: string;
   read?: ConnectorUsage;
   offered?: string[] | undefined;
+  /** How the tool list was read: loading, truncated, failed. */
+  toolList?: Partial<ServerTools>;
   sessionGate?: ReactNode;
 } = {}) {
   await renderInTestApp(
@@ -111,7 +114,8 @@ async function renderTab({
       server={server}
       installation="gazelle"
       usage={read}
-      tools={tools(offered)}
+      tools={{ ...tools(offered), ...toolList }}
+      ownsTool={tool => tool.startsWith(`x_${server}_`)}
       sessionGate={sessionGate}
     />,
     {
@@ -129,9 +133,21 @@ function stat(label: string): string | null {
   return tile?.textContent?.replace(label, '') ?? null;
 }
 
+/** A tool list as read: complete unless truncated; kagi's prefix resolves. */
+function catalogue(names: string[], complete = true) {
+  return {
+    names,
+    complete,
+    ownsTool: (tool: string) => tool.startsWith('x_kagi_'),
+  };
+}
+
 describe('toolUsageRows', () => {
   it('lists every offered tool, never called ones with zeros, busiest first', () => {
-    const rows = toolUsageRows(usage(), ['x_kagi_extract', 'x_kagi_search']);
+    const rows = toolUsageRows(
+      usage(),
+      catalogue(['x_kagi_extract', 'x_kagi_search']),
+    );
 
     expect(rows).toEqual([
       {
@@ -151,8 +167,26 @@ describe('toolUsageRows', () => {
     ]);
   });
 
+  it('takes a called tool its prefix names as offered where the list is cut short', () => {
+    const rows = toolUsageRows(
+      usage({
+        top_tools: [
+          { tool: 'x_kagi_search', calls: 3, errors: 0, p95_seconds: null },
+          { tool: 'x_other_thing', calls: 1, errors: 0, p95_seconds: null },
+        ],
+      }),
+      catalogue(['x_kagi_extract'], false),
+    );
+
+    expect(rows.map(row => [row.id, row.offered])).toEqual([
+      ['x_kagi_search', true],
+      ['x_other_thing', false],
+      ['x_kagi_extract', true],
+    ]);
+  });
+
   it('keeps a tool called in the window that is no longer offered', () => {
-    const rows = toolUsageRows(usage(), ['x_kagi_extract']);
+    const rows = toolUsageRows(usage(), catalogue(['x_kagi_extract']));
 
     expect(rows.map(row => [row.id, row.offered])).toEqual([
       ['x_kagi_search', false],
@@ -193,7 +227,7 @@ describe('toolsUsedLine', () => {
   it('counts the offered tools called, of those offered', () => {
     expect(
       toolsUsedLine(
-        toolUsageRows(usage(), ['x_kagi_search', 'x_a', 'x_b']),
+        toolUsageRows(usage(), catalogue(['x_kagi_search', 'x_a', 'x_b'])),
         true,
       ),
     ).toBe('1 of 3');
@@ -206,13 +240,15 @@ describe('toolsUsedLine', () => {
           { tool: 'x_kagi_search', calls: 0.3, errors: 0, p95_seconds: null },
         ],
       }),
-      ['x_kagi_search'],
+      catalogue(['x_kagi_search']),
     );
     expect(toolsUsedLine(rows, true)).toBe('0 of 1');
   });
 
   it('is just the count where the tools could not be listed', () => {
-    expect(toolsUsedLine(toolUsageRows(usage(), undefined), false)).toBe('1');
+    expect(
+      toolsUsedLine(toolUsageRows(usage(), catalogue([], false)), false),
+    ).toBe('1');
   });
 });
 
@@ -260,6 +296,39 @@ describe('ConnectorUsageTab', () => {
       'href',
       '/usage/connectors?installation=gazelle',
     );
+  });
+
+  it('waits for the tool list before the tiles and the table', async () => {
+    await renderTab({ offered: undefined, toolList: { isLoading: true } });
+
+    expect(
+      await screen.findByText("Reading this connector's usage…"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Tools used')).toBeNull();
+  });
+
+  it('counts without a total, and links by prefix, where the tool list is cut short', async () => {
+    await renderTab({
+      offered: ['x_kagi_extract'],
+      toolList: { truncated: true },
+    });
+
+    expect(stat('Tools used')).toContain('1');
+    expect(stat('Tools used')).not.toContain(' of ');
+    expect(screen.getByRole('link', { name: 'search' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/gazelle/kagi/tools/x_kagi_search',
+    );
+  });
+
+  it('links by prefix where the tool list could not be read', async () => {
+    await renderTab({
+      offered: undefined,
+      toolList: { error: new Error('catalogue failed') },
+    });
+
+    expect(stat('Tools used')).toContain('1');
+    expect(screen.getByRole('link', { name: 'search' })).toBeVisible();
   });
 
   it('names a tool no longer offered without a link', async () => {

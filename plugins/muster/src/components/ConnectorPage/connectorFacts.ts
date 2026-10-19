@@ -60,7 +60,9 @@ export function callsLine(usage: McpUsage): string | undefined {
   }
   const { calls, errors } = usage.totals;
   const count = Math.round(calls).toLocaleString('en-US');
-  if (calls === 0) {
+  // Rounded as the count is, and as the Usage tab decides "no calls": the
+  // figures are `increase()` estimates, so 0.4 calls is none.
+  if (Math.round(calls) === 0) {
     return count;
   }
   const ratio = (errors / calls) * 100;

@@ -27,7 +27,8 @@ import {
 } from '../../McpUsage';
 import { useServerPageLinks } from '../../shared';
 import type { ServerTools } from '../../ServerPage/useServerPageData';
-import { CONNECTOR_USAGE_DAYS, ConnectorUsage } from '../useConnectorUsage';
+import type { ConnectorUsage } from '../hooks/useConnectorUsage';
+import { CONNECTOR_USAGE_DAYS } from '../utils/connectorUsage';
 
 type ToolRow = {
   id: string;
@@ -55,16 +56,30 @@ function byCallsThenName<T extends { id: string; calls: number }>(a: T, b: T) {
   return b.calls - a.calls || a.id.localeCompare(b.id);
 }
 
+/** The connector's tools as the tab can know them. */
+export type ToolCatalogue = {
+  /** The tools it offers, as far as they were read. */
+  names: readonly string[];
+  /** Every tool it offers was read: the list is neither truncated nor missing. */
+  complete: boolean;
+  /** Whether a tool's name resolves to this connector, by its prefix. */
+  ownsTool: (tool: string) => boolean;
+};
+
 /**
  * Every tool the connector offers, each with its calls over the window: those
  * never called with zeros, the reason to list them at all. A tool called in
- * the window that the connector no longer offers keeps its row.
+ * the window that the connector no longer offers keeps its row. Where the
+ * list is incomplete (truncated, or not read), a called tool whose prefix
+ * names this connector counts as offered, as the tool's own page decides.
  */
 export function toolUsageRows(
   usage: McpUsage,
-  offered: readonly string[] | undefined,
+  catalogue: ToolCatalogue,
 ): ToolRow[] {
-  const listed = new Set(offered ?? []);
+  const listed = new Set(catalogue.names);
+  const isOffered = (tool: string) =>
+    listed.has(tool) || (!catalogue.complete && catalogue.ownsTool(tool));
   const rows = new Map<string, ToolRow>();
   for (const name of listed) {
     rows.set(name, {
@@ -81,7 +96,7 @@ export function toolUsageRows(
       calls: row.calls,
       errors: row.errors,
       p95_seconds: row.p95_seconds,
-      offered: listed.has(row.tool),
+      offered: isOffered(row.tool),
     });
   }
   return [...rows.values()].sort(byCallsThenName);
@@ -108,15 +123,25 @@ export function instanceUsageRows(
 
 /**
  * "4 of 12": the offered tools called at least once, of those offered. Just
- * the count where the connector's tools could not be listed.
+ * the count where the connector's tool list is incomplete, which would make
+ * the second number wrong.
  */
-export function toolsUsedLine(rows: ToolRow[], toolsListed: boolean): string {
-  if (!toolsListed) {
+export function toolsUsedLine(rows: ToolRow[], complete: boolean): string {
+  if (!complete) {
     return formatCount(rows.filter(row => called(row.calls)).length);
   }
   const offered = rows.filter(row => row.offered);
   const used = offered.filter(row => called(row.calls)).length;
   return `${formatCount(used)} of ${formatCount(offered.length)}`;
+}
+
+function toolsUsedHint(complete: boolean, truncated: boolean): string {
+  if (complete) {
+    return 'Counts the tools it offers that were called at least once.';
+  }
+  return truncated
+    ? 'Counts the tools called at least once. Its tool list was cut short, so there is nothing complete to count them against.'
+    : 'Counts the tools called at least once. Its tools could not be listed, so there is nothing to count them against.';
 }
 
 export type ConnectorUsageTabProps = {
@@ -126,6 +151,8 @@ export type ConnectorUsageTabProps = {
   installation: string;
   usage: ConnectorUsage;
   tools: ServerTools;
+  /** Whether a tool's name resolves to this connector, by its prefix. */
+  ownsTool: (tool: string) => boolean;
   /** Shown instead of the figures while the muster session is missing. */
   sessionGate?: ReactNode;
 };
@@ -143,6 +170,7 @@ export function ConnectorUsageTab({
   installation,
   usage: { usage, isLoading, error },
   tools,
+  ownsTool,
   sessionGate,
 }: ConnectorUsageTabProps) {
   const links = useServerPageLinks();
@@ -151,14 +179,18 @@ export function ConnectorUsageTab({
     ? withInstallationQuery(usageRoute(), installation)
     : undefined;
 
-  const offered = useMemo(
-    () => tools.tools?.map(tool => tool.name),
-    [tools.tools],
+  const catalogue = useMemo<ToolCatalogue>(
+    () => ({
+      names: tools.tools?.map(tool => tool.name) ?? [],
+      complete:
+        Boolean(tools.tools && tools.tools.length > 0) && !tools.truncated,
+      ownsTool,
+    }),
+    [tools.tools, tools.truncated, ownsTool],
   );
-  const toolsListed = Boolean(offered && offered.length > 0);
   const toolRows = useMemo(
-    () => (usage ? toolUsageRows(usage, offered) : []),
-    [usage, offered],
+    () => (usage ? toolUsageRows(usage, catalogue) : []),
+    [usage, catalogue],
   );
   const instanceRows = useMemo(
     () =>
@@ -190,7 +222,8 @@ export function ConnectorUsageTab({
   if (sessionGate) {
     return <>{sessionGate}</>;
   }
-  if (isLoading) {
+  // The tools too: a row's link and the "of 12" both wait for the list.
+  if (isLoading || tools.isLoading) {
     return <LoadingIndicator label="Reading this connector's usage…" />;
   }
   if (error) {
@@ -252,12 +285,8 @@ export function ConnectorUsageTab({
         <Stat
           variant="tile"
           label="Tools used"
-          hint={
-            toolsListed
-              ? 'Counts the tools it offers that were called at least once.'
-              : 'Counts the tools called at least once. Its tools could not be listed, so there is nothing to count them against.'
-          }
-          value={toolsUsedLine(toolRows, toolsListed)}
+          hint={toolsUsedHint(catalogue.complete, tools.truncated)}
+          value={toolsUsedLine(toolRows, catalogue.complete)}
           sub={`last ${CONNECTOR_USAGE_DAYS} days`}
         />
       </StatGrid>

@@ -426,6 +426,50 @@ describe('getMcpUsage', () => {
       expect(usage.totals.distinct_tools).toBe(20);
     });
 
+    it('reads one connector without the per-server queries, its row the totals', async () => {
+      const seen: Array<Record<string, unknown>> = [];
+      const usage = await getMcpUsage(
+        narrowedClient(seen),
+        INSTALLATION,
+        {},
+        24 * 30,
+        ['gazelle-mcp-kubernetes'],
+      );
+
+      expect(
+        seen.filter(args => String(args.query).includes('mcpserver_name,')),
+      ).toEqual([]);
+      expect(usage.servers).toEqual([
+        {
+          server: 'gazelle-mcp-kubernetes',
+          calls: usage.totals.calls,
+          errors: usage.totals.errors,
+          p95_seconds: usage.totals.p95_seconds,
+        },
+      ]);
+    });
+
+    it('reads no per-server latency without a filter, which nothing shows', async () => {
+      const seen: Array<Record<string, unknown>> = [];
+      const usage = await getMcpUsage(
+        narrowedClient(seen),
+        INSTALLATION,
+        {},
+        24 * 30,
+      );
+
+      const queries = seen.map(args => String(args.query));
+      expect(
+        queries.some(query => query.startsWith('sum by (mcpserver_name, le)')),
+      ).toBe(false);
+      expect(
+        queries.some(query =>
+          query.startsWith('sum by (mcpserver_name, outcome)'),
+        ),
+      ).toBe(true);
+      expect(usage.servers.every(row => row.p95_seconds === null)).toBe(true);
+    });
+
     it('keeps the busiest fifteen tools without a filter', async () => {
       const usage = await getMcpUsage(
         narrowedClient([]),

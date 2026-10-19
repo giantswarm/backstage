@@ -95,11 +95,8 @@ import {
 import { ConnectorToolsTab, useToolSearchState } from './ConnectorToolsTab';
 import { ConnectorDetailsTab } from './ConnectorDetailsTab';
 import { ConnectorUsageTab } from './ConnectorUsageTab';
-import {
-  CONNECTOR_USAGE_DAYS,
-  rowServers,
-  useConnectorUsage,
-} from './useConnectorUsage';
+import { useConnectorUsage } from './hooks/useConnectorUsage';
+import { CONNECTOR_USAGE_DAYS, rowServers } from './utils/connectorUsage';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
 /** How long a success toast stays, as on the platform's other deletes. */
@@ -249,9 +246,12 @@ function ConnectorPageContent({
     [name, members],
   );
   // One read for the Usage tab and the Details' calls, so the two agree;
-  // none for muster itself, whose own tools no connector counts.
+  // none for muster itself, whose own tools no connector counts. Only on
+  // those two tabs: Tools, where a connector opens, shows no usage, and
+  // each connector's read repeats the installation-wide `data_start` query.
+  const { '*': tabPath = '' } = useParams();
   const usage = useConnectorUsage(row, installation, {
-    enabled: authenticated,
+    enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
   });
   const calls = usage.usage ? callsLine(usage.usage) : undefined;
 
@@ -612,6 +612,7 @@ function ConnectorPageContent({
                     installation={installation}
                     usage={usage}
                     tools={tools}
+                    ownsTool={target.ownsTool}
                     sessionGate={
                       authenticated ? undefined : (
                         <SessionGate

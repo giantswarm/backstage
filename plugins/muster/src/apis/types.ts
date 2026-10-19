@@ -117,6 +117,10 @@ export interface McpUsageServerRow {
   server: string;
   calls: number;
   errors: number;
+  /**
+   * Only where the usage is read for several servers (a family's instances)
+   * or one (its totals); null for the installation-wide read.
+   */
   p95_seconds: number | null;
 }
 

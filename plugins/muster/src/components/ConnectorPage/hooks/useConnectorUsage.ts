@@ -1,39 +1,22 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { DEFAULT_USAGE_WINDOW_DAYS } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
-import { McpUsage, musterApiRef } from '../../apis';
-import { MCPServer } from '../../lib/k8s';
-import { ServerPageRow } from '../../lib/serverGrouping';
+import { McpUsage, musterApiRef } from '../../../apis';
+import { ServerPageRow } from '../../../lib/serverGrouping';
+import {
+  CONNECTOR_USAGE_DAYS,
+  usageServerNames,
+} from '../utils/connectorUsage';
 
 /**
- * The window a connector's usage covers on its page, its Details and its
- * tools' pages: the Usage screen's default 30 days, so a connector's figures
- * match `/usage/connectors` as it opens.
+ * How long a connector's usage stays fresh. Its buckets are whole days and
+ * the read is several 30-day range queries, so the tab, Details and the
+ * connector's tools' pages reuse one answer for a few minutes rather than
+ * each mount asking again.
  */
-export const CONNECTOR_USAGE_DAYS = DEFAULT_USAGE_WINDOW_DAYS;
-
-/** The MCPServers a page's row stands for: the server, or a family's instances. */
-export function rowServers(row: ServerPageRow): MCPServer[] {
-  if (row.kind === 'server') {
-    return [row.server];
-  }
-  if (row.kind === 'family') {
-    return row.servers;
-  }
-  return [];
-}
-
-/**
- * The MCPServer names muster's metrics count a row's calls under, sorted so
- * every page reading them shares one cache entry. None for muster itself,
- * whose own tools are not dispatched to a connector and so never counted.
- */
-export function usageServerNames(row: ServerPageRow): string[] {
-  return [...new Set(rowServers(row).map(server => server.getName()))].sort();
-}
+const CONNECTOR_USAGE_STALE_MS = 5 * 60_000;
 
 export interface ConnectorUsage {
   /** Undefined until read, and where it could not be. */
@@ -46,8 +29,9 @@ export interface ConnectorUsage {
  * Every caller's tool calls to one connector over the last
  * {@link CONNECTOR_USAGE_DAYS} days, from muster's dispatch metrics narrowed
  * to its MCPServers: the connector's Usage tab, its Details' calls and its
- * tools' pages read this one query, so they agree and cost one request. Read
- * through the muster session, so disabled without one, and for muster itself.
+ * tools' pages read this one query, so they agree and share one request.
+ * Read through the muster session, so disabled without one, and for muster
+ * itself.
  */
 export function useConnectorUsage(
   row: ServerPageRow | undefined,
@@ -61,6 +45,7 @@ export function useConnectorUsage(
     queryKey: ['muster', 'mcp-usage', installation, hours, servers],
     queryFn: () => musterApi.getMcpUsage({ installation, hours, servers }),
     enabled: enabled && Boolean(installation) && servers.length > 0,
+    staleTime: CONNECTOR_USAGE_STALE_MS,
   });
   return {
     usage: data,

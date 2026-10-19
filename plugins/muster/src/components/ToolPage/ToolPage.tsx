@@ -34,11 +34,9 @@ import {
   useServerTools,
 } from '../ServerPage/useServerPageData';
 import { runsAsCaller } from '../ConnectorPage/connectorFacts';
-import {
-  CONNECTOR_USAGE_DAYS,
-  useConnectorUsage,
-} from '../ConnectorPage/useConnectorUsage';
-import { toolUsageFacts } from './toolUsage';
+import { useConnectorUsage } from '../ConnectorPage/hooks/useConnectorUsage';
+import { CONNECTOR_USAGE_DAYS } from '../ConnectorPage/utils/connectorUsage';
+import { toolUsageFacts } from './utils/toolUsage';
 
 /** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
 const TOOL_NAME_STYLE = {
@@ -99,7 +97,9 @@ export function ToolPage() {
   // The connector's usage, the read its Usage tab and Details share, so a
   // tool opened from there costs no request.
   const connectorUsage = useConnectorUsage(row, activeInstallation, {
-    enabled: Boolean(row && activeInstallation) && session.authenticated,
+    // Only where the page shows it: a tool its connector offers.
+    enabled:
+      offered && Boolean(row && activeInstallation) && session.authenticated,
   });
   const usageFacts = toolUsageFacts(connectorUsage.usage, tool);
   // The panel's request, so the badge beside the name costs nothing extra.

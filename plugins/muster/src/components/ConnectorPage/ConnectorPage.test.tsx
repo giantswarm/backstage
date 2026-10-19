@@ -766,6 +766,15 @@ describe('ConnectorPage Usage tab', () => {
     );
   });
 
+  it('reads no usage on Tools, where a connector opens and shows none', async () => {
+    const api = await renderAt(`${BASE}/jira`);
+
+    expect(
+      await screen.findByRole('link', { name: /search_issues/ }),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
+  });
+
   it('asks for a muster session instead of reading the usage', async () => {
     mockAuthenticated = false;
     const api = await renderAt(`${BASE}/jira/usage`);

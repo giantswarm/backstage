@@ -10,4 +10,4 @@ export type {
 } from './McpUsageTable';
 export { McpDataStartNote } from './McpDataStartNote';
 export type { McpDataStartNoteProps } from './McpDataStartNote';
-export { errorRatioFigure } from './errorRatio';
+export { errorRatioFigure } from './utils/errorRatio';

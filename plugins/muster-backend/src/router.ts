@@ -793,6 +793,11 @@ export async function createRouter(
    */
   router.get('/usage', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
+    // Refused rather than ignored: a frontend loaded before `window=month`
+    // went would otherwise read 24 hours as the month.
+    if (req.query.window !== undefined) {
+      throw new InputError('window is no longer supported; use hours');
+    }
     const hours = parseOptionalInt(req.query.hours, 'hours');
     if (hours !== undefined && (hours < 1 || hours > 24 * 90)) {
       throw new InputError('hours must be between 1 and 2160');

@@ -4,7 +4,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { Fact } from '@giantswarm/backstage-plugin-ui-react';
 
-import type { McpUsage } from '../../apis';
+import type { McpUsage } from '../../../apis';
 
 /**
  * A tool's calls, errors and p95 latency from its connector's usage read (the
