@@ -355,7 +355,7 @@ test.describe('agents per tenant', () => {
       await expect(rosterLinkOf(dev, labAgent.name)).toBeVisible({
         timeout: rosterWait,
       });
-      await dev.getByRole('button', { name: /^Filter by created by/ }).click();
+      await dev.getByRole('button', { name: /Filter by created by/ }).click();
       await dev.getByRole('option', { name: /^Me/ }).click();
       await dev.keyboard.press('Escape');
       await expect(rosterLinkOf(dev, agent.name)).toBeVisible();
