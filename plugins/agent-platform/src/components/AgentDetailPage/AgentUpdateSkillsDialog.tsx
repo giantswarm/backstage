@@ -81,8 +81,8 @@ const useStyles = makeStyles(theme => ({
     fontSize: '0.8rem',
   },
   // Holds the line under the table at the loading indicator's height in every
-  // state, so the indicator's delayed label, the note that replaces it, or
-  // nothing at all do not push the dialog around.
+  // state, so the indicator's delayed label, the note or notice that replaces
+  // it, or nothing at all do not push the dialog around.
   status: {
     minHeight: theme.spacing(5),
   },
@@ -246,9 +246,10 @@ export type AgentUpdateSkillsDialogProps = {
  * `update_agent`'s own commit dry run, which does, and the plan shows the pins
  * that dry run would commit. agent-manager edits a release only in its own
  * file in its directory; when that file is missing the dry run is refused, and
- * the dialog says so instead of offering a pull request it cannot open. Any
- * other refusal of that dry run (no GitHub authorization yet, say) leaves the
- * confirm as it was: the write reports it in agent-manager's words.
+ * the dialog says, under the plan, that the skills are updated in the GitOps
+ * source instead, and offers only Close. Any other refusal of that dry run (no
+ * GitHub authorization yet, say) leaves the confirm as it was: the write
+ * reports it in agent-manager's words.
  */
 export function AgentUpdateSkillsDialog({
   installation,
@@ -382,7 +383,9 @@ export function AgentUpdateSkillsDialog({
       confirmLabel={viaPullRequest ? 'Open pull request' : 'Update all skills'}
       busyLabel={viaPullRequest ? 'Opening pull request…' : 'Updating…'}
       isBusy={updating.isUpdating || updating.isCommitting}
-      isDone={isCommitted}
+      // Nothing left to confirm once the pull request is open, or once
+      // agent-manager said it cannot open one: only Close stays.
+      isDone={isCommitted || Boolean(missing)}
       isConfirmDisabled={!canConfirm}
       error={
         updating.failure && !notConnected && !missing
@@ -420,12 +423,6 @@ export function AgentUpdateSkillsDialog({
                 : 'Could not reach agent-manager'
             }
             description={failure.message}
-          />
-        )}
-        {missing && (
-          <MissingReleaseFileAlert
-            missing={missing}
-            change="the pins listed below"
           />
         )}
         {violations.length > 0 && (
@@ -492,10 +489,18 @@ export function AgentUpdateSkillsDialog({
         )}
 
         {/* One line under the table: what is being asked, then what confirming
-            does, or nothing; its height is held either way. The indicator
-            stays mounted from the first question to the last, so it does not
-            restart between them. */}
+            does, why it cannot be done here, or nothing; its height is held
+            either way. The indicator stays mounted from the first question to
+            the last, so it does not restart between them. */}
         <div className={classes.status}>
+          {missing && (
+            <MissingReleaseFileAlert
+              missing={missing}
+              title="Skills cannot be updated here"
+              summary="To update the skills, change their pins in the agent's GitOps source."
+              change="the pins to the default-branch heads listed above"
+            />
+          )}
           {isLoading && (
             <LoadingIndicator
               label={

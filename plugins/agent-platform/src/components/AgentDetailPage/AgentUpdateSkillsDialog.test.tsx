@@ -443,15 +443,31 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
     });
 
-    it('says agent-manager has no file for the release, and offers no pull request, when the commit dry run is refused so', async () => {
+    it('says the skills are updated in the GitOps source, under the plan, and offers only Close, when the commit dry run finds no file for the release', async () => {
       const { callTool } = await renderDialog({
         commit: true,
         commitDryRunError: MISSING_RELEASE_FILE,
       });
 
+      const title = await screen.findByText('Skills cannot be updated here');
       expect(
-        await screen.findByText('agent-manager cannot open this pull request'),
+        screen.getByText(
+          "To update the skills, change their pins in the agent's GitOps source.",
+        ),
       ).toBeInTheDocument();
+      // Information, not a warning, and under the plan it refers to.
+      expect(title.closest('[data-status]')).toHaveAttribute(
+        'data-status',
+        'info',
+      );
+      expect(
+        screen
+          .getByRole('table', { name: 'Skills and their pins' })
+          .compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        screen.queryByText('agent-manager cannot open this pull request'),
+      ).not.toBeInTheDocument();
       expect(
         screen.getByText('flux-giantswarm/pr-reviewer-agent'),
       ).toBeInTheDocument();
@@ -472,8 +488,12 @@ describe('AgentUpdateSkillsDialog', () => {
         screen.queryByText(/opens a pull request as you/),
       ).not.toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Open pull request' }),
-      ).toBeDisabled();
+        screen.queryByRole('button', { name: 'Open pull request' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+      expect(
+        screen.getAllByRole('button', { name: 'Close' }).length,
+      ).toBeGreaterThan(0);
       expect(
         callTool.mock.calls.some(
           ([tool, args]) =>
@@ -490,12 +510,12 @@ describe('AgentUpdateSkillsDialog', () => {
       await userEvent.click(confirm);
 
       expect(
-        await screen.findByText('agent-manager cannot open this pull request'),
+        await screen.findByText('Skills cannot be updated here'),
       ).toBeInTheDocument();
       expect(
         screen.queryByText(/is not in agent-manager's directory/),
       ).not.toBeInTheDocument();
-      expect(confirm).toBeDisabled();
+      expect(confirm).not.toBeInTheDocument();
       expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
     });
 
@@ -512,7 +532,7 @@ describe('AgentUpdateSkillsDialog', () => {
         ),
       ).toBeInTheDocument();
       expect(
-        screen.queryByText('agent-manager cannot open this pull request'),
+        screen.queryByText('Skills cannot be updated here'),
       ).not.toBeInTheDocument();
       expect(commitDryRuns(callTool)).toHaveLength(0);
     });

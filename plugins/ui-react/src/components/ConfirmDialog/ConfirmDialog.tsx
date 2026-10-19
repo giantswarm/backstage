@@ -50,8 +50,10 @@ export type ConfirmDialogProps = {
   /** Shown as a danger alert above the buttons. Typically a failed attempt's message. */
   error?: ReactNode;
   /**
-   * The action ran and the dialog now shows its result: the confirm button
-   * goes, and Cancel becomes Close, because there is nothing left to cancel.
+   * The action ran and the dialog now shows its result, or the dialog found
+   * that the action cannot run here and says what to do instead: the confirm
+   * button goes, and Cancel becomes Close, because there is nothing left to
+   * cancel.
    */
   isDone?: boolean;
   onConfirm: () => void;
