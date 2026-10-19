@@ -94,6 +94,7 @@ import { AgentSessionBlocker } from './AgentSessionBlocker';
 import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
+import { AgentChangeHarnessDialog } from './AgentChangeHarnessDialog';
 import { AgentUsageTab } from './AgentUsageTab';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -371,6 +372,10 @@ function AgentDetailPageContent() {
   const [updateSkillsMode, setUpdateSkillsMode] = useState<'apply' | 'commit'>(
     'apply',
   );
+  const [isChangeHarnessOpen, setChangeHarnessOpen] = useState(false);
+  const [changeHarnessMode, setChangeHarnessMode] = useState<
+    'apply' | 'commit'
+  >('apply');
   const [commitResult, setCommitResult] = useState<CommitAgentResult>();
   const toastApi = useApi(toastApiRef);
   const agentsRoute = useRouteRef(agentsRouteRef);
@@ -406,6 +411,15 @@ function AgentDetailPageContent() {
     resetUpdating();
     setUpdateSkillsMode(mode);
     setUpdateSkillsOpen(true);
+  }, [agentManagerGate, resetUpdating]);
+  const openChangeHarness = useCallback(() => {
+    const mode = agentWriteMode(agentManagerGate);
+    if (!mode) {
+      return;
+    }
+    resetUpdating();
+    setChangeHarnessMode(mode);
+    setChangeHarnessOpen(true);
   }, [agentManagerGate, resetUpdating]);
 
   // Starting a session from this page. The dialog itself is rendered in the page
@@ -530,6 +544,52 @@ function AgentDetailPageContent() {
     ],
   );
 
+  // After a Harness change the page watches the new revision converge like
+  // after Update skills. The toast is where the person learns that running
+  // Sessions stay where they are; on the Sessions tab they carry the
+  // "Earlier revision" mark until deleted.
+  const onHarnessChanged = useCallback(
+    (
+      from: string,
+      to: string,
+      requestedBy?: string,
+      fromGeneration?: number,
+    ) => {
+      toastApi.post({
+        title: `Runtime of "${agent?.getDisplayName() ?? name}" changed to ${to}`,
+        description: `Running Sessions stay on ${from} until you delete them; new Sessions start on ${to} once its revision is Ready.`,
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+      navigate(
+        { pathname: location.pathname, search: location.search },
+        {
+          replace: true,
+          state: {
+            [AGENT_CREATED_STATE_KEY]: {
+              installation,
+              namespace,
+              name,
+              requestedBy,
+              action: 'harness-changed',
+              fromGeneration,
+            },
+          },
+        },
+      );
+    },
+    [
+      toastApi,
+      agent,
+      name,
+      navigate,
+      location.pathname,
+      location.search,
+      installation,
+      namespace,
+    ],
+  );
+
   const { createSession } = creation;
   const onStartSession = useCallback(
     async (target: AgentRow, prompt: string, images?: ComposerImage[]) => {
@@ -585,10 +645,11 @@ function AgentDetailPageContent() {
           agent={agent}
           agentManager={agentManagerGate}
           onUpdateSkills={openUpdateSkills}
+          onChangeHarness={openChangeHarness}
           onDelete={openDelete}
         />
       ) : null,
-    [agent, agentManagerGate, openUpdateSkills, openDelete],
+    [agent, agentManagerGate, openUpdateSkills, openChangeHarness, openDelete],
   );
   // An installation where agent-manager cannot start a session as the person
   // withholds "Use this agent" too, and the note above the tabs says why.
@@ -822,6 +883,23 @@ function AgentDetailPageContent() {
         updating={updating}
         onUpdated={onSkillsUpdated}
       />
+      {/* Mounted only while open: it lists the namespace's Harnesses, which
+          a page view that never opens it has no need to read. */}
+      {isChangeHarnessOpen && (
+        <AgentChangeHarnessDialog
+          installation={installation}
+          namespace={namespace}
+          name={name}
+          displayName={agent.getDisplayName()}
+          currentHarness={agent.getHarnessName()}
+          isOpen={isChangeHarnessOpen}
+          onOpenChange={setChangeHarnessOpen}
+          mode={changeHarnessMode}
+          updating={updating}
+          editHref={agentEditRoute?.({ installation, namespace, name })}
+          onChanged={onHarnessChanged}
+        />
+      )}
     </>
   );
 
@@ -910,6 +988,7 @@ function AgentDetailPageContent() {
               <AgentSessionsCard
                 agentName={displayName}
                 sessions={sessions}
+                currentRevision={agent.getLatestSuccessfulRevision()}
                 onStartSession={isReady ? openNewSession : undefined}
               />
             }

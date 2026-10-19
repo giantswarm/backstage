@@ -76,6 +76,18 @@ export type SessionRow = {
    * which a list does not have.
    */
   runtimeLost?: boolean;
+  /**
+   * The Agent revision the session runs on, kept for its whole life. A page
+   * that knows the Agent's current revision tells a session started before
+   * the last change (to its Harness, prompt or skills) by it.
+   */
+  preparedRevision?: string;
+  /**
+   * The session runs on an earlier revision of its agent than the current
+   * one. Set only by a page that knows that agent's current revision (see
+   * {@link markEarlierRevisions}); a fleet-wide list never sets it.
+   */
+  earlierRevision?: boolean;
 };
 
 /**
@@ -160,7 +172,28 @@ export function toSessionRow(
     agentModel: match?.modelName,
     createdAt: session.createdAt,
     runtimeLost: readReportedRuntimeLoss(session) !== undefined,
+    preparedRevision: session.preparedRevision,
   };
+}
+
+/**
+ * Mark the rows of one agent's sessions prepared on a revision other than
+ * `currentRevision`, the Agent's latest successful one. Without a current
+ * revision, or for a row that does not say its own, nothing is marked: an
+ * unknown is not an earlier one.
+ */
+export function markEarlierRevisions(
+  rows: SessionRow[],
+  currentRevision: string | undefined,
+): SessionRow[] {
+  if (!currentRevision) {
+    return rows;
+  }
+  return rows.map(row =>
+    row.preparedRevision && row.preparedRevision !== currentRevision
+      ? { ...row, earlierRevision: true }
+      : row,
+  );
 }
 
 /** Sort key for a timestamp, placing unknown values last in either direction. */

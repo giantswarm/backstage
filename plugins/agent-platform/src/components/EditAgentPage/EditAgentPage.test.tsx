@@ -378,7 +378,7 @@ describe('EditAgentPage', () => {
     expect(within(runtime).queryByRole('radio')).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        'Choose what runs the agent. It cannot be changed once the agent exists.',
+        "What runs the agent. Change it with Change Harness in the Agent actions menu on the agent's page.",
       ),
     ).toBeInTheDocument();
   });

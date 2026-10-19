@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
+import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import UpdateIcon from '@material-ui/icons/Update';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
@@ -111,8 +112,8 @@ export function agentManagerAbsenceReason(
  *
  * The write actions are the page's. Rendering in the shared header means
  * rendering **outside the plugin's `QueryClientProvider`**, so anything backed
- * by react-query — the agent-manager reads and mutations behind Delete, Edit
- * and Update skills — is called by the page and their dialogs are rendered in
+ * by react-query — the agent-manager reads and mutations behind Delete, Edit,
+ * Update skills and Change Harness — is called by the page and their dialogs are rendered in
  * the page body; the menu only says whether they are offered (`agentManager`:
  * agent-manager's presence, its verdict on whether the agent is written live,
  * and whether it can edit or delete one applied from git through a pull
@@ -128,11 +129,13 @@ export function AgentActionsMenu({
   agent,
   agentManager,
   onUpdateSkills,
+  onChangeHarness,
   onDelete,
 }: {
   agent: Agent;
   agentManager: AgentManagerGate;
   onUpdateSkills: () => void;
+  onChangeHarness: () => void;
   onDelete: () => void;
 }) {
   const [isManifestOpen, setManifestOpen] = useState(false);
@@ -156,6 +159,11 @@ export function AgentActionsMenu({
           {writeMode !== undefined ? (
             <MenuItem iconStart={<UpdateIcon />} onAction={onUpdateSkills}>
               Update all skills to latest…
+            </MenuItem>
+          ) : null}
+          {writeMode !== undefined ? (
+            <MenuItem iconStart={<SwapHorizIcon />} onAction={onChangeHarness}>
+              Change Harness…
             </MenuItem>
           ) : null}
           {writeMode !== undefined ? (
