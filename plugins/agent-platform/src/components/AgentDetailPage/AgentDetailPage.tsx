@@ -342,13 +342,18 @@ function AgentDetailPageContent() {
   // A live write runs as the person against the agent's HelmRelease in its
   // tenant's namespace, so the API server answers whether they may make it:
   // a tenant's user sees no Edit or Delete, its editor does. Not asked for an
-  // agent applied from git, which changes through a pull request instead.
+  // agent applied from git, which changes through a pull request instead, nor
+  // where agent-manager writes as its ServiceAccount, not as the person.
+  const writesAsPerson = agentManagerInfo?.identity !== 'serviceAccount';
   const asksAccess =
-    isAgentManagerReachable && !isReadingManagerAgent && !isGitOpsOwned;
+    isAgentManagerReachable &&
+    !isReadingManagerAgent &&
+    !isGitOpsOwned &&
+    writesAsPerson;
   const helmRelease = {
     group: HelmRelease.group,
     resource: HelmRelease.plural,
-    namespace,
+    namespace: managerAgent?.helmRelease?.namespace ?? namespace,
     // Named, so a grant restricted via `resourceNames` answers accurately.
     name: managerAgent?.helmRelease?.name ?? name,
   };
@@ -373,8 +378,8 @@ function AgentDetailPageContent() {
         isReadingManagerAgent ||
         (isGitOpsOwned && isReadingManagerInfo) ||
         (asksAccess && (updateAccess.isLoading || deleteAccess.isLoading)),
-      mayUpdate: isGitOpsOwned || updateAccess.allowed,
-      mayDelete: isGitOpsOwned || deleteAccess.allowed,
+      mayUpdate: !asksAccess || updateAccess.allowed,
+      mayDelete: !asksAccess || deleteAccess.allowed,
     }),
     [
       presence,
@@ -398,12 +403,15 @@ function AgentDetailPageContent() {
    * then open a pull request instead of writing live.
    */
   const canEditAgent = writeMode !== undefined && agentManagerGate.mayUpdate;
-  // A person who may use the agent but change nothing about it: said once,
-  // naming the tenant whose editors may.
-  const isReadOnly =
-    writeMode === 'apply' &&
-    !agentManagerGate.mayUpdate &&
-    !agentManagerGate.mayDelete;
+  // What the person may not do to an agent they may use: said once, naming
+  // the tenant whose editors may.
+  const refusedWrites =
+    writeMode === 'apply'
+      ? [
+          ...(agentManagerGate.mayUpdate ? [] : ['editing']),
+          ...(agentManagerGate.mayDelete ? [] : ['deleting']),
+        ]
+      : [];
 
   const deletion = useAgentDeletion(installation, namespace, name);
   const updating = useUpdateAgent(installation);
@@ -812,12 +820,22 @@ function AgentDetailPageContent() {
         isGitOpsOwned={agentManagerGate.isGitOpsOwned}
       />
 
-      {isReadOnly && (
+      {refusedWrites.length > 0 && (
         <Alert
           status="info"
           icon
-          title="You can use this agent, not change it"
-          description={`Editing and deleting the agents of ${tenantOf(
+          title={
+            refusedWrites.length === 2
+              ? 'You can use this agent, not change it'
+              : `You cannot ${
+                  refusedWrites[0] === 'editing' ? 'edit' : 'delete'
+                } this agent`
+          }
+          description={`${
+            refusedWrites.length === 2
+              ? 'Editing and deleting'
+              : refusedWrites[0].replace(/^./, c => c.toUpperCase())
+          } the agents of ${tenantOf(
             namespace,
           )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
         />

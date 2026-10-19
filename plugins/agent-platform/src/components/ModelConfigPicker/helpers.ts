@@ -60,30 +60,24 @@ export type ModelChoice = NamedModelConfig & {
 
 /**
  * The models a new agent in `tenant` may run on: the ModelConfigs of that
- * namespace. A tenant gets its copy of the platform's default model with its
- * first agent (agent-manager's tenant reconciler), and agent-manager accepts
- * a create naming it before the copy exists, so until then the platform's
- * default is offered under the tenant's namespace. Every model when no tenant
- * is picked and `allowed` (the tenants the person may create in) is unknown;
- * the models of those tenants when it is known.
+ * namespace. An Organization's tenant (`org-<name>`) gets its copy of the
+ * platform's default model with its first agent (agent-manager's tenant
+ * reconciler), and agent-manager accepts a create naming it there before the
+ * copy exists, so until then the platform's default is offered under the
+ * tenant's namespace. Any other namespace offers only its own models. Every
+ * model when no tenant is known.
  */
 export function tenantModelConfigs<T extends ModelChoice>(
   modelConfigs: readonly T[],
   tenant: string | undefined,
-  allowed?: readonly string[],
 ): ModelChoice[] {
   if (!tenant) {
-    return allowed
-      ? modelConfigs.filter(mc => allowed.includes(mc.getNamespace() ?? ''))
-      : [...modelConfigs];
+    return [...modelConfigs];
   }
   const inTenant: ModelChoice[] = modelConfigs.filter(
     mc => (mc.getNamespace() ?? '') === tenant,
   );
-  if (
-    tenant === DEFAULT_MODEL_CONFIG_NAMESPACE ||
-    inTenant.some(isDefaultModelConfig)
-  ) {
+  if (!tenant.startsWith('org-') || inTenant.some(isDefaultModelConfig)) {
     return inTenant;
   }
   const platformDefault = modelConfigs.find(

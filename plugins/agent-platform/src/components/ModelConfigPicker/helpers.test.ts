@@ -86,13 +86,12 @@ describe('tenantModelConfigs', () => {
     ).toEqual(['org-acme/default-model-config']);
   });
 
-  it('offers the models of the tenants the person may create in until one is picked', () => {
+  it('offers no stand-in in a namespace that is not an Organization’s', () => {
+    // agent-manager accepts a model before its copy exists in a tenant only.
     expect(
       where(
-        tenantModelConfigs([platformDefault, model('x', 'org-b')], undefined, [
-          'org-b',
-        ]),
+        tenantModelConfigs([platformDefault, model('x', 'team-a')], 'team-a'),
       ),
-    ).toEqual(['org-b/x']);
+    ).toEqual(['team-a/x']);
   });
 });

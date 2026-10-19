@@ -48,19 +48,24 @@ export type UseCreateSessionOptions = {
 };
 
 /**
- * The controller's refusal of a session (`PermissionDenied`, agent-manager's
- * `forbidden`) said as a refusal that names the agent's tenant, not as a
- * generic failure: the person may not use that tenant's agents. Any other
- * error as it is.
+ * The controller's refusal of a session (`PermissionDenied`, which
+ * agent-manager answers as `forbidden: kagent: …`) said as a refusal that
+ * names the agent's tenant, not as a generic failure: the person may not use
+ * that tenant's agents. Any other error as it is, a `forbidden` of another
+ * origin (muster refusing the sandbox bind) included.
  */
 function refusalNamingTenant(error: unknown, agent: AgentRow): unknown {
-  if (!(error instanceof AgentManagerError) || error.code !== 'forbidden') {
+  if (
+    !(error instanceof AgentManagerError) ||
+    error.code !== 'forbidden' ||
+    !error.message.startsWith('kagent:')
+  ) {
     return error;
   }
   const tenant = agent.tenant ?? tenantOf(agent.namespace);
   return new AgentManagerError(
     'forbidden',
-    `You may not start a session with ${agent.name}: it belongs to ${tenant}, and you have no access to that tenant’s agents on ${agent.installation}. Ask your platform team for the agent-platform:user role in its namespace.`,
+    `You may not start a session with ${agent.name}: it belongs to ${tenant}, and you have no access to that tenant’s agents on ${agent.installation}. Ask your platform team for the agent-platform:user role in its namespace. (${error.message})`,
   );
 }
 

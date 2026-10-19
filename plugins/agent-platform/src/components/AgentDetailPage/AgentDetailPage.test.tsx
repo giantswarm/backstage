@@ -2274,6 +2274,19 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeInTheDocument();
     });
 
+    it('says which one write the person may not make', async () => {
+      withAgentManager();
+      mockDeniedVerbs = new Set(['delete']);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(
+        await screen.findByText('You cannot delete this agent'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    });
+
     it('offers no Edit to a viewer who cannot write the agent', async () => {
       stubResources({ resource: makeAgent() });
 

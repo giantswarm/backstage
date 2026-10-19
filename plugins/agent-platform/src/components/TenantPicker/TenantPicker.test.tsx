@@ -73,11 +73,13 @@ describe('TenantPicker', () => {
     expect(screen.queryByRole('button', { name: /Tenant/ })).toBeNull();
   });
 
-  it('offers only the tenants the person may create in, the platform tenant picked', async () => {
+  it('offers only the tenants the person may create in, and asks for one', async () => {
     mockManaged = ['kagent', 'org-acme'];
     await renderPicker();
 
-    expect(await screen.findByText(/tenant=kagent/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/tenant= .*error=Choose a tenant\./),
+    ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Tenant/ }));
     expect(
       screen.getAllByRole('option').map(option => option.textContent),

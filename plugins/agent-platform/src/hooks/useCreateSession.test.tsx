@@ -396,6 +396,20 @@ describe('useCreateSession', () => {
     });
   });
 
+  it('keeps a refusal of another origin in agent-manager’s own words', async () => {
+    // muster refusing the sandbox bind is not the tenant's refusal.
+    callTool.mockRejectedValueOnce(
+      new Error('forbidden: muster refused the sandbox binding'),
+    );
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({ agent, prompt: 'Check' }),
+      ).rejects.toThrow('muster refused the sandbox binding');
+    });
+  });
+
   it('keeps a stable identity across re-renders', async () => {
     // The composer passes these down; a new object every render would re-render
     // it on every unrelated poll.

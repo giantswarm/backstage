@@ -17,7 +17,6 @@ import {
   skillEntryKey,
 } from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
-import { PLATFORM_TENANT_NAMESPACE } from '../../lib/tenants';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
 import type { HarnessChoice } from '../../lib/harnesses';
@@ -129,8 +128,7 @@ export type NewAgentFormContextValue = {
   setInstallation: (installation: string | undefined) => void;
   /**
    * Sets {@link NewAgentFormState.tenantChoices}. A tenant picked before
-   * stays when it is still a choice; otherwise the platform tenant is picked
-   * when it is one, else the only choice.
+   * stays when it is still a choice; otherwise the only choice is picked.
    */
   setTenantChoices: (choices: string[]) => void;
   /** Picks the tenant; a model of another namespace is dropped. */
@@ -407,11 +405,7 @@ export function NewAgentFormProvider({
           }
           let tenant = prev.tenant;
           if (!tenant || !choices.includes(tenant)) {
-            if (choices.includes(PLATFORM_TENANT_NAMESPACE)) {
-              tenant = PLATFORM_TENANT_NAMESPACE;
-            } else {
-              tenant = choices.length === 1 ? choices[0] : undefined;
-            }
+            tenant = choices.length === 1 ? choices[0] : undefined;
           }
           return withTenant({ ...prev, tenantChoices: choices }, tenant);
         }),

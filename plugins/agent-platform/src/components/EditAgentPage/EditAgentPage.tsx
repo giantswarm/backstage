@@ -127,17 +127,20 @@ export function EditAgentPage() {
   const writeMode = agentWriteMode(gate);
   // A live save runs as the person against the agent's HelmRelease, so a
   // deep link from someone who may not update it answers with the refusal
-  // up front rather than at the end of the wizard.
+  // up front rather than at the end of the wizard. Not where agent-manager
+  // writes as its ServiceAccount.
+  const asksAccess =
+    writeMode === 'apply' && info?.identity !== 'serviceAccount';
   const updateAccess = useSelfSubjectAccessReview(
     installation,
     {
       group: HelmRelease.group,
       resource: HelmRelease.plural,
-      namespace,
+      namespace: agent?.helmRelease?.namespace ?? namespace,
       name: agent?.helmRelease?.name ?? name,
       verb: 'update',
     },
-    { enabled: writeMode === 'apply' },
+    { enabled: asksAccess },
   );
   const reason = agentManagerAbsenceReason(
     { ...gate, isGitOpsOwned: isGitOpsOwned && !canCommit },
@@ -175,7 +178,7 @@ export function EditAgentPage() {
   } else if (
     presence === 'unknown' ||
     gate.isVerdictPending ||
-    (writeMode === 'apply' && updateAccess.isLoading) ||
+    (asksAccess && updateAccess.isLoading) ||
     (agent && isCatalogPending)
   ) {
     body = <LoadingIndicator label="Reading the agent…" />;
@@ -206,7 +209,7 @@ export function EditAgentPage() {
         actions={backLink}
       />
     );
-  } else if (writeMode === 'apply' && !updateAccess.allowed) {
+  } else if (asksAccess && !updateAccess.allowed) {
     body = (
       <EmptyStateCard
         title="You cannot change this agent"

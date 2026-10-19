@@ -23,8 +23,8 @@ export type TenantPickerProps = {
  * in which the person may create agents, as agent-manager answers it for them
  * (`get_info`'s `namespaces.managed`, checked per namespace with a
  * `SelfSubjectAccessReview`). Never a namespace typed by hand. The only
- * tenant is picked and named rather than offered; with several, the platform
- * tenant is picked when it is one of them. Renders nothing until an
+ * tenant is picked and named rather than offered; of several, the person
+ * picks one. Renders nothing until an
  * environment is picked or while editing, where the agent stays in its
  * tenant.
  */

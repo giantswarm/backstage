@@ -1141,11 +1141,13 @@ export class KagentClient {
           { namespace: '' },
           this.callOptions(options),
         ),
+      // Untraced: a refusal or a controller without the RPC is an answer the
+      // roster expects and reads past, not a fault to report (a traced call
+      // logs it at `warn`, which reaches Sentry).
       {
         endpoint: 'agent list',
         missingResource: `The kagent API for installation '${this.installation.name}' has no agent list.`,
       },
-      { call: 'AgentService/ListAgents', requestId: options.requestId },
     );
     const namespaces = new Set<string>();
     for (const agent of response.agents) {

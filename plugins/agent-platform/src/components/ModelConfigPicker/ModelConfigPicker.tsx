@@ -79,7 +79,13 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   const listed = installation ? modelConfigsFor(installation) : [];
   const modelConfigs: ModelChoice[] = edit
     ? listed.filter(mc => (mc.getNamespace() ?? '') === edit.agent.namespace)
-    : tenantModelConfigs(listed, state.tenant, state.tenantChoices);
+    : tenantModelConfigs(listed, state.tenant);
+  // The tenants are known and several, none picked yet: a model is the
+  // tenant's, so none is offered (or preselected) before the tenant.
+  const awaitsTenant =
+    !edit &&
+    state.tenant === undefined &&
+    (state.tenantChoices?.length ?? 0) > 0;
   // The agent's current model, when the list does not carry it (a ModelConfig
   // the person may not read, or one that is gone): the picker still says what
   // the agent has, and picking a listed one replaces it.
@@ -94,7 +100,9 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   // step 1 needs no model decision. Only while nothing is picked, so a pick of
   // their own is never replaced; an installation change clears the pick and
   // the new installation's default takes its place.
-  const preselection = preselectedModelConfig(modelConfigs);
+  const preselection = awaitsTenant
+    ? undefined
+    : preselectedModelConfig(modelConfigs);
   const preselected = preselection?.modelConfig;
   useEffect(() => {
     if (preselected && !state.modelConfigName) {
@@ -119,6 +127,19 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
           status="info"
           title="Select an environment first"
           description="Models are provisioned per environment."
+        />
+      </Flex>
+    );
+  }
+
+  if (awaitsTenant) {
+    return (
+      <Flex direction="column" gap="2" {...invalidProps}>
+        {label}
+        <Alert
+          status="info"
+          title="Choose a tenant first"
+          description="Models are provisioned per tenant."
         />
       </Flex>
     );

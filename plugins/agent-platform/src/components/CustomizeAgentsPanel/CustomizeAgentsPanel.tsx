@@ -527,10 +527,12 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   // "Created by me": the creator agent-manager recorded against the person as
   // kagent knows them on the agent's installation.
   const capabilitiesFor = useKagentCapabilitiesMap(installations);
+  // Emails, compared as the IdP may write them in either case.
   const isMine = useCallback(
     (row: AgentRow) =>
       row.createdBy !== undefined &&
-      row.createdBy === capabilitiesFor(row.installation).subject,
+      row.createdBy.toLowerCase() ===
+        capabilitiesFor(row.installation).subject?.toLowerCase(),
     [capabilitiesFor],
   );
   const facets = useMemo(
