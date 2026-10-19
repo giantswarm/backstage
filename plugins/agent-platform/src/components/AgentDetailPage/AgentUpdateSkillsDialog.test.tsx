@@ -419,9 +419,8 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(
         screen.queryByRole('button', { name: 'Open pull request' }),
       ).not.toBeInTheDocument();
-      expect(
-        screen.getAllByRole('button', { name: 'Close' }).length,
-      ).toBeGreaterThan(0);
+      // The header's X and the footer's Close.
+      expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(2);
     });
 
     it("shows agent-manager's refusal when the person's GitHub authorization is missing", async () => {
@@ -490,10 +489,26 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(
         screen.queryByRole('button', { name: 'Open pull request' }),
       ).not.toBeInTheDocument();
+      // The header's X and the footer's Close.
       expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+      expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(2);
+      // No question the dialog cannot say yes to.
       expect(
-        screen.getAllByRole('button', { name: 'Close' }).length,
-      ).toBeGreaterThan(0);
+        screen.getByRole('heading', {
+          name: 'Update the skills of "PR reviewer" in GitOps',
+        }),
+      ).toBeInTheDocument();
+      // The head to pin by hand can be copied whole, only where the skill moves.
+      expect(
+        screen.getByRole('button', {
+          name: 'Copy the head commit of pr-review',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', {
+          name: 'Copy the head commit of incident',
+        }),
+      ).not.toBeInTheDocument();
       expect(
         callTool.mock.calls.some(
           ([tool, args]) =>
@@ -516,6 +531,8 @@ describe('AgentUpdateSkillsDialog', () => {
         screen.queryByText(/is not in agent-manager's directory/),
       ).not.toBeInTheDocument();
       expect(confirm).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+      expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(2);
       expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
     });
 

@@ -1,19 +1,13 @@
-import { Alert, Flex, Link } from '@backstage/ui';
+import { Alert, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 
 import type { MissingReleaseFile } from '../../lib/agentManager';
 
 const useStyles = makeStyles({
-  paragraph: {
-    margin: 0,
-  },
-  // The technical paragraph, a step below the plain one (bui's body-x-small).
-  // A bui `Text` would set its own colour on the alert's tinted background,
-  // so the paragraph inherits the alert's.
-  details: {
-    margin: 0,
-    fontSize: 'var(--bui-font-size-1)',
-    lineHeight: 1.4,
+  // bui `Text` and `Link` set their own colour (`--bui-fg-primary`); on the
+  // alert's tinted background they take the alert's instead, like its title.
+  inherit: {
+    color: 'inherit',
   },
   code: {
     fontFamily: 'monospace',
@@ -22,37 +16,32 @@ const useStyles = makeStyles({
 });
 
 /**
- * agent-manager cannot open the pull request because the one file it edits a
- * release in is not in the repository. That is how the agent is set up, not a
- * fault, so it reads as information: what the person can do, in plain words,
- * first; then, smaller, what agent-manager checked. Where the release is
- * defined instead is not something agent-manager knows, so the notice does not
- * claim a place.
+ * Why the skills of an agent applied from git cannot be updated from the
+ * dialog: agent-manager opens the pull request only for a release in its own
+ * file, and that file is not in the repository. That is how the agent is set
+ * up, not a fault, so it reads as information: what the person can do, in
+ * plain words, first; then, a step smaller, what agent-manager checked and
+ * what to change by hand. Where the release is defined instead is not
+ * something agent-manager knows, so the notice does not claim a place.
  */
 export function MissingReleaseFileAlert({
   missing,
-  title,
-  summary,
-  change,
 }: {
   missing: MissingReleaseFile;
-  /** What cannot be done here, e.g. "Skills cannot be updated here". */
-  title: string;
-  /** What to do instead, in one plain sentence. */
-  summary: string;
-  /** What to change by hand, e.g. "the pins listed above". */
-  change: string;
 }) {
   const classes = useStyles();
   return (
     <Alert
       status="info"
       icon
-      title={title}
+      title="Skills cannot be updated here"
       description={
         <Flex direction="column" gap="2">
-          <p className={classes.paragraph}>{summary}</p>
-          <p className={classes.details}>
+          <Text as="p" variant="body-medium" className={classes.inherit}>
+            To update the skills, change their pins in the agent's GitOps
+            source.
+          </Text>
+          <Text as="p" variant="body-small" className={classes.inherit}>
             agent-manager edits the HelmRelease{' '}
             <span className={classes.code}>{missing.release}</span> only in{' '}
             <span className={classes.code}>{missing.path}</span>, and{' '}
@@ -60,13 +49,15 @@ export function MissingReleaseFileAlert({
               href={`https://github.com/${missing.repository}`}
               target="_blank"
               rel="noopener noreferrer"
-              variant="body-x-small"
+              variant="body-small"
+              className={classes.inherit}
             >
               {missing.repository}
             </Link>{' '}
-            has no such file. Change {change} in the file that defines the
-            release.
-          </p>
+            has no such file. In the file that defines the release, pin each
+            skill marked “Moves to the head” to the head commit shown for it
+            above.
+          </Text>
         </Flex>
       }
     />

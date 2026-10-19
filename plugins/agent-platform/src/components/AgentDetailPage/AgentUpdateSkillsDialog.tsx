@@ -3,6 +3,7 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   ConfirmDialog,
+  CopyButton,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -47,7 +48,7 @@ const useStyles = makeStyles(theme => ({
   // with the dry run fill their cells instead of resizing the columns.
   table: {
     width: '100%',
-    minWidth: '36rem',
+    minWidth: '38rem',
     tableLayout: 'fixed',
     borderCollapse: 'collapse',
     '& th, & td': {
@@ -66,12 +67,17 @@ const useStyles = makeStyles(theme => ({
   // (`sha256:` and 12). Anything longer is cut, and its title carries the
   // whole pin.
   colPinned: { width: '10.5rem' },
-  colHead: { width: '8rem' },
+  // A short commit and the button that copies the whole one.
+  colHead: { width: '10rem' },
   colOutcome: { width: '11rem' },
   pin: {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+  },
+  // The short head beside its copy button: it gives way, the button does not.
+  headPin: {
+    minWidth: 0,
   },
   skill: {
     overflowWrap: 'anywhere',
@@ -137,10 +143,25 @@ function PlanRow({
   if (awaitsHead) {
     headCell = <CellSkeleton width="80%" />;
   } else if (entry.kind === 'git' && entry.head) {
+    // A head the skill moves to can be copied whole: it is what someone pins
+    // by hand when agent-manager cannot open the pull request.
     headCell = (
-      <span className={classes.code} title={entry.head}>
-        {shortPin(entry.head)}
-      </span>
+      <Flex align="center" gap="1">
+        <span
+          className={`${classes.code} ${classes.pin} ${classes.headPin}`}
+          title={entry.head}
+        >
+          {shortPin(entry.head)}
+        </span>
+        {entry.changes && (
+          <CopyButton
+            text={entry.head}
+            label={`Copy the head commit of ${entry.name}`}
+            tooltip="Copy the full commit"
+            size="compact"
+          />
+        )}
+      </Flex>
     );
   } else {
     // No head: a digest pin has none, and a git skill whose dry run failed or
@@ -379,7 +400,12 @@ export function AgentUpdateSkillsDialog({
         }
         onOpenChange(isOpenNow);
       }}
-      title={`Update all skills of "${displayName}" to latest?`}
+      // No question once there is nothing to say yes to.
+      title={
+        missing
+          ? `Update the skills of "${displayName}" in GitOps`
+          : `Update all skills of "${displayName}" to latest?`
+      }
       confirmLabel={viaPullRequest ? 'Open pull request' : 'Update all skills'}
       busyLabel={viaPullRequest ? 'Opening pull request…' : 'Updating…'}
       isBusy={updating.isUpdating || updating.isCommitting}
@@ -493,14 +519,7 @@ export function AgentUpdateSkillsDialog({
             either way. The indicator stays mounted from the first question to
             the last, so it does not restart between them. */}
         <div className={classes.status}>
-          {missing && (
-            <MissingReleaseFileAlert
-              missing={missing}
-              title="Skills cannot be updated here"
-              summary="To update the skills, change their pins in the agent's GitOps source."
-              change="the pins to the default-branch heads listed above"
-            />
-          )}
+          {missing && <MissingReleaseFileAlert missing={missing} />}
           {isLoading && (
             <LoadingIndicator
               label={
