@@ -72,7 +72,8 @@ type TenantFixtures = {
    * teardown that did not remove it) is used as it is. When the worker ends,
    * also after a red test, the editor deletes it in the portal where the
    * wizard put it, and the namespace goes with its RoleBindings, whatever the
-   * deletion did. A failed setup fails the later workers of the run at once.
+   * deletion did. A failed creation or render fails the later workers of the
+   * run at once.
    */
   tenantAgent: string;
 };
@@ -87,10 +88,10 @@ const test = base.extend<{}, TenantFixtures>({
     async ({ browser, variant }, use, workerInfo) => {
       if (workerInfo.config.workers > 1) {
         throw new Error(
-          `tenants.spec.ts runs on one worker, not ${workerInfo.config.workers}: its one organization namespace would be deleted by one worker's teardown under another (set AGENTLAB_E2E_WORKERS=1)`,
+          `tenants.spec.ts runs on one worker, not ${workerInfo.config.workers}: its one organization namespace would be deleted by one worker's teardown under another (run with AGENTLAB_E2E_WORKERS=1 and no --workers above 1)`,
         );
       }
-      // A failed setup is the run's answer: the next worker (after a red
+      // A failed creation is the run's answer: the next worker (after a red
       // test) fails at once instead of paying the wizard and the deploy again.
       const failureFile = setupFailureFile(workerInfo.project.outputDir);
       if (existsSync(failureFile)) {
@@ -101,15 +102,16 @@ const test = base.extend<{}, TenantFixtures>({
       let context: BrowserContext | undefined;
       let dev: Page | undefined;
       let createdAt: string | undefined;
+      let rendered = false;
       try {
+        await applyTenant();
+        context = await browser.newContext(contextOptionsFor(variant));
+        dev = await context.newPage();
+        await signIn(dev, lab.users.dev);
         try {
-          await applyTenant();
-          context = await browser.newContext(contextOptionsFor(variant));
-          dev = await context.newPage();
-          await signIn(dev, lab.users.dev);
           if (await agentExists()) {
             createdAt = detailPath;
-            await open(dev, createdAt);
+            await open(dev, createdAt, lab.users.dev);
           } else {
             createdAt = await createAgentInWizard(dev, agent.name, agent.slug);
             expect(
@@ -120,6 +122,7 @@ const test = base.extend<{}, TenantFixtures>({
           // The first agent in a new namespace waits for Flux to pull the
           // agent chart: the tests then find it rendered.
           await expectAgentRendered(dev);
+          rendered = true;
         } catch (error) {
           mkdirSync(workerInfo.project.outputDir, { recursive: true });
           writeFileSync(failureFile, String(error));
@@ -129,10 +132,12 @@ const test = base.extend<{}, TenantFixtures>({
       } finally {
         try {
           // Where the wizard put it, a wrong tenant too; without the wizard's
-          // hand-off, the organization's, if Create got that far.
+          // hand-off, the organization's, if Create got that far. One in the
+          // organization that never rendered goes with the namespace: the
+          // portal's deletion would wait for the render again.
           const at =
             createdAt ?? ((await agentExists()) ? detailPath : undefined);
-          if (dev && at) {
+          if (dev && at && (rendered || at !== detailPath)) {
             await deleteAgentInPortal(dev, at, agent.slug);
           }
         } finally {
