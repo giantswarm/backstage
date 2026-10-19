@@ -627,9 +627,13 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       // it runs kagent, which is not nothing there: the read warning or the
       // inventory gate is the whole answer.
       body = null;
-    } else if (noAccessInstallations.length > 0) {
-      // Every namespace refused the person: no tenant binds them there, so
-      // there is nothing to create a first agent in either.
+    } else if (
+      noAccessInstallations.length > 0 &&
+      installations.every(name => noAccessInstallations.includes(name))
+    ) {
+      // Every namespace of every environment refused the person: no tenant
+      // binds them anywhere, so there is nothing to create a first agent in
+      // either.
       body = (
         <EmptyStateCard
           title="No agents for you yet"
@@ -639,7 +643,14 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
         />
       );
     } else if (installations.length > 0) {
-      body = <FirstAgentCard installations={installations} />;
+      // The card asks agent-manager where the person may create.
+      body = (
+        <FirstAgentCard
+          installations={installations.filter(
+            name => !noAccessInstallations.includes(name),
+          )}
+        />
+      );
     } else if (kagentSwitchedOff.length > 0) {
       body = (
         <EmptyStateCard

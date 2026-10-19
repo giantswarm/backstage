@@ -185,6 +185,8 @@ type Scenario = {
   agent?: AgentManagerAgent;
   /** What `get_agent` fails with, as agent-manager answers a refused read. */
   getAgentError?: string;
+  /** muster's session is not connected to agent-manager: every tool fails. */
+  notConnected?: boolean;
   info?: Partial<AgentManagerInfo>;
   violations?: string[];
   /** What `/installations` reports for gazelle; true unless said otherwise. */
@@ -195,6 +197,9 @@ function makeMusterApi(scenario: Scenario = {}) {
   const agent = scenario.agent ?? AGENT;
   const callTool = jest.fn(
     async (name: string, args: Record<string, unknown>) => {
+      if (scenario.notConnected) {
+        throw new Error('server agent-manager not connected');
+      }
       switch (name) {
         case 'x_agent-manager_get_info':
           return { ...INFO, ...scenario.info };
@@ -686,6 +691,18 @@ describe('EditAgentPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByText('agent-manager could not read this agent'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('asks to connect to agent-manager first where muster is not connected, whatever the access review says', async () => {
+    mockDeniedVerbs = new Set(['update']);
+    await renderEdit(BASE, { notConnected: true });
+
+    expect(
+      await screen.findByText(/server agent-manager not connected/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('You cannot change this agent'),
     ).not.toBeInTheDocument();
   });
 

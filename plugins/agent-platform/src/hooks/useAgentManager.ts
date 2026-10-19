@@ -84,9 +84,9 @@ export function useAgentManagerAvailability(
  * Whether the person may create an agent on none of `installations`: on each,
  * agent-manager answered `get_info` as them with no namespace in
  * `namespaces.managed` (it checks each with a `SelfSubjectAccessReview`). An
- * installation whose agent-manager is not reached as the person, or whose
- * answer names no `managed` list, says nothing either way and counts as one
- * the person may create on, as before agent-manager answered per caller.
+ * installation whose agent-manager is not reached as the person, whose
+ * `get_info` failed, or whose answer names no `managed` list says nothing
+ * either way and counts as one the person may create on.
  */
 export function useCreatesAgentsNowhere(installations: string[]): {
   createsNowhere: boolean;

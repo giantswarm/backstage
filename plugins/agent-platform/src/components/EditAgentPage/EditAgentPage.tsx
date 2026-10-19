@@ -182,10 +182,16 @@ export function EditAgentPage() {
     (agent && isCatalogPending)
   ) {
     body = <LoadingIndicator label="Reading the agent…" />;
-  } else if (asksAccess && !updateAccess.allowed) {
+  } else if (
+    asksAccess &&
+    !updateAccess.allowed &&
+    failure?.kind !== 'not-connected'
+  ) {
     // Before the read's failure: a person without the role may not read the
     // agent's HelmRelease either, so agent-manager's get_agent fails as them,
-    // and the refusal is the answer that says why.
+    // and the refusal is the answer that says why. Not before a muster
+    // session that must first connect to agent-manager: that is the answer
+    // then, and agent-manager may write as its ServiceAccount there.
     body = (
       <EmptyStateCard
         title="You cannot change this agent"

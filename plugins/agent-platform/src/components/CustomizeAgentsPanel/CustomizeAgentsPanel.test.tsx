@@ -206,20 +206,26 @@ function renderPanel(
 }
 
 /**
- * muster on golem, reaching agent-manager as the person, whose `get_info`
- * names `managed`: the tenants the person may create agents in.
+ * muster on each installation named, reaching agent-manager as the person,
+ * whose `get_info` names `managed`: the tenants the person may create agents
+ * in there.
  */
-function musterWhereCreatableIn(managed: string[]): MusterApi {
+function musterWhereCreatableIn(managed: Record<string, string[]>): MusterApi {
   return {
     listInstallations: async () => ({
-      installations: [{ name: 'golem', requiresAuth: true }],
+      installations: Object.keys(managed).map(name => ({
+        name,
+        requiresAuth: true,
+      })),
     }),
     listServers: async () => ({ mcpServers: [{ name: 'agent-manager' }] }),
-    callTool: async (name: string) => {
+    callTool: async (name: string, _args: unknown, installation: string) => {
       if (name !== 'x_agent-manager_get_info') {
         throw new Error(`unexpected tool ${name}`);
       }
-      return { namespaces: { default: 'kagent', managed } };
+      return {
+        namespaces: { default: 'kagent', managed: managed[installation] },
+      };
     },
   } as unknown as MusterApi;
 }
@@ -473,7 +479,7 @@ describe('CustomizeAgentsPanel', () => {
         await renderPanel(
           '',
           mockApis.storage(),
-          musterWhereCreatableIn(managed),
+          musterWhereCreatableIn({ golem: managed }),
         );
 
         expect(
@@ -487,6 +493,27 @@ describe('CustomizeAgentsPanel', () => {
         ).toHaveLength(invited ? 0 : 1);
       },
     );
+
+    it('invites creating where the person may, though another environment refused every tenant', async () => {
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        installations: ['golem', 'lab'],
+        noAccessInstallations: ['golem'],
+      };
+      await renderPanel(
+        '',
+        mockApis.storage(),
+        musterWhereCreatableIn({ lab: ['org-acme'] }),
+      );
+
+      expect(
+        await screen.findByRole('link', { name: 'Create your first agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('No agents for you yet'),
+      ).not.toBeInTheDocument();
+    });
 
     it('says when no environments are configured', async () => {
       mockInventoryEntries = [];
