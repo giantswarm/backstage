@@ -85,6 +85,28 @@ function makeApi() {
       },
     })),
     callTool: jest.fn(async () => ({ buckets: ['logs'] })),
+    getMcpUsage: jest.fn(async () => ({
+      available: true,
+      range_hours: 720,
+      step_hours: 24,
+      buckets: [],
+      totals: {
+        calls: 1250,
+        errors: 7,
+        error_ratio: 7 / 1250,
+        p95_seconds: 0.42,
+        distinct_tools: 1,
+      },
+      top_tools: [
+        {
+          tool: 'x_jira_search_issues',
+          calls: 1250,
+          errors: 7,
+          p95_seconds: 0.42,
+        },
+      ],
+      servers: [{ server: 'jira', calls: 1250, errors: 7, p95_seconds: 0.42 }],
+    })),
   };
 }
 
@@ -239,6 +261,54 @@ describe('ToolPage', () => {
       'x_aws-root_far_down_the_list',
       'gazelle',
     );
+  });
+});
+
+describe('ToolPage usage', () => {
+  const usageSection = () =>
+    screen.findByRole('region', { name: 'Usage in the last 30 days' });
+
+  it("shows the tool's calls, errors and p95 from its connector's usage", async () => {
+    const api = await renderAt(
+      `${BASE}/gazelle/jira/tools/x_jira_search_issues`,
+    );
+
+    const section = await usageSection();
+    expect(within(section).getByText('Calls')).toBeInTheDocument();
+    expect(within(section).getByText('1,250')).toBeInTheDocument();
+    expect(within(section).getByText('7')).toBeInTheDocument();
+    expect(within(section).getByText('420 ms')).toBeInTheDocument();
+    expect(
+      within(section).getByRole('link', { name: 'All usage of jira' }),
+    ).toHaveAttribute('href', '/customize/connectors/gazelle/jira/usage');
+    // The read its connector's Usage tab makes, so it is cached there.
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
+  });
+
+  it('shows zeros for a tool nobody called', async () => {
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_add_comment`);
+
+    const section = await usageSection();
+    expect(within(section).getAllByText('0')).toHaveLength(2);
+    expect(within(section).getByText('—')).toBeInTheDocument();
+  });
+
+  it("has none for muster's own tools, which no connector counts", async () => {
+    const api = await renderAt(
+      `${BASE}/gazelle/muster/tools/core_service_list`,
+    );
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /service_list/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: 'Usage in the last 30 days' }),
+    ).toBeNull();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
 });
 

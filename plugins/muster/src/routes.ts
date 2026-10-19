@@ -79,3 +79,11 @@ export const workflowDetailRouteRef = createSubRouteRef({
  * a connector's page links nowhere above itself.
  */
 export const customizeExternalRouteRef = createExternalRouteRef();
+
+/**
+ * The Usage page's Connectors view (`/usage/connectors`), every connector's
+ * tool calls on an installation, which a connector's Usage tab opens. A page
+ * of the agent-platform plugin, bound by the app; unbound, the tab has no
+ * link there.
+ */
+export const usageConnectorsExternalRouteRef = createExternalRouteRef();

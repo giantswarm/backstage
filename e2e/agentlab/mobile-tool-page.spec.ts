@@ -46,3 +46,33 @@ test("a connector's tools are rows that open a page of their own, where a tool r
   ).toBeVisible({ timeout: 60_000 });
   await expectNoHorizontalScroll(admin, "a tool's page with its result");
 });
+
+test("a connector's Usage tab fits the phone: tiles, chart and tables never scroll the page sideways", async ({
+  admin,
+}) => {
+  test.setTimeout(120_000);
+  await open(admin, `${connectors}/kubernetes/usage`);
+  await expect(
+    admin.getByRole('tab', { name: 'Usage', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  const intro = admin.getByText(
+    `Every caller's tool calls to this connector over the last 30 days on ${lab.installation}.`,
+    { exact: true },
+  );
+  const unavailable = admin.getByText(
+    /^Usage metrics are not available for this environment:/,
+  );
+  await connectToMuster(admin, intro.or(unavailable));
+  await expect(intro.or(unavailable)).toBeVisible({ timeout: 60_000 });
+  if (await intro.isVisible()) {
+    // A table keeps the name and Calls; errors and p95 go under the name.
+    const tables = admin.getByRole('grid');
+    if (await tables.count()) {
+      await expect(tables.first().getByRole('columnheader')).toHaveText([
+        'Tool',
+        'Calls',
+      ]);
+    }
+  }
+  await expectNoHorizontalScroll(admin, "a connector's Usage tab");
+});

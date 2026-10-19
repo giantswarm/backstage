@@ -294,6 +294,69 @@ test("a family's row opens its connector page, with the family's tabs", async ({
   await expect(admin.getByRole('tab', { name: 'Used by' })).toBeVisible();
 });
 
+test("a connector's Usage tab shows its tool calls over 30 days, or why it cannot", async ({
+  admin,
+}) => {
+  test.setTimeout(120_000);
+  await open(admin, `${connectorPages}/${KUBERNETES_FAMILY}`);
+  const usageTab = admin.getByRole('tab', { name: 'Usage', exact: true });
+  // Before Used by, as on a model's page.
+  await expect(usageTab).toBeVisible();
+  await expect(admin.getByRole('tab', { name: 'Used by' })).toBeVisible();
+  await usageTab.click();
+  await expect(admin).toHaveURL(
+    new RegExp(`${connectorPages}/${KUBERNETES_FAMILY}/usage$`),
+  );
+  await expect(usageTab).toHaveAttribute('aria-selected', 'true');
+
+  // The figures where the lab's muster can read its metrics through a
+  // prometheus connector; otherwise the reason, never an error.
+  const intro = admin.getByText(
+    `Every caller's tool calls to this connector over the last 30 days on ${lab.installation}.`,
+    { exact: true },
+  );
+  const unavailable = admin.getByText(
+    /^Usage metrics are not available for this environment:/,
+  );
+  await connectToMuster(admin, intro.or(unavailable));
+  await expect(intro.or(unavailable)).toBeVisible({ timeout: 60_000 });
+  await expect(
+    admin.getByText("Could not read this connector's usage"),
+  ).toHaveCount(0);
+  const hasFigures = await intro.isVisible();
+  if (hasFigures) {
+    for (const label of [
+      'Tool calls',
+      'Error ratio',
+      'p95 latency',
+      'Tools used',
+    ]) {
+      await expect(admin.getByText(label, { exact: true })).toBeVisible();
+    }
+    await expect(
+      admin.getByRole('link', { name: 'Open in Usage', exact: true }),
+    ).toHaveAttribute(
+      'href',
+      `/usage/connectors?installation=${lab.installation}`,
+    );
+  }
+
+  // Details counts the same 30 days.
+  await admin.getByRole('tab', { name: 'Details', exact: true }).click();
+  if (hasFigures) {
+    await expect(
+      admin.getByText('Calls, last 30 days', { exact: true }),
+    ).toBeVisible();
+  }
+
+  // muster's own page has no Usage tab: no connector counts its tools.
+  await open(admin, `${connectorPages}/muster/usage`);
+  await expect(admin).toHaveURL(new RegExp(`${connectorPages}/muster$`));
+  await expect(
+    admin.getByRole('tab', { name: 'Usage', exact: true }),
+  ).toHaveCount(0);
+});
+
 test("muster's own connector page lists its core tools, and one opens on its page and runs there", async ({
   admin,
 }) => {

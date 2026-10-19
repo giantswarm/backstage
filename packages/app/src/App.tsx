@@ -122,8 +122,13 @@ const app = createApp({
     // The shell's Customize page and home belong to the app, which no plugin
     // can name as a default target. Both plugins link to pages under
     // Customize through their `customize` external route; agent-platform's
-    // "New session" links reach the home through `newSession`.
-    bind(musterPlugin.externalRoutes, { customize: customizeRouteRef });
+    // "New session" links reach the home through `newSession`. A connector's
+    // Usage tab opens agent-platform's Usage → Connectors, which muster does
+    // not depend on, through `usageConnectors`.
+    bind(musterPlugin.externalRoutes, {
+      customize: customizeRouteRef,
+      usageConnectors: agentPlatformPlugin.routes.usageConnectors,
+    });
     bind(agentPlatformPlugin.externalRoutes, {
       customize: customizeRouteRef,
       newSession: homeRouteRef,

@@ -7,7 +7,8 @@ import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
  * A server page's tabs, by their path segment. Tools is the index, so a link
  * to it names no tab.
  */
-export type ServerPageTab = 'instances' | 'resources' | 'prompts' | 'details';
+export type ServerPageTab =
+  'instances' | 'resources' | 'prompts' | 'usage' | 'details';
 
 /**
  * The Tools tab's search and "What it does" filter, as an address carries

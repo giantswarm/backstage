@@ -50,26 +50,15 @@ export function healthLine(servers: MCPServer[]): string {
 }
 
 /**
- * "3,418 · 0.4% errors": the calls muster dispatched to any of `serverNames`
- * over the usage window. Undefined when the usage carries no per-server rows
- * to count from.
+ * "3,418 · 0.4% errors": the calls muster dispatched to the connector over
+ * the window its usage was read for (`useConnectorUsage`, narrowed to it).
+ * Undefined where usage cannot be queried.
  */
-export function callsLine(
-  usage: McpUsage,
-  serverNames: string[],
-): string | undefined {
+export function callsLine(usage: McpUsage): string | undefined {
   if (!usage.available) {
     return undefined;
   }
-  const names = new Set(serverNames);
-  let calls = 0;
-  let errors = 0;
-  for (const row of usage.servers) {
-    if (names.has(row.server)) {
-      calls += row.calls;
-      errors += row.errors;
-    }
-  }
+  const { calls, errors } = usage.totals;
   const count = Math.round(calls).toLocaleString('en-US');
   if (calls === 0) {
     return count;

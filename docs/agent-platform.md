@@ -165,7 +165,8 @@ A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/customize/connectors/<installation>/<connector>/tools/<tool>`.
 That page shows what the tool does (Reads or Changes things), its description
-under "What it’s for", its input schema (folded),
+under "What it’s for", its calls, errors and p95 latency over the last 30 days
+(from the connector's Usage tab's read), its input schema (folded),
 a form that runs the tool through muster, and the result, in one column with
 no facts beside it. The tool's address carries the tab's search and filter
 (`q`, `effect`), so the breadcrumb back keeps them; the browser's Back also
@@ -174,8 +175,17 @@ restores how far the list was paged. Addresses under the old
 redirect, in one hop, to the same page under `/customize/connectors/`, the
 installation moved from `?installation=` into the path.
 
-A connector's page ends with a Details tab: sign-in, health, calls this month
-and when it was added, then a Technical details fold-out with the GitOps
+A connector's Usage tab (`…/usage`, not on muster's own page) shows every
+caller's tool calls to it over the last 30 days, from muster's dispatch
+metrics narrowed to its MCPServers (a family's instances together): tool
+calls, error ratio, p95 latency and how many of its tools were called, calls
+per day by outcome, every tool it offers with its calls, errors and p95
+(never-called tools included), and for a family each instance's. It links to
+Usage → Connectors.
+
+A connector's page ends with a Details tab: sign-in, health, calls over the
+last 30 days (the Usage tab's figure) and when it was added, then a Technical
+details fold-out with the GitOps
 source, the MCPServer and the HelmRelease or Kustomization that applies it,
 the configuration (type, URL, timeout, auto start, `spec.meta`), the auth
 chain from `spec.auth` and muster's health detail from the status. The
@@ -2837,7 +2847,10 @@ was recorded in the week before the window (`usageDataStart` in
   dropped.
 - Connectors: muster-backend's `/usage` reads its outcome query from a week
   before the window and returns `data_start`, the first bucket the chart
-  fills from a sample, unless the week before held one.
+  fills from a sample, unless the week before held one. Narrowed to some
+  connectors (`?server=`, repeatable), it still reads that query for the whole
+  installation: a quiet connector's first call is not where the records
+  start.
 
 A series exists only from its label set's first call since the gateway or
 muster pod started. Prometheus cannot tell a source that was not exporting yet

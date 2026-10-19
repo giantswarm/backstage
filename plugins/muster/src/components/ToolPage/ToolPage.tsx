@@ -1,8 +1,9 @@
 import { ReactNode, useMemo } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { Alert, Link } from '@backstage/ui';
+import { Alert, Flex, Link } from '@backstage/ui';
 import {
   EmptyStateCard,
+  FactList,
   LoadingIndicator,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -33,6 +34,11 @@ import {
   useServerTools,
 } from '../ServerPage/useServerPageData';
 import { runsAsCaller } from '../ConnectorPage/connectorFacts';
+import {
+  CONNECTOR_USAGE_DAYS,
+  useConnectorUsage,
+} from '../ConnectorPage/useConnectorUsage';
+import { toolUsageFacts } from './toolUsage';
 
 /** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
 const TOOL_NAME_STYLE = {
@@ -90,6 +96,12 @@ export function ToolPage() {
   const offered =
     Boolean(listed) ||
     (serverTools.truncated && pageOfTool(tool) === serverKey);
+  // The connector's usage, the read its Usage tab and Details share, so a
+  // tool opened from there costs no request.
+  const connectorUsage = useConnectorUsage(row, activeInstallation, {
+    enabled: Boolean(row && activeInstallation) && session.authenticated,
+  });
+  const usageFacts = toolUsageFacts(connectorUsage.usage, tool);
   // The panel's request, so the badge beside the name costs nothing extra.
   const described = useToolDescription(tool, activeInstallation, {
     enabled: offered && session.authenticated,
@@ -158,12 +170,28 @@ export function ToolPage() {
       />
     );
   } else {
+    const usageHref = links.server(serverKey, activeInstallation, {
+      tab: 'usage',
+    });
     body = (
       <ToolRunPanel
         name={tool}
         installation={activeInstallation}
         effect={toolEffect({ annotations })}
         asCaller={representative ? runsAsCaller(representative) : false}
+        usage={
+          usageFacts && {
+            title: `Usage in the last ${CONNECTOR_USAGE_DAYS} days`,
+            content: (
+              <Flex direction="column" gap="2" align="start">
+                <FactList facts={usageFacts} labelWidth={160} />
+                {usageHref && (
+                  <Link href={usageHref}>{`All usage of ${serverName}`}</Link>
+                )}
+              </Flex>
+            ),
+          }
+        }
       />
     );
   }

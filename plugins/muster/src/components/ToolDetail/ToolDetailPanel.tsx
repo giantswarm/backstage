@@ -76,6 +76,11 @@ export interface ToolDetailPanelProps {
    * workflow page, across its tabs); else the panel keeps its own.
    */
   run?: ToolRun;
+  /**
+   * How much the tool is used, under its own heading after what it is for:
+   * a connector tool's page passes its calls, errors and latency.
+   */
+  usage?: { title: string; content: ReactNode };
 }
 
 /**
@@ -96,6 +101,7 @@ export function ToolDetailPanel({
   note,
   subject = 'tool',
   run,
+  usage,
 }: ToolDetailPanelProps) {
   // Always called, as hooks must be; idle where the page passes its own.
   const ownRun = useToolRun(name, installation);
@@ -234,6 +240,8 @@ export function ToolDetailPanel({
           )}
         </Section>
       )}
+
+      {usage && <Section title={usage.title}>{usage.content}</Section>}
 
       {data?.inputSchema && (
         // Technical detail, folded in place and boxed as the other pages'
