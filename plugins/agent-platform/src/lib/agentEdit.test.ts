@@ -8,6 +8,7 @@ import {
 } from './agentEdit';
 import type { AgentManagerAgent, AgentSkillEntry } from './agentManager';
 import type { DiscoveredSkill } from './skills';
+import type { DiscoveredPlugin } from './plugins';
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 const OTHER = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
@@ -49,6 +50,7 @@ describe('editStateOf', () => {
       modelConfig: 'opus-4-7',
       toolset: ['preset:read-only'],
       skills: [PR_REVIEW, OCI_SKILL],
+      plugins: [],
       egressText: '',
     });
     // No runtime: every agent runs on the platform Harness.
@@ -319,6 +321,98 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
     );
 
     expect(update.skills).toEqual([]);
+  });
+
+  describe('plugins', () => {
+    const REVIEW_ENTRY = {
+      path: 'plugins/review',
+      git: { url: REPO, commit: HEAD },
+      skills: ['go-review'],
+    };
+    const ELSEWHERE = {
+      oci: 'gsoci.azurecr.io/giantswarm/plugins/ops@sha256:0123',
+      skills: ['runbook'],
+    };
+    const CATALOG_REVIEW: DiscoveredPlugin = {
+      name: 'review',
+      repoUrl: `${REPO}.git`,
+      path: 'plugins/review',
+      ref: 'main',
+      commit: OTHER,
+      format: 'agent-plugins',
+      skills: [
+        { name: 'go-review', description: '' },
+        { name: 'helm-review', description: '' },
+      ],
+    };
+    const CATALOG_COMMITS: DiscoveredPlugin = {
+      ...CATALOG_REVIEW,
+      name: 'commits',
+      path: 'plugins/commits',
+      format: 'claude-code',
+      skills: [],
+    };
+    const withPlugins = () => agent({ plugins: [REVIEW_ENTRY, ELSEWHERE] });
+    const seedPlugins = (current: AgentManagerAgent) =>
+      formStateOfAgent(current, {
+        installation: 'gazelle',
+        catalog: [],
+        pluginCatalog: [CATALOG_REVIEW, CATALOG_COMMITS],
+      });
+
+    it('selects a listed plugin at its pin with its skills and keeps the rest', () => {
+      const state = seedPlugins(withPlugins());
+      expect(state.selectedPlugins).toEqual([
+        { plugin: { ...CATALOG_REVIEW, commit: HEAD }, skills: ['go-review'] },
+      ]);
+      expect(state.keptPlugins).toEqual([ELSEWHERE]);
+    });
+
+    it('is no change when untouched', () => {
+      const current = withPlugins();
+      const update = updateOf(
+        current,
+        editStateOfForm(current, seedPlugins(current)),
+      );
+      expect(hasChanges(update)).toBe(false);
+    });
+
+    it('keeps the pin when the selection changes and appends a new plugin at its card commit', () => {
+      const current = withPlugins();
+      const state = seedPlugins(current);
+      const update = updateOf(
+        current,
+        editStateOfForm(current, {
+          ...state,
+          selectedPlugins: [
+            {
+              plugin: state.selectedPlugins[0].plugin,
+              skills: ['go-review', 'helm-review'],
+            },
+            { plugin: CATALOG_COMMITS, skills: [] },
+          ],
+        }),
+      );
+      expect(update.plugins).toEqual([
+        { ...REVIEW_ENTRY, skills: ['go-review', 'helm-review'] },
+        ELSEWHERE,
+        { path: 'plugins/commits', git: { url: `${REPO}.git`, commit: OTHER } },
+      ]);
+      expect(update.skills).toBeUndefined();
+    });
+
+    it('clears the list when every plugin is dropped', () => {
+      const current = withPlugins();
+      const update = updateOf(
+        current,
+        editStateOfForm(current, {
+          ...seedPlugins(current),
+          selectedPlugins: [],
+          keptPlugins: [],
+        }),
+      );
+      expect(update.plugins).toEqual([]);
+    });
   });
 
   it('round-trips the Tools step’s Nothing outside the chat (T81)', () => {

@@ -7,6 +7,7 @@ import userEvent, {
 
 import { agentsRouteRef } from '../../routes';
 import { canonicalSkillId, type DiscoveredSkill } from '../../lib/skills';
+import { pluginEntryOf, type DiscoveredPlugin } from '../../lib/plugins';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentSkillsPage } from './NewAgentSkillsPage';
 
@@ -39,8 +40,33 @@ const SKILLS: DiscoveredSkill[] = [
   },
 ];
 
+const PLUGINS: DiscoveredPlugin[] = [
+  {
+    name: 'review',
+    repoUrl: 'https://github.com/giantswarm/agent-skills',
+    path: 'plugins/review',
+    ref: 'main',
+    commit: HEAD,
+    format: 'agent-plugins',
+    skills: [
+      { name: 'go-review', description: 'Reviews Go.' },
+      { name: 'Incident responder', description: '' },
+    ],
+  },
+  {
+    name: 'commits',
+    repoUrl: 'https://github.com/giantswarm/claude-code',
+    path: 'plugins/commits',
+    ref: 'master',
+    commit: OTHER,
+    format: 'claude-code',
+    skills: [],
+  },
+];
+
 const RESOLVED = {
   skills: SKILLS,
+  plugins: [] as DiscoveredPlugin[],
   isLoading: false,
   error: null,
   hasRepositories: true,
@@ -129,12 +155,23 @@ function SelectionProbe() {
   );
 }
 
+/** Exposes the picked plugins as agent-manager receives them. */
+function PluginProbe() {
+  const { state } = useNewAgentForm();
+  return (
+    <output data-testid="plugins">
+      {JSON.stringify(state.selectedPlugins.map(pluginEntryOf))}
+    </output>
+  );
+}
+
 async function renderStep() {
   return renderInTestApp(
     <NewAgentFormProvider>
       <Seed>
         <NewAgentSkillsPage />
         <SelectionProbe />
+        <PluginProbe />
       </Seed>
     </NewAgentFormProvider>,
     { mountedRoutes: { '/customize/agents': agentsRouteRef } },
@@ -612,6 +649,87 @@ describe('NewAgentSkillsPage', () => {
           screen.getAllByRole('checkbox', { name: /^Skill Beta/ }),
         ).toHaveLength(20);
       });
+    });
+  });
+
+  describe('plugins', () => {
+    beforeEach(() => {
+      mockCatalog.plugins = PLUGINS;
+    });
+
+    it('picks a Claude Code plugin whole and an Agent Plugins package by its skills', async () => {
+      const user = userEvent.setup();
+      await renderStep();
+
+      expect(
+        await screen.findByRole('heading', {
+          name: 'Select skills and plugins',
+        }),
+      ).toBeInTheDocument();
+      const commits = screen.getByRole('checkbox', { name: 'Plugin commits' });
+      expect(commits).toHaveTextContent('master @9f2c1a7');
+      await user.click(commits);
+      const review = screen.getByRole('group', {
+        name: 'Skills of plugin review',
+      });
+      await user.click(
+        within(review).getByRole('checkbox', { name: /go-review/ }),
+      );
+
+      expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
+        {
+          path: 'plugins/commits',
+          git: {
+            url: 'https://github.com/giantswarm/claude-code',
+            commit: OTHER,
+          },
+        },
+        {
+          path: 'plugins/review',
+          git: {
+            url: 'https://github.com/giantswarm/agent-skills',
+            commit: HEAD,
+          },
+          skills: ['go-review'],
+        },
+      ]);
+
+      // A package with nothing enabled loads nothing: unpicking its last skill
+      // unpicks it.
+      await user.click(
+        within(review).getByRole('checkbox', { name: /go-review/ }),
+      );
+      expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
+        expect.objectContaining({ path: 'plugins/commits' }),
+      ]);
+    });
+
+    it('warns when a skill name is picked twice', async () => {
+      const user = userEvent.setup();
+      await renderStep();
+
+      await user.click(
+        await screen.findByRole('checkbox', {
+          name: 'Skill Incident responder',
+        }),
+      );
+      await user.click(
+        within(
+          screen.getByRole('group', { name: 'Skills of plugin review' }),
+        ).getByRole('checkbox', { name: 'Incident responder' }),
+      );
+      expect(
+        screen.getByText('A skill name is used twice'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the plain title without plugins', async () => {
+      mockCatalog.plugins = [];
+      await renderStep();
+      expect(
+        await screen.findByRole('heading', { name: 'Select skills' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Plugins')).not.toBeInTheDocument();
     });
   });
 

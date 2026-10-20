@@ -27,6 +27,7 @@ import {
 } from '../../lib/agentEdit';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
+import { pluginEntryName, pluginSummary } from '../../lib/plugins';
 import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { shortPin } from '../AgentDetailPage/helpers';
@@ -247,6 +248,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     ? dump(dryRun.result.manifests.values, YAML_OPTS)
     : '';
   const skillNames = editState.skills.map(skill => skill.name);
+  const pluginSummaries = editState.plugins.map(pluginSummary);
 
   return (
     <AgentWizardFrame step="review" onBack={onBack} isProposed={isCommitted}>
@@ -269,6 +271,13 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           {(hasRepositories || skillNames.length > 0) && (
             <PlainRow label="Skills">
               {skillNames.length === 0 ? 'None' : skillNames.join(', ')}
+            </PlainRow>
+          )}
+          {(pluginSummaries.length > 0 || (agent.plugins ?? []).length > 0) && (
+            <PlainRow label="Plugins">
+              {pluginSummaries.length === 0
+                ? 'None'
+                : pluginSummaries.join('; ')}
             </PlainRow>
           )}
           <PlainRow label="Tools">
@@ -402,6 +411,21 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                           {shortPin(
                             'git' in skill ? skill.git.commit : skill.oci,
                           )}
+                        </span>
+                      </span>
+                    ))}
+                  </Text>
+                </SummaryItem>
+              )}
+              {editState.plugins.length > 0 && (
+                <SummaryItem label="Plugin pins">
+                  <Text variant="body-small">
+                    {editState.plugins.map((plugin, index) => (
+                      <span key={`${pluginEntryName(plugin)}#${index}`}>
+                        {index > 0 ? ', ' : ''}
+                        {pluginEntryName(plugin)}{' '}
+                        <span className={classes.code}>
+                          @{shortPin(plugin.git?.commit ?? plugin.oci ?? '')}
                         </span>
                       </span>
                     ))}

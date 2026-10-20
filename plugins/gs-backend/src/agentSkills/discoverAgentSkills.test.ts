@@ -164,6 +164,58 @@ describe('discoverAgentSkills', () => {
     ]);
   });
 
+  it('lists the plugins of the same tree, and reuses them at the same commit', async () => {
+    const fetchMock = mockGitHub(
+      [
+        { path: 'review/plugin.json', type: 'blob' },
+        { path: 'review/skills/go-review/SKILL.md', type: 'blob' },
+        { path: 'commits/.claude-plugin/plugin.json', type: 'blob' },
+      ],
+      {
+        'review/skills/go-review/SKILL.md':
+          '---\nname: Go review\ndescription: Reviews Go.\n---\nbody',
+      },
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const first = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+    });
+    const source = {
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      ref: 'main',
+      commit: HEAD,
+    };
+    expect(first.plugins).toEqual([
+      {
+        name: 'commits',
+        ...source,
+        path: 'commits',
+        format: 'claude-code',
+        skills: [],
+      },
+      {
+        name: 'review',
+        ...source,
+        path: 'review',
+        format: 'agent-plugins',
+        skills: [{ name: 'go-review', description: 'Reviews Go.' }],
+      },
+    ]);
+
+    fetchMock.mockClear();
+    const again = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+      previous: first,
+    });
+    expect(again.plugins).toEqual(first.plugins);
+    expect(
+      fetchMock.mock.calls.some(([url]) => url.includes('/git/trees/')),
+    ).toBe(false);
+  });
+
   it('reads the tree and every SKILL.md at the resolved commit, not at the branch', async () => {
     // What the picker shows is what the agent pins: a push to the branch
     // between the tree read and the content read must not slip in.

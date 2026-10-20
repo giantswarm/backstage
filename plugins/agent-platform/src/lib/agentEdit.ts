@@ -1,5 +1,6 @@
 import type {
   AgentManagerAgent,
+  AgentPluginEntry,
   AgentSkillEntry,
   AgentUpdate,
 } from './agentManager';
@@ -7,6 +8,14 @@ import { declaredToolset, normalizeSelection } from './toolset';
 import { egressTextOf, parseEgressText, sameEgress } from './egress';
 import { skillEntryOf } from './agentSpec';
 import { canonicalSkillId, type DiscoveredSkill } from './skills';
+import {
+  pluginEntryKey,
+  pluginEntryOf,
+  pluginEntryPlace,
+  pluginId,
+  type DiscoveredPlugin,
+  type SelectedPlugin,
+} from './plugins';
 import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**
@@ -29,6 +38,8 @@ export type AgentEditState = {
   toolset: string[];
   /** The skills as pinned; adding one pins it to the commit chosen at selection. */
   skills: AgentSkillEntry[];
+  /** The plugins as pinned, each with its skill selection. */
+  plugins: AgentPluginEntry[];
   /** Extra HTTP(S) origins the agent may reach, one per line as typed. */
   egressText: string;
   /**
@@ -47,6 +58,7 @@ export const AGENT_EDIT_FIELDS = [
   'modelConfig',
   'toolset',
   'skills',
+  'plugins',
   'egress',
 ] as const;
 
@@ -61,6 +73,7 @@ export function editStateOf(agent: AgentManagerAgent): AgentEditState {
     modelConfig: agent.modelConfig ?? '',
     toolset: normalizeSelection(agent.toolset ?? []),
     skills: [...(agent.skills ?? [])],
+    plugins: [...(agent.plugins ?? [])],
     egressText: egressTextOf(agent.egress),
   };
 }
@@ -78,6 +91,15 @@ function sameSkills(a: AgentSkillEntry[], b: AgentSkillEntry[]): boolean {
   }
   return a.every(
     (skill, index) => skillEntryKey(skill) === skillEntryKey(b[index]),
+  );
+}
+
+function samePlugins(a: AgentPluginEntry[], b: AgentPluginEntry[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (plugin, index) => pluginEntryKey(plugin) === pluginEntryKey(b[index]),
+    )
   );
 }
 
@@ -132,6 +154,9 @@ export function changedFields(
   if (!sameSkills(edit.skills, baseline.skills)) {
     changed.push('skills');
   }
+  if (!samePlugins(edit.plugins, baseline.plugins)) {
+    changed.push('plugins');
+  }
   if (!sameEgress(parseEgressText(edit.egressText), agent.egress ?? [])) {
     changed.push('egress');
   }
@@ -169,6 +194,9 @@ export function updateOf(
       case 'skills':
         update.skills = edit.skills;
         break;
+      case 'plugins':
+        update.plugins = edit.plugins;
+        break;
       case 'egress':
         update.egress = parseEgressText(edit.egressText);
         break;
@@ -192,6 +220,7 @@ export const EDIT_FIELD_LABELS: Record<AgentEditField, string> = {
   modelConfig: 'Model',
   toolset: 'Tools',
   skills: 'Skills',
+  plugins: 'Plugins',
   egress: 'Extra egress origins',
 };
 
@@ -222,6 +251,8 @@ export function formStateOfAgent(
     installation: string;
     /** The configured repositories' skills, each at its head commit. */
     catalog: DiscoveredSkill[];
+    /** The plugins found in the same repositories, at the same commits. */
+    pluginCatalog?: DiscoveredPlugin[];
     /** agent-manager's platform Harness (`get_info`), when known. */
     platformHarness?: string;
   },
@@ -239,6 +270,23 @@ export function formStateOfAgent(
       selectedSkills.push({ ...skill, commit: entry.git.commit });
     } else {
       keptSkills.push(entry);
+    }
+  }
+  const listedPlugins = new Map(
+    (options.pluginCatalog ?? []).map(plugin => [pluginId(plugin), plugin]),
+  );
+  const selectedPlugins: SelectedPlugin[] = [];
+  const keptPlugins: AgentPluginEntry[] = [];
+  for (const entry of agent.plugins ?? []) {
+    const place = pluginEntryPlace(entry);
+    const plugin = place ? listedPlugins.get(place) : undefined;
+    if (plugin && entry.git?.commit) {
+      selectedPlugins.push({
+        plugin: { ...plugin, commit: entry.git.commit },
+        skills: [...(entry.skills ?? [])],
+      });
+    } else {
+      keptPlugins.push(entry);
     }
   }
   const harness =
@@ -259,6 +307,8 @@ export function formStateOfAgent(
     egressText: baseline.egressText,
     selectedSkills,
     keptSkills,
+    selectedPlugins,
+    keptPlugins,
     toolset: baseline.toolset,
     // An agent declaring no tools is *Nothing outside the chat* on the Tools
     // step; one declaring no toolset at all (implicit full access) is not.
@@ -300,6 +350,46 @@ function skillEntriesOfForm(
   return entries;
 }
 
+/**
+ * The plugins an edit writes, as {@link skillEntriesOfForm} does for skills:
+ * the agent's entries still picked or kept, in the agent's order — exactly as
+ * pinned unless the selection changed —, then the newly picked ones.
+ */
+function pluginEntriesOfForm(
+  agent: AgentManagerAgent,
+  form: Pick<NewAgentFormState, 'selectedPlugins' | 'keptPlugins'>,
+): AgentPluginEntry[] {
+  const selected = new Map(
+    form.selectedPlugins.map(picked => [pluginId(picked.plugin), picked]),
+  );
+  const kept = new Set(form.keptPlugins.map(pluginEntryKey));
+  const written = new Set<string>();
+  const entries: AgentPluginEntry[] = [];
+  for (const entry of agent.plugins ?? []) {
+    const place = pluginEntryPlace(entry);
+    const picked = place ? selected.get(place) : undefined;
+    if (kept.has(pluginEntryKey(entry))) {
+      entries.push(entry);
+    } else if (place && picked && !written.has(place)) {
+      const { skills: pinnedSkills = [], ...source } = entry;
+      const skills = picked.skills;
+      if (skills.join(',') === pinnedSkills.join(',')) {
+        entries.push(entry);
+      } else {
+        entries.push(skills.length > 0 ? { ...source, skills } : source);
+      }
+      written.add(place);
+    }
+  }
+  for (const [place, picked] of selected) {
+    if (!written.has(place)) {
+      entries.push(pluginEntryOf(picked));
+      written.add(place);
+    }
+  }
+  return entries;
+}
+
 /** The edit the wizard's state amounts to, for {@link updateOf}. */
 export function editStateOfForm(
   agent: AgentManagerAgent,
@@ -314,6 +404,7 @@ export function editStateOfForm(
     modelConfig: form.modelConfigName ?? '',
     toolset: form.toolset,
     skills: skillEntriesOfForm(agent, form),
+    plugins: pluginEntriesOfForm(agent, form),
     egressText: form.egressText,
     chatOnly: Boolean(form.toolsChatOnly),
   };
