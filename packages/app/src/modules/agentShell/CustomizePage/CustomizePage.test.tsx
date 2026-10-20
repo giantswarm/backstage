@@ -59,7 +59,8 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeModelsPanel: mockPanel('Models'),
     CustomizeWorkspacesPanel: mockPanel('Workspaces'),
     WorkspaceOrganizationSelect: () => <p>Organization scope</p>,
-    CreateWorkspaceButton: () => <a href="/new-workspace">Create workspace</a>,
+    CreateWorkspaceButton: () => <a href="/new-workspace">New workspace</a>,
+    CustomizeWorkspacesIntro: () => <h2>Workspaces of acme</h2>,
     WorkflowCreateAssist: ({ installation }: { installation?: string }) => (
       <p>{`Create a workflow with the agent on ${installation}`}</p>
     ),
@@ -604,7 +605,7 @@ describe('CustomizePage', () => {
       expect(screen.getByText('Environment for muster')).toBeInTheDocument();
       // Its own create action, carrying the Organization and installation.
       expect(
-        screen.getByRole('link', { name: 'Create workspace' }),
+        screen.getByRole('link', { name: 'New workspace' }),
       ).toBeInTheDocument();
     });
 

@@ -16,11 +16,13 @@ import {
   useRepositoriesPage,
 } from '../../hooks/useWorkspaceEditor';
 import type { SourceDraft } from '../../lib/workspaceDraft';
+import { shortAge } from '../../lib/shortAge';
 import {
   classifyWorkspaceManagerError,
   type ListRepositoriesInput,
   type ProviderRepository,
 } from '../../lib/workspaceManager';
+import { repositoryNoun } from './repositoryNoun';
 
 /** `list_repositories`' largest page, for "select all matches". */
 export const SELECT_ALL_PAGE_SIZE = 200;
@@ -57,9 +59,38 @@ export function matchesFilters(
   return language && topic;
 }
 
+/** The listing's filter for what the source's filters take. */
+export function filterInput(
+  source: SourceDraft,
+): Partial<ListRepositoriesInput> {
+  return {
+    ...(source.languages.length > 0 ? { languages: source.languages } : {}),
+    // The listing's topic filter is "any of"; "all of" is narrowed by row.
+    ...(source.topics.length > 0 ? { topics: source.topics } : {}),
+    ...(source.includeArchived ? {} : { archived: false }),
+    ...(source.includeForks ? {} : { fork: false }),
+  };
+}
+
 function toggle(list: string[], value: string, on: boolean): string[] {
   const without = list.filter(item => item !== value);
   return on ? [...without, value] : without;
+}
+
+/** How a repository is in the workspace, or why not. */
+type Membership = 'by filter' | 'by name' | 'excluded' | undefined;
+
+function membership(
+  source: SourceDraft,
+  repository: ProviderRepository,
+): Membership {
+  if (source.repositories.includes(repository.name)) {
+    return 'by name';
+  }
+  if (matchesFilters(source, repository)) {
+    return source.exclude.includes(repository.name) ? 'excluded' : 'by filter';
+  }
+  return undefined;
 }
 
 export type RepositoryPickerProps = {
@@ -67,92 +98,113 @@ export type RepositoryPickerProps = {
   organization: string;
   source: SourceDraft;
   onChange: (source: SourceDraft) => void;
+  /** How many of the owner's repositories the filters take, when known. */
+  matchTotal: number | undefined;
+  providerKind: string | undefined;
 };
 
 /**
- * An owner's repositories as the server pages them: search by name, only
- * those the source's filters take, pick by name, exclude one the filters
- * take, "select all n matches", and a "selected only" view of the picks and
- * exclusions. The owner's full listing never reaches the browser: every view
- * is one page, and "select all" reads only the matching pages.
+ * An owner's repositories in one table, as the server pages them: a tick
+ * picks one by name, unticking a filter match excludes it. With filters the
+ * matches come first, then the rest of the owner's repositories. Search by
+ * name, "select all n matches" of a search, and "selected only", the picks
+ * and exclusions alone. The owner's full listing never reaches the browser:
+ * every view is one page, and "select all" reads only the matching pages.
  */
 export function RepositoryPicker({
   client,
   organization,
   source,
   onChange,
+  matchTotal,
+  providerKind,
 }: RepositoryPickerProps) {
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [filteredOnly, setFilteredOnly] = useState(false);
+  // The page, back to the first whenever the filters change.
+  const filterKey = JSON.stringify(filterInput(source));
+  const [paging, setPaging] = useState({ filterKey, page: 1 });
+  const page = paging.filterKey === filterKey ? paging.page : 1;
+  const setPage = useCallback(
+    (next: number) => setPaging({ filterKey, page: next }),
+    [filterKey],
+  );
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [selectAll, setSelectAll] = useState<{
     busy: boolean;
     error?: string;
   }>({ busy: false });
 
+  const owner = source.owner.trim();
   const hasFilters = source.languages.length > 0 || source.topics.length > 0;
+  // Matches first: the filters' pages, then the owner's listing without them.
+  const matchesFirst = hasFilters && !search;
+  const matchPages = matchesFirst
+    ? Math.ceil((matchTotal ?? 0) / EDITOR_PAGE_SIZE)
+    : 0;
+  const inMatches = matchesFirst && page <= matchPages;
+
   const browse = useMemo<ListRepositoriesInput | undefined>(() => {
-    const owner = source.owner.trim();
     if (!owner || !source.provider || selectedOnly) {
       return undefined;
     }
-    const filtered = filteredOnly && hasFilters;
     return {
       organization,
       provider: source.provider,
       owner,
-      page,
+      page: inMatches ? page : page - matchPages,
       pageSize: EDITOR_PAGE_SIZE,
       ...(search ? { search } : {}),
-      ...(filtered && source.languages.length > 0
-        ? { languages: source.languages }
-        : {}),
-      // The listing's topic filter is "any of"; "all of" is narrowed below.
-      ...(filtered && source.topics.length > 0
-        ? { topics: source.topics }
-        : {}),
-      ...(filtered && !source.includeArchived ? { archived: false } : {}),
-      ...(filtered && !source.includeForks ? { fork: false } : {}),
+      ...(inMatches ? filterInput(source) : {}),
     };
   }, [
     organization,
-    source.provider,
-    source.owner,
-    source.languages,
-    source.topics,
-    source.includeArchived,
-    source.includeForks,
+    source,
+    owner,
     page,
     search,
-    filteredOnly,
-    hasFilters,
     selectedOnly,
+    inMatches,
+    matchPages,
   ]);
   const listing = useRepositoriesPage(client, browse);
   const data = listing.data;
-
-  const onSearch = useCallback((value: string) => {
-    setSearch(value);
-    setPage(1);
-  }, []);
-
-  const pick = useCallback(
-    (name: string, on: boolean) =>
-      onChange({
-        ...source,
-        repositories: toggle(source.repositories, name, on),
-      }),
-    [onChange, source],
-  );
-  const exclude = useCallback(
-    (name: string, on: boolean) =>
-      onChange({ ...source, exclude: toggle(source.exclude, name, on) }),
-    [onChange, source],
+  const rows = useMemo(
+    () =>
+      (data?.repositories ?? []).filter(repository =>
+        // The rest of the owner's listing leaves out what the matches showed.
+        matchesFirst && !inMatches ? !matchesFilters(source, repository) : true,
+      ),
+    [data, matchesFirst, inMatches, source],
   );
 
-  // Every match of the search and filters, read page by page at the largest
-  // page size: only the matches, never the owner's whole listing.
+  const onSearch = useCallback(
+    (value: string) => {
+      setSearch(value);
+      setPage(1);
+    },
+    [setPage],
+  );
+
+  const onTick = useCallback(
+    (repository: ProviderRepository, on: boolean) => {
+      if (matchesFilters(source, repository)) {
+        onChange({
+          ...source,
+          exclude: toggle(source.exclude, repository.name, !on),
+          repositories: source.repositories.filter(r => r !== repository.name),
+        });
+      } else {
+        onChange({
+          ...source,
+          repositories: toggle(source.repositories, repository.name, on),
+        });
+      }
+    },
+    [onChange, source],
+  );
+
+  // Every match of the search, read page by page at the largest page size:
+  // only the matches, never the owner's whole listing.
   const selectAllMatches = useCallback(async () => {
     if (!browse || !data) {
       return;
@@ -183,74 +235,91 @@ export function RepositoryPicker({
     }
   }, [browse, data, client, onChange, source]);
 
-  const pageCount = data
-    ? Math.max(1, Math.ceil(data.total / data.pageSize))
+  const ownerTotal = data?.ownerTotal;
+  let pageCount = data
+    ? Math.max(1, Math.ceil(data.total / EDITOR_PAGE_SIZE))
     : 1;
-  const narrowed = Boolean(search) || (filteredOnly && hasFilters);
+  if (matchesFirst && ownerTotal !== undefined) {
+    pageCount = matchPages + Math.ceil(ownerTotal / EDITOR_PAGE_SIZE);
+  }
+  const byFilter = hasFilters ? (matchTotal ?? 0) : 0;
+  const byName = source.repositories.length;
+  const excluded = source.exclude.length;
+  const total = byFilter - excluded + byName;
+  const summary = [
+    hasFilters ? `${byFilter} by filter` : undefined,
+    `${byName} by name`,
+    excluded > 0 ? `${excluded} excluded` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <Flex direction="column" gap="2" data-testid="repository-picker">
-      <Flex gap="3" align="end" style={{ flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 220px' }}>
-          <SearchField
-            aria-label="Search repositories by name"
-            placeholder="Search repositories by name"
-            size="small"
-            value={search}
-            onChange={onSearch}
-            isDisabled={selectedOnly}
-          />
-        </div>
-        {hasFilters && (
-          <Switch
-            isSelected={filteredOnly}
-            onChange={on => {
-              setFilteredOnly(on);
-              setPage(1);
-            }}
-            isDisabled={selectedOnly}
-            label="Matching the filters only"
-          />
-        )}
+      <Flex
+        justify="between"
+        align="center"
+        gap="3"
+        style={{ flexWrap: 'wrap' }}
+      >
+        <Flex direction="column" gap="1">
+          <Text variant="body-small" weight="bold">
+            {repositoryNoun(providerKind, 2).replace(/^./, c =>
+              c.toUpperCase(),
+            )}{' '}
+            of {owner || 'the owner'}
+            {ownerTotal !== undefined && (
+              <Text variant="body-small" color="secondary" as="span">
+                {' '}
+                ({ownerTotal.toLocaleString('en')})
+              </Text>
+            )}
+          </Text>
+          <Text variant="body-small" color="secondary">
+            Tick to pick one by name; untick a filter match to exclude it.
+          </Text>
+        </Flex>
         <Switch
           isSelected={selectedOnly}
           onChange={setSelectedOnly}
-          label={`Selected only (${
-            source.repositories.length + source.exclude.length
-          })`}
+          label={`Selected only (${byName + excluded})`}
         />
       </Flex>
 
+      {!selectedOnly && (
+        <SearchField
+          aria-label={`Search ${repositoryNoun(providerKind, 2)} by name`}
+          placeholder={`Search ${repositoryNoun(providerKind, 2)} by name`}
+          size="small"
+          value={search}
+          onChange={onSearch}
+        />
+      )}
+
       {selectedOnly ? (
-        <SelectedOnly source={source} onPick={pick} onExclude={exclude} />
+        <SelectedOnly source={source} onChange={onChange} />
       ) : (
         <>
-          {!source.owner.trim() && (
+          {!owner && (
             <Text variant="body-small" color="secondary">
-              Enter the owner to browse its repositories.
+              Choose the owner to browse its {repositoryNoun(providerKind, 2)}.
             </Text>
           )}
           {listing.isLoading && <Skeleton width="100%" height={120} />}
           {listing.error && (
             <Alert
               status="warning"
-              title="Could not list the repositories"
+              title={`Could not list the ${repositoryNoun(providerKind, 2)}`}
               description={classifyWorkspaceManagerError(listing.error).message}
             />
           )}
           {data && (
             <>
-              <Flex
-                justify="between"
-                align="center"
-                style={{ flexWrap: 'wrap' }}
-              >
-                <Text variant="body-small" color="secondary">
-                  {narrowed
-                    ? `${data.total} of ${data.ownerTotal} repositories match`
-                    : `${data.ownerTotal} repositories`}
-                </Text>
-                {narrowed && data.total > 0 && (
+              {search && data.total > 0 && (
+                <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
+                  <Text variant="body-small" color="secondary">
+                    {data.total} of {data.ownerTotal} match the search
+                  </Text>
                   <Button
                     variant="secondary"
                     size="small"
@@ -261,174 +330,189 @@ export function RepositoryPicker({
                       ? 'Selecting…'
                       : `Select all ${data.total} matches`}
                   </Button>
-                )}
-              </Flex>
+                </Flex>
+              )}
               {selectAll.error && (
                 <Text variant="body-small" color="danger">
                   Could not select all matches: {selectAll.error}
                 </Text>
               )}
-              <ul
-                aria-label={`Repositories of ${source.owner}`}
-                style={{ listStyle: 'none', margin: 0, padding: 0 }}
+              <table
+                aria-label={`Repositories of ${owner}`}
+                style={{ width: '100%', borderCollapse: 'collapse' }}
               >
-                {data.repositories
-                  .filter(
-                    repository =>
-                      !(filteredOnly && hasFilters) ||
-                      matchesFilters(source, repository),
-                  )
-                  .map(repository => (
+                <tbody>
+                  {rows.map(repository => (
                     <RepositoryRow
                       key={repository.name}
                       repository={repository}
-                      source={source}
-                      onPick={pick}
-                      onExclude={exclude}
+                      state={membership(source, repository)}
+                      onTick={on => onTick(repository, on)}
                     />
                   ))}
-              </ul>
+                </tbody>
+              </table>
               {data.total === 0 && (
                 <Text variant="body-small" color="secondary">
-                  No repository matches.
+                  No {repositoryNoun(providerKind, 1)} matches.
                 </Text>
-              )}
-              {pageCount > 1 && (
-                <Flex gap="2" align="center">
-                  <Button
-                    variant="tertiary"
-                    size="small"
-                    isDisabled={page <= 1}
-                    onPress={() => setPage(page - 1)}
-                  >
-                    Previous
-                  </Button>
-                  <Text variant="body-small">
-                    Page {page} of {pageCount}
-                  </Text>
-                  <Button
-                    variant="tertiary"
-                    size="small"
-                    isDisabled={page >= pageCount}
-                    onPress={() => setPage(page + 1)}
-                  >
-                    Next
-                  </Button>
-                </Flex>
               )}
             </>
           )}
         </>
       )}
+
+      <Text variant="body-small" data-testid="repository-summary">
+        {summary} = {total} {repositoryNoun(providerKind, total)}
+      </Text>
+      {!selectedOnly && data && (
+        <Flex gap="2" align="center">
+          <Button
+            variant="tertiary"
+            size="small"
+            isDisabled={page <= 1}
+            onPress={() => setPage(page - 1)}
+          >
+            Previous
+          </Button>
+          <Text variant="body-small">
+            Page {page} of {pageCount}
+            {matchesFirst ? ', matches first' : ''}
+          </Text>
+          <Button
+            variant="tertiary"
+            size="small"
+            isDisabled={page >= pageCount}
+            onPress={() => setPage(page + 1)}
+          >
+            Next
+          </Button>
+        </Flex>
+      )}
     </Flex>
   );
 }
 
+const CELL = { padding: '4px 8px 4px 0', verticalAlign: 'middle' } as const;
+
 function RepositoryRow({
   repository,
-  source,
-  onPick,
-  onExclude,
+  state,
+  onTick,
 }: {
   repository: ProviderRepository;
-  source: SourceDraft;
-  onPick: (name: string, on: boolean) => void;
-  onExclude: (name: string, on: boolean) => void;
+  state: Membership;
+  onTick: (on: boolean) => void;
 }) {
-  const picked = source.repositories.includes(repository.name);
-  const excluded = source.exclude.includes(repository.name);
-  const byFilter = matchesFilters(source, repository);
+  const ticked = state === 'by filter' || state === 'by name';
   const details = [
-    repository.language,
-    repository.topics.length > 0 ? repository.topics.join(', ') : undefined,
     repository.archived ? 'archived' : undefined,
     repository.fork ? 'fork' : undefined,
   ].filter(Boolean);
   return (
-    <li
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '4px 0',
-        flexWrap: 'wrap',
-      }}
-    >
-      <Checkbox
-        isSelected={picked}
-        onChange={on => onPick(repository.name, on)}
-      >
-        {repository.name}
-      </Checkbox>
-      <Text variant="body-small" color="secondary">
-        {details.join(' · ')}
-      </Text>
-      {byFilter && !picked && (
-        <Flex gap="2" align="center" style={{ marginLeft: 'auto' }}>
-          <Text variant="body-small" color={excluded ? 'secondary' : 'success'}>
-            {excluded ? 'Excluded' : 'Matches the filters'}
-          </Text>
-          <Button
-            variant="tertiary"
-            size="small"
-            aria-label={`${excluded ? 'Include' : 'Exclude'} ${repository.name}`}
-            onPress={() => onExclude(repository.name, !excluded)}
+    <tr style={{ borderBottom: '1px solid var(--bui-border-1)' }}>
+      <td style={CELL}>
+        <Checkbox isSelected={ticked} onChange={onTick}>
+          {repository.name}
+        </Checkbox>
+      </td>
+      <td style={CELL}>
+        <Text variant="body-small" color="secondary">
+          {repository.language ?? '—'}
+        </Text>
+      </td>
+      <td style={CELL}>
+        <Text variant="body-small" color="secondary">
+          {[repository.topics.join(', ') || '—', ...details].join(' · ')}
+        </Text>
+      </td>
+      <td style={CELL}>
+        <Text variant="body-small" color="secondary">
+          {shortAge(repository.lastPush)}
+        </Text>
+      </td>
+      <td style={{ ...CELL, textAlign: 'right' }}>
+        {state && (
+          <Text
+            variant="body-small"
+            color={state === 'excluded' ? 'secondary' : 'primary'}
+            weight={state === 'excluded' ? undefined : 'bold'}
           >
-            {excluded ? 'Include' : 'Exclude'}
-          </Button>
-        </Flex>
-      )}
-    </li>
+            {state}
+          </Text>
+        )}
+      </td>
+    </tr>
   );
 }
 
-/** The picks by name and the exclusions, side by side, from the draft alone. */
+/** The picks by name and the exclusions, from the draft alone. */
 function SelectedOnly({
   source,
-  onPick,
-  onExclude,
+  onChange,
 }: {
   source: SourceDraft;
-  onPick: (name: string, on: boolean) => void;
-  onExclude: (name: string, on: boolean) => void;
+  onChange: (source: SourceDraft) => void;
 }) {
   if (source.repositories.length === 0 && source.exclude.length === 0) {
     return (
       <Text variant="body-small" color="secondary">
-        No repository picked by name or excluded.
+        Nothing picked by name or excluded.
       </Text>
     );
   }
   return (
-    <ul
+    <table
       aria-label="Selected repositories"
-      style={{ listStyle: 'none', margin: 0, padding: 0 }}
+      style={{ width: '100%', borderCollapse: 'collapse' }}
     >
-      {source.repositories.map(name => (
-        <li key={`pick-${name}`} style={{ padding: '4px 0' }}>
-          <Checkbox isSelected onChange={on => onPick(name, on)}>
-            {name} <Text color="secondary">· by name</Text>
-          </Checkbox>
-        </li>
-      ))}
-      {source.exclude.map(name => (
-        <li
-          key={`exclude-${name}`}
-          style={{ display: 'flex', gap: 12, padding: '4px 0' }}
-        >
-          <Text variant="body-small">
-            {name} <Text color="secondary">· excluded</Text>
-          </Text>
-          <Button
-            variant="tertiary"
-            size="small"
-            aria-label={`Include ${name}`}
-            onPress={() => onExclude(name, false)}
-          >
-            Include
-          </Button>
-        </li>
-      ))}
-    </ul>
+      <tbody>
+        {source.repositories.map(name => (
+          <tr key={`pick-${name}`}>
+            <td style={CELL}>
+              <Checkbox
+                isSelected
+                onChange={on =>
+                  onChange({
+                    ...source,
+                    repositories: toggle(source.repositories, name, on),
+                  })
+                }
+              >
+                {name}
+              </Checkbox>
+            </td>
+            <td style={{ ...CELL, textAlign: 'right' }}>
+              <Text variant="body-small" weight="bold">
+                by name
+              </Text>
+            </td>
+          </tr>
+        ))}
+        {source.exclude.map(name => (
+          <tr key={`exclude-${name}`}>
+            <td style={CELL}>
+              <Checkbox
+                isSelected={false}
+                aria-label={`Include ${name}`}
+                onChange={on =>
+                  onChange({
+                    ...source,
+                    exclude: toggle(source.exclude, name, !on),
+                  })
+                }
+              >
+                {name}
+              </Checkbox>
+            </td>
+            <td style={{ ...CELL, textAlign: 'right' }}>
+              <Text variant="body-small" color="secondary">
+                excluded
+              </Text>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

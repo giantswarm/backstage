@@ -46,6 +46,7 @@ import {
 } from '../../lib/sharedIdentity';
 import {
   searchWorkspaces,
+  sourceLabel,
   sourcesLabel,
   storedLabel,
   syncState,
@@ -174,6 +175,18 @@ function RowActions({ row }: { row: WorkspaceRow }) {
           size="small"
         />
         <Menu maxWidth={MENU_WIDTH}>
+          <MenuSection title={NOT_BUILT_YET}>
+            <MenuItem iconStart={<OpenInNewIcon />} isDisabled>
+              Open
+            </MenuItem>
+          </MenuSection>
+          <MenuItem
+            iconStart={<EditIcon />}
+            isDisabled={row.deleting || !editHref}
+            href={editHref}
+          >
+            Edit
+          </MenuItem>
           <MenuItem
             iconStart={<SyncIcon />}
             isDisabled={row.deleting || sync.isPending}
@@ -192,18 +205,6 @@ function RowActions({ row }: { row: WorkspaceRow }) {
           >
             Delete…
           </MenuItem>
-          <MenuItem
-            iconStart={<EditIcon />}
-            isDisabled={row.deleting || !editHref}
-            href={editHref}
-          >
-            Edit
-          </MenuItem>
-          <MenuSection title={NOT_BUILT_YET}>
-            <MenuItem iconStart={<OpenInNewIcon />} isDisabled>
-              Open
-            </MenuItem>
-          </MenuSection>
         </Menu>
       </MenuTrigger>
       <WorkspaceDeleteDialog
@@ -261,6 +262,29 @@ function ReadFailures({
 }
 
 /**
+ * The Workspaces tab's heading, above its search: whose workspaces these are
+ * and what they are for. Nothing while there is no Organization. Must be
+ * mounted inside a `WorkspacesDataProvider`.
+ */
+export function CustomizeWorkspacesIntro() {
+  const { organization } = useWorkspacesData();
+  if (!organization) {
+    return null;
+  }
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant="title-small" as="h2">
+        Workspaces of {organization}
+      </Text>
+      <Text variant="body-medium" color="secondary">
+        The repositories an agent works on. Everyone in {organization} can use
+        and change them.
+      </Text>
+    </Flex>
+  );
+}
+
+/**
  * The Workspaces tab of the shell's Customize screen: the workspaces of the
  * scope's Organization on the installations in scope — sources, repositories,
  * what the volume stores, the last sync and the Sessions on it — with Sync now
@@ -274,7 +298,6 @@ export function CustomizeWorkspacesPanel({
     isAvailable,
     rows: allRows,
     organization,
-    organizations,
     installations,
     sharedIdentity,
     isLoading,
@@ -312,7 +335,18 @@ export function CustomizeWorkspacesPanel({
       id: 'sources',
       label: 'Sources',
       defaultWidth: '2fr',
-      cell: row => <CellText title={sourcesLabel(row.sources)} />,
+      // One line per source.
+      cell: row => (
+        <Cell>
+          <Flex direction="column" gap="0">
+            {row.sources.map((source, index) => (
+              <Text key={index} variant="body-medium">
+                {sourceLabel(source)}
+              </Text>
+            ))}
+          </Flex>
+        </Cell>
+      ),
     },
     {
       id: 'repositories',
@@ -407,11 +441,16 @@ export function CustomizeWorkspacesPanel({
         noun="workspace"
       >
         {page => (
-          <Table<WorkspaceRow>
-            columnConfig={shownColumns}
-            data={page}
-            pagination={{ type: 'none' }}
-          />
+          <Flex direction="column" gap="2">
+            <Table<WorkspaceRow>
+              columnConfig={shownColumns}
+              data={page}
+              pagination={{ type: 'none' }}
+            />
+            <Text variant="body-small" color="secondary">
+              A failed sync shows its reason in Last sync.
+            </Text>
+          </Flex>
         )}
       </ShowMore>
     );
@@ -419,11 +458,6 @@ export function CustomizeWorkspacesPanel({
 
   return (
     <Flex direction="column" gap="5">
-      {organization && organizations.length > 1 && (
-        <Text variant="body-medium" color="secondary">
-          Workspaces of {organization}
-        </Text>
-      )}
       <ReadFailures
         failures={failures}
         isEverything={isEverythingFailed}

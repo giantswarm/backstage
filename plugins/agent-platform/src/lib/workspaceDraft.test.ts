@@ -5,7 +5,10 @@ import {
   emptySource,
   fieldOfManagerMessage,
   managerMessageText,
+  nameProblem,
   previewableSources,
+  quantityToGiB,
+  suggestName,
   toCreateInput,
   toSource,
 } from './workspaceDraft';
@@ -85,13 +88,13 @@ describe('draftFromWorkspace', () => {
 
 describe('draftProblems', () => {
   it('names the field of each problem', () => {
-    const draft = { ...emptyDraft(), name: 'Bad_Name', headroom: 'lots' };
+    const draft = { ...emptyDraft(), name: 'Bad_Name', minimumGiB: '2.5' };
     expect(draftProblems(draft, false)).toEqual({
-      name: expect.stringContaining('lowercase'),
+      name: 'Use lowercase letters, digits and dashes only. Try “bad-name”.',
       'sources.0.provider': 'Choose a provider',
       'sources.0.owner': 'Owner is required',
       'sources.0': 'Pick repositories by name, or filter by language or topic',
-      'sizing.headroom': 'Use a size such as 8Gi or 500Mi',
+      'sizing.minimum': 'Enter a whole number of GiB, such as 20',
     });
   });
 
@@ -101,6 +104,47 @@ describe('draftProblems', () => {
       sources: [{ ...emptySource('github'), owner: 'acme', languages: ['Go'] }],
     };
     expect(draftProblems(draft, true)).toEqual({});
+  });
+});
+
+describe('nameProblem', () => {
+  it.each([
+    ['platform-mcp', undefined],
+    ['', 'Name is required'],
+    [
+      'Platform MCP',
+      'Use lowercase letters, digits and dashes only. Try “platform-mcp”.',
+    ],
+    ['a'.repeat(41), `Use at most 40 characters. Try “${'a'.repeat(40)}”.`],
+    ['---', 'Use lowercase letters, digits and dashes only.'],
+  ])('%s → %s', (typed, problem) => {
+    expect(nameProblem(typed)).toBe(problem);
+  });
+
+  it('suggests no dash at either end', () => {
+    expect(suggestName(' -My_Workspace!- ')).toBe('my-workspace');
+  });
+});
+
+describe('the minimum size in GiB', () => {
+  it.each([
+    ['20Gi', '20'],
+    ['500Mi', '1'],
+    ['1Ti', '1024'],
+    ['', ''],
+    ['lots', ''],
+  ])('reads %s as %s GiB', (quantity, gib) => {
+    expect(quantityToGiB(quantity)).toBe(gib);
+  });
+
+  it('keeps a stored room to work the form does not edit', () => {
+    const draft = {
+      ...emptyDraft('github'),
+      sources: [{ ...emptySource('github'), owner: 'acme', languages: ['Go'] }],
+      minimumGiB: '0',
+      headroom: '8Gi',
+    };
+    expect(toCreateInput(draft, 'acme').sizing).toEqual({ headroom: '8Gi' });
   });
 });
 
@@ -139,8 +183,12 @@ describe('fieldOfManagerMessage', () => {
       'sources.2.topics',
     ],
     [
-      'create_workspace: invalid workspace: invalid workspace: sizing.headroom "lots": quantities must match the regular expression',
-      'sizing.headroom',
+      'create_workspace: invalid workspace: invalid workspace: sizing.minimum "lots": quantities must match the regular expression',
+      'sizing.minimum',
+    ],
+    [
+      'update_workspace: invalid workspace: sizing.headroom "lots": quantities must match the regular expression',
+      undefined,
     ],
     [
       'create_workspace: invalid workspace: Workspace.workspace-manager.giantswarm.io "W" is invalid: metadata.name: Invalid value: "W": a lowercase RFC 1123 subdomain must consist of',

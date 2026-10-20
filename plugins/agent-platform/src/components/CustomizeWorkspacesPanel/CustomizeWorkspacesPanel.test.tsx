@@ -111,7 +111,7 @@ describe('CustomizeWorkspacesPanel', () => {
 
     const row = screen.getByRole('row', { name: /docs/ });
     expect(
-      within(row).getByText('github: example-org · topic docs'),
+      within(row).getByText('example-org · topic docs'),
     ).toBeInTheDocument();
     expect(within(row).getByText('12')).toBeInTheDocument();
     expect(
@@ -177,9 +177,7 @@ describe('CustomizeWorkspacesPanel', () => {
     await renderPanel();
 
     expect(screen.getByText('No workspaces in alpha yet')).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'Create workspace' }),
-    ).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'New workspace' })).toHaveAttribute(
       'href',
       '/customize/workspaces/new?installation=gazelle&organization=alpha',
     );
@@ -249,7 +247,7 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(
       screen.getByText('No Organization to show workspaces of'),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Create workspace' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'New workspace' })).toBeNull();
   });
 
   it('lists the rest and names the installation it could not read', async () => {
@@ -310,7 +308,7 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.getByText(/nothing-like-it/)).toBeInTheDocument();
   });
 
-  it('offers Sync now, Delete and Edit, and Open only once the workspace page exists', async () => {
+  it('offers Open (once the workspace page exists), Edit, Sync now and Delete', async () => {
     await renderPanel();
 
     await userEvent.click(

@@ -31,6 +31,7 @@ export const WORKSPACE_MANAGER_TOOLS = {
   previewWorkspace: 'preview_workspace',
   authorizeWorkspace: 'authorize_workspace',
   listProviders: 'list_providers',
+  listOwners: 'list_owners',
 } as const;
 
 export type WorkspaceManagerTool =
@@ -313,6 +314,24 @@ export type RepositoriesPage = {
   /** Every language and topic the owner's repositories carry. */
   languages: string[];
   topics: string[];
+  /**
+   * How many of the owner's repositories carry each language and topic,
+   * most used first; absent from a manager before facet counts.
+   */
+  languageCounts?: FacetCount[];
+  topicCounts?: FacetCount[];
+  /** How many of the owner's repositories carry any topic. */
+  withTopics?: number;
+};
+
+/** A language or topic and how many repositories carry it. */
+export type FacetCount = { name: string; count: number };
+
+/** `list_owners`: the owners on a provider instance the person can pick from. */
+export type ProviderOwner = {
+  name: string;
+  /** `organization`, `group`, `user`, … as the provider calls it. */
+  kind: string;
 };
 
 /** `preview_workspace`: an existing workspace by name, or a draft. */
@@ -365,6 +384,10 @@ export type WorkspaceProvider = {
   connected: boolean;
   /** How the person grants the App, while they have not; a sentence. */
   signIn?: string;
+  /** The instance's host, e.g. `github.com`; absent from older managers. */
+  host?: string;
+  /** Who the person is on the instance once granted; absent from older managers. */
+  login?: string;
 };
 
 const PROVIDER_KIND_NAMES: Record<string, string> = {
@@ -373,6 +396,29 @@ const PROVIDER_KIND_NAMES: Record<string, string> = {
   gitea: 'Gitea',
   bitbucket: 'Bitbucket',
 };
+
+/**
+ * A provider instance in the editor's Provider select: its kind and host
+ * ("GitHub · github.com"), or its display name while the manager names no
+ * host.
+ */
+export function providerOptionLabel(
+  provider: Pick<WorkspaceProvider, 'name' | 'kind' | 'host'>,
+): string {
+  return provider.host
+    ? `${providerKindName(provider.kind)} · ${provider.host}`
+    : providerDisplayName(provider);
+}
+
+/** The signed-in line of a source: "Signed in to GitHub as octocat". */
+export function signedInLine(
+  provider: Pick<WorkspaceProvider, 'name' | 'kind' | 'login'>,
+): string {
+  const name = providerDisplayName(provider);
+  return provider.login
+    ? `Signed in to ${name} as ${provider.login}`
+    : `Signed in to ${name}`;
+}
 
 /** A provider kind as the provider spells it ("GitHub"), else as given. */
 export function providerKindName(kind: string): string {

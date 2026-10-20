@@ -1,13 +1,7 @@
-import {
-  Alert,
-  Button,
-  Flex,
-  SearchField,
-  Skeleton,
-  Text,
-} from '@backstage/ui';
+import { Alert, Button, Flex, Skeleton, Text } from '@backstage/ui';
 
 import { EDITOR_PAGE_SIZE } from '../../hooks/useWorkspaceEditor';
+import { shortAge } from '../../lib/shortAge';
 import {
   classifyWorkspaceManagerError,
   type PreviewRepository,
@@ -26,9 +20,26 @@ export function formatKiB(kib: number): string {
   return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
 
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
+/** A Kubernetes quantity as people read it: `8Gi` is "8 GiB". */
+export function formatQuantity(quantity: string): string {
+  return quantity.replace(/^([\d.]+)\s*([KMGTP]i)$/, '$1 $2B');
+}
+
+/**
+ * Why a repository is in, in words: picked by name, the topics it matches,
+ * or the language filter (`why` holds `name`, `language Go`, `topic mcp`).
+ */
+export function whyText(why: string[]): string {
+  if (why.includes('name')) {
+    return 'picked by name';
+  }
+  const topics = why
+    .filter(reason => reason.startsWith('topic '))
+    .map(reason => reason.slice('topic '.length));
+  if (topics.length > 0) {
+    return `matches topic ${topics.join(', ')}`;
+  }
+  return why.length > 0 ? 'matches the language filter' : '';
 }
 
 export type WorkspacePreviewPanelProps = {
@@ -41,36 +52,19 @@ export type WorkspacePreviewPanelProps = {
   hasSources: boolean;
   page: number;
   onPage: (page: number) => void;
-  search: string;
-  onSearch: (search: string) => void;
-  /**
-   * Excludes a repository a filter took, on the source that took it;
-   * absent for one picked by name.
-   */
-  onExclude: (repository: PreviewRepository) => void;
-  canExclude: (repository: PreviewRepository) => boolean;
+  /** How many provider instances the sources read. */
+  providerCount: number;
+  /** The disk: "about 8 GiB, automatic", "7 GiB, at least 20 GiB". */
+  disk: string | undefined;
+  /** The repositories the sources exclude, by name. */
+  excluded: string[];
 };
 
 /**
- * Why a repository is in, in words: picked by name, or the language and
- * topics it matches (`why` holds `name`, `language Go`, `topic mcp`).
- */
-export function whyText(why: string[]): string {
-  const matches = why.filter(reason => reason !== 'name');
-  return [
-    why.includes('name') ? 'Picked by name' : undefined,
-    matches.length > 0 ? `Matches ${matches.join(', ')}` : undefined,
-  ]
-    .filter(Boolean)
-    .join('; ');
-}
-
-/**
- * What the draft selects now, as `preview_workspace` resolves it: the count,
- * the estimated size, the repositories (paged and searchable) with language,
- * topics, last push and why each is in, and what was left out. Nothing here
- * says whether the person can read a repository: that is checked when a
- * Session starts.
+ * What the draft selects now, as `preview_workspace` resolves it: the count
+ * and size, the disk, what is excluded, and each repository with its
+ * language, last push, size and why it is in. Nothing here says whether the
+ * person can read a repository: that is checked when a session starts.
  */
 export function WorkspacePreviewPanel({
   preview,
@@ -80,17 +74,24 @@ export function WorkspacePreviewPanel({
   hasSources,
   page,
   onPage,
-  search,
-  onSearch,
-  onExclude,
-  canExclude,
+  providerCount,
+  disk,
+  excluded,
 }: WorkspacePreviewPanelProps) {
+  const note = (
+    <Text variant="body-small" color="secondary">
+      Nothing changes until you save. Access is checked for each person when
+      they start a session.
+    </Text>
+  );
   if (!hasSources) {
     return (
-      <Text variant="body-small" color="secondary">
-        Once a source has an owner and picks repositories by name, language or
-        topic, the repositories the workspace gets are listed here.
-      </Text>
+      <Flex direction="column" gap="2" data-testid="workspace-preview">
+        <Text variant="body-small" color="secondary">
+          The preview lists what the workspace selects once a source has an
+          owner and repositories.
+        </Text>
+      </Flex>
     );
   }
   const pages = preview
@@ -99,17 +100,17 @@ export function WorkspacePreviewPanel({
         Math.ceil(preview.matching / (preview.pageSize || EDITOR_PAGE_SIZE)),
       )
     : 1;
-  const left = preview
-    ? [
-        preview.excluded > 0 ? `${preview.excluded} excluded` : undefined,
-        preview.skippedArchived > 0
-          ? `${preview.skippedArchived} archived left out`
-          : undefined,
-        preview.skippedForks > 0
-          ? `${preview.skippedForks} forks left out`
-          : undefined,
-      ].filter(Boolean)
-    : [];
+  const left = [
+    excluded.length > 0
+      ? `${excluded.length} excluded: ${excluded.join(', ')}`
+      : undefined,
+    preview && preview.skippedArchived > 0
+      ? `${preview.skippedArchived} archived left out`
+      : undefined,
+    preview && preview.skippedForks > 0
+      ? `${preview.skippedForks} forks left out`
+      : undefined,
+  ].filter(Boolean);
   return (
     <Flex
       direction="column"
@@ -133,74 +134,29 @@ export function WorkspacePreviewPanel({
             {preview.total === 1
               ? '1 repository'
               : `${preview.total} repositories`}
-            , about {formatKiB(preview.providerSizeKiB)}
+            {providerCount > 1 ? ` on ${providerCount} providers` : ''}, about{' '}
+            {formatKiB(preview.providerSizeKiB)}
           </Text>
           <Text variant="body-small" color="secondary">
-            Estimated disk space: {preview.estimatedVolumeSize}, with room to
-            grow
-            {left.length > 0 ? ` · ${left.join(' · ')}` : ''}
+            {[
+              `Disk space: ${disk ?? `about ${formatQuantity(preview.estimatedVolumeSize)}, automatic`}`,
+              ...left,
+            ].join(' · ')}
           </Text>
-          <SearchField
-            aria-label="Search the preview"
-            placeholder="Find a repository in this list"
-            size="small"
-            value={search}
-            onChange={onSearch}
-          />
           <ul
             aria-label="Selected repositories preview"
             style={{ listStyle: 'none', margin: 0, padding: 0 }}
           >
             {preview.repositories.map(repository => (
-              <li
+              <PreviewRow
                 key={`${repository.provider}/${repository.repository}`}
-                style={{
-                  padding: '6px 0',
-                  borderBottom: '1px solid var(--bui-border, #ddd)',
-                }}
-              >
-                <Flex justify="between" align="start" gap="2">
-                  <Flex direction="column" gap="1">
-                    <Text variant="body-small" weight="bold">
-                      {repository.repository}
-                    </Text>
-                    <Text variant="body-small" color="secondary">
-                      {[
-                        repository.language
-                          ? `Language ${repository.language}`
-                          : undefined,
-                        repository.topics.length > 0
-                          ? `Topics ${repository.topics.join(', ')}`
-                          : undefined,
-                        `pushed ${formatDate(repository.lastPush)}`,
-                        formatKiB(repository.sizeKiB),
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </Text>
-                    <Text variant="body-small" color="secondary">
-                      {whyText(repository.why)}
-                    </Text>
-                  </Flex>
-                  {canExclude(repository) && (
-                    <Button
-                      variant="tertiary"
-                      size="small"
-                      aria-label={`Exclude ${repository.repository}`}
-                      onPress={() => onExclude(repository)}
-                    >
-                      Exclude
-                    </Button>
-                  )}
-                </Flex>
-              </li>
+                repository={repository}
+              />
             ))}
           </ul>
           {preview.repositories.length === 0 && (
             <Text variant="body-small" color="secondary">
-              {search
-                ? 'No selected repository matches the search.'
-                : 'The sources select no repository.'}
+              The sources select no repository.
             </Text>
           )}
           {pages > 1 && (
@@ -228,6 +184,35 @@ export function WorkspacePreviewPanel({
           )}
         </>
       )}
+      {note}
     </Flex>
+  );
+}
+
+function PreviewRow({ repository }: { repository: PreviewRepository }) {
+  const age = shortAge(repository.lastPush);
+  return (
+    <li
+      style={{
+        padding: '6px 0',
+        borderBottom: '1px solid var(--bui-border-1)',
+      }}
+    >
+      <Flex direction="column" gap="1">
+        <Text variant="body-small" weight="bold">
+          {repository.repository}
+        </Text>
+        <Text variant="body-small" color="secondary">
+          {[
+            repository.language,
+            age === 'now' ? 'pushed just now' : age && `pushed ${age} ago`,
+            formatKiB(repository.sizeKiB),
+            whyText(repository.why),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </Text>
+      </Flex>
+    </li>
   );
 }

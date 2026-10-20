@@ -116,6 +116,28 @@ function source(index: number) {
   return within(screen.getByTestId(`workspace-source-${index}`));
 }
 
+/**
+ * Ticks an option in one of a source's filter dropdowns (Language, Topics,
+ * Including), then closes it.
+ */
+async function pickFilter(index: number, dropdown: string, option: string) {
+  fireEvent.click(
+    await source(index).findByRole('button', {
+      name: new RegExp(`^${dropdown}:`),
+    }),
+  );
+  fireEvent.click(await screen.findByRole('checkbox', { name: option }));
+  await closePopover();
+}
+
+/** Closes the open filter dropdown, which hides the page from queries. */
+async function closePopover() {
+  fireEvent.keyDown(await screen.findByRole('dialog'), { key: 'Escape' });
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+  );
+}
+
 /** Lets the preview's debounce run out. */
 async function settlePreview() {
   await act(async () => {
@@ -146,10 +168,13 @@ describe('WorkspaceEditorPage', () => {
     fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
       target: { value: 'acme' },
     });
-    fireEvent.click(await source(0).findByRole('button', { name: 'Go' }));
-    fireEvent.click(source(0).getByRole('button', { name: 'mcp' }));
+    await pickFilter(0, 'Language', 'Go');
+    await pickFilter(0, 'Topics', 'mcp');
     await settlePreview();
 
+    expect(
+      await source(0).findByTestId('filter-match-total'),
+    ).toHaveTextContent('2 repositories match');
     const preview = within(screen.getByTestId('workspace-preview'));
     expect(await preview.findByText('acme/mcp-kubernetes')).toBeInTheDocument();
     expect(preview.getByText('acme/mcp-prometheus')).toBeInTheDocument();
@@ -158,8 +183,12 @@ describe('WorkspaceEditorPage', () => {
       '2 repositories',
     );
 
+    // Unticking a filter match excludes it.
     fireEvent.click(
-      preview.getByRole('button', { name: 'Exclude acme/mcp-prometheus' }),
+      await source(0).findByRole('checkbox', { name: 'mcp-prometheus' }),
+    );
+    expect(source(0).getByTestId('repository-summary')).toHaveTextContent(
+      '2 by filter · 0 by name · 1 excluded = 1 repository',
     );
     await settlePreview();
     await waitFor(() =>
@@ -212,7 +241,6 @@ describe('WorkspaceEditorPage', () => {
     fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
       target: { value: 'acme!' },
     });
-    fireEvent.click(source(0).getByRole('checkbox', { name: /Forks count/ }));
     // A pick by name, so the source has a selector without the owner's listing.
     fake.onWrite('update_workspace', () => {
       throw new Error('update must not be called');
@@ -264,7 +292,7 @@ describe('WorkspaceEditorPage', () => {
     fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
       target: { value: 'acme' },
     });
-    fireEvent.click(await source(0).findByRole('button', { name: 'Go' }));
+    await pickFilter(0, 'Language', 'Go');
 
     // Source 2: gitlab-lab / platform, one repository by name.
     fireEvent.click(screen.getByRole('button', { name: 'Add source' }));
@@ -301,11 +329,11 @@ describe('WorkspaceEditorPage', () => {
     const name = await screen.findByRole('textbox', { name: /^Name/ });
     fireEvent.change(name, { target: { value: 'Platform MCP' } });
     expect(
-      screen.queryByText(/Use at most 63 lowercase letters/),
+      screen.queryByText(/Use lowercase letters, digits and dashes only/),
     ).not.toBeInTheDocument();
     fireEvent.blur(name);
     expect(
-      await screen.findByText(/Use at most 63 lowercase letters/),
+      await screen.findByText(/Use lowercase letters, digits and dashes only/),
     ).toBeInTheDocument();
     // A field not yet left stays quiet.
     expect(screen.queryByText('Owner is required')).not.toBeInTheDocument();
@@ -320,7 +348,7 @@ describe('WorkspaceEditorPage', () => {
 
     const owner = await source0Owner();
     expect(owner).toHaveAccessibleDescription(
-      /The GitHub organization or user/,
+      /The GitHub organization, group or user/,
     );
     expect(screen.queryByText(/^Provider/)).not.toBeInTheDocument();
   });
@@ -494,6 +522,54 @@ describe('WorkspaceEditorPage', () => {
     expect(fake.callsOf('preview_workspace')).toHaveLength(0);
   });
 
+  it('says whether a name is free once typing pauses', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [
+        {
+          name: 'taken',
+          organization: 'acme',
+          sources: [],
+          sync: { schedule: 'nightly' },
+          resourceVersion: '1',
+          createdAt: '2026-10-01T00:00:00Z',
+          repositories: 0,
+          sessions: 0,
+        },
+      ],
+    });
+    await render(fake);
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
+
+    fireEvent.change(name, { target: { value: 'platform-mcp' } });
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    expect(
+      await screen.findByText('platform-mcp is available'),
+    ).toBeInTheDocument();
+
+    fireEvent.change(name, { target: { value: 'taken' } });
+    fireEvent.blur(name);
+    await waitFor(() =>
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('A workspace named taken exists on lab.'),
+      ),
+    );
+
+    // An invalid name says so once typing pauses, with one to try.
+    fireEvent.change(name, { target: { value: 'Platform MCP' } });
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await waitFor(() =>
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('Try “platform-mcp”.'),
+      ),
+    );
+  });
+
   it('opens an existing workspace with its filters and saves the change', async () => {
     const stored: Workspace = {
       name: 'platform-mcp',
@@ -528,16 +604,16 @@ describe('WorkspaceEditorPage', () => {
     ).not.toBeInTheDocument();
 
     expect(
-      await source(0).findByRole('button', { name: 'Go', pressed: true }),
+      await source(0).findByRole('button', { name: 'Language: Go' }),
     ).toBeInTheDocument();
+    fireEvent.click(
+      source(0).getByRole('button', { name: 'Topics: all of mcp' }),
+    );
     expect(
-      source(0).getByRole('button', { name: 'mcp', pressed: true }),
+      await screen.findByRole('radio', { name: 'All of', checked: true }),
     ).toBeInTheDocument();
-    expect(
-      source(0).getByRole('radio', { name: 'All of', checked: true }),
-    ).toBeInTheDocument();
-
-    fireEvent.click(source(0).getByRole('radio', { name: 'Any of' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Any of' }));
+    await closePopover();
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
       expect(fake.callsOf('update_workspace')).toHaveLength(1),
@@ -577,7 +653,7 @@ describe('RepositoryPicker against an owner of 500 repositories', () => {
       target: { value: 'big' },
     });
     const picker = () => within(source(0).getByTestId('repository-picker'));
-    expect(await picker().findByText('500 repositories')).toBeInTheDocument();
+    expect(await picker().findByText('(500)')).toBeInTheDocument();
     expect(picker().getByText('Page 1 of 20')).toBeInTheDocument();
 
     fireEvent.click(picker().getByRole('button', { name: 'Next' }));
@@ -585,34 +661,28 @@ describe('RepositoryPicker against an owner of 500 repositories', () => {
       await picker().findByRole('checkbox', { name: 'repo-025' }),
     ).toBeInTheDocument();
 
-    // Search by name: server-side.
+    // Filter: Go only, server-side, its matches first.
+    await pickFilter(0, 'Language', 'Go');
+    expect(
+      await source(0).findByTestId('filter-match-total'),
+    ).toHaveTextContent('167 repositories match');
+    expect(
+      await picker().findByText('Page 1 of 27, matches first'),
+    ).toBeInTheDocument();
+
+    // Search by name: server-side, and select all its matches.
     fireEvent.change(picker().getByRole('searchbox'), {
       target: { value: 'repo-04' },
     });
     expect(
-      await picker().findByText('10 of 500 repositories match'),
+      await picker().findByText('10 of 500 match the search'),
     ).toBeInTheDocument();
-
-    // Filter: Go only, through the source's filter and "matching only".
-    fireEvent.change(picker().getByRole('searchbox'), {
-      target: { value: '' },
-    });
-    fireEvent.click(source(0).getByRole('button', { name: 'Go' }));
     fireEvent.click(
-      await picker().findByRole('switch', {
-        name: 'Matching the filters only',
-      }),
-    );
-    expect(
-      await picker().findByText('167 of 500 repositories match'),
-    ).toBeInTheDocument();
-
-    fireEvent.click(
-      picker().getByRole('button', { name: 'Select all 167 matches' }),
+      picker().getByRole('button', { name: 'Select all 10 matches' }),
     );
     await waitFor(() =>
       expect(
-        picker().getByRole('switch', { name: 'Selected only (167)' }),
+        picker().getByRole('switch', { name: 'Selected only (10)' }),
       ).toBeInTheDocument(),
     );
 
@@ -623,6 +693,6 @@ describe('RepositoryPicker against an owner of 500 repositories', () => {
     }
     const selectAll = listings.filter(call => call.pageSize === 200);
     expect(selectAll).toHaveLength(1);
-    expect(selectAll[0]).toMatchObject({ languages: ['Go'], fork: false });
+    expect(selectAll[0]).toMatchObject({ search: 'repo-04' });
   });
 });

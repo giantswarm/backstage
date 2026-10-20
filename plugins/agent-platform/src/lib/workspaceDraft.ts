@@ -31,17 +31,72 @@ export type SourceDraft = {
 export type WorkspaceDraft = {
   name: string;
   sources: SourceDraft[];
-  /** Kubernetes quantities as typed; empty is unset. */
+  /** The disk's minimum size in GiB, as typed; empty or 0 is automatic only. */
+  minimumGiB: string;
+  /**
+   * A stored room-to-work override (a Kubernetes quantity), kept as it is:
+   * the form does not edit it, and a save must not drop it.
+   */
   headroom: string;
-  minimum: string;
 };
 
-/** The manager's name rule (a Kubernetes object name, at most 63). */
+/** The manager's name rule (a Kubernetes object name), at the form's 40. */
 export const WORKSPACE_NAME_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
-export const WORKSPACE_NAME_MAX = 63;
+export const WORKSPACE_NAME_MAX = 40;
 
-/** A Kubernetes quantity of bytes, as the sizing fields take it (`8Gi`). */
-export const QUANTITY_RE = /^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|k|M|G|T|P)?$/;
+const QUANTITY_RE = /^(\d+(?:\.\d+)?)(Ki|Mi|Gi|Ti|Pi|k|M|G|T|P)?$/;
+const BYTES_PER_UNIT: Record<string, number> = {
+  '': 1,
+  Ki: 2 ** 10,
+  Mi: 2 ** 20,
+  Gi: 2 ** 30,
+  Ti: 2 ** 40,
+  Pi: 2 ** 50,
+  k: 1e3,
+  M: 1e6,
+  G: 1e9,
+  T: 1e12,
+  P: 1e15,
+};
+
+/** A Kubernetes quantity of bytes in whole GiB, rounded up; '' if none. */
+export function quantityToGiB(quantity: string | undefined): string {
+  const match = QUANTITY_RE.exec(quantity?.trim() ?? '');
+  if (!match) {
+    return '';
+  }
+  const bytes = Number(match[1]) * BYTES_PER_UNIT[match[2] ?? ''];
+  return String(Math.ceil(bytes / 2 ** 30));
+}
+
+/**
+ * A valid name close to what was typed: lowercase, every run of other
+ * characters a dash, no dash at either end, at most 40 characters.
+ */
+export function suggestName(typed: string): string {
+  return typed
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .slice(0, WORKSPACE_NAME_MAX)
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Why a typed name is not one, with a valid one to try; undefined if it is. */
+export function nameProblem(typed: string): string | undefined {
+  const name = typed.trim();
+  if (!name) {
+    return 'Name is required';
+  }
+  if (name.length <= WORKSPACE_NAME_MAX && WORKSPACE_NAME_RE.test(name)) {
+    return undefined;
+  }
+  const suggestion = suggestName(name);
+  const rule =
+    WORKSPACE_NAME_RE.test(name) || name.length > WORKSPACE_NAME_MAX
+      ? `Use at most ${WORKSPACE_NAME_MAX} characters.`
+      : 'Use lowercase letters, digits and dashes only.';
+  return suggestion ? `${rule} Try “${suggestion}”.` : rule;
+}
 
 let sourceKeys = 0;
 
@@ -65,8 +120,8 @@ export function emptyDraft(provider = ''): WorkspaceDraft {
   return {
     name: '',
     sources: [emptySource(provider)],
+    minimumGiB: '',
     headroom: '',
-    minimum: '',
   };
 }
 
@@ -85,8 +140,8 @@ export function draftFromWorkspace(workspace: Workspace): WorkspaceDraft {
       includeArchived: source.includeArchived ?? false,
       includeForks: source.includeForks ?? false,
     })),
+    minimumGiB: quantityToGiB(workspace.sizing?.minimum),
     headroom: workspace.sizing?.headroom ?? '',
-    minimum: workspace.sizing?.minimum ?? '',
   };
 }
 
@@ -127,9 +182,10 @@ export function toSource(source: SourceDraft): WorkspaceSource {
 
 /** The sizing overrides as the manager takes them; `{}` clears them. */
 export function toSizing(draft: WorkspaceDraft): WorkspaceSizing {
+  const minimum = Number(draft.minimumGiB.trim() || '0');
   return {
     ...(draft.headroom.trim() ? { headroom: draft.headroom.trim() } : {}),
-    ...(draft.minimum.trim() ? { minimum: draft.minimum.trim() } : {}),
+    ...(minimum > 0 ? { minimum: `${minimum}Gi` } : {}),
   };
 }
 
@@ -171,7 +227,7 @@ export function toUpdateInput(
 }
 
 /**
- * A form field's address: `name`, `sizing.headroom`, `sizing.minimum`,
+ * A form field's address: `name`, `sizing.minimum`,
  * `sources.<i>` (the source as a whole) or `sources.<i>.<field>` with field
  * one of provider, owner, repositories, languages, topics, exclude.
  */
@@ -183,17 +239,9 @@ export function draftProblems(
   isEdit: boolean,
 ): Record<DraftField, string> {
   const problems: Record<DraftField, string> = {};
-  const name = draft.name.trim();
-  if (!isEdit) {
-    if (!name) {
-      problems.name = 'Name is required';
-    } else if (
-      name.length > WORKSPACE_NAME_MAX ||
-      !WORKSPACE_NAME_RE.test(name)
-    ) {
-      problems.name =
-        'Use at most 63 lowercase letters, digits and dashes, e.g. platform-mcp';
-    }
+  const name = isEdit ? undefined : nameProblem(draft.name);
+  if (name) {
+    problems.name = name;
   }
   draft.sources.forEach((source, index) => {
     if (!source.provider) {
@@ -207,11 +255,9 @@ export function draftProblems(
         'Pick repositories by name, or filter by language or topic';
     }
   });
-  for (const field of ['headroom', 'minimum'] as const) {
-    const value = draft[field].trim();
-    if (value && !QUANTITY_RE.test(value)) {
-      problems[`sizing.${field}`] = 'Use a size such as 8Gi or 500Mi';
-    }
+  const minimum = draft.minimumGiB.trim();
+  if (minimum && !/^\d+$/.test(minimum)) {
+    problems['sizing.minimum'] = 'Enter a whole number of GiB, such as 20';
   }
   return problems;
 }
@@ -242,9 +288,8 @@ export function fieldOfManagerMessage(message: string): DraftField | undefined {
     }
     return field ? `sources.${source[1]}.${field}` : `sources.${source[1]}`;
   }
-  const sizing = /(?:spec\.)?sizing\.(headroom|minimum)/.exec(message);
-  if (sizing) {
-    return `sizing.${sizing[1]}`;
+  if (/(?:spec\.)?sizing\.minimum/.test(message)) {
+    return 'sizing.minimum';
   }
   if (
     /metadata\.name|\bname\b.*(must|invalid|lowercase|RFC 1123)/i.test(message)

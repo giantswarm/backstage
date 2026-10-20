@@ -261,6 +261,16 @@ const useStyles = makeStyles({
       display: 'block',
     },
   },
+  // In the spacer's place: the header's right end, where a scope line sits.
+  meta: {
+    flex: '1 1 0',
+    minWidth: 0,
+    textAlign: 'right',
+    [PHONE_MEDIA]: {
+      flexBasis: '100%',
+      textAlign: 'left',
+    },
+  },
   body: {
     flex: '1 1 auto',
   },
@@ -471,6 +481,11 @@ export interface WizardFrameProps {
   documentTitle?: ReadonlyArray<string | undefined>;
   /** Muted text after the title, e.g. "Customize / Models". */
   context?: ReactNode;
+  /**
+   * Muted text at the header's right end, e.g. the scope the flow works in
+   * ("Organization acme · gazelle"); under the title at phone width.
+   */
+  meta?: ReactNode;
   steps?: WizardStep[];
   /** The id of the step on screen. */
   currentStep?: string;
@@ -523,6 +538,7 @@ export function WizardFrame({
   title,
   documentTitle,
   context,
+  meta,
   steps,
   currentStep,
   closeHref,
@@ -700,7 +716,17 @@ export function WizardFrame({
             </div>
           </div>
           {stepStrip}
-          <div className={classes.spacer} />
+          {meta ? (
+            <Text
+              variant="body-small"
+              color="secondary"
+              className={classes.meta}
+            >
+              {meta}
+            </Text>
+          ) : (
+            <div className={classes.spacer} />
+          )}
         </header>
         <WizardRailContext.Provider value={railDocked}>
           <div

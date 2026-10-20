@@ -30,7 +30,7 @@ export function CreateWorkspaceButton({
       iconStart={<AddIcon />}
       style={fullWidth ? { width: '100%' } : undefined}
     >
-      Create workspace
+      New workspace
     </ButtonLink>
   );
 }

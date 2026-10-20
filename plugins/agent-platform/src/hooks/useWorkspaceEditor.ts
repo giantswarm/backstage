@@ -10,13 +10,15 @@ import type { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
 import {
   previewableSources,
   toCreateInput,
+  toSizing,
   toUpdateInput,
   type WorkspaceDraft,
 } from '../lib/workspaceDraft';
-import type {
-  ListRepositoriesInput,
-  Workspace,
-  WorkspacePreview,
+import {
+  classifyWorkspaceManagerError,
+  type ListRepositoriesInput,
+  type Workspace,
+  type WorkspacePreview,
 } from '../lib/workspaceManager';
 
 /** How long the draft rests before it is previewed. */
@@ -101,6 +103,74 @@ export function useRepositoriesPage(
   });
 }
 
+/**
+ * The owners on a provider instance the person can pick from; an error (a
+ * manager before `list_owners`) leaves the owner a free text field.
+ */
+export function useProviderOwners(
+  client: WorkspaceManagerClient | undefined,
+  organization: string,
+  provider: string | undefined,
+) {
+  return useQuery({
+    queryKey: editorKey(
+      client?.installation ?? '',
+      'owners',
+      organization,
+      provider,
+    ),
+    enabled: Boolean(client && provider),
+    queryFn: () => client!.listOwners({ organization, provider: provider! }),
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
+/** How long a typed name rests before its availability is checked. */
+export const NAME_CHECK_DEBOUNCE_MS = 500;
+
+export type NameAvailability = 'checking' | 'available' | 'taken' | undefined;
+
+/**
+ * Whether a valid typed name is free on the installation: `get_workspace`
+ * answers not found. Checked once typing pauses, and at once on `checkNow`
+ * (the field's blur); undefined while the name is invalid or unread.
+ */
+export function useNameAvailability(
+  client: WorkspaceManagerClient | undefined,
+  name: string,
+  isValid: boolean,
+) {
+  const [blurred, setBlurred] = useState<string | undefined>();
+  const debounced = useDebouncedValue(name, NAME_CHECK_DEBOUNCE_MS);
+  const checked = blurred === name ? name : debounced;
+  const query = useQuery({
+    queryKey: editorKey(client?.installation ?? '', 'name', checked),
+    enabled: Boolean(client && isValid && checked && checked === name),
+    queryFn: async () => {
+      try {
+        await client!.getWorkspace(checked);
+        return 'taken' as const;
+      } catch (cause) {
+        if (classifyWorkspaceManagerError(cause).kind === 'not_found') {
+          return 'available' as const;
+        }
+        throw cause;
+      }
+    },
+    retry: false,
+    staleTime: 30_000,
+  });
+  let state: NameAvailability;
+  if (isValid && name) {
+    state = checked === name && query.data ? query.data : 'checking';
+    if (query.error) {
+      state = undefined;
+    }
+  }
+  return { state, checkNow: () => setBlurred(name) };
+}
+
 export type PreviewQuery = {
   page: number;
   search: string;
@@ -117,10 +187,7 @@ export function useWorkspacePreview(
   { page, search }: PreviewQuery,
 ) {
   const sources = previewableSources(draft);
-  const sizing = {
-    ...(draft.headroom.trim() ? { headroom: draft.headroom.trim() } : {}),
-    ...(draft.minimum.trim() ? { minimum: draft.minimum.trim() } : {}),
-  };
+  const sizing = toSizing(draft);
   const request = useDebouncedValue(
     JSON.stringify({ sources, sizing, page, search }),
     PREVIEW_DEBOUNCE_MS,

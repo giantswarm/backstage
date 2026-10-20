@@ -21,7 +21,7 @@ export function workspaceRowId(row: {
 }
 
 /**
- * One source in a line: `github: example-org · lang Go · topic mcp`, the
+ * One source in a line: `example-org · lang Go · topic mcp`, the
  * repositories by name (`repo-a, repo-b`), the exclusions last. A source
  * with neither names nor filters selects all of the owner's repositories.
  */
@@ -45,7 +45,7 @@ export function sourceLabel(source: WorkspaceSource): string {
   if (source.exclude?.length) {
     parts.push(`excl. ${source.exclude.join(', ')}`);
   }
-  return [`${source.provider}: ${source.owner}`, ...parts].join(' · ');
+  return [source.owner, ...parts].join(' · ');
 }
 
 /** Every source of a workspace, one after the other. */

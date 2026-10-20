@@ -4,11 +4,11 @@ import { Alert, Button, Flex, Skeleton, Text, TextField } from '@backstage/ui';
 import {
   EmptyStateCard,
   fieldErrorProps,
+  SimpleAccordion,
   useFieldValidation,
   useProvidePageHeaderActions,
   useWizardFrameRail,
   WizardFrame,
-  WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
@@ -19,7 +19,10 @@ import {
   useWorkspaceManagerClient,
 } from '../../hooks/useWorkspaceManager';
 import {
+  NAME_CHECK_DEBOUNCE_MS,
+  useDebouncedValue,
   useEditedWorkspace,
+  useNameAvailability,
   useSaveWorkspace,
   useWorkspacePreview,
   useWorkspaceProviders,
@@ -37,15 +40,20 @@ import {
 import {
   classifyWorkspaceManagerError,
   WORKSPACE_MANAGER_SERVER,
-  type PreviewRepository,
   type WorkspaceManagerError,
+  type WorkspacePreview,
+  type WorkspaceStorage,
 } from '../../lib/workspaceManager';
 import {
   editorGate,
   WorkspaceEditorGate,
   type EditorGate,
 } from './WorkspaceEditorGate';
-import { WorkspacePreviewPanel } from './WorkspacePreviewPanel';
+import {
+  formatKiB,
+  formatQuantity,
+  WorkspacePreviewPanel,
+} from './WorkspacePreviewPanel';
 import { WorkspaceSourceEditor } from './WorkspaceSourceEditor';
 
 /** The manager's sources limit (the CRD's `maxItems`). */
@@ -173,15 +181,17 @@ function WorkspaceEditor({
       });
     }
   }, [providers, draft]);
+  // Editing opens one source at a time; the first until another is chosen.
+  const [expanded, setExpanded] = useState<string | undefined>();
+  const expandedKey = expanded ?? draft?.sources[0]?.key;
 
   const [problem, setProblem] = useState<SaveProblem | undefined>();
   const [previewPage, setPreviewPage] = useState(1);
-  const [previewSearch, setPreviewSearch] = useState('');
   const preview = useWorkspacePreview(
     client,
     organization,
     draft ?? emptyDraft(),
-    { page: previewPage, search: previewSearch },
+    { page: previewPage, search: '' },
   );
 
   // Only the person's edits count: the loaded workspace and the one provider
@@ -219,16 +229,41 @@ function WorkspaceEditor({
       ),
     [],
   );
+  // The name is checked once typing pauses too, and whether it is free.
+  const typedName = draft?.name.trim() ?? '';
+  const pausedName = useDebouncedValue(typedName, NAME_CHECK_DEBOUNCE_MS);
+  const nameAvailability = useNameAvailability(
+    isEdit ? undefined : client,
+    typedName,
+    !problems.name,
+  );
   const errorFor = useCallback(
     (field: string) => {
       if (problem?.field === field) {
         return problem.message;
       }
+      if (field === 'name') {
+        if (nameAvailability.state === 'taken') {
+          return `A workspace named ${typedName} exists on ${installation}. Choose another name.`;
+        }
+        if (typedName && pausedName === typedName) {
+          return problems.name;
+        }
+      }
       return touched.has(field)
         ? problems[field]
         : validation.errorFor(field, problems[field]);
     },
-    [problem, problems, validation, touched],
+    [
+      problem,
+      problems,
+      validation,
+      touched,
+      nameAvailability.state,
+      typedName,
+      pausedName,
+      installation,
+    ],
   );
 
   const save = useSaveWorkspace(client);
@@ -236,7 +271,10 @@ function WorkspaceEditor({
     if (!draft) {
       return;
     }
-    if (Object.keys(problems).length > 0) {
+    if (
+      Object.keys(problems).length > 0 ||
+      nameAvailability.state === 'taken'
+    ) {
       validation.reveal();
       return;
     }
@@ -261,6 +299,7 @@ function WorkspaceEditor({
   }, [
     draft,
     problems,
+    nameAvailability.state,
     validation,
     save,
     organization,
@@ -269,41 +308,6 @@ function WorkspaceEditor({
     navigate,
     closeHref,
   ]);
-
-  // A repository a filter took is excluded on the source that took it.
-  const sourceOf = useCallback(
-    (repository: PreviewRepository) =>
-      draft?.sources.findIndex(
-        source =>
-          source.provider === repository.provider &&
-          repository.repository
-            .toLowerCase()
-            .startsWith(`${source.owner.trim().toLowerCase()}/`),
-      ) ?? -1,
-    [draft],
-  );
-  const canExclude = useCallback(
-    (repository: PreviewRepository) =>
-      sourceOf(repository) >= 0 &&
-      repository.why.some(reason => reason !== 'name'),
-    [sourceOf],
-  );
-  const onExclude = useCallback(
-    (repository: PreviewRepository) => {
-      const index = sourceOf(repository);
-      if (!draft || index < 0) {
-        return;
-      }
-      const source = draft.sources[index];
-      const short = repository.repository.slice(source.owner.trim().length + 1);
-      updateSource(index, {
-        ...source,
-        exclude: [...new Set([...source.exclude, short])],
-        repositories: source.repositories.filter(r => r !== short),
-      });
-    },
-    [draft, sourceOf, updateSource],
-  );
 
   const gate = editorGate({ needsManagerSignIn, providers, draft, isEdit });
   const actions = useMemo(
@@ -326,6 +330,17 @@ function WorkspaceEditor({
   );
   useProvidePageHeaderActions(actions);
 
+  const storage = edited.data?.storage;
+  const minimum = Number(draft?.minimumGiB || '0');
+  let disk: string | undefined;
+  const volumeSize = storage?.volumeSize ?? edited.data?.workspace.volumeSize;
+  if (volumeSize) {
+    disk = `${formatQuantity(volumeSize)}, ${
+      minimum > 0 ? `at least ${minimum} GiB` : 'automatic'
+    }`;
+  } else if (minimum > 0 && preview.data) {
+    disk = `about ${formatQuantity(preview.data.estimatedVolumeSize)}, at least ${minimum} GiB`;
+  }
   const previewPanel = (
     <Flex direction="column" gap="2">
       <Text variant="title-x-small" as="h2">
@@ -339,23 +354,24 @@ function WorkspaceEditor({
         hasSources={preview.hasSources}
         page={previewPage}
         onPage={setPreviewPage}
-        search={previewSearch}
-        onSearch={value => {
-          setPreviewSearch(value);
-          setPreviewPage(1);
-        }}
-        onExclude={onExclude}
-        canExclude={canExclude}
+        providerCount={
+          new Set(draft?.sources.map(source => source.provider)).size
+        }
+        disk={disk}
+        excluded={draft?.sources.flatMap(source => source.exclude) ?? []}
       />
     </Flex>
   );
 
-  const title = isEdit ? `Edit ${name}` : 'Create workspace';
+  const title = isEdit ? `Edit ${name}` : 'New workspace';
   return (
     <WizardFrame
       title={title}
       documentTitle={[title, 'Workspaces']}
-      context={`Customize / Workspaces / ${organization}`}
+      context={
+        isEdit ? `Customize / Workspaces / ${name}` : 'Customize / Workspaces'
+      }
+      meta={`Organization ${organization} · ${installation}`}
       closeHref={closeHref}
       confirmDiscard={isDirty}
       width="wide"
@@ -375,12 +391,27 @@ function WorkspaceEditor({
         }
         loadError={edited.error}
         installation={installation}
-        organization={organization}
         draft={draft}
         problem={problem}
         errorFor={errorFor}
         touch={touch}
+        onNameBlur={nameAvailability.checkNow}
+        nameAvailable={nameAvailability.state === 'available'}
         update={update}
+        sourcesSummary={
+          draft && isEdit
+            ? sourcesSummary(draft, preview.data?.total)
+            : undefined
+        }
+        onAddSource={() => {
+          if (draft) {
+            const source = emptySource(
+              providers.length === 1 ? providers[0].name : '',
+            );
+            update({ ...draft, sources: [...draft.sources, source] });
+            setExpanded(source.key);
+          }
+        }}
         sourceEditors={
           draft && client
             ? draft.sources.map((source, index) => (
@@ -406,20 +437,73 @@ function WorkspaceEditor({
                   onRecheckProviders={() => void providersQuery.refetch()}
                   errorFor={errorFor}
                   touch={touch}
+                  onExpand={
+                    isEdit && source.key !== expandedKey
+                      ? () => setExpanded(source.key)
+                      : undefined
+                  }
                 />
               ))
             : null
         }
         providersError={providersQuery.error}
         previewPanel={previewPanel}
-        storage={{
-          neededSize: edited.data?.workspace.neededSize,
-          volumeSize: edited.data?.workspace.volumeSize,
-          estimated: preview.data?.estimatedVolumeSize,
-        }}
+        diskLine={diskLine({
+          isEdit,
+          storage,
+          volumeSize,
+          preview: preview.data,
+        })}
       />
     </WizardFrame>
   );
+}
+
+/** "2 sources on 2 providers · 9 repositories". */
+function sourcesSummary(draft: WorkspaceDraft, total: number | undefined) {
+  const count = draft.sources.length;
+  const providers = new Set(draft.sources.map(source => source.provider)).size;
+  return [
+    `${count} ${count === 1 ? 'source' : 'sources'} on ${providers} ${
+      providers === 1 ? 'provider' : 'providers'
+    }`,
+    total === undefined
+      ? undefined
+      : `${total} ${total === 1 ? 'repository' : 'repositories'}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** What the disk holds and how big it is, or will start. */
+function diskLine({
+  isEdit,
+  storage,
+  volumeSize,
+  preview,
+}: {
+  isEdit: boolean;
+  storage: WorkspaceStorage | undefined;
+  volumeSize: string | undefined;
+  preview: WorkspacePreview | undefined;
+}): string {
+  const lead =
+    'The disk holds the copies of the repositories, each session’s working folder, and room for the changes agents make. It is sized automatically, grows when more is needed and never shrinks.';
+  if (isEdit && volumeSize && storage) {
+    return `${lead} Right now it is ${formatQuantity(volumeSize)}: ${formatKiB(
+      storage.mirrorsBytes / 1024,
+    )} of repositories and ${formatKiB(
+      storage.sessionsBytes / 1024,
+    )} of session folders, plus room to work, rounded up.`;
+  }
+  if (preview) {
+    return `${lead} It will start at about ${formatQuantity(
+      preview.estimatedVolumeSize,
+    )}: an estimated ${formatKiB(
+      preview.providerSizeKiB,
+    )} for the repositories plus room to work. The exact size is known after the first sync.`;
+  }
+  return `${lead} Its first size is estimated once a source selects repositories.`;
 }
 
 type EditorBodyProps = {
@@ -430,17 +514,21 @@ type EditorBodyProps = {
   isLoading: boolean;
   loadError: unknown;
   installation: string;
-  organization: string;
   draft: WorkspaceDraft | undefined;
   problem: SaveProblem | undefined;
   errorFor: (field: string) => string | undefined;
   /** Marks a field the person left, so its problem shows at once. */
   touch: (field: string) => void;
+  onNameBlur: () => void;
+  nameAvailable: boolean;
   update: (draft: WorkspaceDraft) => void;
+  /** Editing: the sources in one line, above them. */
+  sourcesSummary: string | undefined;
+  onAddSource: () => void;
   sourceEditors: React.ReactNode;
   providersError: unknown;
   previewPanel: React.ReactNode;
-  storage: { neededSize?: string; volumeSize?: string; estimated?: string };
+  diskLine: string;
 };
 
 /** The form inside the frame: it reads whether the frame docks the preview. */
@@ -452,16 +540,19 @@ function EditorBody({
   isLoading,
   loadError,
   installation,
-  organization,
   draft,
   problem,
   errorFor,
   touch,
+  onNameBlur,
+  nameAvailable,
   update,
+  sourcesSummary: summary,
+  onAddSource,
   sourceEditors,
   providersError,
   previewPanel,
-  storage,
+  diskLine: disk,
 }: EditorBodyProps) {
   const { docked } = useWizardFrameRail();
 
@@ -495,16 +586,16 @@ function EditorBody({
     return <Skeleton width="100%" height={240} />;
   }
 
+  const nameError = errorFor('name');
   return (
     <Flex direction="column" gap="4">
-      <WizardStepHeading
-        title={isEdit ? 'Sources and storage' : 'Name and sources'}
-      >
-        Choose the source code repositories agents work on in a session, for
-        everyone in the {organization} organization. Repositories you pick by
-        language or topic are picked again at every update, so a new one that
-        matches joins on its own.
-      </WizardStepHeading>
+      {!isEdit && (
+        <Text variant="body-medium" color="secondary">
+          Choose the source code repositories agents can work with. Each source
+          is a GitHub or GitLab owner, such as an organization or a group, and
+          the repositories you pick from it.
+        </Text>
+      )}
 
       {problem && !problem.field && (
         <Alert
@@ -522,86 +613,76 @@ function EditorBody({
       )}
 
       {!isEdit && (
-        <TextField
-          label="Name"
-          isRequired
-          description="Lowercase letters, digits and dashes, unique on the installation, e.g. platform-mcp."
-          value={draft.name}
-          onChange={value => update({ ...draft, name: value })}
-          onBlur={() => touch('name')}
-          {...fieldErrorProps(errorFor('name'))}
-        />
+        <Flex direction="column" gap="1">
+          <TextField
+            label="Name"
+            isRequired
+            description="Lowercase letters, digits and dashes, up to 40 characters. It can’t be changed later."
+            value={draft.name}
+            onChange={value => update({ ...draft, name: value })}
+            onBlur={() => {
+              touch('name');
+              onNameBlur();
+            }}
+            {...fieldErrorProps(nameError)}
+          />
+          {nameAvailable && !nameError && (
+            <Text variant="body-small" color="success" role="status">
+              {draft.name.trim()} is available
+            </Text>
+          )}
+        </Flex>
       )}
 
+      {summary && (
+        <Flex direction="column" gap="1">
+          <Text variant="title-x-small" as="h2">
+            Sources
+          </Text>
+          <Text variant="body-small" color="secondary">
+            {summary}
+          </Text>
+        </Flex>
+      )}
       {sourceEditors}
       {draft.sources.length < MAX_SOURCES && (
         <div>
-          <Button
-            variant="secondary"
-            size="small"
-            onPress={() =>
-              update({ ...draft, sources: [...draft.sources, emptySource()] })
-            }
-          >
+          <Button variant="secondary" size="small" onPress={onAddSource}>
             Add source
           </Button>
         </div>
       )}
 
-      <Flex direction="column" gap="2">
-        <Text variant="title-x-small" as="h2">
-          Storage
-        </Text>
-        <Text
-          variant="body-small"
-          color="secondary"
-          data-testid="storage-estimate"
-        >
-          {storageLine(storage)}
-        </Text>
-        <Flex gap="3" style={{ flexWrap: 'wrap' }}>
-          <TextField
-            label="Room to grow"
-            description="Optional. Space added on top of what the repositories need, when more than the installation's default, as a size such as 8Gi."
-            value={draft.headroom}
-            onChange={value => update({ ...draft, headroom: value })}
-            onBlur={() => touch('sizing.headroom')}
-            {...fieldErrorProps(errorFor('sizing.headroom'))}
-          />
-          <TextField
-            label="Minimum disk space"
-            description="Optional. The workspace never gets less than this, as a size such as 20Gi."
-            value={draft.minimum}
-            onChange={value => update({ ...draft, minimum: value })}
-            onBlur={() => touch('sizing.minimum')}
-            {...fieldErrorProps(errorFor('sizing.minimum'))}
-          />
+      <SimpleAccordion title="Advanced options" headingLevel={2}>
+        <Flex direction="column" gap="2">
+          <Text variant="body-small" weight="bold">
+            Disk space
+          </Text>
+          <Text
+            variant="body-small"
+            color="secondary"
+            data-testid="storage-estimate"
+          >
+            {disk}
+          </Text>
+          <div style={{ maxWidth: 240 }}>
+            <TextField
+              label="Minimum size"
+              inputMode="numeric"
+              description="The disk never gets smaller than this. 0 means automatic sizing only. Raise it if agents need a lot of room, for example for large builds."
+              value={draft.minimumGiB}
+              onChange={value => update({ ...draft, minimumGiB: value })}
+              onBlur={() => touch('sizing.minimum')}
+              icon={<Text variant="body-small">GiB</Text>}
+              {...fieldErrorProps(errorFor('sizing.minimum'))}
+            />
+          </div>
         </Flex>
-      </Flex>
+      </SimpleAccordion>
 
       {!docked && previewPanel}
     </Flex>
   );
-}
-
-function storageLine({
-  neededSize,
-  volumeSize,
-  estimated,
-}: {
-  neededSize?: string;
-  volumeSize?: string;
-  estimated?: string;
-}): string {
-  if (neededSize && volumeSize) {
-    return `The repositories take ${neededSize}; the workspace has ${volumeSize} of disk space with room to grow.${
-      estimated ? ` With these sources: about ${estimated}.` : ''
-    }`;
-  }
-  if (estimated) {
-    return `Estimated disk space with these sources: ${estimated}, the repositories plus room to grow. It grows with them; there is no cap.`;
-  }
-  return 'The disk space is sized from what the repositories need, plus room to grow. There is no cap.';
 }
 
 /** The page at its address: `new?installation=&organization=`, or `…/edit`. */

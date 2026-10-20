@@ -28,6 +28,7 @@ import {
   CustomizeDataProvider,
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
+  CustomizeWorkspacesIntro,
   CustomizeWorkspacesPanel,
   CreateWorkspaceButton,
   EnvironmentSelect,
@@ -325,6 +326,7 @@ function CustomizeTabContent({
         {tab.id === 'connectors' && (
           <ConnectorGroupTabs counts={musterCounts.connectorGroups} />
         )}
+        {tab.id === 'workspaces' && <CustomizeWorkspacesIntro />}
         <Flex
           align="center"
           justify="between"

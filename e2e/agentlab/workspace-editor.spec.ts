@@ -33,12 +33,35 @@ const rowOf = (page: Page, name: string) =>
     has: page.getByRole('rowheader', { name: new RegExp(`^${name}`) }),
   });
 
-/** Customize · Workspaces, then its Create workspace, into the editor. */
+/** Customize · Workspaces, then its New workspace, into the editor. */
 async function openFromTab(page: Page): Promise<void> {
   await open(page, '/customize/workspaces');
-  await page.getByRole('link', { name: 'Create workspace' }).first().click();
+  await page.getByRole('link', { name: 'New workspace' }).first().click();
 }
 const preview = (page: Page) => page.getByTestId('workspace-preview');
+
+/** A source's filter dropdown (Language, Topics, Including). */
+const filterButton = (page: Page, label: string) =>
+  source(page).getByRole('button', { name: new RegExp(`^${label}:`) });
+
+/** Ticks options in one filter dropdown, then closes it. */
+async function pickFilters(
+  page: Page,
+  label: string,
+  options: string[],
+): Promise<void> {
+  await filterButton(page, label).click();
+  const popover = page.getByRole('dialog');
+  for (const option of options) {
+    await popover.getByRole('checkbox', { name: option, exact: true }).click();
+  }
+  await page.keyboard.press('Escape');
+  await expect(popover).toHaveCount(0);
+}
+
+/** One repository's row in the source's table. */
+const tableRow = (page: Page, repository: string) =>
+  source(page).getByRole('checkbox', { name: repository, exact: true });
 
 /**
  * Presses the wizard's primary action. The portal-wide notice of MCP servers
@@ -67,7 +90,7 @@ async function startDraft(
   provider: string,
 ): Promise<void> {
   await expect(
-    page.getByRole('heading', { name: 'Create workspace' }),
+    page.getByRole('heading', { name: 'New workspace' }),
   ).toBeVisible({ timeout: 60_000 });
   await page.getByRole('textbox', { name: /^Name/ }).fill(name);
   const providerSelect = source(page).getByRole('button', {
@@ -130,22 +153,33 @@ test('a member creates a workspace from a language and topic filter, previews, e
       'the editor has no schedule field',
     ).toHaveCount(0);
 
-    const owner = source(admin).getByRole('textbox', { name: /^Owner/ });
     await startDraft(admin, name, workspaceLab.provider);
-    await expect(owner).toBeVisible({ timeout: 60_000 });
-    await owner.fill(OWNER);
+    await expect(
+      admin.getByText(`${name} is available`),
+      'the name is checked once typing pauses',
+    ).toBeVisible({ timeout: 60_000 });
+    // The owner: a pick from list_owners where the manager offers it, else
+    // typed.
+    const ownerText = source(admin).getByRole('textbox', { name: /^Owner/ });
+    const ownerSelect = source(admin).getByRole('button', { name: /Owner/ });
+    await expect(ownerText.or(ownerSelect).first()).toBeVisible({
+      timeout: 60_000,
+    });
+    if (await ownerText.isVisible()) {
+      await ownerText.fill(OWNER);
+    } else {
+      await ownerSelect.click();
+      await admin.getByRole('option', { name: OWNER, exact: true }).click();
+    }
 
     // Go repositories tagged api or monorepo: platform-api and monorepo; the
     // HCL platform-infra and the archived Python legacy-tool stay out.
-    await source(admin)
-      .getByRole('button', { name: 'Go', exact: true })
-      .click();
-    await source(admin)
-      .getByRole('button', { name: 'api', exact: true })
-      .click();
-    await source(admin)
-      .getByRole('button', { name: 'monorepo', exact: true })
-      .click();
+    await pickFilters(admin, 'Language', ['Go']);
+    await pickFilters(admin, 'Topics', ['api', 'monorepo']);
+    await expect(source(admin).getByTestId('filter-match-total')).toHaveText(
+      '2 repositories match',
+      { timeout: 60_000 },
+    );
 
     await expect(
       preview(admin).getByText(`${OWNER}/platform-api`, { exact: true }),
@@ -164,9 +198,12 @@ test('a member creates a workspace from a language and topic filter, previews, e
     }
     await snapshot(admin, 'workspace-editor-preview');
 
-    await preview(admin)
-      .getByRole('button', { name: `Exclude ${OWNER}/monorepo` })
-      .click();
+    // Unticking a filter match in the table excludes it.
+    await expect(tableRow(admin, 'monorepo')).toBeChecked();
+    await tableRow(admin, 'monorepo').click({ force: true });
+    await expect(source(admin).getByTestId('repository-summary')).toHaveText(
+      '2 by filter · 0 by name · 1 excluded = 1 repository',
+    );
     await expect(
       preview(admin).getByText(`${OWNER}/monorepo`, { exact: true }),
       'the exclusion removes it from the preview',
@@ -174,7 +211,8 @@ test('a member creates a workspace from a language and topic filter, previews, e
     await expect(preview(admin).getByTestId('preview-total')).toContainText(
       '1 repository',
     );
-    await expect(preview(admin)).toContainText('1 excluded');
+    await expect(preview(admin)).toContainText('1 excluded: monorepo');
+    await snapshot(admin, 'workspace-editor-excluded');
 
     await pressPrimary(admin, 'Create workspace');
     await expect(admin).toHaveURL(/\/customize\/workspaces/, {
@@ -189,28 +227,25 @@ test('a member creates a workspace from a language and topic filter, previews, e
     await row.getByRole('button', { name: `Actions for ${name}` }).click();
     await admin.getByRole('menuitem', { name: 'Edit' }).click();
     await expect(admin).toHaveURL(new RegExp(`${editorPath(name)}$`));
-    await expect(
-      source(admin).getByRole('button', { name: 'Go', exact: true }),
-    ).toHaveAttribute('aria-pressed', 'true', { timeout: 60_000 });
-    for (const topic of ['api', 'monorepo']) {
-      await expect(
-        source(admin).getByRole('button', { name: topic, exact: true }),
-      ).toHaveAttribute('aria-pressed', 'true');
-    }
+    await expect(filterButton(admin, 'Language')).toHaveAccessibleName(
+      'Language: Go',
+      { timeout: 60_000 },
+    );
+    await expect(filterButton(admin, 'Topics')).toHaveAccessibleName(
+      'Topics: any of api, monorepo',
+    );
     await expect(
       source(admin).getByRole('switch', { name: 'Selected only (1)' }),
       'the exclusion is kept',
     ).toBeVisible();
     await snapshot(admin, 'workspace-editor-reopened');
 
-    // An edit persists: monorepo included again, from the picker's
-    // selected-only view, rejoins the preview.
-    await source(admin)
-      .getByRole('switch', { name: 'Selected only (1)' })
-      .click({ force: true });
-    await source(admin)
-      .getByRole('button', { name: 'Include monorepo' })
-      .click();
+    // An edit persists: monorepo ticked again in the table rejoins the
+    // preview.
+    await expect(tableRow(admin, 'monorepo')).not.toBeChecked({
+      timeout: 60_000,
+    });
+    await tableRow(admin, 'monorepo').click({ force: true });
     await expect(
       preview(admin).getByText(`${OWNER}/monorepo`, { exact: true }),
     ).toBeVisible({ timeout: 60_000 });

@@ -1,33 +1,26 @@
-import { useMemo, useState } from 'react';
-import {
-  Button,
-  Checkbox,
-  Flex,
-  SearchField,
-  Select,
-  Text,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-} from '@backstage/ui';
+import { useMemo, type ReactNode } from 'react';
+import { Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import {
   fieldErrorProps,
   searchableIf,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
-import { useRepositoriesPage } from '../../hooks/useWorkspaceEditor';
+import {
+  useProviderOwners,
+  useRepositoriesPage,
+} from '../../hooks/useWorkspaceEditor';
 import type { SourceDraft } from '../../lib/workspaceDraft';
 import {
-  providerDisplayName,
   providerKindName,
+  providerOptionLabel,
+  signedInLine,
   type WorkspaceProvider,
 } from '../../lib/workspaceManager';
 import { ProviderConnectPrompt } from '../ProviderConnectPrompt';
-import { RepositoryPicker } from './RepositoryPicker';
-
-/** How many topics show before the topic search narrows them. */
-const TOPICS_SHOWN = 30;
+import { filterInput, RepositoryPicker } from './RepositoryPicker';
+import { repositoryNoun } from './repositoryNoun';
+import { SourceFilterBox } from './SourceFilterBox';
 
 export type WorkspaceSourceEditorProps = {
   client: WorkspaceManagerClient;
@@ -43,43 +36,108 @@ export type WorkspaceSourceEditorProps = {
   errorFor: (field: string) => string | undefined;
   /** Marks a field the person left, so its problem shows at once. */
   touch: (field: string) => void;
+  /**
+   * Set when the source shows collapsed, as a summary with Edit source:
+   * the edit flow opens one source at a time.
+   */
+  onExpand?: () => void;
 };
 
-/** A multi-select of chips: each one a toggle, pressed when selected. */
-function ChipSelect({
+/**
+ * How many of the owner's repositories a source takes: its filter matches
+ * (one row of the filtered listing tells the total) less its exclusions,
+ * plus its picks by name. Also the owner's facets, from one unfiltered row.
+ */
+function useSourceCounts(
+  client: WorkspaceManagerClient | undefined,
+  organization: string,
+  source: SourceDraft,
+) {
+  const owner = source.owner.trim();
+  const base =
+    owner && source.provider
+      ? { organization, provider: source.provider, owner, page: 1, pageSize: 1 }
+      : undefined;
+  const hasFilters = source.languages.length > 0 || source.topics.length > 0;
+  const facets = useRepositoriesPage(client, base);
+  const matches = useRepositoriesPage(
+    client,
+    base && hasFilters ? { ...base, ...filterInput(source) } : undefined,
+  );
+  let matchTotal: number | undefined = hasFilters ? matches.data?.total : 0;
+  if (base === undefined) {
+    matchTotal = undefined;
+  }
+  const total =
+    matchTotal === undefined
+      ? undefined
+      : matchTotal - source.exclude.length + source.repositories.length;
+  return { facets, matchTotal, total };
+}
+
+/** What a source selects, in short: `lang Go`, `topic mcp`, `1 by name`. */
+function selectionParts(source: SourceDraft): string[] {
+  const joiner = source.topicMatch === 'all' ? ' + ' : ', ';
+  return [
+    source.languages.length > 0
+      ? `lang ${source.languages.join(', ')}`
+      : undefined,
+    source.topics.length > 0
+      ? `topic ${source.topics.join(joiner)}`
+      : undefined,
+    source.repositories.length > 0
+      ? `${source.repositories.length} by name`
+      : undefined,
+    source.exclude.length > 0 ? `${source.exclude.length} excluded` : undefined,
+  ].filter((part): part is string => Boolean(part));
+}
+
+/** A source's frame: its header line, and what it holds. */
+function SourceCard({
+  index,
   label,
-  options,
-  selected,
-  onChange,
+  aside,
+  children,
 }: {
-  label: string;
-  options: string[];
-  selected: string[];
-  onChange: (selected: string[]) => void;
+  index: number;
+  label: ReactNode;
+  aside: ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <ToggleButtonGroup
-      aria-label={label}
-      selectionMode="multiple"
-      selectedKeys={selected}
-      onSelectionChange={keys => onChange([...keys].map(String))}
-      style={{ flexWrap: 'wrap' }}
+    <section
+      data-testid={`workspace-source-${index}`}
+      aria-label={`Source ${index + 1}`}
+      style={{
+        border: '1px solid var(--bui-border-1)',
+        borderRadius: 10,
+        padding: 16,
+      }}
     >
-      {options.map(option => (
-        <ToggleButton key={option} id={option} size="small">
-          {option}
-        </ToggleButton>
-      ))}
-    </ToggleButtonGroup>
+      <Flex direction="column" gap="3">
+        <Flex
+          justify="between"
+          align="center"
+          gap="2"
+          style={{ flexWrap: 'wrap' }}
+        >
+          {label}
+          <Flex gap="3" align="center" style={{ flexWrap: 'wrap' }}>
+            {aside}
+          </Flex>
+        </Flex>
+        {children}
+      </Flex>
+    </section>
   );
 }
 
 /**
  * One source of a workspace: a provider instance, an owner on it, and what
- * it selects — repositories by name, a language and a topic filter,
- * exclusions, and whether archived repositories and forks count. A provider
- * the person has not connected shows its connect prompt in place of the
- * owner; the draft stays as it is meanwhile.
+ * it selects — a language, topic and including filter, and one table of the
+ * owner's repositories to pick by name or exclude. A provider the person has
+ * not granted shows its sign-in in place of the owner; the draft stays as it
+ * is meanwhile. Collapsed (`onExpand`), it is a summary line.
  */
 export function WorkspaceSourceEditor({
   client,
@@ -92,241 +150,197 @@ export function WorkspaceSourceEditor({
   onRecheckProviders,
   errorFor,
   touch,
+  onExpand,
 }: WorkspaceSourceEditorProps) {
   const provider = providers.find(p => p.name === source.provider);
   const isConnected = provider?.connected ?? false;
-  const owner = source.owner.trim();
   const field = (name: string) => errorFor(`sources.${index}.${name}`);
-
-  // The owner's languages and topics: one row of one page tells them.
-  const facets = useRepositoriesPage(
+  const kind = provider?.kind;
+  const counts = useSourceCounts(
     isConnected ? client : undefined,
-    owner && source.provider
-      ? {
-          organization,
-          provider: source.provider,
-          owner,
-          page: 1,
-          pageSize: 1,
+    organization,
+    source,
+  );
+  const owners = useProviderOwners(
+    isConnected ? client : undefined,
+    organization,
+    source.provider || undefined,
+  );
+  // The owners to pick from, the stored one too; none from a manager before
+  // `list_owners`, which leaves the owner a text field.
+  const ownerOptions = useMemo(() => {
+    const names = (owners.data ?? []).map(o => o.name);
+    const owner = source.owner.trim();
+    if (names.length === 0) {
+      return [];
+    }
+    return owner && !names.includes(owner) ? [owner, ...names] : names;
+  }, [owners.data, source.owner]);
+  const signedIn = provider && isConnected && (
+    <Text variant="body-small" color="secondary">
+      {signedInLine(provider)}
+    </Text>
+  );
+
+  if (onExpand) {
+    const totalLine =
+      counts.total === undefined
+        ? undefined
+        : `${counts.total} ${repositoryNoun(kind, counts.total)}`;
+    return (
+      <SourceCard
+        index={index}
+        label={
+          <Flex direction="column" gap="1">
+            <Text variant="body-medium" weight="bold">
+              {provider ? providerKindName(provider.kind) : source.provider} ·{' '}
+              {source.owner}
+            </Text>
+            <Text variant="body-small" color="secondary">
+              {[...selectionParts(source), totalLine]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          </Flex>
         }
-      : undefined,
-  );
-  const languages = useMemo(
-    () => [
-      ...new Set([...source.languages, ...(facets.data?.languages ?? [])]),
-    ],
-    [source.languages, facets.data?.languages],
-  );
-  const [topicSearch, setTopicSearch] = useState('');
-  const topics = useMemo(() => {
-    const all = [...new Set([...(facets.data?.topics ?? [])])].filter(
-      topic => !source.topics.includes(topic),
+        aside={
+          <>
+            {signedIn}
+            <Button variant="secondary" size="small" onPress={onExpand}>
+              Edit source
+            </Button>
+          </>
+        }
+      >
+        {errorFor(`sources.${index}`) && (
+          <Text variant="body-small" color="danger" role="alert">
+            {errorFor(`sources.${index}`)}
+          </Text>
+        )}
+      </SourceCard>
     );
-    const query = topicSearch.trim().toLowerCase();
-    const shown = (query ? all.filter(t => t.includes(query)) : all).slice(
-      0,
-      TOPICS_SHOWN,
-    );
-    return [...source.topics, ...shown];
-  }, [facets.data?.topics, source.topics, topicSearch]);
-  const topicCount = facets.data?.topics.length ?? 0;
-  // Why there is nothing to choose from yet, before the owner's listing.
-  let facetsHint: string | undefined;
-  if (!source.provider) {
-    facetsHint = 'Choose the provider first.';
-  } else if (!owner) {
-    facetsHint = 'Enter the owner first.';
-  } else if (facets.isLoading) {
-    facetsHint = 'Reading the owner’s repositories…';
   }
 
   return (
-    // A rule on the left, aligned with the column, marks the source's fields
-    // without indenting them.
-    <section
-      data-testid={`workspace-source-${index}`}
-      aria-label={`Source ${index + 1}`}
-      style={{
-        borderLeft: '2px solid var(--bui-border-1)',
-        paddingLeft: 16,
-      }}
-    >
-      <Flex direction="column" gap="3">
-        <Flex justify="between" align="center">
-          <Text variant="title-x-small" as="h3">
-            Source {index + 1}
-          </Text>
+    <SourceCard
+      index={index}
+      label={
+        <Text variant="title-x-small" as="h3">
+          Source {index + 1}
+        </Text>
+      }
+      aside={
+        <>
+          {signedIn}
           {onRemove && (
             <Button variant="tertiary" size="small" onPress={onRemove}>
               Remove source
             </Button>
           )}
-        </Flex>
+        </>
+      }
+    >
+      {providers.length > 1 ? (
+        <Select
+          label="Provider"
+          isRequired
+          searchable={searchableIf(providers)}
+          options={providers.map(p => ({
+            id: p.name,
+            label: providerOptionLabel(p),
+          }))}
+          selectedKey={source.provider || null}
+          onSelectionChange={key => {
+            if (key && String(key) !== source.provider) {
+              onChange({ ...source, provider: String(key), owner: '' });
+            }
+          }}
+          {...fieldErrorProps(field('provider'))}
+        />
+      ) : null}
+      {providers.length <= 1 && field('provider') && (
+        <Text variant="body-small" color="danger">
+          {field('provider')}
+        </Text>
+      )}
 
-        {providers.length > 1 ? (
-          <Select
-            label="Provider"
-            isRequired
-            searchable={searchableIf(providers)}
-            options={providers.map(p => ({
-              id: p.name,
-              label: providerDisplayName(p),
-            }))}
-            selectedKey={source.provider || null}
-            onSelectionChange={key => {
-              if (key) {
-                onChange({ ...source, provider: String(key) });
-              }
-            }}
-            {...fieldErrorProps(field('provider'))}
-          />
-        ) : null}
-        {providers.length <= 1 && field('provider') && (
-          <Text variant="body-small" color="danger">
-            {field('provider')}
-          </Text>
-        )}
-
-        {provider && !isConnected ? (
-          <ProviderConnectPrompt
-            installation={client.installation}
-            provider={provider}
-            onRecheck={onRecheckProviders}
-          />
-        ) : (
-          <>
+      {provider && !isConnected ? (
+        <ProviderConnectPrompt
+          installation={client.installation}
+          provider={provider}
+          onRecheck={onRecheckProviders}
+        />
+      ) : (
+        <>
+          {ownerOptions.length > 0 ? (
+            <Select
+              label="Owner"
+              isRequired
+              searchable={searchableIf(ownerOptions)}
+              options={ownerOptions.map(name => ({ id: name, label: name }))}
+              selectedKey={source.owner.trim() || null}
+              onSelectionChange={key => {
+                if (key) {
+                  onChange({ ...source, owner: String(key) });
+                  touch(`sources.${index}.owner`);
+                }
+              }}
+              {...fieldErrorProps(field('owner'))}
+            />
+          ) : (
             <TextField
               label="Owner"
               isRequired
               description={`The ${
-                provider ? providerKindName(provider.kind) : 'provider'
-              } organization or user whose repositories this source picks from, e.g. giantswarm.`}
+                kind ? providerKindName(kind) : 'provider'
+              } organization, group or user whose ${repositoryNoun(
+                kind,
+                2,
+              )} this source picks from, e.g. giantswarm.`}
               value={source.owner}
               onChange={value => onChange({ ...source, owner: value })}
               onBlur={() => touch(`sources.${index}.owner`)}
               {...fieldErrorProps(field('owner'))}
             />
+          )}
 
-            <Flex direction="column" gap="1">
-              <Text variant="body-small" weight="bold">
-                Primary language, any of
-              </Text>
-              {languages.length > 0 ? (
-                <ChipSelect
-                  label="Languages"
-                  options={languages}
-                  selected={source.languages}
-                  onChange={next => onChange({ ...source, languages: next })}
-                />
-              ) : (
-                <Text variant="body-small" color="secondary">
-                  {facetsHint ?? 'No languages reported.'}
-                </Text>
-              )}
-              {field('languages') && (
+          {source.owner.trim() && (
+            <>
+              <SourceFilterBox
+                source={source}
+                onChange={onChange}
+                facetsPage={counts.facets.data}
+                matchTotal={counts.matchTotal}
+                providerKind={kind}
+              />
+              {(field('languages') || field('topics')) && (
                 <Text variant="body-small" color="danger">
-                  {field('languages')}
+                  {field('languages') ?? field('topics')}
                 </Text>
               )}
-            </Flex>
-
-            <Flex direction="column" gap="1">
-              <Flex gap="3" align="center" style={{ flexWrap: 'wrap' }}>
-                <Text variant="body-small" weight="bold">
-                  Topics
-                </Text>
-                <ToggleButtonGroup
-                  aria-label="Topics match"
-                  selectionMode="single"
-                  disallowEmptySelection
-                  selectedKeys={[source.topicMatch]}
-                  onSelectionChange={keys => {
-                    const next = [...keys][0];
-                    if (next === 'any' || next === 'all') {
-                      onChange({ ...source, topicMatch: next });
-                    }
-                  }}
-                >
-                  <ToggleButton id="any" size="small">
-                    Any of
-                  </ToggleButton>
-                  <ToggleButton id="all" size="small">
-                    All of
-                  </ToggleButton>
-                </ToggleButtonGroup>
-                {topicCount > TOPICS_SHOWN && (
-                  <SearchField
-                    aria-label="Search topics"
-                    placeholder="Search topics"
-                    size="small"
-                    value={topicSearch}
-                    onChange={setTopicSearch}
-                  />
-                )}
-              </Flex>
-              {topics.length > 0 ? (
-                <ChipSelect
-                  label="Topics"
-                  options={topics}
-                  selected={source.topics}
-                  onChange={next => onChange({ ...source, topics: next })}
-                />
-              ) : (
-                <Text variant="body-small" color="secondary">
-                  {facetsHint ?? 'No topics reported.'}
-                </Text>
-              )}
-              {field('topics') && (
-                <Text variant="body-small" color="danger">
-                  {field('topics')}
-                </Text>
-              )}
-            </Flex>
-
-            <Flex gap="4" style={{ flexWrap: 'wrap' }}>
-              <Checkbox
-                isSelected={source.includeArchived}
-                onChange={on => onChange({ ...source, includeArchived: on })}
-              >
-                Archived repositories count
-              </Checkbox>
-              <Checkbox
-                isSelected={source.includeForks}
-                onChange={on => onChange({ ...source, includeForks: on })}
-              >
-                Forks count
-              </Checkbox>
-            </Flex>
-
-            <Flex direction="column" gap="1">
-              <Text variant="body-small" weight="bold">
-                Repositories
-              </Text>
-              <Text variant="body-small" color="secondary">
-                Pick repositories by name (they count even when archived or a
-                fork), or exclude one the filters take.
-              </Text>
               <RepositoryPicker
                 client={client}
                 organization={organization}
                 source={source}
                 onChange={onChange}
+                matchTotal={counts.matchTotal}
+                providerKind={kind}
               />
               {(field('repositories') || field('exclude')) && (
                 <Text variant="body-small" color="danger">
                   {field('repositories') ?? field('exclude')}
                 </Text>
               )}
-            </Flex>
-          </>
-        )}
+            </>
+          )}
+        </>
+      )}
 
-        {errorFor(`sources.${index}`) && (
-          <Text variant="body-small" color="danger" role="alert">
-            {errorFor(`sources.${index}`)}
-          </Text>
-        )}
-      </Flex>
-    </section>
+      {errorFor(`sources.${index}`) && (
+        <Text variant="body-small" color="danger" role="alert">
+          {errorFor(`sources.${index}`)}
+        </Text>
+      )}
+    </SourceCard>
   );
 }
