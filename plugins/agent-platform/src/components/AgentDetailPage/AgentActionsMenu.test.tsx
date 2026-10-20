@@ -35,6 +35,7 @@ function makeAgent(): Agent {
 }
 
 const onUpdateSkills = jest.fn();
+const onChangeHarness = jest.fn();
 const onDelete = jest.fn();
 
 const AVAILABLE: AgentManagerGate = {
@@ -51,6 +52,7 @@ const renderMenu = (agentManager: AgentManagerGate = AVAILABLE) =>
       agent={makeAgent()}
       agentManager={agentManager}
       onUpdateSkills={onUpdateSkills}
+      onChangeHarness={onChangeHarness}
       onDelete={onDelete}
     />,
     { mountedRoutes: { '/customize/agents': agentsRouteRef } },
@@ -62,6 +64,7 @@ async function openMenu() {
 
 beforeEach(() => {
   onUpdateSkills.mockReset();
+  onChangeHarness.mockReset();
   onDelete.mockReset();
 });
 
@@ -97,7 +100,7 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers Update all skills to latest and Delete when the installation has agent-manager, and asks the page to open them', async () => {
+  it('offers Update all skills to latest, Change Harness and Delete when the installation has agent-manager, and asks the page to open them', async () => {
     await renderMenu();
     await openMenu();
 
@@ -108,6 +111,12 @@ describe('AgentActionsMenu', () => {
       screen.getByRole('menuitem', { name: 'Update all skills to latest…' }),
     );
     expect(onUpdateSkills).toHaveBeenCalledTimes(1);
+
+    await openMenu();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Change Harness…' }),
+    );
+    expect(onChangeHarness).toHaveBeenCalledTimes(1);
 
     await openMenu();
     await userEvent.click(
@@ -127,6 +136,21 @@ describe('AgentActionsMenu', () => {
     expect(
       screen.queryByRole('menuitem', { name: /Delete agent/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('withholds Change Harness, an update, from a person who may not update the release', async () => {
+    await renderMenu({ ...AVAILABLE, mayUpdate: false, mayDelete: true });
+    await openMenu();
+
+    expect(
+      screen.queryByRole('menuitem', { name: 'Change Harness…' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Update all skills to latest…' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: /Delete agent/ }),
+    ).toBeInTheDocument();
   });
 
   it('offers none of the three when muster lists no agent-manager', async () => {
@@ -169,7 +193,7 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers Update all skills to latest and Delete for an agent applied from git when agent-manager can commit', async () => {
+  it('offers Update all skills to latest, Change Harness and Delete for an agent applied from git when agent-manager can commit', async () => {
     // All three go through a pull request in the GitOps repository then.
     await renderMenu({ ...AVAILABLE, isGitOpsOwned: true, canCommit: true });
     await openMenu();
@@ -178,6 +202,11 @@ describe('AgentActionsMenu', () => {
       screen.getByRole('menuitem', { name: 'Update all skills to latest…' }),
     );
     expect(onUpdateSkills).toHaveBeenCalledTimes(1);
+    await openMenu();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Change Harness…' }),
+    );
+    expect(onChangeHarness).toHaveBeenCalledTimes(1);
     await openMenu();
     await userEvent.click(
       screen.getByRole('menuitem', { name: /Delete agent/ }),

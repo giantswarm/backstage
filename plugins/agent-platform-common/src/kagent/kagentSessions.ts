@@ -51,6 +51,12 @@ export type KagentSession = {
   /** The Agent the session runs — the agent's real namespace and name. */
   agent?: { namespace: string; name: string };
   /**
+   * The Agent revision the session was prepared on, which it keeps for its
+   * whole life: a later change to the Agent (its Harness, prompt or skills)
+   * starts new sessions on a new revision and leaves this one where it is.
+   */
+  preparedRevision?: string;
+  /**
    * The session's runtime state as one lower-case word (`ready`, `suspended`,
    * `creating`, `failed`, `deleting`), for what the record says about itself.
    * Not a turn state: a suspended session may be idle after a finished turn

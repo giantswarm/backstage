@@ -38,6 +38,7 @@ describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0
         title: expect.any(String),
         agent: { namespace: 'kagent', name: expect.any(String) },
         agentId: encodeKagentAgentId('kagent', first.agent!.name),
+        preparedRevision: sessions.sessions[0].preparedRevision,
         source: 'user',
         state: 'ready',
         contextId: expect.any(String),

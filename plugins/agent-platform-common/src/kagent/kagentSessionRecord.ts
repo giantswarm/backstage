@@ -31,6 +31,7 @@ export const sessionRecordWireSchema = z.looseObject({
   id: wireString,
   creator: wireString,
   agent: resourceReferenceWireSchema.nullish().catch(undefined),
+  preparedRevision: wireString,
   state: wireString,
   operation: wireString,
   failure: z
@@ -167,6 +168,9 @@ export function normalizeSessionRecord(
     createdAt: normalizeTimestamp(wire.createdAt),
     updatedAt: normalizeTimestamp(wire.updatedAt),
     ...(agent && { agent }),
+    ...(wire.preparedRevision && {
+      preparedRevision: wire.preparedRevision,
+    }),
     ...(wire.state && { state: normalizeRuntimeState(wire.state) }),
     ...(wire.contextId && { contextId: wire.contextId }),
     ...(failure && { failure }),

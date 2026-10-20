@@ -3,6 +3,7 @@ import { AgentRow } from '../AgentsDataProvider';
 import {
   buildAgentIndex,
   decodeAgentIdLabel,
+  markEarlierRevisions,
   SESSION_TITLE_FALLBACK,
   sessionSearchFn,
   SessionRow,
@@ -263,5 +264,32 @@ describe('toSessionRow — the runtime kagent reports lost', () => {
         new Map(),
       ).runtimeLost,
     ).toBe(false);
+  });
+});
+
+describe('markEarlierRevisions', () => {
+  const row = (sessionId: string, preparedRevision?: string): SessionRow => ({
+    ...toSessionRow(session({ sessionId, preparedRevision }), new Map()),
+  });
+
+  it('carries the revision a session was prepared on onto its row', () => {
+    expect(row('a', 'rev-1').preparedRevision).toBe('rev-1');
+  });
+
+  it("marks only the sessions prepared on another revision than the agent's current one", () => {
+    const rows = markEarlierRevisions(
+      [row('old', 'rev-1'), row('new', 'rev-2'), row('unknown')],
+      'rev-2',
+    );
+    expect(rows.map(r => r.earlierRevision)).toEqual([
+      true,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it('marks nothing without a current revision', () => {
+    const rows = [row('old', 'rev-1')];
+    expect(markEarlierRevisions(rows, undefined)).toBe(rows);
   });
 });
