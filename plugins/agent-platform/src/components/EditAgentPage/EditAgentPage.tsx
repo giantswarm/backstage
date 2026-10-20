@@ -23,6 +23,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { formStateOfAgent } from '../../lib/agentEdit';
 import type { AgentManagerAgent, WriteMode } from '../../lib/agentManager';
 import type { DiscoveredSkill } from '../../lib/skills';
+import type { DiscoveredPlugin } from '../../lib/plugins';
 import { tenantOf } from '../../lib/tenants';
 import { agentDetailRouteRef } from '../../routes';
 import {
@@ -49,6 +50,7 @@ function EditAgentWizard({
   writeMode,
   detailHref,
   catalog,
+  pluginCatalog,
   platformHarness,
 }: {
   installation: string;
@@ -56,11 +58,17 @@ function EditAgentWizard({
   writeMode: WriteMode;
   detailHref: string | undefined;
   catalog: DiscoveredSkill[];
+  pluginCatalog: DiscoveredPlugin[];
   platformHarness: string | undefined;
 }) {
   const [seed] = useState(() => ({
     edit: { agent, installation, writeMode, detailHref },
-    state: formStateOfAgent(agent, { installation, catalog, platformHarness }),
+    state: formStateOfAgent(agent, {
+      installation,
+      catalog,
+      pluginCatalog,
+      platformHarness,
+    }),
   }));
   return (
     <NewAgentFormProvider edit={seed.edit} initialState={seed.state}>
@@ -237,6 +245,7 @@ export function EditAgentPage() {
         writeMode={writeMode ?? 'apply'}
         detailHref={detailHref}
         catalog={catalog.skills}
+        pluginCatalog={catalog.plugins}
         platformHarness={info?.harness?.name}
       />
     );

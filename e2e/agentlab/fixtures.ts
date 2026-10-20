@@ -615,7 +615,8 @@ export async function createAgentInWizard(
     harness?: RegExp;
     model?: string | RegExp;
     tenant?: string;
-    onStep?: (step: 'Details' | 'Review') => Promise<void>;
+    /** Runs on a step before its Continue; on Skills, it may pick some. */
+    onStep?: (step: 'Details' | 'Skills' | 'Review') => Promise<void>;
   } = {},
 ): Promise<string> {
   // A toast covers the foot of the content: on a phone, Technical details at
@@ -669,8 +670,9 @@ export async function createAgentInWizard(
   await options.onStep?.('Details');
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
-  // --- Step 2: Skills (none) -----------------------------------------------
+  // --- Step 2: Skills (none, unless onStep picks some) ----------------------
   await expectWizardStep(page, 'Skills');
+  await options.onStep?.('Skills');
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
   // --- Step 3: Tools (none) ------------------------------------------------

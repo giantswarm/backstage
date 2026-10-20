@@ -8,6 +8,7 @@ import {
 
 import type {
   AgentManagerAgent,
+  AgentPluginEntry,
   AgentSkillEntry,
   WriteMode,
 } from '../../lib/agentManager';
@@ -21,6 +22,12 @@ import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
 import type { HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
+import {
+  DiscoveredPlugin,
+  pluginEntryKey,
+  pluginId,
+  SelectedPlugin,
+} from '../../lib/plugins';
 import {
   normalizeSelection,
   toggleSelector,
@@ -79,6 +86,16 @@ export type NewAgentFormState = {
    * empty when creating.
    */
   keptSkills: AgentSkillEntry[];
+  /**
+   * The plugins the person picked, in selection order, each at the commit the
+   * skills step showed (an edited agent's at its pin). Optional.
+   */
+  selectedPlugins: SelectedPlugin[];
+  /**
+   * Editing only: the agent's plugins no configured repository lists, kept
+   * exactly as pinned until removed. Always empty when creating.
+   */
+  keptPlugins: AgentPluginEntry[];
   /**
    * The agent's toolset as selected: inline selectors (`preset:`, `server:`,
    * `workflow:`, `tool:`), in selection order. Starts empty on purpose —
@@ -146,6 +163,15 @@ export type NewAgentFormContextValue = {
   toggleSkill: (skill: DiscoveredSkill) => void;
   /** Editing only: drops one of the kept skills (see `keptSkills`). */
   removeKeptSkill: (skill: AgentSkillEntry) => void;
+  /** A Claude Code plugin: adds it if not picked, removes it if picked. */
+  togglePlugin: (plugin: DiscoveredPlugin) => void;
+  /**
+   * An Agent Plugins package: enables or disables one of its skills. The
+   * package is picked while at least one of its skills is enabled.
+   */
+  togglePluginSkill: (plugin: DiscoveredPlugin, skill: string) => void;
+  /** Editing only: drops one of the kept plugins (see `keptPlugins`). */
+  removeKeptPlugin: (plugin: AgentPluginEntry) => void;
   /**
    * Adds the selector if absent, removes it if present. `preset:full` replaces
    * the whole selection and adding anything else drops it; `preset:none` clears
@@ -223,6 +249,8 @@ const initialState: NewAgentFormState = {
   egressText: '',
   selectedSkills: [],
   keptSkills: [],
+  selectedPlugins: [],
+  keptPlugins: [],
   toolset: [],
   // A new agent starts at the Tools step's *Nothing outside the chat* (T81):
   // nothing the author did not consciously add.
@@ -250,6 +278,7 @@ function hasCreateInput(state: NewAgentFormState): boolean {
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
     state.selectedSkills.length > 0 ||
+    state.selectedPlugins.length > 0 ||
     state.toolset.length > 0 ||
     state.toolsChatOnly !== initialState.toolsChatOnly
   );
@@ -467,6 +496,57 @@ export function NewAgentFormProvider({
           ...prev,
           keptSkills: prev.keptSkills.filter(
             kept => skillEntryKey(kept) !== skillEntryKey(skill),
+          ),
+        })),
+      togglePlugin: plugin =>
+        setState(prev => {
+          const id = pluginId(plugin);
+          const isSelected = prev.selectedPlugins.some(
+            selected => pluginId(selected.plugin) === id,
+          );
+          return {
+            ...prev,
+            selectedPlugins: isSelected
+              ? prev.selectedPlugins.filter(
+                  selected => pluginId(selected.plugin) !== id,
+                )
+              : [...prev.selectedPlugins, { plugin, skills: [] }],
+          };
+        }),
+      togglePluginSkill: (plugin, skill) =>
+        setState(prev => {
+          const id = pluginId(plugin);
+          const current = prev.selectedPlugins.find(
+            selected => pluginId(selected.plugin) === id,
+          );
+          if (!current) {
+            return {
+              ...prev,
+              selectedPlugins: [
+                ...prev.selectedPlugins,
+                { plugin, skills: [skill] },
+              ],
+            };
+          }
+          const skills = current.skills.includes(skill)
+            ? current.skills.filter(name => name !== skill)
+            : [...current.skills, skill];
+          return {
+            ...prev,
+            // A package with nothing enabled loads nothing: it is unpicked.
+            selectedPlugins:
+              skills.length === 0
+                ? prev.selectedPlugins.filter(selected => selected !== current)
+                : prev.selectedPlugins.map(selected =>
+                    selected === current ? { ...selected, skills } : selected,
+                  ),
+          };
+        }),
+      removeKeptPlugin: plugin =>
+        setState(prev => ({
+          ...prev,
+          keptPlugins: prev.keptPlugins.filter(
+            kept => pluginEntryKey(kept) !== pluginEntryKey(plugin),
           ),
         })),
       reset: () => {

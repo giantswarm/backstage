@@ -29,6 +29,7 @@ import { agentSpecOf } from '../../lib/agentSpec';
 import { harnessTitle } from '../../lib/harnesses';
 import { parseEgressText } from '../../lib/egress';
 import { shortCommit } from '../../lib/skills';
+import { pluginEntryOf, pluginSummary } from '../../lib/plugins';
 import {
   buildCatalogue,
   declaredToolset,
@@ -311,6 +312,13 @@ function CreateAgentReview() {
                 : state.selectedSkills.map(skill => skill.name).join(', ')}
             </PlainRow>
           )}
+          {state.selectedPlugins.length > 0 && (
+            <PlainRow label="Plugins">
+              {state.selectedPlugins
+                .map(pick => pluginSummary(pluginEntryOf(pick)))
+                .join('; ')}
+            </PlainRow>
+          )}
           <PlainRow label="Tools">
             {toolsetSummaryLabel(
               shape,
@@ -494,6 +502,21 @@ function CreateAgentReview() {
                         {skill.name}{' '}
                         <span className={classes.code}>
                           @{shortCommit(skill.commit)}
+                        </span>
+                      </span>
+                    ))}
+                  </Text>
+                </SummaryItem>
+              )}
+              {state.selectedPlugins.length > 0 && (
+                <SummaryItem label="Plugin pins">
+                  <Text variant="body-small">
+                    {state.selectedPlugins.map(({ plugin }, index) => (
+                      <span key={`${plugin.repoUrl}#${plugin.path}`}>
+                        {index > 0 ? ', ' : ''}
+                        {plugin.name}{' '}
+                        <span className={classes.code}>
+                          @{shortCommit(plugin.commit)}
                         </span>
                       </span>
                     ))}
