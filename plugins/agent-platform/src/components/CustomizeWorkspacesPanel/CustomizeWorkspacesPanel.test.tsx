@@ -54,6 +54,19 @@ const mockRemove = {
 jest.mock('../WorkspacesDataProvider', () => ({
   useWorkspacesData: () => mockData,
 }));
+jest.mock('../WorkspaceManagerSignIn', () => ({
+  WorkspaceManagerSignIn: (props: {
+    installation: string;
+    onSignedIn: () => void;
+  }) => (
+    <button
+      data-testid={`sign-in-${props.installation}`}
+      onClick={props.onSignedIn}
+    >
+      signed in
+    </button>
+  ),
+}));
 jest.mock('../../hooks/useWorkspaceActions', () => ({
   useWorkspaceActions: () => ({ sync: mockSync, remove: mockRemove }),
   useWorkspaceDetail: (_installation: string, name: string) => ({
@@ -280,6 +293,23 @@ describe('CustomizeWorkspacesPanel', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('No workspaces in alpha yet')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mockData.retry).toHaveBeenCalled();
+  });
+
+  it('offers the sign-in to workspace-manager, not muster’s refusal, where the person has not signed in to it', async () => {
+    mockData = data({
+      rows: [],
+      failures: {
+        gazelle:
+          "agent-platform: auth_required: server 'workspace-manager' requires authentication before its tools can be called",
+      },
+    });
+    await renderPanel();
+
+    expect(screen.getByTestId('sign-in-gazelle')).toBeInTheDocument();
+    expect(screen.queryByText('Your workspaces could not be read')).toBeNull();
+    expect(screen.queryByText(/auth_required/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'signed in' }));
     expect(mockData.retry).toHaveBeenCalled();
   });
 

@@ -56,6 +56,7 @@ import {
 import { CreateWorkspaceButton } from '../CreateWorkspaceButton';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
+import { WorkspaceManagerSignIn } from '../WorkspaceManagerSignIn';
 import { useWorkspacesData } from '../WorkspacesDataProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -221,6 +222,9 @@ function RowActions({ row }: { row: WorkspaceRow }) {
     </Cell>
   );
 }
+
+/** muster's refusal of a tool call before the person signed in to its server. */
+const AUTH_REQUIRED = /\bauth_required\b/;
 
 /** The installations whose workspaces could not be read, and why. */
 function ReadFailures({
@@ -393,6 +397,17 @@ export function CustomizeWorkspacesPanel({
     'actions',
   ]);
 
+  // A read muster refused for want of the person's sign-in to
+  // workspace-manager offers that sign-in, not the refusal's text.
+  const signIns = Object.keys(failures).filter(installation =>
+    AUTH_REQUIRED.test(failures[installation]),
+  );
+  const otherFailures = Object.fromEntries(
+    Object.entries(failures).filter(
+      ([installation]) => !signIns.includes(installation),
+    ),
+  );
+
   const isReading = isLoading && allRows.length === 0;
   const failed = Object.keys(failures).length > 0;
   const isEverythingFailed =
@@ -461,9 +476,16 @@ export function CustomizeWorkspacesPanel({
 
   return (
     <Flex direction="column" gap="5">
+      {signIns.map(installation => (
+        <WorkspaceManagerSignIn
+          key={installation}
+          installation={installation}
+          onSignedIn={retry}
+        />
+      ))}
       <ReadFailures
-        failures={failures}
-        isEverything={isEverythingFailed}
+        failures={otherFailures}
+        isEverything={isEverythingFailed && signIns.length === 0}
         onRetry={retry}
       />
       {isAvailable && (
