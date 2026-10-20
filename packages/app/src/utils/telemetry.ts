@@ -542,6 +542,20 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       break;
     }
 
+    // The workspace editor: creating one (`/customize/workspaces/new`) and
+    // editing one (`…/workspaces/<installation>/<organization>/<name>/edit`),
+    // whose segments name a workspace and stay out of every attribute. Above
+    // the tab case, which would report them as the Workspaces tab.
+    case pathname === '/customize/workspaces/new':
+      payload = { page: 'Create workspace' };
+      route = '/customize/workspaces/new';
+      break;
+
+    case /^\/customize\/workspaces\/[^/]+\/[^/]+\/[^/]+\/edit$/.test(pathname):
+      payload = { page: 'Edit workspace' };
+      route = '/customize/workspaces/:installation/:organization/:name/edit';
+      break;
+
     // A Customize tab, with the tab as the view. Only the known tabs: the
     // segment comes from the URL, and an unknown one redirects to the Agents tab.
     // The Connectors tab's sub-tabs below its own address add a `subview`; the

@@ -75,6 +75,27 @@ export const newSkillRouteRef = createSubRouteRef({
   parent: skillsRouteRef,
 });
 
+// The Customize screen's Workspaces tab (`/customize/workspaces`): a sub-page
+// of the app's Customize page, whose bare path is the list of workspaces; the
+// create and edit flows live underneath.
+export const workspacesRouteRef = createRouteRef();
+
+// Creating a workspace (`/customize/workspaces/new`), for the Organization and
+// installation in `?organization=&installation=`. One static segment, never
+// read as a workspace's three-segment path.
+export const newWorkspaceRouteRef = createSubRouteRef({
+  path: '/new',
+  parent: workspacesRouteRef,
+});
+
+// Editing one workspace (`<installation>/<organization>/<name>/edit`): a
+// workspace name is unique on an installation and belongs to one
+// Organization, which scopes who may edit it.
+export const workspaceEditRouteRef = createSubRouteRef({
+  path: '/:installation/:organization/:name/edit',
+  parent: workspacesRouteRef,
+});
+
 // The shell's minimal "Profile and settings" page (`/profile`): who is signed
 // in, the installations the portal talks to, and Sign out. Linked from the
 // shell rail's profile menu.

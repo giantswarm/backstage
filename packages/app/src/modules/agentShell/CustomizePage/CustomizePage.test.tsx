@@ -59,6 +59,8 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeModelsPanel: mockPanel('Models'),
     CustomizeWorkspacesPanel: mockPanel('Workspaces'),
     WorkspaceOrganizationSelect: () => <p>Organization scope</p>,
+    CreateWorkspaceButton: () => <a href="/new-workspace">New workspace</a>,
+    CustomizeWorkspacesIntro: () => <h2>Workspaces of acme</h2>,
     WorkflowCreateAssist: ({ installation }: { installation?: string }) => (
       <p>{`Create a workflow with the agent on ${installation}`}</p>
     ),
@@ -601,8 +603,10 @@ describe('CustomizePage', () => {
       // The Organization scope beside the Environment control.
       expect(screen.getByText('Organization scope')).toBeInTheDocument();
       expect(screen.getByText('Environment for muster')).toBeInTheDocument();
-      // Created in the workspace editor, not from the header.
-      expect(screen.queryByRole('link', { name: /workspace/i })).toBeNull();
+      // Its own create action, carrying the Organization and installation.
+      expect(
+        screen.getByRole('link', { name: 'New workspace' }),
+      ).toBeInTheDocument();
     });
 
     it('is absent from the strip where no installation has the workspace-manager', async () => {

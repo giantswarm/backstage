@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { WorkspaceRow } from '../../lib/workspaceList';
 import type { WorkspacesData } from '../WorkspacesDataProvider';
+import { workspacesRouteRef } from '../../routes';
 import { CustomizeWorkspacesPanel } from './CustomizeWorkspacesPanel';
 
 const docs: WorkspaceRow = {
@@ -94,7 +95,9 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
 }
 
 function renderPanel(search = '') {
-  return renderInTestApp(<CustomizeWorkspacesPanel search={search} />);
+  return renderInTestApp(<CustomizeWorkspacesPanel search={search} />, {
+    mountedRoutes: { '/customize/workspaces': workspacesRouteRef },
+  });
 }
 
 describe('CustomizeWorkspacesPanel', () => {
@@ -108,11 +111,11 @@ describe('CustomizeWorkspacesPanel', () => {
 
     const row = screen.getByRole('row', { name: /docs/ });
     expect(
-      within(row).getByText('github: example-org · topic docs'),
+      within(row).getByText('example-org · topic docs'),
     ).toBeInTheDocument();
     expect(within(row).getByText('12')).toBeInTheDocument();
     expect(
-      within(row).getByText(/4(\.0)? GiB of 15Gi|4(\.0)? GB of 15Gi/),
+      within(row).getByText(/4(\.0)? GiB of 15 GiB|4(\.0)? GB of 15 GiB/),
     ).toBeInTheDocument();
     expect(within(row).getByText('Synced')).toBeInTheDocument();
     expect(within(row).getByText('2')).toBeInTheDocument();
@@ -152,9 +155,9 @@ describe('CustomizeWorkspacesPanel', () => {
     await renderPanel();
 
     const row = screen.getByRole('row', { name: /docs/ });
-    expect(within(row).getByText(/ of 16Gi ↑$/)).toBeInTheDocument();
+    expect(within(row).getByText(/ of 16 GiB ↑$/)).toBeInTheDocument();
     expect(
-      within(row).getByText('Grown from 8Gi at the last sync'),
+      within(row).getByText('Grown from 8 GiB at the last sync'),
     ).toBeInTheDocument();
   });
 
@@ -169,17 +172,15 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.queryByRole('table')).toBeNull();
   });
 
-  it('shows the empty state with Create workspace, not offered until the editor exists', async () => {
+  it('shows the empty state with Create workspace, opening the editor for the Organization', async () => {
     mockData = data({ rows: [] });
     await renderPanel();
 
     expect(screen.getByText('No workspaces in alpha yet')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Create workspace' }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText('Coming with the workspace page.'),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'New workspace' })).toHaveAttribute(
+      'href',
+      '/customize/workspaces/new?installation=gazelle&organization=alpha',
+    );
   });
 
   it('says so where no environment in scope has the workspace-manager', async () => {
@@ -246,9 +247,7 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(
       screen.getByText('No Organization to show workspaces of'),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Create workspace' }),
-    ).toBeNull();
+    expect(screen.queryByRole('link', { name: 'New workspace' })).toBeNull();
   });
 
   it('lists the rest and names the installation it could not read', async () => {
@@ -309,7 +308,7 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.getByText(/nothing-like-it/)).toBeInTheDocument();
   });
 
-  it('offers Sync now and Delete, and Open and Edit only once the workspace page exists', async () => {
+  it('offers Open (once the workspace page exists), Edit, Sync now and Delete', async () => {
     await renderPanel();
 
     await userEvent.click(
@@ -320,8 +319,8 @@ describe('CustomizeWorkspacesPanel', () => {
       'true',
     );
     expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
+      'href',
+      '/customize/workspaces/gazelle/alpha/docs/edit',
     );
     await userEvent.click(screen.getByRole('menuitem', { name: 'Sync now' }));
     expect(mockSync.mutate).toHaveBeenCalled();

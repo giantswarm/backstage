@@ -28,7 +28,9 @@ import {
   CustomizeDataProvider,
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
+  CustomizeWorkspacesIntro,
   CustomizeWorkspacesPanel,
+  CreateWorkspaceButton,
   EnvironmentSelect,
   useCanAddSkill,
   useCustomizeData,
@@ -113,7 +115,8 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
   {
     // Last: the tab the fewest people use, and least often. Offered only
     // where an installation in scope has the workspace-manager
-    // (`hasWorkspaces`). Created in the workspace editor, not from here yet.
+    // (`hasWorkspaces`). Its create action is `CreateWorkspaceButton`, which
+    // carries the tab's Organization and installation to the editor.
     id: 'workspaces',
     title: 'Workspaces',
     searchLabel: 'Search workspaces',
@@ -323,6 +326,7 @@ function CustomizeTabContent({
         {tab.id === 'connectors' && (
           <ConnectorGroupTabs counts={musterCounts.connectorGroups} />
         )}
+        {tab.id === 'workspaces' && <CustomizeWorkspacesIntro />}
         <Flex
           align="center"
           justify="between"
@@ -345,7 +349,11 @@ function CustomizeTabContent({
               onChange={setSearch}
             />
           </div>
-          {create && <CreateAction create={create} fullWidth={isPhone} />}
+          {tab.id === 'workspaces' ? (
+            <CreateWorkspaceButton fullWidth={isPhone} />
+          ) : (
+            create && <CreateAction create={create} fullWidth={isPhone} />
+          )}
         </Flex>
         <TabPanel
           tab={tab.id}

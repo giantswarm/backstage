@@ -9,6 +9,7 @@ import {
   type DeleteWorkspaceResult,
   type ListRepositoriesInput,
   type PreviewWorkspaceInput,
+  type ProviderOwner,
   type RepositoriesPage,
   type SyncWorkspaceResult,
   type UpdateWorkspaceInput,
@@ -163,5 +164,20 @@ export class WorkspaceManagerClient {
       {},
     );
     return result.providers ?? [];
+  }
+
+  /**
+   * The owners on a provider instance the person can pick from, for the
+   * Organization's workspace; a manager before `list_owners` refuses it.
+   */
+  async listOwners(input: {
+    organization: string;
+    provider: string;
+  }): Promise<ProviderOwner[]> {
+    const result = await this.call<{ owners?: ProviderOwner[] }>(
+      WORKSPACE_MANAGER_TOOLS.listOwners,
+      { ...input },
+    );
+    return result.owners ?? [];
   }
 }

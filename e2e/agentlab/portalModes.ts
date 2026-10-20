@@ -62,6 +62,7 @@ export const SHELL_SPECS = [
   'usage-cost.spec.ts',
   'wizard-tools-layout.spec.ts',
   'workflows.spec.ts',
+  'workspace-editor.spec.ts',
   'workspaces-tab.spec.ts',
 ] as const;
 

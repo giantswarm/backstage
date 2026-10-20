@@ -112,6 +112,11 @@ export const portalEvents = defineEvents({
       'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',
     attributes: { kind: ['created', 'updated'] },
   },
+  'AgentPlatform.workspaceSaved': {
+    description:
+      'A workspace, the repositories agent sessions work on, was created or its sources changed, as the signed-in person.',
+    attributes: { kind: ['created', 'updated'] },
+  },
   'AgentPlatform.modelCreated': {
     description:
       "A model an agent can use (a kagent ModelConfig) was created in the Agent Platform, through the model form. The models a model backend's addition registers are not counted.",

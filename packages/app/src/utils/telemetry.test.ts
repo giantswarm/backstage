@@ -459,6 +459,16 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/workflows/:installation/:name/*',
     ],
     [
+      '/customize/workspaces/new',
+      { page: 'Create workspace' },
+      '/customize/workspaces/new',
+    ],
+    [
+      '/customize/workspaces/gazelle/acme/platform-mcp/edit',
+      { page: 'Edit workspace' },
+      '/customize/workspaces/:installation/:organization/:name/edit',
+    ],
+    [
       '/customize/models/new',
       { page: 'Models', view: 'new' },
       '/customize/models/new',
@@ -786,6 +796,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/models/gazelle/agent-platform/gpt-4o/used-by',
       '/customize/workflows',
       '/customize/workspaces',
+      '/customize/workspaces/new',
+      '/customize/workspaces/gazelle/acme/platform-mcp/edit',
       '/customize/agents/new',
       '/customize/agents/new/skills',
       '/customize/agents/new/tools',

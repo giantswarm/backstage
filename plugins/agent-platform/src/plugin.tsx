@@ -61,6 +61,9 @@ import {
   usageConversationsRouteRef,
   usageCostRouteRef,
   usageRouteRef,
+  workspaceEditRouteRef,
+  workspacesRouteRef,
+  newWorkspaceRouteRef,
 } from './routes';
 
 /**
@@ -137,6 +140,25 @@ const modelsSubPage = SubPageBlueprint.make({
     loader: async () => {
       const { ModelsRouter } = await import('./components/ModelsRouter');
       return <ModelsRouter />;
+    },
+  },
+});
+
+// The Customize screen's Workspaces tab: the create flow
+// (`/customize/workspaces/new`) and one workspace's edit
+// (`/customize/workspaces/<installation>/<organization>/<name>/edit`), driven
+// by WorkspacesRouter.
+const workspacesSubPage = SubPageBlueprint.make({
+  name: 'workspaces',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
+  params: {
+    path: 'workspaces',
+    title: 'Workspaces',
+    routeRef: workspacesRouteRef,
+    loader: async () => {
+      const { WorkspacesRouter } =
+        await import('./components/WorkspacesRouter');
+      return <WorkspacesRouter />;
     },
   },
 });
@@ -403,6 +425,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentsSubPage,
     skillsSubPage,
     modelsSubPage,
+    workspacesSubPage,
     createClusterAction,
     deleteClusterAction,
     connectorUsedBy,
@@ -440,6 +463,9 @@ export const agentPlatformPlugin = createFrontendPlugin({
     gpuCapacity: gpuCapacityRouteRef,
     addGpuNodePool: addGpuNodePoolRouteRef,
     modelCache: modelCacheRouteRef,
+    workspaces: workspacesRouteRef,
+    newWorkspace: newWorkspaceRouteRef,
+    workspaceEdit: workspaceEditRouteRef,
   },
   // All but `customize` and `newSession` carry a `defaultTarget`, so they
   // resolve without an app-config binding and are simply unbound when the

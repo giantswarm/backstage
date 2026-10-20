@@ -4,6 +4,7 @@
  */
 
 import { formatBytes } from './formatNumbers';
+import { quantityToGiB } from './workspaceDraft';
 import type { Workspace, WorkspaceSource } from './workspaceManager';
 
 /**
@@ -21,7 +22,7 @@ export function workspaceRowId(row: {
 }
 
 /**
- * One source in a line: `github: example-org · lang Go · topic mcp`, the
+ * One source in a line: `example-org · lang Go · topic mcp`, the
  * repositories by name (`repo-a, repo-b`), the exclusions last. A source
  * with neither names nor filters selects all of the owner's repositories.
  */
@@ -45,7 +46,7 @@ export function sourceLabel(source: WorkspaceSource): string {
   if (source.exclude?.length) {
     parts.push(`excl. ${source.exclude.join(', ')}`);
   }
-  return [`${source.provider}: ${source.owner}`, ...parts].join(' · ');
+  return [source.owner, ...parts].join(' · ');
 }
 
 /** Every source of a workspace, one after the other. */
@@ -119,10 +120,16 @@ export function isSettling(workspace: Workspace): boolean {
   );
 }
 
+/** A volume's Kubernetes quantity in GiB (`15Gi` → `15 GiB`), else as written. */
+export function sizeLabel(quantity: string): string {
+  const gib = quantityToGiB(quantity);
+  return gib ? `${gib} GiB` : quantity;
+}
+
 /**
  * What the volume stores (mirrors and session directories), the share's size
  * where its class provisions one, and ↑ when the last sync grew the share:
- * `9.5 GB of 15Gi ↑`.
+ * `9.5 GiB of 15 GiB ↑`.
  */
 export function storedLabel(
   storedBytes: number,
@@ -130,7 +137,7 @@ export function storedLabel(
   grewFrom?: string,
 ): string {
   const stored = formatBytes(storedBytes);
-  const share = volumeSize ? `${stored} of ${volumeSize}` : stored;
+  const share = volumeSize ? `${stored} of ${sizeLabel(volumeSize)}` : stored;
   return grewFrom ? `${share} ↑` : share;
 }
 
