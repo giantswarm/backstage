@@ -1,7 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { open, test } from './fixtures';
 import { lab } from './lab';
-import { WorkspaceTools } from './workspaces.fixture';
+import { MusterRoute } from './musterRoute';
 
 /**
  * model-manager at the browser: the answers of `x_model-manager_<tool>` calls
@@ -74,7 +74,7 @@ async function readModelManagerVerdict(
   // Signed in again first where another context's sign-in as the admin
   // rotated this page's session away.
   await open(page, '/');
-  const servers = await new WorkspaceTools(page, lab.users.admin).listServers();
+  const servers = await new MusterRoute(page, lab.users.admin).listServers();
   const server = servers.find(entry => entry.name === 'model-manager');
   if (!server) {
     return "the lab's muster serves no model-manager (platform.modelManager off): `agentlab configure --model-manager`, then `agentlab platform`";

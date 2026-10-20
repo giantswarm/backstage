@@ -7,8 +7,7 @@ import {
   test,
 } from './fixtures';
 import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
-import { lab, type LabUser } from './lab';
-import { LEFTOVER_AGE, RUN } from './workspaces.fixture';
+import { LEFTOVER_AGE, RUN, lab, type LabUser } from './lab';
 
 // An installation offers codex with a Harness of its own beside the platform
 // one. The portal has no flow for a Harness, so the fixture is applied with
