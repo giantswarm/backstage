@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
+  declaredStyle,
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
@@ -1166,9 +1167,15 @@ describe('opt-in picker options', () => {
 
     await userEvent.click(agentPicker());
 
-    expect(screen.getByRole('option', { name: 'Manage agents' })).toHaveStyle({
-      borderTop: '1px solid var(--bui-border-1)',
+    const footer = screen.getByRole('option', { name: 'Manage agents' });
+    expect(footer).toHaveStyle({
+      borderTopWidth: '1px',
+      borderTopStyle: 'solid',
     });
+    // Declared, not computed: jsdom computes a `var()` to the initial color.
+    expect(declaredStyle(footer, 'border-top-color')).toBe(
+      'var(--bui-border-1)',
+    );
   });
 
   it('starts with the initial prompt', () => {
