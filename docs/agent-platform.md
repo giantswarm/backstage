@@ -1,7 +1,8 @@
 # Agent Platform
 
 The **Agent Platform shell** is the portal's UI for working with agents. It
-serves `/`, `/agent-platform/**` and `/customize/**` and is built from the
+serves `/`, `/sessions`, `/usage`, `/profile` and `/customize/**` and is built
+from the
 `agent-platform` plugin (`@giantswarm/backstage-plugin-agent-platform`), the
 `muster` plugin and the app's `agentShell` module
 (`packages/app/src/modules/agentShell`). Agents run on kagent; the portal talks
@@ -26,8 +27,12 @@ session's start and its last state change; the rail and the sessions list
 order by it with one comparator (`byLastActive`). The waiting count beside
 "All sessions" opens the list filtered to those sessions. On a phone it becomes a
 bottom bar. The **Platform Portal** item appears only where the deployment also
-serves the classic portal. When an agent waits for an answer, a toast says so
-anywhere in the shell (`NeedsInputToasts`); more than three become one toast.
+serves the classic portal. The **Notification inbox** (a bell on the rail's
+Profile row, and on a phone the Profile item's menu) lists the sessions that
+need the person, the MCP servers that wait for their sign-in and what other
+portal features send them, with toasts, an unread count in the tab title and
+opt-in desktop notifications; see
+[The Notification inbox](#the-notification-inbox).
 
 ## Sessions and chat
 
@@ -35,7 +40,7 @@ anywhere in the shell (`NeedsInputToasts`); more than three become one toast.
 so there is no environment choice; the last-used agent is preselected. The
 Slack banner appears only where `agentPlatform.integrations.slack` is on.
 
-The session view (`/agent-platform/sessions/<installation>/<id>`) collapses a
+The session view (`/sessions/<installation>/<id>`) collapses a
 turn's tool calls into one expandable line, takes answers to the agent's
 permission requests and questions in a card on the chat bar, and stops a
 running turn. Its cost chip shows an estimated cost, the runtime-reported cost
@@ -43,7 +48,7 @@ where there is one, tokens and how full the context window is. Pins follow the
 person across browsers. A lost runtime is explained in place, with a way to a
 fresh session on the same agent.
 
-The sessions list (`/agent-platform/sessions`) offers search once a list has
+The sessions list (`/sessions`) offers search once a list has
 more than eight entries, the rule every list in the shell follows. Sessions are
 always the person's own: kagent answers only for the caller.
 
@@ -59,7 +64,7 @@ Favorites follow the person across browsers. A `generalInformation` meta-agent
 adds a helper banner. Each agent's Harness, and a Harness filter, appear only
 when the agents run on more than one Harness.
 
-**New agent** (`/agent-platform/agents/new`) is a wizard: Details, Skills,
+**New agent** (`/customize/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
 configured; every skill is pinned to a commit. An `agentManagement` meta-agent
 adds a helper that drafts the instructions in a side chat; the form changes
@@ -121,20 +126,66 @@ each person's own account, none, or AWS request signing) and registers the
 server. Connectors managed through GitOps point to their source instead of
 being editable.
 
+A connector is named for people by the `ui.giantswarm.io/display-name`
+annotation on its MCPServer, as agents, models and harnesses are: in the
+Connectors list, its page's title, breadcrumbs and document title, the tool
+page's breadcrumb, the connector wizard's edit frame, the command palette, the
+agent wizard's Tools step and review, the agent page's tools, the reach line,
+the session timeline, Usage → Connectors, the workflow pages, the inbox's MCP
+sign-in row and the sign-in dialogs. One rule names it everywhere
+(`connectorDisplayNames` in the muster plugin): a family takes the display name
+its annotated members agree on, and members that disagree leave it its own name;
+without a display name a connector goes by its family's name
+(`spec.family.name`) or its MCPServer's; and connectors that would read the same
+(two annotated alike, or one annotated like another's name, case aside) go by
+their own names instead, so no two read alike. URLs, `server:` selectors and
+tool names keep the technical name, which Technical details on the Details tab
+still shows, and searches match both names.
+
+Add connector keeps the name typed into its Name field as that annotation,
+through the `displayName` argument of muster's `core_mcpserver_create` and
+`_update` (muster v5.43.0 and later). The technical name derives from it as
+before ("Stack Overflow" is registered as `stack-overflow`); a name that is the
+technical name already (`jira`) sets no annotation. Editing a connector shows
+its display name in the Name field and saves a changed one, sending
+`displayName` only when it changes (back to the technical name removes the
+annotation); the technical name stays fixed. A family member's Name stays
+read-only: its members share one display name, which a rename of one would
+split. Whether an installation's muster takes the argument is read from each
+tool's input schema (`describe_tool`, validate's and create's or update's on
+their own): on an older muster, which refuses unknown fields, the wizard
+registers without it, the Name field then shows the technical name, and an
+edit keeps it read-only, as before. A schema that cannot be read stops the
+save with an error rather than dropping the name unsaid. The annotation can also be
+set on the MCPServer directly, for example in its GitOps source or with
+`kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
+an edit that does not change the name keeps it.
+
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
-`/agent-platform/connectors/<connector>/tools/<tool>?installation=<name>`.
+`/customize/connectors/<installation>/<connector>/tools/<tool>`.
 That page shows what the tool does (Reads or Changes things), its description
-under "What it’s for", its input schema (folded),
+under "What it’s for", its calls, errors and p95 latency over the last 30 days
+(from the connector's Usage tab's read), its input schema (folded),
 a form that runs the tool through muster, and the result, in one column with
 no facts beside it. The tool's address carries the tab's search and filter
 (`q`, `effect`), so the breadcrumb back keeps them; the browser's Back also
 restores how far the list was paged. Addresses under the old
-`/agent-platform/mcp-servers/` prefix redirect to the same path under
-`/agent-platform/connectors/`.
+`/agent-platform/connectors/` and `/agent-platform/mcp-servers/` prefixes
+redirect, in one hop, to the same page under `/customize/connectors/`, the
+installation moved from `?installation=` into the path.
 
-A connector's page ends with a Details tab: sign-in, health, calls this month
-and when it was added, then a Technical details fold-out with the GitOps
+A connector's Usage tab (`…/usage`, not on muster's own page) shows every
+caller's tool calls to it over the last 30 days, from muster's dispatch
+metrics narrowed to its MCPServers (a family's instances together): tool
+calls, error ratio, p95 latency and how many of its tools were called, calls
+per day by outcome, every tool it offers with its calls, errors and p95
+(never-called tools included), and for a family each instance's. It links to
+Usage → Connectors.
+
+A connector's page ends with a Details tab: sign-in, health, calls over the
+last 30 days (the Usage tab's figure) and when it was added, then a Technical
+details fold-out with the GitOps
 source, the MCPServer and the HelmRelease or Kustomization that applies it,
 the configuration (type, URL, timeout, auto start, `spec.meta`), the auth
 chain from `spec.auth` and muster's health detail from the status. The
@@ -156,7 +207,16 @@ and Git do. A workflow's page splits into Overview, Run it, Usage (its run
 statistics) and Details tabs; its ⋮ menu shows the Workflow CR as YAML and,
 where Flux reconciles the workflow, where in Git to change it.
 
-Run it (`/agent-platform/workflows/<name>/run?installation=<name>`) runs the
+The Workflows list and a workflow's page say what a workflow does in the same
+badges a tool has: Reads or Changes things. muster marks a workflow read-only
+only when every tool its steps can reach is, so Reads holds for all its steps;
+a workflow muster lists without that mark shows Changes things. Without a muster
+session, or where muster offers the person no tool for the workflow, no badge is
+shown. On a workflow, the badge's
+tooltip says so ("Every step only reads." or "At least one step can change
+things."), on hover, keyboard focus or a tap; a tool's badge has none.
+
+Run it (`/customize/workflows/<installation>/<name>/run`) runs the
 workflow as a tool's page runs a tool: muster exposes each workflow as the
 tool `workflow_<name>`, and the tab shows that tool's input form and result,
 and remembers the last inputs per installation, shared with the tool's own
@@ -180,7 +240,7 @@ not held: the app's router has no navigation blocker.
 
 ## Usage
 
-`/agent-platform/usage` reports over 7, 30 (the default) or 90 days:
+`/usage` reports over 7, 30 (the default) or 90 days:
 
 - **Overview** — platform health and trends from the LLM gateway.
 - **Cost** — spend from the gateway, by agent and model.
@@ -202,7 +262,7 @@ only when the records reach back before it.
 
 ## Profile and settings
 
-`/agent-platform/profile` shows who is signed in and the environments the portal
+`/profile` shows who is signed in and the environments the portal
 talks to. Other settings stay in the classic settings.
 
 ---
@@ -213,15 +273,15 @@ A wizard (`AgentWizardFrame`, bui). The portal composes nothing: the review is
 agent-manager's dry run and the deploy is agent-manager's `create_agent`, both
 called through the installation's muster as the signed-in person.
 
-1. **Details** — `/agent-platform/agents/new` (`NewAgentPage`). The installation
+1. **Details** — `/customize/agents/new` (`NewAgentPage`). The installation
    select renders nothing on a single-installation portal. **More options**
    holds the model, the runtime, the technical name and extra egress origins.
    `CreateAgentAssist` appears when an `agentManagement` meta-agent resolves.
-2. **Skills** — `/agent-platform/agents/new/skills` (`NewAgentSkillsPage`); see
+2. **Skills** — `/customize/agents/new/skills` (`NewAgentSkillsPage`); see
    "Skill discovery".
-3. **Tools** — `/agent-platform/agents/new/tools` (`NewAgentToolsPage`): the
+3. **Tools** — `/customize/agents/new/tools` (`NewAgentToolsPage`): the
    selectors that bound which gateway tools the agent can use.
-4. **Review** — `/agent-platform/agents/new/review` (`NewAgentReviewPage`):
+4. **Review** — `/customize/agents/new/review` (`NewAgentReviewPage`):
    `validate_agent`, **Create agent** through `create_agent`, a pull-request
    variant where agent-manager reports the `commit` capability, and an "Install
    manually instead" fallback from the same values.
@@ -233,7 +293,7 @@ Without `agentPlatform.skills.repositories` the Skills step is skipped, and a
 deep link to it redirects onward. `hasRepositories` comes from config alone, so
 the decision costs no request.
 
-Editing (`/agent-platform/agents/edit/<installation>/<namespace>/<name>`) is the
+Editing (`/customize/agents/<installation>/<namespace>/<name>/edit`) is the
 same wizard, prefilled, ending in an `update_agent` dry run (see "Editing an
 agent").
 
@@ -264,8 +324,8 @@ one `ModelConfig`, resolved incrementally.
 
 ### Model management (the Models tab)
 
-The Models list (`CustomizeModelsPanel`; `/agent-platform/models` redirects to
-Customize → Models) lists the fleet's ModelConfigs through
+The Models list (`CustomizeModelsPanel`, Customize → Models at
+`/customize/models`) lists the fleet's ModelConfigs through
 `ModelConfigsProvider` and lets an admin create, edit and delete them. Status
 combines the `Accepted` and `ResolvedRefs` conditions, named by the one that
 failed: Not accepted (`Accepted` is False: kagent rejects the settings),
@@ -275,9 +335,10 @@ so there is no `Ready`. The controller's message sits in a hint beside the
 status.
 
 One model's page (`ModelDetailPage`) is at
-`/customize/models/<installation>/<namespace>/<name>`, routed by the app's
-Customize page; `/agent-platform/models/<installation>/<namespace>/<name>`
-redirects there. It splits into Overview (the serving status, the facts, then
+`/customize/models/<installation>/<namespace>/<name>`, routed by the Models
+tab's router (`ModelsRouter`); the old
+`/agent-platform/models/<installation>/<namespace>/<name>` redirects there. It
+splits into Overview (the serving status, the facts, then
 a Technical details fold-out with the owning Helm release, the resource and
 the conditions with their reason and message), Usage (`…/usage`: the gateway's
 30-day figures and spend per day) and Used by (`…/used-by`, counted in the
@@ -292,7 +353,7 @@ controller's messages stay in Technical details, which open on arrival; the
 alert's Show conditions reopens them and scrolls them into view.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
-`EditModelPage` at `/agent-platform/models/edit/<installation>/<namespace>/<name>`)
+`EditModelPage` at `/customize/models/<installation>/<namespace>/<name>/edit`)
 supports **OpenAI** (every OpenAI-compatible endpoint: vLLM, llama.cpp,
 OpenRouter), **Anthropic**, **Gemini** and **Ollama**, with a per-provider
 endpoint (`spec.openAI.baseUrl`, `spec.anthropic.baseUrl`, `spec.ollama.host`)
@@ -370,8 +431,8 @@ a GPU panel, presets or fit check is therefore ordinary state. Optional columns
 (Size, Memory, Features, Node, GPUs) appear only when rows carry the data.
 Header actions are in `ModelHostingActions`, headline figures in
 `ModelHostingKpis`. Each create flow is a page of its own
-(`HostingFlowRoutes`): `serving/serve`, `serving/import`, `serving/pull`,
-`serving/add-backend` and `capacity/add-pool` under `/agent-platform/models`.
+(`HostingFlowRoutes`): `serve`, `import`, `pull`, `add-backend` and
+`capacity/add-pool` under `/customize/models/hosting`.
 Serve model reads its seed (`installation`, `backend`, `cluster`, `pool`,
 `model`) from the query.
 
@@ -523,8 +584,8 @@ repositories are separate platform work).
 ### Adding, editing and evaluating a skill
 
 Skills change only through pull requests. `AddSkillPage`
-(`/agent-platform/skills/new`) and `EditSkillPage`
-(`/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`) call gs-backend's
+(`/customize/skills/new`) and `EditSkillPage`
+(`/customize/skills/edit/<owner>/<repo>[/<dir>]`) call gs-backend's
 `POST /agent-skills/pull-request` with the person's GitHub token
 (`useProposeSkill`). The route accepts github.com repositories only, and
 `canProposeSkillTo` (`lib/skills.ts`) mirrors that check in the UI.
@@ -738,7 +799,7 @@ load.
 
 ## The Sessions tab
 
-`/agent-platform/sessions` lists the person's kagent sessions across the fleet
+`/sessions` lists the person's kagent sessions across the fleet
 (`SessionsTable`); a session starts on the shell's start screen (see "Starting
 a session"). Renaming and deleting are described below.
 
@@ -934,7 +995,7 @@ normalisation.
 
 ## The session detail page
 
-`/agent-platform/sessions/<installation>/<id>` shows one session. The
+`/sessions/<installation>/<id>` shows one session. The
 installation is in the path because kagent ids are unique only within one.
 
 ### Two reads
@@ -1098,10 +1159,46 @@ use.
 in full; the agent's internal work folds into work summaries; older turns page
 behind "Show earlier activity".
 
-User messages follow `app.branding.theme.<mode>.primaryColor` and are **not**
-markdown, because prompts quote logs and `#` lines verbatim. Agent prose is GFM
+User messages take the fill Send carries, `--bui-bg-solid` with
+`--bui-fg-solid` (the shell's primary colour), and are **not** markdown,
+because prompts quote logs and `#` lines verbatim. The solid tokens are
+deprecated for `--bui-accent-*`, but the installed bui's primary Button still
+paints them, and the shell's accent (`#009fff`) fails contrast under white
+text; move the bubble when Send moves. Agent prose is GFM
 markdown. JSON inside result strings is inlined. Streaming auto-follow applies
 only while the page is scrolled to the end.
+
+**A long user message is cut to 10 lines** of its own text (`10lh`, so the cut
+follows the reader's font size) behind a fade, with _Show more_ centred in the
+bubble under the fade, and _Show less_ in the same place at the end of the opened
+text, in a row of its own so it never covers a line. It is a button with
+`aria-expanded`, tied to the message by `aria-controls`, drawn in the bubble's
+foreground (`CollapsibleToggle`'s `onSolid`: the bubble's `--bui-fg-solid` for
+the label and focus ring, a wash of it on hover). A continuation's opener
+carries the whole earlier conversation, and a pasted log or file can run to
+thousands of lines; either would bury the answer under it. A message that fits, or would hide no more than
+two lines (a fifth of the cut, `collapseSlack`, the rule `ShowMore` pages by),
+is shown whole with no control. The cut is visual only: the whole text stays in
+the page for screen readers, selection and copying, and keyboard focus or find
+in page reaching past the cut opens the message where the match is. _Show less_
+on a message read to its end brings it back into view rather than leaving the
+reader in a later turn.
+
+`SessionTimeline` holds which messages are open, keyed by kagent's
+`messageId`, so a message stays open when kagent's copy replaces the optimistic
+one after sending and when its turn leaves the turn window and comes back with
+"Show earlier activity". A reload starts every message cut again. The agent's
+messages, tool output and the composer are never cut. The same applies in the
+create-agent assist panel, which renders its conversation with
+`SessionTimeline`: its opener quotes the system prompt drafted so far, which
+can be long.
+
+The pieces (`useCollapsible`, `CollapsibleViewport`, `CollapsibleToggle`) live
+in `ui-react` and are the same ones `CollapsibleMarkdown` uses for an agent's
+instructions, whose toggle likewise sits centred in its own row under the cut;
+the bubble sets `--bui-bg-inherit` to its own fill so the fade
+matches it. Tests lay them out with `mockCollapsibleLayout` from
+`@giantswarm/backstage-plugin-ui-react/testUtils`.
 
 | Entry                | Where it comes from                                                        |
 | -------------------- | -------------------------------------------------------------------------- |
@@ -1154,6 +1251,9 @@ config arrays, so a deployment overriding `img-src` must re-list `data:`.
 
 **Only the poll renders attachments.** The first stream event of a turn with a
 file part (`StreamTurn.carriesFile`) triggers one tasks re-read for that turn.
+An image the person sent shows as a thumbnail (see
+[Images in a message](#images-in-a-message)); one the agent sent shows at up
+to 480 px high.
 
 **Unreadable messages are counted.** `skippedMessages` counts history entries
 that failed the schema (artifact and status updates excluded), and the warning
@@ -1174,13 +1274,32 @@ Costs use `gs.installations.<name>.currency`, USD otherwise.
 context, so a 4-turn session reached 1.4M prompt tokens across 14 calls. There
 is no combined total, because input and output are priced differently.
 
-**Context used is the newest turn's prompt tokens against a configured window.** No
-platform component reports a hosted model's context window, so the denominator
-is `agentPlatform.models.contextWindows` (model-name patterns with `*`, the most
-specific match wins, served through the signed-in config). An unmatched model
-shows its raw token count. The numerator is `buildTimeline`'s
-`lastTurnTokens.prompt`, summed over the newest reporting turn's calls and
-excluding delegated usage, so it is approximate.
+**Context used is the newest turn's largest model call against a configured
+window.** No platform component reports a hosted model's context window, so
+the denominator is `agentPlatform.models.contextWindows` (model-name patterns
+with `*`, the most specific match wins, served through the signed-in config).
+The numerator is `buildTimeline`'s `context`, read by `readUsageReport`:
+
+- ADK writes a usage bag per model call. A call's figure is its reported
+  total, else prompt plus output: the output is in the context from then on,
+  and both must fit the window.
+- A turn's figure is its largest call, never the sum of its calls. Each call
+  re-sends the whole context, so the sum over a long turn runs to several
+  times the window. The largest call is the newest root-agent call, and a small
+  auxiliary or sub-agent call recorded later in the turn cannot undercut it. A
+  compaction mid-turn keeps the pre-compaction size until the next turn.
+- The newest turn with a figure wins as soon as its first call reports, so the
+  indicator moves mid-turn on the API v2 line. Delegated agents' nested usage is
+  excluded.
+- The claude Harness writes one bag per turn, summed over its calls
+  (`numTurns`, with `costUsd`). Only a bag with `numTurns` exactly 1 is one
+  call's; any other, a missing or malformed count included, reads "Not
+  reported".
+
+No share shows beside a raw count, and a line under the row says why: the
+table names no window for the model, or the call was larger than the
+configured window (the setting may be too small, or the turn ran on a model the
+agent has since left). The share is never capped at 100%.
 
 Some sessions' `adk_usage_metadata` has only `promptTokenCount` and
 `candidatesTokenCount`; the total is then derived. A reported total wins,
@@ -1228,14 +1347,271 @@ never shows and then hides.
 conversation column, offset by `--agent-shell-mobile-bar-height` on phones, and
 the column is at least the view's height (`useDockedComposerLayout`).
 
-### Pin and needs-input toasts
+### Pin
 
 The pin toggle uses `usePinnedSessions`, the store the rail and list read.
-`NeedsInputToasts` watches the polled `session-states` (same keys, no extra
-requests) and posts a `ToastApi` toast when a session flips to waiting while
-the person is elsewhere. Nothing persists; sessions already waiting are left to
-the rail's dots, a toast closes when its session stops waiting or is opened,
-and the session on screen never raises one.
+
+### The Notification inbox
+
+The shell's inbox (`packages/app/src/modules/agentShell/NotificationInbox`) is
+mounted once per shell, around the rail, and shows nothing on classic pages.
+
+- **Bell.** On the rail's Profile row, right of the Profile trigger (above the
+  avatar when the rail is collapsed), with a red unread count. It opens an
+  overlay of about 400 px beside the rail. On a phone the bottom bar keeps its
+  five items: the Profile item carries the count, and its menu starts with
+  "Notifications (n)", which opens the overlay as a full-width sheet.
+- **Rows.** One per session at most, derived in the browser from the shell's
+  own `session-states` read through the row rule
+  (`deriveSessionNotificationRow`, agent-platform-common) with the session's
+  Notification level and origin: Waiting (any session), Failed and Turn
+  finished (portal-started sessions, the latter at All activity only). A row
+  shows the agent's Avatar and Display name, the event, the session's name,
+  its age, a failure's reason class and a state chip (Waiting, Failed,
+  Finished), newest first. Clicking a row opens the session and marks it
+  read; its ⋯ menu has "Mute this session". "Mark all read" is one write to
+  the seen marks. No text of the conversation enters a row.
+- **MCP sign-in row.** One for the person's home installation while any of its
+  MCP servers waits for their own sign-in or grant (`auth_required` or
+  `reauth_required` in muster's per-user `auth://status`): "2 MCP servers need
+  your sign-in", naming the servers by display name, above the session rows (it
+  has no time to sort by), with **Sign in**, which marks it read, closes the
+  overlay and then opens muster's sign-in dialog over the page (loaded on the
+  first sign-in). Muster's `McpSignInProvider` reads the status under the muster
+  plugin's query client, every five minutes and when the tab regains focus, and
+  quietly: the read never asks for the portal sign-in, stops while the portal
+  session is gone (a focus checks again), and the servers' display names are
+  read once. A sign-in finished in the dialog or on a muster page removes the
+  row through the same read. Only the home installation is read, and the dialog
+  opens only for it: another installation's muster needs a brokered token, and
+  its servers are signed in to where they are used. The row replaces muster's
+  corner card and its "Not now": marking the row read is the way to put it
+  aside.
+- **Read.** A row is unread until its identity is the session's seen mark in the
+  notification record. The MCP sign-in row's identity is the installation and
+  the set of waiting servers; it is unread while a server waits that the seen
+  mark does not name, so a server that starts to wait makes it unread again and
+  a sign-in that leaves fewer waiting does not. A server muster then reports
+  connected leaves the mark (`replaceSeenMark`, written only while the stored
+  mark is still the one read, so a newer mark from another tab or device is
+  kept, and tried again a minute after a failed write), so a server signed in to
+  and later waiting again (an expired grant) is unread again; a server that
+  merely drops out of muster's list stays in it. The session on screen counts as
+  seen while the person works in that window (visible and focused); a session
+  parked in a background tab, or in a window behind another application, still
+  notifies. Opening a row (the MCP row: its Sign in) reports
+  `AgentPlatform.notificationOpened`, "Mark all read"
+  `AgentPlatform.notificationsMarkedRead`. The unread count prefixes the
+  document title through `ShellDocumentTitle` (`useShellDocumentTitleCount`,
+  ui-react).
+- **Rows from the upstream notifications store.** What other portal features
+  send the person through the standard Backstage notifications service
+  (`notificationService` in a backend plugin, or a template's
+  `notification:send` step) shows as a plain row: a bell icon, the title, the
+  description on one line, the age; clicking it follows the link (a link out
+  of the portal, protocol-relative ones included, opens in a new tab; a
+  same-origin URL loses the app's base path, which the router adds). The
+  upstream notifications backend stores them; the shell reads them through the
+  upstream `NotificationsClient`, registered by `agentShellNotificationsApi`
+  (`modules/agentShell/notificationsApiExtension.ts`) without the upstream
+  notifications frontend plugin, whose page and home widget the portal does
+  not ship. `useUpstreamRowSource` reads the newest 20 and the newest 50
+  unread (a notification sent again for an older scope keeps its first
+  `created`, by which the store sorts) when the inbox mounts, again on every
+  change the backend announces on the `notifications` signals channel (a
+  burst restarts one read), when the overlay opens and when the tab comes
+  back into view more than 30 s after the last read. It keeps its own query
+  client (`inboxQueryClient`), never persisted: the agent-platform client the
+  inbox renders under writes its queries to `localStorage`. These rows keep the
+  store's read state: opening one marks it read there, as does the very page
+  it links to on screen (its toast followed; a page below it does not count,
+  and a toast is still raised there), and "Mark all read" reads the store's
+  unread ids and marks those (the store has no call for all of them). A toast
+  of a row linking out of the portal opens the overlay instead, since the
+  toast's plain link would leave the shell in this tab. A notification sent
+  again for the same scope is a new, unread row. A read of the store that
+  fails leaves the session rows as they are and shows the plain rows of the
+  last read that worked.
+- **Sources.** Each source (`InboxRowSource` in `NotificationInbox/types.ts`)
+  says how its rows are read: `markRead`, `markAllRead` and `isOnScreen` (the
+  page a row is about, which both the toasts and the on-screen marking use).
+  The inbox only dispatches. "Mark all read" writes to every source with
+  unread rows, waits for all of them and reports
+  `AgentPlatform.notificationsMarkedRead` once if any marked something;
+  opening a plain row reports `AgentPlatform.notificationOpened` with
+  `kind: plain`.
+- **Reading.** `useNotifiableSessions` (agent-platform) reads the same query
+  keys as the rail's dots: every 10 s while the tab is visible, and on the
+  60 s baseline tier while it is hidden. A state for a session the sessions
+  list does not know reads that installation's list again, once per session,
+  so a session started elsewhere can be named in a background tab too.
+- **Interruptions.** The tab's first read is every installation's sessions and
+  states; the MCP sign-in row joins when muster answers, quietly unread if that
+  is later. Rows unread then are catch-up: one summary toast at most ("2
+  sessions need your attention", or "notifications" once a row that is not a
+  session's is among them; "Open notifications" opens the overlay) and no
+  desktop notification. The tab keeps what it read in `sessionStorage`, so a
+  return from a classic page or a reload does not catch up again. A row that
+  appears, or changes identity, after that is news when its session was already
+  read by the tab or its state changed after the first read; an old wait an
+  installation reports late stays quietly unread. News raises a toast in the
+  visible tab ("Open session"), none for the session on screen, and more than
+  three at once are one toast (the Sessions list on its Waiting filter when they
+  all wait). A toast closes once its row goes or is read, or its page is opened.
+  The MCP sign-in row is news when a server starts to wait; fewer servers
+  waiting only narrows it and raises nothing. Its toast's **Sign in**
+  (`#mcp-sign-in`) opens it in place like its button, and so does its desktop
+  notification; in the address, `#mcp-sign-in` waits for the sign-in status.
+  Toasts stand above the phone's bottom bar, the session's docked composer and a
+  wizard's footer (`agent-shell.css`). The upstream toast renders its links as
+  plain anchors; the inbox follows a plain click on one inside the app instead
+  of reloading the portal, and acts on `#notifications` and `#mcp-sign-in` in
+  place.
+- **Desktop notifications.** Opt-in per browser from the switch at the foot of
+  the overlay (`localStorage`); the browser's permission prompt follows that
+  click only. Raised for news while the window does not have focus, silent,
+  with the row's identity as the `tag` so several tabs show one, and only for
+  rows still unread in the record. A hidden tab can still notify about a
+  session another tab shows; the plan accepts that duplicate.
+
+Rows are `InboxRow`s (`NotificationInbox/types.ts`), the shape the bell, the
+overlay, the title count and the interruptions read, so a later producer (the
+MCP sign-in row, any further producer) adds a source of its own. The session
+rows (`useSessionRowSource`) and the MCP sign-in row (`useMcpSignInRowSource`)
+are read through the Seen record, together (`useSeenRecordSource`, so "Mark
+all read" stays one write to the seen marks); the plain rows
+(`useUpstreamRowSource`, `kind: 'plain'`) through the upstream store.
+
+#### Sending a test notification locally
+
+No portal feature sends to the store yet. To see a plain row, send one to
+yourself through the notifications backend's API, which takes service
+credentials only. Give the local backend a static token for it: add an entry
+to `backend.auth.externalAccess` in `app-config.local.yaml`, next to any entry
+already there:
+
+```yaml
+backend:
+  auth:
+    externalAccess:
+      - type: static
+        options:
+          token: local-notifications-test-token-0123456789
+          subject: local-notifications-test
+        accessRestrictions:
+          - plugin: notifications
+```
+
+Then, with the shell open in a browser, send a notification to the entity ref
+of the user you are signed in as (or `"type": "broadcast"` for everyone):
+
+```bash
+curl -X POST http://localhost:7007/api/notifications/notifications \
+  -H 'Authorization: Bearer local-notifications-test-token-0123456789' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "recipients": { "type": "entity", "entityRef": "user:default/alex.example" },
+    "payload": {
+      "title": "Template run finished",
+      "description": "Create a Go service",
+      "link": "/create",
+      "severity": "normal",
+      "scope": "local-test"
+    }
+  }'
+```
+
+The row appears, with a toast, through the signal. Send it again with the same
+`scope` to see it turn unread again.
+
+### Notification level and the notification record
+
+The actions menu (on the page and on each Sessions-list row) has a
+**Notifications** submenu: Default, All activity or Muted, the current one
+ticked. Default notifies when the session waits for the person or fails; All
+activity also when a turn finishes; Muted never. The submenu opens beside the
+menu, towards the page, and over it on a phone. The composer has no control.
+
+The level lives in the person's **notification record**
+(`lib/notificationRecord.ts`, `hooks/useSessionNotificationRecord.ts`), kept in
+the `agent-platform` user-settings bucket as two keys, so the frequent writes
+never touch the rare ones:
+
+- `sessionNotificationSettings`: per `${installation}/${sessionId}`, `origin:
+'portal'` when the portal's `start_session` started it (`useCreateSession`
+  writes it on success; kagent's Session names no starting surface) and the
+  level (`all` or `muted`; absent is Default). Muting a session without an
+  entry creates one without making it portal-started; Default drops an entry
+  that held only the level.
+- `notificationSeenMarks`: per session, and per installation for its MCP
+  sign-in row, the mark of the last row the person has seen. The mark is the
+  inbox's row identity, opaque to the record. "Mark all read" is one write.
+
+Both keys are bounded per installation, under the user-settings backend's
+100 kB request limit: the newest 40 seen marks (a row exists only for the 20
+sessions the session-state reader evaluates, so no mark of a row still shown is
+older than 39 others), and the newest 200 entries that only record a portal
+start (a level the person chose is always kept).
+
+The storage writes one whole value per key, last write wins, so the app's
+user-settings storage is our own `RoamingSettingsStorage`
+(`packages/app/src/modules/app`), not upstream's `UserSettingsStorage`: a read
+the backend does not answer is "unknown", never "absent", and no read is
+cached. Every write reads the key first (`useStoredSetting`) and refuses to
+write on a read that was not answered, so a tab that wakes up offline erases
+nothing. A shown value stays until a read answers. The storage is created with
+the signals API, so a write in one tab reaches the person's other tabs, and
+the record is read again whenever a tab becomes visible. Two tabs writing the
+same key within one read-and-write still race: the backend has no
+compare-and-set.
+
+`SessionsDataProvider` prunes the entries of sessions that are gone, one
+installation at a time, when its set of sessions changes and the record names
+a session the list does not. It reads the record, then the installation's
+sessions afresh through `listSessionsIfComplete`, which answers only for a
+complete read (no row skipped, the listing not cut at the backend's 20-page
+limit, which the backend flags as `truncated`). Only entries that were in the
+record before that read started, and that it does not list, are dropped: no
+clock decides. The fresh read happens at most once per installation every 10
+minutes.
+
+### The compact header
+
+Once everything above the conversation has scrolled out of view, the header
+turns into one compact row at the top of the view: the session's name in a
+smaller font, its state, the agent, "Show tool activity", the pin and the
+actions menu. The environment and the start date are left out
+(`ShellPageExpandedOnly`); scrolling back up restores the full header. At
+phone width the switch is left out too: beside the state and the agent it
+wraps the row to a third line over the conversation.
+
+It is `ShellPage`'s `compactHeader` option, so another long page can opt in.
+It is the same header, not a copy: the h1 (the rename button) and the actions
+stay mounted once, so focus on them survives the switch and assistive tech
+never meets them twice. Compact, the header is `position: sticky` against the
+page, and a spacer after it takes the height it gives up, set before paint, so
+the conversation does not move. `useScrolledPast` watches a sentinel that
+reaches from where the content starts up past the top of the document (the
+document scrolls, not a container), so even an instant jump to the top is
+seen. The header stays expanded while focus is on a part the compact row
+leaves out. A `scroll-margin-top` on everything but the header keeps
+whatever is scrolled into view below the compact row, and its fade is off
+under `prefers-reduced-motion`. It is a margin on the content rather than a
+`scroll-padding-top` on the document: padding counts the stuck header's own
+top as hidden, so pressing the switch, whose input react-aria focuses on
+every press, scrolled the page to the top for a frame and back, a flicker.
+
+The switch stays usable mid-session: toggling it adds or removes work
+summaries above and below the place being read, so `useReadingAnchor` records
+the first entry in view that survives the toggle (a message or a turn marker,
+never a work summary) and its offset, turns the browser's scroll anchoring off
+for that change, and scrolls back by however far the entry moved, before
+paint. The header, its spacer and the sentinel are `overflow-anchor: none`:
+anchored on the sticky header, the browser would scroll the page when it turns
+back into the expanded header, which turns it compact again, a flicker. The
+compact header also expands only once the content's start is 24px back in
+view (`useScrolledPast`'s `hysteresis`), so a reflow that nudges it a few
+pixels cannot flip it.
 
 ### Timestamps are absolute here
 
@@ -1349,13 +1725,26 @@ on gazelle on 2026-09-15 (giantswarm/giantswarm#37795).
 `RuntimeLostNotice` explains the loss in the portal's words, with the runtime's
 text as evidence only; the failed-turn entry does the same.
 
-**The way out is a new session with the same agent** (the composer's
-`newSession` prop). It is secondary while the loss is suspected, since a cold
-worker can time out once, and primary once kagent reports it, replacing Send and
-the answer panel. It takes the box's text, else the failed send's text, else
-the person's last message in this session, and follows create, navigate, send
-(see "Starting a session"). `SessionDetailRoute` keys the page on the session,
-so the new one mounts fresh.
+**The way out is a new session with the same agent**: "Continue in a new
+session" inside the notice (`ContinueInNewSessionButton`, under the notice's
+text rather than in bui `Alert`'s `customActions`, which would squeeze the text
+at phone width), the same button an answer kagent did not take offers. While
+the loss is only suspected, since a cold worker can time out once, the box and
+Send stay for the retry and the button is secondary. Once kagent reports the
+loss the session takes no more messages: the page shows no box (only the cost
+chip under the notice), and the button is the one way on. The new session
+carries this one on, as after an answer kagent did not take (see "Carrying the
+session on in a new one"): its first message holds the conversation and the
+open question if the session waits on one, with any answer the lost runtime
+never took. Nothing the box holds goes along. A failed send the transcript does
+not hold (kagent refused it before it recorded the turn) is carried as the
+newest message, once (`withFailedSend`). The images of the message that never
+got its answer (the newest message, with no reply or request after it) go
+along, since the conversation names them. It is titled `Continued: <title>`,
+and the notice says what the first message will hold and shows the answer,
+except while the question card is up and holds it. It follows create, navigate,
+send (see "Starting a session"). `SessionDetailRoute` keys the page on the
+session, so the new one mounts fresh.
 
 **Only a reported loss marks the session** (`Runtime lost` in the header, the
 Sessions table and the rail card); the suspected reading belongs to the notice.
@@ -1482,8 +1871,84 @@ by both composers and the answer panel). The field clears on submit; on failure
 the text returns, keyed by attempt id, without overwriting an edit.
 
 **Limits.** Messages are capped at 32,000 UTF-16 code units (ours; kagent
-validates nothing), in the route and the box. The route's JSON body limit is
-256 kB, so 32,000 CJK code units (about 96 kB) never hit a 413.
+validates nothing), in the route and the box. The backend's JSON body limit is
+256 kB, so 32,000 CJK code units (about 96 kB) never hit a 413; the routes
+under a session's `messages` take 5 MB, for images.
+
+#### Images in a message
+
+Both composers take images, pasted or dropped on the box. They show as
+removable thumbnails above the text and go with the next message as A2A `raw`
+parts (`mediaType`, `filename`) after its text part. The session page's
+composer, the home and Sessions composer (`StartNewSession`) and the New
+session dialog take them; the meta-agent hand-offs and `CreateAgentAssist`
+stay text only. A new session's images travel to the session page with the
+prompt, held in memory under a key in the router state
+(`stashHandoffImages`, emptied once read), never in the router state itself.
+There is no button to attach images with.
+
+- **Paste** attaches only a clipboard without both plain text and HTML: a
+  spreadsheet or word processor copies a picture of the selection beside its
+  text, and there the text is pasted as before. A pasted image is called
+  "Pasted image" (browsers call each one `image.png`); a name already
+  attached gets " (2)", " (3)", … so every remove control is announced apart.
+- **Drop** reacts to drags that carry files only, so dragged text still lands
+  in the box. While the composer is on the page — also while it is disabled
+  or a session is being created — a file dropped anywhere else is refused
+  instead of opened by the browser in place of the page. Desktop only; on a
+  phone, paste remains.
+- **Types** are read from the bytes (`sniffImageType`), never the name: PNG,
+  JPEG, GIF, WebP — what the transcript previews. Anything else is refused
+  with a message naming them.
+- **Every image is drawn and encoded again** (`prepareImage`), which strips
+  its metadata (a photo's GPS position, device and times would otherwise reach
+  the model provider and the transcript, which share links show; the recorded
+  orientation is applied first) and bounds it to 2,000 px on its longer side:
+  models scale larger images down themselves, and Anthropic refuses images
+  over 2,000 px in a request with more than 20 and over 8,000 px in any.
+  PNG, JPEG and WebP keep their format, falling back to PNG where the browser
+  cannot encode one; a GIF is sent as a PNG of its first frame, all the models
+  read of one. A browser without `createImageBitmap` and canvas encoding cannot
+  attach images and says so.
+- **Caps** (`kagentMessageLimits.ts`): 2 MiB per image, 4 images and 3 MiB per
+  message, 50 images and 16 MiB per session (the person's images; a file the
+  agent produced does not count). The message cap is kagent's narrowest hop:
+  the controller relays to the runtime over gRPC with the 4 MiB default. The
+  session caps exist because every turn sends the model the whole
+  conversation, base64-encoded: Anthropic refuses a request over 32 MB or with
+  more than 100 images, and agentgateway buffers an LLM request up to 32 MiB.
+  The composer checks them as images are attached and again before sending
+  (a failed message's images put back beside newer ones can be too many
+  together, which blocks Send with the reason). The backend checks them all
+  again: each image's bytes against its type and its header's dimensions, and,
+  for a message with images, the session's own (one read of its tasks).
+- **Agents that cannot take images** (`imagesUnsupportedReason`): kagent's
+  Claude Code and Codex runtimes accept one text part per message and fail
+  the turn otherwise, and its Go ADK runtime hands images only to OpenAI,
+  Azure OpenAI, Foundry, Anthropic (also on Vertex AI) and Gemini models; its
+  Ollama, Bedrock, Mistral and SAP AI Core adapters drop them silently. The
+  composer says so on a paste or drop, from the agent's Harness runtime
+  (named or inline) and ModelConfig provider. While either is not read yet,
+  it says it cannot tell yet rather than guess. A custom (`byo`) runtime is
+  given images. Whether a given model takes images is recorded nowhere in
+  kagent: an OpenAI-compatible endpoint serving a text-only model refuses the
+  turn, and the failure path hands the text and the images back to the box.
+- **Sent again.** A stalled turn's message comes back with its images when
+  the turn is stopped, and a lost runtime's new session takes the unanswered
+  message's images with the conversation.
+- **The transcript** shows a sent image after the message, as a thumbnail
+  (at most 240 × 160 px) that opens at full size; the optimistic copy of a
+  message in flight shows its images the same way, from the composer's
+  preview. Each poll re-reads the images with the conversation, which the
+  session caps also bound. A conversation too large for one `ListTasks`
+  answer (the controller's 16 MiB) is read in halved pages; the size that
+  fitted is kept for the session's next reads, and a read makes at most 100
+  calls. The page token is the last task's id, so it holds across sizes.
+
+The chart's ingress raises `nginx.ingress.kubernetes.io/proxy-body-size` to
+`6m`, because ingress-nginx refuses a body over 1 MB by default. A deployment
+that replaces the chart's ingress annotations, or fronts the portal with
+another proxy, must allow the same.
 
 ### Answering the agent's question
 
@@ -1596,6 +2061,95 @@ sent choices first.
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.
 
+#### An answer kagent does not take
+
+The streaming answer route answers `202 pending` when the resumed turn sends no
+event within the request timeout (`timeoutMs`, 10 s): an approved tool can run
+that long before the agent speaks. kagent answers the same way when it cannot
+resume the session at all, and the answer then never reaches the task. Observed
+on a session left waiting for three days: the task stayed `input-required`
+with no answer in its history, and the session carried no failure.
+
+So an answer whose stream says nothing (a 202, or a stream that ends without an
+event) is checked against the history (`useAnswerConfirmation`,
+`ANSWER_TAKEN_WAIT_MS` 15 s, read every 3 s through the conversation's own
+query). It counts as taken once it is in a task's history, or once the answered
+task has left `input-required` or asks in a different status message (a
+follow-up question keeps the task id; `PendingConfirmation.askedIn` names the
+message that asked). A read that does not show the task, or a wait whose reads
+all failed, cannot tell and leaves the turn to the poll; a read that fails
+after one that could tell does not overturn it. A task still waiting on the
+same request without the answer at the end of the wait fails the answer with
+`AnswerNotTakenError`.
+
+While that request stands, the page treats it as the end of the session, as it
+does a reported runtime loss: "Could not resume this session" replaces the
+answer card, the page shows no box, and the notice offers "Continue in a new
+session". The notice shows a question's answer and says what the new session
+will start with; the answer goes when a late resume moves the task on, and the
+notice with it. Where no new session can be offered, the notice says where else
+to go. No retry is offered, because a second answer goes the same way. Any
+other answer failure (a refusal, a 5xx, a lost connection) keeps the card with
+"Answer not sent" and its retry. kagent marks nothing, so the session keeps its
+"Waiting for you" state in the list and the rail, and a reload shows the card
+again.
+
+#### Carrying the session on in a new one
+
+A new session has an empty model history, so the new session's first message,
+after an answer kagent did not take or a lost runtime, carries the
+conversation (`buildContinuationPrompt`, `lib/continuationPrompt.ts`), built
+from the page's timeline, which holds the whole task history:
+
+- a first line naming the session it continues,
+  `[Continues session <installation>/<session id>]` (see below);
+- a short framing for the model: this continues a session that could not be
+  resumed, the earlier conversation follows, oldest first, then the open
+  question and the answer;
+- every message as `User:` or `Assistant:`, each cut at 4,000 characters;
+  questions the agent asked once (its prose echo of an `ask_user` is dropped),
+  and tool approvals with their verdict;
+- tool and agent calls **by name only**, consecutive ones on one line
+  (`[Assistant used tools: read_file, search (2×)]`): results can be any size,
+  and the new session can call a tool again rather than trust a stale result;
+- attachments by name and failed or stopped turns, one line each; not the
+  model's reasoning;
+- the open question with its choices, then the answer when there is one. An
+  approval's words are never carried, and nothing the person types: the
+  session shows no box once it cannot go on, so the person writes their next
+  message in the new session.
+
+The message stays within `MESSAGE_TEXT_MAX_LENGTH` (32,000 characters), the
+send route's bound. The question (each cut at 4,000 characters, as are its
+choices) and the answer come first; the conversation gives way from its oldest
+end and says how many messages it left out, and the notice says how many of
+them the new session gets, or that none fit; the page builds the message once,
+so the start sends what the notice counted. The framing says what the message
+ends with: the question and the answer, the question alone, or the
+conversation. The open question is found in the timeline by what it asks,
+so an answered question whose verdict the timeline could not read stays in the
+history. A session that was itself a continuation is carried on with its first
+message expanded into entries (its earlier conversation, question and answer),
+not clipped as one long message; an older continuation's `## My reply` (the
+box's text, which earlier versions carried) comes back as the person's message.
+The session is titled
+`Continued: <this session's title>`, with one prefix however often it is
+carried on.
+
+**The marker line.** The first line is one bracketed line, so it reads plainly
+to the model and wherever the raw text shows (Slack, kagent's UI). The session
+page recognises it only at the very start of the session's first user message
+(`readContinuationMarker`, `splitContinuation`), takes it out of the message
+and shows a "Continued session" banner above the conversation instead: "This
+session is a follow-up to an earlier session on <installation>", linked through
+`sessionDetailRouteRef` (the installation may differ from the session's own).
+The one-visit "Prepared by the portal" caption is not used for it. The rest of
+the message, the carried conversation, is cut like any long user message. Links
+inside any bui `Alert` in the shell are underlined and take the shell's link
+colour (`agent-shell.css`), so they read as links on every alert background. An
+installation or session id outside `[a-z0-9-]` and `[A-Za-z0-9._-]` is not
+written, so a marker always reads back as written.
+
 ### Starting a session
 
 A session starts from a **composer** with a prompt and an agent; there is no
@@ -1603,9 +2157,10 @@ separate new-session form. Both composers use `ComposerFrame` from `ui-react`.
 Every entry point creates through `useCreateSession`: the home screen at `/`
 (`AgentPlatformHome`), the command palette (`NewSessionDialog`), the sessions
 list's first-run card (`StartNewSession`), the agent page's dialog, a lost
-runtime's new-session action, the meta-agent hand-offs ("<verb> with
-<agent>", `useMetaAgentHandoff`) and `CreateAgentAssist`.
-The composer grows with its content and never shrinks back. Enter starts.
+runtime's or a failed resume's "Continue in a new session", the meta-agent
+hand-offs ("<verb> with <agent>", `useMetaAgentHandoff`) and
+`CreateAgentAssist`. The composer grows with its content and never shrinks back.
+Enter starts.
 
 #### Create, navigate, then send — in that order
 
@@ -1711,9 +2266,9 @@ offers "Recent" first and favorites second.
 
 ## The agents list
 
-The list is Customize → Agents (`CustomizeAgentsPanel`;
-`/agent-platform/agents` redirects there, and the short `/agents` and anything
-below it redirect to `/agent-platform/agents`), showing 25 rows at a time; its
+The list is Customize → Agents (`CustomizeAgentsPanel`, `/customize/agents`;
+the old `/agent-platform/agents` and the short `/agents`, with anything below
+them, redirect to the same place under it), showing 25 rows at a time; its
 search matches name, technical name, description and model.
 
 The list reads kagent **API v2** objects only (`api.kagent.dev/v1alpha3`). This
@@ -1773,7 +2328,7 @@ reads as empty. Chat reachability is the sessions side's
 
 ## The agent detail page
 
-`/agent-platform/agents/<installation>/<namespace>/<name>`; all three segments
+`/customize/agents/<installation>/<namespace>/<name>`; all three segments
 are the agent's identity.
 
 Each tab is its own URL, in a `ShellPage`:
@@ -1918,7 +2473,7 @@ need its providers.
 ### Editing an agent
 
 Editing **is the create wizard**, prefilled.
-`/agent-platform/agents/edit/<installation>/<namespace>/<name>` (`EditAgentPage`,
+`/customize/agents/<installation>/<namespace>/<name>/edit` (`EditAgentPage`,
 steps `…/skills`, `…/tools`, `…/review`) reads
 **`x_agent-manager_get_agent`**, agent-manager's availability, the commit
 capability for git-applied agents and the skill catalog, then mounts the
@@ -2025,21 +2580,22 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 
 ## The Usage tab
 
-`/agent-platform/usage` has routed tabs; `/usage` and the old `usage/mcp` and
-`usage/technical` paths redirect to Overview. `UsageScopeBar` sets the
+`/usage` has routed tabs, Overview at the bare path; an unknown view redirects
+to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
+`technical`) redirect to their view. `UsageScopeBar` sets the
 environment and the window (7, 30 or 90 days, in `?window=`,
 `lib/usageWindow.ts`).
 
-| View          | Path                  | Source                          | Whose            |
-| ------------- | --------------------- | ------------------------------- | ---------------- |
-| Overview      | `usage/overview`      | agentgateway metrics, via Mimir | everyone's       |
-| Cost          | `usage/cost`          | agentgateway metrics, via Mimir | everyone's       |
-| Your sessions | `usage/conversations` | kagent's stored conversations   | the caller's own |
+| View          | Path                   | Source                          | Whose            |
+| ------------- | ---------------------- | ------------------------------- | ---------------- |
+| Overview      | `/usage`               | agentgateway metrics, via Mimir | everyone's       |
+| Cost          | `/usage/cost`          | agentgateway metrics, via Mimir | everyone's       |
+| Your sessions | `/usage/your-sessions` | kagent's stored conversations   | the caller's own |
 
 The tabs separate _whose_ usage each view reports; a sentence in a description
-was too easy to skip. The path is `conversations`, not `sessions`, so it is not
-mistaken for `/agent-platform/sessions` in URLs and telemetry, and stays
-scope-neutral (see [It can only ever be personal](#it-can-only-ever-be-personal)).
+was too easy to skip. The path is the tab's label, `your-sessions`, so it is
+not mistaken for `/sessions`; telemetry keeps reporting it as the `conversations`
+view (see [It can only ever be personal](#it-can-only-ever-be-personal)).
 
 ### Where each number comes from
 
@@ -2291,7 +2847,10 @@ was recorded in the week before the window (`usageDataStart` in
   dropped.
 - Connectors: muster-backend's `/usage` reads its outcome query from a week
   before the window and returns `data_start`, the first bucket the chart
-  fills from a sample, unless the week before held one.
+  fills from a sample, unless the week before held one. Narrowed to some
+  connectors (`?server=`, repeatable), it still reads that query for the whole
+  installation: a quiet connector's first call is not where the records
+  start.
 
 A series exists only from its label set's first call since the gateway or
 muster pod started. Prometheus cannot tell a source that was not exporting yet
@@ -2316,17 +2875,18 @@ muster's Overview section resolves servers exactly from `mcpserver_name`.
 
 ### The MCP section is contributed, not imported
 
-muster attaches it with `createExtension` to `sub-page:agent-platform/usage`,
-input `sections` (declared with `SubPageBlueprint.makeWithOverrides` and
+muster attaches it with `createExtension` to `page:agent-platform/usage`,
+input `sections` (declared with `PageBlueprint.makeWithOverrides` and
 `createExtensionInput`); sections render at the bottom of Overview. This is the
-mechanism muster uses for its Connectors and Workflows tabs on
-`page:agent-platform`. An import would load muster's bundle where muster is off
-and leave nothing to disable. The id contract is commented on both ends. A
-second contributor should promote this to a blueprint exported from an `alpha`
-entry point, as in `plugins/flux-react/src/alpha/blueprints/`.
+mechanism muster uses for its Connectors and Workflows tabs on the app's
+Customize page (`page:app/agent-shell-customize`, input `pages`). An import
+would load muster's bundle where muster is off and leave nothing to disable.
+The id contract is commented on both ends. A second contributor should promote
+this to a blueprint exported from an `alpha` entry point, as in
+`plugins/flux-react/src/alpha/blueprints/`.
 
-Tab order is `AGENT_PLATFORM_TAB_ORDER` (`lib/tabOrder.ts`), because attach
-order cannot interleave two plugins' tabs; unknown tabs sort before Usage.
+The Customize page orders its tabs itself (`CUSTOMIZE_TAB_IDS`), because
+attach order cannot interleave two plugins' tabs.
 
 ### What it cannot show
 

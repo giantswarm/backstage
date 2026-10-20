@@ -16,6 +16,12 @@
 // into `ui.giantswarm.io/registered-by` itself on create (muster#1021). Sending
 // annotations through the create tool would in fact fail the registration — its
 // request parsing rejects unknown fields.
+//
+// The name the person typed is kept as the connector's display name (the
+// `ui.giantswarm.io/display-name` annotation) through the tools' own
+// `displayName` argument, which muster takes since v5.43.0 (muster#1518). An
+// older muster refuses it as an unknown field, so the write only sends it to a
+// tool whose input schema declares it ({@link takesDisplayName}).
 
 import type {
   MCPServer,
@@ -75,7 +81,10 @@ export const SIGV4_SHARED_IDENTITY_WARNING =
 export type McpServerMetaEntry = { key: string; value: string };
 
 export type NewMcpServerFormState = {
-  /** Display name; the slug derives from it. */
+  /**
+   * Display name; the slug derives from it. Sent as `displayName` where it
+   * differs from the slug (see {@link displayNameArgument}).
+   */
   name: string;
   /** Technical name — becomes the MCPServer CR name. */
   slug: string;
@@ -137,6 +146,11 @@ export type NewMcpServerFormState = {
 /** The flat definition muster's `core_mcpserver_*` tools take. */
 export type McpServerDefinition = {
   name: string;
+  /**
+   * The `ui.giantswarm.io/display-name` annotation. Omitted keeps (on update)
+   * or sets none (on create); an empty string removes it (on update).
+   */
+  displayName?: string;
   type: McpServerTransport;
   url: string;
   autoStart: boolean;
@@ -238,6 +252,45 @@ export function deriveSlug(name: string): string {
 
 function isValidSlug(slug: string): boolean {
   return slug.length <= 63 && DNS_LABEL_PATTERN.test(slug);
+}
+
+/**
+ * The `displayName` to send for what the person typed as the name, or
+ * `undefined` to send none.
+ *
+ * A name that is the technical name already (a plain id like `jira`) needs no
+ * annotation: the resource name reads the same. On create that is all. On an
+ * edit (`stored` is the server's annotation, `undefined` without one) the
+ * argument is only sent when the shown name changes — muster keeps the stored
+ * annotation when it is omitted — and a name changed back to the technical
+ * name removes the annotation rather than repeating the resource name in it.
+ */
+export function displayNameArgument(
+  typed: string,
+  slug: string,
+  edit?: { stored: string | undefined },
+): string | undefined {
+  const name = typed.trim();
+  const technical = slug.trim();
+  if (!edit) {
+    return name && name !== technical ? name : undefined;
+  }
+  if (!name || name === (edit.stored ?? technical)) {
+    return undefined;
+  }
+  return name === technical ? '' : name;
+}
+
+/**
+ * Whether a muster tool takes the `displayName` argument, read from its input
+ * schema as `describe_tool` returns it. muster releases before v5.43.0 do not
+ * declare it — and refuse it as an unknown field — so a tool without a schema
+ * counts as not taking it.
+ */
+export function takesDisplayName(
+  inputSchema: { properties?: Record<string, unknown> } | undefined,
+): boolean {
+  return Boolean(inputSchema?.properties?.displayName);
 }
 
 function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
@@ -347,7 +400,9 @@ function composeMeta(
 
 /**
  * Wizard state → the definition passed to `core_mcpserver_validate` and
- * `core_mcpserver_create`.
+ * `core_mcpserver_create` — or, with `edit` (the edited server's stored
+ * display name, as {@link displayNameArgument} takes it), the wizard's part of
+ * an update ({@link mergeOntoExisting}).
  *
  * `autoStart: true` so the server connects as soon as it is registered — the
  * flow's promise is that registration is the only step before the tools show
@@ -356,6 +411,7 @@ function composeMeta(
  */
 export function composeMcpServerDefinition(
   state: NewMcpServerFormState,
+  edit?: { stored: string | undefined },
 ): McpServerDefinition {
   const definition: McpServerDefinition = {
     name: state.slug.trim(),
@@ -363,6 +419,10 @@ export function composeMcpServerDefinition(
     url: state.url.trim(),
     autoStart: true,
   };
+  const displayName = displayNameArgument(state.name, state.slug, edit);
+  if (displayName !== undefined) {
+    definition.displayName = displayName;
+  }
   if (state.description.trim()) {
     definition.description = state.description.trim();
   }
@@ -423,7 +483,10 @@ export function mcpServerDetailsProblems(
   const problems: McpServerProblem[] = [];
 
   if (!state.name.trim()) {
-    problems.push({ field: 'name', message: 'Name is required' });
+    problems.push({
+      field: 'name',
+      message: 'Enter a name for the connector.',
+    });
   }
   if (state.slug.trim()) {
     if (!isValidSlug(state.slug)) {
@@ -435,7 +498,7 @@ export function mcpServerDetailsProblems(
     }
   } else if (state.name.trim()) {
     // Only flag a missing slug once there's a name (it derives from the name).
-    problems.push({ field: 'slug', message: 'Technical name is required' });
+    problems.push({ field: 'slug', message: 'Enter a technical name.' });
   }
   if (state.description.trim().length > DESCRIPTION_MAX_LENGTH) {
     problems.push({
@@ -444,10 +507,13 @@ export function mcpServerDetailsProblems(
     });
   }
   if (!state.installation) {
-    problems.push({ field: 'installation', message: 'Select an installation' });
+    problems.push({ field: 'installation', message: 'Choose an environment.' });
   }
   if (!state.url.trim()) {
-    problems.push({ field: 'url', message: 'URL is required' });
+    problems.push({
+      field: 'url',
+      message: 'Enter the URL, e.g. https://mcp.example.com/mcp.',
+    });
   } else if (!URL_PATTERN.test(state.url.trim())) {
     problems.push({
       field: 'url',
@@ -606,7 +672,7 @@ export function mcpServerAuthProblems(
     if (!state.sigv4Region.trim()) {
       problems.push({
         field: 'sigv4Region',
-        message: 'Signing region is required for AWS SigV4',
+        message: 'Enter the signing region for AWS SigV4, e.g. eu-central-1.',
       });
     }
   }
@@ -943,15 +1009,16 @@ export const emptyAuthAnswer: McpServerAuthAnswer =
 
 /**
  * A registered server → the wizard state that composes it, so "Edit" opens the
- * registration form pre-filled. The display name is not persisted anywhere, so
- * it starts as the CR name. Only for servers {@link wizardEditBlocker} lets
- * through, whose auth block is exactly one of the wizard's modes.
+ * registration form pre-filled. The name is the server's display name: its
+ * `ui.giantswarm.io/display-name`, else the CR name. Only for servers
+ * {@link wizardEditBlocker} lets through, whose auth block is exactly one of
+ * the wizard's modes.
  */
 export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
   const auth = server.getAuth();
   return {
     ...emptyFormState,
-    name: server.getName(),
+    name: server.getDisplayName(),
     slug: server.getName(),
     description: server.getDescription() ?? '',
     installation: server.cluster,
@@ -988,7 +1055,15 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
 }
 
 /** Definition fields the wizard composes; it never touches any other. */
-const WIZARD_FIELDS = ['name', 'type', 'url', 'description', 'auth', 'meta'];
+const WIZARD_FIELDS = [
+  'name',
+  'displayName',
+  'type',
+  'url',
+  'description',
+  'auth',
+  'meta',
+];
 
 /**
  * The wizard's definition laid over the server being edited, for
@@ -1005,6 +1080,9 @@ const WIZARD_FIELDS = ['name', 'type', 'url', 'description', 'auth', 'meta'];
  *   it would keep the old value.
  * - `description` is only replaced by a non-empty value; muster cannot clear
  *   it through an update, so a cleared description keeps the stored one.
+ * - `displayName` is tri-state like `suspended` (omitted keeps the annotation,
+ *   empty removes it), so it is never carried from what was saved before: it
+ *   is sent only when the wizard changes it.
  * - `autoStart` is always overwritten, omitted meaning false. The server's own
  *   value is sent (missing reads as false, like `getAutoStart()`): the
  *   wizard's `true` is a registration default, and an edit must not turn it on.

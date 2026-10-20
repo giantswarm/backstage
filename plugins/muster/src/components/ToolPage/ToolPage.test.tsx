@@ -15,6 +15,13 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   useProvidePageHeaderActions: jest.fn(),
 }));
 
+// The muster providers, whose instance the mock below stands for.
+jest.mock('../MusterSubPage', () => ({
+  MusterSubPage: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
 let mockAuthenticated = true;
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -78,10 +85,32 @@ function makeApi() {
       },
     })),
     callTool: jest.fn(async () => ({ buckets: ['logs'] })),
+    getMcpUsage: jest.fn(async () => ({
+      available: true,
+      range_hours: 720,
+      step_hours: 24,
+      buckets: [],
+      totals: {
+        calls: 1250,
+        errors: 7,
+        error_ratio: 7 / 1250,
+        p95_seconds: 0.42,
+        distinct_tools: 1,
+      },
+      top_tools: [
+        {
+          tool: 'x_jira_search_issues',
+          calls: 1250,
+          errors: 7,
+          p95_seconds: 0.42,
+        },
+      ],
+      servers: [{ server: 'jira', calls: 1250, errors: 7, p95_seconds: 0.42 }],
+    })),
   };
 }
 
-const BASE = '/agent-platform/connectors';
+const BASE = '/customize/connectors';
 
 async function renderAt(path: string, api = makeApi()) {
   const queryClient = new QueryClient({
@@ -92,7 +121,7 @@ async function renderAt(path: string, api = makeApi()) {
       <PageHeaderActionsProvider>
         <Routes>
           <Route
-            path="/agent-platform/connectors/*"
+            path="/customize/connectors/*"
             element={<McpServersRouter />}
           />
         </Routes>
@@ -101,7 +130,7 @@ async function renderAt(path: string, api = makeApi()) {
     {
       initialRouteEntries: [path],
       mountedRoutes: {
-        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize/connectors': mcpServersRouteRef,
         '/customize': customizeExternalRouteRef,
       },
       apis: [[musterApiRef, api as never]],
@@ -118,7 +147,7 @@ beforeEach(() => {
 describe('ToolPage', () => {
   it('shows the tool under its server and runs it', async () => {
     const api = await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`,
     );
 
     expect(
@@ -149,18 +178,14 @@ describe('ToolPage', () => {
   });
 
   it('says a tool of a connector each person signs in to runs as them', async () => {
-    await renderAt(
-      `${BASE}/jira/tools/x_jira_search_issues?installation=gazelle`,
-    );
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_search_issues`);
     expect(
       await screen.findByText('Runs as you. Nothing is changed.'),
     ).toBeInTheDocument();
   });
 
   it('does not promise that a tool which changes things changes nothing', async () => {
-    await renderAt(
-      `${BASE}/jira/tools/x_jira_add_comment?installation=gazelle`,
-    );
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_add_comment`);
     expect(await screen.findByText('Runs as you.')).toBeInTheDocument();
     expect(screen.queryByText(/Nothing is changed/)).not.toBeInTheDocument();
     // The Tools list's word for it, never the server's "destructive".
@@ -170,22 +195,19 @@ describe('ToolPage', () => {
 
   it('leads back to the Tools search and filter it was opened from', async () => {
     await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle&q=list&effect=reads`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets?q=list&effect=reads`,
     );
     expect(
       within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
         'link',
         { name: 'aws-root' },
       ),
-    ).toHaveAttribute(
-      'href',
-      `${BASE}/aws-root?installation=gazelle&q=list&effect=reads`,
-    );
+    ).toHaveAttribute('href', `${BASE}/gazelle/aws-root?q=list&effect=reads`);
   });
 
   it('does not show a tool under a server that does not offer it', async () => {
     const api = await renderAt(
-      `${BASE}/aws-root/tools/x_kubernetes_get_pods?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_kubernetes_get_pods`,
     );
 
     expect(
@@ -193,14 +215,14 @@ describe('ToolPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Back to the tools of aws-root' }),
-    ).toHaveAttribute('href', `${BASE}/aws-root?installation=gazelle`);
+    ).toHaveAttribute('href', `${BASE}/gazelle/aws-root`);
     expect(api.describeTool).not.toHaveBeenCalled();
   });
 
   it('asks for a muster session before describing the tool', async () => {
     mockAuthenticated = false;
     const api = await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`,
     );
 
     expect(screen.getByText(/Tools need a muster session/)).toBeInTheDocument();
@@ -211,7 +233,7 @@ describe('ToolPage', () => {
     // The prefix is the server's, the tool is not in its list: a stale link,
     // or a tool the installation's server does not have.
     const api = await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_removed_tool?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_removed_tool`,
     );
 
     expect(
@@ -228,7 +250,7 @@ describe('ToolPage', () => {
       tools: [{ name: 'x_aws-root_list_buckets' }],
     }));
     await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_far_down_the_list?installation=gazelle`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_far_down_the_list`,
       api,
     );
 
@@ -242,6 +264,63 @@ describe('ToolPage', () => {
   });
 });
 
+describe('ToolPage usage', () => {
+  const usageSection = () =>
+    screen.findByRole('region', { name: 'Usage in the last 30 days' });
+
+  it("shows the tool's calls, errors and p95 from its connector's usage", async () => {
+    const api = await renderAt(
+      `${BASE}/gazelle/jira/tools/x_jira_search_issues`,
+    );
+
+    const section = await usageSection();
+    expect(within(section).getByText('Calls')).toBeInTheDocument();
+    expect(within(section).getByText('1,250')).toBeInTheDocument();
+    expect(within(section).getByText('7')).toBeInTheDocument();
+    expect(within(section).getByText('420 ms')).toBeInTheDocument();
+    expect(
+      within(section).getByRole('link', { name: 'All usage of jira' }),
+    ).toHaveAttribute('href', '/customize/connectors/gazelle/jira/usage');
+    // The read its connector's Usage tab makes, so it is cached there.
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
+  });
+
+  it('shows zeros for a tool nobody called', async () => {
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_add_comment`);
+
+    const section = await usageSection();
+    expect(within(section).getAllByText('0')).toHaveLength(2);
+    expect(within(section).getByText('—')).toBeInTheDocument();
+  });
+
+  it('reads no usage for a tool its connector does not offer', async () => {
+    const api = await renderAt(`${BASE}/gazelle/jira/tools/x_jira_gone`);
+
+    expect(
+      await screen.findByText('No tool “x_jira_gone” on gazelle'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
+  });
+
+  it("has none for muster's own tools, which no connector counts", async () => {
+    const api = await renderAt(
+      `${BASE}/gazelle/muster/tools/core_service_list`,
+    );
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /service_list/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: 'Usage in the last 30 days' }),
+    ).toBeNull();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
+  });
+});
+
 describe('ToolPage at phone width', () => {
   let layout: ReturnType<typeof mockPhoneLayout>;
   beforeEach(() => {
@@ -250,9 +329,7 @@ describe('ToolPage at phone width', () => {
   afterEach(() => layout.restore());
 
   it("leads its Connectors crumb to the sub-tab that lists the tool's connector", async () => {
-    await renderAt(
-      `${BASE}/muster/tools/core_service_list?installation=gazelle`,
-    );
+    await renderAt(`${BASE}/gazelle/muster/tools/core_service_list`);
     expect(
       within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
         'link',
@@ -262,9 +339,7 @@ describe('ToolPage at phone width', () => {
   });
 
   it('is a shell page: the tool as its h1, the trail under Customize, the full name in the header', async () => {
-    await renderAt(
-      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,
-    );
+    await renderAt(`${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`);
 
     expect(
       screen.getByRole('heading', { level: 1, name: 'list_buckets' }),
@@ -279,11 +354,11 @@ describe('ToolPage at phone width', () => {
           link.getAttribute('href'),
         ]),
     ).toEqual([
-      ['Back to aws-root', `${BASE}/aws-root?installation=gazelle`],
+      ['Back to aws-root', `${BASE}/gazelle/aws-root`],
       ['Customize', '/customize'],
       ['Connectors', '/customize/connectors'],
       // One link to the connector: no "Tools" crumb repeating it.
-      ['aws-root', `${BASE}/aws-root?installation=gazelle`],
+      ['aws-root', `${BASE}/gazelle/aws-root`],
     ]);
     // The unbroken snake_case name may break anywhere instead of widening
     // the page.

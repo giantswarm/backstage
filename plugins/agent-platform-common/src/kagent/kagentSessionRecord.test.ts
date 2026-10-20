@@ -38,6 +38,7 @@ describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0
         title: expect.any(String),
         agent: { namespace: 'kagent', name: expect.any(String) },
         agentId: encodeKagentAgentId('kagent', first.agent!.name),
+        preparedRevision: sessions.sessions[0].preparedRevision,
         source: 'user',
         state: 'ready',
         contextId: expect.any(String),
@@ -106,6 +107,22 @@ describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0
       kind: 'skipped-rows',
       message: 'skipped 2 unreadable session rows',
     });
+  });
+
+  it('says a listing the backend cut is truncated, keeping its rows', () => {
+    const { sessions: rows, drift } = normalizeSessionList(
+      { sessions: [sessions.sessions[0]], truncated: true },
+      'lab',
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(drift).toEqual({
+      kind: 'truncated',
+      message: 'the listing was cut at the backend’s page limit',
+    });
+    expect(normalizeSessionList({ truncated: true }, 'lab').drift?.kind).toBe(
+      'truncated',
+    );
   });
 
   it('keeps unknown fields and unknown states out of the way', () => {

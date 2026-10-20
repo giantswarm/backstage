@@ -86,7 +86,7 @@ const helmRelease = (name: string, ready: boolean) => ({
             type: 'Ready',
             status: 'True',
             reason: 'InstallSucceeded',
-            message: 'Helm install succeeded for release org-lab/' + name,
+            message: `Helm install succeeded for release org-lab/${name}`,
             lastTransitionTime: '2026-10-06T10:05:00Z',
           }
         : {

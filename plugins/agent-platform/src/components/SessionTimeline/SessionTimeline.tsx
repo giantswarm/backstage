@@ -177,6 +177,8 @@ export type SessionTimelineProps = {
   timeline: Timeline;
   /** Display name of the session's agent, used to label its messages. */
   agentName?: string;
+  /** The agent's edit page, where an egress refusal points. */
+  agentEgressHref?: string;
   /** The agent's avatar, shown where its side of a turn begins. */
   agentAvatarUrl?: string;
   /**
@@ -240,6 +242,7 @@ export type SessionTimelineProps = {
 export function SessionTimeline({
   timeline,
   agentName,
+  agentEgressHref,
   agentAvatarUrl,
   isAgentWorking = false,
   streamLost,
@@ -259,6 +262,24 @@ export function SessionTimeline({
   // works joins it at the bottom and the oldest shown one leaves at the top —
   // the DOM stays bounded however long the session runs.
   const [windowSize, setWindowSize] = useState(RECENT_TURNS);
+  // The long user messages shown whole, by kagent's message id where there is
+  // one. Held here rather than in each bubble, which loses its state twice:
+  // a sent message's optimistic copy gives way to kagent's under another key,
+  // and the window above unmounts the oldest turn as a new one arrives.
+  const [expandedMessages, setExpandedMessages] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const setMessageExpanded = useCallback((key: string, expanded: boolean) => {
+    setExpandedMessages(previous => {
+      const next = new Set(previous);
+      if (expanded) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  }, []);
   const firstShown = Math.max(0, turns.length - windowSize);
   const listRef = useRef<HTMLDivElement>(null);
   // The turn that was first on screen when earlier ones were asked for, and
@@ -376,16 +397,34 @@ export function SessionTimeline({
   const firstUserMessageId = firstMessageCaption
     ? timeline.items.find(item => item.kind === 'user-message')?.id
     : undefined;
-  const renderEntry = (item: TimelineItem, technical = false) => (
-    <TimelineEntry
-      key={item.id}
-      item={item}
-      isAgentWorking={isAgentWorking}
-      technical={technical}
-      caption={item.id === firstUserMessageId ? firstMessageCaption : undefined}
-      connectorOf={connectorOf}
-    />
-  );
+  const egressSettings = { agentName, href: agentEgressHref };
+  const renderEntry = (item: TimelineItem, technical = false) => {
+    const messageKey =
+      item.kind === 'user-message' ? (item.messageId ?? item.id) : undefined;
+    return (
+      <TimelineEntry
+        key={item.id}
+        item={item}
+        isAgentWorking={isAgentWorking}
+        technical={technical}
+        caption={
+          item.id === firstUserMessageId ? firstMessageCaption : undefined
+        }
+        isMessageExpanded={
+          messageKey === undefined
+            ? undefined
+            : expandedMessages.has(messageKey)
+        }
+        onMessageExpandedChange={
+          messageKey === undefined
+            ? undefined
+            : expanded => setMessageExpanded(messageKey, expanded)
+        }
+        connectorOf={connectorOf}
+        egressSettings={egressSettings}
+      />
+    );
+  };
 
   return (
     <Flex ref={listRef} direction="column" gap="3">

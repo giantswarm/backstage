@@ -1,3 +1,19 @@
+/*
+ * The shell's page never scrolls sideways: its pages fit the view, and what is
+ * wider (tables, code) scrolls inside its own box. Clipped rather than hidden,
+ * so the document stays the vertical scroller sticky headers stick to.
+ *
+ * It also keeps a closing popover from shifting the page. While a bui menu or
+ * select is open, react-aria's scroll lock hides the page's scrollbar, and the
+ * popover is placed against the wider view; when it closes, the scrollbar
+ * comes back before the popover's exit animation ends, so it stood a few
+ * pixels past the edge and a horizontal scrollbar took 15px off the view's
+ * height for that moment.
+ */
+html[data-agent-shell] {
+  overflow-x: clip;
+}
+
 html[data-agent-shell] body {
   --bui-font-regular: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
@@ -19,6 +35,9 @@ html[data-agent-shell] body[data-theme-mode='light'] {
   --bui-accent-bg: #009fff;
   --bui-accent-bg-hover: #0088db;
   --bui-ring: #00609c;
+  /* The shell's link colour, at rest and on hover. */
+  --agent-shell-link: #00609c;
+  --agent-shell-link-hover: #002645;
   --bui-shadow: 0 12px 32px rgba(0, 38, 69, 0.14);
   --bui-fg-success: #1f9d48;
   --bui-bg-success: #ddf5e3;
@@ -27,6 +46,11 @@ html[data-agent-shell] body[data-theme-mode='light'] {
   --bui-bg-warning: #ffe9d6;
   --bui-fg-warning-on-bg: #8f4000;
   --bui-border-warning: #f2c9a3;
+  /* bui's current names for the same warning colours (the three above are
+     deprecated), so what uses them matches the shell's warnings. */
+  --bui-warning-bg-subdued: #ffe9d6;
+  --bui-warning-fg-subdued: #8f4000;
+  --bui-warning-border: #f2c9a3;
   --bui-fg-danger: #c6283a;
   --bui-bg-info: #dff1ff;
   --bui-fg-info-on-bg: #004a7a;
@@ -68,14 +92,65 @@ html[data-agent-shell]
   html[data-agent-shell]
     body[data-theme-mode='light']
     .bui-Link[data-color='primary'] {
-    color: #00609c;
+    color: var(--agent-shell-link);
   }
 
   html[data-agent-shell]
     body[data-theme-mode='light']
     .bui-Link[data-color='primary']:hover {
-    color: #002645;
+    color: var(--agent-shell-link-hover);
   }
+}
+
+/*
+ * Links inside a banner (bui `Alert`). An alert sets its text in its status's
+ * on-background colour, and a link in it — bui's `Link` or core-components'
+ * MUI one — came out in a near copy of that colour without an underline, so
+ * it could not be told from the text. Inside every alert a link is underlined
+ * and takes the shell's link colour, which holds 4.5:1 against each light
+ * alert background (info, success, warning, danger); dark mode takes bui's
+ * info foreground, which holds it against the dark ones. Buttons rendered as
+ * links (`ButtonLink`) keep their button look. Unlayered, so it wins over
+ * MUI's link classes as well as bui's.
+ */
+html[data-agent-shell]
+  .bui-Alert
+  a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
+  color: var(--agent-shell-link);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+html[data-agent-shell]
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    [class*='MuiButton']
+  ):hover {
+  color: var(--agent-shell-link-hover);
+  text-decoration-thickness: 2px;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
+  color: var(--bui-fg-info);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    [class*='MuiButton']
+  ):hover {
+  color: var(--bui-fg-info-on-bg);
 }
 
 /*
@@ -378,21 +453,27 @@ html[data-agent-shell] body {
  * centre, `bottom: 1rem`, 2rem from 500px) lands on the phone's bottom bar
  * and on the session's docked composer — the needs-input toast covered both
  * (T22 B4). It sits above the bar at phone width and above the docked
- * composer at any width: `--session-dock-height` is the docked composer's own
- * height (not counting the bar), which the session page publishes on the
- * document while its composer is docked; unset, it is 0. Matched by the
- * module class's stable prefix, since the hash changes with every release;
- * theme.test.ts checks the upstream class still carries it.
+ * composer and a wizard's footer at any width: `--session-dock-height` is the
+ * docked composer's own height (not counting the bar), which the session page
+ * publishes on the document while its composer is docked, and
+ * `--wizard-footer-height` a WizardFrame's footer (Continue, Create), which
+ * the frame publishes while it is mounted; unset, each is 0. The inbox's
+ * lasting toasts (a catch-up summary, an MCP sign-in) so never take the
+ * click of a page's primary action. Matched by the module class's stable
+ * prefix, since the hash changes with every release; theme.test.ts checks
+ * the upstream class still carries it.
  */
 html[data-agent-shell] [class*='Toast_container'] {
-  bottom: calc(2rem + var(--session-dock-height, 0px));
+  bottom: calc(
+    2rem + var(--session-dock-height, 0px) + var(--wizard-footer-height, 0px)
+  );
 }
 
 @media (max-width: 599.95px) {
   html[data-agent-shell] [class*='Toast_container'] {
     bottom: calc(
       var(--agent-shell-mobile-bar-height) + var(--session-dock-height, 0px) +
-        8px
+        var(--wizard-footer-height, 0px) + 8px
     );
   }
 }

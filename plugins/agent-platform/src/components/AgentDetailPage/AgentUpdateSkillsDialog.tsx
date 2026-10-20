@@ -3,6 +3,7 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   ConfirmDialog,
+  CopyButton,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -47,7 +48,7 @@ const useStyles = makeStyles(theme => ({
   // with the dry run fill their cells instead of resizing the columns.
   table: {
     width: '100%',
-    minWidth: '36rem',
+    minWidth: '38rem',
     tableLayout: 'fixed',
     borderCollapse: 'collapse',
     '& th, & td': {
@@ -66,12 +67,17 @@ const useStyles = makeStyles(theme => ({
   // (`sha256:` and 12). Anything longer is cut, and its title carries the
   // whole pin.
   colPinned: { width: '10.5rem' },
-  colHead: { width: '8rem' },
+  // A short commit and the button that copies the whole one.
+  colHead: { width: '10rem' },
   colOutcome: { width: '11rem' },
   pin: {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+  },
+  // The short head beside its copy button: it gives way, the button does not.
+  headPin: {
+    minWidth: 0,
   },
   skill: {
     overflowWrap: 'anywhere',
@@ -81,8 +87,8 @@ const useStyles = makeStyles(theme => ({
     fontSize: '0.8rem',
   },
   // Holds the line under the table at the loading indicator's height in every
-  // state, so the indicator's delayed label, the note that replaces it, or
-  // nothing at all do not push the dialog around.
+  // state, so the indicator's delayed label, the note or notice that replaces
+  // it, or nothing at all do not push the dialog around.
   status: {
     minHeight: theme.spacing(5),
   },
@@ -137,10 +143,25 @@ function PlanRow({
   if (awaitsHead) {
     headCell = <CellSkeleton width="80%" />;
   } else if (entry.kind === 'git' && entry.head) {
+    // A head the skill moves to can be copied whole: it is what someone pins
+    // by hand when agent-manager cannot open the pull request.
     headCell = (
-      <span className={classes.code} title={entry.head}>
-        {shortPin(entry.head)}
-      </span>
+      <Flex align="center" gap="1">
+        <span
+          className={`${classes.code} ${classes.pin} ${classes.headPin}`}
+          title={entry.head}
+        >
+          {shortPin(entry.head)}
+        </span>
+        {entry.changes && (
+          <CopyButton
+            text={entry.head}
+            label={`Copy the head commit of ${entry.name}`}
+            tooltip="Copy the full commit"
+            size="compact"
+          />
+        )}
+      </Flex>
     );
   } else {
     // No head: a digest pin has none, and a git skill whose dry run failed or
@@ -246,9 +267,10 @@ export type AgentUpdateSkillsDialogProps = {
  * `update_agent`'s own commit dry run, which does, and the plan shows the pins
  * that dry run would commit. agent-manager edits a release only in its own
  * file in its directory; when that file is missing the dry run is refused, and
- * the dialog says so instead of offering a pull request it cannot open. Any
- * other refusal of that dry run (no GitHub authorization yet, say) leaves the
- * confirm as it was: the write reports it in agent-manager's words.
+ * the dialog says, under the plan, that the skills are updated in the GitOps
+ * source instead, and offers only Close. Any other refusal of that dry run (no
+ * GitHub authorization yet, say) leaves the confirm as it was: the write
+ * reports it in agent-manager's words.
  */
 export function AgentUpdateSkillsDialog({
   installation,
@@ -378,11 +400,18 @@ export function AgentUpdateSkillsDialog({
         }
         onOpenChange(isOpenNow);
       }}
-      title={`Update all skills of "${displayName}" to latest?`}
+      // No question once there is nothing to say yes to.
+      title={
+        missing
+          ? `Update the skills of "${displayName}" in GitOps`
+          : `Update all skills of "${displayName}" to latest?`
+      }
       confirmLabel={viaPullRequest ? 'Open pull request' : 'Update all skills'}
       busyLabel={viaPullRequest ? 'Opening pull request…' : 'Updating…'}
       isBusy={updating.isUpdating || updating.isCommitting}
-      isDone={isCommitted}
+      // Nothing left to confirm once the pull request is open, or once
+      // agent-manager said it cannot open one: only Close stays.
+      isDone={isCommitted || Boolean(missing)}
       isConfirmDisabled={!canConfirm}
       error={
         updating.failure && !notConnected && !missing
@@ -420,12 +449,6 @@ export function AgentUpdateSkillsDialog({
                 : 'Could not reach agent-manager'
             }
             description={failure.message}
-          />
-        )}
-        {missing && (
-          <MissingReleaseFileAlert
-            missing={missing}
-            change="the pins listed below"
           />
         )}
         {violations.length > 0 && (
@@ -492,10 +515,11 @@ export function AgentUpdateSkillsDialog({
         )}
 
         {/* One line under the table: what is being asked, then what confirming
-            does, or nothing; its height is held either way. The indicator
-            stays mounted from the first question to the last, so it does not
-            restart between them. */}
+            does, why it cannot be done here, or nothing; its height is held
+            either way. The indicator stays mounted from the first question to
+            the last, so it does not restart between them. */}
         <div className={classes.status}>
+          {missing && <MissingReleaseFileAlert missing={missing} />}
           {isLoading && (
             <LoadingIndicator
               label={

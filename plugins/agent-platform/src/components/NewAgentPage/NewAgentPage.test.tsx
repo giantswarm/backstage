@@ -4,7 +4,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
-import { agentsRouteRef } from '../../routes';
+import { agentsRouteRef, customizeExternalRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentPage } from './NewAgentPage';
 
@@ -65,6 +65,9 @@ jest.mock('../ModelConfigPicker', () => ({
     return <p>model picker{error && `: ${error}`}</p>;
   },
 }));
+jest.mock('../TenantPicker', () => ({
+  TenantPicker: () => <p>tenant picker</p>,
+}));
 jest.mock('../HarnessPicker', () => ({
   HarnessPicker: () => <p>runtime picker</p>,
 }));
@@ -78,7 +81,12 @@ async function renderPage() {
         <NewAgentPage />
       </NewAgentFormProvider>
     </PageHeaderActionsProvider>,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    {
+      mountedRoutes: {
+        '/customize/agents': agentsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
+    },
   );
 }
 
@@ -171,7 +179,7 @@ describe('NewAgentPage', () => {
     expect(moreOptions().open).toBe(true);
     // The picker itself carries the problem, inside the opened disclosure.
     expect(
-      screen.getByText('model picker: Select a model'),
+      screen.getByText('model picker: Choose a model.'),
     ).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -222,7 +230,7 @@ describe('NewAgentPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
-    expect(screen.getByText(/Name is required/)).toBeInTheDocument();
+    expect(screen.getByText(/Enter a name for the agent/)).toBeInTheDocument();
     expect(moreOptions().open).toBe(false);
   });
 
@@ -235,7 +243,7 @@ describe('NewAgentPage', () => {
 
     expect(name).toHaveAttribute('aria-invalid', 'true');
     expect(name).toHaveAccessibleDescription(
-      expect.stringContaining('Name is required'),
+      expect.stringContaining('Enter a name for the agent.'),
     );
     expect(name).toHaveFocus();
     expect(
@@ -246,5 +254,40 @@ describe('NewAgentPage', () => {
     // Fixing it clears the field's error at once.
     await userEvent.type(name, 'Support triage');
     expect(name).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('checks an egress origin when the person leaves the field, not while they type', async () => {
+    await renderPage();
+    await userEvent.click(screen.getByText('More options'));
+    const egress = screen.getByLabelText(/^Extra egress origins/);
+
+    await userEvent.type(egress, 'github.com/x');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+
+    await userEvent.tab();
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+
+    // Edited from one problem into another without passing a valid value:
+    // the error stays, and follows the change.
+    await userEvent.type(egress, '{Home}https://');
+    expect(egress).toHaveValue('https://github.com/x');
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+    // The moment it is valid, the error goes.
+    await userEvent.type(egress, '{End}{Backspace}{Backspace}');
+    expect(egress).toHaveValue('https://github.com');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('says nothing about an empty Name that was only tabbed through', async () => {
+    await renderPage();
+    const name = screen.getByLabelText(/^Name/);
+
+    await userEvent.click(name);
+    await userEvent.tab();
+
+    expect(name).not.toHaveAttribute('aria-invalid');
+    expect(
+      screen.queryByText(/Enter a name for the agent/),
+    ).not.toBeInTheDocument();
   });
 });

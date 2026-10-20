@@ -55,8 +55,14 @@ const COLUMN_PADDING_X = 64;
 /** The rail's distance from the frame's right edge. */
 const RAIL_MARGIN_END = 32;
 
-/** The footer's measured height, published on the frame for the clearance. */
-const FOOTER_HEIGHT_VAR = '--wizard-footer-height';
+/**
+ * The footer's measured height, published on the frame for the clearance, and
+ * on the document root while a frame is mounted, for what floats over the page
+ * from outside it (the agent shell's toasts): it lifts itself by this, so it
+ * never lands on Continue or Create.
+ */
+export const WIZARD_FOOTER_HEIGHT_VAR = '--wizard-footer-height';
+const FOOTER_HEIGHT_VAR = WIZARD_FOOTER_HEIGHT_VAR;
 
 /**
  * How far the footer's top edge can reach into the viewport: its own height —
@@ -411,10 +417,11 @@ function useFrameMeasurements() {
   useEffect(() => {
     const root = rootRef.current;
     const footer = footerRef.current;
-    if (!root || !footer || typeof ResizeObserver === 'undefined') {
+    if (!root || !footer) {
       return undefined;
     }
-    const observer = new ResizeObserver(() => {
+    const documentRoot = document.documentElement;
+    const measure = () => {
       // The border box: a reserved aside is padding on the frame, and must
       // not shrink the width it is measured against.
       const width = root.getBoundingClientRect().width;
@@ -423,12 +430,25 @@ function useFrameMeasurements() {
       }
       const height = footer.getBoundingClientRect().height;
       if (height > 0) {
-        root.style.setProperty(FOOTER_HEIGHT_VAR, `${Math.ceil(height)}px`);
+        const value = `${Math.ceil(height)}px`;
+        root.style.setProperty(FOOTER_HEIGHT_VAR, value);
+        documentRoot.style.setProperty(FOOTER_HEIGHT_VAR, value);
       }
-    });
-    observer.observe(root);
-    observer.observe(footer);
-    return () => observer.disconnect();
+    };
+    // At once as well: the shell's toasts clear the footer from the first
+    // paint, not from the observer's first callback.
+    measure();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(measure);
+    observer?.observe(root);
+    observer?.observe(footer);
+    return () => {
+      observer?.disconnect();
+      // No frame, no footer: the notice goes back to the corner.
+      documentRoot.style.removeProperty(FOOTER_HEIGHT_VAR);
+    };
   }, []);
 
   return { rootRef, footerRef, frameWidth };

@@ -1,6 +1,10 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { analyticsApiRef } from '@backstage/core-plugin-api';
+import {
+  analyticsApiRef,
+  storageApiRef,
+  type StorageApi,
+} from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import {
   InvalidateQueryFilters,
@@ -71,6 +75,7 @@ const analyticsApi = mockApis.analytics.mock();
 function renderWith(
   entryPoint: SessionEntryPoint = 'agentDetail',
   options?: UseCreateSessionOptions,
+  storage: StorageApi = mockApis.storage(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
@@ -82,6 +87,7 @@ function renderWith(
       apis={[
         [musterApiRef, musterApi],
         [analyticsApiRef, analyticsApi],
+        [storageApiRef, storage],
       ]}
     >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -147,6 +153,21 @@ describe('useCreateSession', () => {
     });
 
     expect(startCalls()[0].args.sessionName).toBe(prompt.trim());
+  });
+
+  it('titles the session by the title it is given rather than the prompt', async () => {
+    // A prompt the portal wrote opens with its framing, not with the topic.
+    const { result } = renderWith('sessionDetail');
+
+    await act(async () => {
+      await result.current.createSession({
+        agent,
+        prompt: 'I am continuing a session with you that could not be resumed.',
+        title: 'Continued: Fried potatoes',
+      });
+    });
+
+    expect(startCalls()[0].args.sessionName).toBe('Continued: Fried potatoes');
   });
 
   it('reports the started session with its entry point', async () => {
@@ -346,6 +367,49 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
+  it('says a refusal from the controller as one that names the agent’s tenant', async () => {
+    // agent-manager's answer when the controller refuses CreateSession
+    // (PermissionDenied): the person may not use that tenant's agents.
+    callTool.mockRejectedValueOnce(
+      new Error(
+        'forbidden: kagent: create session: not allowed to create session',
+      ),
+    );
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({
+          agent: {
+            ...agent,
+            namespace: 'org-acme',
+            tenant: 'organization acme',
+          },
+          prompt: 'Check',
+        }),
+      ).rejects.toMatchObject({
+        code: 'forbidden',
+        message: expect.stringContaining(
+          'SRE Agent: it belongs to organization acme',
+        ),
+      });
+    });
+  });
+
+  it('keeps a refusal of another origin in agent-manager’s own words', async () => {
+    // muster refusing the sandbox bind is not the tenant's refusal.
+    callTool.mockRejectedValueOnce(
+      new Error('forbidden: muster refused the sandbox binding'),
+    );
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({ agent, prompt: 'Check' }),
+      ).rejects.toThrow('muster refused the sandbox binding');
+    });
+  });
+
   it('keeps a stable identity across re-renders', async () => {
     // The composer passes these down; a new object every render would re-render
     // it on every unrelated poll.
@@ -423,12 +487,77 @@ describe('useCreateSession', () => {
     expect(sessionId).toBe('new-session-id');
   });
 
+  it('records the started session as portal-started in the person’s notification record', async () => {
+    const storage = mockApis.storage();
+    const { result } = renderWith('agentDetail', undefined, storage);
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check the nodes' });
+    });
+
+    await waitFor(() =>
+      expect(
+        storage
+          .forBucket('agent-platform')
+          .snapshot('sessionNotificationSettings').value,
+      ).toEqual({
+        sessions: {
+          'gazelle/new-session-id': {
+            origin: 'portal',
+            at: expect.any(Number),
+          },
+        },
+      }),
+    );
+  });
+
+  it('records nothing when the start fails', async () => {
+    const storage = mockApis.storage();
+    callTool.mockRejectedValueOnce(new Error('agent-manager is down'));
+    const { result } = renderWith('agentDetail', undefined, storage);
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({ agent, prompt: 'Check the nodes' }),
+      ).rejects.toThrow('agent-manager is down');
+    });
+
+    expect(
+      storage
+        .forBucket('agent-platform')
+        .snapshot('sessionNotificationSettings').presence,
+    ).toBe('absent');
+  });
+
+  it('still starts the session when the record cannot be written', async () => {
+    const storage = mockApis.storage();
+    jest
+      .spyOn(storage.forBucket('agent-platform'), 'set')
+      .mockRejectedValue(new Error('user-settings is down'));
+    const { result } = renderWith('agentDetail', undefined, storage);
+
+    let sessionId: string | undefined;
+    await act(async () => {
+      sessionId = await result.current.createSession({
+        agent,
+        prompt: 'Check the nodes',
+      });
+    });
+
+    expect(sessionId).toBe('new-session-id');
+  });
+
   it('fails without the muster plugin, the only way to reach agent-manager', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false } },
     });
     const wrapper = ({ children }: PropsWithChildren<{}>) => (
-      <TestApiProvider apis={[[analyticsApiRef, analyticsApi]]}>
+      <TestApiProvider
+        apis={[
+          [analyticsApiRef, analyticsApi],
+          [storageApiRef, mockApis.storage()],
+        ]}
+      >
         <QueryClientProvider client={queryClient}>
           {children}
         </QueryClientProvider>

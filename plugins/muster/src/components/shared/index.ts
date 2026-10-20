@@ -4,6 +4,10 @@ export { StateBadge } from './StateBadge';
 export type { StateBadgeProps } from './StateBadge';
 export { EffectBadge } from './EffectBadge';
 export type { EffectBadgeProps } from './EffectBadge';
+export { WorkflowEffectBadge } from './WorkflowEffectBadge';
+export type { WorkflowEffectBadgeProps } from './WorkflowEffectBadge';
+export { MarkerBadge } from './MarkerBadge';
+export type { MarkerBadgeProps } from './MarkerBadge';
 // `Stat` moved to `ui-react` when the agent-platform Usage page needed it too.
 // Re-exported from here so muster's own call sites and its public
 // `src/index.ts` surface stay unchanged.
@@ -37,8 +41,12 @@ export {
   SignInStatusText,
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
-export { useConnectorGroupPaths, useServerSignInStatus } from './hooks';
-export type { ConnectorGroupPaths } from './hooks';
+export {
+  useConnectorGroupPaths,
+  useServerSignInStatus,
+  useWorkflowPageLinks,
+} from './hooks';
+export type { ConnectorGroupPaths, WorkflowPageLinks } from './hooks';
 export type {
   ServerSignInStatusState,
   StatusText,

@@ -96,7 +96,7 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
 
 function renderPanel(search = '') {
   return renderInTestApp(<CustomizeWorkspacesPanel search={search} />, {
-    mountedRoutes: { '/agent-platform/workspaces': workspacesRouteRef },
+    mountedRoutes: { '/customize/workspaces': workspacesRouteRef },
   });
 }
 
@@ -181,7 +181,7 @@ describe('CustomizeWorkspacesPanel', () => {
       screen.getByRole('link', { name: 'Create workspace' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/workspaces/new?installation=gazelle&organization=alpha',
+      '/customize/workspaces/new?installation=gazelle&organization=alpha',
     );
   });
 
@@ -322,7 +322,7 @@ describe('CustomizeWorkspacesPanel', () => {
     );
     expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveAttribute(
       'href',
-      '/agent-platform/workspaces/gazelle/alpha/docs/edit',
+      '/customize/workspaces/gazelle/alpha/docs/edit',
     );
     await userEvent.click(screen.getByRole('menuitem', { name: 'Sync now' }));
     expect(mockSync.mutate).toHaveBeenCalled();

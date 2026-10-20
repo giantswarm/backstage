@@ -3,7 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import type { SkillPullRequest } from '../../hooks/useProposeSkill';
-import { sessionsRouteRef } from '../../routes';
+import {
+  customizeExternalRouteRef,
+  sessionsRouteRef,
+  skillsRouteRef,
+} from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
 import { skillCreationPrompt } from '../SkillCreationAssist';
 import { AddSkillPage, type SkillEdit } from './AddSkillPage';
@@ -84,7 +88,13 @@ function renderPage(edit?: SkillEdit) {
     <PageHeaderActionsProvider>
       <AddSkillPage edit={edit} />
     </PageHeaderActionsProvider>,
-    { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    {
+      mountedRoutes: {
+        '/sessions': sessionsRouteRef,
+        '/customize': customizeExternalRouteRef,
+        '/customize/skills': skillsRouteRef,
+      },
+    },
   );
 }
 
@@ -106,7 +116,7 @@ const edit: SkillEdit = {
     description: 'How to triage.',
     instructions: 'Classify, prioritise, route.',
   },
-  skillHref: '/agent-platform/skills/giantswarm/skills/support/ticket-triage',
+  skillHref: '/customize/skills/giantswarm/skills/support/ticket-triage',
 };
 
 beforeEach(() => {
@@ -193,28 +203,47 @@ describe('AddSkillPage', () => {
     const description = screen.getByLabelText(/Description/);
     expect(description).toHaveAttribute('aria-invalid', 'true');
     expect(description).toHaveAccessibleDescription(
-      expect.stringContaining('Description is required'),
+      expect.stringContaining('Enter a description.'),
     );
     expect(description).toHaveFocus();
     const instructions = screen.getByLabelText(/Instructions/);
     expect(instructions).toHaveAttribute('aria-invalid', 'true');
     expect(instructions).toHaveAccessibleDescription(
-      expect.stringContaining('Instructions are required'),
+      expect.stringContaining('Enter the instructions.'),
     );
     expect(screen.getByLabelText(/Name/)).not.toHaveAttribute('aria-invalid');
   }, 30_000);
 
-  it('says what is wrong with a name while it is typed', async () => {
+  it('says what is wrong with a name once the person leaves it, and clears it as it is fixed', async () => {
     const user = userEvent.setup();
     await renderPage();
 
     const name = screen.getByLabelText(/Name/);
     await user.type(name, 'Notes');
+    // Not while it is typed.
+    expect(name).not.toHaveAttribute('aria-invalid');
 
+    await user.tab();
     expect(name).toHaveAttribute('aria-invalid', 'true');
     expect(name).toHaveAccessibleDescription(
       expect.stringContaining('lowercase letters, digits and dashes'),
     );
+
+    await user.clear(name);
+    await user.type(name, 'notes');
+    expect(name).not.toHaveAttribute('aria-invalid');
+  }, 30_000);
+
+  it('says nothing about an empty name that was only tabbed through', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByLabelText(/Name/));
+    await user.tab();
+
+    expect(
+      screen.queryByText('Enter a name for the skill.'),
+    ).not.toBeInTheDocument();
   }, 30_000);
 
   it('shows the opened pull request and what happens next, with Done to leave', async () => {

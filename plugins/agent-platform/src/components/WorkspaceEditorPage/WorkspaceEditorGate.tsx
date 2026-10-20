@@ -1,7 +1,6 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
-import type { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
 import type { WorkspaceDraft } from '../../lib/workspaceDraft';
 import {
   providerDisplayName,
@@ -56,21 +55,18 @@ export function editorGate({
 export type WorkspaceEditorGateProps = {
   gate: EditorGate;
   installation: string;
-  client: WorkspaceManagerClient | undefined;
   onRecheckProviders: () => void;
 };
 
 /**
- * The one sign-in the editor asks for in place of its form, and why. Every
- * sign-in goes through workspace-manager: for a provider instance it is the
- * person's own login or consent there (a GitHub authorization grant for a
- * person already signed in through GitHub); before that, muster may still
- * have to sign the person in to workspace-manager itself.
+ * The one sign-in the editor asks for in place of its form, and why: muster's
+ * sign-in of the person to workspace-manager, or the grant of a provider
+ * instance's App in muster, which workspace-manager reads the repositories
+ * with.
  */
 export function WorkspaceEditorGate({
   gate,
   installation,
-  client,
   onRecheckProviders,
 }: WorkspaceEditorGateProps) {
   const names =
@@ -86,7 +82,7 @@ export function WorkspaceEditorGate({
         <Flex direction="column" gap="2">
           <Text variant="body-small">
             {names
-              ? `A workspace reads its repositories from ${names} as you, through workspace-manager with your own sign-in.`
+              ? `A workspace reads its repositories from ${names} as you, with your own sign-in.`
               : `A workspace reads its repositories as you, through workspace-manager with your own sign-in, and your session on ${installation} has not signed in to it yet.`}{' '}
             Sign in once; the editor opens here.
           </Text>
@@ -97,14 +93,13 @@ export function WorkspaceEditorGate({
               installation={installation}
             />
           ) : (
-            client &&
             gate.providers.map(provider => (
               <div
                 key={provider.name}
                 data-testid={`provider-connect-${provider.name}`}
               >
                 <ProviderConnectAction
-                  client={client}
+                  installation={installation}
                   provider={provider}
                   onRecheck={onRecheckProviders}
                 />

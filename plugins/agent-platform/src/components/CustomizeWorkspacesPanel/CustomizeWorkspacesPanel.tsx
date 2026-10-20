@@ -65,7 +65,7 @@ const WORKSPACES_VIA = 'Workspaces are managed through workspace-manager';
 
 /**
  * Why Open is not offered yet: the workspace's page is built next, at
- * `/agent-platform/workspaces/<installation>/<organization>/<name>`.
+ * `/customize/workspaces/<installation>/<organization>/<name>`.
  */
 const NOT_BUILT_YET = 'Coming with the workspace page';
 

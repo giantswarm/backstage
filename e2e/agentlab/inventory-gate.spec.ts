@@ -1,4 +1,5 @@
-import { expect, open, test } from './fixtures';
+import { INVENTORY_REJECTED_TOKEN as rejectedToken } from './connectors';
+import { expect, test } from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -13,28 +14,11 @@ import { lab } from './lab';
  * apiserver accepts: drop `audience:server:client_id:kubernetes` from the
  * lab's `backstage.extraScopes` (a `platform.valuesFiles` overlay), roll the
  * portal and run with `AGENTLAB_INVENTORY_REFUSED=1`. Against a healthy lab
- * only the negative runs: the gate is absent and the Servers view renders.
+ * `mcp-servers.spec.ts` proves the gate absent on Infrastructure.
  */
 
-const serversPath = '/agent-platform/connectors';
-/** The sentence the gate opens with for a 401 (`inventoryFailureCopy`). */
-const rejectedToken = /rejected the portal's token/;
-
-test('with a token the API server accepts, Customize · Connectors renders without the inventory gate', async ({
-  admin,
-}) => {
-  test.skip(
-    !!process.env.AGENTLAB_INVENTORY_REFUSED,
-    'the lab portal requests no audience the apiserver accepts, every probe is refused',
-  );
-  // The kubernetes family is listed on the Infrastructure sub-tab.
-  await open(admin, '/customize/connectors/infrastructure');
-  await expect(
-    admin.getByRole('row', { name: /^kubernetes( |$)/ }),
-    'Customize · Connectors renders its CRD-backed table',
-  ).toBeVisible();
-  await expect(admin.getByText(rejectedToken)).toHaveCount(0);
-});
+const scope = `?installation=${lab.installation}`;
+const serversPath = `/customize/connectors${scope}`;
 
 test.describe('an installation whose inventory probe the API server refused', () => {
   test.skip(
@@ -78,7 +62,7 @@ test.describe('an installation whose inventory probe the API server refused', ()
       'the refused probe is not re-run on every mount of the hook',
     ).toBeLessThanOrEqual(3);
 
-    await page.goto('/agent-platform/agents');
+    await page.goto(`/customize/agents${scope}`);
     await expect(
       page.getByText(rejectedToken),
       'the Agents tab explains the same refusal',

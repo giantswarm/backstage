@@ -4,11 +4,20 @@ import { lab } from './lab';
 import { skipWithoutModelManager } from './model-manager.fixture';
 
 /**
+ * An LM Studio endpoint nothing listens on — the discard port of the host
+ * that serves the lab's Ollama — so the backend registers and lists no models.
+ */
+const UNSERVED_ENDPOINT = `http://${new URL(lab.ollamaEndpoint).hostname}:9`;
+
+/** Running models, where Add model backend returns to after a Deploy or a Cancel. */
+const SERVING_VIEW = /\/customize\/models\/hosting\/?$/;
+
+/**
  * Add model backend and Remove backend on the Serving page: model-manager's
  * `add_backend` / `remove_backend` reached through muster as the signed-in
  * person. A default lab's model-manager serves the host's Ollama and Lemonade
  * and the lab's KServe as backends of its own, so Add model backend — a page
- * of its own (`/agent-platform/models/serving/add-backend`) — offers only the
+ * of its own (`/customize/models/hosting/add-backend`) — offers only the
  * kind left — LM Studio — which the suite registers at an endpoint nothing
  * serves, finds on a card of its own and removes again. Serial: both tests
  * read the same model-manager's backend documents.
@@ -20,7 +29,7 @@ test.describe.serial('model backends', () => {
   test('Add model backend offers no kind the installation already serves', async ({
     admin,
   }) => {
-    await open(admin, '/agent-platform/models/serving');
+    await open(admin, '/customize/models/hosting');
     await expect(
       admin.getByRole('heading', { level: 3, name: /^Ollama/ }),
       "the lab's own Ollama is a Serving group",
@@ -45,7 +54,7 @@ test.describe.serial('model backends', () => {
     admin,
   }) => {
     test.setTimeout(180_000);
-    await open(admin, '/agent-platform/models/serving');
+    await open(admin, '/customize/models/hosting');
 
     await openAddBackend(admin);
     await pickKind(admin, 'LM Studio');
@@ -82,23 +91,12 @@ test.describe.serial('model backends', () => {
   });
 });
 
-/**
- * An LM Studio endpoint nothing listens on — the discard port of the host
- * that serves the lab's Ollama — so the backend registers and lists no models.
- */
-const UNSERVED_ENDPOINT = `http://${new URL(lab.ollamaEndpoint).hostname}:9`;
-
-/** Running models, where Add model backend returns to after a Deploy or a Cancel. */
-const SERVING_VIEW = /\/agent-platform\/models\/serving\/?$/;
-
 async function openAddBackend(page: Page): Promise<void> {
   // The Serving view's header keeps Serve model and the import as buttons;
   // adding a backend is in its ⋯ menu (T66), and opens a page of its own.
   await page.getByRole('button', { name: 'Model hosting actions' }).click();
   await page.getByRole('menuitem', { name: 'Add model backend' }).click();
-  await expect(page).toHaveURL(
-    /\/agent-platform\/models\/serving\/add-backend/,
-  );
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/add-backend/);
   await expect(
     page.getByRole('heading', { level: 1, name: 'Add model backend' }),
   ).toBeVisible();

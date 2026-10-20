@@ -17,10 +17,13 @@ import { authStatusQueryKey, needsSignIn, ServerSignIn } from '../../shared';
  */
 export function WorkflowAuthNotice({
   connectors,
+  connectorLabels,
   installation,
 }: {
   /** The connectors the workflow's steps call, by MCPServer name. */
   connectors: string[];
+  /** What people call each of them, where it is not its name. */
+  connectorLabels?: ReadonlyMap<string, string>;
   installation?: string;
 }) {
   const musterApi = useApi(musterApiRef);
@@ -62,6 +65,7 @@ export function WorkflowAuthNotice({
               key={connector}
               noun="connector"
               serverName={connector}
+              displayName={connectorLabels?.get(connector)}
               installation={installation}
               showName
             />

@@ -29,9 +29,18 @@ import { AgentDetailPage } from './AgentDetailPage';
 // derivation and provenance helpers rather than a duck-typed stand-in.
 const mockUseResource = jest.fn();
 
+/** The HelmRelease verbs the person may not use on the agent's release. */
+let mockDeniedVerbs = new Set<string>();
+afterEach(() => {
+  mockDeniedVerbs = new Set();
+});
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResource: (...args: unknown[]) => mockUseResource(...args),
+  useSelfSubjectAccessReview: (
+    _cluster: string,
+    attributes: { verb: string },
+  ) => ({ allowed: !mockDeniedVerbs.has(attributes.verb), isLoading: false }),
 }));
 
 // `GitOpsCard` is deliberately *not* mocked: it reports its Flux lookups through
@@ -589,18 +598,18 @@ function makeGitRepository() {
  * AgentsRouter mounts this page at, so the page's own `<Routes>` sees the tab
  * segment and `useSplatBasePath` can strip it back off.
  */
-const AGENT_PATH = `/agent-platform/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
+const AGENT_PATH = `/customize/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
 
 const renderPage = (tab: string = '') =>
   renderInTestApp(<AgentDetailPage />, {
     mountedRoutes: {
-      '/agent-platform/agents': agentsRouteRef,
-      '/agent-platform/models': modelsRouteRef,
+      '/customize/agents': agentsRouteRef,
+      '/customize/models': modelsRouteRef,
       '/customize': customizeExternalRouteRef,
-      '/agent-platform/skills': skillsRouteRef,
-      '/agent-platform/usage': usageRouteRef,
+      '/customize/skills': skillsRouteRef,
+      '/usage': usageRouteRef,
     },
-    mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+    mountPath: '/customize/agents/:installation/:namespace/:name/*',
     initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
   });
 
@@ -2006,11 +2015,11 @@ describe('AgentDetailPage: the model behind the agent', () => {
   const renderPageWithModels = () =>
     renderInTestApp(<AgentDetailPage />, {
       mountedRoutes: {
-        '/agent-platform/agents': agentsRouteRef,
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
-      mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+      mountPath: '/customize/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [AGENT_PATH],
     });
 
@@ -2072,7 +2081,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
   });
 
@@ -2093,13 +2102,13 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
   const renderShell = (tab: string = '') =>
     renderInTestApp(<AgentDetailPage />, {
       mountedRoutes: {
-        '/agent-platform/agents': agentsRouteRef,
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
-        '/agent-platform/skills': skillsRouteRef,
-        '/agent-platform/usage': usageRouteRef,
+        '/customize/skills': skillsRouteRef,
+        '/usage': usageRouteRef,
       },
-      mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+      mountPath: '/customize/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
     });
 
@@ -2244,6 +2253,40 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeInTheDocument();
     });
 
+    it('offers a tenant’s user no Edit, and says whose editors may change the agent', async () => {
+      withAgentManager();
+      mockDeniedVerbs = new Set(['update', 'delete']);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(
+        await screen.findByText('You can use this agent, not change it'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /agents of namespace agent-platform needs the agent-platform:editor role/,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('says which one write the person may not make', async () => {
+      withAgentManager();
+      mockDeniedVerbs = new Set(['delete']);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(
+        await screen.findByText('You cannot delete this agent'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    });
+
     it('offers no Edit to a viewer who cannot write the agent', async () => {
       stubResources({ resource: makeAgent() });
 
@@ -2338,7 +2381,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(skills).getByRole('link', { name: 'PR review conventions' }),
       ).toHaveAttribute(
         'href',
-        '/agent-platform/skills/giantswarm/skills/pr-review',
+        '/customize/skills/giantswarm/skills/pr-review',
       );
       expect(
         within(skills).getByText('How we review pull requests at Giant Swarm.'),
@@ -2401,6 +2444,25 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(facts).getByText('claude-opus-4-7 · Anthropic'),
       ).toBeInTheDocument();
       expect(within(facts).getByText('gazelle')).toBeInTheDocument();
+    });
+
+    it('names the agent’s tenant and its creator beside the overview', async () => {
+      const agent = makeAgent();
+      agent.jsonData.metadata.annotations = {
+        ...agent.jsonData.metadata.annotations,
+        'agent-platform.giantswarm.io/created-by': 'ana@example.com',
+      };
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(
+        within(facts).getByText('namespace agent-platform'),
+      ).toBeInTheDocument();
+      expect(within(facts).getByText('ana@example.com')).toBeInTheDocument();
     });
 
     it('keeps the ModelConfig name without a display name, the model below it', async () => {
@@ -2616,7 +2678,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(screen.getByText('$1.25')).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'Open in Usage' }),
-      ).toHaveAttribute('href', '/agent-platform/usage/cost');
+      ).toHaveAttribute('href', '/usage/cost');
     });
 
     it('says why the gateway figures are missing, and keeps your own', async () => {

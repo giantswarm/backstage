@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -11,7 +12,6 @@ import {
 } from '@backstage/ui';
 import {
   EmptyStateCard,
-  fieldErrorProps,
   searchableIf,
   TextAreaField,
   useFieldValidation,
@@ -34,7 +34,9 @@ import {
   shortCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useCloseHref } from '../../hooks/useCloseHref';
+import { skillsRouteRef } from '../../routes';
 import { SkillEditFiles } from '../SkillEditFiles';
 import {
   SkillCreationAssist,
@@ -87,14 +89,14 @@ function SkillPullRequestOutcome({
 
 /**
  * Add a skill to one of the configured skill repositories
- * (`/agent-platform/skills/new`), as a pull request opened **as the signed-in
+ * (`/customize/skills/new`), as a pull request opened **as the signed-in
  * person** (decision G16 B): name, description and instructions become a
  * `<name>/SKILL.md` on a branch, and the flow ends on the opened pull request.
  * Nothing deploys from here — a teammate approves the PR, and discovery picks
  * the skill up once it merges.
  *
  * With `edit`, the same flow changes an existing skill (`EditSkillPage`,
- * `/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`): the repository and
+ * `/customize/skills/edit/<owner>/<repo>[/<dir>]`): the repository and
  * name are fixed, description and instructions start from the SKILL.md the
  * skill reads now, and the pull request rewrites `<dir>/SKILL.md` on
  * `update-skill/<directory as a slug>` (the repository name for a skill at
@@ -129,7 +131,13 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   );
   /** Configured repositories left out of the targets for not being on github.com. */
   const skippedCount = edit ? 0 : configured.length - repositories.length;
-  const closeHref = edit?.skillHref ?? `${SHELL_CUSTOMIZE_PATH}/skills`;
+  const { skills: customizeSkills } = useCustomizePaths();
+  const skillsRoute = useRouteRef(skillsRouteRef);
+  const closeHref = useCloseHref(
+    edit?.skillHref,
+    customizeSkills,
+    skillsRoute?.(),
+  );
 
   const [repoUrl, setRepoUrl] = useState<string | undefined>(repositories[0]);
   const [skillName, setSkillName] = useState(edit?.skill.name ?? '');
@@ -147,9 +155,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     }
   }, [repoUrl, repositories]);
 
-  // Each field's problem, shown on the field itself once a submit was
-  // blocked; a name that breaks the folder rule says so while it is typed.
-  const nameInvalid = skillName.length > 0 && !SKILL_NAME_RE.test(skillName);
+  // Each field's problem, shown on the field itself once the person leaves
+  // it having typed in it, or once a submit was blocked (the `forms` skill).
   const fieldErrors = {
     repository: repoUrl ? undefined : 'Choose a repository',
     name: (() => {
@@ -157,14 +164,14 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         return undefined;
       }
       if (!skillName) {
-        return 'Name is required';
+        return 'Enter a name for the skill.';
       }
-      return nameInvalid
-        ? 'Use lowercase letters, digits and dashes, e.g. ticket-triage'
-        : undefined;
+      return SKILL_NAME_RE.test(skillName)
+        ? undefined
+        : 'Use lowercase letters, digits and dashes, e.g. ticket-triage';
     })(),
-    description: description.trim() ? undefined : 'Description is required',
-    instructions: instructions.trim() ? undefined : 'Instructions are required',
+    description: description.trim() ? undefined : 'Enter a description.',
+    instructions: instructions.trim() ? undefined : 'Enter the instructions.',
   };
   const isValid = Object.values(fieldErrors).every(problem => !problem);
   // An edit with nothing changed has nothing to propose — not a field's
@@ -174,9 +181,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     description.trim() !== edit.content.description.trim() ||
     instructions.trim() !== edit.content.instructions.trim();
   const validation = useFieldValidation();
-  const { reveal } = validation;
+  const { reveal, errorFor, fieldProps, textFieldProps } = validation;
   const repositoryError = useSelectFieldError(
-    validation.errorFor(fieldErrors.repository),
+    errorFor('repository', fieldErrors.repository),
   );
 
   const onSubmit = useCallback(async () => {
@@ -368,11 +375,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
               description="Use lowercase letters, digits and dashes, e.g. ticket-triage."
               value={skillName}
               onChange={setSkillName}
-              {...fieldErrorProps(
-                nameInvalid
-                  ? fieldErrors.name
-                  : validation.errorFor(fieldErrors.name),
-              )}
+              {...textFieldProps('name', fieldErrors.name)}
             />
           )}
           <TextField
@@ -381,7 +384,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             description="Write one sentence on when an agent should reach for it."
             value={description}
             onChange={setDescription}
-            {...fieldErrorProps(validation.errorFor(fieldErrors.description))}
+            {...textFieldProps('description', fieldErrors.description)}
           />
           <TextAreaField
             label="Instructions"
@@ -391,7 +394,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             rows={10}
             value={instructions}
             onChange={setInstructions}
-            error={validation.errorFor(fieldErrors.instructions)}
+            {...fieldProps('instructions', fieldErrors.instructions)}
           />
           {edit && (
             <SkillEditFiles

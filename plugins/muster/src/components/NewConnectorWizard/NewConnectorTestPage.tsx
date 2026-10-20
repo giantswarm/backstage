@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
@@ -15,13 +14,13 @@ import {
 
 import { musterApiRef } from '../../apis';
 import type { ToolSummary } from '../../apis/types';
-import { newMcpServerAuthRouteRef, newMcpServerRouteRef } from '../../routes';
 import { mcpServerStateSeverity, type MCPServerState } from '../../lib/k8s';
+import { connectorDisplayNameOn } from '../../lib/serverGrouping';
 import { toolEffect } from '../../lib/toolAnnotations';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { EffectBadge, ServerSignIn, StateBadge, severityTone } from '../shared';
-import { withEditParam } from '../NewMcpServerEditGate';
+import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import {
   ConnectorWizardFrame,
   useConnectorWizardCloseHref,
@@ -109,11 +108,16 @@ export function NewConnectorTestPage() {
   const classes = useStyles();
   const navigate = useNavigate();
   const musterApi = useApi(musterApiRef);
-  const signInLink = useRouteRef(newMcpServerAuthRouteRef);
-  const connectLink = useRouteRef(newMcpServerRouteRef);
+  const wizardLinks = useConnectorWizardLinks();
   const closeHref = useConnectorWizardCloseHref();
-  const { state, registeredName, lastSave, lastSaveAt, reset } =
-    useNewMcpServerForm();
+  const {
+    state,
+    registeredName,
+    registeredInstallation,
+    lastSave,
+    lastSaveAt,
+    reset,
+  } = useNewMcpServerForm();
   const { mcpServers, mcpServersUpdatedAt, retry } = useMusterInstance();
   const { authenticated } = useMusterSession();
 
@@ -215,7 +219,9 @@ export function NewConnectorTestPage() {
   const toolsTotal = Math.max(toolsQuery.data?.total ?? 0, tools.length);
   const partial = toolsTotal > tools.length;
 
-  const displayName = state.name.trim() || serverName || 'The connector';
+  const displayName = cr
+    ? connectorDisplayNameOn(mcpServers, installation, cr.getName())
+    : state.name.trim() || serverName || 'The connector';
 
   const onDone = useCallback(() => {
     reset();
@@ -223,10 +229,14 @@ export function NewConnectorTestPage() {
   }, [reset, navigate, closeHref]);
 
   const onBack = useCallback(() => {
-    if (signInLink) {
-      navigate(withEditParam(signInLink(), registeredName));
+    const signIn = wizardLinks('auth', {
+      name: registeredName,
+      installation: registeredInstallation,
+    });
+    if (signIn) {
+      navigate(signIn);
     }
-  }, [signInLink, navigate, registeredName]);
+  }, [wizardLinks, navigate, registeredName, registeredInstallation]);
 
   const actions = useMemo(
     () => (
@@ -243,7 +253,7 @@ export function NewConnectorTestPage() {
   // No registered connector in this wizard run (deep link, reload, reset) —
   // there is nothing to test yet.
   if (isRedirecting) {
-    return <Navigate to={connectLink ? connectLink() : '..'} replace />;
+    return <Navigate to={wizardLinks('connect') ?? '..'} replace />;
   }
 
   let status;
@@ -311,6 +321,7 @@ export function NewConnectorTestPage() {
           <ServerSignIn
             noun="connector"
             serverName={serverName}
+            displayName={displayName}
             installation={installation}
           />
         </Flex>

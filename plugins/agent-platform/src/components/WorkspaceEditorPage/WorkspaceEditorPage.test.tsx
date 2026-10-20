@@ -15,6 +15,7 @@ import {
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { Workspace } from '../../lib/workspaceManager';
+import { workspacesRouteRef } from '../../routes';
 import { WorkspaceEditorPage } from './WorkspaceEditorPage';
 import {
   createWorkspaceManagerFake,
@@ -33,13 +34,19 @@ const GITHUB = {
   name: 'github',
   kind: 'github',
   connected: true,
-  connectURL: '',
 };
 const GITLAB = {
   name: 'gitlab-lab',
   kind: 'gitlab',
   connected: true,
-  connectURL: '',
+};
+
+/** The muster server whose sign-in grants gitlab-lab's App. */
+const GITLAB_GRANT_SERVER = 'gitlab-lab-app';
+const UNGRANTED_GITLAB = {
+  ...GITLAB,
+  connected: false,
+  signIn: `grant the App of provider gitlab-lab once in muster: core_auth_login server=${GITLAB_GRANT_SERVER}`,
 };
 
 function repo(
@@ -77,6 +84,7 @@ async function render(
     listServers: fake.listServers,
     listInstallations: fake.listInstallations,
     getAuthStatus: fake.getAuthStatus,
+    signInServer: fake.signInServer,
   } as unknown as MusterApi;
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -93,6 +101,7 @@ async function render(
         </PageHeaderActionsProvider>
       </QueryClientProvider>
     </TestApiProvider>,
+    { mountedRoutes: { '/customize/workspaces': workspacesRouteRef } },
   );
 }
 
@@ -388,8 +397,9 @@ describe('WorkspaceEditorPage', () => {
 
   it('asks for the provider sign-in before the form when no instance is connected', async () => {
     const fake = createWorkspaceManagerFake({
-      providers: [{ ...GITLAB, connected: false }],
+      providers: [UNGRANTED_GITLAB],
       repositories: LAB,
+      grants: { [GITLAB_GRANT_SERVER]: 'auth_required' },
     });
     await render(fake);
 
@@ -398,7 +408,7 @@ describe('WorkspaceEditorPage', () => {
       gate.getByText(/reads its repositories from gitlab-lab \(GitLab\)/),
     ).toBeInTheDocument();
     expect(
-      gate.getByRole('button', { name: 'Connect gitlab-lab (GitLab) ↗' }),
+      gate.getByRole('button', { name: 'Sign in to GitLab ↗' }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('textbox', { name: /^Name/ }),
@@ -409,40 +419,39 @@ describe('WorkspaceEditorPage', () => {
     expect(fake.callsOf('list_repositories')).toHaveLength(0);
   });
 
-  it('opens the form once the provider is connected', async () => {
+  it('opens the form once the provider is granted in muster', async () => {
     const fake = createWorkspaceManagerFake({
-      providers: [{ ...GITLAB, connected: false }],
+      providers: [UNGRANTED_GITLAB],
       repositories: LAB,
+      grants: { [GITLAB_GRANT_SERVER]: 'auth_required' },
     });
     await render(fake);
     await screen.findByTestId('workspace-editor-gate');
 
     const open = jest.spyOn(window, 'open').mockReturnValue(null);
     fireEvent.click(
-      screen.getByRole('button', { name: 'Connect gitlab-lab (GitLab) ↗' }),
+      screen.getByRole('button', { name: 'Sign in to GitLab ↗' }),
     );
-    expect(
-      await screen.findByText(/Finish the sign-in in the new tab/),
-    ).toBeInTheDocument();
-    // The sign-in finishes in the other tab; focus comes back.
+    expect(await screen.findByText('Waiting for GitLab…')).toBeInTheDocument();
+    expect(fake.signInServer).toHaveBeenCalledWith(GITLAB_GRANT_SERVER, 'lab');
+    // The grant finishes in the other tab; muster reports it on its next read.
+    fake.grants[GITLAB_GRANT_SERVER] = 'connected';
     fake.providers[0] = { ...GITLAB, connected: true };
-    await act(async () => {
-      window.dispatchEvent(new Event('focus'));
-    });
     open.mockRestore();
 
     expect(
-      await screen.findByRole('textbox', { name: /^Name/ }),
+      await screen.findByRole('textbox', { name: /^Name/ }, { timeout: 8000 }),
     ).toBeInTheDocument();
     expect(
       screen.queryByTestId('workspace-editor-gate'),
     ).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it('shows the connect prompt in place of the owner for a source on an unconnected instance', async () => {
     const fake = createWorkspaceManagerFake({
-      providers: [GITHUB, { ...GITLAB, connected: false }],
+      providers: [GITHUB, UNGRANTED_GITLAB],
       repositories: [...ACME, ...LAB],
+      grants: { [GITLAB_GRANT_SERVER]: 'auth_required' },
     });
     await render(fake);
 
@@ -451,8 +460,15 @@ describe('WorkspaceEditorPage', () => {
     fireEvent.click(
       await screen.findByRole('option', { name: 'gitlab-lab (GitLab)' }),
     );
-    expect(
+    const prompt = within(
       await screen.findByTestId('provider-connect-gitlab-lab'),
+    );
+    // The grant is muster's sign-in for the server the manager's `signIn` names.
+    expect(
+      prompt.getByText('Sign in to gitlab-lab (GitLab)'),
+    ).toBeInTheDocument();
+    expect(
+      prompt.getByRole('button', { name: 'Sign in to GitLab ↗' }),
     ).toBeInTheDocument();
     expect(
       source(0).queryByRole('textbox', { name: /^Owner/ }),

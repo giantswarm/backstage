@@ -64,6 +64,13 @@ const useStyles = makeStyles(theme => ({
     borderRadius: 'var(--bui-radius-3)',
     border: `1px solid ${theme.palette.divider}`,
   },
+  // What the person sent is shown as a thumbnail: they know what it shows,
+  // and a screenshot at full column width would push their own words and the
+  // reply apart. Pressing it opens it at full size, as any image here.
+  thumbnail: {
+    maxWidth: 'min(100%, 240px)',
+    maxHeight: 160,
+  },
   caption: {
     fontSize: '0.75rem',
     color: theme.palette.text.secondary,
@@ -167,7 +174,11 @@ export function AttachmentEntry({ item }: AttachmentEntryProps) {
             onClick={() => setEnlargedUrl(src)}
           >
             <img
-              className={classes.image}
+              className={
+                item.isUser
+                  ? `${classes.image} ${classes.thumbnail}`
+                  : classes.image
+              }
               src={src}
               alt={name}
               onError={() => setFailedUrl(src)}

@@ -2,7 +2,6 @@ import type { Page } from '@playwright/test';
 import { open } from './fixtures';
 import { lab } from './lab';
 import {
-  connectToLabGitHub,
   deleteWorkspace,
   expect,
   OWNER,
@@ -25,10 +24,8 @@ async function snapshot(page: Page, name: string): Promise<void> {
   }
 }
 
-const editorPath = (name?: string) =>
-  name
-    ? `/agent-platform/workspaces/${lab.installation}/${lab.workspaces.organization}/${name}/edit`
-    : `/agent-platform/workspaces/new?installation=${lab.installation}&organization=${lab.workspaces.organization}`;
+const editorPath = (name: string) =>
+  `/customize/workspaces/${lab.installation}/${lab.workspaces.organization}/${name}/edit`;
 
 const source = (page: Page) => page.getByTestId('workspace-source-0');
 const rowOf = (page: Page, name: string) =>
@@ -64,7 +61,11 @@ async function pressPrimary(page: Page, name: string): Promise<void> {
  * there is nothing to pick, several show a select (named "Select an option
  * Provider").
  */
-async function startDraft(page: Page, name: string): Promise<void> {
+async function startDraft(
+  page: Page,
+  name: string,
+  provider: string,
+): Promise<void> {
   await expect(
     page.getByRole('heading', { name: 'Create workspace' }),
   ).toBeVisible({ timeout: 60_000 });
@@ -82,7 +83,7 @@ async function startDraft(page: Page, name: string): Promise<void> {
     await page
       .getByRole('option', {
         // "GitHub" for an instance named after its kind, else "<name> (<Kind>)".
-        name: new RegExp(`^${lab.workspaces.provider}( |$)`, 'i'),
+        name: new RegExp(`^${provider}( |$)`, 'i'),
       })
       .click();
   }
@@ -104,10 +105,11 @@ test('a member creates a workspace from a language and topic filter, previews, e
     const gate = admin.getByTestId('workspace-editor-gate');
     await expect(form.or(gate)).toBeVisible({ timeout: 60_000 });
     if (await gate.isVisible()) {
-      // Not connected yet: the editor asks for the sign-in in place of its
-      // form. Connect the way a person does, then open the editor again.
+      // Not granted yet: the editor asks for the sign-in in place of its
+      // form. Grant the App in muster the way a person does, then open the
+      // editor again.
       await expect(
-        gate.getByTestId(`provider-connect-${lab.workspaces.provider}`),
+        gate.getByTestId(`provider-connect-${workspaceLab.provider}`),
       ).toBeVisible();
       await expect(admin.getByRole('textbox', { name: /^Name/ })).toHaveCount(
         0,
@@ -115,10 +117,9 @@ test('a member creates a workspace from a language and topic filter, previews, e
       await snapshot(admin, 'workspace-editor-sign-in-gate');
       test.skip(
         !lab.workspaces.githubFakeURL,
-        'connecting to the lab GitHub needs AGENTLAB_GITHUB_FAKE_URL (see e2e/agentlab/README.md)',
+        'granting the lab GitHub needs AGENTLAB_GITHUB_FAKE_URL (see e2e/agentlab/README.md)',
       );
-      await connectToLabGitHub(tools);
-      connected = true;
+      connected = await tools.grantInMuster();
       await openFromTab(admin);
     }
     await expect(form, 'the editor opens its form').toBeVisible({
@@ -130,7 +131,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
     ).toHaveCount(0);
 
     const owner = source(admin).getByRole('textbox', { name: /^Owner/ });
-    await startDraft(admin, name);
+    await startDraft(admin, name, workspaceLab.provider);
     await expect(owner).toBeVisible({ timeout: 60_000 });
     await owner.fill(OWNER);
 
@@ -223,7 +224,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
     }>('get_workspace', { workspace: name });
     expect(stored.workspace.sources).toEqual([
       {
-        provider: lab.workspaces.provider,
+        provider: workspaceLab.provider,
         owner: OWNER,
         filters: {
           languages: ['Go'],
@@ -234,9 +235,7 @@ test('a member creates a workspace from a language and topic filter, previews, e
   } finally {
     await deleteWorkspace(tools, name).catch(() => undefined);
     if (connected) {
-      await tools
-        .call('disconnect_provider', { provider: lab.workspaces.provider })
-        .catch(() => undefined);
+      await tools.revokeInMuster().catch(() => undefined);
     }
   }
 });

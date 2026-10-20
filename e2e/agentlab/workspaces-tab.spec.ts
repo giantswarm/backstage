@@ -5,7 +5,6 @@ import {
   expect,
   NON_MEMBER,
   PUBLIC_REPOSITORIES,
-  PUBLIC_SOURCE,
   test,
 } from './workspaces.fixture';
 
@@ -31,7 +30,9 @@ const rowOf = (page: Page, name: string) =>
 test('a member sees the fixture workspace with its repositories, last sync and Sessions', async ({
   admin,
   labWorkspace,
+  workspaceLab,
 }) => {
+  const source = workspaceLab.publicSource;
   await open(admin, '/customize/workspaces');
   await expect(
     admin.getByRole('main').getByRole('tab', { name: /^Workspaces/ }),
@@ -44,7 +45,7 @@ test('a member sees the fixture workspace with its repositories, last sync and S
   const cells = row.getByRole('gridcell');
   await expect(
     cells.filter({
-      hasText: `${PUBLIC_SOURCE.provider}: ${PUBLIC_SOURCE.owner}`,
+      hasText: `${source.provider}: ${source.owner}`,
     }),
   ).toHaveCount(1);
   await expect(
@@ -104,7 +105,7 @@ test('delete asks first, names the workspace, and removes it', async ({
   test.setTimeout(10 * 60_000);
   const doomed = await workspaceLab.create(
     'tab-delete',
-    [PUBLIC_SOURCE],
+    [workspaceLab.publicSource],
     PUBLIC_REPOSITORIES,
   );
 

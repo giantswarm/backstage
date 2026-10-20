@@ -22,6 +22,12 @@ export {
   type SignInConnectorMemory,
 } from './apis/auth/signInConnectorMemory';
 export {
+  asLoginRequestCaller,
+  asLoginRequestCallerApi,
+  LOGIN_REQUESTED_BY_ATTRIBUTE,
+  type LoginRequestCaller,
+} from './apis/auth/loginRequestCaller';
+export {
   useInstallations,
   type InstallationConfig,
   type InstallationCurrency,

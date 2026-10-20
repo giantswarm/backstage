@@ -1,4 +1,5 @@
 import {
+  WORKSPACE_MANAGER_TOOLS,
   WorkspaceManagerError,
   authorizationError,
   classifyWorkspaceManagerError,
@@ -29,7 +30,8 @@ const REFUSALS = {
     'create workspace: invalid workspace: invalid workspace "platform": sources[0]: unknown provider instance "gitlab" (configured: github)',
   invalidSizing:
     'update workspace: invalid workspace: invalid workspace: sizing.minimum "lots": quantities must match the regular expression',
-  unknownProvider: 'connect provider: unknown provider "gitlab"',
+  unknownProvider:
+    'list repositories: unknown provider instance "gitlab" (configured: github)',
   missingArgument: 'required argument "workspace" not found',
   missingOwner: 'list repositories: provider and owner are required',
   notFound:
@@ -42,6 +44,16 @@ const REFUSALS = {
   musterAuthRequired: 'server workspace-manager requires authentication',
   other: 'list workspaces: list workspaces: the server is currently unable',
 };
+
+describe('WORKSPACE_MANAGER_TOOLS', () => {
+  it('calls no sign-in tool: the person grants the App in muster', () => {
+    expect(Object.values(WORKSPACE_MANAGER_TOOLS)).not.toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^(connect|disconnect)_provider$/),
+      ]),
+    );
+  });
+});
 
 describe('workspaceManagerToolName', () => {
   it('names a tool as muster exposes it', () => {
@@ -125,7 +137,7 @@ describe('authorizationError', () => {
     expect(error.message).toMatch(/has not synced yet/);
   });
 
-  it('names the providers to connect with their links', () => {
+  it('names the providers to grant in muster with how to sign in', () => {
     const error = authorizationError({
       workspace: 'platform',
       outcome: 'connect_required',
@@ -134,7 +146,8 @@ describe('authorizationError', () => {
       connect: [
         {
           provider: 'github',
-          url: 'https://workspaces.example.com/connect/github',
+          signIn:
+            'grant the App of provider github once in muster: core_auth_login server=workspace-manager',
         },
       ],
     })!;
@@ -142,7 +155,8 @@ describe('authorizationError', () => {
     expect(error.connect).toEqual([
       {
         provider: 'github',
-        url: 'https://workspaces.example.com/connect/github',
+        signIn:
+          'grant the App of provider github once in muster: core_auth_login server=workspace-manager',
       },
     ]);
   });

@@ -5,7 +5,6 @@ import {
   Routes,
   useLocation,
   useParams,
-  useSearchParams,
 } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
@@ -40,12 +39,15 @@ import {
   WORKFLOW_TOOL_PREFIX,
 } from '../../lib/workflowReferences';
 import { serversOfTools, toolsOfWorkflow } from '../../lib/workflowTools';
-import {
-  customizeExternalRouteRef,
-  workflowDetailRouteRef,
-} from '../../routes';
+import { mcpServerDisplayNames } from '../../lib/serverGrouping';
+import { customizeExternalRouteRef } from '../../routes';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import { EffectBadge, SessionGate, StateBadge } from '../shared';
+import {
+  SessionGate,
+  StateBadge,
+  useWorkflowPageLinks,
+  WorkflowEffectBadge,
+} from '../shared';
 // Imported directly: the shared barrel stays free of flux-react.
 import { GitOpsEditDialog } from '../shared/GitOpsEditDialog';
 import { WorkflowDetailsTab } from './WorkflowDetailsTab';
@@ -82,16 +84,9 @@ function useCustomizePaths(): { customize?: string; workflows?: string } {
   };
 }
 
-/** `?installation=<inst>`, or nothing without one. */
-function installationSearch(installation?: string): string {
-  return installation
-    ? `?installation=${encodeURIComponent(installation)}`
-    : '';
-}
-
 /** The other workflows that run this one as a step, linked to their pages. */
 function CalledBy({ workflow }: { workflow: MusterWorkflow }) {
-  const detailRoute = useRouteRef(workflowDetailRouteRef);
+  const workflowLinks = useWorkflowPageLinks();
   const { workflows } = useMusterInstance();
   const variant = useFactTextVariant();
   const name = workflow.getName();
@@ -105,15 +100,12 @@ function CalledBy({ workflow }: { workflow: MusterWorkflow }) {
   return (
     <Text variant={variant}>
       {referencedBy.map((ref, index) => {
-        const base = detailRoute?.({ name: ref.getName() });
+        const href = workflowLinks.workflow(ref.getName(), ref.cluster);
         return (
           <span key={`${ref.cluster}/${ref.getName()}`}>
             {index > 0 && ', '}
-            {base ? (
-              <Link
-                href={`${base}${installationSearch(ref.cluster)}`}
-                variant={variant}
-              >
+            {href ? (
+              <Link href={href} variant={variant}>
                 {ref.getName()}
               </Link>
             ) : (
@@ -132,7 +124,7 @@ function WorkflowPageContent({
   editAction,
 }: {
   workflow: MusterWorkflow;
-  installation?: string;
+  installation: string;
 } & WorkflowPageProps) {
   const paths = useCustomizePaths();
   const basePath = useSplatBasePath();
@@ -144,8 +136,7 @@ function WorkflowPageContent({
   const session = useMusterSession();
   const hasSession =
     session.authenticated || !(activeInstallationInfo?.requiresAuth ?? false);
-  // The workflow's own installation, which a fallback by name may make
-  // another than the active one.
+  // The workflow's own installation, the one the address names.
   const perUserSession =
     installationInfos.find(info => info.name === installation)?.requiresAuth ??
     false;
@@ -165,6 +156,23 @@ function WorkflowPageContent({
     () => serversOfTools(stepTools, prefixes),
     [stepTools, prefixes],
   );
+  // Each MCPServer the steps call as Customize and the step lines name it: a
+  // family member by its family, whichever member a step may reach.
+  const connectorLabels = useMemo(() => {
+    const labels = mcpServerDisplayNames(mcpServers);
+    const familyOf = new Map(
+      mcpServers.map(server => [server.getName(), server.getFamily()]),
+    );
+    return new Map(
+      connectors.map(server => {
+        const surface = familyOf.get(server) ?? server;
+        return [server, labels.get(surface) ?? surface] as const;
+      }),
+    );
+  }, [connectors, mcpServers]);
+  const connectorsUsed = [...new Set(connectorLabels.values())]
+    .sort()
+    .join(', ');
   const asCaller = useMemo(
     () =>
       workflowRunsAsCaller(
@@ -245,7 +253,7 @@ function WorkflowPageContent({
       value: <Mono>{toolName}</Mono>,
     },
     ...(connectors.length > 0
-      ? [{ label: 'Connectors used', value: connectors.join(', ') }]
+      ? [{ label: 'Connectors used', value: connectorsUsed }]
       : []),
     { label: 'Called as a step by', value: <CalledBy workflow={workflow} /> },
   ];
@@ -269,7 +277,7 @@ function WorkflowPageContent({
         menu={<MoreActionsMenu items={menu} />}
         badges={
           <>
-            {effect && <EffectBadge effect={effect} subject="workflow" />}
+            {effect && <WorkflowEffectBadge effect={effect} />}
             {workflow.hasValidationWarning() && (
               <StateBadge tone="warning" label="Validation warning" />
             )}
@@ -306,6 +314,7 @@ function WorkflowPageContent({
             element={
               <WorkflowRunTab
                 installation={installation}
+                connectorLabels={connectorLabels}
                 toolName={toolName}
                 hasSession={hasSession}
                 perUserSession={perUserSession}
@@ -402,21 +411,18 @@ function WorkflowPageBody({
   name,
   editAction,
 }: { name: string } & WorkflowPageProps) {
-  const [searchParams] = useSearchParams();
-  const installationParam = searchParams.get('installation') ?? undefined;
+  // The installation the address names, which the muster providers are
+  // pinned to: its workflows are the only ones read here.
+  const { installation = '' } = useParams();
   const paths = useCustomizePaths();
   const { search } = useLocation();
   const { workflows, isLoading, isLoadingInstallations, activeInstallation } =
     useMusterInstance();
 
-  const workflow = useMemo(() => {
-    const byNameAndInstallation = workflows.find(
-      w =>
-        w.getName() === name &&
-        (!installationParam || w.cluster === installationParam),
-    );
-    return byNameAndInstallation ?? workflows.find(w => w.getName() === name);
-  }, [workflows, name, installationParam]);
+  const workflow = useMemo(
+    () => workflows.find(w => w.getName() === name),
+    [workflows, name],
+  );
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, badge row, tab
@@ -451,12 +457,12 @@ function WorkflowPageBody({
           title={
             activeInstallation
               ? `No workflow “${name}” on ${activeInstallation}`
-              : `No workflow “${name}”`
+              : 'Environment not available'
           }
           description={
             activeInstallation
               ? 'It may be on another environment, or removed.'
-              : "None of this portal's environments runs muster."
+              : `Workflows on ${installation} cannot be read here. It may be turned off under Cluster access, or run no muster.`
           }
           actions={
             paths.workflows ? (
@@ -472,7 +478,7 @@ function WorkflowPageBody({
     <WorkflowPageContent
       key={`${workflow.cluster}/${name}`}
       workflow={workflow}
-      installation={workflow.cluster ?? installationParam}
+      installation={workflow.cluster}
       editAction={editAction}
     />
   );

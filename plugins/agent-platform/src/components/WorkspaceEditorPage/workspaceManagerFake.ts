@@ -25,6 +25,9 @@ export type WorkspaceManagerFake = {
   listServers: jest.Mock;
   listInstallations: jest.Mock;
   getAuthStatus: jest.Mock;
+  signInServer: jest.Mock;
+  /** The muster servers granting a provider's App, by state; mutable. */
+  grants: Record<string, 'connected' | 'auth_required'>;
   calls: FakeCall[];
   callsOf: (tool: string) => Array<Record<string, any>>;
   /** Replaces the answer of a write: throw to refuse it. */
@@ -90,12 +93,18 @@ export function createWorkspaceManagerFake({
   repositories,
   workspaces = [],
   managerSignIn = 'connected',
+  grants = {},
 }: {
   providers: WorkspaceProvider[];
   repositories: FakeRepository[];
   workspaces?: Workspace[];
   /** workspace-manager in the person's muster session (`auth://status`). */
   managerSignIn?: 'connected' | 'auth_required';
+  /**
+   * The muster servers whose sign-in grants a provider's App (the
+   * providers' `signIn`), by their state; a test flips one to `connected`.
+   */
+  grants?: Record<string, 'connected' | 'auth_required'>;
 }): WorkspaceManagerFake {
   const calls: FakeCall[] = [];
   const writes: Record<string, (args: any) => unknown> = {
@@ -203,11 +212,6 @@ export function createWorkspaceManagerFake({
         sessionDirectories: [],
       };
     },
-    connect_provider: args => ({
-      provider: args.provider,
-      authorizationURL: `https://sign-in.example/${args.provider}`,
-      expiresAt: '2026-10-14T01:00:00Z',
-    }),
   };
 
   const callTool = jest.fn(async (name: string, args: Record<string, any>) => {
@@ -228,7 +232,14 @@ export function createWorkspaceManagerFake({
     installations: [{ name: 'lab', requiresAuth: true }],
   }));
   const getAuthStatus = jest.fn(async () => ({
-    servers: [{ name: 'workspace-manager', status: managerSignIn }],
+    servers: [
+      { name: 'workspace-manager', status: managerSignIn },
+      ...Object.entries(grants).map(([name, status]) => ({ name, status })),
+    ],
+  }));
+  const signInServer = jest.fn(async (server: string) => ({
+    status: 'auth_required',
+    authUrl: `https://sign-in.example/${server}`,
   }));
 
   return {
@@ -236,6 +247,8 @@ export function createWorkspaceManagerFake({
     listServers,
     listInstallations,
     getAuthStatus,
+    signInServer,
+    grants,
     calls,
     callsOf: tool => calls.filter(c => c.tool === tool).map(c => c.args),
     onWrite: (tool, handler) => {

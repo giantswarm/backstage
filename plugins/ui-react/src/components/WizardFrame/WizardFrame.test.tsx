@@ -266,6 +266,24 @@ describe('WizardFrame', () => {
     );
   });
 
+  it('publishes the footer’s height on the document while it is mounted, for the shell’s toasts', () => {
+    const rect = jest
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 1200, height: 65 } as DOMRect);
+    const root = document.documentElement;
+    try {
+      const { unmount } = renderFrame();
+      expect(root.style.getPropertyValue('--wizard-footer-height')).toBe(
+        '65px',
+      );
+
+      unmount();
+      expect(root.style.getPropertyValue('--wizard-footer-height')).toBe('');
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
   it('widens its padding at the two-column tier, not at a breakpoint of its own', () => {
     renderFrame();
 

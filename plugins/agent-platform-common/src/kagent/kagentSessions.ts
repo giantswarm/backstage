@@ -51,6 +51,12 @@ export type KagentSession = {
   /** The Agent the session runs — the agent's real namespace and name. */
   agent?: { namespace: string; name: string };
   /**
+   * The Agent revision the session was prepared on, which it keeps for its
+   * whole life: a later change to the Agent (its Harness, prompt or skills)
+   * starts new sessions on a new revision and leaves this one where it is.
+   */
+  preparedRevision?: string;
+  /**
    * The session's runtime state as one lower-case word (`ready`, `suspended`,
    * `creating`, `failed`, `deleting`), for what the record says about itself.
    * Not a turn state: a suspended session may be idle after a finished turn
@@ -101,7 +107,10 @@ export type SessionListDriftKind =
   // A readable 200 that held no payload where one was expected. Distinct from
   // `skipped-rows`, whose message counts dropped rows — reusing that kind for
   // "the response carried no session" reported it as though rows were lost.
-  | 'missing-payload';
+  | 'missing-payload'
+  // The backend cut the listing at its page limit: the sessions it left out
+  // still exist.
+  | 'truncated';
 
 export type SessionListDrift = {
   kind: SessionListDriftKind;
@@ -240,6 +249,15 @@ function normalizeSessionRecordList(
         message: `skipped ${skippedRows} unreadable session ${
           skippedRows === 1 ? 'row' : 'rows'
         }`,
+      },
+    };
+  }
+  if (parsed.data.truncated) {
+    return {
+      sessions,
+      drift: {
+        kind: 'truncated',
+        message: 'the listing was cut at the backend’s page limit',
       },
     };
   }

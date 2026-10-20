@@ -12,6 +12,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import {
   useWorkspaceManagerAvailability,
@@ -39,7 +40,6 @@ import {
   type PreviewRepository,
   type WorkspaceManagerError,
 } from '../../lib/workspaceManager';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import {
   editorGate,
   WorkspaceEditorGate,
@@ -51,9 +51,16 @@ import { WorkspaceSourceEditor } from './WorkspaceSourceEditor';
 /** The manager's sources limit (the CRD's `maxItems`). */
 const MAX_SOURCES = 32;
 
-/** The Workspaces tab, scoped to the Organization. */
-export function workspacesTabHref(organization?: string): string {
-  return `${SHELL_CUSTOMIZE_PATH}/workspaces${
+/**
+ * The Workspaces tab, scoped to the Organization; the portal's home where the
+ * tab's route is not bound.
+ */
+export function useWorkspacesTabHref(organization?: string): string {
+  const { workspaces } = useCustomizePaths();
+  if (!workspaces) {
+    return '/';
+  }
+  return `${workspaces}${
     organization ? `?organization=${encodeURIComponent(organization)}` : ''
   }`;
 }
@@ -142,7 +149,7 @@ function WorkspaceEditor({
     [providersQuery.data],
   );
   const edited = useEditedWorkspace(client, name);
-  const closeHref = workspacesTabHref(organization);
+  const closeHref = useWorkspacesTabHref(organization);
 
   const [draft, setDraft] = useState<WorkspaceDraft | undefined>(
     isEdit ? undefined : emptyDraft(),
@@ -219,7 +226,7 @@ function WorkspaceEditor({
       }
       return touched.has(field)
         ? problems[field]
-        : validation.errorFor(problems[field]);
+        : validation.errorFor(field, problems[field]);
     },
     [problem, problems, validation, touched],
   );
@@ -356,7 +363,6 @@ function WorkspaceEditor({
     >
       <EditorBody
         gate={gate}
-        client={managerClient}
         onRecheckProviders={() => void providersQuery.refetch()}
         availability={availability}
         isEdit={isEdit}
@@ -418,7 +424,6 @@ function WorkspaceEditor({
 
 type EditorBodyProps = {
   gate: EditorGate | undefined;
-  client: ReturnType<typeof useWorkspaceManagerClient>;
   onRecheckProviders: () => void;
   availability: ReturnType<typeof useWorkspaceManagerAvailability>;
   isEdit: boolean;
@@ -441,7 +446,6 @@ type EditorBodyProps = {
 /** The form inside the frame: it reads whether the frame docks the preview. */
 function EditorBody({
   gate,
-  client,
   onRecheckProviders,
   availability,
   isEdit,
@@ -474,7 +478,6 @@ function EditorBody({
       <WorkspaceEditorGate
         gate={gate}
         installation={installation}
-        client={client}
         onRecheckProviders={onRecheckProviders}
       />
     );
@@ -605,6 +608,7 @@ function storageLine({
 export function WorkspaceEditorRoute({ mode }: { mode: 'create' | 'edit' }) {
   const params = useParams();
   const [searchParams] = useSearchParams();
+  const tabHref = useWorkspacesTabHref();
   const installation =
     mode === 'edit'
       ? params.installation
@@ -615,7 +619,7 @@ export function WorkspaceEditorRoute({ mode }: { mode: 'create' | 'edit' }) {
       : (searchParams.get('organization') ?? undefined);
   if (!installation || !organization) {
     return (
-      <WizardFrame title="Create workspace" closeHref={workspacesTabHref()}>
+      <WizardFrame title="Create workspace" closeHref={tabHref}>
         <EmptyStateCard
           title="Choose the Organization first"
           description="Start from the Workspaces tab, which knows your Organizations and installations."

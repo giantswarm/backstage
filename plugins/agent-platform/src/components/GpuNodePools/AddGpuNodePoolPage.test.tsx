@@ -536,7 +536,7 @@ async function renderPage(
         <PageHeaderActionsProvider>
           <AddGpuNodePoolPage
             installations={scenario.installations ?? ['inst-1']}
-            closeHref="/agent-platform/models/capacity"
+            closeHref="/customize/models/hosting/capacity"
             onDeployed={onDeployed}
           />
         </PageHeaderActionsProvider>
@@ -729,7 +729,7 @@ describe('AddGpuNodePoolPage', () => {
     );
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/capacity',
+      '/customize/models/hosting/capacity',
     );
     expect(
       screen.queryByRole('button', { name: 'Back' }),

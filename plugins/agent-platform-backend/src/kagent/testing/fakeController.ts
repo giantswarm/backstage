@@ -1,4 +1,4 @@
-import { clone, create, type JsonObject } from '@bufbuild/protobuf';
+import { clone, create, toBinary, type JsonObject } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import {
   Code,
@@ -33,6 +33,7 @@ import {
   type Session,
 } from '../gen/kagent/api/v1alpha1/sessions_pb';
 import { SystemService } from '../gen/kagent/api/v1alpha1/system_pb';
+import { AgentService } from '../gen/kagent/api/v1alpha1/agents_pb';
 import {
   A2A_EXTENSIONS_HEADER,
   HITL_EXTENSION_URI,
@@ -45,8 +46,8 @@ import {
 /**
  * An in-process stand-in for the kagent API v2 controller behind
  * agentgateway's JWT policy, implementing exactly the RPCs the backend uses:
- * `SessionService` (create/get/list/rename/delete), `SystemService` (current
- * user/version) and the A2A v1 `A2AService` (send/stream/list/get/cancel). Everything else
+ * `SessionService` (create/get/list/rename/delete), `AgentService` (list),
+ * `SystemService` (current user/version) and the A2A v1 `A2AService` (send/stream/list/get/cancel). Everything else
  * answers `Unimplemented`, as a Connect router does for a method the
  * implementation leaves out.
  *
@@ -133,6 +134,18 @@ export type FakeControllerOptions = {
     hitlActivated: boolean;
   }) => TurnScript;
   now?: () => Date;
+  /**
+   * The largest `ListTasks` answer, in bytes of its tasks, past which the call
+   * fails with `ResourceExhausted` — what the controller's gRPC server does
+   * with an answer over its 16 MiB send limit.
+   */
+  maxListTasksBytes?: number;
+  /**
+   * The namespaces each person (by email) may list Agents in, as the
+   * controller's Kubernetes authorizer scopes `ListAgents`. A person it does
+   * not name lists every Agent, as the `noop` authorizer answers.
+   */
+  listableNamespaces?: Record<string, string[]>;
 };
 
 type StoredTask = {
@@ -863,6 +876,26 @@ export function createFakeController(
       },
     });
 
+    router.service(AgentService, {
+      listAgents(request, ctx) {
+        record('AgentService', 'ListAgents', ctx);
+        const scope = options.listableNamespaces?.[creatorOf(ctx)];
+        return {
+          agents: [...agents.keys()]
+            .map(key => {
+              const [namespace, name] = key.split('/');
+              return { namespace, name };
+            })
+            .filter(
+              ref =>
+                (!request.namespace || ref.namespace === request.namespace) &&
+                (!scope || scope.includes(ref.namespace)),
+            )
+            .map(ref => ({ ref })),
+        };
+      },
+    });
+
     router.service(SystemService, {
       getCurrentUser(_request, ctx) {
         record('SystemService', 'GetCurrentUser', ctx);
@@ -934,15 +967,30 @@ export function createFakeController(
           storedTasks(session).map(entry => entry.task),
         );
         const offset = Number(request.pageToken || '0');
-        const page = all.slice(offset, offset + pageSize);
-        return {
-          tasks: page.map(task =>
+        const page = all
+          .slice(offset, offset + pageSize)
+          .map(task =>
             shape(
               task,
               request.historyLength,
               request.includeArtifacts ?? false,
             ),
-          ),
+          );
+        const { maxListTasksBytes } = options;
+        if (
+          maxListTasksBytes !== undefined &&
+          page.reduce(
+            (sum, task) => sum + toBinary(TaskSchema, task).length,
+            0,
+          ) > maxListTasksBytes
+        ) {
+          throw new ConnectError(
+            'trying to send message larger than max',
+            Code.ResourceExhausted,
+          );
+        }
+        return {
+          tasks: page,
           nextPageToken:
             offset + pageSize < all.length ? String(offset + pageSize) : '',
           pageSize,

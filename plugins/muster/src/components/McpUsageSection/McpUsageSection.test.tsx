@@ -18,9 +18,9 @@ import { makeTestMusterInstance } from '../MusterInstanceProvider/testInstance';
 import { McpUsageSection } from './McpUsageSection';
 
 /** The Usage screen's address; a test sets `?window=` on it. */
-let path = '/agent-platform/usage/connectors';
+let path = '/usage/connectors';
 beforeEach(() => {
-  path = '/agent-platform/usage/connectors';
+  path = '/usage/connectors';
 });
 
 // The section brings its own MusterProviders so it can be mounted anywhere;
@@ -225,7 +225,7 @@ describe('McpUsageSection window', () => {
   it("reads the Usage screen's selected window", async () => {
     // QA round 1: the 7 | 30 | 90 control showed on Connectors and changed
     // nothing there.
-    path = '/agent-platform/usage/connectors?window=7d';
+    path = '/usage/connectors?window=7d';
     const api = {
       getMcpUsage: jest.fn().mockResolvedValue({
         available: true,
@@ -307,7 +307,7 @@ describe('McpUsageSection data start', () => {
   }
 
   async function renderWith(usage: McpUsage) {
-    path = '/agent-platform/usage/connectors?window=7d';
+    path = '/usage/connectors?window=7d';
     const api = {
       getMcpUsage: jest.fn().mockResolvedValue(usage),
       filterTools: jest.fn().mockResolvedValue({ tools: [] }),
@@ -376,6 +376,7 @@ describe('McpUsageSection connectors table', () => {
         server: `connector-${String(i).padStart(3, '0')}`,
         calls: 1_000 - i,
         errors: 0,
+        p95_seconds: null,
       })),
     };
   }
@@ -478,7 +479,9 @@ describe('McpUsageSection tables at phone width', () => {
         p95_seconds: 1.2,
       },
     ],
-    servers: [{ server: 'kubernetes', calls: 1_000, errors: 3 }],
+    servers: [
+      { server: 'kubernetes', calls: 1_000, errors: 3, p95_seconds: 0.4 },
+    ],
   };
 
   async function renderSection() {

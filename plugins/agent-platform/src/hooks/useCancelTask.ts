@@ -23,9 +23,7 @@ export function useCancelTask(installation: string, sessionId: string) {
   const queryClient = useQueryClient();
 
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'A turn inside a running session; sessionStarted measures sessions.',
+    event: () => ({ name: 'AgentPlatform.turnStopped', attributes: {} }),
     mutationFn: async (taskId: string) => {
       await kagentApi.cancelTask(installation, sessionId, taskId);
       // The task is now terminal: read the conversation back so the badge, the

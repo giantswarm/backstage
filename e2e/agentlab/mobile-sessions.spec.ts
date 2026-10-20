@@ -4,6 +4,7 @@ import {
   expectClearOfBottomBar,
   expectNoHorizontalScroll,
   open,
+  openHome,
   openReadyAgent,
   test,
 } from './fixtures';
@@ -38,10 +39,10 @@ async function restoreToolActivity(page: Page): Promise<void> {
 
 /**
  * Answers the open session's conversation read with one tool call and its
- * result added to the newest turn, as the artifacts kagent records them. The
- * rest of the read is the lab's own.
+ * result added to the newest turn, as the artifacts kagent records them, then
+ * `more` artifacts. The rest of the read is the lab's own.
  */
-async function withToolCall(page: Page): Promise<void> {
+async function withToolCall(page: Page, more: unknown[] = []): Promise<void> {
   const sessionId = new URL(page.url()).pathname.split('/').pop();
   await page.route(
     url => url.pathname.endsWith(`/kagent/sessions/${sessionId}/tasks`),
@@ -80,10 +81,32 @@ async function withToolCall(page: Page): Promise<void> {
               },
             ],
           },
+          ...more,
         ];
       }
       await route.fulfill({ response, json: body });
     },
+  );
+}
+
+/** An agent reply several screens long, as a text artifact. */
+const longReply = {
+  artifactId: 'e2e-long-reply',
+  parts: [
+    {
+      text: Array.from(
+        { length: 30 },
+        (_, index) =>
+          `Paragraph ${index + 1} of a reply longer than the screen.`,
+      ).join('\n\n'),
+    },
+  ],
+};
+
+/** Where `locator` starts in the document, whatever the scroll. */
+function documentTop(locator: Locator): Promise<number> {
+  return locator.evaluate(
+    element => element.getBoundingClientRect().top + window.scrollY,
   );
 }
 
@@ -110,7 +133,7 @@ async function deleteCurrentSession(page: Page): Promise<void> {
       { timeout: 120_000, intervals: [10_000] },
     )
     .toBe('deleted');
-  await expect(page).toHaveURL(/\/agent-platform\/sessions$/, {
+  await expect(page).toHaveURL(/\/sessions$/, {
     timeout: 60_000,
   });
 }
@@ -122,7 +145,7 @@ test('a session starts from the home screen with a two-line message, its compose
   test.setTimeout(10 * 60_000);
   await openReadyAgent(admin, labAgent);
 
-  await open(admin, '/');
+  await openHome(admin);
   const prompt = admin.getByRole('textbox', { name: 'Prompt' });
   await expect(prompt).toBeVisible();
   await expectNoHorizontalScroll(admin, 'the home screen');
@@ -151,7 +174,7 @@ test('a session starts from the home screen with a two-line message, its compose
   const start = admin.getByRole('button', { name: 'Start', exact: true });
   await expectClearOfBottomBar(admin, start, 'Start');
   await start.click();
-  await expect(admin).toHaveURL(/\/agent-platform\/sessions\/[^/]+\/[^/]+$/, {
+  await expect(admin).toHaveURL(/\/sessions\/[^/]+\/[^/]+$/, {
     timeout: 60_000,
   });
 
@@ -195,6 +218,69 @@ test('a session starts from the home screen with a two-line message, its compose
       admin,
       'the session page with tool activity hidden',
     );
+
+    // The compact header (ShellPage's `compactHeader`): with a reply longer
+    // than the screen, once the header has scrolled away it turns into one
+    // row at the top of the view — the session's name, state and agent, the
+    // pin and the menu — with the composer still docked at the bottom. It is
+    // the same header, and the room it gives up stays in the flow, so the
+    // conversation does not move when it turns compact or back.
+    await withToolCall(admin, [longReply]);
+    await admin.reload();
+    await expect(admin.getByText('Paragraph 30 of a reply')).toBeVisible({
+      timeout: 60_000,
+    });
+    const header = admin.getByTestId('shell-page-header');
+    const heading = admin.getByRole('heading', { level: 1 });
+    const firstMessage = admin.getByTestId('timeline-user-message').first();
+    // The page opens at the end of the conversation (a layout effect, then
+    // once more a frame later): wait for that before scrolling anywhere.
+    await expect(header).toHaveAttribute('data-compact', '');
+    const compactTop = await documentTop(firstMessage);
+
+    await admin.evaluate(() => window.scrollTo(0, 0));
+    await expect(header).not.toHaveAttribute('data-compact');
+    await expect(heading).toBeInViewport();
+    expect(
+      await documentTop(firstMessage),
+      'the conversation moved as the header expanded',
+    ).toBeCloseTo(compactTop, 0);
+
+    await admin.evaluate(() =>
+      window.scrollTo(0, document.documentElement.scrollHeight),
+    );
+    await expect(header).toHaveAttribute('data-compact', '');
+    expect(
+      await documentTop(firstMessage),
+      'the conversation moved as the header turned compact',
+    ).toBeCloseTo(compactTop, 0);
+    expect((await header.boundingBox())!.y, 'at the top').toBeCloseTo(0, 0);
+    await expect(heading).toBeInViewport();
+    await expect(
+      header.getByRole('button', { name: 'Session actions' }),
+    ).toBeVisible();
+    await expect(
+      header.getByRole('button', { name: /^(Pin|Unpin) session$/ }),
+    ).toBeVisible();
+    // One of each: the compact row is the header, not a copy of it.
+    await expect(
+      admin.getByRole('button', { name: 'Session actions' }),
+    ).toHaveCount(1);
+    // Where the session runs, and at phone width the switch, stay out.
+    await expect(header.getByTestId('installation-chip')).toBeHidden();
+    await expect(header.getByRole('switch')).toHaveCount(0);
+    await expectClearOfBottomBar(
+      admin,
+      message,
+      'the session composer under the compact header',
+    );
+    await expectNoHorizontalScroll(
+      admin,
+      'the session page with the compact header',
+    );
+
+    await admin.evaluate(() => window.scrollTo(0, 0));
+    await expect(header).not.toHaveAttribute('data-compact');
   } finally {
     // The choice is the admin's for every session and every later spec, so
     // it goes back on whatever failed above.
@@ -209,7 +295,7 @@ test('a session starts from the home screen with a two-line message, its compose
 test('Sessions lists stacked rows whose titles read in full', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/sessions');
+  await open(admin, '/sessions');
   await expect(
     admin.getByRole('heading', { level: 1, name: 'Sessions' }),
   ).toBeVisible();
@@ -220,7 +306,7 @@ test('Sessions lists stacked rows whose titles read in full', async ({
   const rows = admin
     .getByRole('main')
     .getByRole('listitem')
-    .filter({ has: admin.locator('a[href*="/agent-platform/sessions/"]') });
+    .filter({ has: admin.locator('a[href*="/sessions/"]') });
   await rows
     .first()
     .waitFor({ timeout: 60_000 })
@@ -229,10 +315,7 @@ test('Sessions lists stacked rows whose titles read in full', async ({
     (await rows.count()) === 0,
     'the admin has no session on this lab to list',
   );
-  const title = rows
-    .first()
-    .locator('a[href*="/agent-platform/sessions/"]')
-    .first();
+  const title = rows.first().locator('a[href*="/sessions/"]').first();
   const box = await title.boundingBox();
   expect(
     box!.width,

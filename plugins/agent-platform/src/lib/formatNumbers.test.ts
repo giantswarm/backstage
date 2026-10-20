@@ -27,10 +27,33 @@ describe('formatTokens', () => {
     expect(formatTokens(1_000)).toBe('1.0k');
     expect(formatTokens(1_500)).toBe('1.5k');
     expect(formatTokens(2_600)).toBe('2.6k');
-    expect(formatTokens(999_999)).toBe('1000.0k');
     expect(formatTokens(1_200_000)).toBe('1.2M');
     expect(formatTokens(1_400_000)).toBe('1.4M');
     expect(formatTokens(8_400_000)).toBe('8.4M');
+  });
+
+  it('rounds half up to a tenth rather than truncating', () => {
+    expect(formatTokens(48_478)).toBe('48.5k');
+    expect(formatTokens(48_449)).toBe('48.4k');
+    expect(formatTokens(47_950)).toBe('48.0k');
+    expect(formatTokens(48_049)).toBe('48.0k');
+    // `48.05.toFixed(1)` is "48.0": the binary fraction sits just below the half.
+    expect(formatTokens(48_050)).toBe('48.1k');
+    expect(formatTokens(1_050_000)).toBe('1.1M');
+  });
+
+  it('moves to the next unit when the figure rounds up into it', () => {
+    expect(formatTokens(999_949)).toBe('999.9k');
+    expect(formatTokens(999_950)).toBe('1.0M');
+    expect(formatTokens(999_999)).toBe('1.0M');
+    expect(formatTokens(999_949_999)).toBe('999.9M');
+    expect(formatTokens(999_950_000)).toBe('1.0B');
+    expect(formatTokens(2_300_000_000)).toBe('2.3B');
+  });
+
+  it('rounds a fractional count, an average say, to whole tokens', () => {
+    expect(formatTokens(12.4)).toBe('12');
+    expect(formatTokens(999.6)).toBe('1.0k');
   });
 });
 
@@ -150,6 +173,13 @@ describe('formatBytes', () => {
     expect(formatBytes(6594474711)).toBe('6.1 GiB');
     expect(formatBytes(34254796848)).toBe('31.9 GiB');
     expect(formatBytes(120 * 1024 ** 3)).toBe('120 GiB');
+  });
+
+  it('moves to the next unit when the figure rounds up into it', () => {
+    // 1023.999 KiB rounds to 1024 KiB, which is a MiB.
+    expect(formatBytes(1_048_575)).toBe('1.0 MiB');
+    expect(formatBytes(1023 * 1024)).toBe('1023 KiB');
+    expect(formatBytes(1500 * 1024 ** 4)).toBe('1500 TiB');
   });
 });
 

@@ -31,6 +31,7 @@ export const sessionRecordWireSchema = z.looseObject({
   id: wireString,
   creator: wireString,
   agent: resourceReferenceWireSchema.nullish().catch(undefined),
+  preparedRevision: wireString,
   state: wireString,
   operation: wireString,
   failure: z
@@ -54,6 +55,8 @@ export const sessionRecordListWireSchema = z.looseObject({
   // `unknown[]`: rows are validated one at a time by the caller so a single
   // malformed row is skipped rather than failing the whole list.
   sessions: z.array(z.unknown()).nullish().catch(undefined),
+  // Set by agent-platform-backend when it cut the listing at its page limit.
+  truncated: z.boolean().optional().catch(undefined),
 });
 
 /**
@@ -66,7 +69,11 @@ export const sessionRecordEnvelopeWireSchema = z.looseObject({
 
 /** Whether a body is a `ListSessionsResponse` rather than a 0.10 list. */
 export function isSessionRecordList(raw: unknown): boolean {
-  return isRecord(raw) && 'sessions' in raw && !('data' in raw);
+  return (
+    isRecord(raw) &&
+    ('sessions' in raw || 'truncated' in raw) &&
+    !('data' in raw)
+  );
 }
 
 /**
@@ -161,6 +168,9 @@ export function normalizeSessionRecord(
     createdAt: normalizeTimestamp(wire.createdAt),
     updatedAt: normalizeTimestamp(wire.updatedAt),
     ...(agent && { agent }),
+    ...(wire.preparedRevision && {
+      preparedRevision: wire.preparedRevision,
+    }),
     ...(wire.state && { state: normalizeRuntimeState(wire.state) }),
     ...(wire.contextId && { contextId: wire.contextId }),
     ...(failure && { failure }),

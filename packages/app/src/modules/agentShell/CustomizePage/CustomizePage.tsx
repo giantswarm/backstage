@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import {
   Navigate,
   Route,
@@ -26,7 +26,6 @@ import {
   agentPlatformPlugin,
   CustomizeAgentsPanel,
   CustomizeDataProvider,
-  CustomizeModelPage,
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
   CustomizeWorkspacesPanel,
@@ -41,7 +40,6 @@ import musterPlugin, {
   CONNECTOR_GROUPS,
   type ConnectorGroup,
   connectorGroupInfo,
-  connectorGroupOfPath,
   CustomizeConnectorsPanel,
   CustomizeMusterProvider,
   CustomizeWorkflowsPanel,
@@ -126,6 +124,8 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
 ];
 
 const DEFAULT_TAB: CustomizeTabId = 'agents';
+
+const CONNECTORS_TAB = CUSTOMIZE_TABS.find(tab => tab.id === 'connectors')!;
 
 /**
  * Whether the strip shows a tab besides the open one: Skills unless no skill
@@ -212,6 +212,19 @@ function renderWorkflowCreateAssist(installation: string) {
 }
 
 /**
+ * This page's own path, through the route ref it is mounted at, so links
+ * follow the app's mount and any base path. It always resolves on this page;
+ * rendered anywhere else, it fails loudly rather than link to a guess.
+ */
+function useCustomizePath(): string {
+  const customizeLink = useRouteRef(customizeRouteRef);
+  if (!customizeLink) {
+    throw new Error('The Customize page is not mounted at customizeRouteRef');
+  }
+  return customizeLink();
+}
+
+/**
  * The Connectors tab's sub-tabs (`CONNECTOR_GROUPS`): the customer's own
  * connectors at the tab's own address, those for the platform's
  * infrastructure and the platform's internal servers each at a path under it. Routed tabs like Model hosting's
@@ -223,11 +236,11 @@ function ConnectorGroupTabs({
 }: {
   counts: MusterCustomizeCounts['connectorGroups'];
 }) {
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const customize = useCustomizePath();
   const { search } = useLocation();
   return (
     <RouteTabs
-      basePath={`${customizeLink?.() ?? '/customize'}/connectors`}
+      basePath={`${customize}/connectors`}
       search={search}
       tabs={CONNECTOR_GROUPS.map(({ id, path, title }) => ({
         id,
@@ -353,11 +366,11 @@ function CustomizeTabContent({
 /** Opens the first tab, keeping the query string (the installation scope). */
 function DefaultTabRedirect() {
   const { search } = useLocation();
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const customize = useCustomizePath();
   return (
     <Navigate
       to={{
-        pathname: `${customizeLink?.() ?? '/customize'}/${DEFAULT_TAB}`,
+        pathname: `${customize}/${DEFAULT_TAB}`,
         search,
       }}
       replace
@@ -368,14 +381,12 @@ function DefaultTabRedirect() {
 /** Opens a Connectors sub-tab at its own address, keeping the query string. */
 function ConnectorsTabRedirect({ group }: { group: ConnectorGroup }) {
   const { search } = useLocation();
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const customize = useCustomizePath();
   const { path } = connectorGroupInfo(group);
   return (
     <Navigate
       to={{
-        pathname: `${customizeLink?.() ?? '/customize'}/connectors${
-          path ? `/${path}` : ''
-        }`,
+        pathname: `${customize}/connectors${path ? `/${path}` : ''}`,
         search,
       }}
       replace
@@ -384,53 +395,47 @@ function ConnectorsTabRedirect({ group }: { group: ConnectorGroup }) {
 }
 
 /**
- * The Connectors sub-tab a path below the tab names: none for the tab's own
- * address, one segment for the others. Anything else (a deeper path, an
- * unknown segment) is undefined. A connector's own page lives under the Agent
- * Platform, so no connector's name is ever a path here.
+ * An address no route below claims, sent to its nearest valid parent: the
+ * tab it starts with, else the first tab.
  */
-function connectorGroupOfSegments(
-  segments: string[],
-): ConnectorGroup | undefined {
-  if (segments.length === 0) {
-    return 'yours';
-  }
-  return segments.length === 1 && segments[0] !== ''
-    ? connectorGroupOfPath(segments[0])
-    : undefined;
+function NearestTabRedirect() {
+  const { search } = useLocation();
+  const customize = useCustomizePath();
+  const [tabId] = (useParams()['*'] ?? '').split('/');
+  const tab = CUSTOMIZE_TABS.find(candidate => candidate.id === tabId);
+  return (
+    <Navigate
+      to={{ pathname: `${customize}/${tab?.id ?? DEFAULT_TAB}`, search }}
+      replace
+    />
+  );
 }
 
-function CustomizeTabPage() {
-  const splat = useParams()['*'] ?? '';
-  const [tabId, ...rest] = splat.split('/');
-  const { search } = useLocation();
+function CustomizeTabPage({
+  tab,
+  connectorGroup,
+}: {
+  tab: CustomizeTab;
+  connectorGroup?: ConnectorGroup;
+}) {
+  const { pathname, search } = useLocation();
   const { hasSkillRepositories } = useCustomizeData();
-  const tab = CUSTOMIZE_TABS.find(candidate => candidate.id === tabId);
+  // A trailing slash names the same tab, at its own address, so the strips
+  // can tell which tab and sub-tab are open.
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    return (
+      <Navigate
+        to={{ pathname: pathname.replace(/\/+$/, ''), search }}
+        replace
+      />
+    );
+  }
   // Skills without a repository lands on the first tab. Workspaces always
   // render at their address: whether an installation has the
   // workspace-manager settles only as the probes answer, and the panel says
   // so where none has.
-  if (!tab || (tab.id === 'skills' && hasSkillRepositories === false)) {
+  if (tab.id === 'skills' && hasSkillRepositories === false) {
     return <DefaultTabRedirect />;
-  }
-  let connectorGroup: ConnectorGroup | undefined;
-  if (tab.id === 'connectors') {
-    // A trailing slash names the same sub-tab, at its own address, so the
-    // strip can tell which is open; a retired sub-tab path (`families`)
-    // names the sub-tab it became; any other path lands on the default.
-    const trimmed = rest[rest.length - 1] === '' ? rest.slice(0, -1) : rest;
-    const retired =
-      trimmed.length === 1 &&
-      Object.hasOwn(LEGACY_CONNECTOR_GROUP_PATHS, trimmed[0])
-        ? LEGACY_CONNECTOR_GROUP_PATHS[trimmed[0]]
-        : undefined;
-    if (retired) {
-      return <ConnectorsTabRedirect group={retired} />;
-    }
-    connectorGroup = connectorGroupOfSegments(trimmed);
-    if (!connectorGroup || trimmed.length !== rest.length) {
-      return <ConnectorsTabRedirect group={connectorGroup ?? 'yours'} />;
-    }
   }
   // Keyed by tab, so the search starts over on each tab — and by the
   // address's `q`, so a link that brings a search (the palette's "+N more")
@@ -447,42 +452,92 @@ function CustomizeTabPage() {
   );
 }
 
-/** The Customize screen itself: its tabs, over the data they share. */
-function CustomizeScreen() {
+/**
+ * The Customize screen itself, one tab of it, over the data the tabs share.
+ * Every tab's address renders this same element, so switching tabs keeps
+ * the providers (and their reads) mounted.
+ */
+function CustomizeScreen({
+  tab,
+  connectorGroup,
+}: {
+  tab: CustomizeTab;
+  connectorGroup?: ConnectorGroup;
+}) {
   return (
     <CustomizeMusterProvider>
       <CustomizeDataProvider>
-        <Routes>
-          <Route index element={<DefaultTabRedirect />} />
-          <Route path="*" element={<CustomizeTabPage />} />
-        </Routes>
+        <CustomizeTabPage tab={tab} connectorGroup={connectorGroup} />
       </CustomizeDataProvider>
     </CustomizeMusterProvider>
   );
 }
 
+/** A plugin's tab below its list, attached to the page's `pages` input. */
+export type CustomizeSubPage = {
+  /** The tab's id, its path segment: `agents`, `connectors`… */
+  path: string;
+  /** The plugin's router for everything below the tab's list. */
+  element: ReactElement;
+};
+
 /**
- * The shell's Customize page: a tab per area at `/customize/:tab`, with
- * `/customize` opening the first, and one model's page beside the Models tab
- * (`/customize/models/<installation>/<namespace>/<name>`, its tabs under
- * it). The model's page
- * is outside the screen's providers: it mounts only the agent-platform data
- * it reads (`CustomizeModelPage`), not the skill catalogue or muster, whose
- * errors panel would otherwise sit above it. Both share one query client, so
- * the list's reads are cache hits on the page. Rendered without the app's
- * page layout, so it mounts the header-actions slot its pages render.
+ * The shell's Customize page: a tab per area at `/customize/<tab>`, with
+ * `/customize` opening the first, the Connectors tab's sub-tabs at
+ * `/customize/connectors/<group>`, and everything deeper under a tab — a
+ * resource's page, its create and edit flows — the router of the plugin that
+ * attached the tab (`pages`). A static path outranks the sub-page's splat,
+ * so each tab's bare path is this screen and never the plugin's router.
+ *
+ * The plugins' pages are outside the screen's providers: each mounts only
+ * the data it reads, not the skill catalogue or muster, whose errors panel
+ * would otherwise sit above it. Both share one query client, so the list's
+ * reads are cache hits on the page. Rendered without the app's page layout,
+ * so it mounts the header-actions slot its pages render.
  */
-export function CustomizePage() {
+export function CustomizePage({ pages = [] }: { pages?: CustomizeSubPage[] }) {
   return (
     <PageHeaderActionsProvider>
       {/* Until a tab's page names itself. */}
       <ShellDocumentTitle title="Customize" />
       <Routes>
-        <Route
-          path="models/:installation/:namespace/:name/*"
-          element={<CustomizeModelPage />}
-        />
-        <Route path="*" element={<CustomizeScreen />} />
+        <Route index element={<DefaultTabRedirect />} />
+        {CUSTOMIZE_TABS.map(tab => (
+          <Route
+            key={tab.id}
+            path={tab.id}
+            element={<CustomizeScreen tab={tab} />}
+          />
+        ))}
+        {CONNECTOR_GROUPS.filter(group => group.path).map(group => (
+          <Route
+            key={group.id}
+            path={`connectors/${group.path}`}
+            element={
+              <CustomizeScreen tab={CONNECTORS_TAB} connectorGroup={group.id} />
+            }
+          />
+        ))}
+        {/* A retired sub-tab path (`families`) names the sub-tab it became. */}
+        {Object.entries(LEGACY_CONNECTOR_GROUP_PATHS).map(([path, group]) => (
+          <Route
+            key={path}
+            path={`connectors/${path}`}
+            element={<ConnectorsTabRedirect group={group} />}
+          />
+        ))}
+        {pages
+          .filter(page =>
+            CUSTOMIZE_TABS.some(candidate => candidate.id === page.path),
+          )
+          .map(page => (
+            <Route
+              key={page.path}
+              path={`${page.path}/*`}
+              element={page.element}
+            />
+          ))}
+        <Route path="*" element={<NearestTabRedirect />} />
       </Routes>
     </PageHeaderActionsProvider>
   );

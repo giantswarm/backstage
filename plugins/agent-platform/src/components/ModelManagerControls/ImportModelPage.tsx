@@ -107,7 +107,7 @@ export function describeSearchResult(result: ModelManagerSearchResult): string {
  * server will decide. A model that does not fit cannot be submitted; a gated
  * one needs the installation's hub token.
  *
- * A page of its own (`/agent-platform/models/serving/import`), the app's
+ * A page of its own (`/customize/models/hosting/import`), the app's
  * single-step create pattern (`WizardFrame`): a refused request stays on
  * it, saying so.
  *
@@ -292,7 +292,9 @@ export function ImportModelPage({
             : 'Search the hub, then pick a model from the results.'
         }`,
   };
-  const targetError = useSelectFieldError(validation.errorFor(errors.target));
+  const targetError = useSelectFieldError(
+    validation.errorFor('target', errors.target),
+  );
 
   const submit = async () => {
     if (errors.target || errors.model) {
@@ -398,7 +400,9 @@ export function ImportModelPage({
                 onChange={setQuery}
                 placeholder="e.g. Qwen3-14B, devstral, org/repository"
                 description="Enter repository ids or words from the name; the hub ranks by downloads."
-                {...fieldErrorProps(validation.errorFor(errors.model))}
+                // Not checked on leaving: its problem is the pick from the
+                // results, not the words typed to search.
+                {...fieldErrorProps(validation.errorFor('model', errors.model))}
               />
             </div>
             <Button

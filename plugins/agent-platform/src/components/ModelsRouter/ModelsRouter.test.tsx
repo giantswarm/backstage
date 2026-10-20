@@ -15,6 +15,19 @@ import { ModelsRouter } from './ModelsRouter';
 jest.mock('../NewModelPage', () => ({
   NewModelPage: () => <div>new-model-view</div>,
 }));
+jest.mock('../EditModelPage', () => ({
+  EditModelPage: () => <div>edit-model-view</div>,
+}));
+jest.mock('../CustomizeModelPage', () => ({
+  CustomizeModelPage: () => <div>model-page</div>,
+}));
+jest.mock('../HostingFlowRoutes', () => ({
+  ServeModelRoute: () => <div>serve-flow</div>,
+  ImportModelRoute: () => <div>import-flow</div>,
+  PullModelRoute: () => <div>pull-flow</div>,
+  AddModelBackendRoute: () => <div>add-backend-flow</div>,
+  AddGpuNodePoolRoute: () => <div>add-pool-flow</div>,
+}));
 // Running models registers one header action, as the real view does (Serve
 // model), so the header's order can be asserted.
 jest.mock('../ServingPage', () => ({
@@ -117,9 +130,10 @@ const CurrentPath = () => {
 function renderTab(path: string) {
   return renderInTestApp(
     <Routes>
-      <Route path="/customize/*" element={<CurrentPath />} />
+      {/* The list: the Customize screen's Models tab. */}
+      <Route path="/customize/models" element={<CurrentPath />} />
       <Route
-        path="/agent-platform/models/*"
+        path="/customize/models/*"
         element={
           // As the app's page does: the views' header actions land in the
           // hosting header's slot.
@@ -133,7 +147,7 @@ function renderTab(path: string) {
     {
       initialRouteEntries: [path],
       mountedRoutes: {
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
     },
@@ -162,24 +176,13 @@ describe('ModelsRouter', () => {
     mockUseServing.mockReturnValue(noServingLayer);
   });
 
-  it('sends the tab root to the Customize screen', async () => {
-    mockUseServing.mockReturnValue(withServingLayer);
-    renderTab('/agent-platform/models?installation=alpha');
-
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/customize/models?installation=alpha',
-      );
-    });
-  });
-
   describe('model hosting', () => {
     beforeEach(() => {
       mockUseServing.mockReturnValue(withServingLayer);
     });
 
     it('frames the serving views as one page with the standard title', async () => {
-      renderTab('/agent-platform/models/capacity');
+      renderTab('/customize/models/hosting/capacity');
 
       expect(await screen.findByText(/^capacity-view/)).toBeInTheDocument();
       expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
@@ -207,7 +210,9 @@ describe('ModelsRouter', () => {
       'says above the %s view why a manager is withheld for want of a per-user sign-in',
       async view => {
         mockSharedIdentity = { clusterManager: ['inst-1'], modelManager: [] };
-        renderTab(`/agent-platform/models/${view}`);
+        renderTab(
+          `/customize/models/hosting/${view}`.replace(/\/serving$/, ''),
+        );
 
         expect(
           await screen.findByText('shared-identity-note'),
@@ -216,7 +221,7 @@ describe('ModelsRouter', () => {
     );
 
     it('offers the serving views as the page tabs, without Model configs', async () => {
-      renderTab('/agent-platform/models/serving');
+      renderTab('/customize/models/hosting');
 
       expect(await screen.findByText('serving-view')).toBeInTheDocument();
       expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
@@ -225,7 +230,7 @@ describe('ModelsRouter', () => {
       ]);
       expect(screen.getByRole('tab', { name: 'GPU capacity' })).toHaveAttribute(
         'href',
-        '/agent-platform/models/capacity',
+        '/customize/models/hosting/capacity',
       );
       expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
         'Running models',
@@ -234,7 +239,7 @@ describe('ModelsRouter', () => {
 
     it('names the tabs per the prototype where cluster-manager runs, the cache a tab of its own', async () => {
       mockClusterManager = ['inst-1'];
-      renderTab('/agent-platform/models/capacity');
+      renderTab('/customize/models/hosting/capacity');
 
       expect(await screen.findByText('capacity-view')).toBeInTheDocument();
       expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
@@ -244,13 +249,13 @@ describe('ModelsRouter', () => {
       ]);
       expect(screen.getByRole('tab', { name: 'Model cache' })).toHaveAttribute(
         'href',
-        '/agent-platform/models/cache',
+        '/customize/models/hosting/cache',
       );
     });
 
     it('routes the Model cache view', async () => {
       mockClusterManager = ['inst-1'];
-      renderTab('/agent-platform/models/cache');
+      renderTab('/customize/models/hosting/cache');
 
       expect(await screen.findByText('cache-view')).toBeInTheDocument();
     });
@@ -263,7 +268,9 @@ describe('ModelsRouter', () => {
       'heads the %s view with the figures about what it lists',
       async (view, content, scope) => {
         mockClusterManager = ['inst-1'];
-        renderTab(`/agent-platform/models/${view}`);
+        renderTab(
+          `/customize/models/hosting/${view}`.replace(/\/serving$/, ''),
+        );
 
         expect(await screen.findByText(content)).toBeInTheDocument();
         // One row, scoped: never the full row repeated on every tab.
@@ -281,7 +288,9 @@ describe('ModelsRouter', () => {
         "offers the Environment control in the %s view's header",
         async (view, content) => {
           mockClusterManager = ['inst-1'];
-          renderTab(`/agent-platform/models/${view}`);
+          renderTab(
+            `/customize/models/hosting/${view}`.replace(/\/serving$/, ''),
+          );
 
           expect(await screen.findByText(content)).toBeInTheDocument();
           // No component: the views read KServe, model-manager and
@@ -293,7 +302,7 @@ describe('ModelsRouter', () => {
       );
 
       it("puts the Environment control after the title and before the view's actions and the tabs", async () => {
-        renderTab('/agent-platform/models/serving');
+        renderTab('/customize/models/hosting');
 
         const action = await screen.findByRole('button', {
           name: 'serve-action',
@@ -312,7 +321,7 @@ describe('ModelsRouter', () => {
 
       it("leaves the control off an older release's pool link, whose installation is the serve target", async () => {
         renderTab(
-          '/agent-platform/models/serving?serve=1&installation=inst-2&pool=gpu',
+          '/customize/models/hosting?serve=1&installation=inst-2&pool=gpu',
         );
 
         expect(await screen.findByText('serving-view')).toBeInTheDocument();
@@ -322,7 +331,7 @@ describe('ModelsRouter', () => {
       it('keeps the tabs under a pinned environment that runs no serving layer', async () => {
         scopeState.scope = 'inst-9';
         mockUseServing.mockReturnValue(noServingLayer);
-        renderTab('/agent-platform/models/capacity');
+        renderTab('/customize/models/hosting/capacity');
 
         expect(await screen.findByText('capacity-view')).toBeInTheDocument();
         expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
@@ -336,7 +345,7 @@ describe('ModelsRouter', () => {
       it('keeps the Model cache tab while it is open, though cluster-manager is not in view', async () => {
         scopeState.scope = 'inst-9';
         mockClusterManager = [];
-        renderTab('/agent-platform/models/cache');
+        renderTab('/customize/models/hosting/cache');
 
         expect(await screen.findByText('cache-view')).toBeInTheDocument();
         expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
@@ -348,7 +357,7 @@ describe('ModelsRouter', () => {
         scopeState.scope = 'nowhere';
         mockUnknownPin = 'nowhere';
         mockUseServing.mockReturnValue(noServingLayer);
-        renderTab('/agent-platform/models/serving');
+        renderTab('/customize/models/hosting');
 
         expect(await screen.findByTestId('scope-note')).toBeInTheDocument();
         expect(screen.queryByText('serving-view')).toBeNull();
@@ -361,78 +370,86 @@ describe('ModelsRouter', () => {
           ...noServingLayer,
           unreachableInstallations: ['inst-3'],
         });
-        renderTab('/agent-platform/models/serving');
+        renderTab('/customize/models/hosting');
 
         expect(await screen.findByText('serving-view')).toBeInTheDocument();
         expect(screen.queryByText(/^hosting-kpis/)).toBeNull();
       });
 
       it('keeps the installation scope in the tab links', async () => {
-        renderTab('/agent-platform/models/serving?installation=inst-1');
+        renderTab('/customize/models/hosting?installation=inst-1');
 
         expect(await screen.findByText('serving-view')).toBeInTheDocument();
         expect(
           screen.getByRole('tab', { name: 'GPU capacity' }),
         ).toHaveAttribute(
           'href',
-          '/agent-platform/models/capacity?installation=inst-1',
+          '/customize/models/hosting/capacity?installation=inst-1',
         );
       });
     });
 
     it('shows no figures on a portal without a serving layer', async () => {
       mockUseServing.mockReturnValue(noServingLayer);
-      renderTab('/agent-platform/models/serving');
+      renderTab('/customize/models/hosting');
 
       expect(await screen.findByText('serving-view')).toBeInTheDocument();
       expect(screen.queryByText(/^hosting-kpis/)).toBeNull();
     });
   });
 
-  it('routes the create flow directly under the tab', async () => {
-    renderTab('/agent-platform/models/new');
-    expect(await screen.findByText('new-model-view')).toBeInTheDocument();
+  it.each([
+    ['/customize/models/new', 'new-model-view'],
+    ['/customize/models/inst-1/kagent/qwen3', 'model-page'],
+    ['/customize/models/inst-1/kagent/qwen3/usage', 'model-page'],
+    ['/customize/models/inst-1/kagent/qwen3/edit', 'edit-model-view'],
+    ['/customize/models/hosting/serve', 'serve-flow'],
+    ['/customize/models/hosting/import', 'import-flow'],
+    ['/customize/models/hosting/pull', 'pull-flow'],
+    ['/customize/models/hosting/add-backend', 'add-backend-flow'],
+    ['/customize/models/hosting/capacity/add-pool', 'add-pool-flow'],
+  ])('routes %s', async (path, text) => {
+    mockUseServing.mockReturnValue(withServingLayer);
+    renderTab(path);
+
+    expect(await screen.findByText(text)).toBeInTheDocument();
   });
 
-  it("redirects a model's former path to its page beside Customize › Models, keeping the query string", async () => {
-    renderTab('/agent-platform/models/inst-1/kagent/qwen3?installation=alpha');
+  it.each([
+    // An installation or a namespace alone names no model: the list.
+    [
+      '/customize/models/inst-1?installation=alpha',
+      '/customize/models?installation=alpha',
+    ],
+    ['/customize/models/inst-1/kagent', '/customize/models'],
+    // An unknown hosting view: Running models.
+    ['/customize/models/hosting/whatever', '/customize/models/hosting'],
+    // Deeper addresses under `hosting` or `new` are never a model on an
+    // installation named so: the view they name, else Running models, or
+    // Connect a model.
+    [
+      '/customize/models/hosting/capacity/x',
+      '/customize/models/hosting/capacity',
+    ],
+    ['/customize/models/hosting/cache/x/y', '/customize/models/hosting/cache'],
+    [
+      '/customize/models/hosting/a/b/c?installation=alpha',
+      '/customize/models/hosting?installation=alpha',
+    ],
+    ['/customize/models/hosting/a/b/edit', '/customize/models/hosting'],
+    ['/customize/models/new/a/b', '/customize/models/new'],
+    ['/customize/models/new/a/b/edit', '/customize/models/new'],
+    // An unknown step of a model's edit: the edit.
+    [
+      '/customize/models/inst-1/kagent/qwen3/edit/whatever',
+      '/customize/models/inst-1/kagent/qwen3/edit',
+    ],
+  ])('sends %s to its nearest valid parent', async (path, target) => {
+    mockUseServing.mockReturnValue(withServingLayer);
+    renderTab(path);
 
     await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/customize/models/inst-1/kagent/qwen3?installation=alpha',
-      );
-    });
-    expect(screen.queryByText('Model hosting')).toBeNull();
-  });
-
-  it('redirects the legacy configs view through the tab root, keeping the query string', async () => {
-    renderTab('/agent-platform/models/configs?installation=alpha');
-
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/customize/models?installation=alpha',
-      );
-    });
-  });
-
-  it('redirects the legacy create deep link, keeping the query string', async () => {
-    renderTab('/agent-platform/models/configs/new?installation=alpha');
-
-    expect(await screen.findByText('new-model-view')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/models/new?installation=alpha',
-      );
-    });
-  });
-
-  it("redirects a legacy model deep link to the model's page", async () => {
-    renderTab('/agent-platform/models/configs/inst-1/kagent/qwen3');
-
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/customize/models/inst-1/kagent/qwen3',
-      );
+      expect(screen.getAllByTestId('path')[0]).toHaveTextContent(target);
     });
   });
 });

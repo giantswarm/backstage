@@ -163,7 +163,7 @@ const writesOf = (callTool: jest.Mock) =>
 describe('DeleteClusterDialog', () => {
   it('shows what goes with the cluster and asks for its name', async () => {
     const user = userEvent.setup();
-    await renderDialog({}, false);
+    const { callTool } = await renderDialog({}, false);
 
     expect(
       await screen.findByText(
@@ -174,9 +174,19 @@ describe('DeleteClusterDialog', () => {
       screen.getByText('Served on it, and gone with it: qwen3-4b.'),
     ).toBeInTheDocument();
     const remove = screen.getByRole('button', { name: 'Delete cluster' });
-    expect(remove).toBeDisabled();
-    await user.type(screen.getByLabelText(/Type demo1 to confirm/), 'demo1');
-    expect(remove).toBeEnabled();
+    // Pressable before the name is typed: the field says what is missing.
+    await user.click(remove);
+    const field = screen.getByLabelText(/Type demo1 to confirm/);
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAccessibleDescription(
+      expect.stringContaining('Type demo1 to confirm the deletion.'),
+    );
+    expect(field).toHaveFocus();
+    expect(writesOf(callTool)).toHaveLength(0);
+
+    // Pasted with a trailing space, as copied from a table.
+    await user.type(field, 'demo1 ');
+    expect(field).not.toHaveAttribute('aria-invalid');
   });
 
   it('deletes as the person and offers the second call cluster-manager names', async () => {

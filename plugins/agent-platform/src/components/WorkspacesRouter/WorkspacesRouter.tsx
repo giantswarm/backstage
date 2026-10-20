@@ -5,7 +5,7 @@ import { QueryClientProvider } from '../QueryClientProvider';
 import { WorkspaceEditorRoute } from '../WorkspaceEditorPage';
 
 /**
- * The workspace pages under `/agent-platform/workspaces`: `/new` creates a
+ * The workspace pages under `/customize/workspaces`: `/new` creates a
  * workspace and `<installation>/<organization>/<name>/edit` edits one; the
  * list is the shell's Customize → Workspaces tab. Its own `PageHeaderActionsProvider`, since the page renders without
  * the app's page layout (`noHeader`).

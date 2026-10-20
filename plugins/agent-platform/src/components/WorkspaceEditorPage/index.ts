@@ -1,6 +1,6 @@
 export {
   WorkspaceEditorPage,
   WorkspaceEditorRoute,
-  workspacesTabHref,
+  useWorkspacesTabHref,
 } from './WorkspaceEditorPage';
 export type { WorkspaceEditorPageProps } from './WorkspaceEditorPage';

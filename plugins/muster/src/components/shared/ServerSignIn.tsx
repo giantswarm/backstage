@@ -385,6 +385,11 @@ export function GatedSignIn({ reason }: { reason: string }) {
 export interface ServerSignInProps {
   /** The muster server name, as reported by `list_tools` / `auth://status`. */
   serverName: string;
+  /**
+   * What the sentences call the server for people (its display name); the
+   * server name by default.
+   */
+  displayName?: string;
   installation?: string;
   /** Show the server name next to the action (a list of several servers). */
   showName?: boolean;
@@ -408,13 +413,14 @@ export interface ServerSignInProps {
  */
 export function ServerSignIn({
   serverName,
+  displayName,
   installation,
   showName,
   noun = 'server',
 }: ServerSignInProps) {
   const classes = useStyles();
   const state = useServerSignIn(serverName, installation, { noun });
-  const parts = authActionParts(serverName, state, {
+  const parts = authActionParts(displayName ?? serverName, state, {
     noun,
     alwaysOffer: true,
   });
@@ -446,6 +452,11 @@ export function ServerSignIn({
 export interface ServerAuthActionsProps {
   /** The muster server name, as reported by `auth://status`. */
   serverName: string;
+  /**
+   * What the sentences call the server for people (its display name); the
+   * server name by default.
+   */
+  displayName?: string;
   installation?: string;
   /** Show the server name next to the action (per-instance lists). */
   showName?: boolean;
@@ -479,6 +490,7 @@ export interface ServerAuthActionsProps {
  */
 export function ServerAuthActions({
   serverName,
+  displayName,
   installation,
   showName,
   oauthConfigured,
@@ -487,7 +499,7 @@ export function ServerAuthActions({
 }: ServerAuthActionsProps) {
   const classes = useStyles();
   const state = useServerSignIn(serverName, installation, { noun });
-  const parts = authActionParts(serverName, state, {
+  const parts = authActionParts(displayName ?? serverName, state, {
     noun,
     oauthConfigured,
     signInGate,

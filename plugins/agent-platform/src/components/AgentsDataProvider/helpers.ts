@@ -6,6 +6,7 @@ import {
   deriveAgentReadiness,
   getAgentStatusChangedAt,
   Harness,
+  type HarnessRuntime,
   isAgentTransitional,
   KubeObjectInterface,
   ModelConfig,
@@ -37,6 +38,7 @@ import {
   type ToolsetCarrier,
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
+import { CREATED_BY_ANNOTATION, tenantOf } from '../../lib/tenants';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -194,6 +196,13 @@ export type AgentRow = {
   harness?: string;
   /** {@link harnessTitle} of that Harness, once it has been read. */
   harnessTitle?: string;
+  /**
+   * That Harness's runtime family, once it has been read: what decides
+   * whether a message may carry images (`imagesUnsupportedReason`).
+   */
+  harnessRuntime?: HarnessRuntime;
+  /** The ModelConfig's `spec.provider` (`Anthropic`, `OpenAI`, `Ollama`, …). */
+  modelProvider?: string;
   skillCount: number;
   /**
    * The git-sourced skills the agent mounts, each as its
@@ -253,6 +262,18 @@ export type AgentRow = {
    * nothing is preselected or started that the answer then withdraws.
    */
   isSessionPending?: boolean;
+  /**
+   * The tenant the agent belongs to ({@link tenantOf} its namespace):
+   * `platform`, `organization <name>`, or `namespace <name>`.
+   */
+  tenant?: string;
+  /**
+   * Who created the agent ({@link CREATED_BY_ANNOTATION}, the caller's email
+   * agent-manager recorded): for display and the "created by me" filter only.
+   * `undefined` for an agent created before agent-manager recorded it, or
+   * not through agent-manager.
+   */
+  createdBy?: string;
 };
 
 /**
@@ -369,6 +390,10 @@ export function toAgentRow(
       candidate.getNamespace() === namespace &&
       candidate.getName() === harnessName,
   );
+  // The named Harness's once read, or the inline one's.
+  const harnessRuntime = harnessName
+    ? harness?.getRuntime()
+    : agent.getInlineHarnessRuntime();
   const modelConfig = resolveModelConfig(agent, modelConfigs);
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
@@ -382,6 +407,7 @@ export function toAgentRow(
       pin: skill.pin,
     }));
   const skillIds = gitSkills.map(skill => skill.id);
+  const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
   const skillPins = Object.fromEntries(
     gitSkills.map(skill => [skill.id, skill.pin]),
   );
@@ -397,6 +423,10 @@ export function toAgentRow(
     modelName: modelConfig?.getModel(),
     harness: harnessName,
     ...(harness && { harnessTitle: harnessTitle(harnessChoiceOf(harness)) }),
+    ...(harnessRuntime && { harnessRuntime }),
+    ...(modelConfig?.getProvider() && {
+      modelProvider: modelConfig.getProvider(),
+    }),
     skillCount: agent.getSkillCount(),
     ...(skillIds.length > 0 ? { skillIds, skillPins } : {}),
     ...(modelConfigName
@@ -404,6 +434,8 @@ export function toAgentRow(
       : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
+    tenant: tenantOf(namespace),
+    ...(createdBy ? { createdBy } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
     ...(carriers

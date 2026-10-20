@@ -4,6 +4,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import {
+  HelmRelease,
+  useSelfSubjectAccessReview,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
   EmptyStateCard,
   LoadingIndicator,
   WizardFrame,
@@ -14,11 +18,14 @@ import {
   useAgentManagerInfo,
 } from '../../hooks/useAgentManager';
 import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
+import { useCloseHref } from '../../hooks/useCloseHref';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { formStateOfAgent } from '../../lib/agentEdit';
 import type { AgentManagerAgent, WriteMode } from '../../lib/agentManager';
 import type { DiscoveredSkill } from '../../lib/skills';
-import { agentDetailRouteRef, agentEditRouteRef } from '../../routes';
+import type { DiscoveredPlugin } from '../../lib/plugins';
+import { tenantOf } from '../../lib/tenants';
+import { agentDetailRouteRef } from '../../routes';
 import {
   agentManagerAbsenceReason,
   agentWriteMode,
@@ -43,6 +50,7 @@ function EditAgentWizard({
   writeMode,
   detailHref,
   catalog,
+  pluginCatalog,
   platformHarness,
 }: {
   installation: string;
@@ -50,11 +58,17 @@ function EditAgentWizard({
   writeMode: WriteMode;
   detailHref: string | undefined;
   catalog: DiscoveredSkill[];
+  pluginCatalog: DiscoveredPlugin[];
   platformHarness: string | undefined;
 }) {
   const [seed] = useState(() => ({
     edit: { agent, installation, writeMode, detailHref },
-    state: formStateOfAgent(agent, { installation, catalog, platformHarness }),
+    state: formStateOfAgent(agent, {
+      installation,
+      catalog,
+      pluginCatalog,
+      platformHarness,
+    }),
   }));
   return (
     <NewAgentFormProvider edit={seed.edit} initialState={seed.state}>
@@ -70,7 +84,7 @@ function EditAgentWizard({
 }
 
 /**
- * Edit an agent (`/agent-platform/agents/edit/<installation>/<namespace>/<name>`
+ * Edit an agent (`/customize/agents/<installation>/<namespace>/<name>/edit`
  * and its `/skills`, `/tools`, `/review` steps): the create wizard, prefilled.
  * Like `EditSkillPage` for skills, this page only reads what the wizard needs
  * — agent-manager's `get_agent` (its availability and, for an agent applied
@@ -85,6 +99,7 @@ export function EditAgentPage() {
   const { installation = '', namespace = '', name = '' } = useParams();
   const agentDetailLink = useRouteRef(agentDetailRouteRef);
   const detailHref = agentDetailLink?.({ installation, namespace, name });
+  const closeHref = useCloseHref(detailHref);
 
   // Feature detection, the same as the create flow's and the detail page's:
   // edits go through agent-manager, reached through the installation's muster.
@@ -118,6 +133,23 @@ export function EditAgentPage() {
     isVerdictPending: isLoading || (isGitOpsOwned && isInfoLoading),
   };
   const writeMode = agentWriteMode(gate);
+  // A live save runs as the person against the agent's HelmRelease, so a
+  // deep link from someone who may not update it answers with the refusal
+  // up front rather than at the end of the wizard. Not where agent-manager
+  // writes as its ServiceAccount.
+  const asksAccess =
+    writeMode === 'apply' && info?.identity !== 'serviceAccount';
+  const updateAccess = useSelfSubjectAccessReview(
+    installation,
+    {
+      group: HelmRelease.group,
+      resource: HelmRelease.plural,
+      namespace: agent?.helmRelease?.namespace ?? namespace,
+      name: agent?.helmRelease?.name ?? name,
+      verb: 'update',
+    },
+    { enabled: asksAccess },
+  );
   const reason = agentManagerAbsenceReason(
     { ...gate, isGitOpsOwned: isGitOpsOwned && !canCommit },
     installation,
@@ -154,9 +186,29 @@ export function EditAgentPage() {
   } else if (
     presence === 'unknown' ||
     gate.isVerdictPending ||
+    (asksAccess && updateAccess.isLoading) ||
     (agent && isCatalogPending)
   ) {
     body = <LoadingIndicator label="Reading the agent…" />;
+  } else if (
+    asksAccess &&
+    !updateAccess.allowed &&
+    failure?.kind !== 'not-connected'
+  ) {
+    // Before the read's failure: a person without the role may not read the
+    // agent's HelmRelease either, so agent-manager's get_agent fails as them,
+    // and the refusal is the answer that says why. Not before a muster
+    // session that must first connect to agent-manager: that is the answer
+    // then, and agent-manager may write as its ServiceAccount there.
+    body = (
+      <EmptyStateCard
+        title="You cannot change this agent"
+        description={`Changing the agents of ${tenantOf(
+          namespace,
+        )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
+        actions={backLink}
+      />
+    );
   } else if (failure) {
     body = (
       <Flex direction="column" gap="3">
@@ -193,6 +245,7 @@ export function EditAgentPage() {
         writeMode={writeMode ?? 'apply'}
         detailHref={detailHref}
         catalog={catalog.skills}
+        pluginCatalog={catalog.plugins}
         platformHarness={info?.harness?.name}
       />
     );
@@ -205,20 +258,9 @@ export function EditAgentPage() {
       title="Edit agent"
       documentTitle={[`Edit ${shownName}`, 'Agents']}
       context={`Customize / Agents / ${shownName}`}
-      closeHref={detailHref ?? '/'}
+      closeHref={closeHref}
     >
       {body}
     </WizardFrame>
   );
-}
-
-/**
- * The edit page's former address (`…/<installation>/<namespace>/<name>/edit`),
- * kept so a bookmark or an old link lands in the wizard.
- */
-export function LegacyEditAgentRedirect() {
-  const { installation = '', namespace = '', name = '' } = useParams();
-  const agentEditLink = useRouteRef(agentEditRouteRef);
-  const target = agentEditLink?.({ installation, namespace, name });
-  return target ? <Navigate to={target} replace /> : null;
 }

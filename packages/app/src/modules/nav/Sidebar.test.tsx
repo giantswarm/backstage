@@ -12,6 +12,7 @@ import {
 import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { aiChatDrawerApiRef } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { fireEvent, screen } from '@testing-library/react';
+import { homeRouteRef } from '../agentShell/routes';
 import { SidebarContent } from './Sidebar';
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
@@ -27,6 +28,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         agents: createRouteRef(),
         skills: createRouteRef(),
         models: createRouteRef(),
+        profile: createRouteRef(),
       },
     },
     RecentSessions: () => <div data-testid="recent-sessions" />,
@@ -116,6 +118,8 @@ async function renderSidebar({
       apis: [
         mockApis.featureFlags({ initialStates: { [AGENT_SHELL_FLAG]: flag } }),
       ],
+      // The Agent Platform's address is the shell's home.
+      mountedRoutes: { '/': homeRouteRef },
     },
   );
 }
@@ -240,7 +244,7 @@ describe('SidebarContent', () => {
     await renderSidebar({ flag: FeatureFlagState.Active, path: '/clusters' });
 
     const link = screen.getByRole('link', { name: /Agent Platform/ });
-    expect(link).toHaveAttribute('href', '/agent-platform');
+    expect(link).toHaveAttribute('href', '/');
     expect(link).toHaveAttribute('target', '_blank');
   });
 
@@ -272,7 +276,7 @@ describe('SidebarContent', () => {
       });
 
       const link = screen.getByRole('link', { name: /Agent Platform/ });
-      expect(link).toHaveAttribute('href', '/agent-platform');
+      expect(link).toHaveAttribute('href', '/');
       expect(link).toHaveAttribute('target', '_blank');
     });
 
@@ -311,7 +315,7 @@ describe('SidebarContent', () => {
       });
 
       const link = screen.getByRole('link', { name: /Agent Platform/ });
-      expect(link).toHaveAttribute('href', '/agent-platform');
+      expect(link).toHaveAttribute('href', '/');
       expect(link).not.toHaveAttribute('target');
     });
 

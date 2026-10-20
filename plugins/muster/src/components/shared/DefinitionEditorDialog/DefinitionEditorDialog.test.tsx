@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import {
+  mockApis,
+  renderInTestApp,
+  TestApiProvider,
+} from '@backstage/test-utils';
+import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../../apis';
 import { MusterInstanceContext } from '../../MusterInstanceProvider';
 import { makeTestMusterInstance } from '../../MusterInstanceProvider/testInstance';
@@ -10,6 +16,10 @@ import {
   DefinitionEditorDialog,
   DefinitionEditorDialogProps,
 } from './DefinitionEditorDialog';
+
+const analyticsApi = mockApis.analytics.mock();
+
+beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
 
 function parseJson(value: string): Record<string, unknown> {
   try {
@@ -24,10 +34,14 @@ function Harness({
   onClose,
   seedRef,
   parse = parseJson,
+  saveTracking = {
+    event: { name: 'Muster.mcpServerUpdated', attributes: {} },
+  },
 }: {
   onClose: jest.Mock;
   seedRef: { current: string };
   parse?: DefinitionEditorDialogProps['parse'];
+  saveTracking?: DefinitionEditorDialogProps['saveTracking'];
 }) {
   const [open, setOpen] = useState(false);
   const props: DefinitionEditorDialogProps = {
@@ -41,17 +55,24 @@ function Harness({
     description: 'Edit the thing.',
     seed: () => seedRef.current,
     parse,
-    renderEditor: ({ value, onChange, invalid }) => (
-      <textarea
-        aria-label="Definition"
-        aria-invalid={invalid}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-      />
+    renderEditor: ({ value, onChange, error, blurProps }) => (
+      <>
+        <textarea
+          aria-label="Definition"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? 'definition-error' : undefined}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          {...blurProps}
+        />
+        {error && (
+          <FieldErrorText id="definition-error">{error}</FieldErrorText>
+        )}
+      </>
     ),
     validateTool: 'core_thing_validate',
     saveTool: 'core_thing_update',
-    saveUntrackedReason: 'A test.',
+    saveTracking,
     savedMessage: 'Saved the thing.',
   };
   return (
@@ -67,6 +88,7 @@ function Harness({
 async function renderDialog(
   callTool: jest.Mock = jest.fn(async () => ({})),
   parse?: DefinitionEditorDialogProps['parse'],
+  saveTracking?: DefinitionEditorDialogProps['saveTracking'],
 ) {
   const retry = jest.fn();
   const onClose = jest.fn();
@@ -75,12 +97,22 @@ async function renderDialog(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, { callTool }]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, { callTool }],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <MusterInstanceContext.Provider
           value={makeTestMusterInstance({ retry })}
         >
-          <Harness onClose={onClose} seedRef={seedRef} parse={parse} />
+          <Harness
+            onClose={onClose}
+            seedRef={seedRef}
+            parse={parse}
+            saveTracking={saveTracking}
+          />
         </MusterInstanceContext.Provider>
       </QueryClientProvider>
     </TestApiProvider>,
@@ -105,9 +137,10 @@ describe('DefinitionEditorDialog', () => {
       'gazelle',
     );
     expect(retry).not.toHaveBeenCalled();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
-  it('saves with the save tool and refetches the reads', async () => {
+  it('saves with the save tool, refetches the reads and reports the save', async () => {
     const { callTool, retry } = await renderDialog();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -119,20 +152,86 @@ describe('DefinitionEditorDialog', () => {
       'gazelle',
     );
     expect(retry).toHaveBeenCalled();
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'Muster.mcpServerUpdated',
+        attributes: {},
+      }),
+    );
   });
 
-  it('shows a parse error with its line breaks and calls no tool', async () => {
+  it('reports nothing for a save its caller leaves untracked', async () => {
+    await renderDialog(undefined, undefined, {
+      event: null,
+      untrackedReason: 'A test.',
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Saved the thing.')).toBeInTheDocument();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('shows a parse error on the editor, focuses it and calls no tool', async () => {
     const { callTool } = await renderDialog();
 
     await userEvent.clear(editor());
     await userEvent.type(editor(), 'not json');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    const error = await screen.findByText(/Invalid JSON:/);
-    expect(error.textContent).toBe('Invalid JSON:\nline two');
-    expect(error).toHaveStyle({ whiteSpace: 'pre-wrap' });
     expect(editor()).toHaveAttribute('aria-invalid', 'true');
+    expect(editor()).toHaveAccessibleDescription(
+      expect.stringContaining('Invalid JSON:'),
+    );
+    // The parser's message keeps its line breaks.
+    const message = screen.getByText(/Invalid JSON:/);
+    expect(message.textContent).toBe('Invalid JSON:\nline two');
+    expect(message).toHaveStyle({ whiteSpace: 'pre-wrap' });
+    expect(editor()).toHaveFocus();
     expect(callTool).not.toHaveBeenCalled();
+
+    // Fixed, the error goes at once — no second Validate needed.
+    await userEvent.clear(editor());
+    await userEvent.type(editor(), '{{"name":"b"}');
+    expect(editor()).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('sends a definition that parses to a falsy value, for muster to judge', async () => {
+    const { callTool } = await renderDialog();
+
+    await userEvent.clear(editor());
+    await userEvent.type(editor(), 'null');
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }));
+
+    expect(callTool).toHaveBeenCalledWith(
+      'core_thing_validate',
+      null,
+      'gazelle',
+    );
+    expect(editor()).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it("drops the last call's verdict once the text is edited", async () => {
+    await renderDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }));
+    expect(await screen.findByText('Definition is valid.')).toBeInTheDocument();
+
+    await userEvent.type(editor(), ' broken');
+    await userEvent.tab();
+
+    expect(editor()).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.queryByText('Definition is valid.')).not.toBeInTheDocument();
+  });
+
+  it('checks the text when the person leaves the editor', async () => {
+    await renderDialog();
+
+    await userEvent.type(editor(), ' broken');
+    expect(editor()).toHaveAttribute('aria-invalid', 'false');
+
+    await userEvent.tab();
+    expect(editor()).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('shows the tool error and no success message', async () => {

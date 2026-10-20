@@ -134,7 +134,8 @@ export function AgentUsageSection() {
     useSessionUsage(installation);
   // kagent names a connector by muster's server segment; Customize by the
   // family a server belongs to. Read the CRs to name it the same way here.
-  const { servers: musterServers } = useMusterServers(installation);
+  const { servers: musterServers, labels: musterLabels } =
+    useMusterServers(installation);
 
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
@@ -335,7 +336,15 @@ export function AgentUsageSection() {
             model: undefined,
             installation: installation ?? '',
             window: rateWindow,
-            tokens: stripTotals.inputTokens + stripTotals.outputTokens,
+            inputTokens: stripTotals.inputTokens,
+            outputTokens: stripTotals.outputTokens,
+            // The daily buckets carry no reported total, so a narrowed window
+            // cannot say what it holds beyond the two parts.
+            unpricedTokens: narrowed
+              ? undefined
+              : stripTotals.totalTokens -
+                stripTotals.inputTokens -
+                stripTotals.outputTokens,
           })}
         />
         <div className={classes.row}>
@@ -394,7 +403,7 @@ export function AgentUsageSection() {
               name:
                 entry.server === null
                   ? 'Platform tools'
-                  : connectorName(entry.server, musterServers),
+                  : connectorName(entry.server, musterServers, musterLabels),
               calls: entry.calls,
             }))}
             other={usage.otherMcpServers}

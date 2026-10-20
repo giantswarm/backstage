@@ -1,7 +1,11 @@
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
   bindsGateway,
+  bucketLabel,
   buildCatalogue,
+  connectorLabels,
+  connectorName,
+  connectorOfTool,
   catalogueInventory,
   countNoun,
   declaredToolset,
@@ -62,7 +66,7 @@ describe('selector grammar', () => {
     expect(selectorProblem('read-only')).toMatch(/not a selector/);
     expect(selectorProblem('tool:has space')).toMatch(/not a selector/);
     expect(selectorProblem('tool:a,b')).toMatch(/not a selector/);
-    expect(selectorProblem('')).toMatch(/empty/);
+    expect(selectorProblem('')).toMatch(/Enter a selector/);
     expect(selectorProblem('preset:none')).toBeUndefined();
   });
 
@@ -429,6 +433,62 @@ describe('serverOfTool', () => {
       'agent-manager',
     );
     expect(serverOfTool(tool('x_unknown_thing'), SERVERS)).toBeUndefined();
+  });
+});
+
+describe('connector display names', () => {
+  const named: ServerInfo[] = [
+    { ...SERVERS[0], displayName: 'Kubernetes' },
+    SERVERS[1],
+    { ...SERVERS[3], displayName: 'Planning' },
+    SERVERS[2],
+  ];
+
+  it('names a surface by the display name its CRs agree on, else its name', () => {
+    const labels = connectorLabels(named);
+    expect(labels.get('kubernetes')).toBe('Kubernetes');
+    expect(labels.get('pro')).toBe('Planning');
+    expect(labels.get('agent-manager')).toBe('agent-manager');
+  });
+
+  it('names connectors that would read the same by their own names', () => {
+    const labels = connectorLabels([
+      { ...SERVERS[2], displayName: 'Manager' },
+      { ...SERVERS[3], displayName: 'Manager' },
+    ]);
+    expect(labels.get('agent-manager')).toBe('agent-manager');
+    expect(labels.get('pro')).toBe('pro');
+  });
+
+  it('sorts the catalogue by what people read', () => {
+    const [registered] = buildCatalogue(
+      [],
+      [
+        { ...SERVERS[3], name: 'zz-github', displayName: 'GitHub' },
+        { ...SERVERS[3], name: 'jira' },
+      ],
+      [],
+    );
+    expect(registered.servers.map(bucketLabel)).toEqual(['GitHub', 'jira']);
+  });
+
+  it('names the connector of a tool and of a usage row by its display name', () => {
+    expect(connectorOfTool('x_kubernetes_get_pods', named)).toEqual({
+      connector: 'Kubernetes',
+      tool: 'get_pods',
+    });
+    expect(connectorName('kubernetes-golem', named)).toBe('Kubernetes');
+    expect(connectorName('pro', named)).toBe('Planning');
+    expect(connectorName('unknown', named)).toBe('unknown');
+  });
+
+  it('labels the catalogue buckets, keeping the name selectors use', () => {
+    const buckets = buildCatalogue([], named, []).flatMap(g => g.servers);
+    const kubernetes = buckets.find(b => b.name === 'kubernetes')!;
+    expect(bucketLabel(kubernetes)).toBe('Kubernetes');
+    const manager = buckets.find(b => b.name === 'agent-manager')!;
+    expect(manager.displayName).toBeUndefined();
+    expect(bucketLabel(manager)).toBe('agent-manager');
   });
 });
 

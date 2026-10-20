@@ -55,7 +55,7 @@ function resolved(tools: ToolSummary[]): ToolsetResolution {
 async function renderList(resolution: ToolsetResolution) {
   return renderInTestApp(
     <ToolsetResolutionList resolution={resolution} servers={SERVERS} />,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }
 
@@ -240,7 +240,7 @@ describe('ToolsetResolutionList', () => {
       );
     }
     await renderInTestApp(<Harness />, {
-      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+      mountedRoutes: { '/customize/agents': agentsRouteRef },
     });
     const user = userEvent.setup();
 
@@ -332,7 +332,7 @@ describe('ToolsetResolutionList', () => {
       );
     }
     await renderInTestApp(<Harness />, {
-      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+      mountedRoutes: { '/customize/agents': agentsRouteRef },
     });
     const user = userEvent.setup();
 

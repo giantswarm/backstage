@@ -1,8 +1,8 @@
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import { Route, Routes, useLocation } from 'react-router-dom';
-import { customizeExternalRouteRef } from '../../routes';
+import { workflowsRouteRef } from '../../routes';
 import { WorkflowsRouter } from './WorkflowsRouter';
 
 jest.mock('../WorkflowPage', () => ({
@@ -13,64 +13,67 @@ jest.mock('../WorkflowPage', () => ({
     </div>
   ),
 }));
+jest.mock('../MusterSubPage', () => ({
+  MusterSubPage: ({
+    installation,
+    children,
+  }: {
+    installation?: string;
+    children: ReactNode;
+  }) => (
+    <>
+      <p>Providers on {installation}</p>
+      {children}
+    </>
+  ),
+}));
 
 function Landed() {
   const { pathname, search } = useLocation();
   return <p>{`landed: ${pathname}${search}`}</p>;
 }
 
-function renderAt(
-  path: string,
-  {
-    withCustomize = true,
-    editAction,
-  }: { withCustomize?: boolean; editAction?: ReactElement } = {},
-) {
+function renderAt(path: string, editAction?: ReactElement) {
   return renderInTestApp(
     <Routes>
+      <Route path="/customize/workflows" element={<Landed />} />
       <Route
-        path="/agent-platform/workflows/*"
+        path="/customize/workflows/*"
         element={<WorkflowsRouter editAction={editAction} />}
       />
-      <Route path="/customize/*" element={<Landed />} />
     </Routes>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: withCustomize
-        ? { '/customize': customizeExternalRouteRef }
-        : {},
+      mountedRoutes: { '/customize/workflows': workflowsRouteRef },
     },
   );
 }
 
 describe('WorkflowsRouter', () => {
-  it('routes a workflow to its page', async () => {
-    await renderAt('/agent-platform/workflows/deploy');
+  it.each([
+    '/customize/workflows/gazelle/deploy',
+    '/customize/workflows/gazelle/deploy/run',
+  ])('routes %s to the workflow page, on its installation', async path => {
+    await renderAt(path);
     expect(screen.getByText('Workflow page')).toBeInTheDocument();
+    expect(screen.getByText('Providers on gazelle')).toBeInTheDocument();
   });
 
   it('hands the attached edit action to the workflow page', async () => {
-    await renderAt('/agent-platform/workflows/deploy', {
-      editAction: <button type="button">Edit via agent</button>,
-    });
+    await renderAt(
+      '/customize/workflows/gazelle/deploy',
+      <button type="button">Edit via agent</button>,
+    );
     expect(screen.getByText('Workflow page')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Edit via agent' }),
     ).toBeInTheDocument();
   });
 
-  it("sends the index to the Customize screen's Workflows tab, keeping the query", async () => {
-    await renderAt('/agent-platform/workflows?installation=gazelle');
+  it('sends an address without a workflow to the list, its nearest valid parent', async () => {
+    await renderAt('/customize/workflows/gazelle');
     expect(
-      await screen.findByText(
-        'landed: /customize/workflows?installation=gazelle',
-      ),
+      await screen.findByText('landed: /customize/workflows'),
     ).toBeInTheDocument();
-  });
-
-  it('renders no list when the app binds no Customize page', async () => {
-    await renderAt('/agent-platform/workflows', { withCustomize: false });
-    expect(screen.queryByText(/landed:/)).not.toBeInTheDocument();
-    expect(screen.queryByText('Workflow page')).not.toBeInTheDocument();
   });
 });

@@ -206,7 +206,7 @@ function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
           element={<ModelDetailPage />}
         />
         <Route
-          path="/agent-platform/models/edit/:installation/:namespace/:name"
+          path="/customize/models/:installation/:namespace/:name/edit"
           element={<p>The Connect-a-model flow, prefilled</p>}
         />
       </Routes>
@@ -218,9 +218,9 @@ function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
     {
       initialRouteEntries: [path],
       mountedRoutes: {
-        '/agent-platform/models': modelsRouteRef,
+        '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
-        '/agent-platform/agents': agentsRouteRef,
+        '/customize/agents': agentsRouteRef,
       },
     },
   );
@@ -424,6 +424,35 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('Agents cannot use this model')).toBeNull();
   });
 
+  it('says on Overview that the LLM gateway does not meter a Vertex AI model', async () => {
+    const vertex = sonnet();
+    vertex.jsonData.spec = {
+      provider: 'AnthropicVertexAI',
+      model: 'claude-sonnet-4-5@20250929',
+      apiKeySecret: 'kagent-sonnet',
+      apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
+      anthropicVertexAI: { projectID: 'my-project-123', location: 'global' },
+    };
+    mockUseResource.mockReturnValue({
+      resource: vertex,
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'The LLM gateway does not meter Vertex AI models yet, so this model’s spend and tokens are not on the Usage tab.',
+    );
+    // The form speaks Vertex AI: no "not editable here".
+    expect(screen.queryByText(/is not editable here/)).toBeNull();
+  });
+
+  it('says nothing about metering for a model the gateway meters', async () => {
+    await renderPage();
+
+    expect(screen.queryByText(/does not meter/)).toBeNull();
+  });
+
   it('says nothing for an accepted model', async () => {
     await renderPage();
 
@@ -541,10 +570,7 @@ describe('ModelDetailPage', () => {
     expect(within(items[0]).getByText('$0.00')).toBeInTheDocument();
     expect(
       within(list).getByRole('link', { name: 'Support Triage' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/agents/inst-1/kagent/support-triage',
-    );
+    ).toHaveAttribute('href', '/customize/agents/inst-1/kagent/support-triage');
     expect(screen.queryByText('Copywriter')).toBeNull();
     expect(
       screen.getByText(

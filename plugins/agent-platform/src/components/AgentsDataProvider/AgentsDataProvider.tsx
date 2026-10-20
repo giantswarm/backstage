@@ -1,12 +1,14 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-import type { Query } from '@tanstack/react-query';
+import { useQueryClient, type Query } from '@tanstack/react-query';
+import { musterInstallationsQueryKey } from '@giantswarm/backstage-plugin-muster';
 import {
   Agent,
   Harness,
@@ -28,6 +30,11 @@ import {
 import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
+import {
+  musterAgentManagerInfoQueryKey,
+  musterServersQueryKey,
+} from '../../lib/queryKeys';
+import { useNamespacedFallback } from '../../hooks/useNamespacedResources';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
 import {
@@ -79,6 +86,13 @@ export type AgentsContextValue = {
    */
   unreachableInstallations: string[];
   /**
+   * Installations in scope where the person may list agents in no namespace:
+   * the cluster-wide list and every namespaced one were refused. Not a
+   * failure to read -- no tenant binds them there -- so they are not in
+   * `unreachableInstallations`.
+   */
+  noAccessInstallations: string[];
+  /**
    * No agent is listed and every environment in scope answered without
    * kagent: none can be listed or created there, whatever else is still
    * loading. `undefined` otherwise -- including while one of them is still
@@ -104,13 +118,21 @@ export type AgentsContextValue = {
    * remedy (`selectAgentsInventoryFailure`).
    */
   inventoryFailure: InventoryFailure | undefined;
+  /**
+   * Reads the agents again on every installation in scope, with what muster
+   * says about their namespaces; resolves once those reads have answered.
+   * The way forward from `unreachableInstallations`.
+   */
+  retry: () => Promise<void>;
 };
 
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
 
 /**
  * Lists kagent `Agent`s across every installation in the section's
- * scope that runs kagent (all namespaces) and exposes them as plain rows. Model
+ * scope that runs kagent (all namespaces, or the agent namespaces one by one
+ * where the person may not list them cluster-wide) and exposes them as plain
+ * rows. Model
  * references are resolved against the ModelConfigs queried by
  * {@link ModelConfigsProvider}, so this must be mounted inside one. Each row's
  * toolset is read off the agent's carrier `RemoteMCPServer`, listed alongside.
@@ -227,20 +249,35 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // the whole fleet fast: only installations with an agent that is still
   // converging, or one just deployed from this portal that the list does not
   // show yet (`awaitsDeployedAgent`), get the short interval.
-  const { resources, clustersData, isLoading, errors } = useResources(
-    queriedInstallations,
-    Agent,
-    {},
-    { enableDiscovery: false, refetchInterval: agentsRefetchInterval },
-  );
+  //
+  // A person whose kagent reads come from a namespaced RoleBinding may not list
+  // Agents, Harnesses or RemoteMCPServers cluster-wide: each read lists those
+  // installations again, namespace by namespace, with the same options
+  // (`useNamespacedFallback`), so they answer with what the person may read
+  // instead of "couldn't read".
+  const agentsOptions = {
+    enableDiscovery: false,
+    refetchInterval: agentsRefetchInterval,
+  };
+  const { resources, clustersData, isLoading, errors, refusedInstallations } =
+    useNamespacedFallback(
+      useResources(queriedInstallations, Agent, {}, agentsOptions),
+      Agent,
+      agentsOptions,
+    );
+  const refusedKey = (refusedInstallations ?? []).join(',');
+
+  const baselineOptions = {
+    enableDiscovery: false,
+    refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
+  };
 
   // The Harnesses the agents name, for what the list calls each one. A failed
   // read leaves the rows with the Harness name alone.
-  const harnesses = useResources(
-    queriedInstallations,
+  const harnesses = useNamespacedFallback(
+    useResources(queriedInstallations, Harness, {}, baselineOptions),
     Harness,
-    {},
-    { enableDiscovery: false, refetchInterval: BASELINE_REFETCH_INTERVAL_MS },
+    baselineOptions,
   );
 
   // The toolset carriers: on API v2 an agent's `X-Muster-Toolset` header lives
@@ -250,11 +287,10 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // not while an agent converges. A failure here is not "the installation could
   // not be read": the agents are the rows; a missing server list just leaves
   // each row's toolset unresolved.
-  const carriers = useResources(
-    queriedInstallations,
+  const carriers = useNamespacedFallback(
+    useResources(queriedInstallations, RemoteMCPServer, {}, baselineOptions),
     RemoteMCPServer,
-    {},
-    { enableDiscovery: false, refetchInterval: BASELINE_REFETCH_INTERVAL_MS },
+    baselineOptions,
   );
 
   // Model labels resolve progressively as ModelConfigs arrive; we deliberately
@@ -466,6 +502,37 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     ),
   );
 
+  // Everything an installation's agent read is made of: its Agent lists,
+  // cluster-wide and per namespace (one key prefix), and muster's answers on
+  // which namespaces to read. Active queries refetch; a failed one with
+  // `retry: false` included.
+  const queryClient = useQueryClient();
+  const retry = useCallback(async () => {
+    const { group, plural } = Agent;
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: musterInstallationsQueryKey(),
+      }),
+      ...scopedInstallations.flatMap(installation => [
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey }) =>
+            queryKey[0] === 'cluster' &&
+            queryKey[1] === installation &&
+            queryKey[2] === 'list' &&
+            queryKey[3] === group &&
+            queryKey[5] === plural,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterServersQueryKey(installation),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterAgentManagerInfoQueryKey(installation),
+        }),
+      ]),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient, scopedInstallationsKey]);
+
   const value = useMemo<AgentsContextValue>(() => {
     const rows = sortAgentRows(
       Object.entries(agentsByInstallation).flatMap(([cluster, agents]) => {
@@ -493,9 +560,16 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // it. And if we're still showing an installation's last-known agents, don't
     // also claim we couldn't read it.
     const scopedSet = new Set(scopedInstallations);
-    const unreachableInstallations = erroredInstallations.filter(
+    const refused = new Set(refusedKey ? refusedKey.split(',') : []);
+    const unlisted = erroredInstallations.filter(
       cluster =>
         scopedSet.has(cluster) && !agentsByInstallation[cluster]?.length,
+    );
+    const unreachableInstallations = unlisted.filter(
+      cluster => !refused.has(cluster),
+    );
+    const noAccessInstallations = unlisted.filter(cluster =>
+      refused.has(cluster),
     );
 
     // The fleet-wide query reports "loading" until every installation settles,
@@ -539,6 +613,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
         rows.length > 0 && (pendingInstallations.length > 0 || isProbing),
       hasInstallations,
       unreachableInstallations,
+      noAccessInstallations,
       kagentMissing: rows.length === 0 ? kagentMissing : undefined,
       kagentSwitchedOff,
       unknownPin,
@@ -550,6 +625,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
           rows.length === 0 &&
           scopedInstallations.length === 0,
       }),
+      retry,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -558,6 +634,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     carriersByInstallation,
     harnessesByInstallation,
     erroredInstallations,
+    refusedKey,
     isLoading,
     isProbing,
     homeSettled,
@@ -571,6 +648,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     kagentSwitchedOffKey,
     unknownPin,
     inventoryFailuresKey,
+    retry,
   ]);
 
   return (

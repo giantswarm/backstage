@@ -23,11 +23,12 @@ const cluster = process.env.AGENTLAB_CLUSTER ?? 'agentlab';
  *
  * - `classic` (the default): `app.portals.agentPlatform` off, the chart's
  *   default. Exactly the classic Platform Portal, with nothing of the Agent
- *   Platform in it — no sidebar item, no `/agent-platform/**` route.
+ *   Platform in it — no sidebar item, none of its routes.
  * - `shell`: the lab's Backstage runs with
  *   `APP_CONFIG_app_portals_agentPlatform=true` (both portals on). The Agent
- *   Platform is the agent shell on `/`, `/agent-platform/**` and
- *   `/customize/**`; the classic portal everywhere else, its sidebar linking
+ *   Platform is the agent shell on `/`, `/sessions`, `/usage`, `/profile`,
+ *   `/customize/**` and the old `/agent-platform/**` (redirects only); the
+ *   classic portal everywhere else, its sidebar linking
  *   into the shell.
  *
  * The switch is the deployment's, so one lab is in one mode at a time: the
@@ -97,11 +98,13 @@ export const lab = {
      */
     organization: process.env.AGENTLAB_WORKSPACE_ORGANIZATION ?? 'lab',
     /**
-     * The provider instance the fixtures' sources name: `fake`, the lab's
-     * own GitHub (`agentlab github-fake --workspaces`), whose fixture
-     * repositories and per-user access are the same on every lab.
+     * The provider instance the fixtures' sources name, one of the lab's own
+     * GitHub (`agentlab github-fake --workspaces`), whose fixture
+     * repositories and per-user access are the same on every lab. Unset, the
+     * fixtures take the instance the lab grants in muster: `fake`, or
+     * `fake-bearer` on a lab whose grant provider it is.
      */
-    provider: process.env.AGENTLAB_WORKSPACE_PROVIDER ?? 'fake',
+    provider: process.env.AGENTLAB_WORKSPACE_PROVIDER || undefined,
     /**
      * The lab's GitHub as this host reaches it: the loopback port its
      * container publishes (`docker port <cluster>-lab-github`, served over
@@ -157,3 +160,10 @@ export const mobileContextOptions = {
 export function contextOptionsFor(variant: Variant) {
   return variant === 'mobile' ? mobileContextOptions : contextOptions;
 }
+
+/**
+ * What a fixture of another run created is left over once it is this old: no
+ * run of the suite takes so long, so a run going on at the same time against
+ * the same lab keeps what it uses.
+ */
+export const LEFTOVER_AGE = 3 * 60 * 60_000;

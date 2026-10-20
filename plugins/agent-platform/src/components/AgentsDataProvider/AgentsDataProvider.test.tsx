@@ -1,6 +1,10 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import type { Query } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  type Query,
+} from '@tanstack/react-query';
 import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
 import { markAgentDeployed } from '../../lib/pendingAgentCreations';
@@ -92,11 +96,17 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
   // Harness reads answer empty, so `mockUseResources` sees only the Agents
   // and the carriers.
   const MockHarness = class {};
+  const actual = jest.requireActual(
+    '@giantswarm/backstage-plugin-kubernetes-react',
+  );
   return {
     // The real module underneath: the toolset read pulls in the muster plugin,
     // whose resource classes extend this library's KubeObject at import time.
-    ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-    Agent: class {},
+    ...actual,
+    Agent: class {
+      static group = actual.Agent.group;
+      static plural = actual.Agent.plural;
+    },
     Harness: MockHarness,
     ModelConfig: class {},
     RemoteMCPServer: class {},
@@ -106,6 +116,58 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
         : mockUseResources(...args),
     isNotFoundError: (e: { type?: string; error?: { name?: string } }) =>
       e.type !== 'incompatibility' && e.error?.name === 'NotFoundError',
+  };
+});
+
+// The namespace-by-namespace read of the installations a cluster-wide list
+// was refused on (its own test is useNamespacedResources.test.tsx): an
+// installation named here is read with these agents, and with empty Harness
+// and RemoteMCPServer lists; one marked pending has not answered yet; any
+// other refused installation is refused in every namespace too.
+type MockNamespacedAgents = { agents: unknown[]; data: unknown[] };
+// One marked refused refused the list in every namespace (no tenant binds
+// the person there).
+let mockNamespacedRead: Record<
+  string,
+  MockNamespacedAgents | 'pending' | 'refused'
+> = {};
+jest.mock('../../hooks/useNamespacedResources', () => {
+  const actual = jest.requireActual('../../hooks/useNamespacedResources');
+  return {
+    useNamespacedFallback: (base: { errors: unknown[] }, Resource: unknown) => {
+      const { Agent } = jest.requireMock(
+        '@giantswarm/backstage-plugin-kubernetes-react',
+      );
+      const forbidden: string[] = actual.forbiddenInstallationsOf(base.errors);
+      const answer = (cluster: string) => mockNamespacedRead[cluster];
+      const readOf = (cluster: string) =>
+        answer(cluster) as MockNamespacedAgents;
+      const read = forbidden.filter(
+        cluster =>
+          answer(cluster) &&
+          answer(cluster) !== 'pending' &&
+          answer(cluster) !== 'refused',
+      );
+      const agentsRead = Resource === Agent;
+      return actual.mergeNamespaced(base, {
+        resources: agentsRead
+          ? read.flatMap(cluster => readOf(cluster).agents)
+          : [],
+        clustersData: read.map(cluster => ({
+          cluster,
+          data: agentsRead ? readOf(cluster).data : [],
+        })),
+        pendingInstallations: forbidden.filter(
+          cluster => answer(cluster) === 'pending',
+        ),
+        unreadInstallations: forbidden.filter(
+          cluster => !answer(cluster) || answer(cluster) === 'refused',
+        ),
+        refusedInstallations: forbidden.filter(
+          cluster => answer(cluster) === 'refused',
+        ),
+      });
+    },
   };
 });
 
@@ -131,6 +193,7 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getHarnessName: () => 'kagent',
     getReadinessMessage: () => undefined,
     getHarnessWarnings: () => [],
+    getAnnotations: () => undefined,
     getMcpBindings: () => [],
   };
 }
@@ -185,8 +248,11 @@ function inventoryEntry(
   };
 }
 
+let queryClient: QueryClient;
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <AgentsDataProvider>{children}</AgentsDataProvider>
+  <QueryClientProvider client={queryClient}>
+    <AgentsDataProvider>{children}</AgentsDataProvider>
+  </QueryClientProvider>
 );
 
 const renderUseAgents = () => renderHook(() => useAgents(), { wrapper });
@@ -194,7 +260,9 @@ const renderUseAgents = () => renderHook(() => useAgents(), { wrapper });
 describe('AgentsDataProvider', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    queryClient = new QueryClient();
     mockUseResources.mockReset();
+    mockNamespacedRead = {};
     mockAgentManagerPresence = {};
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
@@ -367,6 +435,64 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.isLoadingMore).toBe(false);
   });
 
+  it('tells an installation where no namespace may be read apart from one that could not be read', async () => {
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'] }, failed: ['gaggle', 'grizzly'] }),
+    );
+    mockKagent = {
+      installations: ['alpha', 'gaggle', 'grizzly'],
+      isProbing: false,
+    };
+    mockNamespacedRead = { grizzly: 'refused' };
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() =>
+      expect(hook.current.noAccessInstallations).toEqual(['grizzly']),
+    );
+    expect(hook.current.unreachableInstallations).toEqual(['gaggle']);
+  });
+
+  it('reads the agents again on Retry, with what muster says about their namespaces', async () => {
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: [], beta: [] }, failed: ['gaggle'] }),
+    );
+    const { result: hook } = renderUseAgents();
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual(['gaggle']),
+    );
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+
+    await hook.current.retry();
+
+    const keys = invalidate.mock.calls.flatMap(([filters]) =>
+      filters?.queryKey ? [filters.queryKey] : [],
+    );
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        ['muster', 'installations'],
+        ['muster', 'agent-platform', 'mcp-servers', 'gaggle'],
+        ['muster', 'agent-platform', 'agent-manager-info', 'gaggle'],
+      ]),
+    );
+    const { group, plural } = jest.requireActual(
+      '@giantswarm/backstage-plugin-kubernetes-react',
+    ).Agent;
+    const agentList = ['cluster', 'gaggle', 'list', group, 'v1alpha3', plural];
+    const predicates = invalidate.mock.calls.flatMap(([filters]) =>
+      filters?.predicate ? [filters.predicate] : [],
+    );
+    const matches = (queryKey: unknown[]) =>
+      predicates.some(predicate => predicate({ queryKey } as never));
+    expect(matches(agentList)).toBe(true);
+    expect(matches([...agentList, '/apis/x/namespaces/team-a/agents'])).toBe(
+      true,
+    );
+    expect(
+      matches(['cluster', 'gaggle', 'list', group, 'v1alpha3', 'modelconfigs']),
+    ).toBe(false);
+  });
+
   // A settled fleet must not claim to be loading just because a poll is in
   // flight: every installation refetches on an interval now, and the bar sits
   // above the table.
@@ -491,11 +617,67 @@ describe('AgentsDataProvider', () => {
     );
     expect(hook.current.rows).toHaveLength(1);
   });
+
+  it('lists the agents of a person with a namespaced RoleBinding instead of "couldn’t read"', async () => {
+    // alpha refuses the cluster-wide lists (403); its agent namespaces are
+    // read one by one.
+    mockKagent = { installations: ['alpha'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+    mockNamespacedRead = {
+      alpha: {
+        agents: [fakeAgent('alpha', { name: 'a1' })],
+        data: [{ metadata: { name: 'a1', resourceVersion: '1' } }],
+      },
+    };
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+    expect(hook.current.rows[0].technicalName).toBe('a1');
+    expect(hook.current.unreachableInstallations).toEqual([]);
+    expect(hook.current.isLoading).toBe(false);
+    expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('keeps a namespaced read loading, never "couldn’t read", until its namespaces answer', async () => {
+    mockKagent = { installations: ['alpha'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+    mockNamespacedRead = { alpha: 'pending' };
+
+    const { result: hook, rerender } = renderUseAgents();
+
+    expect(hook.current.isLoading).toBe(true);
+    expect(hook.current.unreachableInstallations).toEqual([]);
+
+    mockNamespacedRead = {
+      alpha: {
+        agents: [fakeAgent('alpha', { name: 'a1' })],
+        data: [{ metadata: { name: 'a1', resourceVersion: '1' } }],
+      },
+    };
+    rerender();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+    expect(hook.current.unreachableInstallations).toEqual([]);
+  });
+
+  it('still says "couldn’t read" when every namespace refuses too', async () => {
+    mockKagent = { installations: ['alpha'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual(['alpha']),
+    );
+    expect(hook.current.rows).toHaveLength(0);
+  });
 });
 
 describe('AgentsDataProvider installation scope', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
+    mockNamespacedRead = {};
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
       installations: ['alpha', 'beta', 'gaggle'],

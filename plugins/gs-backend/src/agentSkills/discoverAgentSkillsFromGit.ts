@@ -15,6 +15,7 @@ import { InputError } from '@backstage/errors';
 import { createHash } from 'node:crypto';
 import { parseFrontmatter } from './frontmatter';
 import { DiscoveredSkill, SkillDiscoverySnapshot } from './discoverAgentSkills';
+import { pluginsOf } from './discoverPlugins';
 import {
   assignSkillFiles,
   gitBlobSha,
@@ -501,6 +502,16 @@ export async function discoverAgentSkillsFromGit(options: {
 
     return {
       skills,
+      plugins: pluginsOf(
+        walked.files.map(f => f.path),
+        skills,
+        {
+          repoUrl,
+          ref: cloned.ref,
+          commit: cloned.commit,
+          repoName: repoBasename(repoUrl),
+        },
+      ),
       ref: cloned.ref,
       commit: cloned.commit,
       // A full checkout was scanned; nothing can be missing.

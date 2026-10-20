@@ -184,8 +184,9 @@ All plugins live under `plugins/` and are published under the
 - **`agent-platform`** - Agent Platform: scaffolder-driven agent creation
   (kagent), ported from the APUI prototype
 
-- **`muster`** - Muster (MCP tool aggregator) UI: the Agent Platform's MCP
-  Servers tab (servers table, a page per server and per tool) and Workflows tab
+- **`muster`** - Muster (MCP tool aggregator) UI: the Customize screen's
+  Connectors tab (a page per connector and per tool, the connector wizard) and
+  Workflows tab
 
 - **`plans`** - Plans feature
 
@@ -301,12 +302,45 @@ See `docs/ui.md` and the **`ui`** Claude Code skill for details — the full bui
 inventory, the MUI→bui swap table, and how to read Backstage Storybook
 component/story source without cloning the monorepo.
 
+#### Forms and field validation
+
+Forms follow the **`forms`** skill (`.claude/skills/forms/SKILL.md`): a field
+is checked when the person leaves it, never while they first type; a shown
+error clears the moment it is fixed; submit stays enabled, shows every error
+next to its field and focuses the first invalid one; errors are tied to their
+field for screen readers and say how to fix the problem. Build them with
+`useFieldValidation` from `ui-react`. **A review of a change that adds or
+changes a form, a dialog with inputs or a field's validation checks it against
+that skill's review checklist.**
+
+#### URLs of the Agent Platform shell
+
+The shell's URLs follow the **`urls`** skill (`.claude/skills/urls/SKILL.md`):
+the URL tree follows the rail (`/`, `/sessions`, `/usage`, `/profile`,
+`/customize/<section>/…`; the old `/agent-platform/**` only redirects),
+identity lives in the path, create is `…/new`, edit is `<id>/edit`, every tab
+is a routed segment with the default at the bare path, and moving a URL means a
+one-hop redirect through `legacyAgentPlatformTarget` with the same telemetry
+names. Plugin and shell code never writes a shell path by hand: a link resolves
+through a route ref, an external route ref the app binds in
+`packages/app/src/App.tsx`, or a helper built on one (`useCustomizePaths`,
+`useSkillPaths`, `useNewSessionHref` in agent-platform; `useServerPageLinks`,
+`useWorkflowPageLinks` in muster). The ESLint rule
+`giantswarm/no-restricted-syntax` fails CI on such a literal in
+`plugins/*/src` and `packages/app/src/modules`; a route definition carries a
+disable comment with its reason. **A review of a change that adds or moves a
+route checks it against that skill's review checklist.**
+
 #### Analytics / Telemetry — keep in sync when adding pages
 
 Page views are reported via `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`,
 which maps each `navigate` event to a page name through
 `getTelemetryPageViewPayload` in `packages/app/src/utils/telemetry.ts`. That
-mapping is a hand-maintained `switch` over path prefixes.
+mapping is a hand-maintained `switch` over path prefixes. Each case sets the
+page name and the route template sent as `path`
+(`/sessions/:installation/:sessionId`), never the path itself: a segment that
+names something becomes a placeholder, a tab only appears from its closed set,
+and no attribute takes free text from the URL (see `docs/telemetry.md`).
 
 **When you add a new top-level page/route (a new plugin page, tab, or sub-route),
 add a matching case to `getTelemetryPageViewPayload`.** A *registered* route that

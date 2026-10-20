@@ -1,16 +1,13 @@
 import { useCallback, useId, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
-  fieldErrorProps,
   useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newMcpServerRouteRef, newMcpServerVerifyRouteRef } from '../../routes';
 import {
   SIGV4_SHARED_IDENTITY_WARNING,
   hasAdvancedAuthorizationServer,
@@ -23,7 +20,7 @@ import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { useRegisterMcpServer } from '../NewMcpServerReviewPage';
 import { SelectableCard } from '../SelectableCard';
 import { DisclosureAccordion, SessionGate } from '../shared';
-import { withEditParam } from '../NewMcpServerEditGate';
+import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
 
 const useStyles = makeStyles({
@@ -119,8 +116,7 @@ export function NewConnectorSignInPage() {
   const classes = useStyles();
   const credentialsHeadingId = useId();
   const navigate = useNavigate();
-  const connectLink = useRouteRef(newMcpServerRouteRef);
-  const testLink = useRouteRef(newMcpServerVerifyRouteRef);
+  const wizardLinks = useConnectorWizardLinks();
   const { activeInstallationInfo } = useMusterInstance();
   const session = useMusterSession();
   const { authenticated } = session;
@@ -147,6 +143,8 @@ export function NewConnectorSignInPage() {
     fieldErrors,
     definition,
     registeredName,
+    registeredInstallation,
+    startedFromEdit,
     markSaved,
   } = useNewMcpServerForm();
 
@@ -192,10 +190,11 @@ export function NewConnectorSignInPage() {
     ? mutationErrorMessage(registration.error)
     : undefined;
 
-  // Each field shows its own problem once a registration was blocked, and the
-  // focus moves to the first one.
+  // Each field shows its own problem once the person leaves it having typed
+  // in it, or once a registration was blocked, and a blocked registration
+  // moves the focus to the first one (the `forms` skill).
   const validation = useFieldValidation();
-  const { reveal, errorFor } = validation;
+  const { reveal, textFieldProps } = validation;
   const authErrorCount = authErrors.length;
   const installation = state.installation;
   const authMode = state.authMode;
@@ -205,13 +204,17 @@ export function NewConnectorSignInPage() {
       return;
     }
     register(
-      { definition, installation, authMode, isEdit },
+      { definition, installation, authMode, isEdit, startedFromEdit },
       {
-        onSuccess: () => {
+        onSuccess: sent => {
           // What was just written is the base of any further save in this run.
-          markSaved(definition);
-          if (testLink) {
-            navigate(withEditParam(testLink(), definition.name));
+          markSaved(sent);
+          const test = wizardLinks('verify', {
+            name: sent.name,
+            installation,
+          });
+          if (test) {
+            navigate(test);
           }
         },
       },
@@ -224,8 +227,9 @@ export function NewConnectorSignInPage() {
     installation,
     authMode,
     isEdit,
+    startedFromEdit,
     markSaved,
-    testLink,
+    wizardLinks,
     navigate,
   ]);
 
@@ -246,10 +250,14 @@ export function NewConnectorSignInPage() {
   );
 
   const onBack = useCallback(() => {
-    if (connectLink) {
-      navigate(withEditParam(connectLink(), registeredName));
+    const connect = wizardLinks('connect', {
+      name: registeredName,
+      installation: registeredInstallation,
+    });
+    if (connect) {
+      navigate(connect);
     }
-  }, [connectLink, navigate, registeredName]);
+  }, [wizardLinks, navigate, registeredName, registeredInstallation]);
 
   // Guarded: when this render only redirects, pushing
   // actions into the footer slot would flash controls for an unseen page.
@@ -260,7 +268,12 @@ export function NewConnectorSignInPage() {
   if (isRedirecting) {
     return (
       <Navigate
-        to={connectLink ? withEditParam(connectLink(), registeredName) : '..'}
+        to={
+          wizardLinks('connect', {
+            name: registeredName,
+            installation: registeredInstallation,
+          }) ?? '..'
+        }
         replace
       />
     );
@@ -329,7 +342,7 @@ export function NewConnectorSignInPage() {
             }
             defaultExpanded={
               hasAdvancedAuthorizationServer(state) ||
-              (validation.shown && hasAdvancedProblem)
+              (validation.submitted && hasAdvancedProblem)
             }
           >
             <div className={classes.disclosureBody}>
@@ -344,7 +357,7 @@ export function NewConnectorSignInPage() {
                 onChange={setIssuer}
                 placeholder="https://auth.example.com"
                 description="Every setting below requires this."
-                {...fieldErrorProps(errorFor(fieldErrors.issuer))}
+                {...textFieldProps('issuer', fieldErrors.issuer)}
               />
               <TextField
                 label="Permissions to ask for (scopes)"
@@ -366,8 +379,9 @@ export function NewConnectorSignInPage() {
                 onChange={setAuthorizationEndpoint}
                 placeholder="https://github.com/login/oauth/authorize"
                 description="Set together with the token address, or leave both empty."
-                {...fieldErrorProps(
-                  errorFor(fieldErrors.authorizationEndpoint),
+                {...textFieldProps(
+                  'authorizationEndpoint',
+                  fieldErrors.authorizationEndpoint,
                 )}
               />
               <TextField
@@ -377,7 +391,7 @@ export function NewConnectorSignInPage() {
                 onChange={setTokenEndpoint}
                 placeholder="https://github.com/login/oauth/access_token"
                 description="Set together with the sign-in page address."
-                {...fieldErrorProps(errorFor(fieldErrors.tokenEndpoint))}
+                {...textFieldProps('tokenEndpoint', fieldErrors.tokenEndpoint)}
               />
               <div
                 className={classes.fieldGroup}
@@ -404,7 +418,10 @@ export function NewConnectorSignInPage() {
                   value={state.clientSecretName}
                   onChange={setClientSecretName}
                   placeholder="github-oauth-client"
-                  {...fieldErrorProps(errorFor(fieldErrors.clientSecretName))}
+                  {...textFieldProps(
+                    'clientSecretName',
+                    fieldErrors.clientSecretName,
+                  )}
                 />
                 <TextField
                   label="Secret namespace"
@@ -484,7 +501,7 @@ export function NewConnectorSignInPage() {
                 ? "Must match the region in the server's URL."
                 : authFields.sigv4.reason
             }
-            {...fieldErrorProps(errorFor(fieldErrors.sigv4Region))}
+            {...textFieldProps('sigv4Region', fieldErrors.sigv4Region)}
           />
           <TextField
             label="Signing service"
@@ -521,7 +538,7 @@ export function NewConnectorSignInPage() {
           context="Adding the connector needs a muster session."
         />
       )}
-      {validation.shown && fieldErrors.transport && (
+      {validation.submitted && fieldErrors.transport && (
         <Alert
           status="danger"
           title="Fix before continuing"

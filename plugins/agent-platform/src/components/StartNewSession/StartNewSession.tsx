@@ -1,7 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Flex, Link, Text } from '@backstage/ui';
+import { Button, Flex, Link, Text } from '@backstage/ui';
+import RefreshIcon from '@material-ui/icons/Refresh';
 import {
   EmptyStateCard,
   LoadingIndicator,
@@ -12,7 +13,11 @@ import {
   type SessionEntryPoint,
 } from '../../hooks/useCreateSession';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import {
+  NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
+} from '../../hooks/useNewSessionHandoff';
+import type { ComposerImage } from '../../lib/messageImages';
 import { agentsRouteRef, sessionDetailRouteRef } from '../../routes';
 import {
   AgentRow,
@@ -106,13 +111,14 @@ export function StartNewSession({
     kagentSwitchedOff,
     unknownPin,
     inventoryFailure,
+    retry,
   } = useAgents();
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
   const creation = useCreateSession(entryPoint, { titleMaxLength });
 
   const { createSession } = creation;
   const onStart = useCallback(
-    async (agent: AgentRow, prompt: string) => {
+    async (agent: AgentRow, prompt: string, images?: ComposerImage[]) => {
       let sessionId: string;
       try {
         sessionId = await createSession({ agent, prompt });
@@ -147,6 +153,7 @@ export function StartNewSession({
             // The technical name: it is what addresses the agent's A2A
             // endpoint. The display name is an annotation.
             agentName: agent.technicalName,
+            imagesKey: stashHandoffImages(images),
           },
         },
       });
@@ -182,7 +189,7 @@ export function StartNewSession({
       unreachableInstallations.length === 0 &&
       agentInstallations.length > 0
     ) {
-      return <FirstAgentCard />;
+      return <FirstAgentCard installations={agentInstallations} />;
     }
 
     // An environment that could not be asked whether it runs kagent, or a pin
@@ -227,6 +234,17 @@ export function StartNewSession({
         ),
       ),
     ];
+    // Standalone, the composer's place is the page's answer: a read that
+    // failed there is an error state with its way forward, never a line that
+    // could pass for an empty roster.
+    if (
+      layout === 'standalone' &&
+      unreachableInstallations.length > 0 &&
+      agents.length === 0
+    ) {
+      return <AgentsReadFailedCard onRetry={retry} />;
+    }
+
     let reason: string;
     let pointer: 'warning' | 'agentsTab' | undefined;
     if (unreachableInstallations.length > 0 && agents.length === 0) {
@@ -297,6 +315,8 @@ export function StartNewSession({
       collapsible={layout === 'inline'}
       isStarting={creation.isCreating}
       error={creation.error ?? undefined}
+      // The session page sends the prompt, images and all.
+      acceptsImages
       onStart={onStart}
     />
   );
@@ -323,5 +343,42 @@ export function StartNewSession({
       </Text>
       {composer}
     </Flex>
+  );
+}
+
+/**
+ * The agents could not be read, so whether the person has any is not known:
+ * says so, points at the warning that names the environments and the reason,
+ * and reads them again. Retry stays pressed until the reads have answered;
+ * their answer then replaces the card (the composer, the first-agent card, or
+ * this card again).
+ */
+function AgentsReadFailedCard({ onRetry }: { onRetry: () => Promise<void> }) {
+  const [isRetrying, setIsRetrying] = useState(false);
+  const onPress = async () => {
+    setIsRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  // Not announced itself: the warning below, an alert, says it.
+  return (
+    <EmptyStateCard
+      title="Couldn't load your agents"
+      description="Your agents could not be read, so none can be offered to start a session with. The warning below says where and why."
+      actions={
+        <Button
+          variant="primary"
+          iconStart={<RefreshIcon />}
+          loading={isRetrying}
+          onPress={onPress}
+        >
+          Retry
+        </Button>
+      }
+    />
   );
 }

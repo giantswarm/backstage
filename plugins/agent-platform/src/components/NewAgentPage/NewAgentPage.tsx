@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
-  fieldErrorProps,
   InfoHint,
   MoreOptions,
   useFieldValidation,
@@ -18,16 +17,13 @@ import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
+import { TenantPicker } from '../TenantPicker';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker } from '../HarnessPicker';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
-import { egressProblem, parseEgressText } from '../../lib/egress';
 import { harnessTitle } from '../../lib/harnesses';
-import {
-  MAX_SYSTEM_MESSAGE_LENGTH,
-  systemMessageProblem,
-} from '../../lib/systemMessage';
+import { MAX_SYSTEM_MESSAGE_LENGTH } from '../../lib/systemMessage';
 
 const useStyles = makeStyles({
   // The info button sits in the line of text, on its baseline.
@@ -72,10 +68,12 @@ function NewAgentPageContent() {
     fieldErrors,
   } = useNewAgentForm();
 
-  // Each field shows its own problem once the person has tried to proceed —
-  // not before, so the form doesn't shout about empty fields up front — and a
-  // blocked Continue moves the focus to the first one.
+  // Each field shows its own problem once the person leaves it having typed
+  // in it, or tries to proceed — not while they first type, so the form does
+  // not shout about half-typed values — and a blocked Continue moves the focus
+  // to the first one (the `forms` skill).
   const validation = useFieldValidation();
+  const { errorFor, fieldProps, textFieldProps } = validation;
   // "More options" holds the technical knobs (model, runtime, technical name,
   // extra egress), collapsed: their defaults fit most agents. The shared
   // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
@@ -83,7 +81,6 @@ function NewAgentPageContent() {
   // without the person ever opening it.
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
-  const egressIssue = egressProblem(parseEgressText(state.egressText));
   // A problem with a field behind the disclosure opens it, so the field that
   // says what is wrong is never out of sight (nor out of the focus's reach).
   const hasHiddenProblem = Boolean(
@@ -217,7 +214,7 @@ function NewAgentPageContent() {
               value={state.name}
               onChange={setName}
               placeholder="e.g. Support triage"
-              {...fieldErrorProps(validation.errorFor(fieldErrors.name))}
+              {...textFieldProps('name', fieldErrors.name)}
             />
             {/* The one irreversible choice on this step (M7), next to the
                 name it comes from rather than behind More options, where
@@ -256,7 +253,8 @@ function NewAgentPageContent() {
           placeholder="Tell the agent how to work. For example: Always group tickets by topic. Write in short, friendly sentences. Never close a ticket yourself."
           description="Leave empty for the standard instructions. Put long reference material in a skill."
           maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
-          error={systemMessageProblem(state.systemMessage)}
+          // The counter's live check: past the limit, it says so at once.
+          error={fieldErrors.systemMessage}
         />
 
         {/* Where the agent runs: renders nothing on a single-installation
@@ -264,8 +262,13 @@ function NewAgentPageContent() {
             agent stays where it is. */}
         {!edit && (
           <InstallationSelect
-            error={validation.errorFor(fieldErrors.installation)}
+            error={errorFor('installation', fieldErrors.installation)}
           />
+        )}
+        {/* Which tenant the agent belongs to, among those the person may
+            create in there. An existing agent stays in its own. */}
+        {!edit && (
+          <TenantPicker error={errorFor('tenant', fieldErrors.tenant)} />
         )}
         {modelSummary && (
           <Text as="p" variant="body-small" color="secondary">
@@ -281,7 +284,7 @@ function NewAgentPageContent() {
           <Text variant="body-small" color="secondary">
             The defaults work for most agents.
           </Text>
-          <ModelConfigPicker error={validation.errorFor(fieldErrors.model)} />
+          <ModelConfigPicker error={errorFor('model', fieldErrors.model)} />
           <HarnessPicker />
           {/* Creating only: an existing agent's technical name is shown,
               locked, under its name. */}
@@ -294,7 +297,7 @@ function NewAgentPageContent() {
               onChange={setSlug}
               placeholder="support-triage"
               description="Used in links and resource names."
-              {...fieldErrorProps(validation.errorFor(fieldErrors.slug))}
+              {...textFieldProps('slug', fieldErrors.slug)}
             />
           )}
           <TextAreaField
@@ -308,7 +311,7 @@ function NewAgentPageContent() {
               'https://github.com:443\nhttps://*.githubusercontent.com'
             }
             description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. Use one http(s) origin per line; a leading * matches one host label."
-            error={egressIssue}
+            {...fieldProps('egress', fieldErrors.egress)}
           />
         </MoreOptions>
       </Flex>

@@ -263,6 +263,11 @@ export type NewestTaskState = {
   state: SessionState;
   /** Epoch ms the state last moved, when anything usable says. */
   changedAt?: number;
+  /**
+   * Where that task is in the list ({@link findNewestStatefulTaskIndex}), so
+   * a caller that needs more of it does not walk the list again.
+   */
+  index: number;
 };
 
 /**
@@ -325,7 +330,7 @@ export function readNewestTaskState(
   const changedAt =
     own === undefined ? newestUsableTimestamp(tasks) : Date.parse(own);
 
-  return { state, changedAt };
+  return { state, changedAt, index };
 }
 
 /**

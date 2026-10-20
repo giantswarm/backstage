@@ -12,7 +12,6 @@ import {
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import { useHarnessChoices } from '../../hooks/useHarnessChoices';
 import {
   useCreateAgent,
   type CreateAgentFailure,
@@ -30,6 +29,7 @@ import { agentSpecOf } from '../../lib/agentSpec';
 import { harnessTitle } from '../../lib/harnesses';
 import { parseEgressText } from '../../lib/egress';
 import { shortCommit } from '../../lib/skills';
+import { pluginEntryOf, pluginSummary } from '../../lib/plugins';
 import {
   buildCatalogue,
   declaredToolset,
@@ -40,7 +40,6 @@ import { agentDetailRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
-import { HarnessLimits } from '../HarnessLimits';
 import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { EditAgentReview } from './EditAgentReview';
@@ -91,7 +90,7 @@ function CreateAgentReview() {
   // person, from the same cached queries — so what is reviewed is exactly what
   // is applied, and the "selected without a sign-in" flag is repeated here.
   const toolCatalogue = useMusterToolCatalogue(state.installation);
-  const { servers } = useMusterServers(state.installation);
+  const { servers, labels } = useMusterServers(state.installation);
   const resolution = useToolsetResolution(state.installation, state.toolset);
   const unsignedServers = useMemo(
     () =>
@@ -140,15 +139,6 @@ function CreateAgentReview() {
   const namespace = spec.namespace;
 
   const { info } = useAgentManagerInfo(state.installation);
-  const { choices, platformChoice } = useHarnessChoices(
-    state.installation,
-    state.modelConfigNamespace,
-  );
-  // As listed now, so the limits match what the picker step shows.
-  const runningHarness = state.harness
-    ? (choices.find(choice => choice.name === state.harness?.name) ??
-      state.harness)
-    : platformChoice;
   const validation = useValidateAgent(
     state.installation,
     isComplete && isToolsetValid ? spec : undefined,
@@ -315,16 +305,6 @@ function CreateAgentReview() {
               ? harnessTitle(state.harness)
               : 'Standard (platform default)'}
           </PlainRow>
-          {runningHarness?.runtime === 'claude' && (
-            <PlainRow label="Limits">
-              <HarnessLimits
-                limits={runningHarness.limits}
-                harnessName={runningHarness.name}
-                showWhenUnset
-                showTitle={false}
-              />
-            </PlainRow>
-          )}
           {hasRepositories && (
             <PlainRow label="Skills">
               {state.selectedSkills.length === 0
@@ -332,8 +312,19 @@ function CreateAgentReview() {
                 : state.selectedSkills.map(skill => skill.name).join(', ')}
             </PlainRow>
           )}
+          {state.selectedPlugins.length > 0 && (
+            <PlainRow label="Plugins">
+              {state.selectedPlugins
+                .map(pick => pluginSummary(pluginEntryOf(pick)))
+                .join('; ')}
+            </PlainRow>
+          )}
           <PlainRow label="Tools">
-            {toolsetSummaryLabel(shape, declared)}
+            {toolsetSummaryLabel(
+              shape,
+              declared,
+              connector => labels.get(connector) ?? connector,
+            )}
           </PlainRow>
         </dl>
 
@@ -511,6 +502,21 @@ function CreateAgentReview() {
                         {skill.name}{' '}
                         <span className={classes.code}>
                           @{shortCommit(skill.commit)}
+                        </span>
+                      </span>
+                    ))}
+                  </Text>
+                </SummaryItem>
+              )}
+              {state.selectedPlugins.length > 0 && (
+                <SummaryItem label="Plugin pins">
+                  <Text variant="body-small">
+                    {state.selectedPlugins.map(({ plugin }, index) => (
+                      <span key={`${plugin.repoUrl}#${plugin.path}`}>
+                        {index > 0 ? ', ' : ''}
+                        {plugin.name}{' '}
+                        <span className={classes.code}>
+                          @{shortCommit(plugin.commit)}
                         </span>
                       </span>
                     ))}

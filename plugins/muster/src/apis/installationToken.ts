@@ -1,4 +1,7 @@
-import { isSessionExpiredError } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  isSessionExpiredError,
+  SESSION_EXPIRED_MESSAGE,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export { isSessionExpiredError };
 
@@ -86,9 +89,6 @@ export class MusterTokenMintError extends Error {
     );
   }
 }
-
-/** What the person reads when the token for a muster has lapsed. */
-export const SESSION_EXPIRED_MESSAGE = 'Your session expired, sign in again.';
 
 /**
  * The person's token for a muster has lapsed: the portal's own one before it

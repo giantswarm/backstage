@@ -1,23 +1,14 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { withQuery } from '../../lib/installationLink';
+import type { ConnectorPageTabPath } from '../ConnectorPage/connectorTabs';
 import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
 
 /**
- * A server page's tabs, by their path segment. Tools is the index, so a link
- * to it names no tab.
+ * A server page's tabs, by their path segment: the connector page's own list.
+ * Tools is the index, so a link to it names no tab.
  */
-export type ServerPageTab = 'instances' | 'resources' | 'prompts' | 'details';
-
-function withQuery(path: string, query: Record<string, string | undefined>) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (value) {
-      params.set(key, value);
-    }
-  }
-  const search = params.toString();
-  return search ? `${path}?${search}` : path;
-}
+export type ServerPageTab = ConnectorPageTabPath;
 
 /**
  * The Tools tab's search and "What it does" filter, as an address carries
@@ -35,7 +26,7 @@ export interface ServerPageLinks {
    */
   server: (
     server: string,
-    installation: string | undefined,
+    installation: string,
     options?: { tab?: ServerPageTab } & ToolsListView,
   ) => string | undefined;
   /**
@@ -45,16 +36,17 @@ export interface ServerPageLinks {
   tool: (
     server: string,
     tool: string,
-    installation: string | undefined,
+    installation: string,
     options?: ToolsListView,
   ) => string | undefined;
 }
 
 /**
- * Links to server and tool pages. Every one carries `?installation=`: the
- * section's scope reads it before the stored choice, so a shared link shows the
- * server on the installation it was copied from. Undefined while the routes are
- * unbound.
+ * Links to server and tool pages, on the installation that runs them: it is
+ * part of the path (`<installation>/<server>`), so a shared link shows the
+ * server where it was copied from, whatever the reader's scope. Undefined
+ * while the routes are unbound, and without an installation — never a link
+ * the reader's scope would silently resolve.
  */
 export function useServerPageLinks(): ServerPageLinks {
   const serverRoute = useRouteRef(mcpServerRouteRef);
@@ -63,20 +55,18 @@ export function useServerPageLinks(): ServerPageLinks {
   return useMemo(
     () => ({
       server: (server, installation, options = {}) => {
-        if (!serverRoute) {
+        if (!serverRoute || !installation) {
           return undefined;
         }
-        const base = serverRoute({ server });
+        const base = serverRoute({ installation, server });
         return withQuery(options.tab ? `${base}/${options.tab}` : base, {
-          installation,
           q: options.q,
           effect: options.effect?.join(','),
         });
       },
       tool: (server, tool, installation, options = {}) =>
-        toolRoute
-          ? withQuery(toolRoute({ server, tool }), {
-              installation,
+        toolRoute && installation
+          ? withQuery(toolRoute({ installation, server, tool }), {
               q: options.q,
               effect: options.effect?.join(','),
             })

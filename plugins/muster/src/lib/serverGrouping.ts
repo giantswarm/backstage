@@ -331,6 +331,128 @@ export function serverRowKey(row: ServerPageRow): string {
 }
 
 /**
+ * What the connector naming rule needs to know of one MCPServer CR. Kept
+ * structural, so the agent platform's own view of a server fits it too.
+ */
+export interface ConnectorNameSource {
+  /** The CR name. */
+  name: string;
+  /** `spec.family.name`, for a family member. */
+  family?: string;
+  /** The CR's `ui.giantswarm.io/display-name`, when one is set. */
+  displayName?: string;
+}
+
+/** {@link ConnectorNameSource} of an MCPServer. */
+export function connectorNameSource(server: MCPServer): ConnectorNameSource {
+  const family = server.getFamily();
+  const displayName = server.getDisplayNameAnnotation();
+  return {
+    name: server.getName(),
+    ...(family ? { family } : {}),
+    ...(displayName ? { displayName } : {}),
+  };
+}
+
+const sameLabel = (label: string) => label.trim().toLowerCase();
+
+/**
+ * What people call each connector, keyed by the name its page, links,
+ * `server:` selectors and muster use (the family name for a family, else the
+ * CR name). One rule for every surface:
+ *
+ * - A connector is called by its `ui.giantswarm.io/display-name`. A family
+ *   takes the one its annotated members agree on (one chart stamps them all;
+ *   while a rollout is in flight the annotated ones decide), and members that
+ *   disagree name nothing.
+ * - Without one, it is called by its own name.
+ * - Connectors that would read the same (two annotated alike, or one
+ *   annotated like another's name; case aside) are called by their own names
+ *   instead, so no two read alike.
+ *
+ * A singular CR named like a family is left out: the family's page is the one
+ * its name opens.
+ */
+export function connectorDisplayNames(
+  servers: readonly ConnectorNameSource[],
+): Map<string, string> {
+  const families = new Set(
+    servers.map(server => server.family).filter(Boolean),
+  );
+  const annotations = new Map<string, Set<string>>();
+  for (const server of servers) {
+    if (!server.family && families.has(server.name)) {
+      continue;
+    }
+    const surface = server.family ?? server.name;
+    const names = annotations.get(surface) ?? new Set<string>();
+    if (server.displayName) {
+      names.add(server.displayName);
+    }
+    annotations.set(surface, names);
+  }
+  const labels = new Map(
+    [...annotations].map(([surface, names]) => [
+      surface,
+      names.size === 1 ? [...names][0] : surface,
+    ]),
+  );
+  // Falling back to a name can collide with another's display name in turn;
+  // every round turns at least one display name back into a (unique) name.
+  for (;;) {
+    const count = new Map<string, number>();
+    for (const label of labels.values()) {
+      count.set(sameLabel(label), (count.get(sameLabel(label)) ?? 0) + 1);
+    }
+    const colliding = [...labels].filter(
+      ([surface, label]) =>
+        label !== surface && count.get(sameLabel(label))! > 1,
+    );
+    if (colliding.length === 0) {
+      return labels;
+    }
+    for (const [surface] of colliding) {
+      labels.set(surface, surface);
+    }
+  }
+}
+
+/** {@link connectorDisplayNames} of the MCPServer CRs of one installation. */
+export function mcpServerDisplayNames(
+  servers: readonly MCPServer[],
+): Map<string, string> {
+  return connectorDisplayNames(servers.map(connectorNameSource));
+}
+
+/**
+ * What people call the connector `name` names on `installation`, by
+ * {@link connectorDisplayNames} over that installation's servers; `name`
+ * itself when there is no such connector.
+ */
+export function connectorDisplayNameOn(
+  servers: readonly MCPServer[],
+  installation: string | undefined,
+  name: string,
+): string {
+  const names = mcpServerDisplayNames(
+    servers.filter(server => server.cluster === installation),
+  );
+  return names.get(name) ?? name;
+}
+
+/**
+ * What a row is called for people, by {@link connectorDisplayNames}: its
+ * display name where it has a distinct one, else {@link serverRowKey}.
+ */
+export function serverRowDisplayName(
+  row: ServerPageRow,
+  names: ReadonlyMap<string, string>,
+): string {
+  const key = serverRowKey(row);
+  return row.kind === 'core' ? key : (names.get(key) ?? key);
+}
+
+/**
  * The row a server page's `:server` segment names on this installation, or
  * undefined when the installation has no such server. A family wins over a
  * singular CR of the same name: the family's page is the one every family link

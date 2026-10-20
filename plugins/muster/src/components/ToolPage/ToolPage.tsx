@@ -1,12 +1,18 @@
 import { ReactNode, useMemo } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { Alert, Link } from '@backstage/ui';
+import { Alert, Flex, Link } from '@backstage/ui';
 import {
   EmptyStateCard,
+  FactList,
   LoadingIndicator,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
+import {
+  findServerRow,
+  mcpServerDisplayNames,
+  serverRowDisplayName,
+  serverRowKey,
+} from '../../lib/serverGrouping';
 import { toolEffect } from '../../lib/toolAnnotations';
 import {
   serverPageResolver,
@@ -28,6 +34,9 @@ import {
   useServerTools,
 } from '../ServerPage/useServerPageData';
 import { runsAsCaller } from '../ConnectorPage/connectorFacts';
+import { useConnectorUsage } from '../ConnectorPage/hooks/useConnectorUsage';
+import { CONNECTOR_USAGE_DAYS } from '../ConnectorPage/utils/connectorUsage';
+import { toolUsageFacts } from './utils/toolUsage';
 
 /** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
 const TOOL_NAME_STYLE = {
@@ -61,6 +70,9 @@ export function ToolPage() {
   const prefixes = useMemo(() => serverPrefixInfos(mcpServers), [mcpServers]);
   const shortName = shortToolName(tool, prefixes);
   const serverKey = row ? serverRowKey(row) : key;
+  const serverName = row
+    ? serverRowDisplayName(row, mcpServerDisplayNames(mcpServers))
+    : key;
   // The server's tools as muster lists them for this session: the tool is
   // shown only when its server offers it on this installation, not merely
   // when its name carries the server's prefix.
@@ -82,6 +94,14 @@ export function ToolPage() {
   const offered =
     Boolean(listed) ||
     (serverTools.truncated && pageOfTool(tool) === serverKey);
+  // The connector's usage, the read its Usage tab and Details share, so a
+  // tool opened from there costs no request.
+  const connectorUsage = useConnectorUsage(row, activeInstallation, {
+    // Only where the page shows it: a tool its connector offers.
+    enabled:
+      offered && Boolean(row && activeInstallation) && session.authenticated,
+  });
+  const usageFacts = toolUsageFacts(connectorUsage.usage, tool);
   // The panel's request, so the badge beside the name costs nothing extra.
   const described = useToolDescription(tool, activeInstallation, {
     enabled: offered && session.authenticated,
@@ -91,7 +111,11 @@ export function ToolPage() {
   // read, so an unread tool is not called one that changes things.
   const known = Boolean(described.data ?? listed);
 
-  const toolsHref = links.server(serverKey, activeInstallation, toolsView);
+  // Without an installation there is no server to go back to: the page says
+  // no environment runs muster.
+  const toolsHref = activeInstallation
+    ? links.server(serverKey, activeInstallation, toolsView)
+    : undefined;
   const representative =
     row && activeInstallation
       ? representativeServer(row, activeInstallation)?.server
@@ -137,19 +161,37 @@ export function ToolPage() {
         actions={
           serverHref ? (
             <Link href={serverHref}>
-              {row ? `Back to the tools of ${serverKey}` : 'Back to connectors'}
+              {row
+                ? `Back to the tools of ${serverName}`
+                : 'Back to connectors'}
             </Link>
           ) : undefined
         }
       />
     );
   } else {
+    const usageHref = links.server(serverKey, activeInstallation, {
+      tab: 'usage',
+    });
     body = (
       <ToolRunPanel
         name={tool}
         installation={activeInstallation}
         effect={toolEffect({ annotations })}
         asCaller={representative ? runsAsCaller(representative) : false}
+        usage={
+          usageFacts && {
+            title: `Usage in the last ${CONNECTOR_USAGE_DAYS} days`,
+            content: (
+              <Flex direction="column" gap="2" align="start">
+                <FactList facts={usageFacts} labelWidth={160} />
+                {usageHref && (
+                  <Link href={usageHref}>{`All usage of ${serverName}`}</Link>
+                )}
+              </Flex>
+            ),
+          }
+        }
       />
     );
   }
@@ -174,7 +216,7 @@ export function ToolPage() {
         },
         // No "Tools" crumb: Tools is the connector page's index, so it
         // would repeat the connector's own link.
-        { label: serverKey, href: toolsHref },
+        { label: serverName, href: toolsHref },
         { label: shortName },
       ]}
       badges={

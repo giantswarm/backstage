@@ -1,6 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import {
   InvalidateQueryFilters,
   QueryClient,
@@ -14,6 +15,7 @@ const streamMessage = jest.fn();
 const listSessionTasks = jest.fn();
 
 const kagentApi = { streamMessage, listSessionTasks } as unknown as KagentApi;
+const analyticsApi = mockApis.analytics.mock();
 
 const AGENT = { namespace: 'kagent', name: 'issue-tracker' };
 
@@ -34,7 +36,12 @@ function renderWithAgent(
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
 
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+    <TestApiProvider
+      apis={[
+        [kagentApiRef, kagentApi],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -90,6 +97,7 @@ function invalidationFor(
 }
 
 beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
   streamMessage.mockReset();
   streamMessage.mockResolvedValue(undefined);
   listSessionTasks.mockReset();
@@ -136,6 +144,38 @@ describe('useSendMessage', () => {
       expect.any(Function),
       expect.any(AbortSignal),
     );
+    // Reported without the text.
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.messageSent',
+        attributes: {},
+      }),
+    );
+  });
+
+  it('sends the images as the API takes them, and keeps them on the pending message', async () => {
+    const { result } = renderWith();
+    const image = {
+      id: 'image-1',
+      name: 'a.png',
+      mediaType: 'image/png' as const,
+      byteSize: 6,
+      previewUrl: 'data:image/png;base64,iVBORw0K',
+    };
+    streamMessage.mockImplementation(() => new Promise(() => {}));
+
+    act(() => {
+      result.current.sendMessage('look', [image]).catch(() => {});
+    });
+
+    await waitFor(() => expect(streamMessage).toHaveBeenCalled());
+    expect(streamMessage.mock.calls[0][3]).toEqual({
+      messageId: expect.any(String),
+      text: 'look',
+      images: [{ mediaType: 'image/png', data: 'iVBORw0K', name: 'a.png' }],
+    });
+    expect(result.current.pending?.images).toEqual([image]);
   });
 
   it('generates a message id, so the sent message can be recognised later', async () => {
@@ -299,6 +339,7 @@ describe('useSendMessage', () => {
       expect(result.current.error?.message).toBe('kagent said no'),
     );
     expect(result.current.pending).toBeNull();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('hands the failed message back so its text is not lost', async () => {

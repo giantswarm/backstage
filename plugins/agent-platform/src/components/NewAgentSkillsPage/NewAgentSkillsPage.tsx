@@ -36,6 +36,8 @@ import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { SkillsFilterBar, useSkillFilters } from '../SkillsFilterBar';
 import { KeptSkills } from './KeptSkills';
+import { KeptPlugins, PluginCards } from './PluginCards';
+import { repeatedSkillNames } from '../../lib/plugins';
 import { AUTO_EXPAND_MAX } from '../ToolsetResolutionList';
 import {
   SelectableCard,
@@ -325,10 +327,19 @@ function NewAgentSkillsPageContent() {
   const links = useAgentWizardLinks();
   const newAgentLink = links.details;
   const toolsLink = links.tools;
-  const { state, edit, toggleSkill, removeKeptSkill, isComplete } =
-    useNewAgentForm();
+  const {
+    state,
+    edit,
+    toggleSkill,
+    removeKeptSkill,
+    togglePlugin,
+    togglePluginSkill,
+    removeKeptPlugin,
+    isComplete,
+  } = useNewAgentForm();
   const {
     skills,
+    plugins,
     isLoading,
     error,
     hasRepositories,
@@ -415,6 +426,16 @@ function NewAgentSkillsPageContent() {
     </Text>
   );
 
+  // agent-manager refuses a skill name used twice (each is one directory of
+  // the agent's skills); said where the pick is made, not only at review.
+  const repeated = repeatedSkillNames(
+    [
+      ...state.selectedSkills.map(skill => skill.name),
+      ...state.keptSkills.map(skill => skill.name),
+    ],
+    [...state.selectedPlugins, ...state.keptPlugins],
+  );
+
   // The frame's footer carries Cancel and Back; only the primary lives here.
   const actions = useMemo(
     () => (
@@ -433,6 +454,11 @@ function NewAgentSkillsPageContent() {
       navigate(newAgentLink());
     }
   }, [newAgentLink, navigate]);
+
+  const stepTitle =
+    plugins.length > 0 || state.keptPlugins.length > 0
+      ? 'Select skills and plugins'
+      : 'Select skills';
 
   // Guarded like NewAgentReviewPage: when this render only produces a redirect,
   // pushing this step's actions into the shared section header would flash
@@ -457,20 +483,21 @@ function NewAgentSkillsPageContent() {
   return (
     <AgentWizardFrame step="skills" onBack={onBack}>
       {edit ? (
-        <WizardStepHeading title="Select skills">
+        <WizardStepHeading title={stepTitle}>
           Packaged instructions the agent can reuse for specific kinds of tasks,
           discovered from the configured skill repositories. The agent's skills
           stay at the commit they are pinned to; a skill you add is pinned to
           the commit shown on its card. Update skills on the agent's page moves
-          the pins.
+          the pins, plugins' included.
         </WizardStepHeading>
       ) : (
-        <WizardStepHeading title="Select skills">
+        <WizardStepHeading title={stepTitle}>
           Packaged instructions the agent can reuse for specific kinds of tasks,
           discovered from the configured skill repositories. Each skill is
           pinned to the commit shown on its card — the head of its repository
-          when it was discovered — and stays there until you update it. Optional
-          — you can continue without selecting any.
+          when it was discovered — and stays there until you update it. Plugins
+          found in the same repositories are pinned the same way. Optional — you
+          can continue without selecting any.
         </WizardStepHeading>
       )}
 
@@ -505,13 +532,16 @@ function NewAgentSkillsPageContent() {
           />
         )}
 
-        {!isLoading && !error && skills.length === 0 && (
-          <Alert
-            status="info"
-            title="No skills found"
-            description="No SKILL.md files were found in the configured repositories."
-          />
-        )}
+        {!isLoading &&
+          !error &&
+          skills.length === 0 &&
+          plugins.length === 0 && (
+            <Alert
+              status="info"
+              title="No skills found"
+              description="No SKILL.md files were found in the configured repositories."
+            />
+          )}
 
         {skills.length > 0 && (
           <>
@@ -557,6 +587,25 @@ function NewAgentSkillsPageContent() {
               />
             )}
           </>
+        )}
+
+        <KeptPlugins plugins={state.keptPlugins} onRemove={removeKeptPlugin} />
+
+        <PluginCards
+          plugins={plugins}
+          selected={state.selectedPlugins}
+          onTogglePlugin={togglePlugin}
+          onTogglePluginSkill={togglePluginSkill}
+        />
+
+        {repeated.length > 0 && (
+          <Alert
+            status="warning"
+            title="A skill name is used twice"
+            description={`Each skill name may appear once across the skills and the plugins' skills: ${repeated.join(
+              ', ',
+            )}. Deselect one of each.`}
+          />
         )}
       </Flex>
 

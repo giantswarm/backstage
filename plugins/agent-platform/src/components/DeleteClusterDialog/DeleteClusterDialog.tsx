@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
@@ -13,7 +12,10 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  BusyDialog,
+  useFieldValidation,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useClusterWrite } from '../../hooks/useClusterManager';
 import { useOpenGeneration } from '../../hooks/useOpenGeneration';
@@ -75,6 +77,13 @@ export function DeleteClusterDialog({
   const [committed, setCommitted] = useState<ClusterWriteResult>();
   const input: DeleteClusterInput = { organization, name };
   const startAnswer = useOpenGeneration(isOpen);
+  // A Delete without the name typed says so on the field and focuses it, as
+  // the app's other typed confirmations do (the `forms` skill).
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope, { isOpen });
+  const typedError =
+    // A pasted name often carries a trailing space or newline.
+    typed.trim() === name ? undefined : `Type ${name} to confirm the deletion.`;
 
   /** The dry runs, again after a refusal the person has dealt with. */
   const check = async () => {
@@ -123,8 +132,20 @@ export function DeleteClusterDialog({
     }
   };
 
+  /** Delete or Commit, once the name is typed. */
+  const onConfirm = () => {
+    if (typedError) {
+      validation.reveal();
+      return;
+    }
+    if (mode === 'commit') {
+      onCommit();
+    } else {
+      onDelete();
+    }
+  };
+
   const checking = isOpen && !verdicts;
-  const confirmed = typed === name;
   const started = Boolean(removed || committed);
   const notConnected =
     write.failure?.kind === 'not-connected'
@@ -138,228 +159,242 @@ export function DeleteClusterDialog({
     removed && !removed.partial && removed.nextStep && !nothingLeft;
 
   return (
-    <Dialog
+    <BusyDialog
       isOpen={isOpen}
-      {...dialogDismissLock(write.isWriting, onOpenChange)}
+      onOpenChange={onOpenChange}
+      isBusy={write.isWriting}
       width="min(90vw, 720px)"
     >
-      <DialogHeader>Delete cluster {name}?</DialogHeader>
-      <DialogBody>
-        <Flex direction="column" gap="3">
-          <Text variant="body-medium">
-            Removes {name} from {installation} as you, through cluster-manager:
-            helm-controller uninstalls the cluster and its default apps, and
-            what cluster-manager created on it goes with it.
-          </Text>
-
-          {checking && (
-            <Flex direction="column" gap="1" data-testid="delete-checking">
-              <Text variant="body-small" color="secondary">
-                Checking what goes with the cluster…
+      {close => (
+        <>
+          <DialogHeader>Delete cluster {name}?</DialogHeader>
+          <DialogBody>
+            <Flex direction="column" gap="3" ref={scope}>
+              <Text variant="body-medium">
+                Removes {name} from {installation} as you, through
+                cluster-manager: helm-controller uninstalls the cluster and its
+                default apps, and what cluster-manager created on it goes with
+                it.
               </Text>
-              <Skeleton width="100%" height={48} />
-            </Flex>
-          )}
 
-          {preview && !started && <WhatGoes result={preview} />}
-
-          {refusedEverywhere && verdicts && (
-            <Alert
-              status="warning"
-              data-testid="delete-refused"
-              title="cluster-manager refuses to delete this cluster"
-              description={
-                <Flex direction="column" gap="2">
-                  {[modeBlocker(verdicts.apply), modeBlocker(verdicts.commit)]
-                    .filter((reason): reason is string => Boolean(reason))
-                    .filter(
-                      (reason, index, all) => all.indexOf(reason) === index,
-                    )
-                    .map(reason => (
-                      <Text key={reason} variant="body-small">
-                        {reason}
-                      </Text>
-                    ))}
-                  <div>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onPress={check}
-                      isDisabled={write.isBusy}
-                    >
-                      Check again
-                    </Button>
-                  </div>
-                </Flex>
-              }
-            />
-          )}
-
-          {preview && verdicts && !started && (
-            <>
-              <RadioGroup
-                label="How"
-                value={mode ?? null}
-                onChange={value => setMode(value as WriteMode)}
-                isDisabled={write.isBusy}
-              >
-                <Radio
-                  value="commit"
-                  isDisabled={verdicts.commit.state !== 'ready'}
-                >
-                  Commit — the removal as a pull request as you in the
-                  repository that owns the cluster
-                </Radio>
-                <Radio
-                  value="apply"
-                  isDisabled={verdicts.apply.state !== 'ready'}
-                >
-                  Delete — remove it from the installation as you, now
-                </Radio>
-              </RadioGroup>
-              {[
-                ['Commit', modeBlocker(verdicts.commit)],
-                ['Delete', modeBlocker(verdicts.apply)],
-              ]
-                .filter(([, reason]) => reason)
-                .map(([label, reason]) => (
-                  <Text
-                    key={label}
-                    variant="body-small"
-                    color="secondary"
-                    data-testid="mode-blocker"
-                  >
-                    {label} is not possible: {reason}
-                  </Text>
-                ))}
-              <TextField
-                label={`Type ${name} to confirm`}
-                value={typed}
-                onChange={setTyped}
-                isRequired
-              />
-            </>
-          )}
-
-          {write.failure &&
-            write.failure.kind !== 'not-connected' &&
-            !nothingLeft && (
-              <Alert
-                status="danger"
-                title="cluster-manager refused"
-                description={write.failure.message}
-              />
-            )}
-          {notConnected && (
-            <ConnectAgentManagerAlert
-              installation={installation}
-              message={notConnected.message}
-              action="Clusters are deleted"
-              server={CLUSTER_MANAGER_SERVER}
-            />
-          )}
-          {removed?.partial && (
-            <PartialWriteOutcome
-              result={removed}
-              action="Delete"
-              onContinue={onDelete}
-              isBusy={write.isBusy}
-            />
-          )}
-          {removed && !removed.partial && (
-            <Alert
-              status="success"
-              data-testid="delete-outcome"
-              title={`Removed as you: ${removed.objects.length} ${
-                removed.objects.length === 1 ? 'object' : 'objects'
-              }`}
-              description={
-                <Flex direction="column" gap="2">
+              {checking && (
+                <Flex direction="column" gap="1" data-testid="delete-checking">
                   <Text variant="body-small" color="secondary">
-                    {removed.objects
-                      .map(
-                        object =>
-                          `${object.kind} ${object.name}: ${object.action}`,
-                      )
-                      .join(' · ')}
+                    Checking what goes with the cluster…
                   </Text>
-                  {(removed.warnings ?? []).map(warning => (
-                    <Text key={warning} variant="body-small">
-                      {warning}
-                    </Text>
-                  ))}
-                  {secondPass && (
-                    <>
-                      <Text variant="body-small">{removed.nextStep}</Text>
+                  <Skeleton width="100%" height={48} />
+                </Flex>
+              )}
+
+              {preview && !started && <WhatGoes result={preview} />}
+
+              {refusedEverywhere && verdicts && (
+                <Alert
+                  status="warning"
+                  data-testid="delete-refused"
+                  title="cluster-manager refuses to delete this cluster"
+                  description={
+                    <Flex direction="column" gap="2">
+                      {[
+                        modeBlocker(verdicts.apply),
+                        modeBlocker(verdicts.commit),
+                      ]
+                        .filter((reason): reason is string => Boolean(reason))
+                        .filter(
+                          (reason, index, all) => all.indexOf(reason) === index,
+                        )
+                        .map(reason => (
+                          <Text key={reason} variant="body-small">
+                            {reason}
+                          </Text>
+                        ))}
                       <div>
                         <Button
                           variant="secondary"
                           size="small"
-                          onPress={onDelete}
+                          onPress={check}
                           isDisabled={write.isBusy}
                         >
-                          {write.isBusy ? 'Removing…' : 'Finish removal'}
+                          Check again
                         </Button>
                       </div>
-                    </>
-                  )}
-                </Flex>
-              }
-            />
-          )}
-          {nothingLeft && (
-            <Alert
-              status="success"
-              data-testid="delete-complete"
-              title={
-                started
-                  ? `${name} is removed: nothing of it is left`
-                  : `${name} is already removed: nothing of it is left`
-              }
-            />
-          )}
-          {committed?.commit && (
-            <ClusterManagerCommitOutcome
-              commit={committed.commit}
-              liveStep={
-                !removed &&
-                !nothingLeft && (
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    onPress={onDelete}
+                    </Flex>
+                  }
+                />
+              )}
+
+              {preview && verdicts && !started && (
+                <>
+                  <RadioGroup
+                    label="How"
+                    value={mode ?? null}
+                    onChange={value => setMode(value as WriteMode)}
                     isDisabled={write.isBusy}
                   >
-                    {write.isBusy ? 'Running…' : 'Merged: run the live step'}
-                  </Button>
-                )
-              }
-            />
-          )}
-        </Flex>
-      </DialogBody>
-      <DialogFooter>
-        <Flex gap="2" justify="end">
-          <Button
-            variant="secondary"
-            onPress={() => onOpenChange(false)}
-            isDisabled={write.isWriting}
-          >
-            {started || nothingLeft ? 'Close' : 'Cancel'}
-          </Button>
-          {!started && !nothingLeft && (
-            <Button
-              variant="primary"
-              destructive
-              onPress={mode === 'commit' ? onCommit : onDelete}
-              isDisabled={!preview || !mode || !confirmed || write.isBusy}
-            >
-              {deleteLabel(mode, write.isBusy)}
-            </Button>
-          )}
-        </Flex>
-      </DialogFooter>
-    </Dialog>
+                    <Radio
+                      value="commit"
+                      isDisabled={verdicts.commit.state !== 'ready'}
+                    >
+                      Commit — the removal as a pull request as you in the
+                      repository that owns the cluster
+                    </Radio>
+                    <Radio
+                      value="apply"
+                      isDisabled={verdicts.apply.state !== 'ready'}
+                    >
+                      Delete — remove it from the installation as you, now
+                    </Radio>
+                  </RadioGroup>
+                  {[
+                    ['Commit', modeBlocker(verdicts.commit)],
+                    ['Delete', modeBlocker(verdicts.apply)],
+                  ]
+                    .filter(([, reason]) => reason)
+                    .map(([label, reason]) => (
+                      <Text
+                        key={label}
+                        variant="body-small"
+                        color="secondary"
+                        data-testid="mode-blocker"
+                      >
+                        {label} is not possible: {reason}
+                      </Text>
+                    ))}
+                  <TextField
+                    label={`Type ${name} to confirm`}
+                    value={typed}
+                    onChange={setTyped}
+                    isRequired
+                    {...validation.textFieldProps('typed', typedError)}
+                  />
+                </>
+              )}
+
+              {write.failure &&
+                write.failure.kind !== 'not-connected' &&
+                !nothingLeft && (
+                  <Alert
+                    status="danger"
+                    title="cluster-manager refused"
+                    description={write.failure.message}
+                  />
+                )}
+              {notConnected && (
+                <ConnectAgentManagerAlert
+                  installation={installation}
+                  message={notConnected.message}
+                  action="Clusters are deleted"
+                  server={CLUSTER_MANAGER_SERVER}
+                />
+              )}
+              {removed?.partial && (
+                <PartialWriteOutcome
+                  result={removed}
+                  action="Delete"
+                  onContinue={onDelete}
+                  isBusy={write.isBusy}
+                />
+              )}
+              {removed && !removed.partial && (
+                <Alert
+                  status="success"
+                  data-testid="delete-outcome"
+                  title={`Removed as you: ${removed.objects.length} ${
+                    removed.objects.length === 1 ? 'object' : 'objects'
+                  }`}
+                  description={
+                    <Flex direction="column" gap="2">
+                      <Text variant="body-small" color="secondary">
+                        {removed.objects
+                          .map(
+                            object =>
+                              `${object.kind} ${object.name}: ${object.action}`,
+                          )
+                          .join(' · ')}
+                      </Text>
+                      {(removed.warnings ?? []).map(warning => (
+                        <Text key={warning} variant="body-small">
+                          {warning}
+                        </Text>
+                      ))}
+                      {secondPass && (
+                        <>
+                          <Text variant="body-small">{removed.nextStep}</Text>
+                          <div>
+                            <Button
+                              variant="secondary"
+                              size="small"
+                              onPress={onDelete}
+                              isDisabled={write.isBusy}
+                            >
+                              {write.isBusy ? 'Removing…' : 'Finish removal'}
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </Flex>
+                  }
+                />
+              )}
+              {nothingLeft && (
+                <Alert
+                  status="success"
+                  data-testid="delete-complete"
+                  title={
+                    started
+                      ? `${name} is removed: nothing of it is left`
+                      : `${name} is already removed: nothing of it is left`
+                  }
+                />
+              )}
+              {committed?.commit && (
+                <ClusterManagerCommitOutcome
+                  commit={committed.commit}
+                  liveStep={
+                    !removed &&
+                    !nothingLeft && (
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        onPress={onDelete}
+                        isDisabled={write.isBusy}
+                      >
+                        {write.isBusy
+                          ? 'Running…'
+                          : 'Merged: run the live step'}
+                      </Button>
+                    )
+                  }
+                />
+              )}
+            </Flex>
+          </DialogBody>
+          <DialogFooter>
+            <Flex gap="2" justify="end">
+              <Button
+                variant="secondary"
+                onPress={close}
+                isDisabled={write.isWriting}
+              >
+                {started || nothingLeft ? 'Close' : 'Cancel'}
+              </Button>
+              {!started && !nothingLeft && (
+                <Button
+                  variant="primary"
+                  destructive
+                  onPress={onConfirm}
+                  // Waits only for the dry run's answer and the call in flight;
+                  // a missing name is said on the field instead.
+                  isDisabled={!preview || !mode || write.isBusy}
+                >
+                  {deleteLabel(mode, write.isBusy)}
+                </Button>
+              )}
+            </Flex>
+          </DialogFooter>
+        </>
+      )}
+    </BusyDialog>
   );
 }
 

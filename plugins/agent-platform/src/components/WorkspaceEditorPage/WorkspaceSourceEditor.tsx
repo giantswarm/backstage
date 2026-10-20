@@ -189,7 +189,7 @@ export function WorkspaceSourceEditor({
 
         {provider && !isConnected ? (
           <ProviderConnectPrompt
-            client={client}
+            installation={client.installation}
             provider={provider}
             onRecheck={onRecheckProviders}
           />

@@ -14,7 +14,15 @@ const ROW_AVATAR_SIZE: AvatarSize = 48;
  */
 export const RUNTIME_LOST_LABEL = 'Runtime lost';
 export const RUNTIME_LOST_TITLE =
-  'kagent cannot bring this session’s agent back; the transcript stays readable. Start a new session to carry on.';
+  'kagent cannot bring this session’s agent back; the transcript stays readable. Continue it in a new session from its page.';
+
+/**
+ * The mark on a session started before its agent's last change: it keeps the
+ * revision it was prepared on, so it still runs the agent as it was then.
+ */
+export const EARLIER_REVISION_LABEL = 'Earlier revision';
+export const EARLIER_REVISION_TITLE =
+  'Started on an earlier revision of this agent, before a change to its Harness or configuration; it keeps running as it was. Delete it and start a new session to use the current one.';
 
 /** One line, cut with an ellipsis at the width of its container. */
 export const TRUNCATE = {
