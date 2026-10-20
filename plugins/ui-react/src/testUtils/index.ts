@@ -17,3 +17,4 @@ export type {
   MockCollapsibleLayoutOptions,
   MockedCollapsibleLayout,
 } from './mockCollapsibleLayout';
+export { declaredStyle } from './declaredStyle';
