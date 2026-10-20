@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentManagerClient } from '../apis/AgentManagerClient';
@@ -78,4 +78,52 @@ export function useAgentManagerAvailability(
   installations: string[],
 ): AgentManagerAvailability {
   return useMusterServerAvailability(AGENT_MANAGER_SERVER, installations);
+}
+
+/**
+ * Whether the person may create an agent on none of `installations`: on each,
+ * agent-manager answered `get_info` as them with no namespace in
+ * `namespaces.managed` (it checks each with a `SelfSubjectAccessReview`). An
+ * installation whose agent-manager is not reached as the person, whose
+ * `get_info` failed, or whose answer names no `managed` list says nothing
+ * either way and counts as one the person may create on.
+ */
+export function useCreatesAgentsNowhere(installations: string[]): {
+  createsNowhere: boolean;
+  isLoading: boolean;
+} {
+  const musterApi = useMusterPluginApi();
+  const availability = useAgentManagerAvailability(installations);
+  // Same query as `useAgentManagerInfo`, asked only where muster reaches
+  // agent-manager as the person.
+  const infos = useQueries({
+    queries: installations.map(installation => ({
+      queryKey: musterAgentManagerInfoQueryKey(installation),
+      enabled:
+        Boolean(musterApi) &&
+        availability.presenceOf(installation) === 'available',
+      queryFn: () => new AgentManagerClient(musterApi!, installation).getInfo(),
+      staleTime: 60_000,
+      retry: false,
+    })),
+  });
+  const isAvailable = (index: number) =>
+    availability.presenceOf(installations[index]) === 'available';
+  const isLoading = installations.some((installation, index) =>
+    isAvailable(index)
+      ? isAwaitingData(infos[index])
+      : availability.presenceOf(installation) === 'unknown' &&
+        availability.isLoading,
+  );
+  return {
+    createsNowhere:
+      !isLoading &&
+      installations.length > 0 &&
+      installations.every(
+        (_, index) =>
+          isAvailable(index) &&
+          infos[index].data?.namespaces?.managed?.length === 0,
+      ),
+    isLoading,
+  };
 }

@@ -598,6 +598,11 @@ async function restoreInboxToasts(page: Page): Promise<void> {
  * detail page and returns its path; from then on the agent exists and the
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
  *
+ * Where the person may create agents in several tenants (agent-manager's
+ * `get_info` `namespaces.managed`), the wizard offers no model until one is
+ * picked: `options.tenant` (default the platform tenant, `platform`). The only
+ * tenant is picked by the wizard itself.
+ *
  * `options.harness` picks that Runtime card under More options instead of the
  * platform Harness; `options.onStep` runs on Details (once the pick is made)
  * and on Review (once the dry run completed), before each Continue or Create.
@@ -609,6 +614,7 @@ export async function createAgentInWizard(
   options: {
     harness?: RegExp;
     model?: string | RegExp;
+    tenant?: string;
     onStep?: (step: 'Details' | 'Review') => Promise<void>;
   } = {},
 ): Promise<string> {
@@ -636,10 +642,24 @@ export async function createAgentInWizard(
   await page
     .getByRole('textbox', { name: 'Instructions' })
     .fill('You are a test agent. Answer with exactly what you are asked for.');
-  await page
+  const model = page
     .getByRole('radiogroup', { name: 'Model' })
-    .getByRole('radio', { name: options.model ?? /default-model-config/ })
-    .check();
+    .getByRole('radio', { name: options.model ?? /default-model-config/ });
+  // The Select's name is its value and its label: "Select an option Tenant".
+  const tenantPicker = page.getByRole('button', { name: /\bTenant$/ });
+  await expect(model.or(tenantPicker).first()).toBeVisible({ timeout: 60_000 });
+  // Until agent-manager's get_info answers, the models are offered before the
+  // tenants are known: decide on the tenant only once they are.
+  await expect(
+    page.getByText('Reading where you may create agents…'),
+  ).toBeHidden({ timeout: 60_000 });
+  if (await tenantPicker.isVisible()) {
+    await tenantPicker.click();
+    await page
+      .getByRole('option', { name: options.tenant ?? 'platform', exact: true })
+      .click();
+  }
+  await model.check();
   if (options.harness) {
     await page
       .getByRole('radiogroup', { name: 'Runtime' })

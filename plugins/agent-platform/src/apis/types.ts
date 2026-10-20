@@ -51,6 +51,8 @@ export type ConfirmationAnswerRequest = {
 export type KagentIdentity = {
   /** The `sub` kagent used to scope the session query, when it reported one. */
   sub?: string;
+  /** The token's `email` claim, when kagent reported one. */
+  email?: string;
 };
 
 export interface KagentApi {
@@ -299,4 +301,11 @@ export interface KagentApi {
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
   getIdentity(installation: string): Promise<KagentIdentity>;
+
+  /**
+   * The namespaces of the Agents the person may list on the installation
+   * (`ListAgents` with no namespace, as the person): with the controller's
+   * Kubernetes authorizer, their tenants that hold an agent.
+   */
+  listAgentNamespaces(installation: string): Promise<string[]>;
 }

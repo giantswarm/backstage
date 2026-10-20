@@ -152,6 +152,21 @@ export type TimelineItem =
        * entry says so without inventing a reason.
        */
       reason?: string;
+    })
+  | (TimelineItemBase & {
+      /**
+       * Connections the agent's egress policy refused during this turn, to one
+       * destination. Not from kagent: the Substrate egress gateway counts them
+       * per actor, and `withEgressRefusals` places them on their turn.
+       */
+      kind: 'egress-refused';
+      /** `http`, `https` or `tcp`. */
+      scheme: string;
+      /** Absent when the gateway counted it without naming the host. */
+      host?: string;
+      port?: number;
+      /** Refusals of this destination in this turn. */
+      count: number;
     });
 
 export type SessionTimeline = {

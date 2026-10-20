@@ -86,6 +86,13 @@ export type AgentsContextValue = {
    */
   unreachableInstallations: string[];
   /**
+   * Installations in scope where the person may list agents in no namespace:
+   * the cluster-wide list and every namespaced one were refused. Not a
+   * failure to read -- no tenant binds them there -- so they are not in
+   * `unreachableInstallations`.
+   */
+  noAccessInstallations: string[];
+  /**
    * No agent is listed and every environment in scope answered without
    * kagent: none can be listed or created there, whatever else is still
    * loading. `undefined` otherwise -- including while one of them is still
@@ -252,11 +259,13 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     enableDiscovery: false,
     refetchInterval: agentsRefetchInterval,
   };
-  const { resources, clustersData, isLoading, errors } = useNamespacedFallback(
-    useResources(queriedInstallations, Agent, {}, agentsOptions),
-    Agent,
-    agentsOptions,
-  );
+  const { resources, clustersData, isLoading, errors, refusedInstallations } =
+    useNamespacedFallback(
+      useResources(queriedInstallations, Agent, {}, agentsOptions),
+      Agent,
+      agentsOptions,
+    );
+  const refusedKey = (refusedInstallations ?? []).join(',');
 
   const baselineOptions = {
     enableDiscovery: false,
@@ -551,9 +560,16 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // it. And if we're still showing an installation's last-known agents, don't
     // also claim we couldn't read it.
     const scopedSet = new Set(scopedInstallations);
-    const unreachableInstallations = erroredInstallations.filter(
+    const refused = new Set(refusedKey ? refusedKey.split(',') : []);
+    const unlisted = erroredInstallations.filter(
       cluster =>
         scopedSet.has(cluster) && !agentsByInstallation[cluster]?.length,
+    );
+    const unreachableInstallations = unlisted.filter(
+      cluster => !refused.has(cluster),
+    );
+    const noAccessInstallations = unlisted.filter(cluster =>
+      refused.has(cluster),
     );
 
     // The fleet-wide query reports "loading" until every installation settles,
@@ -597,6 +613,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
         rows.length > 0 && (pendingInstallations.length > 0 || isProbing),
       hasInstallations,
       unreachableInstallations,
+      noAccessInstallations,
       kagentMissing: rows.length === 0 ? kagentMissing : undefined,
       kagentSwitchedOff,
       unknownPin,
@@ -617,6 +634,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     carriersByInstallation,
     harnessesByInstallation,
     erroredInstallations,
+    refusedKey,
     isLoading,
     isProbing,
     homeSettled,

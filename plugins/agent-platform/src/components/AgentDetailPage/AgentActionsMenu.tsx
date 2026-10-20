@@ -44,6 +44,14 @@ export type AgentManagerGate = {
   isGitOpsOwned: boolean;
   canCommit: boolean;
   isVerdictPending: boolean;
+  /**
+   * Whether the API server lets the person update (Edit, Update skills) or
+   * delete the agent's HelmRelease in its tenant's namespace
+   * (`SelfSubjectAccessReview`). An agent applied from git changes through a
+   * pull request, so both are true for it. Absent: not asked, offered.
+   */
+  mayUpdate?: boolean;
+  mayDelete?: boolean;
 };
 
 /**
@@ -122,8 +130,8 @@ export function agentManagerAbsenceReason(
  * an explanation belongs on the page (the Overview tab's GitOps card already
  * carries the one for an agent applied from git), not as an unclickable item in
  * a list of things to do. Authorization stays the apiserver's, reached through
- * agent-manager as the person: a viewer sees the items and gets the Forbidden
- * on confirm.
+ * agent-manager as the person; the page asks it ahead (`mayUpdate`,
+ * `mayDelete`), so a tenant's user sees neither item.
  */
 export function AgentActionsMenu({
   agent,
@@ -156,17 +164,17 @@ export function AgentActionsMenu({
           {/* Separate conditionals rather than one fragment: react-aria
               builds the menu's collection from its direct children. Edit is
               the page header's own button, so it is not listed here. */}
-          {writeMode !== undefined ? (
+          {writeMode !== undefined && agentManager.mayUpdate !== false ? (
             <MenuItem iconStart={<UpdateIcon />} onAction={onUpdateSkills}>
               Update all skills to latest…
             </MenuItem>
           ) : null}
-          {writeMode !== undefined ? (
+          {writeMode !== undefined && agentManager.mayUpdate !== false ? (
             <MenuItem iconStart={<SwapHorizIcon />} onAction={onChangeHarness}>
               Change Harness…
             </MenuItem>
           ) : null}
-          {writeMode !== undefined ? (
+          {writeMode !== undefined && agentManager.mayDelete !== false ? (
             <MenuItem
               color="danger"
               iconStart={<DeleteOutlineIcon />}
