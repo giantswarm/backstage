@@ -74,6 +74,8 @@ import {
   sessionSelectionOf,
 } from './filters';
 import {
+  EARLIER_REVISION_LABEL,
+  EARLIER_REVISION_TITLE,
   RUNTIME_LOST_LABEL,
   RUNTIME_LOST_TITLE,
   SessionAgent,
@@ -370,6 +372,15 @@ function shellColumns({
                   style={{ flexShrink: 0 }}
                 >
                   {RUNTIME_LOST_LABEL}
+                </Badge>
+              )}
+              {row.earlierRevision && (
+                <Badge
+                  size="small"
+                  title={EARLIER_REVISION_TITLE}
+                  style={{ flexShrink: 0 }}
+                >
+                  {EARLIER_REVISION_LABEL}
                 </Badge>
               )}
             </Flex>

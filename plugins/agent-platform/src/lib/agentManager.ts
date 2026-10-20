@@ -592,6 +592,12 @@ export type AgentUpdate = {
   /** Replaces the whole list; an empty list clears it. */
   egress?: string[];
   refreshSkills?: boolean;
+  /**
+   * Moves the agent to another Harness of its namespace after the checks a
+   * create on it runs; `""` selects the platform Harness. Sessions keep the
+   * revision they started on.
+   */
+  harness?: string;
 };
 
 /**
