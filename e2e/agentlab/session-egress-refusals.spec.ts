@@ -92,7 +92,29 @@ test('a session shows its egress refusals on the turn, and another person sees n
   const sessionPath = new URL(admin.url()).pathname;
   const actor = `session-${sessionIdOf(admin).toLowerCase()}`;
 
+  // A lab without `platform.observability` configures the installation with
+  // `mimirEnabled: false`: the page then sends no refusal query and shows the
+  // Session without refusals, which is what this run can prove there.
+  const signedInConfig = admin.waitForResponse(response =>
+    response.url().endsWith('/api/gs/config'),
+  );
+  await admin.reload();
+  const config = await (await signedInConfig).json();
+  const hasMetrics =
+    config?.gs?.installations?.[lab.installation]?.mimirEnabled !== false;
+
   const entry = admin.getByTestId('timeline-egress-refused');
+  if (!hasMetrics) {
+    await expect(admin.getByText(/^Turn 1\b/).first()).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(entry).toHaveCount(0);
+    expect(queries).toEqual([]);
+  }
+  test.skip(
+    !hasMetrics,
+    `${lab.installation} has no metrics (mimirEnabled: false): no refusal to show`,
+  );
   await expect(entry).toBeVisible({ timeout: 120_000 });
   await expect(entry).toContainText('Egress refused: proxy.golang.org:443');
   await expect(entry).toContainText(
