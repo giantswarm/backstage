@@ -86,6 +86,7 @@ const agents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  noAccessInstallations: [],
   kagentMissing: undefined,
   kagentSwitchedOff: [],
   unknownPin: undefined,

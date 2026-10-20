@@ -48,9 +48,20 @@ function mockPassThrough({ children }: { children: ReactNode }) {
 jest.mock('../AgentPlatformCookieAuth', () => ({
   AgentPlatformCookieAuth: mockPassThrough,
 }));
-jest.mock('../QueryClientProvider', () => ({
-  QueryClientProvider: mockPassThrough,
-}));
+// A fresh client in place of the plugin's persisted one: the first-agent card
+// asks agent-manager where the person may create.
+jest.mock('../QueryClientProvider', () => {
+  const { QueryClient, QueryClientProvider } = jest.requireActual(
+    '@tanstack/react-query',
+  );
+  return {
+    QueryClientProvider: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={new QueryClient()}>
+        {children}
+      </QueryClientProvider>
+    ),
+  };
+});
 jest.mock('../ModelConfigsProvider', () => ({
   ModelConfigsProvider: mockPassThrough,
 }));
@@ -169,6 +180,7 @@ const loadedAgents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  noAccessInstallations: [],
   kagentMissing: undefined,
   kagentSwitchedOff: [],
   unknownPin: undefined,

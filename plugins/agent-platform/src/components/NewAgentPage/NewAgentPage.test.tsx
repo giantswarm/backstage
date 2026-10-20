@@ -65,6 +65,9 @@ jest.mock('../ModelConfigPicker', () => ({
     return <p>model picker{error && `: ${error}`}</p>;
   },
 }));
+jest.mock('../TenantPicker', () => ({
+  TenantPicker: () => <p>tenant picker</p>,
+}));
 jest.mock('../HarnessPicker', () => ({
   HarnessPicker: () => <p>runtime picker</p>,
 }));

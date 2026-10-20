@@ -4,6 +4,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import {
+  HelmRelease,
+  useSelfSubjectAccessReview,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
   EmptyStateCard,
   LoadingIndicator,
   WizardFrame,
@@ -19,6 +23,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { formStateOfAgent } from '../../lib/agentEdit';
 import type { AgentManagerAgent, WriteMode } from '../../lib/agentManager';
 import type { DiscoveredSkill } from '../../lib/skills';
+import { tenantOf } from '../../lib/tenants';
 import { agentDetailRouteRef } from '../../routes';
 import {
   agentManagerAbsenceReason,
@@ -120,6 +125,23 @@ export function EditAgentPage() {
     isVerdictPending: isLoading || (isGitOpsOwned && isInfoLoading),
   };
   const writeMode = agentWriteMode(gate);
+  // A live save runs as the person against the agent's HelmRelease, so a
+  // deep link from someone who may not update it answers with the refusal
+  // up front rather than at the end of the wizard. Not where agent-manager
+  // writes as its ServiceAccount.
+  const asksAccess =
+    writeMode === 'apply' && info?.identity !== 'serviceAccount';
+  const updateAccess = useSelfSubjectAccessReview(
+    installation,
+    {
+      group: HelmRelease.group,
+      resource: HelmRelease.plural,
+      namespace: agent?.helmRelease?.namespace ?? namespace,
+      name: agent?.helmRelease?.name ?? name,
+      verb: 'update',
+    },
+    { enabled: asksAccess },
+  );
   const reason = agentManagerAbsenceReason(
     { ...gate, isGitOpsOwned: isGitOpsOwned && !canCommit },
     installation,
@@ -156,9 +178,29 @@ export function EditAgentPage() {
   } else if (
     presence === 'unknown' ||
     gate.isVerdictPending ||
+    (asksAccess && updateAccess.isLoading) ||
     (agent && isCatalogPending)
   ) {
     body = <LoadingIndicator label="Reading the agent…" />;
+  } else if (
+    asksAccess &&
+    !updateAccess.allowed &&
+    failure?.kind !== 'not-connected'
+  ) {
+    // Before the read's failure: a person without the role may not read the
+    // agent's HelmRelease either, so agent-manager's get_agent fails as them,
+    // and the refusal is the answer that says why. Not before a muster
+    // session that must first connect to agent-manager: that is the answer
+    // then, and agent-manager may write as its ServiceAccount there.
+    body = (
+      <EmptyStateCard
+        title="You cannot change this agent"
+        description={`Changing the agents of ${tenantOf(
+          namespace,
+        )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
+        actions={backLink}
+      />
+    );
   } else if (failure) {
     body = (
       <Flex direction="column" gap="3">

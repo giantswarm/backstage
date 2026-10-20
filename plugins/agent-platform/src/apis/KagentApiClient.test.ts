@@ -1168,13 +1168,19 @@ describe('KagentApiClient', () => {
   });
 
   describe('getIdentity', () => {
-    it('reads the subject kagent resolved', async () => {
+    it('reads the subject and the email kagent resolved', async () => {
+      // kagent 1.19 answers the token's claims: Dex's opaque subject, and the
+      // email agent-manager records as an agent's creator.
       fetchMock.mockResolvedValue(
-        jsonResponse({ sub: 'marian@giantswarm.io' }),
+        jsonResponse({
+          sub: 'CiQxYjFlYjVmMS0SBWxvY2Fs',
+          email: 'dev@lab.local',
+        }),
       );
 
       await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
-        sub: 'marian@giantswarm.io',
+        sub: 'CiQxYjFlYjVmMS0SBWxvY2Fs',
+        email: 'dev@lab.local',
       });
     });
 
@@ -1214,7 +1220,26 @@ describe('KagentApiClient', () => {
 
       await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
         sub: undefined,
+        email: 'marian@example.com',
       });
+    });
+  });
+
+  describe('listAgentNamespaces', () => {
+    it('asks the backend as the person and answers the namespaces', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ namespaces: ['kagent', 'org-a'] }),
+      );
+
+      await expect(
+        buildClient().listAgentNamespaces('gazelle'),
+      ).resolves.toEqual(['kagent', 'org-a']);
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain(
+        '/kagent/agent-namespaces?installation=gazelle',
+      );
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBeDefined();
     });
   });
 

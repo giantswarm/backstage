@@ -7,6 +7,7 @@ import {
   Agent,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { kagentApiRef } from '../apis';
 import {
   agentNamespacesOf,
   mergeNamespaced,
@@ -81,12 +82,26 @@ function listedNamespaces() {
   return mockFetchResourceList.mock.calls.map(([options]) => options.namespace);
 }
 
-function renderNamespaced(installations: string[]) {
+/**
+ * `listAgentNamespaces`: what the controller answers `ListAgents` with for
+ * the person; without it, the portal has no kagent API bound.
+ */
+function renderNamespaced(
+  installations: string[],
+  listAgentNamespaces?: (installation: string) => Promise<string[]>,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const wrapper = ({ children }: PropsWithChildren) => (
-    <TestApiProvider apis={[[kubernetesApiRef, {}]]}>
+    <TestApiProvider
+      apis={[
+        [kubernetesApiRef, {}],
+        ...(listAgentNamespaces
+          ? [[kagentApiRef, { listAgentNamespaces }] as const]
+          : []),
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -148,6 +163,43 @@ describe('useNamespacedResources', () => {
     expect(listedNamespaces()).toEqual(['kagent', 'team-a']);
   });
 
+  it('reads the tenants the controller lists for the person, which agent-manager leaves out where they may not create', async () => {
+    // A user of org-a: agent-manager names only the namespaces they may
+    // create in, so org-a comes from the controller's ListAgents alone.
+    mockGetInfo.mockResolvedValue({
+      namespaces: { default: 'kagent', managed: [] },
+    });
+    namespaces({ kagent: 'read', 'org-a': 'read', 'org-b': 'forbidden' });
+
+    const { result } = renderNamespaced(['gazelle'], async () => ['org-a']);
+
+    await waitFor(() =>
+      expect(result.current.pendingInstallations).toEqual([]),
+    );
+    expect(result.current.resources.map(mc => mc.getNamespace())).toEqual([
+      'kagent',
+      'org-a',
+    ]);
+    expect(listedNamespaces()).toEqual(['kagent', 'org-a']);
+  });
+
+  it('reads agent-manager’s namespaces when the controller does not answer the list', async () => {
+    mockGetInfo.mockResolvedValue({
+      namespaces: { default: 'kagent', managed: ['team-a'] },
+    });
+    namespaces({ kagent: 'read', 'team-a': 'read' });
+
+    const { result } = renderNamespaced(['gazelle'], async () => {
+      throw named('NotFoundError', 'no agent list endpoint');
+    });
+
+    await waitFor(() =>
+      expect(result.current.pendingInstallations).toEqual([]),
+    );
+    expect(result.current.unreadInstallations).toEqual([]);
+    expect(listedNamespaces()).toEqual(['kagent', 'team-a']);
+  });
+
   it('stays pending until every namespace has answered', async () => {
     mockGetInfo.mockResolvedValue({
       namespaces: { default: 'kagent', managed: ['team-a'] },
@@ -189,11 +241,12 @@ describe('useNamespacedResources', () => {
       expect(result.current.pendingInstallations).toEqual([]),
     );
     expect(result.current.unreadInstallations).toEqual(['gazelle']);
+    expect(result.current.refusedInstallations).toEqual([]);
     expect(result.current.resources).toEqual([]);
     expect(result.current.clustersData).toEqual([]);
   });
 
-  it('leaves an installation unread when every namespace refuses', async () => {
+  it('leaves an installation unread, and refused, when every namespace refuses', async () => {
     mockGetInfo.mockResolvedValue({
       namespaces: { default: 'kagent', managed: [] },
     });
@@ -205,6 +258,7 @@ describe('useNamespacedResources', () => {
       expect(result.current.pendingInstallations).toEqual([]),
     );
     expect(result.current.unreadInstallations).toEqual(['gazelle']);
+    expect(result.current.refusedInstallations).toEqual(['gazelle']);
     expect(result.current.resources).toEqual([]);
   });
 
@@ -372,6 +426,7 @@ describe('mergeNamespaced', () => {
       clustersData: [{ cluster: 'alpha', data: [] }],
       pendingInstallations: ['gamma'],
       unreadInstallations: ['delta'],
+      refusedInstallations: ['delta'],
     });
 
     expect(merged.clustersData.map(({ cluster }) => cluster)).toEqual([
@@ -387,6 +442,7 @@ describe('mergeNamespaced', () => {
       'epsilon',
     ]);
     expect(merged.isLoading).toBe(true);
+    expect(merged.refusedInstallations).toEqual(['delta']);
   });
 
   it('passes a result without refusals through', () => {
@@ -398,7 +454,8 @@ describe('mergeNamespaced', () => {
         clustersData: [],
         pendingInstallations: [],
         unreadInstallations: [],
+        refusedInstallations: [],
       }),
-    ).toEqual(plain);
+    ).toEqual({ ...plain, refusedInstallations: [] });
   });
 });

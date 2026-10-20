@@ -691,7 +691,22 @@ export class KagentApiClient implements KagentApi {
       tokenRequired: false,
     });
     const parsed = kagentMeWireSchema.safeParse(body);
-    return { sub: parsed.success ? parsed.data.sub : undefined };
+    return parsed.success
+      ? { sub: parsed.data.sub, email: parsed.data.email }
+      : { sub: undefined };
+  }
+
+  async listAgentNamespaces(installation: string): Promise<string[]> {
+    const body = await this.get<{ namespaces?: unknown }>(
+      '/kagent/agent-namespaces',
+      installation,
+    );
+    return Array.isArray(body?.namespaces)
+      ? body.namespaces.filter(
+          (namespace): namespace is string =>
+            typeof namespace === 'string' && namespace !== '',
+        )
+      : [];
   }
 
   /** GET a backend route, forwarding the target installation's Dex token. */
