@@ -58,6 +58,11 @@ export type WorkspacePickerProps = {
   value: Workspace | undefined;
   onChange: (workspace: Workspace | undefined) => void;
   isDisabled?: boolean;
+  /**
+   * Says "Workspace" before the select, as the agent picker's own label
+   * does where the pickers head the box.
+   */
+  showLabel?: boolean;
 };
 
 /**
@@ -74,6 +79,7 @@ export function WorkspacePicker({
   value,
   onChange,
   isDisabled = false,
+  showLabel = false,
 }: WorkspacePickerProps) {
   const classes = useStyles();
   const { workspaces } = useSessionWorkspaces(agent.installation);
@@ -123,6 +129,11 @@ export function WorkspacePicker({
 
   return (
     <>
+      {showLabel && (
+        <Text as="span" variant="body-small" className={classes.label}>
+          Workspace
+        </Text>
+      )}
       <Select
         aria-label="Workspace"
         className={classes.select}

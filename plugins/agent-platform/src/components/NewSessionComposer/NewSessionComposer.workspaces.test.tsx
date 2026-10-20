@@ -179,6 +179,13 @@ describe('NewSessionComposer workspaces', () => {
     expect(workspacePicker()).toHaveTextContent('No workspace');
   });
 
+  it('is labelled like the agent picker where the pickers head the box', () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    renderComposer({ pickerPlacement: 'top', pickerLabel: () => 'Agent' });
+
+    expect(screen.getByText('Workspace')).toBeInTheDocument();
+  });
+
   it('is not there where the installation offers no workspace', () => {
     renderComposer();
 

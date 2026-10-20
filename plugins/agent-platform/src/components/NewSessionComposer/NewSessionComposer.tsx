@@ -934,6 +934,7 @@ export function NewSessionComposer({
           value={workspace}
           onChange={next => chooseWorkspace(selectedAgent.id, next)}
           isDisabled={isStarting}
+          showLabel={pickerOnTop && Boolean(pickerLabel)}
         />
       )}
       {renderPickerAccessory?.(selectedAgent)}
