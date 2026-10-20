@@ -43,10 +43,9 @@ test('a member sees the fixture workspace with its repositories, last sync and S
     timeout: 60_000,
   });
   const cells = row.getByRole('gridcell');
+  // One line per source, owner first: `agentlab-org · platform-api, …`.
   await expect(
-    cells.filter({
-      hasText: `${source.provider}: ${source.owner}`,
-    }),
+    cells.filter({ hasText: new RegExp(`^${source.owner} · `) }),
   ).toHaveCount(1);
   await expect(
     cells.filter({ hasText: new RegExp(`^${PUBLIC_REPOSITORIES.length}$`) }),

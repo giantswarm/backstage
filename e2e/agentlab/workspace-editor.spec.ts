@@ -53,7 +53,13 @@ async function pickFilters(
   await filterButton(page, label).click();
   const popover = page.getByRole('dialog');
   for (const option of options) {
-    await popover.getByRole('checkbox', { name: option, exact: true }).click();
+    // bui draws its indicator over the native input, which takes the click.
+    const checkbox = popover.getByRole('checkbox', {
+      name: option,
+      exact: true,
+    });
+    await checkbox.click({ force: true });
+    await expect(checkbox).toBeChecked();
   }
   await page.keyboard.press('Escape');
   await expect(popover).toHaveCount(0);
