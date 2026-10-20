@@ -49,9 +49,12 @@ test('a coding agent loads only the plugin skills selected in the wizard', async
         await expect(
           skills.getByRole('checkbox', { name: /unselected-codeword/ }),
         ).toBeVisible();
-        await skills
-          .getByRole('checkbox', { name: /^selected-codeword/ })
-          .check();
+        // bui draws its indicator over the hidden input: a person clicks the
+        // label, and so does the suite.
+        await skills.getByText('selected-codeword', { exact: true }).click();
+        await expect(
+          skills.getByRole('checkbox', { name: /^selected-codeword/ }),
+        ).toBeChecked();
       }
       if (step === 'Review') {
         await expect(
