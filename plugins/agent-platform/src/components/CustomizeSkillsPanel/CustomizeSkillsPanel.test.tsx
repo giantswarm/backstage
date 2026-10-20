@@ -51,6 +51,7 @@ jest.mock('../AgentsDataProvider', () => ({
 
 const loaded: SkillCatalog = {
   skills: [skill('summarise'), skill('triage')],
+  plugins: [],
   isLoading: false,
   error: null,
   hasRepositories: true,

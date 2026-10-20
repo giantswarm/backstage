@@ -134,6 +134,7 @@ function agent(
 
 const loaded: SkillCatalog = {
   skills: [skill],
+  plugins: [],
   isLoading: false,
   error: null,
   hasRepositories: true,

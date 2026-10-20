@@ -94,6 +94,7 @@ jest.mock('../../hooks/useProposeSkill', () => ({
 
 const loaded: SkillCatalog = {
   skills: [skill],
+  plugins: [],
   isLoading: false,
   error: null,
   hasRepositories: true,

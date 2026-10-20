@@ -27,6 +27,8 @@ const state: NewAgentFormState = {
   egressText: '',
   selectedSkills: [skill],
   keptSkills: [],
+  selectedPlugins: [],
+  keptPlugins: [],
   toolset: ['preset:read-only'],
 };
 
@@ -60,6 +62,46 @@ describe('agentSpecOf', () => {
     expect(
       agentSpecOf(state, { toolset: ['preset:read-only'] }),
     ).not.toHaveProperty('egress');
+  });
+
+  it('sends the picked plugins pinned, with their selections, and none when empty', () => {
+    const plugin = {
+      name: 'review',
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      path: 'plugins/review',
+      ref: 'main',
+      commit: HEAD,
+      format: 'agent-plugins' as const,
+      skills: [{ name: 'go-review', description: '' }],
+    };
+    expect(
+      agentSpecOf(
+        {
+          ...state,
+          selectedPlugins: [
+            { plugin, skills: ['go-review'] },
+            {
+              plugin: {
+                ...plugin,
+                path: 'plugins/commits',
+                format: 'claude-code',
+                skills: [],
+              },
+              skills: [],
+            },
+          ],
+        },
+        { toolset: [] },
+      ).plugins,
+    ).toEqual([
+      {
+        path: 'plugins/review',
+        git: { url: plugin.repoUrl, commit: HEAD },
+        skills: ['go-review'],
+      },
+      { path: 'plugins/commits', git: { url: plugin.repoUrl, commit: HEAD } },
+    ]);
+    expect(agentSpecOf(state, { toolset: [] })).not.toHaveProperty('plugins');
   });
 
   it('names the Harness picked, and none for the platform Harness', () => {

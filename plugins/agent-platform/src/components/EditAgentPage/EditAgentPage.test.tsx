@@ -47,6 +47,7 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
         commit: '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b',
       },
     ],
+    plugins: [],
     isLoading: false,
     error: null,
     hasRepositories: true,
