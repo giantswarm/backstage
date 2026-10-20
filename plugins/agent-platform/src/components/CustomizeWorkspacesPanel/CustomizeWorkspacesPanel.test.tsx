@@ -115,7 +115,7 @@ describe('CustomizeWorkspacesPanel', () => {
     ).toBeInTheDocument();
     expect(within(row).getByText('12')).toBeInTheDocument();
     expect(
-      within(row).getByText(/4(\.0)? GiB of 15Gi|4(\.0)? GB of 15Gi/),
+      within(row).getByText(/4(\.0)? GiB of 15 GiB|4(\.0)? GB of 15 GiB/),
     ).toBeInTheDocument();
     expect(within(row).getByText('Synced')).toBeInTheDocument();
     expect(within(row).getByText('2')).toBeInTheDocument();
@@ -155,9 +155,9 @@ describe('CustomizeWorkspacesPanel', () => {
     await renderPanel();
 
     const row = screen.getByRole('row', { name: /docs/ });
-    expect(within(row).getByText(/ of 16Gi ↑$/)).toBeInTheDocument();
+    expect(within(row).getByText(/ of 16 GiB ↑$/)).toBeInTheDocument();
     expect(
-      within(row).getByText('Grown from 8Gi at the last sync'),
+      within(row).getByText('Grown from 8 GiB at the last sync'),
     ).toBeInTheDocument();
   });
 

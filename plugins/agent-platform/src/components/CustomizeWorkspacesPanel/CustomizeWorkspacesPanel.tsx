@@ -46,6 +46,7 @@ import {
 } from '../../lib/sharedIdentity';
 import {
   searchWorkspaces,
+  sizeLabel,
   sourceLabel,
   sourcesLabel,
   storedLabel,
@@ -87,7 +88,9 @@ function StoredCell({ row }: { row: WorkspaceRow }) {
           : storedLabel(row.storedBytes, row.volumeSize, row.grewFrom)
       }
       description={
-        row.grewFrom ? `Grown from ${row.grewFrom} at the last sync` : undefined
+        row.grewFrom
+          ? `Grown from ${sizeLabel(row.grewFrom)} at the last sync`
+          : undefined
       }
     />
   );
