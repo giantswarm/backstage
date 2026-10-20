@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { TOUCH_QUERY } from '@giantswarm/backstage-plugin-ui-react';
+import { declaredStyle } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { kagentApiRef } from '../../apis';
 import { KagentApi } from '../../apis/types';
 import { sessionsRouteRef } from '../../routes';
@@ -451,16 +452,15 @@ describe('RecentSessions', () => {
       const link = within(waiting).getByRole('link', { name: /Middle/ });
       const row = link.closest('li') as HTMLElement;
       // The row carries the highlight, so it spans the rail's width rather
-      // than stopping short of the pin beside the link.
-      expect(window.getComputedStyle(row).background).toBe(
-        'var(--bui-bg-neutral-3)',
-      );
-      expect(window.getComputedStyle(link).background).toBe('');
+      // than stopping short of the pin beside the link. Declared, not computed
+      // values: jsdom computes a `var()` to the property's initial value.
+      expect(declaredStyle(row, 'background')).toBe('var(--bui-bg-neutral-3)');
+      expect(declaredStyle(link, 'background')).toBe('');
       expect(
         within(row).getByRole('button', { name: 'Pin “Middle”' }),
       ).toBeInTheDocument();
       const other = screen.getByText('Newest').closest('li') as HTMLElement;
-      expect(window.getComputedStyle(other).background).toBe('');
+      expect(declaredStyle(other, 'background')).toBe('');
       // The dot sits above the row's stretched hit area, so its tooltip is
       // reached by hovering it.
       const dot = within(link).getByRole('img', { name: 'Needs your input' });
