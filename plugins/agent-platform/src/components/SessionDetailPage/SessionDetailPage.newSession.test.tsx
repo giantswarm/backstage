@@ -49,6 +49,9 @@ jest.mock('../../hooks/useTokenRates', () => ({
     window: '7d',
   }),
 }));
+jest.mock('../../hooks/useSessionEgressRefusals', () => ({
+  useSessionEgressRefusals: () => [],
+}));
 
 jest.mock('../../hooks/useMusterServers', () => ({
   useMusterServers: () => ({
@@ -83,6 +86,7 @@ const agents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  noAccessInstallations: [],
   kagentMissing: undefined,
   kagentSwitchedOff: [],
   unknownPin: undefined,

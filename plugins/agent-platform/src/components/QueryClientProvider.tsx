@@ -91,6 +91,8 @@ const USER_SCOPED_RESOURCES = new Set([
   // sharpest reason to hold it: it is a behavioural profile, and small enough
   // that nothing but the rule keeps it off the disk.
   'session-usage',
+  // The namespaces of the Agents one person may list: their tenants.
+  'agent-namespaces',
 ]);
 
 function isUserScopedQueryKey(queryKey: QueryKey): boolean {

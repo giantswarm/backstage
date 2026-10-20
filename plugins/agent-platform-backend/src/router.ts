@@ -1083,6 +1083,24 @@ export async function createRouter(
   // agent-platform-common, and a feature that needs gating probes by behaviour.
 
   /**
+   * The namespaces of the Agents the caller may list on one installation
+   * (`AgentService/ListAgents` with no namespace, as the person): where the
+   * roster reads Agents namespace by namespace when the person may not list
+   * them cluster-wide. Only the namespaces are answered; the Agents are read
+   * through the Kubernetes API as the person.
+   */
+  router.get('/kagent/agent-namespaces', async (req, res) => {
+    const requestId = randomUUID();
+    res.setHeader(REQUEST_ID_HEADER, requestId);
+    const { client } = resolveInstallation(req);
+    const result = await client.listAgentNamespaces({
+      userToken: readUserToken(req, { required: true }),
+      requestId,
+    });
+    res.json(result);
+  });
+
+  /**
    * Identity probe: the claims the controller resolved for the call
    * (`SystemService/GetCurrentUser`). Diagnoses the two ways a correct-looking
    * sessions list can be wrong: a `sub` that differs from the one kagent

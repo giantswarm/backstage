@@ -17,6 +17,7 @@ import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
+import { TenantPicker } from '../TenantPicker';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker } from '../HarnessPicker';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
@@ -263,6 +264,11 @@ function NewAgentPageContent() {
           <InstallationSelect
             error={errorFor('installation', fieldErrors.installation)}
           />
+        )}
+        {/* Which tenant the agent belongs to, among those the person may
+            create in there. An existing agent stays in its own. */}
+        {!edit && (
+          <TenantPicker error={errorFor('tenant', fieldErrors.tenant)} />
         )}
         {modelSummary && (
           <Text as="p" variant="body-small" color="secondary">

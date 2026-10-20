@@ -116,6 +116,19 @@ describe('AgentActionsMenu', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
+  it('offers each write only where the API server lets the person make it', async () => {
+    // An editor who may update the release but not delete it.
+    await renderMenu({ ...AVAILABLE, mayUpdate: true, mayDelete: false });
+    await openMenu();
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Update all skills to latest…' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: /Delete agent/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it('offers none of the three when muster lists no agent-manager', async () => {
     await renderMenu({
       presence: 'missing',

@@ -367,6 +367,49 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
+  it('says a refusal from the controller as one that names the agent’s tenant', async () => {
+    // agent-manager's answer when the controller refuses CreateSession
+    // (PermissionDenied): the person may not use that tenant's agents.
+    callTool.mockRejectedValueOnce(
+      new Error(
+        'forbidden: kagent: create session: not allowed to create session',
+      ),
+    );
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({
+          agent: {
+            ...agent,
+            namespace: 'org-acme',
+            tenant: 'organization acme',
+          },
+          prompt: 'Check',
+        }),
+      ).rejects.toMatchObject({
+        code: 'forbidden',
+        message: expect.stringContaining(
+          'SRE Agent: it belongs to organization acme',
+        ),
+      });
+    });
+  });
+
+  it('keeps a refusal of another origin in agent-manager’s own words', async () => {
+    // muster refusing the sandbox bind is not the tenant's refusal.
+    callTool.mockRejectedValueOnce(
+      new Error('forbidden: muster refused the sandbox binding'),
+    );
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({ agent, prompt: 'Check' }),
+      ).rejects.toThrow('muster refused the sandbox binding');
+    });
+  });
+
   it('keeps a stable identity across re-renders', async () => {
     // The composer passes these down; a new object every render would re-render
     // it on every unrelated poll.

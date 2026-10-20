@@ -78,7 +78,9 @@ export function useKagentCapabilitiesMap(
   const signature = installations
     .map((installation, index) => {
       const identity = identityQueries[index];
-      return `${installation}:${identity?.status}:${identity?.data?.sub ?? ''}`;
+      return `${installation}:${identity?.status}:${identity?.data?.sub ?? ''}:${
+        identity?.data?.email ?? ''
+      }`;
     })
     .join('|');
 
@@ -94,7 +96,13 @@ export function useKagentCapabilitiesMap(
           ? isUserScopedSubject(identityQuery.data?.sub)
           : undefined;
 
-      result.set(installation, { isUserScoped });
+      result.set(installation, {
+        isUserScoped,
+        // agent-manager's caller: the email, else the subject.
+        ...(isUserScoped && {
+          caller: identityQuery.data?.email ?? identityQuery.data?.sub,
+        }),
+      });
     });
 
     return result;

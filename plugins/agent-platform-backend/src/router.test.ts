@@ -52,6 +52,7 @@ const twoInstallations = {
 describe('createRouter', () => {
   const listSessions = jest.fn();
   const getMe = jest.fn();
+  const listAgentNamespaces = jest.fn();
   const getSession = jest.fn();
   const listSessionTasks = jest.fn();
 
@@ -70,6 +71,7 @@ describe('createRouter', () => {
   const mockClient = {
     listSessions,
     getMe,
+    listAgentNamespaces,
     getSession,
     listSessionTasks,
     deleteSession,
@@ -114,6 +116,7 @@ describe('createRouter', () => {
     readSessionImageUsage.mockReset();
     readSessionImageUsage.mockResolvedValue({ bytes: 0, count: 0 });
     getMe.mockReset();
+    listAgentNamespaces.mockReset();
     getSession.mockReset();
     listSessionTasks.mockReset();
     deleteSession.mockReset();
@@ -2293,6 +2296,34 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(409);
       expect(response.body.error.message).toContain('not waiting');
+    });
+  });
+
+  describe('GET /kagent/agent-namespaces', () => {
+    it('asks as the person and answers the namespaces', async () => {
+      listAgentNamespaces.mockResolvedValue({
+        namespaces: ['kagent', 'org-a'],
+      });
+
+      const response = await request(app)
+        .get('/kagent/agent-namespaces')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ namespaces: ['kagent', 'org-a'] });
+      expect(listAgentNamespaces).toHaveBeenCalledWith(
+        expect.objectContaining({ userToken: 'user-token' }),
+      );
+    });
+
+    it('refuses a call without the person’s token', async () => {
+      const response = await request(app)
+        .get('/kagent/agent-namespaces')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(listAgentNamespaces).not.toHaveBeenCalled();
     });
   });
 

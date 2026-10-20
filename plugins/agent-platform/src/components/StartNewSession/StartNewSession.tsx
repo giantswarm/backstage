@@ -189,7 +189,7 @@ export function StartNewSession({
       unreachableInstallations.length === 0 &&
       agentInstallations.length > 0
     ) {
-      return <FirstAgentCard />;
+      return <FirstAgentCard installations={agentInstallations} />;
     }
 
     // An environment that could not be asked whether it runs kagent, or a pin
