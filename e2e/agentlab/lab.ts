@@ -85,35 +85,6 @@ export const lab = {
     /** `viewers`: view only. */
     viewer: { email: 'viewer@lab.local', name: 'Lab Viewer' },
   } satisfies Record<string, LabUser>,
-  /**
-   * The lab's workspaces (`platform.workspaces` in its `agentlab.yaml`): the
-   * workspace-manager behind muster, its Organization and its provider
-   * instance, which the workspace fixtures (`workspaces.fixture.ts`) use.
-   */
-  workspaces: {
-    /**
-     * The Organization the lab gives the workspace-manager: its members are
-     * the Dex groups `platform-admins` and `developers` (the admin and the
-     * developer), the `viewers` stay outside.
-     */
-    organization: process.env.AGENTLAB_WORKSPACE_ORGANIZATION ?? 'lab',
-    /**
-     * The provider instance the fixtures' sources name, one of the lab's own
-     * GitHub (`agentlab github-fake --workspaces`), whose fixture
-     * repositories and per-user access are the same on every lab. Unset, the
-     * fixtures take the instance the lab grants in muster: `fake`, or
-     * `fake-bearer` on a lab whose grant provider it is.
-     */
-    provider: process.env.AGENTLAB_WORKSPACE_PROVIDER || undefined,
-    /**
-     * The lab's GitHub as this host reaches it: the loopback port its
-     * container publishes (`docker port <cluster>-lab-github`, served over
-     * TLS). Pods reach it by its name on the lab domain, the browser does
-     * not, so a person's consent to the `fake` instance is fetched from here.
-     * Unset, the specs that need a person connected to it skip.
-     */
-    githubFakeURL: process.env.AGENTLAB_GITHUB_FAKE_URL,
-  },
 } as const;
 
 /**
@@ -167,3 +138,18 @@ export function contextOptionsFor(variant: Variant) {
  * the same lab keeps what it uses.
  */
 export const LEFTOVER_AGE = 3 * 60 * 60_000;
+
+/**
+ * This run's id: `AGENTLAB_E2E_RUN`, which `playwright.config.ts` sets to the
+ * run's start (`Date.now()` in base 36) unless it is given. It names what a
+ * run creates in the lab, so a given id must be letters and digits only.
+ */
+export const RUN = (() => {
+  const run = (process.env.AGENTLAB_E2E_RUN ?? 'local').toLowerCase();
+  if (!/^[a-z0-9]+$/.test(run)) {
+    throw new Error(
+      `AGENTLAB_E2E_RUN must be letters and digits only (it names lab objects), not "${run}"`,
+    );
+  }
+  return run;
+})();

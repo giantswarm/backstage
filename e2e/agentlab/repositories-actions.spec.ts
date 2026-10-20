@@ -995,7 +995,7 @@ test.describe('repositories: actions', () => {
    * `align_repository`'s answer in the manager's shape (0.22.0 and later),
    * per mode: opted in (`align`), declared but not opted in (`opt-in`), a
    * check. The lab's manager refuses the dry run -- it reads the team file in
-   * giantswarm/github as the person, and the lab's GitHub stand-in has none
+   * giantswarm/github as the person, which the lab cannot reach
    * -- so the align route is stubbed at the browser like the create commit;
    * the dialog's behaviour per mode is pinned all the same.
    */
