@@ -53,6 +53,12 @@ import {
 } from '../../lib/messageImages';
 import { DROP_LABEL, useComposerImages } from '../../hooks/useComposerImages';
 import { ComposerImageList } from '../ComposerImageList';
+import {
+  WorkspaceManagerError,
+  type Workspace,
+} from '../../lib/workspaceManager';
+import { WorkspacePicker } from '../WorkspacePicker';
+import { WorkspaceStartNotice } from '../WorkspaceStartNotice';
 
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
@@ -266,10 +272,24 @@ export type NewSessionComposerProps = {
    */
   acceptsImages?: boolean;
   /**
-   * Receives the chosen agent, the trimmed prompt and the attached images
-   * (none without {@link acceptsImages}).
+   * Offers a workspace beside the agent picker: the workspaces of the chosen
+   * agent's installation, or none (the default). Off for surfaces whose
+   * session is not the person's own work, agent creation's assistant for
+   * one. The chosen workspace reaches {@link onStart}, which starts the
+   * session in it (`useCreateSession`'s `workspace`).
    */
-  onStart: (agent: AgentRow, prompt: string, images: ComposerImage[]) => void;
+  offersWorkspaces?: boolean;
+  /**
+   * Receives the chosen agent, the trimmed prompt, the attached images (none
+   * without {@link acceptsImages}) and the chosen workspace's name (none
+   * without {@link offersWorkspaces}).
+   */
+  onStart: (
+    agent: AgentRow,
+    prompt: string,
+    images: ComposerImage[],
+    workspace?: string,
+  ) => void;
 };
 
 /**
@@ -410,6 +430,7 @@ export function NewSessionComposer({
   isStarting,
   error,
   acceptsImages = false,
+  offersWorkspaces = false,
   onStart,
 }: NewSessionComposerProps) {
   const classes = useStyles();
@@ -498,6 +519,26 @@ export function NewSessionComposer({
   // Derived rather than cleared on pick: an agent can also arrive by adopting a
   // late default, which the picker's change handler never sees.
   const showAgentMissing = agentMissing && !selectedAgent;
+
+  // The workspace chosen for the agent it was chosen with: another agent
+  // starts from its own preset, so a choice never carries over to an agent
+  // on another installation.
+  const [workspaceChoice, setWorkspaceChoice] = useState<{
+    agentId: string;
+    workspace: Workspace | undefined;
+  }>();
+  const workspace =
+    offersWorkspaces && workspaceChoice?.agentId === selectedAgent?.id
+      ? workspaceChoice?.workspace
+      : undefined;
+  const chooseWorkspace = useCallback(
+    (agentId: string, next: Workspace | undefined) =>
+      setWorkspaceChoice({ agentId, workspace: next }),
+    [],
+  );
+  // The workspace the last Start asked for: what the notice above the box
+  // speaks of, whatever is picked since.
+  const [startedIn, setStartedIn] = useState<Workspace>();
 
   // The same deterministic avatar the sessions table and the agent's own page
   // show, so one agent looks the same everywhere. Seeded from the technical name,
@@ -711,7 +752,10 @@ export function NewSessionComposer({
     !attached.problem &&
     !attached.isPreparing;
 
-  const submit = () => {
+  // `override` starts in another workspace than the one picked: none, from
+  // the notice's "Start without workspace", or the one the notice speaks of.
+  const submit = (override?: { workspace: Workspace | undefined }) => {
+    const inWorkspace = override ? override.workspace : workspace;
     if (!canSubmit) {
       return;
     }
@@ -720,7 +764,12 @@ export function NewSessionComposer({
       agentSelectRef.current?.querySelector('button')?.focus();
       return;
     }
-    onStart(selectedAgent, text, attached.images);
+    setStartedIn(inWorkspace);
+    if (inWorkspace) {
+      onStart(selectedAgent, text, attached.images, inWorkspace.name);
+    } else {
+      onStart(selectedAgent, text, attached.images);
+    }
     // Deliberately not cleared here. A create can fail, and this is the only
     // place the prompt still exists — the caller clears it by unmounting this
     // component (navigating away) once the session exists.
@@ -878,13 +927,43 @@ export function NewSessionComposer({
           (Boolean(soleAgent) && listed.length === 1 && !pickerFooterAction)
         }
       />
+      {offersWorkspaces && selectedAgent && (
+        <WorkspacePicker
+          key={selectedAgent.id}
+          agent={selectedAgent}
+          value={workspace}
+          onChange={next => chooseWorkspace(selectedAgent.id, next)}
+          isDisabled={isStarting}
+        />
+      )}
       {renderPickerAccessory?.(selectedAgent)}
     </>
   );
 
+  // A start in a workspace says its access check, its sign-ins and its
+  // refusal above the box; any other failure stays the alert below.
+  const workspaceNotice =
+    startedIn && selectedAgent ? (
+      <WorkspaceStartNotice
+        installation={selectedAgent.installation}
+        workspace={startedIn.name}
+        repositories={startedIn.repositories}
+        isStarting={isStarting}
+        error={error}
+        onRetry={() => submit({ workspace: startedIn })}
+        onStartWithout={() => {
+          chooseWorkspace(selectedAgent.id, undefined);
+          submit({ workspace: undefined });
+        }}
+      />
+    ) : null;
+  const workspaceSaysError =
+    Boolean(startedIn) && error instanceof WorkspaceManagerError;
+
   return (
     <form onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
+        {workspaceNotice}
         {error instanceof AgentManagerNotConnectedError && selectedAgent ? (
           <ConnectAgentManagerAlert
             installation={selectedAgent.installation}
@@ -892,7 +971,8 @@ export function NewSessionComposer({
             action="Sessions are started"
           />
         ) : (
-          error && (
+          error &&
+          !workspaceSaysError && (
             <Alert
               status="danger"
               title="Session not started"

@@ -320,10 +320,15 @@ function PaletteSessionComposer({
     useCreateSession('searchPalette');
 
   const onStart = useCallback(
-    async (chosen: AgentRow, prompt: string, images?: ComposerImage[]) => {
+    async (
+      chosen: AgentRow,
+      prompt: string,
+      images?: ComposerImage[],
+      workspace?: string,
+    ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent: chosen, prompt });
+        sessionId = await createSession({ agent: chosen, prompt, workspace });
       } catch {
         // Left to the dialog, which stays open and shows the hook's error.
         return;

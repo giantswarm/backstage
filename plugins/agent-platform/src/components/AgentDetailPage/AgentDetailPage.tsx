@@ -630,10 +630,15 @@ function AgentDetailPageContent() {
 
   const { createSession } = creation;
   const onStartSession = useCallback(
-    async (target: AgentRow, prompt: string, images?: ComposerImage[]) => {
+    async (
+      target: AgentRow,
+      prompt: string,
+      images?: ComposerImage[],
+      workspace?: string,
+    ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent: target, prompt });
+        sessionId = await createSession({ agent: target, prompt, workspace });
       } catch {
         // Left to the dialog, which stays open and renders the hook's `error`
         // beside the prompt the user still has.
