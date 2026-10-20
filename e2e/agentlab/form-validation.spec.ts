@@ -45,15 +45,16 @@ test('connector wizard: the address is checked on leaving it and cleared once fi
     'no error while the address is typed',
   ).not.toHaveAttribute('aria-invalid', 'true');
 
+  // The field's own error, through its aria-describedby: the same text is
+  // also said by useFieldValidation's live region for a few seconds, so a
+  // page-wide getByText matches twice and keeps matching after the fix.
+  const error = /Server address must be an http\(s\) URL/;
+
   await admin.keyboard.press('Tab');
   await expect(address).toHaveAttribute('aria-invalid', 'true');
-  await expect(
-    admin.getByText(/Server address must be an http\(s\) URL/),
-  ).toBeVisible();
+  await expect(address).toHaveAccessibleDescription(error);
 
   await address.fill('https://mcp.example.com/mcp');
   await expect(address).not.toHaveAttribute('aria-invalid', 'true');
-  await expect(
-    admin.getByText(/Server address must be an http\(s\) URL/),
-  ).toHaveCount(0);
+  await expect(address).not.toHaveAccessibleDescription(error);
 });
