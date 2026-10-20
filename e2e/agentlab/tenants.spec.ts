@@ -13,8 +13,7 @@ import {
   test as base,
 } from './fixtures';
 import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
-import { contextOptionsFor, lab, type LabUser } from './lab';
-import { RUN } from './workspaces.fixture';
+import { RUN, contextOptionsFor, lab, type LabUser } from './lab';
 
 /**
  * Agents per tenant (giantswarm/giantswarm#36698 D6, giantswarm/backstage#2606),
