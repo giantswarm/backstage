@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ReactNode, useEffect, useId, useMemo, useRef } from 'react';
 import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import {
   SectionHeader,
@@ -10,7 +10,7 @@ import {
   buildArgs,
   enumDefaults,
   fieldKind,
-  FormValue,
+  type FormValue,
   schemaFields,
 } from '../../lib/schemaForm';
 import { ToolArgField } from './ToolArgField';
@@ -19,28 +19,7 @@ import { InputSchemaFoldOut } from './InputSchemaFoldOut';
 import { ExplorerError } from './ExplorerError';
 import { DetailSkeleton } from './states';
 import { ToolRun, useToolRun } from './useToolRun';
-
-/** localStorage key for a tool's last-used arguments, scoped per installation. */
-function argsKey(installation: string | undefined, name: string): string {
-  return `muster-tool-args:${installation ?? 'default'}/${name}`;
-}
-
-function loadStoredArgs(key: string): Record<string, FormValue> {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as Record<string, FormValue>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function storeArgs(key: string, values: Record<string, FormValue>) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(values));
-  } catch {
-    // localStorage may be unavailable (private mode); not fatal.
-  }
-}
+import { ToolForm, useToolForm } from './useToolForm';
 
 /** A section of the run form: an `h2` that names its region, then the content. */
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -75,6 +54,11 @@ export interface ToolDetailPanelProps {
    * workflow page, across its tabs); else the panel keeps its own.
    */
   run?: ToolRun;
+  /**
+   * What is typed into the form, where a page keeps it above the panel (a
+   * tool's page, across its tabs); else the panel keeps its own.
+   */
+  form?: ToolForm;
 }
 
 /**
@@ -93,16 +77,14 @@ export function ToolDetailPanel({
   note,
   subject = 'tool',
   run,
+  form,
 }: ToolDetailPanelProps) {
   // Always called, as hooks must be; idle where the page passes its own.
   const ownRun = useToolRun(name, installation);
   const toolRun = run ?? ownRun;
-
-  const storageKey = argsKey(installation, name);
-  const [values, setValues] = useState<Record<string, FormValue>>(() =>
-    loadStoredArgs(storageKey),
-  );
-  const [jsonModes, setJsonModes] = useState<Record<string, boolean>>({});
+  const ownForm = useToolForm(name, installation);
+  const { values, setValues, jsonModes, setJsonModes, remember } =
+    form ?? ownForm;
   // Each argument shows its problem once the person leaves it having typed
   // in it, or presses Run; a blocked Run focuses the first (the `forms`
   // skill). Scoped to the form: a workflow's tab has its own fields around.
@@ -110,12 +92,10 @@ export function ToolDetailPanel({
   const validation = useFieldValidation(formScope);
   const { reset: resetValidation } = validation;
 
-  // Reload the remembered args when the selected tool changes.
+  // A fresh check for another tool; its form reloads its own arguments.
   useEffect(() => {
-    setValues(loadStoredArgs(storageKey));
-    setJsonModes({});
     resetValidation();
-  }, [storageKey, resetValidation]);
+  }, [name, installation, resetValidation]);
 
   const description = useToolDescription(name, installation);
   const { data, error } = description;
@@ -142,7 +122,7 @@ export function ToolDetailPanel({
       }
       return changed ? next : prev;
     });
-  }, [fields]);
+  }, [fields, setValues]);
 
   const setValue = (key: string, value: FormValue) =>
     setValues(prev => ({ ...prev, [key]: value }));
@@ -177,7 +157,7 @@ export function ToolDetailPanel({
   };
 
   const execute = (args: Record<string, unknown>) => {
-    storeArgs(storageKey, values);
+    remember();
     toolRun.run(args);
   };
 

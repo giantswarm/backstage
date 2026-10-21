@@ -174,8 +174,10 @@ muster exposes it as, over three tabs in the workflow page's order:
   a folded fold-out.
 - **Run it** (`…/run`): a form that runs the tool through muster, with the run
   note beside Run ("Runs as you.", "Nothing is changed."), and the result.
-  While a run is in flight, leaving the tab asks first, as on a workflow's
-  Run it, because the result shows only there.
+  The run and what is typed into the form live with the page, so switching
+  to Overview to read the schema and back keeps both, a run in flight and its
+  result too. While a run is in flight, leaving the page (a link, a reload)
+  asks first, because the result shows only there.
 - **Usage** (`…/usage`): every caller's calls to this one tool over the last
   30 days, laid out as the connector's Usage tab: tool calls, error ratio and
   p95 latency, calls per day by outcome, for a family each instance's figures,
@@ -184,6 +186,10 @@ muster exposes it as, over three tabs in the workflow page's order:
   no Usage tab, as muster's own page has none.
 
 Any other address under the tool's redirects to Overview, keeping its query.
+`?tool=` takes any name muster may expose, refusing only an empty one, one
+longer than 512 characters or one with control characters; the PromQL selector
+escapes it. Narrowed to one tool, `/usage` skips the per-tool rollups, whose
+only row would repeat the totals.
 The connector's Usage tab links each tool to the tool's Usage tab. The tool's
 address carries the Tools tab's search and filter (`q`, `effect`) on every tab,
 so the breadcrumb back keeps them; the browser's Back also restores how far the

@@ -160,13 +160,22 @@ function isResourceName(value: string): boolean {
   );
 }
 
+/** How long a tool name `/usage` narrows to may be. */
+const MAX_USAGE_TOOL_LENGTH = 512;
+
 /**
- * A tool's name as muster exposes it (`x_kubernetes_list`): the characters
- * MCP allows in a tool name. Checked before it goes into a PromQL selector,
- * which escapes it as well.
+ * Whether a value can be the tool label muster records a call under: any
+ * name muster exposes, whatever characters its downstream server gave it, so
+ * only what cannot be one is refused (empty, overlong, control characters).
+ * The PromQL selector escapes the rest.
  */
-function isToolName(value: string): boolean {
-  return /^[A-Za-z0-9_./-]{1,256}$/.test(value);
+function isToolLabel(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= MAX_USAGE_TOOL_LENGTH &&
+    // eslint-disable-next-line no-control-regex
+    !/[\u0000-\u001f\u007f]/.test(value)
+  );
 }
 
 /**
@@ -824,7 +833,7 @@ export async function createRouter(
       }
     }
     const tool = singleQueryValue(req.query.tool, 'tool');
-    if (tool !== undefined && !isToolName(tool)) {
+    if (tool !== undefined && !isToolLabel(tool)) {
       throw new InputError('tool must be a tool name');
     }
     res.json(

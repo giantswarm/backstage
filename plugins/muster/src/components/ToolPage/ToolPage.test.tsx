@@ -23,6 +23,7 @@ jest.mock('../MusterSubPage', () => ({
 }));
 
 let mockAuthenticated = true;
+let mockLoading = false;
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
     installations: ['gazelle'],
@@ -53,7 +54,7 @@ jest.mock('../MusterInstanceProvider', () => ({
       ),
     ],
     workflows: [],
-    isLoading: false,
+    isLoading: mockLoading,
   }),
   useMusterSession: () => ({
     authenticated: mockAuthenticated,
@@ -142,6 +143,7 @@ async function renderAt(path: string, api = makeApi()) {
 
 beforeEach(() => {
   mockAuthenticated = true;
+  mockLoading = false;
   window.localStorage.clear();
 });
 
@@ -382,10 +384,32 @@ describe('ToolPage', () => {
       return api;
     }
 
-    it('asks before a tab switch, says the result is lost, and stays on Stay', async () => {
+    it('keeps the run and its result across a tab switch, without asking', async () => {
       await startRun();
 
-      await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+      await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+      expect(
+        await screen.findByRole('region', { name: 'What it’s for' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).toBeNull();
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Run it' }));
+      expect(
+        within(await screen.findByRole('region', { name: 'Try it' })).getByRole(
+          'button',
+          { name: /Running/ },
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('asks before following a link out of the page', async () => {
+      await startRun();
+
+      await userEvent.click(
+        within(
+          screen.getByRole('navigation', { name: 'Breadcrumb' }),
+        ).getByRole('link', { name: 'Connectors' }),
+      );
       const dialog = await screen.findByRole('dialog');
       expect(
         within(dialog).getByText('Leave while the tool runs?'),
@@ -408,34 +432,6 @@ describe('ToolPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('switches the tab on Leave', async () => {
-      await startRun();
-
-      await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
-      const dialog = await screen.findByRole('dialog');
-      await userEvent.click(
-        within(dialog).getByRole('button', { name: 'Leave' }),
-      );
-      expect(
-        await screen.findByRole('region', { name: 'What it’s for' }),
-      ).toBeInTheDocument();
-      expect(screen.queryByRole('region', { name: 'Try it' })).toBeNull();
-    });
-
-    it('asks before following a link out of the page', async () => {
-      await startRun();
-
-      await userEvent.click(
-        within(
-          screen.getByRole('navigation', { name: 'Breadcrumb' }),
-        ).getByRole('link', { name: 'Connectors' }),
-      );
-      expect(await screen.findByRole('dialog')).toBeInTheDocument();
-      expect(
-        screen.getByRole('region', { name: 'Try it', hidden: true }),
-      ).toBeInTheDocument();
-    });
-
     it('has the browser ask before a reload or a closed tab', async () => {
       await startRun();
 
@@ -443,6 +439,31 @@ describe('ToolPage', () => {
       window.dispatchEvent(event);
       expect(event.defaultPrevented).toBe(true);
     });
+  });
+
+  it('keeps what was typed and the last result across a tab switch', async () => {
+    await renderAt(
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/run`,
+    );
+    const form = await screen.findByRole('region', { name: 'Try it' });
+    await userEvent.click(within(form).getByRole('button', { name: 'Run' }));
+    await screen.findByRole('heading', { level: 2, name: 'Result' });
+    // Typed after the run, so not yet remembered as its last-used value.
+    await userEvent.type(
+      within(form).getByRole('textbox', { name: /region/i }),
+      'eu-west-1',
+    );
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    await screen.findByRole('region', { name: 'What it’s for' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Run it' }));
+
+    expect(await screen.findByRole('textbox', { name: /region/i })).toHaveValue(
+      'eu-west-1',
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
   });
 
   it('lets the page go without asking once no run is in flight', async () => {
@@ -547,6 +568,18 @@ describe('ToolPage usage', () => {
     expect(
       await screen.findByText(/Usage metrics are not available/),
     ).toBeInTheDocument();
+  });
+
+  it("draws muster's tool's tabs without Usage while the connectors are read", async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/gazelle/muster/tools/core_service_list`);
+
+    // Still reading: no tab has content yet.
+    expect(screen.queryByRole('region', { name: 'What it’s for' })).toBeNull();
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      'Overview',
+      'Run it',
+    ]);
   });
 
   it("has no Usage tab for muster's own tools, which no connector counts", async () => {

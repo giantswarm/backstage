@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useMemo } from 'react';
 import {
   Navigate,
   Route,
@@ -11,6 +11,7 @@ import {
   EmptyStateCard,
   LoadingIndicator,
   ShellPage,
+  isAwaitingData,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -33,7 +34,12 @@ import {
   useToolDescription,
   useConnectorGroupPaths,
 } from '../shared';
-import { useRunLeaveGuard } from '../ToolDetail';
+import {
+  ToolRunPanel,
+  useRunLeaveGuard,
+  useToolForm,
+  useToolRun,
+} from '../ToolDetail';
 import {
   representativeServer,
   useServersListHref,
@@ -41,9 +47,8 @@ import {
 } from '../ServerPage/useServerPageData';
 import { runsAsCaller } from '../ConnectorPage/connectorFacts';
 import { ToolOverviewTab } from './ToolOverviewTab';
-import { ToolRunTab } from './ToolRunTab';
 import { ToolUsageTab } from './ToolUsageTab';
-import { TOOL_PAGE_TABS } from './toolTabs';
+import { toolPageTabs } from './toolTabs';
 
 /** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
 const TOOL_NAME_STYLE = {
@@ -66,9 +71,18 @@ const TOOL_NAME_STYLE = {
  *   days, read only while the tab is open.
  *
  * Any other address under the page's redirects to Overview, keeping its
- * query. While a run is in flight, leaving Run it asks first.
+ * query. The run and what is typed into its form live above the tabs, so a
+ * look at the schema on Overview loses neither; while a run is in flight,
+ * leaving the page asks first.
  */
 export function ToolPage() {
+  const { installation = '', server = '', tool = '' } = useParams();
+  // Another tool, or the same name elsewhere, starts afresh: its own form,
+  // no run in flight and no result.
+  return <ToolPageContent key={`${installation}/${server}/${tool}`} />;
+}
+
+function ToolPageContent() {
   const { server: key = '', tool = '' } = useParams();
   const basePath = useSplatBasePath();
   // The address's own query, as it is: the tab links and the redirect keep
@@ -124,16 +138,19 @@ export function ToolPage() {
   const known = Boolean(described.data ?? listed);
   const effect = toolEffect({ annotations });
 
-  // muster's own tools are dispatched to no connector, so no metric counts
-  // them: no Usage tab, as muster's own page has none.
-  const counted = row?.kind !== 'core';
-  const tabs = counted
-    ? TOOL_PAGE_TABS
-    : TOOL_PAGE_TABS.filter(tab => tab.id !== 'usage');
+  // Without Usage for muster's own tools, which no metric counts.
+  const tabs = toolPageTabs(key);
+  const counted = tabs.some(tab => tab.id === 'usage');
 
-  // A run in flight shows its result only on Run it: leaving asks first.
-  const [running, setRunning] = useState(false);
-  const leaveGuard = useRunLeaveGuard(running, 'tool');
+  // The run and the form above the tabs: switching to Overview to read the
+  // schema keeps what was typed, a run in flight and its result. A run's
+  // result shows only on this page, so leaving it while one is in flight
+  // asks first; the page's own tabs pass.
+  const run = useToolRun(tool, activeInstallation);
+  const form = useToolForm(tool, activeInstallation);
+  const leaveGuard = useRunLeaveGuard(run.isPending, 'tool', {
+    page: basePath,
+  });
 
   // Without an installation there is no server to go back to: the page says
   // no environment runs muster.
@@ -210,7 +227,7 @@ export function ToolPage() {
               name={tool}
               installation={installation}
               detail={described.data}
-              isLoading={described.isLoading}
+              isLoading={isAwaitingData(described)}
               error={described.error ?? undefined}
               annotations={annotations}
               connectorName={serverName}
@@ -221,12 +238,13 @@ export function ToolPage() {
         <Route
           path="run"
           element={
-            <ToolRunTab
+            <ToolRunPanel
               name={tool}
               installation={installation}
               effect={effect}
               asCaller={representative ? runsAsCaller(representative) : false}
-              onRunningChange={setRunning}
+              run={run}
+              form={form}
             />
           }
         />
@@ -282,7 +300,6 @@ export function ToolPage() {
       meta={exposedAs}
       tabs={withTabs ? tabs : undefined}
       tabsSearch={search}
-      onTabNavigate={leaveGuard.onTabNavigate}
     >
       {body}
       {leaveGuard.dialog}

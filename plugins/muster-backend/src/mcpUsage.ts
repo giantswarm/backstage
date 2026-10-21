@@ -393,6 +393,9 @@ export async function getMcpUsage(
   // is the totals, so neither query runs.
   const serverOutcomes = serverCount !== 1;
   const serverLatency = serverCount > 1;
+  // The per-tool rollups only where they can name more than one tool:
+  // narrowed to one, its row is the totals, as for one server.
+  const toolRollups = onlyTool === undefined;
   const none = Promise.resolve<PromSeries[]>([]);
   const calls = `${METRIC_CALLS}${selector}`;
   const duration = `${METRIC_DURATION}${selector}`;
@@ -507,9 +510,11 @@ export async function getMcpUsage(
     ] = await Promise.all([
       coverageQuery,
       byOutcomeQuery,
-      optional(
-        rangeQuery(`sum by (tool, outcome) (increase(${calls}[${step}]))`),
-      ),
+      toolRollups
+        ? optional(
+            rangeQuery(`sum by (tool, outcome) (increase(${calls}[${step}]))`),
+          )
+        : none,
       serverOutcomes
         ? optional(
             rangeQuery(
@@ -518,9 +523,11 @@ export async function getMcpUsage(
           )
         : none,
       optional(rangeQuery(`sum by (le) (increase(${duration}[${step}]))`)),
-      optional(
-        rangeQuery(`sum by (tool, le) (increase(${duration}[${step}]))`),
-      ),
+      toolRollups
+        ? optional(
+            rangeQuery(`sum by (tool, le) (increase(${duration}[${step}]))`),
+          )
+        : none,
       serverLatency
         ? optional(
             rangeQuery(
@@ -666,6 +673,15 @@ export async function getMcpUsage(
   const p95Seconds = overallBuckets
     ? quantileFromBuckets(0.95, overallBuckets)
     : null;
+  // Narrowed to one tool, its row is the totals, once muster counted it.
+  if (onlyTool !== undefined && byOutcomeOverTime.length > 0) {
+    toolRows.set(onlyTool, {
+      tool: onlyTool,
+      calls: totalCalls,
+      errors: totalErrors,
+      p95_seconds: p95Seconds,
+    });
+  }
   const tools = [...toolRows.values()].sort((a, b) => b.calls - a.calls);
   // Narrowed to one server, its row is the totals, once muster counted it.
   if (!serverOutcomes && byOutcomeOverTime.length > 0) {

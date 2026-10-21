@@ -458,6 +458,17 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Connector tool', view: 'redirect' },
       '/customize/connectors/:installation/:server/tools/:tool/*',
     ],
+    // muster's own tools have no Usage tab: the address only redirects.
+    [
+      '/customize/connectors/acme-prod/muster/tools/core_service_list/usage',
+      { page: 'Connector tool', view: 'redirect' },
+      '/customize/connectors/:installation/:server/tools/:tool/*',
+    ],
+    [
+      '/customize/connectors/acme-prod/muster/tools/core_service_list/run',
+      { page: 'Connector tool', view: 'run' },
+      '/customize/connectors/:installation/:server/tools/:tool/run',
+    ],
     [
       '/customize/workflows/acme-prod/rotate-payments-keys',
       { page: 'Workflow', view: 'overview' },

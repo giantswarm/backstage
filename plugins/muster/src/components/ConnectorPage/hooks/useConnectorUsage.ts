@@ -12,9 +12,9 @@ import {
 
 /**
  * How long a connector's usage stays fresh. Its buckets are whole days and
- * the read is several 30-day range queries, so the tab, Details and the
- * connector's tools' pages reuse one answer for a few minutes rather than
- * each mount asking again.
+ * the read is several 30-day range queries, so the tab and Details reuse one
+ * answer for a few minutes rather than each mount asking again, and a tool's
+ * Usage tab its own (the read narrowed to that tool, a cache entry apart).
  */
 const CONNECTOR_USAGE_STALE_MS = 5 * 60_000;
 

@@ -7,7 +7,7 @@ import {
 import {
   CONNECTOR_GROUPS,
   CONNECTOR_PAGE_TAB_PATHS,
-  TOOL_PAGE_TABS,
+  toolPageTabs,
   WORKFLOW_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-muster';
 import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
@@ -34,11 +34,17 @@ const WORKFLOW_TABS: ReadonlySet<string> = new Set(
 
 /**
  * A connector tool's page tabs below its own address (Overview, the index,
- * left out), a fixed set too.
+ * left out), a fixed set too: the page's own for the connector the address
+ * names, so muster's own tools, which have no Usage tab, report `usage` as a
+ * redirect.
  */
-const TOOL_TABS: ReadonlySet<string> = new Set(
-  TOOL_PAGE_TABS.map(tab => tab.path).filter(Boolean),
-);
+function toolTabs(server: string): ReadonlySet<string> {
+  return new Set(
+    toolPageTabs(server)
+      .map(tab => tab.path)
+      .filter(Boolean),
+  );
+}
 
 /**
  * A workspace page's tabs below its own address (Repositories, the index,
@@ -449,17 +455,18 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       pathname,
     ): {
       const tab = segments.slice(6).join('/');
+      const tabs = toolTabs(segments[3]);
       let view = 'redirect';
       if (tab === '') {
         view = 'overview';
-      } else if (TOOL_TABS.has(tab)) {
+      } else if (tabs.has(tab)) {
         view = tab;
       }
       payload = { page: 'Connector tool', view };
       route = tabRoute(
         '/customize/connectors/:installation/:server/tools/:tool',
         tab,
-        TOOL_TABS,
+        tabs,
       );
       break;
     }

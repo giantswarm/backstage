@@ -231,7 +231,8 @@ describe('createRouter', () => {
     ['the month window', '/usage?window=month'],
     ['a server that is not a resource name', '/usage?server=a%22b'],
     ['an empty server', '/usage?server='],
-    ['a tool that is not a tool name', '/usage?tool=a%22%7Db'],
+    ['a tool with a control character', '/usage?tool=a%0Ab'],
+    ['an overlong tool', `/usage?tool=${'t'.repeat(513)}`],
     ['an empty tool', '/usage?tool='],
     ['two tools', '/usage?tool=a&tool=b'],
     [
@@ -266,6 +267,24 @@ describe('createRouter', () => {
       );
     },
   );
+
+  it('takes any tool name muster may expose, left to the escaping', async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+    const response = await request(app).get(
+      `/usage?tool=${encodeURIComponent('x_legacy_get:item@v1 "a"}')}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      24,
+      [],
+      'x_legacy_get:item@v1 "a"}',
+    );
+  });
 
   it('narrows usage to one tool of a connector', async () => {
     mockGetMcpUsage.mockResolvedValueOnce({ available: false });

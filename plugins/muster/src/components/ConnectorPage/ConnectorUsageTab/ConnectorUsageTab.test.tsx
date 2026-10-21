@@ -16,9 +16,9 @@ import {
 } from '../../../routes';
 import type { ServerTools } from '../../ServerPage/useServerPageData';
 import type { ConnectorUsage } from '../hooks/useConnectorUsage';
+import { instanceUsageRows } from '../UsageFigures';
 import {
   ConnectorUsageTab,
-  instanceUsageRows,
   toolUsageRows,
   toolsUsedLine,
 } from './ConnectorUsageTab';

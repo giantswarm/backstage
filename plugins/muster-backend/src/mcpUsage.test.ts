@@ -423,10 +423,10 @@ describe('getMcpUsage', () => {
       expect(usage.data_start).toBe('2026-10-12T00:00:00.000Z');
     });
 
-    it('narrows every figure to one tool of the connectors, but not where the records start', async () => {
+    it('narrows every figure to one tool of the connectors, its row the totals', async () => {
       const seen: Array<Record<string, unknown>> = [];
 
-      await getMcpUsage(
+      const usage = await getMcpUsage(
         narrowedClient(seen),
         INSTALLATION,
         {},
@@ -443,11 +443,23 @@ describe('getMcpUsage', () => {
           'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
       );
       expect(coverage).toHaveLength(1);
+      // The outcomes, the latency and the per-instance rollups; no per-tool
+      // ones, which would only repeat the totals.
       const narrowed = seen.filter(args => !coverage.includes(args));
-      expect(narrowed).toHaveLength(6);
+      expect(narrowed).toHaveLength(4);
       for (const args of narrowed) {
         expect(String(args.query)).toContain(selector);
+        expect(String(args.query)).not.toMatch(/^sum by \(tool,/);
       }
+      expect(usage.top_tools).toEqual([
+        {
+          tool: 'x_kubernetes_list',
+          calls: usage.totals.calls,
+          errors: usage.totals.errors,
+          p95_seconds: usage.totals.p95_seconds,
+        },
+      ]);
+      expect(usage.totals.distinct_tools).toBe(1);
     });
 
     it('lists every tool the connectors were called with, busiest first', async () => {

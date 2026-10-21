@@ -1,2 +1,2 @@
 export { ToolPage } from './ToolPage';
-export { TOOL_PAGE_TABS } from './toolTabs';
+export { TOOL_PAGE_TABS, toolPageTabs } from './toolTabs';
