@@ -77,6 +77,12 @@ async function stageProviders(page: Page, granted: Set<string>) {
   };
 }
 
+/** Customize · Workspaces, then its New workspace, into the editor. */
+async function openEditor(page: Page): Promise<void> {
+  await open(page, '/customize/workspaces');
+  await page.getByRole('link', { name: 'New workspace' }).first().click();
+}
+
 /** The person comes back to the portal's tab from the sign-in tab. */
 async function returnFocus(page: Page) {
   await page.evaluate(() => {
@@ -98,7 +104,7 @@ test('the workspace editor prompts for an unconnected provider, and not once it 
   const granted = new Set<string>();
   const unconnected = await stageProviders(admin, granted);
 
-  await open(admin, '/customize/workspaces/new');
+  await openEditor(admin);
   const provider = await unconnected();
   const prompt = admin.getByTestId(`provider-connect-${provider.name}`);
   await expect(prompt).toBeVisible({ timeout: 60_000 });
@@ -129,7 +135,7 @@ test('the composer prompts for an unconnected provider before a workspace start,
   const unconnected = await stageProviders(admin, granted);
   // The editor reads the admin's providers first: the staged check names the
   // real instance and its signIn.
-  await open(admin, '/customize/workspaces/new');
+  await openEditor(admin);
   const provider = await unconnected();
 
   const checks: ToolCall[] = [];
