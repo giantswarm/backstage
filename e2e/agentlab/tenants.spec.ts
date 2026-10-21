@@ -7,6 +7,7 @@ import {
   expect,
   expectAgentRendered,
   open,
+  openWizardMoreOptions,
   rosterLinkOf,
   searchRoster,
   signIn,
@@ -304,6 +305,15 @@ test.describe('agents per tenant', () => {
         ),
         'the only tenant is picked and named, not offered',
       ).toBeVisible({ timeout: 60_000 });
+      await openWizardMoreOptions(dev);
+      await expect(
+        dev.getByText(`The agents of ${tenant} run on the platform Harness.`),
+        'the organization runs its agents on the platform Harness, the only runtime offered',
+      ).toBeVisible({ timeout: 60_000 });
+      await expect(
+        dev.getByText('Could not read the runtimes'),
+        'no warning for the platform namespace an organization’s editor may not read',
+      ).toHaveCount(0);
 
       await open(dev, tenantAgent, lab.users.dev);
       await expectAgentRendered(dev);

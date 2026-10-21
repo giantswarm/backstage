@@ -441,10 +441,15 @@ export function NewAgentFormProvider({
       selectTenant: tenant => setState(prev => withTenant(prev, tenant)),
       // The ModelConfig's namespace is the agent's, and an Agent names a
       // Harness of its own namespace, so a model in another namespace drops
-      // the Harness pick.
+      // the Harness pick. A model outside the picked tenant is not taken: a
+      // preselection made before the tenant was known would create the agent
+      // in the model's namespace instead (#3189).
       selectModelConfig: (name, namespace, displayName) =>
-        setState(prev =>
-          prev.modelConfigNamespace === namespace
+        setState(prev => {
+          if (prev.tenant !== undefined && prev.tenant !== namespace) {
+            return prev;
+          }
+          return prev.modelConfigNamespace === namespace
             ? { ...prev, modelConfigName: name, modelDisplayName: displayName }
             : {
                 ...prev,
@@ -453,8 +458,8 @@ export function NewAgentFormProvider({
                 modelDisplayName: displayName,
                 harness: undefined,
                 droppedHarness: prev.harness?.name ?? prev.droppedHarness,
-              },
-        ),
+              };
+        }),
       selectHarness: harness =>
         setState(prev => ({ ...prev, harness, droppedHarness: undefined })),
       setSystemMessage: systemMessage =>

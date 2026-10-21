@@ -15,7 +15,10 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: () => ({
-    info: { harness: { name: 'kagent' } },
+    info: {
+      harness: { name: 'kagent' },
+      namespaces: { default: 'kagent', managed: ['kagent', 'org-acme'] },
+    },
     isLoading: false,
     error: null,
   }),
@@ -47,12 +50,18 @@ function harness(
 }
 
 let formHarness: string | undefined;
+/** The tenant the wizard creates in, its model the tenant's; unset, it never learns one. */
+let probeTenant: string | undefined;
 
 function Probe() {
-  const { state, setInstallation, selectModelConfig } = useNewAgentForm();
+  const { state, setInstallation, setTenantChoices, selectModelConfig } =
+    useNewAgentForm();
   useEffect(() => {
     setInstallation('gazelle');
-    selectModelConfig('opus', 'kagent');
+    if (probeTenant) {
+      setTenantChoices([probeTenant]);
+    }
+    selectModelConfig('opus', probeTenant ?? 'kagent');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   formHarness = state.harness?.name;
@@ -80,8 +89,28 @@ async function render() {
   );
 }
 
+/**
+ * The Harnesses each namespace lists for the person: a namespace missing from
+ * `readable` refuses the read (403).
+ */
+function listingByNamespace(readable: Record<string, Harness[]>) {
+  mockUseResources.mockImplementation(
+    (
+      _installations,
+      _resource,
+      options: Record<string, { namespace: string }>,
+    ) => {
+      const namespace = options.gazelle?.namespace;
+      return namespace && readable[namespace]
+        ? listing(readable[namespace])
+        : listing([], [{ cluster: 'gazelle', error: new Error('Forbidden') }]);
+    },
+  );
+}
+
 beforeEach(() => {
   formHarness = undefined;
+  probeTenant = undefined;
   mockUseResources.mockReset();
 });
 
@@ -108,7 +137,8 @@ describe('HarnessPicker', () => {
     expect(screen.queryByText('Runtime')).not.toBeInTheDocument();
   });
 
-  it("says so when the namespace's Harnesses could not be read, and keeps the platform Harness", async () => {
+  it("says so when the platform tenant's Harnesses could not be read, and keeps the platform Harness", async () => {
+    probeTenant = 'kagent';
     mockUseResources.mockReturnValue(
       listing([], [{ cluster: 'gazelle', error: new Error('Forbidden') }]),
     );
@@ -121,6 +151,43 @@ describe('HarnessPicker', () => {
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
+
+  it.each([
+    ["an Organization's editor (no read of the platform namespace)", {}],
+    [
+      'an admin (who reads more runtimes there)',
+      {
+        kagent: [
+          harness('kagent', 'kagent'),
+          harness('claude', 'claude'),
+          harness('codex', 'codex'),
+        ],
+      },
+    ],
+  ])(
+    'offers %s the platform Harness only when creating in the Organization, with no warning',
+    async (_who, readable: Record<string, Harness[]>) => {
+      probeTenant = 'org-acme';
+      // The tenant's first agent: agent-manager has not copied the platform
+      // Harness there yet.
+      listingByNamespace({ ...readable, 'org-acme': [] });
+      await render();
+
+      expect(
+        screen.queryByText('Could not read the runtimes'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+      const cards = screen.getAllByRole('listitem');
+      expect(cards).toHaveLength(1);
+      expect(cards[0]).toHaveTextContent('Platform default');
+      expect(cards[0]).toHaveTextContent('Harness kagent');
+      expect(
+        screen.getByText(
+          'The agents of organization acme run on the platform Harness.',
+        ),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("titles a card by the Harness's display name when an admin set one", async () => {
     mockUseResources.mockReturnValue(

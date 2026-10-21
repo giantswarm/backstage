@@ -211,6 +211,7 @@ export class MusterApiClient implements MusterApi {
       installation?: string;
       hours?: number;
       servers?: readonly string[];
+      tool?: string;
     } = {},
   ): Promise<McpUsage> {
     const searchParams = new URLSearchParams();
@@ -219,6 +220,9 @@ export class MusterApiClient implements MusterApi {
     }
     for (const server of options.servers ?? []) {
       searchParams.append('server', server);
+    }
+    if (options.tool !== undefined) {
+      searchParams.set('tool', options.tool);
     }
     const query = searchParams.toString();
     return this.get<McpUsage>(

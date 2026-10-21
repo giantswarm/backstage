@@ -1,34 +1,28 @@
 import { ReactNode, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Link } from '@backstage/ui';
 import {
   formatCount,
-  formatSeconds,
+  formatUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+  type UsageWindowDays,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
-  EmptyStateCard,
   INITIAL_ROWS,
-  LoadingIndicator,
   ShowMore,
   Stat,
-  StatGrid,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { McpUsage } from '../../../apis';
 import { withInstallationQuery } from '../../../lib/installationLink';
 import type { ServerPageRow } from '../../../lib/serverGrouping';
 import { usageConnectorsExternalRouteRef } from '../../../routes';
-import {
-  errorRatioFigure,
-  McpCallsByOutcomeChart,
-  McpDataStartNote,
-  McpUsageTable,
-  useUsageColumns,
-} from '../../McpUsage';
+import { McpUsageTable, useUsageColumns } from '../../McpUsage';
 import { useServerPageLinks } from '../../shared';
 import type { ServerTools } from '../../ServerPage/useServerPageData';
 import type { ConnectorUsage } from '../hooks/useConnectorUsage';
 import { CONNECTOR_USAGE_DAYS } from '../utils/connectorUsage';
+import { byCallsThenName, called, UsageFigures } from '../UsageFigures';
 
 type ToolRow = {
   id: string;
@@ -38,23 +32,6 @@ type ToolRow = {
   /** Whether the connector offers it now, so its page can be opened. */
   offered: boolean;
 };
-
-type InstanceRow = {
-  id: string;
-  calls: number;
-  errors: number;
-  p95_seconds: number | null;
-};
-
-/** A count as the tables show it: `increase()` estimates fractions. */
-function called(calls: number): boolean {
-  return Math.round(calls) > 0;
-}
-
-/** Busiest first, then by name, so the tools never called sit at the end. */
-function byCallsThenName<T extends { id: string; calls: number }>(a: T, b: T) {
-  return b.calls - a.calls || a.id.localeCompare(b.id);
-}
 
 /** The connector's tools as the tab can know them. */
 export type ToolCatalogue = {
@@ -102,25 +79,6 @@ export function toolUsageRows(
   return [...rows.values()].sort(byCallsThenName);
 }
 
-/** Every instance of a family, each with its calls; idle ones with zeros. */
-export function instanceUsageRows(
-  usage: McpUsage,
-  instances: readonly string[],
-): InstanceRow[] {
-  const byName = new Map(usage.servers.map(row => [row.server, row]));
-  return instances
-    .map(name => {
-      const row = byName.get(name);
-      return {
-        id: name,
-        calls: row?.calls ?? 0,
-        errors: row?.errors ?? 0,
-        p95_seconds: row?.p95_seconds ?? null,
-      };
-    })
-    .sort(byCallsThenName);
-}
-
 /**
  * "4 of 12": the offered tools called at least once, of those offered. Just
  * the count where the connector's tool list is incomplete, which would make
@@ -149,6 +107,11 @@ export type ConnectorUsageTabProps = {
   /** The connector's key in the address, which its tools' pages sit under. */
   server: string;
   installation: string;
+  /**
+   * The window the figures cover: Usage → Connectors' when it linked here
+   * with one, else {@link CONNECTOR_USAGE_DAYS}.
+   */
+  days?: UsageWindowDays;
   usage: ConnectorUsage;
   tools: ServerTools;
   /** Whether a tool's name resolves to this connector, by its prefix. */
@@ -159,16 +122,19 @@ export type ConnectorUsageTabProps = {
 
 /**
  * A connector's Usage tab: every caller's tool calls to it over the last 30
- * days, from muster's dispatch metrics — how many, how many failed, how fast
+ * days (or the window Usage → Connectors linked here with), from muster's
+ * dispatch metrics — how many, how many failed, how fast
  * it answered, which of its tools were used and, for a family, on which
  * instance. Laid out as the model page's Usage tab: the window first, the
- * tiles, the chart, then the tables, and a way to the Usage page.
+ * tiles, the chart, then the tables, and a way to the Usage page. The
+ * figures are {@link UsageFigures}, which a tool's Usage tab shares.
  */
 export function ConnectorUsageTab({
   row,
   server,
   installation,
-  usage: { usage, isLoading, error },
+  days = CONNECTOR_USAGE_DAYS,
+  usage: read,
   tools,
   ownsTool,
   sessionGate,
@@ -176,7 +142,9 @@ export function ConnectorUsageTab({
   const links = useServerPageLinks();
   const usageRoute = useRouteRef(usageConnectorsExternalRouteRef);
   const usageHref = usageRoute
-    ? withInstallationQuery(usageRoute(), installation)
+    ? withInstallationQuery(usageRoute(), installation, {
+        [USAGE_WINDOW_PARAM]: formatUsageWindowParam(days),
+      })
     : undefined;
 
   const catalogue = useMemo<ToolCatalogue>(
@@ -189,141 +157,58 @@ export function ConnectorUsageTab({
     [tools.tools, tools.truncated, ownsTool],
   );
   const toolRows = useMemo(
-    () => (usage ? toolUsageRows(usage, catalogue) : []),
-    [usage, catalogue],
+    () => (read.usage ? toolUsageRows(read.usage, catalogue) : []),
+    [read.usage, catalogue],
   );
-  const instanceRows = useMemo(
+  const instances = useMemo(
     () =>
-      usage && row.kind === 'family'
-        ? instanceUsageRows(
-            usage,
-            row.servers.map(instance => instance.getName()),
-          )
-        : [],
-    [usage, row],
+      row.kind === 'family'
+        ? row.servers.map(instance => instance.getName())
+        : undefined,
+    [row],
   );
   const toolColumns = useUsageColumns(toolRows, {
     label: 'Tool',
     renderName: tool => {
+      // Its own Usage tab: the figures this row sums up, over time.
       const href = tool.offered
-        ? links.tool(server, tool.id, installation)
+        ? links.tool(server, tool.id, installation, {
+            tab: 'usage',
+            usageWindow: days,
+          })
         : undefined;
       const name = tools.shortName(tool.id);
       return href ? <Link href={href}>{name}</Link> : name;
     },
     withP95: true,
   });
-  const instanceColumns = useUsageColumns(instanceRows, {
-    label: 'Instance',
-    renderName: instance => instance.id,
-    withP95: true,
-  });
 
   if (sessionGate) {
     return <>{sessionGate}</>;
   }
-  // The tools too: a row's link and the "of 12" both wait for the list.
-  if (isLoading || tools.isLoading) {
-    return <LoadingIndicator label="Reading this connector's usage…" />;
-  }
-  if (error) {
-    return (
-      <Alert
-        status="danger"
-        title="Could not read this connector's usage"
-        description={error.message}
-      />
-    );
-  }
-  if (!usage) {
-    return null;
-  }
-  if (!usage.available) {
-    return (
-      <Text as="p" variant="body-medium" color="secondary">
-        Usage metrics are not available for this environment:{' '}
-        {usage.reason ?? 'unknown reason'}
-      </Text>
-    );
-  }
-
-  const { totals } = usage;
-  const errorRatio = errorRatioFigure(totals.error_ratio);
-  const sub = `every caller's, last ${CONNECTOR_USAGE_DAYS} days`;
-
   return (
-    <Flex direction="column" gap="4">
-      <Text as="p" variant="body-medium" color="secondary">
-        Every caller's tool calls to this connector over the last{' '}
-        {CONNECTOR_USAGE_DAYS} days on {installation}.
-      </Text>
-      <McpDataStartNote usage={usage} windowDays={CONNECTOR_USAGE_DAYS} />
-
-      <StatGrid>
-        <Stat
-          variant="tile"
-          label="Tool calls"
-          hint="Counts the calls muster dispatched to this connector, from agents, sessions and this portal alike."
-          value={formatCount(totals.calls)}
-          sub={sub}
-        />
-        <Stat
-          variant="tile"
-          label="Error ratio"
-          hint="Shows the share of calls that failed to dispatch or returned an error. Amber above 5%."
-          value={errorRatio.value}
-          tone={errorRatio.tone}
-          sub={sub}
-        />
-        <Stat
-          variant="tile"
-          label="p95 latency"
-          hint="Shows the 95th-percentile response time. It is estimated from a histogram, so read it as a range."
-          value={formatSeconds(totals.p95_seconds)}
-          sub={sub}
-        />
+    <UsageFigures
+      subject="connector"
+      installation={installation}
+      days={days}
+      read={read}
+      // The tools too: a row's link and the "of 12" both wait for the list.
+      waiting={tools.isLoading}
+      extraTile={
         <Stat
           variant="tile"
           label="Tools used"
           hint={toolsUsedHint(catalogue.complete, tools.truncated)}
           value={toolsUsedLine(toolRows, catalogue.complete)}
-          sub={`last ${CONNECTOR_USAGE_DAYS} days`}
+          sub={`last ${days} days`}
         />
-      </StatGrid>
-
-      {called(totals.calls) ? (
-        <>
-          <McpCallsByOutcomeChart
-            buckets={usage.buckets}
-            stepHours={usage.step_hours}
-          />
-          <ShowMore items={toolRows} initial={INITIAL_ROWS} noun="tool">
-            {visible => <McpUsageTable rows={visible} columns={toolColumns} />}
-          </ShowMore>
-          {row.kind === 'family' && (
-            <ShowMore
-              items={instanceRows}
-              initial={INITIAL_ROWS}
-              noun="instance"
-            >
-              {visible => (
-                <McpUsageTable rows={visible} columns={instanceColumns} />
-              )}
-            </ShowMore>
-          )}
-        </>
-      ) : (
-        <EmptyStateCard
-          title={`No tool calls in the last ${CONNECTOR_USAGE_DAYS} days`}
-          description="Calls from agents, sessions and this portal show here once they reach this connector."
-        />
-      )}
-
-      <Text as="p" variant="body-small" color="secondary">
-        Counted where muster dispatches each call, so a call through call_tool
-        counts for the tool it ran.
-      </Text>
-      {usageHref && <Link href={usageHref}>Open in Usage</Link>}
-    </Flex>
+      }
+      instances={instances}
+      footer={usageHref && <Link href={usageHref}>Open in Usage</Link>}
+    >
+      <ShowMore items={toolRows} initial={INITIAL_ROWS} noun="tool">
+        {visible => <McpUsageTable rows={visible} columns={toolColumns} />}
+      </ShowMore>
+    </UsageFigures>
   );
 }

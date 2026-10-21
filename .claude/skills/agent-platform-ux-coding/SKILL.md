@@ -195,7 +195,8 @@ them and never invent a palette.
 - Copy affordances: `CopyButton`. Manifests: `ManifestDialog`.
 - Running a tool: `ToolRunPanel` (muster `ToolDetail`), the argument form,
   Run button, run note and result that a tool's page and a workflow's Run it
-  tab share. Do not build a second run form or result viewer.
+  tab share. Do not build a second run form or result viewer. A connector's
+  and a tool's Usage tab share `UsageFigures` (muster `ConnectorPage`).
 - Meta-agent hand-off strips: `MetaAgentBanner`; session starts go through
   `useMetaAgentHandoff`.
 - Before writing a helper, grep `ui-react/src/utils`,
@@ -264,12 +265,16 @@ them and never invent a palette.
     portal".
 - Never lose typed work. Links out of a form that is being filled open in a
   new tab.
-- A page whose work in flight shows only on it (a workflow run on Run it)
-  asks before the person leaves, saying whether the work goes on. The app's
-  router has no blocker, so hold what can be held: the page's tabs through
-  `ShellPage`'s `onTabNavigate`, plain clicks on links in the capture phase,
-  and `beforeunload`. `useRunLeaveGuard` (muster `WorkflowPage`) is the
-  precedent. Back, the palette and navigation from code pass.
+- A page whose work in flight shows only on it (a tool's or a workflow's run)
+  asks before the person leaves, saying whether the work goes on. Keep the
+  work above the tabs where the page can (a tool's page keeps the run and
+  the typed form with `useToolRun` and `useToolForm`), so only leaving the
+  page asks; a page that keeps it in a tab (a workflow's Run it) holds its
+  tabs too. The app's router has no blocker, so hold what can be held: the
+  page's tabs through `ShellPage`'s `onTabNavigate`, plain clicks on links in
+  the capture phase, and `beforeunload`. `useRunLeaveGuard` (muster
+  `ToolDetail`) is the precedent. Back, the palette and navigation from code
+  pass.
 - A field that cannot change after creation is shown read-only, and the lock
   is stated once in a sentence ("Its technical name is `x`; it cannot be
   changed once the agent exists."). Do not use disabled fields or a "fixed"

@@ -355,6 +355,33 @@ test("a connector's Usage tab shows its tool calls over 30 days, or why it canno
   await expect(
     admin.getByRole('tab', { name: 'Usage', exact: true }),
   ).toHaveCount(0);
+
+  // Usage → Connectors links each connector back to its Usage tab: the lab's
+  // kubernetes instance to its family's, which lists the instances. There is
+  // a row to check only where the instance was called in the window.
+  if (hasFigures) {
+    await open(admin, `/usage/connectors${scope}`);
+    const table = admin.getByRole('columnheader', {
+      name: 'Connector',
+      exact: true,
+    });
+    const noCalls = admin.getByText(
+      /^No tool calls were dispatched to connectors/,
+    );
+    await connectToMuster(admin, table.or(noCalls));
+    await expect(table.or(noCalls)).toBeVisible({ timeout: 60_000 });
+    // The rows come with the table, so whether the instance has one is known
+    // once it shows; its link is then asserted, waiting for it.
+    const kubernetes = admin.getByRole('rowheader', {
+      name: SHOWN.kubernetes,
+      exact: true,
+    });
+    if ((await kubernetes.count()) > 0) {
+      await expect(
+        kubernetes.getByRole('link', { name: SHOWN.kubernetes, exact: true }),
+      ).toHaveAttribute('href', `${connectorPages}/${KUBERNETES_FAMILY}/usage`);
+    }
+  }
 });
 
 test("muster's own connector page lists its core tools, and one opens on its page and runs there", async ({
@@ -382,6 +409,19 @@ test("muster's own connector page lists its core tools, and one opens on its pag
   await expect(
     admin.getByRole('heading', { level: 1, name: 'mcpserver_list' }),
   ).toBeVisible();
+  // It opens on Overview. No Usage tab: no connector counts muster's tools.
+  await expect(admin.getByRole('tab')).toHaveText(['Overview', 'Run it']);
+  await expect(
+    admin.getByRole('region', { name: 'What it’s for' }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    admin.getByRole('button', { name: 'Input schema', exact: true }),
+  ).toHaveAttribute('aria-expanded', 'false');
+
+  await admin.getByRole('tab', { name: 'Run it', exact: true }).click();
+  await expect(admin).toHaveURL(
+    new RegExp(`${connectorPages}/muster/tools/core_mcpserver_list/run$`),
+  );
   await expect(
     admin.getByRole('heading', { level: 2, name: 'Try it', exact: true }),
   ).toBeVisible({ timeout: 60_000 });
@@ -403,6 +443,82 @@ test("muster's own connector page lists its core tools, and one opens on its pag
     'aria-selected',
     'true',
   );
+});
+
+test("a connector tool's page: Overview, Run it and its own Usage, reached from the connector's Usage", async ({
+  admin,
+}) => {
+  test.setTimeout(120_000);
+  await open(admin, `${connectorPages}/${KUBERNETES_FAMILY}`);
+  const list = admin.getByRole('list', { name: 'Tools', exact: true });
+  await connectToMuster(admin, list);
+  const tool = list.getByRole('link', { name: 'list', exact: true });
+  await expect(tool).toBeVisible({ timeout: 60_000 });
+  await tool.click();
+  await expect(admin).toHaveURL(
+    new RegExp(`${connectorPages}/${KUBERNETES_FAMILY}/tools/[^/?]+$`),
+  );
+  const toolPage = admin.url();
+
+  // The workflow page's tabs, in its order, without Details.
+  await expect(admin.getByRole('tab')).toHaveText([
+    'Overview',
+    'Run it',
+    'Usage',
+  ]);
+  const facts = admin.getByRole('region', { name: 'Tool details' });
+  await expect(facts.getByText('Connector', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(facts.getByText('Exposed by muster as')).toBeVisible();
+  await expect(facts.getByText('Annotations', { exact: true })).toBeVisible();
+
+  // Usage: this tool's calls, or why they cannot be read.
+  await admin.getByRole('tab', { name: 'Usage', exact: true }).click();
+  await expect(admin).toHaveURL(`${toolPage}/usage`);
+  const intro = admin.getByText(
+    `Every caller's calls to this tool over the last 30 days on ${lab.installation}.`,
+    { exact: true },
+  );
+  const unavailable = admin.getByText(
+    /^Usage metrics are not available for this environment:/,
+  );
+  await expect(intro.or(unavailable)).toBeVisible({ timeout: 60_000 });
+  await expect(admin.getByText("Could not read this tool's usage")).toHaveCount(
+    0,
+  );
+  if (await intro.isVisible()) {
+    for (const label of ['Tool calls', 'Error ratio', 'p95 latency']) {
+      await expect(admin.getByText(label, { exact: true })).toBeVisible();
+    }
+    await expect(
+      admin.getByRole('link', { name: /^All usage of / }),
+    ).toHaveAttribute('href', `${connectorPages}/${KUBERNETES_FAMILY}/usage`);
+  }
+
+  // An address the page does not have lands on Overview.
+  await open(admin, `${new URL(toolPage).pathname}/details`);
+  await expect(admin).toHaveURL(toolPage);
+  await expect(
+    admin.getByRole('tab', { name: 'Overview', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+
+  // The connector's Usage tab links a called tool to its Usage tab.
+  await open(admin, `${connectorPages}/${KUBERNETES_FAMILY}/usage`);
+  const toolsTable = admin.getByRole('grid').first();
+  const connectorIntro = admin.getByText(
+    `Every caller's tool calls to this connector over the last 30 days on ${lab.installation}.`,
+    { exact: true },
+  );
+  await expect(connectorIntro.or(unavailable)).toBeVisible({
+    timeout: 60_000,
+  });
+  if ((await connectorIntro.isVisible()) && (await toolsTable.count())) {
+    await expect(toolsTable.getByRole('link').first()).toHaveAttribute(
+      'href',
+      new RegExp(`/tools/[^/?]+/usage$`),
+    );
+  }
 });
 
 test("an old MCP servers address of a tool lands on the tool's page, in one hop", async ({
