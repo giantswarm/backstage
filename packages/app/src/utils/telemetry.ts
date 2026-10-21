@@ -7,6 +7,7 @@ import {
 import {
   CONNECTOR_GROUPS,
   CONNECTOR_PAGE_TAB_PATHS,
+  TOOL_PAGE_TABS,
   WORKFLOW_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-muster';
 import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
@@ -29,6 +30,14 @@ const CONNECTOR_SUBTABS: ReadonlySet<string> = new Set(
  */
 const WORKFLOW_TABS: ReadonlySet<string> = new Set(
   WORKFLOW_PAGE_TABS.map(tab => tab.path).filter(Boolean),
+);
+
+/**
+ * A connector tool's page tabs below its own address (Overview, the index,
+ * left out), a fixed set too.
+ */
+const TOOL_TABS: ReadonlySet<string> = new Set(
+  TOOL_PAGE_TABS.map(tab => tab.path).filter(Boolean),
 );
 
 /**
@@ -433,14 +442,27 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       break;
     }
 
-    // A tool's page beneath its connector.
-    case /^\/customize\/connectors\/[^/]+\/[^/]+\/tools\/[^/]+/.test(pathname):
-      payload = { page: 'Connector tool' };
-      route =
-        segments.length === 6
-          ? '/customize/connectors/:installation/:server/tools/:tool'
-          : '/customize/connectors/:installation/:server/tools/:tool/*';
+    // A tool's page beneath its connector, with its tab as the view (never
+    // its name). Its tabs are a closed set; any other address under it only
+    // redirects to Overview, so that momentary view is a 'redirect'.
+    case /^\/customize\/connectors\/[^/]+\/[^/]+\/tools\/[^/]+/.test(
+      pathname,
+    ): {
+      const tab = segments.slice(6).join('/');
+      let view = 'redirect';
+      if (tab === '') {
+        view = 'overview';
+      } else if (TOOL_TABS.has(tab)) {
+        view = tab;
+      }
+      payload = { page: 'Connector tool', view };
+      route = tabRoute(
+        '/customize/connectors/:installation/:server/tools/:tool',
+        tab,
+        TOOL_TABS,
+      );
       break;
+    }
 
     // A connector's page, `/customize/connectors/<installation>/<server>`,
     // with its tab as the view: Tools, the index, by name. Two segments, so

@@ -205,8 +205,9 @@ export function ConnectorUsageTab({
   const toolColumns = useUsageColumns(toolRows, {
     label: 'Tool',
     renderName: tool => {
+      // Its own Usage tab: the figures this row sums up, over time.
       const href = tool.offered
-        ? links.tool(server, tool.id, installation)
+        ? links.tool(server, tool.id, installation, { tab: 'usage' })
         : undefined;
       const name = tools.shortName(tool.id);
       return href ? <Link href={href}>{name}</Link> : name;

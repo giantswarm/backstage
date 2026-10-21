@@ -280,10 +280,10 @@ describe('ConnectorUsageTab', () => {
         .getAllByRole('columnheader')
         .map(cell => cell.textContent),
     ).toEqual(['Tool', 'Calls', 'Errors', 'p95']);
-    // Each offered tool links to its page; the idle one is listed too.
+    // Each offered tool links to its page's Usage; the idle one is listed too.
     expect(within(table).getByRole('link', { name: 'search' })).toHaveAttribute(
       'href',
-      '/customize/connectors/gazelle/kagi/tools/x_kagi_search',
+      '/customize/connectors/gazelle/kagi/tools/x_kagi_search/usage',
     );
     expect(within(table).getByRole('link', { name: 'extract' })).toBeVisible();
 
@@ -317,7 +317,7 @@ describe('ConnectorUsageTab', () => {
     expect(stat('Tools used')).not.toContain(' of ');
     expect(screen.getByRole('link', { name: 'search' })).toHaveAttribute(
       'href',
-      '/customize/connectors/gazelle/kagi/tools/x_kagi_search',
+      '/customize/connectors/gazelle/kagi/tools/x_kagi_search/usage',
     );
   });
 

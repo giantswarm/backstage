@@ -332,20 +332,29 @@ function regexLiteral(value: string): string {
 }
 
 /**
- * The label selector that narrows muster's metrics to some connectors: their
- * MCPServer names, one or several (a family's instances). Empty without any,
+ * The label selector that narrows muster's metrics to some connectors and,
+ * optionally, one tool: their MCPServer names, one or several (a family's
+ * instances), and the tool's name as muster exposes it. Empty without either,
  * which leaves the metric unfiltered. Several names become one anchored
  * alternation, as PromQL anchors `=~` itself.
  */
-export function serverSelector(servers: readonly string[] = []): string {
+export function usageSelector(
+  servers: readonly string[] = [],
+  tool?: string,
+): string {
   const names = [...new Set(servers)].sort();
-  if (names.length === 0) {
-    return '';
-  }
+  const matchers: string[] = [];
   if (names.length === 1) {
-    return `{mcpserver_name="${promString(names[0])}"}`;
+    matchers.push(`mcpserver_name="${promString(names[0])}"`);
+  } else if (names.length > 1) {
+    matchers.push(
+      `mcpserver_name=~"${promString(names.map(regexLiteral).join('|'))}"`,
+    );
   }
-  return `{mcpserver_name=~"${promString(names.map(regexLiteral).join('|'))}"}`;
+  if (tool !== undefined) {
+    matchers.push(`tool="${promString(tool)}"`);
+  }
+  return matchers.length > 0 ? `{${matchers.join(',')}}` : '';
 }
 
 /**
@@ -354,9 +363,11 @@ export function serverSelector(servers: readonly string[] = []): string {
  *
  * `servers` narrows every figure to those connectors (a connector's page: the
  * MCPServer, or a family's instances), and then lists every tool they were
- * called with rather than the busiest {@link TOP_TOOLS_LIMIT}. `data_start`
- * stays the installation's either way: it says where muster's records start,
- * and a quiet connector's first call is not that.
+ * called with rather than the busiest {@link TOP_TOOLS_LIMIT}. `onlyTool`
+ * narrows them to one tool as well (a tool's page), so the buckets, totals
+ * and per-instance rows are that tool's. `data_start` stays the installation's
+ * either way: it says where muster's records start, and a quiet connector's
+ * first call is not that.
  */
 export async function getMcpUsage(
   client: MusterMcpClient,
@@ -364,6 +375,7 @@ export async function getMcpUsage(
   callOptions: { authToken?: string },
   hours: number,
   servers: readonly string[] = [],
+  onlyTool?: string,
 ): Promise<McpUsageResponse> {
   const { startSeconds, endSeconds, stepSeconds } = usageWindow(
     hours,
@@ -372,7 +384,7 @@ export async function getMcpUsage(
   const rangeHours = (endSeconds - startSeconds) / HOUR_SECONDS;
   const stepHours = stepSeconds / HOUR_SECONDS;
   const step = `${stepHours}h`;
-  const selector = serverSelector(servers);
+  const selector = usageSelector(servers, onlyTool);
   const filtered = selector !== '';
   const serverCount = new Set(servers).size;
   // The per-server rollups only where a row is shown for them: unnarrowed,

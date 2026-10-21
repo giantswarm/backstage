@@ -161,6 +161,15 @@ function isResourceName(value: string): boolean {
 }
 
 /**
+ * A tool's name as muster exposes it (`x_kubernetes_list`): the characters
+ * MCP allows in a tool name. Checked before it goes into a PromQL selector,
+ * which escapes it as well.
+ */
+function isToolName(value: string): boolean {
+  return /^[A-Za-z0-9_./-]{1,256}$/.test(value);
+}
+
+/**
  * Every value of a query parameter that may repeat (`?toolset=a&toolset=b`),
  * in order, read from the raw query string. `req.query` is the root router's
  * `qs` parse, which turns more than 20 repeats into an index-keyed object and
@@ -790,6 +799,7 @@ export async function createRouter(
    *
    * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
    * family's instances included, and lists every tool they were called with.
+   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
    */
   router.get('/usage', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -813,6 +823,10 @@ export async function createRouter(
         throw new InputError('server must be an MCPServer name');
       }
     }
+    const tool = singleQueryValue(req.query.tool, 'tool');
+    if (tool !== undefined && !isToolName(tool)) {
+      throw new InputError('tool must be a tool name');
+    }
     res.json(
       await getMcpUsage(
         client,
@@ -820,6 +834,7 @@ export async function createRouter(
         readCallOptions(req, installation),
         hours ?? 24,
         servers,
+        tool,
       ),
     );
   });

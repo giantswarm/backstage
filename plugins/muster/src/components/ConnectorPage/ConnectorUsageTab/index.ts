@@ -1,2 +1,2 @@
-export { ConnectorUsageTab } from './ConnectorUsageTab';
+export { ConnectorUsageTab, instanceUsageRows } from './ConnectorUsageTab';
 export type { ConnectorUsageTabProps } from './ConnectorUsageTab';

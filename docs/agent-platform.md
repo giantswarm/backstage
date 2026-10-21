@@ -164,13 +164,30 @@ an edit that does not change the name keeps it.
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/customize/connectors/<installation>/<connector>/tools/<tool>`.
-That page shows what the tool does (Reads or Changes things), its description
-under "What it’s for", its calls, errors and p95 latency over the last 30 days
-(from the connector's Usage tab's read), its input schema (folded),
-a form that runs the tool through muster, and the result, in one column with
-no facts beside it. The tool's address carries the tab's search and filter
-(`q`, `effect`), so the breadcrumb back keeps them; the browser's Back also
-restores how far the list was paged. Addresses under the old
+Its header says what the tool does (Reads or Changes things) and the name
+muster exposes it as, over three tabs in the workflow page's order:
+
+- **Overview** (the bare address): its description under "What it’s for",
+  then the connector that offers it (linked), the name muster exposes it as and
+  what its connector declares in the MCP annotations (only reads, can delete
+  or overwrite, idempotent, reaches outside systems), and its input schema in
+  a folded fold-out.
+- **Run it** (`…/run`): a form that runs the tool through muster, with the run
+  note beside Run ("Runs as you.", "Nothing is changed."), and the result.
+  While a run is in flight, leaving the tab asks first, as on a workflow's
+  Run it, because the result shows only there.
+- **Usage** (`…/usage`): every caller's calls to this one tool over the last
+  30 days, laid out as the connector's Usage tab: tool calls, error ratio and
+  p95 latency, calls per day by outcome, for a family each instance's figures,
+  and a link to the connector's Usage tab. It reads muster-backend's `/usage`
+  narrowed with `?tool=`, only while the tab is open. muster's own tools have
+  no Usage tab, as muster's own page has none.
+
+Any other address under the tool's redirects to Overview, keeping its query.
+The connector's Usage tab links each tool to the tool's Usage tab. The tool's
+address carries the Tools tab's search and filter (`q`, `effect`) on every tab,
+so the breadcrumb back keeps them; the browser's Back also restores how far the
+list was paged. Addresses under the old
 `/agent-platform/connectors/` and `/agent-platform/mcp-servers/` prefixes
 redirect, in one hop, to the same page under `/customize/connectors/`, the
 installation moved from `?installation=` into the path.
@@ -2848,9 +2865,9 @@ was recorded in the week before the window (`usageDataStart` in
 - Connectors: muster-backend's `/usage` reads its outcome query from a week
   before the window and returns `data_start`, the first bucket the chart
   fills from a sample, unless the week before held one. Narrowed to some
-  connectors (`?server=`, repeatable), it still reads that query for the whole
-  installation: a quiet connector's first call is not where the records
-  start.
+  connectors (`?server=`, repeatable) or to one tool (`?tool=`), it still
+  reads that query for the whole installation: a quiet connector's first call
+  is not where the records start.
 
 A series exists only from its label set's first call since the gateway or
 muster pod started. Prometheus cannot tell a source that was not exporting yet

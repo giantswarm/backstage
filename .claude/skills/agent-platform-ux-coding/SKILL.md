@@ -264,11 +264,11 @@ them and never invent a palette.
     portal".
 - Never lose typed work. Links out of a form that is being filled open in a
   new tab.
-- A page whose work in flight shows only on it (a workflow run on Run it)
-  asks before the person leaves, saying whether the work goes on. The app's
-  router has no blocker, so hold what can be held: the page's tabs through
-  `ShellPage`'s `onTabNavigate`, plain clicks on links in the capture phase,
-  and `beforeunload`. `useRunLeaveGuard` (muster `WorkflowPage`) is the
+- A page whose work in flight shows only on it (a tool's or a workflow's run
+  on Run it) asks before the person leaves, saying whether the work goes on.
+  The app's router has no blocker, so hold what can be held: the page's tabs
+  through `ShellPage`'s `onTabNavigate`, plain clicks on links in the capture
+  phase, and `beforeunload`. `useRunLeaveGuard` (muster `ToolDetail`) is the
   precedent. Back, the palette and navigation from code pass.
 - A field that cannot change after creation is shown read-only, and the lock
   is stated once in a sentence ("Its technical name is `x`; it cannot be

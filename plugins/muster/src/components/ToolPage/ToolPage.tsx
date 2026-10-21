@@ -1,11 +1,17 @@
-import { ReactNode, useMemo } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
-import { Alert, Flex, Link } from '@backstage/ui';
+import { ReactNode, useMemo, useState } from 'react';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
+import { Alert, Link } from '@backstage/ui';
 import {
   EmptyStateCard,
-  FactList,
   LoadingIndicator,
   ShellPage,
+  useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   findServerRow,
@@ -27,16 +33,17 @@ import {
   useToolDescription,
   useConnectorGroupPaths,
 } from '../shared';
-import { ToolRunPanel } from '../ToolDetail';
+import { useRunLeaveGuard } from '../ToolDetail';
 import {
   representativeServer,
   useServersListHref,
   useServerTools,
 } from '../ServerPage/useServerPageData';
 import { runsAsCaller } from '../ConnectorPage/connectorFacts';
-import { useConnectorUsage } from '../ConnectorPage/hooks/useConnectorUsage';
-import { CONNECTOR_USAGE_DAYS } from '../ConnectorPage/utils/connectorUsage';
-import { toolUsageFacts } from './utils/toolUsage';
+import { ToolOverviewTab } from './ToolOverviewTab';
+import { ToolRunTab } from './ToolRunTab';
+import { ToolUsageTab } from './ToolUsageTab';
+import { TOOL_PAGE_TABS } from './toolTabs';
 
 /** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
 const TOOL_NAME_STYLE = {
@@ -45,17 +52,30 @@ const TOOL_NAME_STYLE = {
 } as const;
 
 /**
- * One tool's page, beneath the server offering it: its short and full name,
- * what it does, description and input schema, and the typed argument form that runs
- * it, on a page of its own beneath the server. A family's
- * grouped tool asks for the family's instance argument like any other
- * required parameter.
+ * One tool's page, beneath the server offering it, with the header (its
+ * short and full name, what it does) over three tabs, each its own address
+ * under the page's, in the workflow page's order:
+ *
+ * - **Overview** (the index): what it is for, the connector that offers it,
+ *   the name muster exposes it as, its annotations and its input schema,
+ *   folded.
+ * - **Run it** (`run`): the typed argument form that runs it, and the
+ *   result. A family's grouped tool asks for the family's instance argument
+ *   like any other required parameter.
+ * - **Usage** (`usage`): its calls, errors and latency over the last 30
+ *   days, read only while the tab is open.
+ *
+ * Any other address under the page's redirects to Overview, keeping its
+ * query. While a run is in flight, leaving Run it asks first.
  */
 export function ToolPage() {
   const { server: key = '', tool = '' } = useParams();
-  // The Tools search and filter the tool was opened from: the way back
-  // keeps them.
-  const params = new URLSearchParams(useLocation().search);
+  const basePath = useSplatBasePath();
+  // The address's own query, as it is: the tab links and the redirect keep
+  // it. It carries the Tools search and filter the tool was opened from,
+  // which the way back keeps.
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
   const toolsView = {
     q: params.get('q') ?? undefined,
     effect: params.get('effect')?.split(',').filter(Boolean),
@@ -94,14 +114,6 @@ export function ToolPage() {
   const offered =
     Boolean(listed) ||
     (serverTools.truncated && pageOfTool(tool) === serverKey);
-  // The connector's usage, the read its Usage tab and Details share, so a
-  // tool opened from there costs no request.
-  const connectorUsage = useConnectorUsage(row, activeInstallation, {
-    // Only where the page shows it: a tool its connector offers.
-    enabled:
-      offered && Boolean(row && activeInstallation) && session.authenticated,
-  });
-  const usageFacts = toolUsageFacts(connectorUsage.usage, tool);
   // The panel's request, so the badge beside the name costs nothing extra.
   const described = useToolDescription(tool, activeInstallation, {
     enabled: offered && session.authenticated,
@@ -110,6 +122,18 @@ export function ToolPage() {
   // What it does, as the Tools list's row says it; only once the tool is
   // read, so an unread tool is not called one that changes things.
   const known = Boolean(described.data ?? listed);
+  const effect = toolEffect({ annotations });
+
+  // muster's own tools are dispatched to no connector, so no metric counts
+  // them: no Usage tab, as muster's own page has none.
+  const counted = row?.kind !== 'core';
+  const tabs = counted
+    ? TOOL_PAGE_TABS
+    : TOOL_PAGE_TABS.filter(tab => tab.id !== 'usage');
+
+  // A run in flight shows its result only on Run it: leaving asks first.
+  const [running, setRunning] = useState(false);
+  const leaveGuard = useRunLeaveGuard(running, 'tool');
 
   // Without an installation there is no server to go back to: the page says
   // no environment runs muster.
@@ -121,9 +145,13 @@ export function ToolPage() {
       ? representativeServer(row, activeInstallation)?.server
       : undefined;
   let body: ReactNode;
+  // The tab strip while the page can still turn out to be the tool's, and
+  // once it is; never on a page that says there is no such tool.
+  let withTabs = true;
   if (isLoadingInstallations || isLoading) {
     body = <LoadingIndicator label="Reading the environment's connectors…" />;
   } else if (!activeInstallation) {
+    withTabs = false;
     body = (
       <EmptyStateCard
         title="No muster environment"
@@ -141,6 +169,7 @@ export function ToolPage() {
   } else if (row && serverTools.isLoading) {
     body = <LoadingIndicator label="Reading the connector's tools…" />;
   } else if (row && serverTools.error) {
+    withTabs = false;
     body = (
       <Alert
         status="danger"
@@ -150,6 +179,7 @@ export function ToolPage() {
     );
   } else if (!row || !offered) {
     const serverHref = row ? toolsHref : listHref;
+    withTabs = false;
     body = (
       <EmptyStateCard
         title={`No tool “${tool}” on ${activeInstallation}`}
@@ -170,29 +200,58 @@ export function ToolPage() {
       />
     );
   } else {
-    const usageHref = links.server(serverKey, activeInstallation, {
-      tab: 'usage',
-    });
+    const installation = activeInstallation;
     body = (
-      <ToolRunPanel
-        name={tool}
-        installation={activeInstallation}
-        effect={toolEffect({ annotations })}
-        asCaller={representative ? runsAsCaller(representative) : false}
-        usage={
-          usageFacts && {
-            title: `Usage in the last ${CONNECTOR_USAGE_DAYS} days`,
-            content: (
-              <Flex direction="column" gap="2" align="start">
-                <FactList facts={usageFacts} labelWidth={160} />
-                {usageHref && (
-                  <Link href={usageHref}>{`All usage of ${serverName}`}</Link>
-                )}
-              </Flex>
-            ),
+      <Routes>
+        <Route
+          index
+          element={
+            <ToolOverviewTab
+              name={tool}
+              installation={installation}
+              detail={described.data}
+              isLoading={described.isLoading}
+              error={described.error ?? undefined}
+              annotations={annotations}
+              connectorName={serverName}
+              connectorHref={toolsHref}
+            />
           }
-        }
-      />
+        />
+        <Route
+          path="run"
+          element={
+            <ToolRunTab
+              name={tool}
+              installation={installation}
+              effect={effect}
+              asCaller={representative ? runsAsCaller(representative) : false}
+              onRunningChange={setRunning}
+            />
+          }
+        />
+        {counted && (
+          <Route
+            path="usage"
+            element={
+              <ToolUsageTab
+                name={tool}
+                row={row}
+                installation={installation}
+                connectorName={serverName}
+                connectorUsageHref={links.server(serverKey, installation, {
+                  tab: 'usage',
+                })}
+              />
+            }
+          />
+        )}
+        {/* An address the page does not have lands on Overview. */}
+        <Route
+          path="*"
+          element={<Navigate to={`${basePath}${search}`} replace />}
+        />
+      </Routes>
     );
   }
 
@@ -219,12 +278,14 @@ export function ToolPage() {
         { label: serverName, href: toolsHref },
         { label: shortName },
       ]}
-      badges={
-        known ? <EffectBadge effect={toolEffect({ annotations })} /> : undefined
-      }
+      badges={known ? <EffectBadge effect={effect} /> : undefined}
       meta={exposedAs}
+      tabs={withTabs ? tabs : undefined}
+      tabsSearch={search}
+      onTabNavigate={leaveGuard.onTabNavigate}
     >
       {body}
+      {leaveGuard.dialog}
     </ShellPage>
   );
 }

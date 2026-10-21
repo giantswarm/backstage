@@ -41,9 +41,22 @@ function leavingHref(event: MouseEvent): string | undefined {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+/** What leaving says it loses, by what the page runs. */
+const LEAVE_COPY: Record<'tool' | 'workflow', { title: string; body: string }> =
+  {
+    tool: {
+      title: 'Leave while the tool runs?',
+      body: 'muster finishes the call after you leave, but the result it returns shows only here, so leaving loses it.',
+    },
+    workflow: {
+      title: 'Leave while the workflow runs?',
+      body: 'muster keeps running it after you leave, and the Usage tab shows how it ended. The result it returns shows only here, so leaving loses it.',
+    },
+  };
+
 /**
- * Asks before the person leaves a workflow's Run it tab while a run is in
- * flight, because the result shows only there. The app's router is a
+ * Asks before the person leaves a tool's or a workflow's Run it tab while a
+ * run is in flight, because the result shows only there. The app's router is a
  * `BrowserRouter`, with no navigation blocker, so this holds what can be
  * held without one:
  *
@@ -58,7 +71,10 @@ function leavingHref(event: MouseEvent): string | undefined {
  * header action's hand-off) are not held: without a data router there is no
  * way to stop them.
  */
-export function useRunLeaveGuard(active: boolean): {
+export function useRunLeaveGuard(
+  active: boolean,
+  subject: 'tool' | 'workflow',
+): {
   onTabNavigate: (href: string, navigate: () => void) => void;
   dialog: ReactNode;
 } {
@@ -117,7 +133,7 @@ export function useRunLeaveGuard(active: boolean): {
           setHeld(undefined);
         }
       }}
-      title="Leave while the workflow runs?"
+      title={LEAVE_COPY[subject].title}
       confirmLabel="Leave"
       cancelLabel="Stay"
       onConfirm={() => {
@@ -127,8 +143,7 @@ export function useRunLeaveGuard(active: boolean): {
       }}
     >
       <Text as="p" variant="body-medium">
-        muster keeps running it after you leave, and the Usage tab shows how it
-        ended. The result it returns shows only here, so leaving loses it.
+        {LEAVE_COPY[subject].body}
       </Text>
     </ConfirmDialog>
   );

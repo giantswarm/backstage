@@ -3,7 +3,7 @@ import {
   usageWindow,
   pickPrometheusServer,
   quantileFromBuckets,
-  serverSelector,
+  usageSelector,
 } from './mcpUsage';
 import {
   MusterInstallationConfig,
@@ -97,25 +97,39 @@ describe('quantileFromBuckets', () => {
   });
 });
 
-describe('serverSelector', () => {
+describe('usageSelector', () => {
   it('is empty without servers', () => {
-    expect(serverSelector()).toBe('');
-    expect(serverSelector([])).toBe('');
+    expect(usageSelector()).toBe('');
+    expect(usageSelector([])).toBe('');
   });
 
   it('matches one server exactly', () => {
-    expect(serverSelector(['kagi'])).toBe('{mcpserver_name="kagi"}');
+    expect(usageSelector(['kagi'])).toBe('{mcpserver_name="kagi"}');
   });
 
   it('matches several as one alternation, each name literally', () => {
-    expect(
-      serverSelector(['graveler.mcp', 'gazelle-mcp', 'graveler.mcp']),
-    ).toBe('{mcpserver_name=~"gazelle-mcp|graveler\\\\.mcp"}');
+    expect(usageSelector(['graveler.mcp', 'gazelle-mcp', 'graveler.mcp'])).toBe(
+      '{mcpserver_name=~"gazelle-mcp|graveler\\\\.mcp"}',
+    );
   });
 
   it('escapes what would end the string or the expression', () => {
-    expect(serverSelector(['a"b'])).toBe('{mcpserver_name="a\\"b"}');
-    expect(serverSelector(['a|b', 'c'])).toBe('{mcpserver_name=~"a\\\\|b|c"}');
+    expect(usageSelector(['a"b'])).toBe('{mcpserver_name="a\\"b"}');
+    expect(usageSelector(['a|b', 'c'])).toBe('{mcpserver_name=~"a\\\\|b|c"}');
+  });
+
+  it('narrows to one tool, alone or beside the servers', () => {
+    expect(usageSelector([], 'x_kagi_search')).toBe('{tool="x_kagi_search"}');
+    expect(usageSelector(['kagi'], 'x_kagi_search')).toBe(
+      '{mcpserver_name="kagi",tool="x_kagi_search"}',
+    );
+    expect(usageSelector(['b', 'a'], 'x_k_list')).toBe(
+      '{mcpserver_name=~"a|b",tool="x_k_list"}',
+    );
+  });
+
+  it("escapes what would end the tool's string", () => {
+    expect(usageSelector([], 'a"}b\\')).toBe('{tool="a\\"}b\\\\"}');
   });
 });
 
@@ -407,6 +421,33 @@ describe('getMcpUsage', () => {
       // The records start on the 12th, whatever the connectors' own first
       // call was.
       expect(usage.data_start).toBe('2026-10-12T00:00:00.000Z');
+    });
+
+    it('narrows every figure to one tool of the connectors, but not where the records start', async () => {
+      const seen: Array<Record<string, unknown>> = [];
+
+      await getMcpUsage(
+        narrowedClient(seen),
+        INSTALLATION,
+        {},
+        24 * 30,
+        ['graveler-mcp-kubernetes', 'gazelle-mcp-kubernetes'],
+        'x_kubernetes_list',
+      );
+
+      const selector =
+        '{mcpserver_name=~"gazelle-mcp-kubernetes|graveler-mcp-kubernetes",tool="x_kubernetes_list"}';
+      const coverage = seen.filter(
+        args =>
+          String(args.query) ===
+          'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
+      );
+      expect(coverage).toHaveLength(1);
+      const narrowed = seen.filter(args => !coverage.includes(args));
+      expect(narrowed).toHaveLength(6);
+      for (const args of narrowed) {
+        expect(String(args.query)).toContain(selector);
+      }
     });
 
     it('lists every tool the connectors were called with, busiest first', async () => {

@@ -2,8 +2,6 @@ import { ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import {
   SectionHeader,
-  TechnicalDetailsFoldOut,
-  YamlEditorFormField,
   isAwaitingData,
   useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -16,7 +14,8 @@ import {
   schemaFields,
 } from '../../lib/schemaForm';
 import { ToolArgField } from './ToolArgField';
-import { RESULT_MAX_HEIGHT, ToolResultViewer } from './ToolResultViewer';
+import { ToolResultViewer } from './ToolResultViewer';
+import { InputSchemaFoldOut } from './InputSchemaFoldOut';
 import { ExplorerError } from './ExplorerError';
 import { DetailSkeleton } from './states';
 import { ToolRun, useToolRun } from './useToolRun';
@@ -43,7 +42,7 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
   }
 }
 
-/** A section of the tool's page: an `h2` that names its region, then the content. */
+/** A section of the run form: an `h2` that names its region, then the content. */
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const headingId = useId();
   return (
@@ -66,9 +65,9 @@ export interface ToolDetailPanelProps {
   note?: string;
   /**
    * What the tool is: a connector's or muster's own tool, or the tool muster
-   * runs a workflow as (`workflow_<name>`). A workflow's page says what it is
-   * for on Overview, so its run form leaves the description out and speaks
-   * of inputs and the workflow.
+   * runs a workflow as (`workflow_<name>`). A workflow's run form speaks of
+   * inputs and the workflow, and keeps the input schema folded above it; a
+   * tool's page shows the schema on its Overview instead.
    */
   subject?: 'tool' | 'workflow';
   /**
@@ -76,20 +75,13 @@ export interface ToolDetailPanelProps {
    * workflow page, across its tabs); else the panel keeps its own.
    */
   run?: ToolRun;
-  /**
-   * How much the tool is used, under its own heading after what it is for:
-   * a connector tool's page passes its calls, errors and latency.
-   */
-  usage?: { title: string; content: ReactNode };
 }
 
 /**
- * The body of a tool's page, in sections down its single column: the
- * tool's description, its input schema folded away, "Try it" (the argument
- * form and the run button) and the result. The page's header carries the
- * name and the markers. A workflow's Run it tab renders the same body for
- * the workflow's tool, without the description and with "Inputs" for "Try
- * it".
+ * The body of a Run it tab, in sections down its single column: "Try it"
+ * (the argument form and the run button) and the result. A tool's page and
+ * a workflow's both render it, the workflow's with "Inputs" for "Try it" and
+ * its input schema folded above. What the tool is for is on Overview.
  *
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
  * form (typed widgets, inline validation, remembered last-used args), and
@@ -101,7 +93,6 @@ export function ToolDetailPanel({
   note,
   subject = 'tool',
   run,
-  usage,
 }: ToolDetailPanelProps) {
   // Always called, as hooks must be; idle where the page passes its own.
   const ownRun = useToolRun(name, installation);
@@ -218,43 +209,8 @@ export function ToolDetailPanel({
 
   return (
     <Flex direction="column" gap="5">
-      {/* Headed as the agent, skill and workflow pages head theirs. */}
-      {subject === 'tool' && (
-        <Section title="What it’s for">
-          {data?.description ? (
-            <Text
-              as="p"
-              variant="body-medium"
-              style={{
-                margin: 0,
-                whiteSpace: 'pre-wrap',
-                overflowWrap: 'anywhere',
-              }}
-            >
-              {data.description}
-            </Text>
-          ) : (
-            <Text as="p" variant="body-medium" color="secondary">
-              Its connector gives no description.
-            </Text>
-          )}
-        </Section>
-      )}
-
-      {usage && <Section title={usage.title}>{usage.content}</Section>}
-
-      {data?.inputSchema && (
-        // Technical detail, folded in place and boxed as the other pages'
-        // Technical details: the form below is the schema drawn for people.
-        // Opened, it is as tall as a result may be.
-        <TechnicalDetailsFoldOut title="Input schema" defaultExpanded={false}>
-          <YamlEditorFormField
-            value={JSON.stringify(data.inputSchema, null, 2)}
-            language="json"
-            readOnly
-            maxHeight={RESULT_MAX_HEIGHT}
-          />
-        </TechnicalDetailsFoldOut>
+      {subject === 'workflow' && data?.inputSchema && (
+        <InputSchemaFoldOut schema={data.inputSchema} />
       )}
 
       <Section title={subject === 'workflow' ? 'Inputs' : 'Try it'}>

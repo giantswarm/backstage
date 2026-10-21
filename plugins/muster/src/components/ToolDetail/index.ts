@@ -3,6 +3,8 @@ export type { ToolDetailPanelProps } from './ToolDetailPanel';
 export { ToolRunPanel } from './ToolRunPanel';
 export type { ToolRunPanelProps } from './ToolRunPanel';
 export { useToolRun } from './useToolRun';
+export { useRunLeaveGuard } from './useRunLeaveGuard';
 export type { CallResult, ToolRun } from './useToolRun';
+export { InputSchemaFoldOut } from './InputSchemaFoldOut';
 export { ExplorerError } from './ExplorerError';
 export { DetailSkeleton } from './states';

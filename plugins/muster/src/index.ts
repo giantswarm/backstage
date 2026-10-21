@@ -132,6 +132,7 @@ export type {
 export { useWorkflowPageTarget } from './components/WorkflowPage';
 export type { WorkflowPageTarget } from './components/WorkflowPage';
 export { WORKFLOW_PAGE_TABS } from './components/WorkflowPage';
+export { TOOL_PAGE_TABS } from './components/ToolPage';
 export {
   McpAuthDialog,
   useMcpServersAwaitingSignIn,
