@@ -9,13 +9,14 @@ import { lab } from './lab';
  * The lab's reads succeed, so each failure is staged at the browser and
  * everything else is real: the cluster-wide Agents list through the portal's
  * Kubernetes proxy fails, or -- for the lab's developer, who reads kagent
- * namespace by namespace -- muster cannot say which namespaces agent-manager
- * puts agents in. The persisted caches are dropped before each load, so the
- * staged answer is the one the page reads.
+ * namespace by namespace -- neither muster nor the controller can say which
+ * namespaces hold agents. The persisted caches are dropped before each load,
+ * so the staged answer is the one the page reads.
  */
 
 const CLUSTER_HEADER = 'backstage-kubernetes-cluster';
 const AGENT_PLATFORM_CACHE = 'agent-platform-react-query-cache';
+const AGENT_NAMESPACES = '**/api/agent-platform/kagent/agent-namespaces?**';
 const readWait = 60_000;
 
 /** The lab's Agent list request, cluster-wide or in one namespace. */
@@ -82,7 +83,7 @@ test('a failed agent read shows an error with Retry, and Retry shows the agents'
   await expect(couldNotLoad(page)).toHaveCount(0);
 });
 
-test('a namespaced reader whose agent namespaces muster cannot name sees the error, not No agents yet', async ({
+test('a namespaced reader whose agent namespaces nothing can name sees the error, not No agents yet', async ({
   labAgent: _labAgent,
   signInAs,
 }) => {
@@ -119,7 +120,16 @@ test('a namespaced reader whose agent namespaces muster cannot name sees the err
       },
     });
   };
+  // The controller's list of the namespaces holding the person's Agents,
+  // which names them without muster: failing too, so no source names one.
+  const failAgentNamespaces = (route: Route) =>
+    route.fulfill({
+      status: 502,
+      contentType: 'application/json',
+      json: { error: { name: 'Error', message: 'staged failure' } },
+    });
   await page.route('**/api/muster/call**', failGetInfo);
+  await page.route(AGENT_NAMESPACES, failAgentNamespaces);
   await page.route('**/api/kubernetes/proxy/**', emptyPlatformNamespace);
 
   await open(page, '/', lab.users.dev);
@@ -128,6 +138,7 @@ test('a namespaced reader whose agent namespaces muster cannot name sees the err
   await expect(noAgentsYet(page)).toHaveCount(0);
 
   await page.unroute('**/api/muster/call**', failGetInfo);
+  await page.unroute(AGENT_NAMESPACES, failAgentNamespaces);
   await page.unroute('**/api/kubernetes/proxy/**', emptyPlatformNamespace);
   await page.getByRole('button', { name: 'Retry' }).click();
 

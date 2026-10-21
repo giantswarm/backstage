@@ -453,7 +453,7 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.unreachableInstallations).toEqual(['gaggle']);
   });
 
-  it('reads the agents again on Retry, with what muster says about their namespaces', async () => {
+  it('reads the agents again on Retry, with what muster and the controller say about their namespaces', async () => {
     mockUseResources.mockReturnValue(
       result({ succeeded: { alpha: [], beta: [] }, failed: ['gaggle'] }),
     );
@@ -473,6 +473,7 @@ describe('AgentsDataProvider', () => {
         ['muster', 'installations'],
         ['muster', 'agent-platform', 'mcp-servers', 'gaggle'],
         ['muster', 'agent-platform', 'agent-manager-info', 'gaggle'],
+        ['agent-platform', 'kagent', 'agent-namespaces', 'gaggle'],
       ]),
     );
     const { group, plural } = jest.requireActual(

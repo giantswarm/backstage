@@ -17,7 +17,8 @@ export const PLATFORM_TENANT_NAMESPACE = DEFAULT_MODEL_CONFIG_NAMESPACE;
 /** What the platform tenant is called. */
 export const PLATFORM_TENANT = 'platform';
 
-const ORGANIZATION_PREFIX = 'org-';
+/** The start of an Organization's namespace name. */
+export const ORGANIZATION_PREFIX = 'org-';
 
 /**
  * Records who created an agent, on its HelmRelease and its `Agent`: written
