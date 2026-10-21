@@ -64,7 +64,10 @@ export function useWorkspaceProviders(
     enabled: Boolean(client),
     queryFn: () => client!.listProviders(),
     refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    // The person's return from a provider's sign-in tab is when a grant
+    // shows: read again then, however fresh the last answer (the plugin
+    // trusts an answer for a minute).
+    refetchOnWindowFocus: 'always',
     retry: false,
   });
 }

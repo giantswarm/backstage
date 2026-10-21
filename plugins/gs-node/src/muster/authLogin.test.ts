@@ -161,6 +161,23 @@ describe('parseAuthLogoutResult', () => {
     });
   });
 
+  it('recognises a provider App’s disconnect', () => {
+    // Verbatim from muster's provider App logout.
+    const message =
+      "Disconnected provider App 'github': muster dropped your grant and revoked it at the provider, where the provider offers revocation.";
+
+    expect(
+      parseAuthLogoutResult({
+        text: message,
+        structuredContent: {
+          status: 'disconnected',
+          app: 'github',
+          revoked: true,
+        },
+      }),
+    ).toEqual({ status: 'signed_out', message });
+  });
+
   it('flags an unrecognised answer instead of guessing', () => {
     expect(
       parseAuthLogoutResult({ text: 'Something new muster might say.' }),
