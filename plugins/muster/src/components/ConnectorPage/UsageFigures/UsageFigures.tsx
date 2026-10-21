@@ -3,6 +3,7 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import {
   formatCount,
   formatSeconds,
+  type UsageWindowDays,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   EmptyStateCard,
@@ -89,6 +90,11 @@ export type UsageFiguresProps = {
   /** Whose calls these are: a connector's, or one of its tools'. */
   subject: keyof typeof SUBJECTS;
   installation: string;
+  /**
+   * The window the read covers: the `?window=` the tab opened with (from
+   * Usage → Connectors), else {@link CONNECTOR_USAGE_DAYS}.
+   */
+  days?: UsageWindowDays;
   read: ConnectorUsage;
   /** Something else the figures wait for, such as the connector's tools. */
   waiting?: boolean;
@@ -104,7 +110,7 @@ export type UsageFiguresProps = {
 
 /**
  * The body of a connector's and a tool's Usage tab: every caller's calls over
- * the last 30 days, from muster's dispatch metrics — the window and where the
+ * the last 30 days (or the window the tab opened with), from muster's dispatch metrics — the window and where the
  * records start, the tiles (calls, error ratio, p95 latency), calls per day
  * by outcome, the tables and, for a family, each instance's figures — and
  * each state the read can be in.
@@ -112,6 +118,7 @@ export type UsageFiguresProps = {
 export function UsageFigures({
   subject,
   installation,
+  days = CONNECTOR_USAGE_DAYS,
   read: { usage, isLoading, error },
   waiting = false,
   extraTile,
@@ -152,15 +159,14 @@ export function UsageFigures({
 
   const { totals } = usage;
   const errorRatio = errorRatioFigure(totals.error_ratio);
-  const sub = `every caller's, last ${CONNECTOR_USAGE_DAYS} days`;
+  const sub = `every caller's, last ${days} days`;
 
   return (
     <Flex direction="column" gap="4">
       <Text as="p" variant="body-medium" color="secondary">
-        {words.intro} over the last {CONNECTOR_USAGE_DAYS} days on{' '}
-        {installation}.
+        {words.intro} over the last {days} days on {installation}.
       </Text>
-      <McpDataStartNote usage={usage} windowDays={CONNECTOR_USAGE_DAYS} />
+      <McpDataStartNote usage={usage} windowDays={days} />
 
       <StatGrid>
         <Stat
@@ -209,7 +215,7 @@ export function UsageFigures({
         </>
       ) : (
         <EmptyStateCard
-          title={`${words.noCalls} in the last ${CONNECTOR_USAGE_DAYS} days`}
+          title={`${words.noCalls} in the last ${days} days`}
           description={`Calls from agents, sessions and this portal show here once they reach ${words.reach}.`}
         />
       )}

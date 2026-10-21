@@ -521,6 +521,30 @@ describe('ToolPage usage', () => {
     ).toHaveAttribute('href', '/customize/connectors/gazelle/jira/usage');
   });
 
+  it('covers the window the connector’s Usage tab linked with, and keeps it on the way back', async () => {
+    const api = await renderAt(
+      `${BASE}/gazelle/jira/tools/x_jira_search_issues/usage?window=7d`,
+    );
+
+    expect(
+      await screen.findByText(
+        "Every caller's calls to this tool over the last 7 days on gazelle.",
+      ),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 168,
+      servers: ['jira'],
+      tool: 'x_jira_search_issues',
+    });
+    expect(
+      screen.getByRole('link', { name: 'All usage of jira' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors/gazelle/jira/usage?window=7d',
+    );
+  });
+
   it('says so when nobody called the tool', async () => {
     const api = makeApi();
     api.getMcpUsage.mockImplementation(async () => ({

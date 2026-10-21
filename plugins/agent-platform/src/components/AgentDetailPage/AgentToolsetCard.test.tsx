@@ -24,6 +24,25 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   useResources: (...args: unknown[]) => mockUseResources(...args),
 }));
 
+// agent-manager's get_info: whether the installation binds the toolset to each
+// session at its start (capabilities.toolsetBound).
+const mockUseAgentManagerInfo = jest.fn();
+jest.mock('../../hooks/useAgentManager', () => ({
+  ...jest.requireActual('../../hooks/useAgentManager'),
+  useAgentManagerInfo: (...args: unknown[]) => mockUseAgentManagerInfo(...args),
+}));
+
+function managerInfo(toolsetBound?: boolean) {
+  mockUseAgentManagerInfo.mockReturnValue({
+    info:
+      toolsetBound === undefined
+        ? undefined
+        : { capabilities: { toolsetBound } },
+    isLoading: false,
+    error: null,
+  });
+}
+
 function mcpServer(
   name: string,
   spec: Record<string, unknown>,
@@ -247,7 +266,57 @@ const card = () =>
 describe('AgentToolsetCard', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
+    managerInfo();
     CARRIERS = [carrier()];
+  });
+
+  it('says the toolset is bound to each session where agent-manager binds it', async () => {
+    managerInfo(true);
+    const { api } = makeApi(resolvedAnswer());
+    await renderCard(withToolset('preset:read-only'), api);
+
+    expect(
+      screen.getByText(
+        'Bound to each session at its start. A change applies to new sessions.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Composition, not authorization: never more than your own access.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/omits the header/)).not.toBeInTheDocument();
+    expect(mockUseAgentManagerInfo).toHaveBeenCalledWith('gazelle');
+  });
+
+  it.each([
+    ['reports it unbound', false],
+    ['has not answered', undefined],
+  ])(
+    'says the toolset is declared, with the header caveat, where agent-manager %s',
+    async (_case, toolsetBound) => {
+      managerInfo(toolsetBound);
+      const { api } = makeApi(resolvedAnswer());
+      await renderCard(withToolset('preset:read-only'), api);
+
+      expect(
+        screen.getByText(
+          /^Declared: the agent sends it as the X-Muster-Toolset header, and a process in its sandbox that omits the header is not held to it\.$/,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Bound to each session/),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it('keeps the implicit full access label as it is where the toolset is bound', async () => {
+    managerInfo(true);
+    const { api } = makeApi(resolvedAnswer());
+    await renderCard(makeAgent([{ mcpServer: GATEWAY }]), api);
+
+    expect(screen.getByText('Implicit full access')).toBeInTheDocument();
+    expect(screen.queryByText(/Bound to each session/)).not.toBeInTheDocument();
   });
 
   it('says it is reading while the carrier read has not answered', async () => {

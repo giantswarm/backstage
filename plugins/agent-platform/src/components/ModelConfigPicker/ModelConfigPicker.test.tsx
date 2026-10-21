@@ -4,6 +4,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
+import { TenantPicker } from '../TenantPicker';
 import { ModelConfigPicker } from './ModelConfigPicker';
 
 type FakeModelConfig = {
@@ -33,6 +34,18 @@ jest.mock('../ModelConfigsProvider', () => ({
   }),
 }));
 
+// What agent-manager answers for an Organization's editor: the one tenant
+// they may create in.
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerInfo: (installation: string | undefined) => ({
+    info: installation
+      ? { namespaces: { default: 'kagent', managed: ['org-acme'] } }
+      : undefined,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 function WithInstallation({ error }: { error?: string }) {
   const { state, setInstallation } = useNewAgentForm();
   useEffect(() => {
@@ -52,6 +65,38 @@ async function renderPicker(error?: string) {
 }
 
 describe('ModelConfigPicker', () => {
+  it("preselects the tenant's model when the tenant is known in the same render as the models", async () => {
+    mockModelConfigs = [modelConfig('default-model-config', 'Claude Sonnet')];
+
+    function WithTenant() {
+      const { state, setInstallation } = useNewAgentForm();
+      useEffect(() => {
+        if (!state.installation) {
+          setInstallation('gazelle');
+        }
+      }, [state.installation, setInstallation]);
+      return state.installation ? (
+        <>
+          <TenantPicker />
+          <ModelConfigPicker />
+        </>
+      ) : null;
+    }
+    await renderInTestApp(
+      <NewAgentFormProvider>
+        <WithTenant />
+      </NewAgentFormProvider>,
+    );
+
+    // The tenant's copy of the platform's default model, not the platform's
+    // own, which would create the agent in the platform tenant.
+    expect(
+      await screen.findByRole('radio', {
+        name: 'Select model Claude Sonnet, environment default',
+      }),
+    ).toHaveAttribute('aria-checked', 'true');
+  });
+
   it("preselects the installation's default model and says so", async () => {
     mockModelConfigs = [
       modelConfig('haiku', 'Claude Haiku'),
