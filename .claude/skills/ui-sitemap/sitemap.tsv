@@ -1,0 +1,36 @@
+id	parent	kind	name	path	reach	note
+home		page	Home	/
+sessions	home	page	Sessions	/sessions
+session	sessions	page	Session	/sessions/:installation/:sessionId	open /sessions > click the first row	keep the 900 viewport (docked composer)
+customize	home	tabs	Customize	/customize		the bare path opens Agents
+customize-agents	customize	tab	Agents	/customize/agents
+agent	customize-agents	page	Agent	/customize/agents/:installation/:namespace/:name	open /customize/agents > row "SRE Agent"
+agent-update-skills	agent	dialog	Update all skills to latest	/customize/agents/:installation/:namespace/:name	open the Agent page > click "Agent actions" > click "Update all skills to latest…"	never confirm; the menu item needs write access to the agent
+new-agent	customize-agents	wizard	New agent	/customize/agents/new	open /customize/agents > click "New agent"	never click Create agent
+new-agent-details	new-agent	step	Details	/customize/agents/new
+new-agent-skills	new-agent	step	Skills	/customize/agents/new/skills	open /customize/agents/new > fill Name=demo > fill Instructions=demo > click Continue	only where skill repositories are configured; without them Continue goes to Tools
+new-agent-tools	new-agent	step	Tools	/customize/agents/new/tools	fill the Details step as for Skills > click Continue until the Tools step	a deep link without the Details fields goes back to Details
+new-agent-review	new-agent	step	Review	/customize/agents/new/review	from the Tools step > click Continue	never click Create agent
+customize-skills	customize	tab	Skills	/customize/skills
+customize-connectors	customize	tab	Connectors	/customize/connectors
+connector	customize-connectors	tabs	Connector	/customize/connectors/:installation/:server	open /customize/connectors > row "Kubernetes"	a tab shows only where the connector has something for it
+connector-tools	connector	tab	Tools	/customize/connectors/:installation/:server
+tool	connector-tools	tabs	Tool	/customize/connectors/:installation/:server/tools/:tool	open the Kubernetes connector > click the first tool row	not a muster tool: those have no Usage tab
+tool-overview	tool	tab	Overview	/customize/connectors/:installation/:server/tools/:tool
+tool-run	tool	tab	Run it	/customize/connectors/:installation/:server/tools/:tool/run		never run the tool
+tool-usage	tool	tab	Usage	/customize/connectors/:installation/:server/tools/:tool/usage
+connector-resources	connector	tab	Resources	/customize/connectors/:installation/:server/resources		only when the connector has resources; pick one that has
+connector-prompts	connector	tab	Prompts	/customize/connectors/:installation/:server/prompts		only when the connector has prompts; pick one that has
+connector-usage	connector	tab	Usage	/customize/connectors/:installation/:server/usage
+connector-used-by	connector	tab	Used by	/customize/connectors/:installation/:server/used-by
+connector-instances	connector	tab	Instances	/customize/connectors/:installation/:server/instances		only for a connector family; open a family instead
+connector-details	connector	tab	Details	/customize/connectors/:installation/:server/details
+customize-models	customize	tab	Models	/customize/models
+customize-workflows	customize	tab	Workflows	/customize/workflows
+customize-workspaces	customize	tab	Workspaces	/customize/workspaces
+usage	home	tabs	Usage	/usage
+usage-overview	usage	tab	Overview	/usage
+usage-cost	usage	tab	Cost	/usage/cost
+usage-your-sessions	usage	tab	Your sessions	/usage/your-sessions
+usage-connectors	usage	tab	Connectors	/usage/connectors
+profile	home	page	Profile and settings	/profile
