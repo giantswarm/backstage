@@ -46,9 +46,13 @@ test('shows the workspace, its repositories with head commits and its Sessions w
   const repositories = main.getByRole('region', {
     name: /^Repositories \(\d+\)$/,
   });
-  await expect(repositories.getByRole('row').nth(1)).toContainText(
-    /\b[0-9a-f]{7}\b/,
-  );
+  // The Head cell: the short commit, on its own.
+  await expect(
+    repositories
+      .getByRole('row')
+      .nth(1)
+      .getByText(/^[0-9a-f]{7}$/),
+  ).toBeVisible();
 
   const sessions = main.getByRole('region', {
     name: /^Sessions on this workspace \(\d+\)$/,
