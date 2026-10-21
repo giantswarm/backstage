@@ -48,6 +48,14 @@ import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useRenameSession } from '../../hooks/useRenameSession';
+import {
+  useWorkspaceNames,
+  workspaceInstallations,
+} from '../../hooks/useWorkspaceNames';
+import {
+  UNNAMED_WORKSPACE_LABEL,
+  workspaceNameLabel,
+} from '../../lib/sessionWorkspace';
 import { PinIcon } from '../PinIcon';
 import { SessionRow, sessionSearchFn } from '../SessionsDataProvider/helpers';
 import { SessionActionsMenu } from '../SessionDetailPage/SessionActionsMenu';
@@ -315,6 +323,7 @@ function shellColumns({
   isLoadingStates,
   showAgent,
   showInstallation,
+  showWorkspace,
   currentYear,
   focusAfterDelete,
   onRowDeleted,
@@ -327,6 +336,8 @@ function shellColumns({
   /** Off on one agent's own sessions, where every row has that agent. */
   showAgent: boolean;
   showInstallation: boolean;
+  /** On where a listed session works in a workspace. */
+  showWorkspace: boolean;
   currentYear: number;
   /** The row to focus once a row is deleted, by the deleted row's id. */
   focusAfterDelete: (rowId: string) => string | undefined;
@@ -401,6 +412,14 @@ function shellColumns({
       ),
     });
   }
+  if (showWorkspace) {
+    columns.push({
+      id: 'workspace',
+      label: 'Workspace',
+      width: '14%',
+      cell: row => <WorkspaceCell row={row} />,
+    });
+  }
   columns.push({
     id: 'state',
     label: 'State',
@@ -455,6 +474,34 @@ function shellColumns({
     },
   );
   return columns;
+}
+
+/** A row's workspace by name; a dash for a session without one. */
+function WorkspaceCell({ row }: { row: SessionTableRow }) {
+  if (!row.workspace) {
+    return (
+      <Cell>
+        <Text variant="body-medium" color="secondary" title="No workspace">
+          —
+        </Text>
+      </Cell>
+    );
+  }
+  if (!row.workspaceName) {
+    return (
+      <Cell>
+        <Skeleton width="80px" height="12px" />
+      </Cell>
+    );
+  }
+  return (
+    <CellText
+      title={row.workspaceName}
+      {...(row.workspaceName === UNNAMED_WORKSPACE_LABEL && {
+        description: 'not listed for you',
+      })}
+    />
+  );
 }
 
 /**
@@ -691,14 +738,32 @@ export function ShellSessionsTable({
 
   const { isPinned, togglePin } = usePinnedSessions();
 
-  // The pin joined onto the row like the state, so the Pinned filter and group
-  // run through the same search/filter/sort pipeline as everything else.
+  // The workspaces' names: one list per installation with a session in one.
+  const installationsWithWorkspaces = useMemo(
+    () => workspaceInstallations(rows),
+    [rows],
+  );
+  const workspaceNameOf = useWorkspaceNames(installationsWithWorkspaces);
+  const showWorkspace = installationsWithWorkspaces.length > 0;
+
+  // The pin and the workspace's name joined onto the row like the state, so
+  // the Pinned filter and group, and the search, run through the same
+  // search/filter/sort pipeline as everything else.
   const stateRows = useMemo(
     () =>
-      withSessionStates(rows, sessionStates).map(row =>
-        isPinned(row.id) ? { ...row, pinned: true } : row,
-      ),
-    [rows, sessionStates, isPinned],
+      withSessionStates(rows, sessionStates).map(row => {
+        const pinned = isPinned(row.id);
+        const workspaceName = workspaceNameLabel(workspaceNameOf(row));
+        // A row with nothing to add stays the same object.
+        return pinned || workspaceName
+          ? {
+              ...row,
+              ...(pinned && { pinned }),
+              ...(workspaceName && { workspaceName }),
+            }
+          : row;
+      }),
+    [rows, sessionStates, isPinned, workspaceNameOf],
   );
 
   const hasStates = sessionStates !== undefined;
@@ -875,6 +940,7 @@ export function ShellSessionsTable({
         isLoadingStates,
         showAgent,
         showInstallation,
+        showWorkspace,
         currentYear,
         focusAfterDelete,
         onRowDeleted,
@@ -887,6 +953,7 @@ export function ShellSessionsTable({
       isLoadingStates,
       showAgent,
       showInstallation,
+      showWorkspace,
       currentYear,
       focusAfterDelete,
       onRowDeleted,

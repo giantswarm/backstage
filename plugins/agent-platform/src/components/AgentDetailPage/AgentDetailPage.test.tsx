@@ -34,6 +34,13 @@ let mockDeniedVerbs = new Set<string>();
 afterEach(() => {
   mockDeniedVerbs = new Set();
 });
+// The sessions here start without a workspace: nothing to name, nothing read.
+const mockNoWorkspaceName = () => undefined;
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceNames'),
+  useWorkspaceNames: () => mockNoWorkspaceName,
+}));
+
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResource: (...args: unknown[]) => mockUseResource(...args),

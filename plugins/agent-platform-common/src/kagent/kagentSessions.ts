@@ -72,6 +72,26 @@ export type KagentSession = {
   contextId?: string;
   /** Why a `failed` session failed, in the controller's words. */
   failure?: { reason?: string; message?: string };
+  /** The workspace the session works in; absent for one started without. */
+  workspace?: KagentSessionWorkspace;
+};
+
+/**
+ * A Session's workspace as its record says it: the volume by its CSI handle,
+ * which names the workspace only through workspace-manager's list, and what
+ * the admission admitted when it started.
+ */
+export type KagentSessionWorkspace = {
+  /** The CSI handle of the workspace's volume. */
+  volumeHandle: string;
+  csiDriver?: string;
+  /**
+   * The repositories, relative to the session's working directory, pushed to
+   * since the workspace's last sync: fetched fresh before the first turn.
+   */
+  fetched: string[];
+  /** The provider instances the session acts as the person on, sorted. */
+  providers: string[];
 };
 
 /** Map one parsed wire session onto the domain type. */

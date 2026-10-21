@@ -56,6 +56,7 @@ import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
 import { useShowToolActivity } from '../../hooks/useShowToolActivity';
+import { useWorkspaceNames } from '../../hooks/useWorkspaceNames';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
 import { AvatarSize } from '../../lib/agentAvatar';
@@ -73,6 +74,7 @@ import {
   sessionsRouteRef,
 } from '../../routes';
 import { InstallationChip } from '../InstallationChip';
+import { SessionWorkspaceChip } from '../SessionWorkspace';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
 import {
@@ -121,6 +123,9 @@ import { AgentAvatar } from '../AgentAvatar';
 
 /** Long enough to read why the switch went back, like the other failure toasts. */
 const TOOL_ACTIVITY_TOAST_TIMEOUT_MS = 12000;
+
+/** No installation's workspaces to read, for a session without a workspace. */
+const NO_INSTALLATIONS: string[] = [];
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
@@ -407,6 +412,12 @@ export function SessionDetailPage() {
     () => (detail ? toSessionRow(detail.session, agentIndex) : undefined),
     [detail, agentIndex],
   );
+  // The workspace's name, from the installation's workspace list: read only
+  // for a session that works in one.
+  const workspaceNameOf = useWorkspaceNames(
+    row?.workspace ? [row.installation] : NO_INSTALLATIONS,
+  );
+  const workspaceName = row ? workspaceNameOf(row) : undefined;
 
   // `useDeleteSession`, `useRenameSession` and `useKagentCapabilities` are all called
   // here rather than inside the menu: the menu is rendered in the shared plugin
@@ -1633,6 +1644,18 @@ export function SessionDetailPage() {
     </Flex>
   );
 
+  /* The workspace the session works in, beside the agent: what its
+     directory holds and how fresh it is. Nothing for a session without one,
+     so that header reads as before. */
+  const workspaceChip = row.workspace && workspaceName && (
+    <SessionWorkspaceChip
+      sessionId={row.sessionId}
+      installation={row.installation}
+      workspace={row.workspace}
+      name={workspaceName}
+    />
+  );
+
   /* Absolute, not relative: the list keeps the relative form, where scanning
      for recency is the point. No last activity and no duration: kagent API v2
      does not move `updated_at` on a turn, so both would only restate the start
@@ -1666,6 +1689,7 @@ export function SessionDetailPage() {
         <>
           {stateBadges}
           {agentLink}
+          {workspaceChip}
           {/* The header once it has scrolled away (ShellPage's
               `compactHeader`) keeps the name, the state, the agent, the
               switch, the pin and the menu in sight while reading. Where the

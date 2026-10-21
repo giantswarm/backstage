@@ -65,6 +65,15 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilitiesMap: () => () => ({}),
 }));
 
+const mockWorkspaceNameOf = (row: { workspace?: unknown }) =>
+  row.workspace
+    ? { status: 'named', workspace: { name: 'ws-docs' } }
+    : undefined;
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceNames'),
+  useWorkspaceNames: () => mockWorkspaceNameOf,
+}));
+
 const listSessions = jest.fn();
 const listSessionStates = jest.fn();
 const listInstallations = jest
@@ -165,6 +174,22 @@ describe('RecentSessions', () => {
       '/sessions/gazelle/mid',
     ]);
     expect(within(list).queryByText('Oldest')).not.toBeInTheDocument();
+  });
+
+  it('names the workspace a session works in beside its agent', async () => {
+    listSessions.mockResolvedValue([
+      {
+        ...session('new', '2026-07-23T10:00:00Z', 'Newest'),
+        workspace: { volumeHandle: 'fs-1::docs', fetched: [], providers: [] },
+      },
+      session('mid', '2026-07-22T10:00:00Z', 'Middle'),
+    ]);
+    await renderRecent();
+
+    const list = await screen.findByRole('list', { name: 'Recent' });
+    const [newest, middle] = await within(list).findAllByRole('link');
+    expect(newest).toHaveTextContent(/ · ws-docs$/);
+    expect(middle).not.toHaveTextContent('ws-docs');
   });
 
   it('labels the list without a heading of its own', async () => {

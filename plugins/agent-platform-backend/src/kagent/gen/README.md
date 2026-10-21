@@ -14,21 +14,20 @@ the protos.
 ## Source pin
 
 The protos are taken from the kagent line the platform consumes,
-`github.com/giantswarm/kagent-upstream`, at commit
+`github.com/giantswarm/kagent-upstream`, at its release tag `v1.22.2`, commit
 
-    f7bf3dafd6a8c21e084015a9310f4692778ebaeb
+    b9af385b6cb53f33bc0fff5a02a826d498922547
 
-(upstream `kagent-dev/kagent` `bf8afa56`; the `api.kagent.dev/v1alpha3` Agent
-line). Pin a commit SHA, never a branch: the consumed branch of the line is
-rebased and force-pushed. Regenerate on every re-pin of the line and record the
-new SHA here; the pin moves to the release tag once `giantswarm/kagent-upstream`
-publishes it.
+(upstream `kagent-dev/kagent` `32f13c6e`; the `api.kagent.dev/v1alpha3` Agent
+line). Pin a release tag's commit SHA, never a branch: the consumed branch of
+the line is rebased and force-pushed. Regenerate on every re-pin of the line and
+record the new tag and SHA here.
 
 ## Regenerate
 
 ```bash
 # Export the protos of the pinned commit into a scratch directory.
-git -C <kagent-upstream checkout> archive f7bf3dafd6a8c21e084015a9310f4692778ebaeb proto \
+git -C <kagent-upstream checkout> archive b9af385b6cb53f33bc0fff5a02a826d498922547 proto \
   | tar -x -C <scratch>
 
 # Generate into this directory (buf resolves the buf.build deps named in buf.yaml).
