@@ -19,7 +19,8 @@ export type ProviderConnectActionProps = {
   /**
    * The provider instance now reads connected in `list_providers`, re-read
    * when the person is back from the sign-in tab: the host carries on with
-   * its draft or prompt. Called once.
+   * its draft or prompt. Called once, while the prompt is shown: a host that
+   * hides it on the same `list_providers` answer already knows.
    */
   onConnected?: () => void;
   /** What happens once the person is back, said while muster waits. */

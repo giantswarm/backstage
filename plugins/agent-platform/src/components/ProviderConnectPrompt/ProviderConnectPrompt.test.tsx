@@ -44,12 +44,18 @@ const GITLAB: WorkspaceProvider = {
 };
 
 /**
- * A host as the editor and the composer are: a draft of its own, and a prompt
- * for each provider instance `list_providers` reads unconnected.
+ * A host as the composer is: a draft of its own, and a prompt for each
+ * provider instance `list_providers` first read unconnected, kept until the
+ * prompt says the instance is connected.
  */
 function Host({ onConnected }: { onConnected: (name: string) => void }) {
   const [draft, setDraft] = useState('');
+  const [connected, setConnected] = useState<string[]>([]);
   const providers = useWorkspaceProviders(useWorkspaceManagerClient('lab'));
+  const [asked, setAsked] = useState<WorkspaceProvider[]>();
+  if (!asked && providers.data) {
+    setAsked(providers.data.filter(p => !p.connected));
+  }
   return (
     <>
       <textarea
@@ -57,14 +63,17 @@ function Host({ onConnected }: { onConnected: (name: string) => void }) {
         value={draft}
         onChange={e => setDraft(e.target.value)}
       />
-      {providers.data
-        ?.filter(p => !p.connected)
+      {asked
+        ?.filter(p => !connected.includes(p.name))
         .map(p => (
           <ProviderConnectPrompt
             key={p.name}
             installation="lab"
             provider={p}
-            onConnected={() => onConnected(p.name)}
+            onConnected={() => {
+              setConnected(prev => [...prev, p.name]);
+              onConnected(p.name);
+            }}
           />
         ))}
     </>
@@ -80,8 +89,12 @@ function renderHost(fake: WorkspaceManagerFake) {
     getAuthStatus: fake.getAuthStatus,
     signInServer: fake.signInServer,
   } as unknown as MusterApi;
+  // The plugin's own defaults: an answer is fresh for a minute, and focus
+  // refetches are off unless a query asks for them.
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, staleTime: 60_000, refetchOnWindowFocus: false },
+    },
   });
   render(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
