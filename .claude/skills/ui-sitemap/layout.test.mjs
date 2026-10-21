@@ -16,12 +16,17 @@ import { fileURLToPath } from 'node:url';
 import {
   SITEMAP_COLUMNS,
   STATE_COLUMNS,
+  boardSvg,
   drawnRows,
   layout,
   levelSpec,
+  localId,
+  miroIdsFromSvg,
   parseTsv,
   planChanges,
   pngSize,
+  stateRows,
+  uploadsTsv,
 } from './layout.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -353,7 +358,11 @@ test('replaces a screenshot only when its PNG is newer than the capture', () => 
   const stale = run({ rows, state, screenSize: png(captured - 1000) });
   assert.deepEqual(stale.changes.replace, []);
   assert.equal(item(stale, 'home/image').file, null);
-  const fresh = run({ rows, state, screenSize: png(captured + 1000) });
+  // A capture time written at second precision: within a second of it the
+  // PNG is the one the board shows.
+  const sameSecond = run({ rows, state, screenSize: png(captured + 999) });
+  assert.deepEqual(sameSecond.changes.replace, []);
+  const fresh = run({ rows, state, screenSize: png(captured + 2000) });
   assert.deepEqual(fresh.changes.replace, ['home/image']);
   assert.ok(fresh.changes.delete.some(d => d.miroId === 'm:home/image'));
   assert.ok(fresh.changes.update.includes('home/card'));
@@ -458,4 +467,168 @@ test('a dialog of a page with tabs sits beside the group box', () => {
   assert.ok(dialog.x > group.x + group.width);
   assert.equal(edge.from, 'agent/card');
   assert.equal(edge.label, 'Dialog');
+});
+
+// ------------------------------------------------------------ tidy tree ----
+
+const committedRows = () =>
+  parseTsv(readFileSync(join(HERE, 'sitemap.tsv'), 'utf8'), SITEMAP_COLUMNS);
+
+const boxesOf = plan =>
+  plan.items.filter(i => i.type === 'card' || i.type === 'group');
+
+/** Every node below `id` in the sitemap. */
+const descendants = (rows, id) => {
+  const below = rows.filter(r => r.parent === id).map(r => r.id);
+  return below.flatMap(child => [child, ...descendants(rows, child)]);
+};
+
+test('a parent sits at the middle of its children', () => {
+  const plan = layout({ rows: sitemap(SMALL) });
+  const middle = (first, last) =>
+    (item(plan, first).x + item(plan, last).x + item(plan, last).width) / 2;
+  const near = (a, b) => assert.ok(Math.abs(a - b) <= 1, `${a} vs ${b}`);
+  near(centre(item(plan, 'home/card')), middle('sessions/card', 'profile/card'));
+  // A tab is centred over its own children, a page and a wizard here.
+  near(
+    centre(item(plan, 'agents/card')),
+    middle('agent/card', 'new-agent/card'),
+  );
+});
+
+test('tabs are spaced by their subtrees, and the group box spans them', () => {
+  const rows = sitemap(SMALL);
+  const plan = layout({ rows });
+  const skills = item(plan, 'skills/card');
+  const below = descendants(rows, 'agents');
+  const rightmost = Math.max(
+    ...boxesOf(plan)
+      .filter(b => below.includes(b.node))
+      .map(b => b.x + b.width),
+  );
+  assert.ok(skills.x > rightmost, `${skills.x} <= ${rightmost}`);
+  const group = item(plan, 'customize/card');
+  assert.ok(group.x < item(plan, 'agents/card').x);
+  assert.ok(group.x + group.width > skills.x + skills.width);
+});
+
+test('no line between rows crosses another parent’s lines', () => {
+  const plan = layout({ rows: committedRows() });
+  const spans = plan.items
+    .filter(i => i.type === 'line' && i.fromSide === 'bottom')
+    .map(i => {
+      const xs = i.points.map(([x]) => x);
+      return {
+        from: i.from,
+        y: i.points.at(-1)[1],
+        left: Math.min(...xs),
+        right: Math.max(...xs),
+      };
+    });
+  // The lines of one parent fan out from one point; those of different
+  // parents into the same row keep apart.
+  const parents = new Map();
+  for (const s of spans) {
+    const key = `${s.y}:${s.from}`;
+    const p = parents.get(key) ?? { ...s };
+    p.left = Math.min(p.left, s.left);
+    p.right = Math.max(p.right, s.right);
+    parents.set(key, p);
+  }
+  const all = [...parents.values()];
+  for (const a of all) {
+    for (const b of all) {
+      if (a !== b && a.y === b.y) {
+        assert.ok(
+          a.right < b.left || b.right < a.left,
+          `${a.from} and ${b.from} overlap`,
+        );
+      }
+    }
+  }
+});
+
+test('no card overlaps another, but a group holds its members', () => {
+  const plan = layout({ rows: committedRows() });
+  const boxes = boxesOf(plan);
+  const inside = (a, b) =>
+    a.x >= b.x &&
+    a.y >= b.y &&
+    a.x + a.width <= b.x + b.width &&
+    a.y + a.height <= b.y + b.height;
+  for (const a of boxes) {
+    for (const b of boxes) {
+      if (a === b || inside(a, b) || inside(b, a)) {
+        continue;
+      }
+      const apart =
+        a.x + a.width <= b.x ||
+        b.x + b.width <= a.x ||
+        a.y + a.height <= b.y ||
+        b.y + b.height <= a.y;
+      assert.ok(apart, `${a.key} overlaps ${b.key}`);
+    }
+  }
+});
+
+test('the origin is the drawing’s top-left corner', () => {
+  const plan = layout({ rows: sitemap(SMALL), origin: { x: -720, y: 10000 } });
+  assert.equal(plan.bounds.x, -720);
+  assert.equal(plan.bounds.y, 10000);
+  assert.equal(item(plan, '_title').y, 10000);
+});
+
+// ---------------------------------------------------------------- board ----
+
+test('the board SVG and the written state round-trip to no changes', () => {
+  const rows = sitemap(SMALL);
+  const mtimeMs = Date.parse(CAPTURED) - 500;
+  const screenSize = id =>
+    id === 'home' ? { width: 2880, height: 1800, mtimeMs } : undefined;
+  const first = run({ rows, screenSize });
+  const svg = boardSvg(first);
+  assert.match(svg, new RegExp(`<rect id="${localId('home/card')}" `));
+  assert.match(svg, /<line id="k_sessions_edge"[^>]*data-start="k_home_card"/);
+  assert.doesNotMatch(svg, /<image/);
+  assert.deepEqual(
+    uploadsTsv(first).trim().split('\n').slice(1).map(r => r.split('\t')[0]),
+    ['home'],
+  );
+  // What Miro answers: every element with a Miro id.
+  let n = 0;
+  const result = svg.replace(/ id="(k_[^"]+)"/g, (m, id) => `${m} data-miro-id="${++n}${id.length}"`);
+  const state = stateRows({
+    rows,
+    plan: first,
+    ids: miroIdsFromSvg([result]),
+    images: new Map([['home', 'img-1']]),
+    skipped: new Map([['profile', 'not reachable here']]),
+    commit: 'abc1234',
+    mtimeOf: () => mtimeMs,
+  });
+  const home = state.find(r => r.id === 'home');
+  assert.equal(home.image, 'img-1');
+  assert.equal(home.captured, CAPTURED);
+  assert.equal(home.viewport, '1440x900x2');
+  assert.equal(state.find(r => r.id === 'profile').skipped, 'not reachable here');
+  assert.ok(state.some(r => r.id === '_title' && r.label));
+  const again = run({ rows, state, screenSize });
+  assert.deepEqual(again.changes, {
+    create: [],
+    update: [],
+    replace: [],
+    delete: [],
+  });
+});
+
+test('a skipped reason stays until the node has a screenshot', () => {
+  const rows = sitemap(SMALL);
+  const plan = layout({ rows });
+  const state = stateRows({
+    rows,
+    plan,
+    state: [{ id: 'profile', card: 'c', skipped: 'no such state here' }],
+    ids: new Map([[localId('profile/card'), 'c']]),
+  });
+  assert.equal(state.find(r => r.id === 'profile').skipped, 'no such state here');
 });

@@ -5,8 +5,12 @@
 // drawing rules are in SKILL.md; this file is their one implementation.
 //
 //   node .claude/skills/ui-sitemap/layout.mjs [--out plan.json]
+//     [--svg board.svg] [--uploads uploads.tsv] [--update-all]
 //     [--screens dir | --no-screens] [--board-sitemap file]
 //     [--sitemap file] [--state file] [--origin x,y]
+//   node .claude/skills/ui-sitemap/layout.mjs --write-state
+//     --result result.svg[,more.svg] [--images images.tsv]
+//     [--skipped skipped.tsv] [--commit sha] [--origin x,y] ...
 //
 // No dependencies, so it runs from the repo root without an install.
 
@@ -47,6 +51,7 @@ export const STATE_COLUMNS = [
   'image',
   'label',
   'edge',
+  'skipped',
 ];
 
 export const KINDS = [
@@ -96,7 +101,9 @@ export const STYLE = {
   subtitleSize: 56,
   levelSize: 64,
   levelColor: '#767676',
-  lineHeight: 1.3,
+  // Miro renders a text box about 1.43 times its font size high.
+  lineHeight: 1.45,
+  fontFamily: 'noto_sans',
 };
 
 const TITLE = 'Agent Platform map';
@@ -108,6 +115,10 @@ const LEVEL_MARKER_WIDTH = 480;
 const LEVEL_MARKER_GAP = 240;
 // The screenshot a node without one is drawn as: a 1440×900 viewport.
 const DEFAULT_ASPECT = 900 / 1440;
+// A PNG counts as new only when written more than this after the state's
+// `captured`, so a capture time written at second precision never makes an
+// unchanged PNG look new.
+const CAPTURE_TOLERANCE_MS = 1000;
 
 export function levelSpec(level) {
   return LEVELS[Math.min(level, LEVELS.length - 1)];
@@ -255,10 +266,21 @@ export function buildTree(rows) {
 
 // --------------------------------------------------------------- layout ----
 
+/** Whether a PNG is newer than the capture the state records for it. */
+export function isNewCapture(row, png) {
+  const captured = Date.parse(row?.captured ?? '');
+  return (
+    !row?.image ||
+    Number.isNaN(captured) ||
+    (png.mtimeMs ?? 0) > captured + CAPTURE_TOLERANCE_MS
+  );
+}
+
 /**
  * The plan: every item to draw, by a stable key, with its geometry. `x`/`y`
  * are the top-left corner (as in SVG); images also carry `cx`/`cy`, their
- * centre, which is what `image_create` takes.
+ * centre, which is what `image_create` takes. `origin` is the drawing's
+ * top-left corner: the title's, and the level markers' left edge.
  */
 export function layout({
   rows,
@@ -273,16 +295,9 @@ export function layout({
   // PNG counts only when it is newer than what the board shows: a node
   // without an image on the board, or a file written after the state's
   // `captured`. An older file left in `screens/` is what the board shows.
-  const isNew = (id, png) => {
-    const row = stateById.get(id);
-    const captured = Date.parse(row?.captured ?? '');
-    return (
-      !row?.image || Number.isNaN(captured) || (png.mtimeMs ?? 0) > captured
-    );
-  };
   const imageOf = node => {
     const png = screenSize(node.id);
-    if (png && isNew(node.id, png)) {
+    if (png && isNewCapture(stateById.get(node.id), png)) {
       return {
         aspect: png.height / png.width,
         source: 'png',
@@ -330,132 +345,168 @@ export function layout({
   const measureSide = (node, level) =>
     measureCard(node, node.kind === 'state' ? level + 1 : level);
 
-  // The row's own boxes of a row node (a page, or a tabs/wizard group), with
-  // the slots its next-row children hang from. Coordinates are relative to
-  // the block's top-left corner.
-  const measureBlock = (node, level) => {
-    const spec = levelSpec(level);
-    const sideGap = 6 * spec.padding;
-    const block = { node, level, cards: [], group: undefined, slots: [] };
-    // A chain to the owner's right, each joined to the card before it, so no
-    // line crosses another card.
-    const placeSides = (owner, ownerCard, startX) => {
-      let x = startX;
-      let previous = ownerCard;
-      for (const side of owner.children.filter(c => SIDE_KINDS.has(c.kind))) {
+  const rowChildren = owner =>
+    owner.children.filter(
+      c => !SIDE_KINDS.has(c.kind) && c.kind !== MEMBER_KIND[owner.kind],
+    );
+
+  // An owner's dialogs and states, a chain to its right, each joined to the
+  // card before it so no line crosses another card. `x` is relative to the
+  // owner's left edge; returns the chain and the right edge of its last card.
+  const chainOf = (owner, level, ownerWidth) => {
+    const sideGap = 6 * levelSpec(level).padding;
+    let x = ownerWidth;
+    let previous;
+    const sides = owner.children
+      .filter(c => SIDE_KINDS.has(c.kind))
+      .map(side => {
         x += sideGap;
-        const card = { ...measureSide(side, level), x, y: ownerCard.y };
+        const card = { ...measureSide(side, level), x, y: 0 };
         card.joinedTo = previous;
-        block.cards.push(card);
         x += card.width;
         previous = card;
-      }
-      return x;
-    };
-    const rowChildren = owner =>
-      owner.children.filter(
-        c => !SIDE_KINDS.has(c.kind) && c.kind !== MEMBER_KIND[owner.kind],
-      );
-
-    if (MEMBER_KIND[node.kind]) {
-      const member = MEMBER_KIND[node.kind];
-      const gap = node.kind === 'wizard' ? 4 * spec.padding : spec.padding;
-      const headerHeight = textHeight(spec.nameSize);
-      const top = spec.padding + headerHeight + spec.padding;
-      let x = spec.padding;
-      let previous;
-      for (const child of node.children.filter(c => c.kind === member)) {
-        if (previous) {
-          x += gap;
-        }
-        const card = { ...measureCard(child, level), x, y: top };
-        card.previous = node.kind === 'wizard' ? previous : undefined;
-        block.cards.push(card);
-        x = placeSides(child, card, x + card.width);
-        card.hasSides = x > card.x + card.width;
-        block.slots.push({ card, children: rowChildren(child) });
-        previous = card;
-      }
-      const innerHeight = Math.max(
-        ...block.cards.map(card => card.y + card.height),
-      );
-      block.group = {
-        node,
-        level,
-        spec,
-        x: 0,
-        y: 0,
-        width: x + spec.padding,
-        height: innerHeight + spec.padding,
-        headerHeight,
-      };
-      const right = placeSides(node, block.group, block.group.width);
-      block.width = right;
-      block.height = Math.max(
-        block.group.height,
-        ...block.cards.map(card => card.y + card.height),
-      );
-    } else {
-      const card = { ...measureCard(node, level), x: 0, y: 0 };
-      block.cards.push(card);
-      block.width = placeSides(node, card, card.width);
-      block.height = Math.max(...block.cards.map(c => c.y + c.height));
-      block.slots.push({ card, children: rowChildren(node) });
-    }
-    return block;
+        return card;
+      });
+    return { sides, right: x };
   };
 
-  // Lays out a subtree: its block, and each slot's children centred under the
-  // slot, pushed right where they would overlap the previous slot's. Returns
-  // the subtree's width and the block's offset in it.
-  const subtree = (node, level) => {
-    const block = measureBlock(node, level);
-    const gap = 4 * levelSpec(level + 1).padding;
-    let previousRight = -Infinity;
-    let minLeft = 0;
-    let maxRight = block.width;
-    block.clusters = block.slots.map(slot => {
-      const children = slot.children.map(child => subtree(child, level + 1));
-      if (children.length === 0) {
-        return { slot, children, left: 0 };
+  // The gap between the subtrees of a row whose tops are at `level`.
+  const subtreeGap = level => 4 * levelSpec(level).padding;
+
+  // Subtrees side by side in sitemap order, `gap` apart; `x` is each one's
+  // left edge from the first one's.
+  const sideBySide = (subtrees, gap) => {
+    let x = 0;
+    const placed = subtrees.map((t, index) => {
+      if (index > 0) {
+        x += gap;
       }
-      const width =
-        children.reduce((sum, c) => sum + c.width, 0) +
-        gap * (children.length - 1);
-      const ideal = slot.card.x + slot.card.width / 2 - width / 2;
-      const left = Math.max(ideal, previousRight + gap);
-      previousRight = left + width;
-      minLeft = Math.min(minLeft, left);
-      maxRight = Math.max(maxRight, previousRight);
-      return { slot, children, left, width };
+      const at = { t, x };
+      x += t.width;
+      return at;
     });
+    return { placed, width: x };
+  };
+
+  // The horizontal middle of a row of subtrees: the middle of the span from
+  // the first one's top box to the last one's.
+  const middleOf = ({ placed }) => {
+    const first = placed[0];
+    const last = placed.at(-1);
+    return (
+      (first.x + first.t.top.x + last.x + last.t.top.x + last.t.top.width) / 2
+    );
+  };
+
+  // A tidy tree. A column is a card (a page, or a tab or step inside its
+  // group) with its dialogs and states beside it and its row children side by
+  // side below, the card centred over the middle of its children. Every `x`
+  // is relative to the column's left edge, which is the leftmost edge of
+  // anything in it.
+  const column = (node, level) => {
+    const card = measureCard(node, level);
+    const chain = chainOf(node, level, card.width);
+    const kids = sideBySide(
+      rowChildren(node).map(child => subtree(child, level + 1)),
+      subtreeGap(level + 1),
+    );
+    const cardX =
+      kids.placed.length > 0 ? middleOf(kids) - card.width / 2 : 0;
+    const left = Math.min(0, cardX);
+    const right = Math.max(kids.width, cardX + chain.right);
     return {
-      block,
-      gap,
-      offset: -minLeft,
-      width: maxRight - minLeft,
+      type: 'column',
+      node,
+      level,
+      card,
+      sides: chain.sides,
+      cardX: cardX - left,
+      kids: kids.placed.map(({ t, x }) => ({ t, x: x - left })),
+      width: right - left,
+      height: Math.max(card.height, ...chain.sides.map(s => s.height)),
+      top: { x: cardX - left, width: card.width },
     };
   };
+
+  // A tabs or wizard group: a column per member, side by side, each member
+  // centred over its own subtree, and the group box stretched across all
+  // the members' cards. The group's own dialogs and states sit to its right.
+  const group = (node, level) => {
+    const spec = levelSpec(level);
+    const memberGap = node.kind === 'wizard' ? 4 * spec.padding : spec.padding;
+    const columns = sideBySide(
+      node.children
+        .filter(c => c.kind === MEMBER_KIND[node.kind])
+        .map(member => column(member, level)),
+      Math.max(memberGap, subtreeGap(level + 1)),
+    );
+    const headerHeight = textHeight(spec.nameSize);
+    const inset = spec.padding + headerHeight + spec.padding;
+    const cardsLeft = Math.min(...columns.placed.map(c => c.x + c.t.cardX));
+    const cardsRight = Math.max(
+      ...columns.placed.map(
+        c => c.x + c.t.cardX + Math.max(c.t.card.width, sidesRight(c.t)),
+      ),
+    );
+    const boxX = cardsLeft - spec.padding;
+    const boxWidth = cardsRight - cardsLeft + 2 * spec.padding;
+    const boxHeight =
+      inset + Math.max(...columns.placed.map(c => c.t.height)) + spec.padding;
+    const chain = chainOf(node, level, boxWidth);
+    const left = Math.min(0, boxX);
+    const right = Math.max(columns.width, boxX + chain.right);
+    return {
+      type: 'group',
+      node,
+      level,
+      spec,
+      headerHeight,
+      inset,
+      boxX: boxX - left,
+      boxWidth,
+      boxHeight,
+      sides: chain.sides,
+      columns: columns.placed.map(({ t, x }) => ({ t, x: x - left })),
+      width: right - left,
+      height: Math.max(boxHeight, ...chain.sides.map(s => s.height)),
+      top: { x: boxX - left, width: boxWidth },
+    };
+  };
+
+  // The right edge of a column's side chain, from its card's left edge.
+  const sidesRight = t =>
+    t.sides.length > 0 ? t.sides.at(-1).x + t.sides.at(-1).width : 0;
+
+  const subtree = (node, level) =>
+    MEMBER_KIND[node.kind] ? group(node, level) : column(node, level);
 
   const tree = subtree(root, 0);
 
   // Rows: every block of a level starts at the same y.
+  const kidsOf = t =>
+    t.type === 'group' ? t.columns.flatMap(c => c.t.kids) : t.kids;
   const rowHeights = [];
-  const collectHeights = (t, level) => {
-    rowHeights[level] = Math.max(rowHeights[level] ?? 0, t.block.height);
-    t.block.clusters.forEach(cluster =>
-      cluster.children.forEach(child => collectHeights(child, level + 1)),
-    );
+  const collectHeights = t => {
+    rowHeights[t.level] = Math.max(rowHeights[t.level] ?? 0, t.height);
+    kidsOf(t).forEach(k => collectHeights(k.t));
   };
-  collectHeights(tree, 0);
+  collectHeights(tree);
+  const treeTop =
+    origin.y +
+    textHeight(STYLE.titleSize) +
+    textHeight(STYLE.subtitleSize) +
+    ROW_GAP;
+  const treeLeft = origin.x + LEVEL_MARKER_WIDTH + LEVEL_MARKER_GAP;
   const rowTops = [];
   rowHeights.reduce((y, height, level) => {
     rowTops[level] = y;
     return y + height + ROW_GAP;
-  }, origin.y);
+  }, treeTop);
 
   const items = [];
   const nodes = [];
+  const images = [];
+  const lines = [];
   const add = item => {
     items.push(item);
     return item;
@@ -504,10 +555,26 @@ export function layout({
   // Absolute boxes by node id, for the lines.
   const boxes = new Map();
 
-  const drawCard = (card, bx, by, level) => {
+  const summary = (node, level) => {
+    const s = stateById.get(node.id);
+    return {
+      id: node.id,
+      kind: node.kind,
+      level,
+      name: node.name,
+      path: node.path,
+      reach: node.reach || undefined,
+      note: node.note || undefined,
+      captured: s?.captured || undefined,
+      commit: s?.commit || undefined,
+      skipped: s?.skipped || undefined,
+      onBoard: Boolean(s?.card),
+    };
+  };
+
+  // A card at its absolute top-left corner.
+  const drawCard = (card, x, y, level) => {
     const { node, spec } = card;
-    const x = bx + card.x;
-    const y = by + card.y;
     const box = {
       key: `${node.id}/card`,
       node: node.id,
@@ -550,22 +617,6 @@ export function layout({
     return box;
   };
 
-  const summary = (node, level) => {
-    const s = stateById.get(node.id);
-    return {
-      id: node.id,
-      kind: node.kind,
-      level,
-      name: node.name,
-      path: node.path,
-      reach: node.reach || undefined,
-      note: node.note || undefined,
-      captured: s?.captured || undefined,
-      commit: s?.commit || undefined,
-      onBoard: Boolean(s?.card),
-    };
-  };
-
   const line = (child, from, to, options) => {
     const item = {
       key: `${child.id}/edge`,
@@ -584,133 +635,151 @@ export function layout({
     return item;
   };
 
-  // Side lines: straight from the right edge of the card before it in the
-  // chain to the side card's left.
-  const sideLine = (card, ownerBox) => {
-    const box = boxes.get(card.node.id);
-    const y = round(ownerBox.y + Math.min(ownerBox.height, box.height) / 2);
-    line(card.node, ownerBox, box, {
-      shape: 'straight',
-      dashed: true,
-      fromSide: 'right',
-      toSide: 'left',
-      label: card.node.kind === 'dialog' ? 'Dialog' : 'State',
-      points: [
-        [ownerBox.x + ownerBox.width, y],
-        [box.x, y],
-      ],
+  // A side chain at its owner's absolute corner: each card, and a straight
+  // dashed line from the right edge of the card before it to its left.
+  const drawSides = (sides, ownerBox, level) => {
+    for (const side of sides) {
+      const box = drawCard(side, ownerBox.x + side.x, ownerBox.y, level);
+      const from = side.joinedTo ? boxes.get(side.joinedTo.node.id) : ownerBox;
+      const y = round(from.y + Math.min(from.height, box.height) / 2);
+      line(side.node, from, box, {
+        shape: 'straight',
+        dashed: true,
+        fromSide: 'right',
+        toSide: 'left',
+        label: side.node.kind === 'dialog' ? 'Dialog' : 'State',
+        points: [
+          [from.x + from.width, y],
+          [box.x, y],
+        ],
+      });
+    }
+  };
+
+  // Elbowed from the bottom of the parent to the top of the child, the elbow
+  // halfway down the gap above the child's row.
+  const levelLine = (node, level, parentBox, topBox) => {
+    const from = [
+      round(parentBox.x + parentBox.width / 2),
+      parentBox.y + parentBox.height,
+    ];
+    const to = [round(topBox.x + topBox.width / 2), topBox.y];
+    const elbowY = round(rowTops[level] - ROW_GAP / 2);
+    line(node, parentBox, topBox, {
+      shape: 'elbowed',
+      dashed: false,
+      fromSide: 'bottom',
+      toSide: 'top',
+      points:
+        from[0] === to[0]
+          ? [from, to]
+          : [from, [from[0], elbowY], [to[0], elbowY], to],
     });
   };
 
-  const images = [];
-  const lines = [];
-
-  const draw = (t, left, level, parentBox) => {
-    const { block } = t;
-    const bx = left + t.offset;
-    const by = rowTops[level];
-    let topBox;
-    if (block.group) {
-      const { group, node } = block;
-      topBox = add({
-        key: `${node.id}/card`,
-        node: node.id,
-        type: 'group',
-        kind: node.kind,
-        x: round(bx),
-        y: round(by),
-        width: round(group.width),
-        height: round(group.height),
-        fill: STYLE.groupFill,
-        border: STYLE.groupBorder,
-        borderWidth: STYLE.groupBorderWidth,
-        radius: group.spec.padding,
-        stateColumn: 'card',
-        miroId: miro(node.id, 'card'),
-      });
-      boxes.set(node.id, topBox);
-      drawLabels(
-        { ...node, path: '' },
-        group.spec,
-        bx + group.spec.padding,
-        by + group.spec.padding,
-      );
-      nodes.push(summary(node, level));
-    }
-    for (const card of block.cards) {
-      const box = drawCard(card, bx, by, level);
-      if (!topBox && card === block.cards[0]) {
-        topBox = box;
-      }
-      if (card.previous) {
-        const from = boxes.get(card.previous.node.id);
-        if (card.previous.hasSides) {
-          // Over the top: the previous step's dialogs and states sit between.
-          const y = round(box.y - card.spec.padding / 2);
-          const fromX = round(from.x + from.width / 2);
-          const toX = round(box.x + box.width / 2);
-          line(card.node, from, box, {
-            shape: 'elbowed',
-            dashed: false,
-            fromSide: 'top',
-            toSide: 'top',
-            points: [
-              [fromX, from.y],
-              [fromX, y],
-              [toX, y],
-              [toX, box.y],
-            ],
-          });
-        } else {
-          const y = round(box.y + Math.min(from.height, box.height) / 2);
-          line(card.node, from, box, {
-            shape: 'straight',
-            dashed: false,
-            fromSide: 'right',
-            toSide: 'left',
-            points: [
-              [from.x + from.width, y],
-              [box.x, y],
-            ],
-          });
-        }
-      }
-    }
-    for (const card of block.cards.filter(c => c.joinedTo)) {
-      sideLine(card, boxes.get(card.joinedTo.node.id));
-    }
-    if (parentBox) {
-      const from = [
-        round(parentBox.x + parentBox.width / 2),
-        parentBox.y + parentBox.height,
-      ];
-      const to = [round(topBox.x + topBox.width / 2), topBox.y];
-      const elbowY = round(rowTops[level] - ROW_GAP / 2);
-      line(block.node, parentBox, topBox, {
+  // A wizard's arrow from one step to the next: straight, or over the top of
+  // the previous step's dialogs and states.
+  const stepArrow = (node, from, box, overTop, padding) => {
+    if (overTop) {
+      const y = round(box.y - padding / 2);
+      const fromX = round(from.x + from.width / 2);
+      const toX = round(box.x + box.width / 2);
+      line(node, from, box, {
         shape: 'elbowed',
         dashed: false,
-        fromSide: 'bottom',
+        fromSide: 'top',
         toSide: 'top',
-        points:
-          from[0] === to[0]
-            ? [from, to]
-            : [from, [from[0], elbowY], [to[0], elbowY], to],
+        points: [
+          [fromX, from.y],
+          [fromX, y],
+          [toX, y],
+          [toX, box.y],
+        ],
       });
-    }
-    for (const cluster of block.clusters) {
-      const from = boxes.get(cluster.slot.card.node.id);
-      let x = bx + cluster.left;
-      for (const child of cluster.children) {
-        draw(child, x, level + 1, from);
-        x += child.width + t.gap;
-      }
+    } else {
+      const y = round(box.y + Math.min(from.height, box.height) / 2);
+      line(node, from, box, {
+        shape: 'straight',
+        dashed: false,
+        fromSide: 'right',
+        toSide: 'left',
+        points: [
+          [from.x + from.width, y],
+          [box.x, y],
+        ],
+      });
     }
   };
 
-  draw(tree, origin.x, 0, undefined);
+  const drawSubtree = (t, left, parentBox) =>
+    t.type === 'group'
+      ? drawGroup(t, left, parentBox)
+      : drawColumn(t, left, rowTops[t.level], parentBox);
+
+  // A column at its absolute left edge, its card at `y`.
+  const drawColumn = (t, left, y, parentBox) => {
+    const box = drawCard(t.card, left + t.cardX, y, t.level);
+    drawSides(t.sides, box, t.level);
+    if (parentBox) {
+      levelLine(t.node, t.level, parentBox, box);
+    }
+    for (const kid of t.kids) {
+      drawSubtree(kid.t, left + kid.x, box);
+    }
+    return box;
+  };
+
+  const drawGroup = (t, left, parentBox) => {
+    const { node, spec } = t;
+    const y = rowTops[t.level];
+    const groupBox = add({
+      key: `${node.id}/card`,
+      node: node.id,
+      type: 'group',
+      kind: node.kind,
+      x: round(left + t.boxX),
+      y: round(y),
+      width: round(t.boxWidth),
+      height: round(t.boxHeight),
+      fill: STYLE.groupFill,
+      border: STYLE.groupBorder,
+      borderWidth: STYLE.groupBorderWidth,
+      radius: spec.padding,
+      stateColumn: 'card',
+      miroId: miro(node.id, 'card'),
+    });
+    boxes.set(node.id, groupBox);
+    drawLabels(
+      { ...node, path: '' },
+      spec,
+      left + t.boxX + spec.padding,
+      y + spec.padding,
+    );
+    nodes.push(summary(node, t.level));
+    let previous;
+    for (const c of t.columns) {
+      const box = drawColumn(c.t, left + c.x, y + t.inset, undefined);
+      if (node.kind === 'wizard' && previous) {
+        stepArrow(
+          c.t.node,
+          previous.box,
+          box,
+          previous.t.sides.length > 0,
+          spec.padding,
+        );
+      }
+      previous = { box, t: c.t };
+    }
+    drawSides(t.sides, groupBox, t.level);
+    if (parentBox) {
+      levelLine(node, t.level, parentBox, groupBox);
+    }
+  };
+
+  drawSubtree(tree, treeLeft, undefined);
 
   // The level markers, left of each row, and the title above the tree.
-  const markerX = origin.x - LEVEL_MARKER_GAP - LEVEL_MARKER_WIDTH;
+  const markerX = origin.x;
   rowTops.forEach((y, level) =>
     add({
       key: `_level-${level}`,
@@ -732,8 +801,8 @@ export function layout({
     tree.width + LEVEL_MARKER_GAP + LEVEL_MARKER_WIDTH,
     4000,
   );
-  const subtitleY = origin.y - ROW_GAP - textHeight(STYLE.subtitleSize);
-  const titleY = subtitleY - textHeight(STYLE.titleSize);
+  const titleY = origin.y;
+  const subtitleY = titleY + textHeight(STYLE.titleSize);
   add({
     key: '_title',
     type: 'text',
@@ -851,6 +920,190 @@ export function planChanges(plan, state, board) {
   return changes;
 }
 
+// ----------------------------------------------------------------- board ----
+
+/** The local SVG id of a plan item: its key, made safe for an XML id. */
+export const localId = key => `k_${key.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+const escapeXml = text =>
+  String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+/**
+ * The Canvas Composer SVG for the plan's boxes, labels and lines to create or
+ * update (images go through image_create). Each element's local id is its
+ * item key (`localId`), so a result SVG maps back to the plan; an item to
+ * update carries its Miro id. A line whose card is not in the document gets
+ * that card as a stub (its local id and Miro id only), because a connector
+ * joins local ids and a stub changes nothing on the board.
+ */
+export function boardSvg(plan) {
+  const byKey = new Map(plan.items.map(item => [item.key, item]));
+  const sent = new Set();
+  const out = [];
+  const miro = item => (item.miroId ? ` data-miro-id="${item.miroId}"` : '');
+  for (const item of plan.items) {
+    if (!['create', 'update'].includes(item.action) || item.type === 'line') {
+      continue;
+    }
+    if (item.type === 'image') {
+      // A new image goes through image_create; a moved one is updated here,
+      // without its height: Miro derives it from the image and refuses an
+      // update that names one a pixel off.
+      if (item.action === 'update') {
+        out.push(
+          `<image data-type="image" data-miro-id="${item.miroId}" x="${item.x}" y="${item.y}" width="${item.width}" />`,
+        );
+      }
+      continue;
+    }
+    sent.add(item.key);
+    if (item.type === 'card' || item.type === 'group') {
+      const stroke =
+        item.type === 'group'
+          ? ` stroke="${item.border}" stroke-width="${item.borderWidth}"`
+          : ' stroke="none"';
+      out.push(
+        `<rect id="${localId(item.key)}"${miro(item)} x="${item.x}" y="${item.y}" width="${item.width}" height="${item.height}" rx="${item.radius}" fill="${item.fill}"${stroke} />`,
+      );
+    } else if (item.type === 'text') {
+      const text = escapeXml(item.text);
+      out.push(
+        `<textArea id="${localId(item.key)}"${miro(item)} x="${item.x}" y="${item.y}" width="${item.width}" font-size="${item.fontSize}" font-family="${STYLE.fontFamily}" fill="${item.color}">${item.bold ? `<b>${text}</b>` : text}</textArea>`,
+      );
+    }
+  }
+  const stubs = [];
+  for (const item of plan.items) {
+    if (item.type !== 'line' || !['create', 'update'].includes(item.action)) {
+      continue;
+    }
+    for (const end of [item.from, item.to]) {
+      if (!sent.has(end)) {
+        sent.add(end);
+        stubs.push(
+          `<rect id="${localId(end)}" data-miro-id="${byKey.get(end).miroId}" />`,
+        );
+      }
+    }
+    const [x1, y1] = item.points[0];
+    const [x2, y2] = item.points.at(-1);
+    out.push(
+      `<line id="${localId(item.key)}"${miro(item)} x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${item.color}" stroke-width="${item.strokeWidth}" data-arrow="${item.arrow}" data-start="${localId(item.from)}" data-end="${localId(item.to)}" data-shape="${item.shape}" data-start-side="${item.fromSide}" data-end-side="${item.toSide}"${item.dashed ? ' stroke-dasharray="5,5"' : ''}${item.label ? ` data-content="${escapeXml(item.label)}"` : ''} />`,
+    );
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg">\n${[...stubs, ...out].join('\n')}\n</svg>\n`;
+}
+
+/** The images to upload: one row per new or replaced screenshot. */
+export function uploadsTsv(plan) {
+  const rows = plan.items
+    .filter(i => i.type === 'image' && ['create', 'replace'].includes(i.action))
+    .map(i => [i.node, i.file, i.title, i.width, i.cx, i.cy]);
+  return [['node', 'file', 'title', 'width', 'cx', 'cy'], ...rows]
+    .map(row => `${row.join('\t')}\n`)
+    .join('');
+}
+
+/** Local id → Miro id, from Canvas Composer result SVGs. */
+export function miroIdsFromSvg(svgs) {
+  const ids = new Map();
+  for (const svg of svgs) {
+    for (const element of svg.match(/<[a-zA-Z]+\s[^>]*>/g) ?? []) {
+      const id = /\sid="([^"]+)"/.exec(element)?.[1];
+      const miroId = /\sdata-miro-id="(\d+)"/.exec(element)?.[1];
+      if (id && miroId) {
+        ids.set(id, miroId);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * The state after a run: one row per node with a card on the board, in
+ * sitemap order, then the board's own items. Ids come from the result SVGs
+ * (`ids`, by local id), the uploaded images (`images`, node → Miro id) or the
+ * state already; a new screenshot's row gets its capture time (the PNG's
+ * modification time, rounded up to the second), `commit` and viewport.
+ * `skipped` (node → reason) records why a node has no screenshot; a reason
+ * stays until the node gets one.
+ */
+export function stateRows({
+  rows,
+  plan,
+  state = [],
+  ids = new Map(),
+  images = new Map(),
+  skipped = new Map(),
+  commit,
+  mtimeOf = () => undefined,
+}) {
+  const previous = new Map(state.map(row => [row.id, row]));
+  const byKey = new Map(plan.items.map(item => [item.key, item]));
+  const idOf = key => {
+    const item = byKey.get(key);
+    return item ? (ids.get(localId(key)) ?? item.miroId ?? '') : '';
+  };
+  const out = [];
+  for (const { id } of rows) {
+    const card = idOf(`${id}/card`);
+    if (!card) {
+      continue;
+    }
+    const before = previous.get(id) ?? {};
+    const row = {
+      id,
+      captured: before.captured ?? '',
+      commit: before.commit ?? '',
+      viewport: before.viewport ?? '',
+      card,
+      image: before.image ?? '',
+      label: [idOf(`${id}/name`), idOf(`${id}/path`)]
+        .filter(Boolean)
+        .join(','),
+      edge: idOf(`${id}/edge`),
+      skipped: before.skipped ?? '',
+    };
+    const image = byKey.get(`${id}/image`);
+    if (images.has(id) && image?.file) {
+      const mtimeMs = mtimeOf(image.file);
+      row.image = images.get(id);
+      row.captured = new Date(Math.ceil(mtimeMs / 1000) * 1000)
+        .toISOString()
+        .replace('.000Z', 'Z');
+      row.commit = commit ?? '';
+      row.viewport = `${image.pixelWidth / 2}x${image.pixelHeight / 2}x2`;
+    } else if (image && !image.miroId && !images.has(id)) {
+      row.image = '';
+    }
+    if (skipped.has(id)) {
+      row.skipped = skipped.get(id);
+    }
+    if (row.image) {
+      row.skipped = '';
+    }
+    out.push(row);
+  }
+  for (const item of plan.items.filter(i => i.key.startsWith('_'))) {
+    const label = idOf(item.key);
+    if (label) {
+      out.push({ id: item.key, label });
+    }
+  }
+  return out;
+}
+
+export function stateTsv(rows) {
+  return `${[
+    STATE_COLUMNS.join('\t'),
+    ...rows.map(row => STATE_COLUMNS.map(c => row[c] ?? '').join('\t')),
+  ].join('\n')}\n`;
+}
+
 /** The sitemap as it was when the state was last committed, if git knows. */
 function committedSitemap(sitemapFile, stateFile) {
   try {
@@ -882,6 +1135,7 @@ function readPngSize(file) {
   }
   return { ...pngSize(header), mtimeMs: statSync(file).mtimeMs };
 }
+
 // ------------------------------------------------------------------ cli ----
 
 function parseArgs(argv) {
@@ -890,6 +1144,7 @@ function parseArgs(argv) {
     state: join(HERE, 'sitemap.state.tsv'),
     screens: join(HERE, 'screens'),
     origin: { x: 0, y: 0 },
+    result: [],
   };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -919,6 +1174,30 @@ function parseArgs(argv) {
       case '--out':
         args.out = resolve(value());
         break;
+      case '--svg':
+        args.svg = resolve(value());
+        break;
+      case '--uploads':
+        args.uploads = resolve(value());
+        break;
+      case '--write-state':
+        args.writeState = true;
+        break;
+      case '--update-all':
+        args.updateAll = true;
+        break;
+      case '--result':
+        args.result.push(...value().split(',').map(f => resolve(f)));
+        break;
+      case '--images':
+        args.images = resolve(value());
+        break;
+      case '--skipped':
+        args.skipped = resolve(value());
+        break;
+      case '--commit':
+        args.commit = value();
+        break;
       case '--origin': {
         const [x, y] = value().split(',').map(Number);
         if (!Number.isFinite(x) || !Number.isFinite(y)) {
@@ -938,13 +1217,30 @@ function parseArgs(argv) {
   return args;
 }
 
+/** A two-column TSV without a header (`key<TAB>value`) as a map. */
+function readPairs(file) {
+  if (!file) {
+    return new Map();
+  }
+  return new Map(
+    readFileSync(file, 'utf8')
+      .split('\n')
+      .map(line => line.replace(/\r$/, ''))
+      .filter(line => line.trim() !== '' && !line.startsWith('#'))
+      .map(line => {
+        const [key, ...rest] = line.split('\t');
+        return [key.trim(), rest.join('\t').trim()];
+      }),
+  );
+}
+
 function main(argv) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(
       `${readFileSync(fileURLToPath(import.meta.url), 'utf8')
         .split('\n')
-        .slice(1, 11)
+        .slice(1, 16)
         .map(l => l.replace(/^\/\/ ?/, ''))
         .join('\n')}\n`,
     );
@@ -977,7 +1273,7 @@ function main(argv) {
     : committedSitemap(args.sitemap, args.state);
   if (!boardText && state.some(row => row.card)) {
     process.stderr.write(
-      'layout.mjs: no committed sitemap for the state; comparing against the current one, so a renamed node is not updated\n',
+      'layout.mjs: no committed sitemap for the state; comparing against the current one, so a renamed node is not updated (pass --board-sitemap with the sitemap the board was drawn from)\n',
     );
   }
   const boardRows = drawnRows(
@@ -986,8 +1282,10 @@ function main(argv) {
       : rows,
     state,
   );
+  // After a change to this file the board was drawn by other rules, which a
+  // layout of the drawn rows can't show: --update-all updates every item.
   const board =
-    boardRows.length > 0
+    boardRows.length > 0 && !args.updateAll
       ? layout({ rows: boardRows, state, origin: args.origin })
       : undefined;
   plan.changes = planChanges(plan, state, board);
@@ -1000,6 +1298,39 @@ function main(argv) {
         );
       }
     }
+  }
+  if (args.writeState) {
+    const next = stateRows({
+      rows,
+      plan,
+      state,
+      ids: miroIdsFromSvg(args.result.map(f => readFileSync(f, 'utf8'))),
+      images: readPairs(args.images),
+      skipped: readPairs(args.skipped),
+      commit:
+        args.commit ??
+        execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+          cwd: HERE,
+          encoding: 'utf8',
+        }).trim(),
+      mtimeOf: file => statSync(resolve(file)).mtimeMs,
+    });
+    writeFileSync(args.state, stateTsv(next));
+    const pending = plan.changes.delete.map(d => d.miroId);
+    if (pending.length > 0) {
+      process.stderr.write(
+        `layout.mjs: the state no longer lists ${pending.length} Miro id(s) the plan deletes; delete them on the board: ${pending.join(', ')}\n`,
+      );
+    }
+    return;
+  }
+  if (args.svg) {
+    mkdirSync(dirname(args.svg), { recursive: true });
+    writeFileSync(args.svg, boardSvg(plan));
+  }
+  if (args.uploads) {
+    mkdirSync(dirname(args.uploads), { recursive: true });
+    writeFileSync(args.uploads, uploadsTsv(plan));
   }
   const json = `${JSON.stringify(plan, null, 2)}\n`;
   if (args.out) {
