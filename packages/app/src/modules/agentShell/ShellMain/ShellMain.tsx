@@ -10,6 +10,7 @@ import { useSidebarPinState } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
 import { useContentOffset, useRailWidth } from '../RailWidthProvider';
 import { useKeyboardTapHold } from './keyboardTapHold';
+import { useToastHeight } from './toastHeight';
 
 export const SHELL_CONTENT_ID = 'content';
 
@@ -60,7 +61,8 @@ function useEasesPinChange(): boolean {
  * core-components `Page` does), so every page has exactly one. A role rather
  * than a `<main>` element: switching the element would remount the page.
  * Mounted once per shell, it also holds the phone's keyboard layout while a
- * tap is in progress (`useKeyboardTapHold`).
+ * tap is in progress (`useKeyboardTapHold`) and publishes the toasts' height
+ * for the room pages leave under them (`useToastHeight`).
  *
  * Its left edge is the rail's width, expanded (and resizable) or collapsed,
  * from `useRailInset`, the same value the rail is drawn at: SidebarPage pads
@@ -71,6 +73,7 @@ function useEasesPinChange(): boolean {
 export function ShellMain({ children }: { children: ReactNode }) {
   const classes = useStyles();
   useKeyboardTapHold();
+  useToastHeight();
   const offset = useContentOffset();
   const easesPinChange = useEasesPinChange();
   const ref = useRef<HTMLDivElement>(null);

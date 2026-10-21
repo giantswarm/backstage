@@ -8,6 +8,7 @@ import {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import type { ModelRow } from '../components/ModelsTable';
 import { READINESS_PRESENTATION } from '../components/AgentsTable/readinessStatus';
+import { matches } from './search';
 import { SERVED_MODEL_READINESS } from './serving';
 import {
   canonicalSkillId,
@@ -181,10 +182,6 @@ export function agentsBySkill(agents: AgentRow[]): Map<string, number> {
     }
   }
   return counts;
-}
-
-function matches(needle: string, fields: (string | undefined)[]): boolean {
-  return fields.some(field => field?.toLowerCase().includes(needle));
 }
 
 export function searchAgents(rows: AgentRow[], search: string): AgentRow[] {

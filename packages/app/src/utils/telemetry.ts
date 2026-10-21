@@ -2,6 +2,7 @@ import sha256 from 'crypto-js/sha256';
 import {
   AGENT_PAGE_TABS,
   MODEL_PAGE_TABS,
+  WORKSPACE_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import {
   CONNECTOR_GROUPS,
@@ -28,6 +29,14 @@ const CONNECTOR_SUBTABS: ReadonlySet<string> = new Set(
  */
 const WORKFLOW_TABS: ReadonlySet<string> = new Set(
   WORKFLOW_PAGE_TABS.map(tab => tab.path).filter(Boolean),
+);
+
+/**
+ * A workspace page's tabs below its own address (Repositories, the index,
+ * left out), a fixed set too.
+ */
+const WORKSPACE_TABS: ReadonlySet<string> = new Set(
+  WORKSPACE_PAGE_TABS.map(tab => tab.path).filter(Boolean),
 );
 
 /**
@@ -544,8 +553,9 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
 
     // The workspace editor: creating one (`/customize/workspaces/new`) and
     // editing one (`…/workspaces/<installation>/<organization>/<name>/edit`),
-    // whose segments name a workspace and stay out of every attribute. Above
-    // the tab case, which would report them as the Workspaces tab.
+    // and one workspace's page, whose segments name a workspace and stay out
+    // of every attribute. Above the tab case, which would report them as the
+    // Workspaces tab.
     case pathname === '/customize/workspaces/new':
       payload = { page: 'Create workspace' };
       route = '/customize/workspaces/new';
@@ -555,6 +565,29 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       payload = { page: 'Edit workspace' };
       route = '/customize/workspaces/:installation/:organization/:name/edit';
       break;
+
+    // One workspace's page (`…/workspaces/<installation>/<organization>/<name>`),
+    // optionally followed by one of its tabs, the workspace in no attribute:
+    // the tab goes in `view`, a closed set; Repositories, the index, carries
+    // none.
+    case /^\/customize\/workspaces\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(
+      pathname,
+    ): {
+      const tab = segments.slice(5).join('/');
+      payload =
+        tab === ''
+          ? { page: 'Workspace detail' }
+          : {
+              page: 'Workspace detail',
+              view: WORKSPACE_TABS.has(tab) ? tab : 'redirect',
+            };
+      route = tabRoute(
+        '/customize/workspaces/:installation/:organization/:name',
+        tab,
+        WORKSPACE_TABS,
+      );
+      break;
+    }
 
     // A Customize tab, with the tab as the view. Only the known tabs: the
     // segment comes from the URL, and an unknown one redirects to the Agents tab.

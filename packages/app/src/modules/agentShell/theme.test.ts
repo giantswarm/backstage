@@ -250,6 +250,8 @@ describe('agentShellLightColors', () => {
     expect(upstream).toMatch(
       /\.Toast_container__\w+ \{\\n\s*position: fixed;\\n\s*bottom: 1rem;/,
     );
+    // `useToastHeight` measures the front toast by this prefix.
+    expect(upstream).toMatch(/\.Toast_toast__\w+ \{/);
 
     const css = shellCss();
     expect(css).toMatch(

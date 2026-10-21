@@ -88,9 +88,16 @@ export const newWorkspaceRouteRef = createSubRouteRef({
   parent: workspacesRouteRef,
 });
 
-// Editing one workspace (`<installation>/<organization>/<name>/edit`): a
-// workspace name is unique on an installation and belongs to one
-// Organization, which scopes who may edit it.
+// One workspace's page (`<installation>/<organization>/<name>`): its sync,
+// storage, repositories and the Sessions on it. A workspace name is unique on
+// an installation and belongs to one Organization, which scopes who may read
+// it; the three segments match the plugin's other detail routes.
+export const workspaceDetailRouteRef = createSubRouteRef({
+  path: '/:installation/:organization/:name',
+  parent: workspacesRouteRef,
+});
+
+// Editing one workspace (`<installation>/<organization>/<name>/edit`).
 export const workspaceEditRouteRef = createSubRouteRef({
   path: '/:installation/:organization/:name/edit',
   parent: workspacesRouteRef,

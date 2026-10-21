@@ -459,7 +459,9 @@ html[data-agent-shell] body {
  * `--wizard-footer-height` a WizardFrame's footer (Continue, Create), which
  * the frame publishes while it is mounted; unset, each is 0. The inbox's
  * lasting toasts (a catch-up summary, an MCP sign-in) so never take the
- * click of a page's primary action. Matched by the module class's stable
+ * click of a page's primary action. A wizard step leaves room for the toast
+ * at its end (`--agent-shell-toast-height`, ShellMain's `useToastHeight`), so
+ * the toast never sits on the step's last control either. Matched by the module class's stable
  * prefix, since the hash changes with every release; theme.test.ts checks
  * the upstream class still carries it.
  */
