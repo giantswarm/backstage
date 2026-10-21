@@ -37,7 +37,7 @@
     "@backstage/errors": "backstage:^",
     "@backstage/types": "backstage:^",
     "@giantswarm/backstage-plugin-gs-common": "^0.21.1",
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.4",
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.7",
     "@modelcontextprotocol/sdk": "1.32.1",
     "node-fetch": "^3.3.2"
   },
