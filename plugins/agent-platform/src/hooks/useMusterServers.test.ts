@@ -1,6 +1,6 @@
 import { MCPServer } from '@giantswarm/backstage-plugin-muster';
 
-import { buildCatalogue } from '../lib/toolset';
+import { buildCatalogue, connectorOfTool } from '../lib/toolset';
 import { serverInfoOf } from './useMusterServers';
 
 function mcpServer(namespace: string, name: string, state = 'Connected') {
@@ -62,5 +62,11 @@ describe('serverInfoOf', () => {
         state: 'Auth Required',
       },
     ]);
+    // Tools named by muster's prefix alone (a session's tool calls) name the
+    // same connector.
+    expect(connectorOfTool('x_org-a_deepwiki_ask', servers)).toEqual({
+      connector: 'org-a/deepwiki',
+      tool: 'ask',
+    });
   });
 });

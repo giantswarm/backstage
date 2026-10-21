@@ -2,10 +2,8 @@ import { useMemo } from 'react';
 import { useResources } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer } from '@giantswarm/backstage-plugin-muster';
 
+import { ORGANIZATION_PREFIX } from '../lib/tenants';
 import { connectorLabels, type ServerInfo } from '../lib/toolset';
-
-/** The start of an organization's namespace, whose servers muster keys by namespace. */
-const ORGANIZATION_PREFIX = 'org-';
 
 /**
  * The grouping's view of one MCPServer CR. muster keys a server of an
