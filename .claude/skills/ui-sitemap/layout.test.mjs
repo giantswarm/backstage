@@ -25,9 +25,16 @@ import {
   parseTsv,
   planChanges,
   pngSize,
+  IMAGES_COLUMNS,
+  drawingOf,
+  layoutRules,
+  pendingDeletes,
+  readTable,
+  redrawReason,
   stateRows,
   stateTsv,
   uploadsTsv,
+  viewportOf,
 } from './layout.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -359,11 +366,11 @@ test('replaces a screenshot only when its PNG is newer than the capture', () => 
   const stale = run({ rows, state, screenSize: png(captured - 1000) });
   assert.deepEqual(stale.changes.replace, []);
   assert.equal(item(stale, 'home/image').file, null);
-  // A capture time written at second precision: within a second of it the
-  // PNG is the one the board shows.
-  const sameSecond = run({ rows, state, screenSize: png(captured + 999) });
-  assert.deepEqual(sameSecond.changes.replace, []);
-  const fresh = run({ rows, state, screenSize: png(captured + 2000) });
+  // --write-state rounds the capture time up, so the PNG it recorded is at
+  // or before it; a re-shoot even a moment later is new.
+  const recorded = run({ rows, state, screenSize: png(captured) });
+  assert.deepEqual(recorded.changes.replace, []);
+  const fresh = run({ rows, state, screenSize: png(captured + 1) });
   assert.deepEqual(fresh.changes.replace, ['home/image']);
   assert.ok(fresh.changes.delete.some(d => d.miroId === 'm:home/image'));
   assert.ok(fresh.changes.update.includes('home/card'));
@@ -624,14 +631,25 @@ test('the board SVG and the written state round-trip to no changes', () => {
 
 test('a skipped reason stays until the node has a screenshot', () => {
   const rows = sitemap(SMALL);
-  const plan = layout({ rows });
-  const state = stateRows({
+  const state = drawnState(layout({ rows }));
+  state.find(r => r.id === 'profile').skipped = 'no such state here';
+  const plan = run({ rows, state });
+  const next = stateRows({ rows, plan, state });
+  assert.equal(next.find(r => r.id === 'profile').skipped, 'no such state here');
+  const withImage = stateRows({
     rows,
-    plan,
-    state: [{ id: 'profile', card: 'c', skipped: 'no such state here' }],
-    ids: new Map([[localId('profile/card'), 'c']]),
+    plan: run({
+      rows,
+      state,
+      screenSize: id =>
+        id === 'profile' ? { width: 2880, height: 1800, mtimeMs: 1 } : undefined,
+    }),
+    state,
+    images: new Map([['profile', 'img-p']]),
+    commit: 'abc1234',
+    mtimeOf: () => 1,
   });
-  assert.equal(state.find(r => r.id === 'profile').skipped, 'no such state here');
+  assert.equal(withImage.find(r => r.id === 'profile').skipped, '');
 });
 
 test('writes the state without trailing whitespace, and reads it back', () => {
@@ -652,4 +670,130 @@ test('writes the state without trailing whitespace, and reads it back', () => {
 test('the committed state has no trailing whitespace', () => {
   const text = readFileSync(join(HERE, 'sitemap.state.tsv'), 'utf8');
   assert.doesNotMatch(text, /[ \t]+$/m);
+});
+
+// ---------------------------------------------------------- write-state ----
+
+const REPLACED = id =>
+  id === 'home' ? { width: 2880, height: 1800, mtimeMs: Date.parse(CAPTURED) + 5000 } : undefined;
+
+/** A board drawn with a screenshot for every node. */
+const withImages = rows =>
+  drawnState(
+    layout({
+      rows,
+      screenSize: () => ({ width: 2880, height: 1800, mtimeMs: 0 }),
+    }),
+  );
+
+test('a missing scratch table reads as empty, a wrong header fails', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ui-sitemap-'));
+  try {
+    assert.equal(readTable(join(dir, 'images.tsv'), IMAGES_COLUMNS).size, 0);
+    writeFileSync(join(dir, 'images.tsv'), 'node\tmiroId\nhome\t42\n');
+    assert.deepEqual(
+      [...readTable(join(dir, 'images.tsv'), IMAGES_COLUMNS)],
+      [['home', '42']],
+    );
+    writeFileSync(join(dir, 'images.tsv'), 'miroId\tnode\n42\thome\n');
+    assert.throws(
+      () => readTable(join(dir, 'images.tsv'), IMAGES_COLUMNS),
+      /header/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('rejects image ids left over from an earlier run', () => {
+  const rows = sitemap(SMALL);
+  const state = withImages(rows);
+  const plan = run({ rows, state, screenSize: REPLACED });
+  const write = images => () =>
+    stateRows({ rows, plan, state, images, commit: 'abc1234', mtimeOf: () => 0 });
+  // No new screenshot for "profile" in this run.
+  assert.throws(write(new Map([['profile', 'img-x']])), /earlier run/);
+  // The id this run deletes: the old image of "home".
+  assert.throws(write(new Map([['home', 'm:home/image']])), /deletes/);
+  assert.doesNotThrow(write(new Map([['home', 'img-new']])));
+});
+
+test('new screenshots need the commit of the code they show', () => {
+  const rows = sitemap(SMALL);
+  const state = drawnState(layout({ rows }));
+  const plan = run({ rows, state, screenSize: REPLACED });
+  assert.throws(
+    () =>
+      stateRows({ rows, plan, state, images: new Map([['home', 'img-new']]) }),
+    /--commit/,
+  );
+});
+
+test('keeps a replaced screenshot whose new image was not uploaded', () => {
+  const rows = sitemap(SMALL);
+  const state = withImages(rows);
+  const plan = run({ rows, state, screenSize: REPLACED });
+  const next = stateRows({ rows, plan, state });
+  const home = next.find(r => r.id === 'home');
+  assert.equal(home.image, 'm:home/image');
+  assert.equal(home.captured, CAPTURED);
+  // Not deleted on the board, and the next run replaces it again.
+  assert.ok(plan.changes.delete.some(d => d.miroId === 'm:home/image'));
+  assert.ok(
+    !pendingDeletes(plan).some(d => d.miroId === 'm:home/image'),
+  );
+  assert.ok(
+    pendingDeletes(plan, new Map([['home', 'img-new']])).some(
+      d => d.miroId === 'm:home/image',
+    ),
+  );
+  assert.deepEqual(run({ rows, state: next, screenSize: REPLACED }).changes.replace, ['home/image']);
+});
+
+test('ignores a stale result id for an item already on the board', () => {
+  const rows = sitemap(SMALL);
+  const state = drawnState(layout({ rows }));
+  const plan = run({ rows, state });
+  const next = stateRows({
+    rows,
+    plan,
+    state,
+    ids: new Map([[localId('home/card'), 'stale']]),
+  });
+  assert.equal(next.find(r => r.id === 'home').card, 'm:home/card');
+});
+
+test('records a viewport for any scale', () => {
+  assert.equal(viewportOf(2880, 1800), '1440x900x2');
+  assert.equal(viewportOf(1440, 901), '1440x901x1');
+  assert.equal(viewportOf(2880, 1801), '2880x1801x1');
+  assert.equal(viewportOf(1366, 768), '1366x768x1');
+});
+
+test('records the drawing, and redraws when its rules or origin change', () => {
+  const rows = sitemap(SMALL);
+  const origin = { x: -720, y: 10000 };
+  const state = stateRows({
+    rows,
+    plan: run({ rows, state: drawnState(layout({ rows, origin })) }),
+    state: drawnState(layout({ rows, origin })),
+  });
+  // run() lays out at the default origin; this state says -720,10000.
+  const plan = layout({ rows, state, origin });
+  const written = stateRows({ rows, plan: { ...plan, changes: { delete: [] } }, state });
+  assert.deepEqual(drawingOf(written), { rules: layoutRules(), origin });
+  assert.equal(redrawReason(written, origin), undefined);
+  assert.match(redrawReason(written, { x: 0, y: 0 }), /origin/);
+  const otherRules = written.map(r =>
+    r.id === '_layout' ? { ...r, commit: 'old' } : r,
+  );
+  assert.match(redrawReason(otherRules, origin), /rules/);
+  assert.match(
+    redrawReason(
+      written.filter(r => r.id !== '_layout'),
+      origin,
+    ),
+    /does not say/,
+  );
+  assert.equal(redrawReason([], origin), undefined);
 });

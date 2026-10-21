@@ -5,16 +5,19 @@
 // drawing rules are in SKILL.md; this file is their one implementation.
 //
 //   node .claude/skills/ui-sitemap/layout.mjs [--out plan.json]
-//     [--svg board.svg] [--uploads uploads.tsv] [--update-all]
+//     [--svg board.svg] [--uploads uploads.tsv]
 //     [--screens dir | --no-screens] [--board-sitemap file]
 //     [--sitemap file] [--state file] [--origin x,y]
 //   node .claude/skills/ui-sitemap/layout.mjs --write-state
-//     --result result.svg[,more.svg] [--images images.tsv]
-//     [--skipped skipped.tsv] [--commit sha] [--origin x,y] ...
+//     [--result result.svg[,more.svg]] [--images images.tsv]
+//     [--skipped skipped.tsv] [--commit sha] ...
+//
+// --origin defaults to the one the state records the board was drawn at.
 //
 // No dependencies, so it runs from the repo root without an install.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   closeSync,
   existsSync,
@@ -115,10 +118,8 @@ const LEVEL_MARKER_WIDTH = 480;
 const LEVEL_MARKER_GAP = 240;
 // The screenshot a node without one is drawn as: a 1440×900 viewport.
 const DEFAULT_ASPECT = 900 / 1440;
-// A PNG counts as new only when written more than this after the state's
-// `captured`, so a capture time written at second precision never makes an
-// unchanged PNG look new.
-const CAPTURE_TOLERANCE_MS = 1000;
+// The CSS width every screenshot is taken at.
+const VIEWPORT_WIDTH = 1440;
 
 export function levelSpec(level) {
   return LEVELS[Math.min(level, LEVELS.length - 1)];
@@ -266,14 +267,95 @@ export function buildTree(rows) {
 
 // --------------------------------------------------------------- layout ----
 
-/** Whether a PNG is newer than the capture the state records for it. */
+/**
+ * Whether a PNG is newer than the capture the state records for it.
+ * `--write-state` records the PNG's modification time rounded up to the
+ * second, so the PNG it recorded never counts as newer.
+ */
 export function isNewCapture(row, png) {
   const captured = Date.parse(row?.captured ?? '');
   return (
-    !row?.image ||
-    Number.isNaN(captured) ||
-    (png.mtimeMs ?? 0) > captured + CAPTURE_TOLERANCE_MS
+    !row?.image || Number.isNaN(captured) || (png.mtimeMs ?? 0) > captured
   );
+}
+
+/**
+ * A fingerprint of the drawing rules: the code and constants that place and
+ * size items. The state records the one that drew the board (`_layout`), so
+ * a run after a change to the rules updates every item instead of comparing
+ * against the new rules' idea of the old board.
+ */
+export function layoutRules() {
+  const source = [
+    layout,
+    levelSpec,
+    textHeight,
+    JSON.stringify({
+      LEVELS,
+      STYLE,
+      TITLE,
+      SUBTITLE,
+      ROW_GAP,
+      LEVEL_MARKER_WIDTH,
+      LEVEL_MARKER_GAP,
+      DEFAULT_ASPECT,
+    }),
+  ].join('\n');
+  return createHash('sha256').update(source).digest('hex').slice(0, 12);
+}
+
+/**
+ * The drawing the state records: the rules' fingerprint and the origin, from
+ * its `_layout` row (`commit` and `viewport`), or undefined before one.
+ */
+export function drawingOf(state) {
+  const row = state.find(r => r.id === '_layout');
+  if (!row) {
+    return undefined;
+  }
+  const [x, y] = (row.viewport ?? '').split(',').map(Number);
+  return {
+    rules: row.commit ?? '',
+    origin: Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined,
+  };
+}
+
+/**
+ * Why the board can't be compared item by item, if it can't: drawn by other
+ * rules, from another origin, or before the state recorded either. Then
+ * every item on the board is updated.
+ */
+export function redrawReason(state, origin) {
+  if (!state.some(row => row.card)) {
+    return undefined;
+  }
+  const drawn = drawingOf(state);
+  if (!drawn) {
+    return 'the state does not say which rules drew the board';
+  }
+  if (drawn.rules !== layoutRules()) {
+    return 'the drawing rules changed since the board was drawn';
+  }
+  if (
+    !drawn.origin ||
+    drawn.origin.x !== origin.x ||
+    drawn.origin.y !== origin.y
+  ) {
+    return 'the origin differs from the one the board was drawn at';
+  }
+  return undefined;
+}
+
+/**
+ * A screenshot's viewport: the CSS width it was taken at, its height and
+ * scale (`1440x900x2`), or its pixel size at scale 1 when it isn't a whole
+ * multiple of that width.
+ */
+export function viewportOf(pixelWidth, pixelHeight) {
+  const scale = pixelWidth / VIEWPORT_WIDTH;
+  return Number.isInteger(scale) && Number.isInteger(pixelHeight / scale)
+    ? `${VIEWPORT_WIDTH}x${pixelHeight / scale}x${scale}`
+    : `${pixelWidth}x${pixelHeight}x1`;
 }
 
 /**
@@ -843,6 +925,8 @@ export function layout({
   const bottom = Math.max(...boxed.map(i => i.y + i.height));
   return {
     board: BOARD_URL,
+    rules: layoutRules(),
+    origin,
     bounds: { x: left, y: top, width: right - left, height: bottom - top },
     nodes,
     items: all,
@@ -1023,14 +1107,38 @@ export function miroIdsFromSvg(svgs) {
   return ids;
 }
 
+/** The run's scratch tables: each has a header, like `uploads.tsv`. */
+export const IMAGES_COLUMNS = ['node', 'miroId'];
+export const SKIPPED_COLUMNS = ['id', 'reason'];
+
+/**
+ * The Miro ids a run still has to delete after `--write-state`: the plan's
+ * deletes, but not the old image of a replaced screenshot whose new image
+ * wasn't uploaded. That one stays on the board and in the state, and the
+ * next run replaces it again.
+ */
+export function pendingDeletes(plan, images = new Map()) {
+  const kept = new Set(
+    plan.items
+      .filter(
+        i => i.type === 'image' && i.action === 'replace' && !images.has(i.node),
+      )
+      .map(i => i.miroId),
+  );
+  return plan.changes.delete.filter(d => !kept.has(d.miroId));
+}
+
 /**
  * The state after a run: one row per node with a card on the board, in
- * sitemap order, then the board's own items. Ids come from the result SVGs
- * (`ids`, by local id), the uploaded images (`images`, node → Miro id) or the
- * state already; a new screenshot's row gets its capture time (the PNG's
- * modification time, rounded up to the second), `commit` and viewport.
- * `skipped` (node → reason) records why a node has no screenshot; a reason
- * stays until the node gets one.
+ * sitemap order, then the board's own items and the drawing (`_layout`: the
+ * rules' fingerprint in `commit`, the origin in `viewport`). Ids of the
+ * items this run created come from the result SVGs (`ids`, by local id);
+ * every other item keeps the id the state has, so a result left over from
+ * an earlier run can't change it. New and replaced screenshots come from
+ * `images` (node → Miro id), with the row's capture time (the PNG's
+ * modification time, rounded up to the second), `commit` (the code the
+ * screenshot shows) and viewport. `skipped` (node → reason) records why a
+ * node has no screenshot; a reason stays until the node gets one.
  */
 export function stateRows({
   rows,
@@ -1046,8 +1154,32 @@ export function stateRows({
   const byKey = new Map(plan.items.map(item => [item.key, item]));
   const idOf = key => {
     const item = byKey.get(key);
-    return item ? (ids.get(localId(key)) ?? item.miroId ?? '') : '';
+    if (!item) {
+      return '';
+    }
+    return (
+      (item.action === 'create' ? ids.get(localId(key)) : item.miroId) ?? ''
+    );
   };
+  const deleted = new Set(plan.changes?.delete.map(d => d.miroId));
+  for (const [node, miroId] of images) {
+    const image = byKey.get(`${node}/image`);
+    if (!image || !['create', 'replace'].includes(image.action)) {
+      throw new Error(
+        `images.tsv names "${node}", which has no new screenshot in this run: a line left from an earlier run?`,
+      );
+    }
+    if (deleted.has(miroId)) {
+      throw new Error(
+        `images.tsv gives "${node}" the image ${miroId}, which this run deletes: a line left from an earlier run?`,
+      );
+    }
+  }
+  if (images.size > 0 && !commit) {
+    throw new Error(
+      'new screenshots need --commit: the commit of the code they show (the one the dev server or agentlab image runs)',
+    );
+  }
   const out = [];
   for (const { id } of rows) {
     const card = idOf(`${id}/card`);
@@ -1075,10 +1207,8 @@ export function stateRows({
       row.captured = new Date(Math.ceil(mtimeMs / 1000) * 1000)
         .toISOString()
         .replace('.000Z', 'Z');
-      row.commit = commit ?? '';
-      row.viewport = `${image.pixelWidth / 2}x${image.pixelHeight / 2}x2`;
-    } else if (image && !image.miroId && !images.has(id)) {
-      row.image = '';
+      row.commit = commit;
+      row.viewport = viewportOf(image.pixelWidth, image.pixelHeight);
     }
     if (skipped.has(id)) {
       row.skipped = skipped.get(id);
@@ -1094,6 +1224,11 @@ export function stateRows({
       out.push({ id: item.key, label });
     }
   }
+  out.push({
+    id: '_layout',
+    commit: plan.rules,
+    viewport: `${plan.origin.x},${plan.origin.y}`,
+  });
   return out;
 }
 
@@ -1152,7 +1287,6 @@ function parseArgs(argv) {
     sitemap: join(HERE, 'sitemap.tsv'),
     state: join(HERE, 'sitemap.state.tsv'),
     screens: join(HERE, 'screens'),
-    origin: { x: 0, y: 0 },
     result: [],
   };
   for (let i = 0; i < argv.length; i++) {
@@ -1192,9 +1326,6 @@ function parseArgs(argv) {
       case '--write-state':
         args.writeState = true;
         break;
-      case '--update-all':
-        args.updateAll = true;
-        break;
       case '--result':
         args.result.push(...value().split(',').map(f => resolve(f)));
         break;
@@ -1226,20 +1357,22 @@ function parseArgs(argv) {
   return args;
 }
 
-/** A two-column TSV without a header (`key<TAB>value`) as a map. */
-function readPairs(file) {
-  if (!file) {
+/**
+ * A two-column scratch table (`images.tsv`, `skipped.tsv`) as a map from its
+ * first column to its second. A missing file is an empty table: a run that
+ * uploaded or skipped nothing never writes one.
+ */
+export function readTable(file, columns) {
+  if (!file || !existsSync(file)) {
     return new Map();
   }
+  const [key, value] = columns;
   return new Map(
-    readFileSync(file, 'utf8')
-      .split('\n')
-      .map(line => line.replace(/\r$/, ''))
-      .filter(line => line.trim() !== '' && !line.startsWith('#'))
-      .map(line => {
-        const [key, ...rest] = line.split('\t');
-        return [key.trim(), rest.join('\t').trim()];
-      }),
+    parseTsv(
+      readFileSync(file, 'utf8'),
+      columns,
+      relative(process.cwd(), file),
+    ).map(row => [row[key], row[value]]),
   );
 }
 
@@ -1249,7 +1382,7 @@ function main(argv) {
     process.stdout.write(
       `${readFileSync(fileURLToPath(import.meta.url), 'utf8')
         .split('\n')
-        .slice(1, 16)
+        .slice(1, 17)
         .map(l => l.replace(/^\/\/ ?/, ''))
         .join('\n')}\n`,
     );
@@ -1274,7 +1407,9 @@ function main(argv) {
     const file = join(args.screens, `${id}.png`);
     return existsSync(file) ? readPngSize(file) : undefined;
   };
-  const plan = layout({ rows, state, screenSize, origin: args.origin });
+  // The origin the board was drawn at, unless the run moves it.
+  const origin = args.origin ?? drawingOf(state)?.origin ?? { x: 0, y: 0 };
+  const plan = layout({ rows, state, screenSize, origin });
   // The board as the state says it was drawn: the sitemap of the state's
   // commit, the drawn nodes only, sized by the state.
   const boardText = args.boardSitemap
@@ -1282,7 +1417,7 @@ function main(argv) {
     : committedSitemap(args.sitemap, args.state);
   if (!boardText && state.some(row => row.card)) {
     process.stderr.write(
-      'layout.mjs: no committed sitemap for the state; comparing against the current one, so a renamed node is not updated (pass --board-sitemap with the sitemap the board was drawn from)\n',
+      'layout.mjs: the state is not committed, so the board is taken to be drawn from the current sitemap.tsv, as it is right after --write-state; after a later edit, pass --board-sitemap with the sitemap as it was then\n',
     );
   }
   const boardRows = drawnRows(
@@ -1291,11 +1426,17 @@ function main(argv) {
       : rows,
     state,
   );
-  // After a change to this file the board was drawn by other rules, which a
-  // layout of the drawn rows can't show: --update-all updates every item.
+  // A board drawn by other rules or from another origin can't be compared
+  // item by item with a layout by the current ones: update every item.
+  const redraw = redrawReason(state, origin);
+  if (redraw && !args.writeState) {
+    process.stderr.write(
+      `layout.mjs: ${redraw}, so every item on the board is updated\n`,
+    );
+  }
   const board =
-    boardRows.length > 0 && !args.updateAll
-      ? layout({ rows: boardRows, state, origin: args.origin })
+    boardRows.length > 0 && !redraw
+      ? layout({ rows: boardRows, state, origin })
       : undefined;
   plan.changes = planChanges(plan, state, board);
   if (args.screens) {
@@ -1309,23 +1450,30 @@ function main(argv) {
     }
   }
   if (args.writeState) {
+    const images = readTable(args.images, IMAGES_COLUMNS);
     const next = stateRows({
       rows,
       plan,
       state,
-      ids: miroIdsFromSvg(args.result.map(f => readFileSync(f, 'utf8'))),
-      images: readPairs(args.images),
-      skipped: readPairs(args.skipped),
-      commit:
-        args.commit ??
-        execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
-          cwd: HERE,
-          encoding: 'utf8',
-        }).trim(),
+      ids: miroIdsFromSvg(
+        args.result.filter(f => existsSync(f)).map(f => readFileSync(f, 'utf8')),
+      ),
+      images,
+      skipped: readTable(args.skipped, SKIPPED_COLUMNS),
+      commit: args.commit,
       mtimeOf: file => statSync(resolve(file)).mtimeMs,
     });
     writeFileSync(args.state, stateTsv(next));
-    const pending = plan.changes.delete.map(d => d.miroId);
+    for (const image of plan.items.filter(
+      i => i.type === 'image' && images.has(i.node),
+    )) {
+      if (image.pixelWidth !== 2 * VIEWPORT_WIDTH) {
+        process.stderr.write(
+          `layout.mjs: ${image.file} is ${image.pixelWidth} px wide, not 2 × ${VIEWPORT_WIDTH}: take it again at 1440x…x2\n`,
+        );
+      }
+    }
+    const pending = pendingDeletes(plan, images).map(d => d.miroId);
     if (pending.length > 0) {
       process.stderr.write(
         `layout.mjs: the state no longer lists ${pending.length} Miro id(s) the plan deletes; delete them on the board: ${pending.join(', ')}\n`,

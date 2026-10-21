@@ -51,11 +51,15 @@ pick around customer data. In return:
 
 ## Run order
 
-Commands run from the repo root; `S=.claude/skills/ui-sitemap`. Pass the
-same `--origin` to every `layout.mjs` call of a run.
+Commands run from the repo root; `S=.claude/skills/ui-sitemap`. The state
+records the origin the board was drawn at, and `layout.mjs` uses it unless
+`--origin` moves the drawing.
 
 1. **Read** `sitemap.tsv` and `sitemap.state.tsv`, and check the sitemap
-   is complete (above).
+   is complete (above). Remove the last run's scratch files first:
+   `rm -f $S/screens/images.tsv $S/screens/skipped.tsv $S/screens/result*.svg`
+   — `screens/` outlives a run, and an old line there would give this run's
+   state another run's ids.
 2. **Decide** what to capture: nodes without an image in the state (new),
    nodes with a `skipped` reason (try again), nodes whose `commit` is older
    than a change to their page (`git log <commit>..HEAD -- <the page's
@@ -63,32 +67,41 @@ same `--origin` to every `layout.mjs` call of a run.
    before you start.
 3. **Capture** each one to `$S/screens/<id>.png` ([Capture](#capture)).
    Write down each node you can't capture, with why, in
-   `$S/screens/skipped.tsv` (`id<TAB>reason`, no header).
+   `$S/screens/skipped.tsv` (a header line `id<TAB>reason`, then one row per
+   node).
 4. **Lay out**:
    `node $S/layout.mjs --out $S/screens/plan.json --svg $S/screens/board.svg --uploads $S/screens/uploads.tsv`.
    The plan's `changes` says what to do to the board ([The plan](#the-plan)):
    which items to create, update and replace, and which Miro ids to delete.
    `board.svg` is those creates and updates as one Canvas Composer document;
-   `uploads.tsv` lists the screenshots to upload. Add `--update-all` on the
-   first run after a change to `layout.mjs` ([The plan](#the-plan)).
+   `uploads.tsv` lists the screenshots to upload.
 5. **Apply** the plan to Miro ([Miro](#miro)): `board.svg` first (cards,
-   group boxes, labels, lines), then the images. Keep every result SVG and
-   write each image's Miro id to `$S/screens/images.tsv` (`node<TAB>miroId`).
+   group boxes, labels, lines), then the images. Save each result SVG as
+   `$S/screens/result*.svg` and write each image's Miro id to
+   `$S/screens/images.tsv` (a header line `node<TAB>miroId`, then one row
+   per image).
    Ask once for all the run's deletes, listing them, and delete only after a
    yes.
 6. **Write back** the state:
-   `node $S/layout.mjs --write-state --result $S/screens/result.svg --images $S/screens/images.tsv --skipped $S/screens/skipped.tsv`
-   (`--result` takes several files, comma-separated). It recomputes the plan
-   from the same inputs and writes one row per drawn node, with the Miro ids
-   from the results, the new screenshots' capture times (the PNG's
-   modification time, rounded up to the second), `HEAD`'s short commit
-   (`--commit` overrides) and the viewports. Run it after the deletes: it
-   drops the ids the plan deletes and lists them as a reminder. Then run step
-   4 once more; its `changes` must be empty. Commit the state with any
-   `sitemap.tsv` change, in a PR. Until that commit, pass
-   `--board-sitemap <the sitemap the board was drawn from>` to `layout.mjs`
-   (keep a copy before you edit `sitemap.tsv`); without it the next layout
-   compares against the current sitemap and doesn't see a renamed node.
+   `node $S/layout.mjs --write-state --result $(ls $S/screens/result*.svg | paste -sd,) --images $S/screens/images.tsv --skipped $S/screens/skipped.tsv --commit <sha>`
+   (a missing file counts as empty). `--commit` names the code the new
+   screenshots show: `main`'s commit the dev server runs, or the one the
+   agentlab image was built from — never a branch commit, which a squash
+   merge removes from history. It recomputes the plan from the same inputs
+   and writes one row per drawn node, with the Miro ids of the items this
+   run created, the new screenshots' ids, capture times (the PNG's
+   modification time, rounded up to the second), commit and viewports, and
+   the drawing (`_layout`). It refuses an image id for a node with no new
+   screenshot, or one the plan deletes: a line left from an earlier run. A
+   replaced screenshot whose new image wasn't uploaded keeps its old one, on
+   the board and in the state, and the next run replaces it again. Run it
+   after the deletes: it drops the ids the plan deletes and lists the ones
+   still to delete. Then run step 4 once more; its `changes` must be empty.
+   Commit the state with any `sitemap.tsv` change, in a PR. Which sitemap
+   the board was drawn from: while the state is committed, the commit's;
+   after `--write-state`, the current `sitemap.tsv`. If you edit
+   `sitemap.tsv` again before committing the state, keep a copy of it as it
+   was at `--write-state` and pass it as `--board-sitemap`.
 
 ## Capture
 
@@ -131,10 +144,10 @@ With the chrome-devtools MCP, against a signed-in dev server
   installation has nothing to show): skip it and record why in
   `screens/skipped.tsv`; `--write-state` keeps the reason in the state's
   `skipped` column until the node has a screenshot. Keep the reason neutral.
-- `--write-state` records each new screenshot's capture time, commit and
-  viewport from the PNG; nothing to note by hand. A PNG counts as new only
-  while it is more than a second newer than the state's `captured`, so
-  screenshots left over from an earlier run are not uploaded again.
+- `--write-state` records each new screenshot's capture time and viewport
+  from the PNG; nothing to note by hand. A PNG counts as new only while it
+  is newer than the state's `captured`, so screenshots left over from an
+  earlier run are not uploaded again.
 
 ## Miro
 
@@ -261,7 +274,9 @@ captured, the viewport (`1440x2400x2`), the Miro ids of its card (or group
 box), image, labels (name and path, comma-separated) and incoming line, and
 why it has no screenshot yet (`skipped`, empty once it has one). Rows whose
 `id` starts with `_` are the board's own items (`_title`, `_subtitle`,
-`_level-0`, …), with the id in `label`. Written only by
+`_level-0`, …), with the id in `label`, and the drawing itself
+(`_layout`): the fingerprint of the drawing rules that drew the board in
+`commit`, its origin (`x,y`) in `viewport`. Written only by
 `layout.mjs --write-state`, after the items exist, in sitemap row order. A
 node's `viewport` is what `layout.mjs` sizes it by when there is no new PNG
 for it, so the board's layout can be recomputed on any machine.
@@ -293,12 +308,14 @@ for it, so the board's layout can be recomputed on any machine.
 `layout.mjs` lays out the sitemap from the commit that last wrote the state
 (`git show`), keeping only the nodes with a card in the state, sized by the
 state alone. `--board-sitemap file` gives that sitemap by hand. That
-comparison uses the current `layout.mjs`, so it can't see a change to the
-drawing rules themselves: the first run after a change to `layout.mjs`
-passes `--update-all`, which updates every item already on the board.
+comparison uses the current drawing rules, so it can't see a change to the
+rules themselves or a different origin: when the state's `_layout` names
+other rules (a fingerprint of the code and constants that place items) or
+another origin, or has no `_layout` row, every item already on the board is
+updated, and `layout.mjs` says why.
 
 The same input always gives the same plan. Options: `--screens dir`,
-`--no-screens`, `--sitemap`, `--state`, `--board-sitemap`, `--update-all`, `--origin x,y`
+`--no-screens`, `--sitemap`, `--state`, `--board-sitemap`, `--origin x,y`
 (the drawing's top-left corner: the title's, and the level markers' left
-edge), `--svg file`, `--uploads file`, and `--write-state` with `--result`,
+edge; by default the one the state records), `--svg file`, `--uploads file`, and `--write-state` with `--result`,
 `--images`, `--skipped` and `--commit`; `--help` lists them.
