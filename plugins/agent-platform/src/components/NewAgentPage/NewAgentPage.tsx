@@ -308,9 +308,9 @@ function NewAgentPageContent() {
             rows={3}
             mono
             placeholder={
-              'https://github.com:443\nhttps://*.githubusercontent.com'
+              'https://github.com:443\nhttps://*.githubusercontent.com\ntls://db.example.com:5432'
             }
-            description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. Use one http(s) origin per line; a leading * matches one host label."
+            description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. One per line: an http(s) origin, or tls://host:port for another service that speaks TLS, such as a database; a leading * matches one host label."
             {...fieldProps('egress', fieldErrors.egress)}
           />
         </MoreOptions>
