@@ -6,7 +6,7 @@ customize	home	tabs	Customize	/customize		the bare path opens Agents
 customize-agents	customize	tab	Agents	/customize/agents
 agent	customize-agents	tabs	Agent	/customize/agents/:installation/:namespace/:name	open /customize/agents > row "SRE Agent"
 agent-overview	agent	tab	Overview	/customize/agents/:installation/:namespace/:name
-agent-update-skills	agent-overview	dialog	Update all skills to latest	/customize/agents/:installation/:namespace/:name	click "Agent actions" > click "Update all skills to latest…"	never confirm; the menu item needs write access to the agent
+agent-update-skills	agent	dialog	Update all skills to latest	/customize/agents/:installation/:namespace/:name	click "Agent actions" > click "Update all skills to latest…"	never confirm; the menu item needs write access to the agent
 agent-edit	agent-overview	page	Edit agent	/customize/agents/:installation/:namespace/:name/edit	click "Edit"	the New agent wizard's steps, filled in: capture Details; never save
 agent-sessions	agent	tab	Sessions	/customize/agents/:installation/:namespace/:name/sessions
 agent-tools	agent	tab	Tools	/customize/agents/:installation/:namespace/:name/tools		only for an agent with tools

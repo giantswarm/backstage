@@ -443,3 +443,19 @@ test('rejects a sitemap that breaks the rules', () => {
     /needs at least one tab/,
   );
 });
+
+test('a dialog of a page with tabs sits beside the group box', () => {
+  const rows = parseTsv(
+    readFileSync(join(HERE, 'sitemap.tsv'), 'utf8'),
+    SITEMAP_COLUMNS,
+  );
+  const plan = layout({ rows });
+  const group = item(plan, 'agent/card');
+  const dialog = item(plan, 'agent-update-skills/card');
+  const edge = item(plan, 'agent-update-skills/edge');
+  assert.equal(group.type, 'group');
+  assert.equal(dialog.y, group.y);
+  assert.ok(dialog.x > group.x + group.width);
+  assert.equal(edge.from, 'agent/card');
+  assert.equal(edge.label, 'Dialog');
+});

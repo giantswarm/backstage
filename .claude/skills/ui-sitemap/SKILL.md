@@ -164,7 +164,8 @@ id	parent	kind	name	path	reach	note
 - `kind`: `page`, `tabs` (its children are `tab`s), `tab`, `wizard` (its
   children are `step`s), `step`, `dialog`, `state`. A `tab` or `step` sits
   under its group; a `dialog` or `state` under the page, tab or step it
-  belongs to; `layout.mjs` rejects anything else.
+  belongs to, or under the `tabs` group when every tab opens it (from the
+  page header); `layout.mjs` rejects anything else.
 - `path`: the route template, with `:installation`-style placeholders. A
   dialog or state has its page's path; a default tab its page's bare path.
 - `reach`: empty, or how to get there (see [Capture](#capture)); a long one
