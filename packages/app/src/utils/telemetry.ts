@@ -544,8 +544,9 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
 
     // The workspace editor: creating one (`/customize/workspaces/new`) and
     // editing one (`…/workspaces/<installation>/<organization>/<name>/edit`),
-    // whose segments name a workspace and stay out of every attribute. Above
-    // the tab case, which would report them as the Workspaces tab.
+    // and one workspace's page, whose segments name a workspace and stay out
+    // of every attribute. Above the tab case, which would report them as the
+    // Workspaces tab.
     case pathname === '/customize/workspaces/new':
       payload = { page: 'Create workspace' };
       route = '/customize/workspaces/new';
@@ -554,6 +555,13 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
     case /^\/customize\/workspaces\/[^/]+\/[^/]+\/[^/]+\/edit$/.test(pathname):
       payload = { page: 'Edit workspace' };
       route = '/customize/workspaces/:installation/:organization/:name/edit';
+      break;
+
+    // One workspace's page (`…/workspaces/<installation>/<organization>/<name>`),
+    // the workspace in no attribute.
+    case /^\/customize\/workspaces\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
+      payload = { page: 'Workspace detail' };
+      route = '/customize/workspaces/:installation/:organization/:name';
       break;
 
     // A Customize tab, with the tab as the view. Only the known tabs: the

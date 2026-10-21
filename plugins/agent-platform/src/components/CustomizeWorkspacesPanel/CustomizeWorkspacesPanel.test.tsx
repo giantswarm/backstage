@@ -338,15 +338,24 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.getByText(/nothing-like-it/)).toBeInTheDocument();
   });
 
-  it('offers Open (once the workspace page exists), Edit, Sync now and Delete', async () => {
+  it('links the name to the workspace page', async () => {
+    await renderPanel();
+
+    expect(screen.getByRole('link', { name: 'docs' })).toHaveAttribute(
+      'href',
+      '/customize/workspaces/gazelle/alpha/docs',
+    );
+  });
+
+  it('offers Open, Edit, Sync now and Delete', async () => {
     await renderPanel();
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Actions for docs' }),
     );
     expect(screen.getByRole('menuitem', { name: 'Open' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
+      'href',
+      '/customize/workspaces/gazelle/alpha/docs',
     );
     expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveAttribute(
       'href',
