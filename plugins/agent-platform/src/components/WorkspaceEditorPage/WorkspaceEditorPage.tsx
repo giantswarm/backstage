@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Skeleton, Text, TextField } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import {
   EmptyStateCard,
   fieldErrorProps,
@@ -58,6 +59,25 @@ import {
 import { WorkspaceSourceEditor } from './WorkspaceSourceEditor';
 import { workspaceDetailRouteRef } from '../../routes';
 
+const useStyles = makeStyles({
+  // The unit after the number, outside the editable value: bui's TextField
+  // only places an icon before it.
+  unitField: {
+    '& .bui-InputWrapper': { position: 'relative' },
+    '& .bui-Input': { paddingRight: 44 },
+    '& .bui-InputWrapper::after': {
+      content: '"GiB"',
+      position: 'absolute',
+      right: 12,
+      top: '50%',
+      transform: 'translateY(-50%)',
+      color: 'var(--bui-fg-secondary)',
+      fontSize: 'var(--bui-font-size-2)',
+      pointerEvents: 'none',
+    },
+  },
+});
+
 /** The manager's sources limit (the CRD's `maxItems`). */
 const MAX_SOURCES = 32;
 
@@ -90,7 +110,7 @@ function saveProblem(
     case 'already_exists':
       return {
         field: 'name',
-        message: 'A workspace with this name exists on the installation.',
+        message: 'A workspace with this name exists in this environment.',
       };
     case 'not_member':
       return {
@@ -493,20 +513,20 @@ function diskLine({
   preview: WorkspacePreview | undefined;
 }): string {
   const lead =
-    'The disk holds the copies of the repositories, each session’s working folder, and room for the changes agents make. It is sized automatically, grows when more is needed and never shrinks.';
+    'The disk holds the copies of the repositories, each session’s directory, and room for the changes agents make. It is sized automatically, grows when more is needed and never shrinks.';
   if (isEdit && volumeSize && storage) {
     return `${lead} Right now it is ${formatQuantity(volumeSize)}: ${formatKiB(
       storage.mirrorsBytes / 1024,
     )} of repositories and ${formatKiB(
       storage.sessionsBytes / 1024,
-    )} of session folders, plus room to work, rounded up.`;
+    )} of session directories, plus room to work, rounded up.`;
   }
   if (preview) {
     return `${lead} It will start at about ${formatQuantity(
       preview.estimatedVolumeSize,
     )}: an estimated ${formatKiB(
       preview.providerSizeKiB,
-    )} for the repositories plus room to work. The exact size is known after the first sync.`;
+    )} for the repositories plus room to work. The exact size is known after the first synchronization.`;
   }
   return `${lead} Its first size is estimated once a source selects repositories.`;
 }
@@ -558,12 +578,13 @@ function EditorBody({
   diskLine: disk,
 }: EditorBodyProps) {
   const { docked } = useWizardFrameRail();
+  const classes = useStyles();
 
   if (!availability.isLoading && !availability.isAvailable) {
     return (
       <EmptyStateCard
         title="Workspaces are not available here"
-        description={`The installation ${installation} does not offer workspaces.`}
+        description={`Workspaces are not turned on for ${installation}. Ask your platform team to turn them on.`}
       />
     );
   }
@@ -604,7 +625,7 @@ function EditorBody({
       {Boolean(providersError) && (
         <Alert
           status="warning"
-          title="Could not read the provider instances"
+          title="Could not read the providers"
           description={classifyWorkspaceManagerError(providersError).message}
         />
       )}
@@ -662,7 +683,7 @@ function EditorBody({
           >
             {disk}
           </Text>
-          <div style={{ maxWidth: 240 }}>
+          <div style={{ maxWidth: 240 }} className={classes.unitField}>
             <TextField
               label="Minimum size"
               inputMode="numeric"
@@ -670,7 +691,6 @@ function EditorBody({
               value={draft.minimumGiB}
               onChange={value => update({ ...draft, minimumGiB: value })}
               onBlur={() => touch('sizing.minimum')}
-              icon={<Text variant="body-small">GiB</Text>}
               {...fieldErrorProps(errorFor('sizing.minimum'))}
             />
           </div>

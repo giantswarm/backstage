@@ -69,7 +69,7 @@ export function lastSyncLabel(last: LastSync): {
 } {
   switch (last.result) {
     case 'Succeeded':
-      return { label: 'Synced', tone: 'success' };
+      return { label: 'Synchronized', tone: 'success' };
     case 'NoChange':
       return { label: 'Unchanged', tone: 'success' };
     default:
@@ -95,26 +95,26 @@ export function syncState(workspace: Workspace): {
   }
   if (workspace.activeSync) {
     return {
-      label: 'Syncing',
+      label: 'Synchronizing',
       tone: 'info',
       when: { verb: 'Started', at: workspace.activeSync.startedAt },
     };
   }
   if (workspace.syncRequest) {
     return {
-      label: 'Sync requested',
+      label: 'Synchronization requested',
       tone: 'info',
       when: { verb: 'Requested', at: workspace.syncRequest.requestedAt },
     };
   }
   const last = workspace.lastSync;
   if (!last) {
-    return { label: 'Not synced yet', tone: 'neutral' };
+    return { label: 'Not synchronized yet', tone: 'neutral' };
   }
   const { label, tone } = lastSyncLabel(last);
   switch (last.result) {
     case 'Succeeded':
-      return { label, tone, when: { verb: 'Synced', at: last.time } };
+      return { label, tone, when: { verb: 'Synchronized', at: last.time } };
     case 'NoChange':
       return { label, tone, when: { verb: 'Checked', at: last.time } };
     default:
@@ -174,7 +174,7 @@ export function searchWorkspaces(
   );
 }
 
-/** "1 Session", "3 Sessions". */
+/** "1 session", "3 sessions". */
 export function sessionsNoun(count: number): string {
-  return `${count} ${count === 1 ? 'Session' : 'Sessions'}`;
+  return `${count} ${count === 1 ? 'session' : 'sessions'}`;
 }

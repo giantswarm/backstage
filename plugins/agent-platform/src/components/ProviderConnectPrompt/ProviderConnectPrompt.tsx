@@ -166,7 +166,7 @@ function MusterGrant({
           Signed in to {kind}
         </Text>
         <Text variant="body-small" color="secondary">
-          You will not be asked again on this installation until you sign out in
+          You will not be asked again in this environment until you sign out in
           your profile.
         </Text>
       </Flex>

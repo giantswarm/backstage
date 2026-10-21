@@ -28,13 +28,13 @@ export function syncTriggerLabel(
     case 'change':
       return 'A change to the workspace';
     case 'request':
-      return 'A request: Synchronize, or a Session starting on it';
+      return 'A request: Synchronize, or a session starting on it';
     case 'retry':
-      return 'A retry after the failed sync before it';
+      return 'A retry after the failed synchronization before it';
     case 'cleanup':
-      return 'A Session directory due for cleanup';
+      return 'A session directory due for cleanup';
     case 'sessionDeleted':
-      return 'A deleted Session’s directory';
+      return 'A deleted session’s directory';
     case 'deletion':
       return 'The workspace’s deletion';
     case 'schedule':
@@ -59,7 +59,7 @@ export function lastSyncResult(last: LastSync): {
       return {
         label,
         tone,
-        sentence: 'Fetched what changed since the sync before.',
+        sentence: 'Fetched what changed since the synchronization before.',
       };
     case 'NoChange':
       return {
@@ -73,7 +73,7 @@ export function lastSyncResult(last: LastSync): {
         tone,
         sentence: last.message
           ? `The mirrors stay as they were: ${last.message}`
-          : 'The mirrors stay as they were; the workspace-manager gave no reason.',
+          : 'The mirrors stay as they were; no reason was given.',
       };
   }
 }

@@ -120,10 +120,20 @@ async function stageGrant(
   });
 }
 
-/** Customize · Workspaces, then its New workspace, into the editor. */
+/**
+ * Customize · Workspaces, then its New workspace, into the editor; skips the
+ * test while muster still waits for the person's sign-in to workspace-manager.
+ */
 async function openEditor(page: Page): Promise<void> {
   await open(page, '/customize/workspaces');
-  await page.getByRole('link', { name: 'New workspace' }).first().click();
+  const card = page.getByTestId('workspaces-sign-in');
+  const create = page.getByRole('link', { name: 'New workspace' }).first();
+  await expect(card.or(create).first()).toBeVisible();
+  test.skip(
+    await card.isVisible(),
+    'the admin has not signed in to workspace-manager in muster (the GitHub App grant)',
+  );
+  await create.click();
 }
 
 /**

@@ -3574,7 +3574,7 @@ describe('SessionDetailPage', () => {
 
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
       const chip = screen.getByRole('button', {
-        name: 'Workspace: ws-docs · synced 4 h ago · 1 fetched',
+        name: 'Workspace: ws-docs · synchronized 4 h ago · 1 fetched',
       });
       await userEvent.click(chip);
 

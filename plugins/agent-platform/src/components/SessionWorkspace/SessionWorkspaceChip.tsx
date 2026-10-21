@@ -229,7 +229,7 @@ function SessionWorkspaceDetails({
           <RepositoryList repositories={workspace.fetched} />
         ) : (
           <Text variant="body-medium" color="secondary">
-            None: no repository had moved since the last sync.
+            None: no repository had moved since the last synchronization.
           </Text>
         )}
       </Section>

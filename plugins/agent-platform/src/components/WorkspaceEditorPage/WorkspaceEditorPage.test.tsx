@@ -514,7 +514,9 @@ describe('WorkspaceEditorPage', () => {
 
     const gate = within(await screen.findByTestId('workspace-editor-gate'));
     expect(gate.getByText('Sign in to use workspaces')).toBeInTheDocument();
-    expect(gate.getByText(/has not signed in to it yet/)).toBeInTheDocument();
+    expect(
+      gate.getByText(/have not signed in to workspaces on /),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('textbox', { name: /^Name/ }),
     ).not.toBeInTheDocument();
@@ -688,7 +690,7 @@ describe('RepositoryPicker against an owner of 500 repositories', () => {
     );
     await waitFor(() =>
       expect(
-        picker().getByRole('switch', { name: 'Selected only (10)' }),
+        picker().getByRole('switch', { name: 'Show selected only (10)' }),
       ).toBeInTheDocument(),
     );
 

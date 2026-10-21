@@ -30,13 +30,13 @@ export function workspaceNameLabel(
   }
 }
 
-/** "synced 3 h ago", as the composer's workspace picker says it. */
+/** "synchronized 3 h ago", as the composer's workspace picker says it. */
 export function syncedAgo(time: string | undefined, now = new Date()): string {
   const age = shortAge(time, now);
   if (!age) {
-    return 'not synced yet';
+    return 'not synchronized yet';
   }
-  return age === 'now' ? 'synced now' : `synced ${age} ago`;
+  return age === 'now' ? 'synchronized now' : `synchronized ${age} ago`;
 }
 
 /** "1 fetched": the repositories fetched fresh before the first turn. */

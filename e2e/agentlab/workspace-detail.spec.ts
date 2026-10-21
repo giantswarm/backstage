@@ -21,8 +21,13 @@ test.skip(
 /** Whether muster still waits for the person's sign-in to workspace-manager. */
 async function needsManagerSignIn(page: Page): Promise<boolean> {
   const card = page.getByTestId('workspaces-sign-in');
-  const heading = page.getByRole('heading', { level: 1, name });
-  await expect(card.or(heading).first()).toBeVisible();
+  // The heading shows above the sign-in card too: wait for what only a read
+  // page or a refusal shows.
+  const main = page.getByRole('main');
+  const read = main
+    .getByText(/^Organization .+ · /)
+    .or(main.getByText(/^You are not a member of /));
+  await expect(card.or(read).first()).toBeVisible();
   return card.isVisible();
 }
 
@@ -66,7 +71,7 @@ test('shows the workspace, its repositories with head commits and its Sessions w
   await expect(
     main.getByRole('region', { name: 'Synchronization status' }),
   ).toBeVisible();
-  await expect(main.getByRole('region', { name: 'Storage' })).toContainText(
+  await expect(main.getByRole('region', { name: 'Disk' })).toContainText(
     'Capacity',
   );
 });

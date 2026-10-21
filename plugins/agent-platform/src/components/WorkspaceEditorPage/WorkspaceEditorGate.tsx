@@ -81,7 +81,7 @@ export function WorkspaceEditorGate({
           <Text variant="body-small">
             {names
               ? `A workspace reads its repositories from ${names} as you, with your own sign-in.`
-              : `A workspace reads its repositories as you, through workspace-manager with your own sign-in, and your session on ${installation} has not signed in to it yet.`}{' '}
+              : `A workspace reads its repositories with your own sign-in, and you have not signed in to workspaces on ${installation} yet.`}{' '}
             Sign in once; the editor opens here.
           </Text>
           {gate.kind === 'sign-in' ? (
