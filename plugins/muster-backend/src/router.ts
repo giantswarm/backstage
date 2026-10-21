@@ -749,7 +749,7 @@ export async function createRouter(
 
     const callOptions = readCallOptions(req, installation);
 
-    let payload: { text?: string };
+    let payload: { text?: string; structuredContent?: unknown };
     try {
       payload = await client.callToolWithStructured(
         AUTH_LOGOUT_TOOL,

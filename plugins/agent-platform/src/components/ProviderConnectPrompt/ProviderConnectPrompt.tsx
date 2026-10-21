@@ -1,9 +1,7 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
-import { useWorkspaceProviders } from '../../hooks/useWorkspaceEditor';
-import { useWorkspaceManagerClient } from '../../hooks/useWorkspaceManager';
 import {
   providerDisplayName,
   providerKindName,
@@ -17,10 +15,11 @@ export type ProviderConnectActionProps = {
   /** A provider instance the person has not granted, from `list_providers`. */
   provider: WorkspaceProvider;
   /**
-   * The provider instance now reads connected in `list_providers`, re-read
-   * when the person is back from the sign-in tab: the host carries on with
-   * its draft or prompt. Called once, while the prompt is shown: a host that
-   * hides it on the same `list_providers` answer already knows.
+   * The sign-in this prompt started is done, as muster reports it: a host
+   * that keeps the prompt shown (the composer) carries on with its prompt.
+   * Called once per mount. A host that shows the prompt only while
+   * `list_providers` reads the instance unconnected needs none: muster's grant
+   * re-reads it, and the prompt goes.
    */
   onConnected?: () => void;
   /** What happens once the person is back, said while muster waits. */
@@ -140,42 +139,27 @@ function MusterGrant({
     noun: 'connector',
     app: target.app,
   });
-  const client = useWorkspaceManagerClient(installation);
-  // Read again when the window regains focus (the person is back from the
-  // sign-in tab), and once muster reports the grant below.
-  const providers = useWorkspaceProviders(client);
   const kind = providerKindName(provider.kind) || providerDisplayName(provider);
   const copy = signInCopy(provider);
 
-  // A sign-in this prompt started and muster now reports done: the provider
-  // list is read again. A server already connected says nothing about this
-  // provider, so it alone shows the sign-in still.
-  const started = useRef(false);
-  if (signIn.isWaiting) {
-    started.current = true;
-  }
-  const granted = started.current && signIn.isConnected;
-  const { refetch } = providers;
-  useEffect(() => {
-    if (granted) {
-      void refetch();
-    }
-  }, [granted, refetch]);
-
-  // `list_providers` is the truth: once it reads the instance connected, the
-  // host hears it, once.
-  const connected = Boolean(
-    providers.data?.find(p => p.name === provider.name)?.connected,
-  );
+  // Granted is a sign-in this prompt started that muster now reports done; a
+  // grant muster already held says nothing about why the host asked. muster
+  // invalidates its queries on the grant, which re-reads `list_providers`.
+  const [started, setStarted] = useState(false);
+  const granted = started && signIn.isConnected;
   const reported = useRef(false);
   useEffect(() => {
-    if (connected && !reported.current) {
+    if (granted && !reported.current) {
       reported.current = true;
       onConnected?.();
     }
-  }, [connected, onConnected]);
+  }, [granted, onConnected]);
+  const startSignIn = () => {
+    setStarted(true);
+    signIn.signIn();
+  };
 
-  if (granted || connected) {
+  if (granted) {
     return (
       <Flex direction="column" gap="1">
         <Text variant="body-small" weight="bold">
@@ -204,7 +188,7 @@ function MusterGrant({
               variant="secondary"
               size="small"
               isDisabled={signIn.isPending}
-              onPress={signIn.signIn}
+              onPress={startSignIn}
             >
               Open the tab again
             </Button>
@@ -230,7 +214,7 @@ function MusterGrant({
           variant="primary"
           size="small"
           isDisabled={signIn.isPending}
-          onPress={signIn.signIn}
+          onPress={startSignIn}
         >
           {signIn.isPending ? 'Opening…' : `${copy.cta} ↗`}
         </Button>

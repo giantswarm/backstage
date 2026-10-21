@@ -18,8 +18,9 @@ import { RUN } from './lab';
  * workspace-manager answers `list_providers` with the instances muster keeps
  * an App for and the admin never granted, each with its `signIn`. The grant
  * itself is a real provider sign-in, which no headless run makes, so its
- * outcome is staged at the browser in the manager's own shape — the instance
- * reading connected — and the person's return to the tab is a focus event.
+ * outcome is staged at the browser in the manager's and muster's own shapes —
+ * the instance reading connected, the App's grant reported — and the person's
+ * return to the tab is a focus event.
  * The composer's workspace is staged the same way (`list_workspaces`,
  * `authorize_workspace`'s `connect_required` naming the real instance and its
  * `signIn`), and its second check refuses, so no Session is started.
@@ -75,6 +76,48 @@ async function stageProviders(page: Page, granted: Set<string>) {
       .toBeDefined();
     return unconnected!;
   };
+}
+
+/**
+ * muster's side of the grant: `core_auth_login` answers a challenge whose
+ * sign-in tab stays blank, and once `granted` names the provider,
+ * `auth://status` reports its App (or the server the manager is pinned to)
+ * connected, as muster does after the provider's sign-in.
+ */
+async function stageGrant(
+  page: Page,
+  provider: Provider,
+  granted: Set<string>,
+) {
+  const [, kind, name] =
+    provider.signIn?.match(
+      /core_auth_login (app|server)=([a-z0-9.-]*[a-z0-9])/,
+    ) ?? [];
+  expect(name, `${provider.name}'s signIn names a grant`).toBeDefined();
+  await page.route('**/api/muster/auth/login**', route =>
+    route.fulfill({
+      json: { status: 'auth_required', authUrl: 'about:blank' },
+    }),
+  );
+  await page.route('**/api/muster/auth/status**', async (route: Route) => {
+    const answer = await (await route.fetch()).json();
+    if (!granted.has(provider.name)) {
+      await route.fulfill({ json: answer });
+      return;
+    }
+    const key = kind === 'app' ? 'providerApps' : 'servers';
+    const entries: Array<{ name: string; status: string }> =
+      answer?.[key] ?? [];
+    await route.fulfill({
+      json: {
+        ...answer,
+        [key]: [
+          ...entries.filter(entry => entry.name !== name),
+          { name, status: 'connected' },
+        ],
+      },
+    });
+  });
 }
 
 /** Customize · Workspaces, then its New workspace, into the editor. */
@@ -202,6 +245,17 @@ test('the composer prompts for an unconnected provider before a workspace start,
   await expect(promptBox, 'the prompt stays in the box').toHaveValue(PROMPT);
   await snapshot(admin, 'provider-connect-composer');
   expect(checks).toHaveLength(1);
+
+  // Only a sign-in the person makes here restarts the start: the click, the
+  // sign-in tab, and muster reporting the grant.
+  await stageGrant(admin, provider, granted);
+  const signInTab = admin.waitForEvent('popup');
+  await prompt
+    .getByRole('button', { name: /^(Continue with|Sign in to) / })
+    .click();
+  await (await signInTab).close();
+  await expect(prompt).toContainText(/Waiting for /);
+  expect(checks, 'nothing starts before the grant').toHaveLength(1);
 
   granted.add(provider.name);
   await returnFocus(admin);

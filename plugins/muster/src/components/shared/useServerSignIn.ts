@@ -277,7 +277,9 @@ export function useServerSignIn(
     // QueryClient turns focus refetches off globally, so opt this one cheap
     // query back in; it is also what lets a sign-in that outlived the
     // deadline below resolve instead of leaving a stale "Sign in" affordance.
-    refetchOnWindowFocus: true,
+    // 'always': a host QueryClient may trust an answer for a while, and the
+    // return is soon after the last read.
+    refetchOnWindowFocus: 'always',
     // An unavailable status resource, or a 401 before the user has connected to
     // muster, are expected answers -- retrying each three times only multiplies
     // the noise.

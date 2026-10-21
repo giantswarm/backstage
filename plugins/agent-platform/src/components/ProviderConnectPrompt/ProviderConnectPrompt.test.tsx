@@ -207,6 +207,29 @@ describe('ProviderConnectPrompt', () => {
     expect(onConnected).toHaveBeenCalledTimes(2);
   });
 
+  it('reports no grant it did not start', async () => {
+    const fake = twoProviders();
+    const { onConnected } = renderHost(fake);
+    await screen.findByTestId('provider-connect-github');
+
+    // muster and list_providers already read the instance granted, while the
+    // host still asks: only the person's own sign-in here says it is done.
+    fake.appGrants.github = 'connected';
+    fake.providers[0] = { ...GITHUB, connected: true, signIn: undefined };
+    returnFocus();
+    await waitFor(() =>
+      expect(fake.getAuthStatus.mock.calls.length).toBeGreaterThan(1),
+    );
+
+    expect(onConnected).not.toHaveBeenCalled();
+    expect(
+      within(screen.getByTestId('provider-connect-github')).getByRole(
+        'button',
+        { name: /Continue with GitHub/ },
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('reads list_providers again when the person returns to the tab', async () => {
     const fake = twoProviders();
     renderHost(fake);

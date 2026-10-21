@@ -6,6 +6,7 @@ import { useWorkspaceManagerClient } from '../../hooks/useWorkspaceManager';
 import {
   providerDisplayName,
   providerKindName,
+  providerSignInTarget,
   WorkspaceManagerError,
   type ProviderConnect,
   type WorkspaceProvider,
@@ -120,8 +121,9 @@ export function WorkspaceStartNotice({
 /**
  * One {@link ProviderConnectPrompt} per provider to grant, each connecting on
  * its own: the provider's kind comes from `list_providers`, the instance's
- * name alone until it answers. Once every one reads connected, the start goes
- * again by itself, with the prompt still in the box below.
+ * name alone until it answers. Once the person has signed in to every one the
+ * portal can start a grant for, the start goes again by itself, with the
+ * prompt still in the box below.
  */
 function ConnectCards({
   installation,
@@ -138,17 +140,31 @@ function ConnectCards({
 }) {
   const client = useWorkspaceManagerClient(installation);
   const providers = useWorkspaceProviders(client);
-  const [connected, setConnected] = useState<ReadonlySet<string>>(new Set());
-  const allConnected = connect.every(entry => connected.has(entry.provider));
+  // Only a sign-in the person makes here restarts the start: an entry with no
+  // grant the portal can start waits for its platform team, not for a retry.
+  const [granted, setGranted] = useState<ReadonlySet<string>>(new Set());
+  const startable = connect.filter(entry => providerSignInTarget(entry.signIn));
+  const allGranted =
+    startable.length > 0 &&
+    startable.every(entry => granted.has(entry.provider));
   const retried = useRef(false);
   useEffect(() => {
-    if (allConnected && !retried.current) {
+    if (allGranted && !retried.current) {
       retried.current = true;
       onRetry();
     }
-  }, [allConnected, onRetry]);
+  }, [allGranted, onRetry]);
   return (
     <Flex direction="column" gap="2" role="alert">
+      {allGranted && (
+        // The start goes again by itself; should it not get under way (the
+        // prompt was emptied meanwhile), the person starts it.
+        <div>
+          <Button variant="primary" size="small" onPress={onRetry}>
+            Start the session
+          </Button>
+        </div>
+      )}
       {connect.map(entry => {
         const known = providers.data?.find(p => p.name === entry.provider);
         const provider: WorkspaceProvider = {
@@ -177,7 +193,7 @@ function ConnectCards({
                 : 'Finish in the other tab. The session starts as soon as you are back.'
             }
             onConnected={() =>
-              setConnected(prev => new Set(prev).add(entry.provider))
+              setGranted(prev => new Set(prev).add(entry.provider))
             }
             actions={
               <Button variant="tertiary" size="small" onPress={onStartWithout}>

@@ -55,7 +55,6 @@ export function editorGate({
 export type WorkspaceEditorGateProps = {
   gate: EditorGate;
   installation: string;
-  onRecheckProviders: () => void;
 };
 
 /**
@@ -67,7 +66,6 @@ export type WorkspaceEditorGateProps = {
 export function WorkspaceEditorGate({
   gate,
   installation,
-  onRecheckProviders,
 }: WorkspaceEditorGateProps) {
   const names =
     gate.kind === 'connect'
@@ -101,7 +99,6 @@ export function WorkspaceEditorGate({
                 <ProviderConnectAction
                   installation={installation}
                   provider={provider}
-                  onConnected={onRecheckProviders}
                 />
               </div>
             ))

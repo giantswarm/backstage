@@ -461,8 +461,17 @@ export function providerDisplayName(
 export function providerSignInTarget(
   signIn?: string,
 ): { name: string; app: boolean } | undefined {
-  const match = signIn?.match(/\bcore_auth_login (app|server)=([\w.-]+)/);
-  return match ? { name: match[2], app: match[1] === 'app' } : undefined;
+  // muster's App names are lower-case letters, digits and dashes; a server
+  // name may hold dots, but never ends a sentence with one.
+  const match = signIn?.match(
+    /\bcore_auth_login (?:app=([a-z0-9-]+)|server=([\w.-]*\w))/,
+  );
+  if (!match) {
+    return undefined;
+  }
+  return match[1]
+    ? { name: match[1], app: true }
+    : { name: match[2], app: false };
 }
 
 /** A provider whose App the person grants in muster before the workspace is theirs. */

@@ -49,7 +49,6 @@ jest.mock('../../hooks/useWorkspaceManager', () => ({
 /** `list_providers` as the test moves it along. */
 const mockProviders = {
   data: [{ name: 'github', kind: 'github', connected: false }],
-  refetch: jest.fn(),
 };
 jest.mock('../../hooks/useWorkspaceEditor', () => ({
   useWorkspaceProviders: () => mockProviders,
@@ -118,7 +117,6 @@ beforeEach(() => {
   mockWorkspacesOf.mockReturnValue([]);
   Object.assign(mockSignIn, { isWaiting: false, isConnected: false });
   mockProviders.data = [{ name: 'github', kind: 'github', connected: false }];
-  mockProviders.refetch.mockReset();
 });
 
 afterEach(() => {
@@ -312,15 +310,11 @@ describe('NewSessionComposer workspaces', () => {
     expect(card).toHaveTextContent(
       'The session starts as soon as you are back.',
     );
+    expect(onStart).not.toHaveBeenCalled();
+    // muster reports the grant this card started: the start goes again, once.
     mockSignIn.isWaiting = false;
     mockSignIn.isConnected = true;
     rerenderWith({ error: notConnected });
-    // muster holds the grant: list_providers is read again, and the start
-    // waits for it to say so.
-    expect(mockProviders.refetch).toHaveBeenCalled();
-    expect(onStart).not.toHaveBeenCalled();
-
-    mockProviders.data = [{ name: 'github', kind: 'github', connected: true }];
     rerenderWith({ error: notConnected });
 
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -330,5 +324,42 @@ describe('NewSessionComposer workspaces', () => {
       [],
       'platform-mix',
     );
+    // Should that start not get under way, the person starts it.
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Start the session' }),
+    );
+    expect(onStart).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts nothing by itself without a sign-in made here', async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    onStart.mockClear();
+    // The manager still asks for the grant while muster and list_providers
+    // already read it held: no retry, which would only ask again.
+    mockSignIn.isConnected = true;
+    mockProviders.data = [{ name: 'github', kind: 'github', connected: true }];
+    rerenderWith({
+      error: new WorkspaceManagerError(
+        'not_connected',
+        'sign in to github first',
+        [],
+        [{ provider: 'github', signIn: 'core_auth_login app=github' }],
+      ),
+    });
+
+    expect(
+      within(screen.getByTestId('provider-connect-github')).getByRole(
+        'button',
+        { name: /Continue with GitHub/ },
+      ),
+    ).toBeInTheDocument();
+    expect(onStart).not.toHaveBeenCalled();
   });
 });
