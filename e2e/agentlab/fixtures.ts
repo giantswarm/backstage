@@ -604,8 +604,9 @@ async function restoreInboxToasts(page: Page): Promise<void> {
  * tenant is picked by the wizard itself.
  *
  * `options.harness` picks that Runtime card under More options instead of the
- * platform Harness; `options.onStep` runs on Details (once the pick is made)
- * and on Review (once the dry run completed), before each Continue or Create.
+ * platform Harness; `options.onStep` runs on Details (once the pick is made),
+ * Skills, Tools (once the empty toolset is shown) and Review (once the dry run
+ * completed), before each Continue or Create.
  */
 export async function createAgentInWizard(
   page: Page,
@@ -615,8 +616,11 @@ export async function createAgentInWizard(
     harness?: RegExp;
     model?: string | RegExp;
     tenant?: string;
-    /** Runs on a step before its Continue; on Skills, it may pick some. */
-    onStep?: (step: 'Details' | 'Skills' | 'Review') => Promise<void>;
+    /**
+     * Runs on a step before its Continue; on Skills or Tools, it may pick
+     * some.
+     */
+    onStep?: (step: 'Details' | 'Skills' | 'Tools' | 'Review') => Promise<void>;
   } = {},
 ): Promise<string> {
   // A toast covers the foot of the content: on a phone, Technical details at
@@ -675,7 +679,7 @@ export async function createAgentInWizard(
   await options.onStep?.('Skills');
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
-  // --- Step 3: Tools (none) ------------------------------------------------
+  // --- Step 3: Tools (none, unless onStep picks some) -----------------------
   await expectWizardStep(page, 'Tools');
   // A new agent starts on "Nothing outside the chat". What is selected so far
   // shows in the docked *Selected* rail where the step keeps its column beside
@@ -687,6 +691,7 @@ export async function createAgentInWizard(
       .getByText('No tools', { exact: true }),
     'nothing selected is the empty toolset, and the step says so',
   ).toBeVisible();
+  await options.onStep?.('Tools');
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
   // --- Step 4: Check and create = agent-manager's dry run, then Create -----
