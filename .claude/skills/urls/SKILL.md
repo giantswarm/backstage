@@ -42,7 +42,7 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/models/hosting/cache
 /customize/workflows/<inst>/<name>[/run|/usage|/details]
 /customize/workspaces[/new]
-/customize/workspaces/<inst>/<org>/<name>
+/customize/workspaces/<inst>/<org>/<name>[/sessions|/details]
 /customize/workspaces/<inst>/<org>/<name>/edit
 /agent-platform/**  →  one-hop redirects until the end of 2026
 ```
