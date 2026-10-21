@@ -20,12 +20,15 @@ function envelope(inner: {
   };
 }
 
-/** muster's auth_required answer to a gated call. */
-function authRequired(authUrl: string | undefined = AUTH_URL) {
+/** muster's auth_required answer to a gated call; `null`: no sign-in link. */
+function authRequired(authUrl: string | null = AUTH_URL) {
   return envelope({
     content: [
       { type: 'text', text: CHALLENGE_TEXT },
-      { type: 'text', text: `Sign in: ${authUrl}` },
+      {
+        type: 'text',
+        text: authUrl ? `Sign in: ${authUrl}` : 'Rate limit exceeded.',
+      },
     ],
     isError: true,
     structuredContent: {
@@ -98,7 +101,10 @@ describe('MusterMcpClient gated sign-ins', () => {
       now += 5_000;
       await expect(
         client.callTool(LIST, {}, { authToken: 'alice' }),
-      ).rejects.toMatchObject({ server: 'workspace-manager', authUrl: AUTH_URL });
+      ).rejects.toMatchObject({
+        server: 'workspace-manager',
+        authUrl: AUTH_URL,
+      });
     }
 
     // 100 s of polling: one sign-in started by muster, not twenty.
@@ -117,7 +123,11 @@ describe('MusterMcpClient gated sign-ins', () => {
       client.callToolContent('x_workspace-manager_get_workspace', {}, alice),
     ).rejects.toThrow(MusterAuthRequiredError);
     await expect(
-      client.callToolWithStructured('x_workspace-manager_list_providers', {}, alice),
+      client.callToolWithStructured(
+        'x_workspace-manager_list_providers',
+        {},
+        alice,
+      ),
     ).rejects.toThrow(MusterAuthRequiredError);
 
     expect(execute).toHaveBeenCalledTimes(1);
@@ -127,26 +137,34 @@ describe('MusterMcpClient gated sign-ins', () => {
     const execute = jest.fn().mockResolvedValue(authRequired());
     const client = buildClient(execute);
 
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
     now += SIGN_IN_REUSE_MS;
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
 
     expect(execute).toHaveBeenCalledTimes(2);
   });
 
   it('holds a refused sign-in (no link) for the rate-limit window only', async () => {
-    const execute = jest.fn().mockResolvedValue(authRequired(undefined));
+    const execute = jest.fn().mockResolvedValue(authRequired(null));
     const client = buildClient(execute);
 
     await expect(
       client.callTool(LIST, {}, { authToken: 'alice' }),
     ).rejects.toMatchObject({ authUrl: undefined });
     now += REFUSED_SIGN_IN_HOLD_MS - 1;
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
     expect(execute).toHaveBeenCalledTimes(1);
 
     now += 1;
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
     expect(execute).toHaveBeenCalledTimes(2);
   });
 
@@ -157,7 +175,9 @@ describe('MusterMcpClient gated sign-ins', () => {
       .mockResolvedValue(listed);
     const client = buildClient(execute);
 
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
     await expect(
       client.callTool(LIST, {}, { authToken: 'bob' }),
     ).resolves.toEqual({ workspaces: [] });
@@ -184,7 +204,9 @@ describe('MusterMcpClient gated sign-ins', () => {
     });
     const client = buildClient(execute, readResource);
 
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
     await client.getResource('auth://status', { authToken: 'alice' });
 
     await expect(
@@ -204,7 +226,9 @@ describe('MusterMcpClient gated sign-ins', () => {
       .mockResolvedValue(listed);
     const client = buildClient(execute);
 
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
     await client.callToolWithStructured(
       'core_auth_login',
       { server: 'workspace-manager' },
@@ -229,7 +253,9 @@ describe('MusterMcpClient gated sign-ins', () => {
       );
     const client = buildClient(execute);
 
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
     await client.callToolWithStructured(
       'core_auth_login',
       { server: 'workspace-manager' },
@@ -248,19 +274,28 @@ describe('MusterMcpClient gated sign-ins', () => {
       .mockResolvedValueOnce(authRequired())
       .mockResolvedValueOnce(
         envelope({
-          content: [{ type: 'text', text: "Successfully logged out from 'workspace-manager'." }],
+          content: [
+            {
+              type: 'text',
+              text: "Successfully logged out from 'workspace-manager'.",
+            },
+          ],
         }),
       )
       .mockResolvedValue(authRequired());
     const client = buildClient(execute);
 
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
     await client.callToolContent(
       'core_auth_logout',
       { server: 'workspace-manager' },
       { authToken: 'alice' },
     );
-    await expect(client.callTool(LIST, {}, { authToken: 'alice' })).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: 'alice' }),
+    ).rejects.toThrow();
 
     expect(calledTools(execute)).toEqual([LIST, 'core_auth_logout', LIST]);
   });
