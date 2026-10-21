@@ -58,6 +58,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Chart: the CNPG network policy now admits the monitoring agent on the instance metrics port (9187, TCP), so the `PodMonitor` the chart ships is scraped on a default-deny cluster.
 - Flux: fixed the resources tree crashing with "TreeWalker must yield at least one root node". Tree root detection now matches inventory references by namespace and name instead of name only — name collisions across namespaces could disqualify every root and collapse the tree — and an empty tree (e.g. "Failing only" on a cluster without failures) renders an empty state instead of crashing (#1951).
 - Capabilities tab: Enable and Apply changes are disabled, with giantswarm-platform-manager's reason on one line under the button, where the comparison says a commit would be refused (`commitRefused`), instead of opening a review that could not be committed. Where the reason is the missing opt-in, the owners' line stays the one line.
+- Agent wizard, Tools step: every tool muster lists for the person appears, also past muster's first page of 50 tools, so connectors no longer show 0 tools on a large catalogue; a failure to read any page shows as the catalogue's error. An organization's MCP server (`org-<name>/<server>`) lists its tools on its own tile, for a person who may see it, instead of on an extra one beside an empty tile (#3191).
 
 ## [0.138.0] - 2026-06-21
 
