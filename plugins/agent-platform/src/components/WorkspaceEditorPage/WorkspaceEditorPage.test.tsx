@@ -690,7 +690,7 @@ describe('RepositoryPicker against an owner of 500 repositories', () => {
     );
     await waitFor(() =>
       expect(
-        picker().getByRole('switch', { name: 'Selected only (10)' }),
+        picker().getByRole('switch', { name: 'Show selected only (10)' }),
       ).toBeInTheDocument(),
     );
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Skeleton, Text, TextField } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import {
   EmptyStateCard,
   fieldErrorProps,
@@ -57,6 +58,25 @@ import {
 } from './WorkspacePreviewPanel';
 import { WorkspaceSourceEditor } from './WorkspaceSourceEditor';
 import { workspaceDetailRouteRef } from '../../routes';
+
+const useStyles = makeStyles({
+  // The unit after the number, outside the editable value: bui's TextField
+  // only places an icon before it.
+  unitField: {
+    '& .bui-InputWrapper': { position: 'relative' },
+    '& .bui-Input': { paddingRight: 44 },
+    '& .bui-InputWrapper::after': {
+      content: '"GiB"',
+      position: 'absolute',
+      right: 12,
+      top: '50%',
+      transform: 'translateY(-50%)',
+      color: 'var(--bui-fg-secondary)',
+      fontSize: 'var(--bui-font-size-2)',
+      pointerEvents: 'none',
+    },
+  },
+});
 
 /** The manager's sources limit (the CRD's `maxItems`). */
 const MAX_SOURCES = 32;
@@ -558,6 +578,7 @@ function EditorBody({
   diskLine: disk,
 }: EditorBodyProps) {
   const { docked } = useWizardFrameRail();
+  const classes = useStyles();
 
   if (!availability.isLoading && !availability.isAvailable) {
     return (
@@ -662,7 +683,7 @@ function EditorBody({
           >
             {disk}
           </Text>
-          <div style={{ maxWidth: 240 }}>
+          <div style={{ maxWidth: 240 }} className={classes.unitField}>
             <TextField
               label="Minimum size"
               inputMode="numeric"
@@ -670,7 +691,6 @@ function EditorBody({
               value={draft.minimumGiB}
               onChange={value => update({ ...draft, minimumGiB: value })}
               onBlur={() => touch('sizing.minimum')}
-              icon={<Text variant="body-small">GiB</Text>}
               {...fieldErrorProps(errorFor('sizing.minimum'))}
             />
           </div>

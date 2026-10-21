@@ -282,7 +282,7 @@ export function RepositoryPicker({
         <Switch
           isSelected={selectedOnly}
           onChange={setSelectedOnly}
-          label={`Selected only (${byName + excluded})`}
+          label={`Show selected only (${byName + excluded})`}
         />
       </Flex>
 
