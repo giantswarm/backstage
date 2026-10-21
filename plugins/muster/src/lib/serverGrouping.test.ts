@@ -16,6 +16,7 @@ import {
   presenceByMc,
   selectRepresentative,
   connectorDisplayNameOn,
+  connectorPageKeys,
   connectorDisplayNames,
   mcpServerDisplayNames,
   serverRowDisplayName,
@@ -624,5 +625,54 @@ describe('connectorDisplayNames', () => {
     expect(connectorDisplayNameOn([here, there], 'gazelle', 'gone')).toBe(
       'gone',
     );
+  });
+});
+
+describe('connectorPageKeys', () => {
+  const keys = connectorPageKeys([
+    makeServer({ name: 'mcp-github' }),
+    makeServer({ name: 'k8s-gazelle', family: 'kubernetes' }),
+    makeServer({ name: 'k8s-wombat', family: 'kubernetes' }),
+    // Shadowed: the family's page and muster's own take these names.
+    makeServer({ name: 'kubernetes' }),
+    makeServer({ name: 'muster' }),
+    makeServer({ name: 'muster-a', family: 'muster' }),
+  ]);
+
+  it('keys a singular server by its own name', () => {
+    expect(keys.get('mcp-github')).toBe('mcp-github');
+  });
+
+  it('keys each instance of a family by the family’s name', () => {
+    expect(keys.get('k8s-gazelle')).toBe('kubernetes');
+    expect(keys.get('k8s-wombat')).toBe('kubernetes');
+  });
+
+  it('has no key for a server the installation does not run', () => {
+    expect(keys.has('removed-server')).toBe(false);
+    expect(connectorPageKeys([]).size).toBe(0);
+  });
+
+  it('has no key for a server whose page another one takes', () => {
+    expect(keys.has('kubernetes')).toBe(false);
+    expect(keys.has('muster')).toBe(false);
+    expect(keys.has('muster-a')).toBe(false);
+  });
+
+  it('agrees with the page each key opens', () => {
+    const servers = [
+      makeServer({ name: 'mcp-github' }),
+      makeServer({ name: 'k8s-gazelle', family: 'kubernetes' }),
+    ];
+    for (const [name, key] of connectorPageKeys(servers)) {
+      const row = findServerRow(servers, key);
+      let shown: string[] = [];
+      if (row?.kind === 'family') {
+        shown = row.servers.map(server => server.getName());
+      } else if (row?.kind === 'server') {
+        shown = [row.server.getName()];
+      }
+      expect(shown).toContain(name);
+    }
   });
 });
