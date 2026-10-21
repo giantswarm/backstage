@@ -43,7 +43,7 @@ describe('syncState', () => {
   it.each<[Partial<Workspace>, string]>([
     [{}, 'Not synced yet'],
     [{ lastSync: { time: 't', result: 'Succeeded' } }, 'Synced'],
-    [{ lastSync: { time: 't', result: 'NoChange' } }, 'No change'],
+    [{ lastSync: { time: 't', result: 'NoChange' } }, 'Unchanged'],
     [{ lastSync: { time: 't', result: 'Failed', message: 'm' } }, 'Failed'],
     [
       {

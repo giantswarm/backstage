@@ -635,6 +635,12 @@ describe('WorkspaceEditorPage', () => {
       ],
     });
     expect(fake.callsOf('update_workspace')[0]).not.toHaveProperty('sync');
+    // An edit closes to the workspace's page, the address's parent.
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith(
+        '/customize/workspaces/lab/acme/platform-mcp',
+      ),
+    );
   });
 });
 

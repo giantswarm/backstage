@@ -2,16 +2,27 @@ import { useMemo } from 'react';
 import { useResources } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer } from '@giantswarm/backstage-plugin-muster';
 
+import { ORGANIZATION_PREFIX } from '../lib/tenants';
 import { connectorLabels, type ServerInfo } from '../lib/toolset';
 
-/** The grouping's view of one MCPServer CR. */
+/**
+ * The grouping's view of one MCPServer CR. muster keys a server of an
+ * organization's namespace `<namespace>/<name>` (its tools' `server`, what
+ * `server:` selects) and prefixes its tools `x_<namespace>_<segment>`; a
+ * server of muster's own namespace keeps its name.
+ */
 export function serverInfoOf(server: MCPServer): ServerInfo {
   const displayName = server.getDisplayNameAnnotation();
+  const namespace = server.getNamespace();
+  const tenant = namespace?.startsWith(ORGANIZATION_PREFIX) ? namespace : '';
+  const prefix = server.getToolNamePrefix();
   return {
-    name: server.getName(),
+    name: tenant ? `${tenant}/${server.getName()}` : server.getName(),
     family: server.getFamily(),
     group: server.getToolGroupKey(),
-    toolNamePrefix: server.getToolNamePrefix(),
+    toolNamePrefix: tenant
+      ? `x_${tenant}_${prefix.slice('x_'.length)}`
+      : prefix,
     state: server.getState(),
     oauth: server.getAuth()?.type === 'oauth',
     ...(displayName ? { displayName } : {}),

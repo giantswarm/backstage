@@ -495,7 +495,11 @@ export function describeToolset(toolset: DeclaredToolset | undefined): {
  * without building CRs.
  */
 export interface ServerInfo {
-  /** The CR name — what `server:<name>` selects for a single server. */
+  /**
+   * muster's key for the server — the CR name, `<namespace>/<name>` for a
+   * server of an organization's namespace: what `server:<name>` selects for a
+   * single server.
+   */
   name: string;
   /**
    * The family name, for a federated family whose members share one tool

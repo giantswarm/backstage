@@ -42,6 +42,26 @@ export type MetaToolName = (typeof META_TOOLS)[number];
 /** Muster meta-tool used to execute any aggregated tool by name. */
 const CALL_TOOL = 'call_tool';
 
+/**
+ * The page {@link MusterMcpClient.listTools} asks `list_tools` for, as
+ * muster's own `ListAllTools` does: a usual catalogue arrives in one round
+ * trip. Without a `limit`, muster answers 50 tools.
+ */
+const LIST_TOOLS_PAGE_SIZE = 1000;
+
+/**
+ * The most `list_tools` pages one listing reads: far above any real catalogue,
+ * so a muster that keeps answering `truncated` fails the listing instead of
+ * looping.
+ */
+const LIST_TOOLS_MAX_PAGES = 20;
+
+/** What the paging reads of a `list_tools` page; the rest passes through. */
+type ListToolsPage = Record<string, unknown> & {
+  tools?: unknown[];
+  truncated?: boolean;
+};
+
 export interface MusterServerConfig {
   url: string;
   headers?: Record<string, string>;
@@ -816,8 +836,39 @@ export class MusterMcpClient {
     return content;
   }
 
+  /**
+   * Every tool of the caller's catalogue. `list_tools` answers one page, so
+   * this reads page after page until one is not `truncated`, as muster's own
+   * `ListAllTools` does, and answers the first page with the tools of every
+   * page. A failed page fails the listing.
+   */
   async listTools(options?: { authToken?: string }): Promise<unknown> {
-    return this.invokeMetaTool('list_tools', {}, options);
+    let all: ListToolsPage | undefined;
+    for (let page = 0; page < LIST_TOOLS_MAX_PAGES; page++) {
+      const tools = all?.tools ?? [];
+      const next = (await this.invokeMetaTool(
+        'list_tools',
+        { limit: LIST_TOOLS_PAGE_SIZE, offset: tools.length },
+        options,
+      )) as ListToolsPage;
+      const added = next.tools ?? [];
+      all = all
+        ? {
+            ...all,
+            tools: [...tools, ...added],
+            filtered_count: tools.length + added.length,
+            total: next.total,
+            truncated: next.truncated,
+          }
+        : next;
+      // A page without tools cannot move the offset on, whatever it claims.
+      if (!next.truncated || added.length === 0) {
+        return all;
+      }
+    }
+    throw new ServiceUnavailableError(
+      `Muster's list_tools on '${this.installation.name}' was still truncated after ${LIST_TOOLS_MAX_PAGES} pages`,
+    );
   }
 
   async filterTools(

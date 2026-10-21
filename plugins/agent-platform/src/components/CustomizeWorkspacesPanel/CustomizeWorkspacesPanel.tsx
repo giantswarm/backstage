@@ -14,7 +14,6 @@ import {
   Flex,
   Menu,
   MenuItem,
-  MenuSection,
   MenuTrigger,
   Table,
   Text,
@@ -22,7 +21,6 @@ import {
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditIcon from '@material-ui/icons/Edit';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
-import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import SyncIcon from '@material-ui/icons/Sync';
 import {
   CatalogNoMatch,
@@ -39,7 +37,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useWorkspaceActions } from '../../hooks/useWorkspaceActions';
-import { workspaceEditRouteRef } from '../../routes';
+import { workspaceDetailRouteRef, workspaceEditRouteRef } from '../../routes';
 import {
   sharedIdentityReason,
   sharedIdentityTitle,
@@ -51,6 +49,8 @@ import {
   sourcesLabel,
   storedLabel,
   syncState,
+  WORKSPACES_BLOCKED,
+  WORKSPACES_VIA,
   type WorkspaceRow,
 } from '../../lib/workspaceList';
 import { CreateWorkspaceButton } from '../CreateWorkspaceButton';
@@ -61,16 +61,6 @@ import { useWorkspacesData } from '../WorkspacesDataProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
-
-/** What a muster without per-user sign-in withholds, and what goes through the manager. */
-const WORKSPACES_BLOCKED = 'Workspaces cannot be used';
-const WORKSPACES_VIA = 'Workspaces are managed through workspace-manager';
-
-/**
- * Why Open is not offered yet: the workspace's page is built next, at
- * `/customize/workspaces/<installation>/<organization>/<name>`.
- */
-const NOT_BUILT_YET = 'Coming with the workspace page';
 
 export type CustomizeWorkspacesPanelProps = {
   search: string;
@@ -129,7 +119,7 @@ function LastSyncCell({ row }: { row: WorkspaceRow }) {
   );
 }
 
-/** Open, Edit, Sync now and Delete for one workspace. */
+/** Edit, Synchronize and Delete for one workspace; its name opens it. */
 function RowActions({ row }: { row: WorkspaceRow }) {
   const toastApi = useApi(toastApiRef);
   const { sync, remove } = useWorkspaceActions(row.installation, row.name);
@@ -145,13 +135,13 @@ function RowActions({ row }: { row: WorkspaceRow }) {
     sync.mutate(undefined, {
       onSuccess: () =>
         toastApi.post({
-          title: `Sync of ${row.name} requested`,
+          title: `Synchronization of ${row.name} requested`,
           status: 'success',
           timeout: TOAST_TIMEOUT_MS,
         }),
       onError: error =>
         toastApi.post({
-          title: `${row.name} could not be synced`,
+          title: `${row.name} could not be synchronized`,
           description: error.message,
           status: 'danger',
         }),
@@ -179,11 +169,6 @@ function RowActions({ row }: { row: WorkspaceRow }) {
           size="small"
         />
         <Menu maxWidth={MENU_WIDTH}>
-          <MenuSection title={NOT_BUILT_YET}>
-            <MenuItem iconStart={<OpenInNewIcon />} isDisabled>
-              Open
-            </MenuItem>
-          </MenuSection>
           <MenuItem
             iconStart={<EditIcon />}
             isDisabled={row.deleting || !editHref}
@@ -196,7 +181,7 @@ function RowActions({ row }: { row: WorkspaceRow }) {
             isDisabled={row.deleting || sync.isPending}
             onAction={syncNow}
           >
-            Sync now
+            Synchronize…
           </MenuItem>
           <MenuItem
             color="danger"
@@ -318,6 +303,7 @@ export function CustomizeWorkspacesPanel({
   const showInstallation =
     new Set(allRows.map(row => row.installation)).size > 1;
   const isPhone = usePhoneLayout();
+  const detailRoute = useRouteRef(workspaceDetailRouteRef);
 
   const columns: ColumnConfig<WorkspaceRow>[] = [
     {
@@ -329,6 +315,11 @@ export function CustomizeWorkspacesPanel({
       cell: row => (
         <CellText
           title={row.name}
+          href={detailRoute?.({
+            installation: row.installation,
+            organization: row.organization,
+            name: row.name,
+          })}
           description={[
             ...(showInstallation ? [row.installation] : []),
             // At phone width the Sources column is hidden: they join the
