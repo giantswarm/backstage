@@ -120,7 +120,9 @@ person's OK.
 
 ## Drawing rules
 
-`layout.mjs` implements these; change both together.
+`layout.mjs` implements these; change both together, and after any change to
+`layout.mjs` run `node --test .claude/skills/ui-sitemap/layout.test.mjs` (a
+manual test: CI does not run it).
 
 - A top-down tree: one row per level, top-aligned, each child centred under
   its parent (pushed right where siblings' subtrees would overlap). "Level n"
