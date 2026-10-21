@@ -38,8 +38,19 @@ const useStyles = makeStyles({
     maxHeight: '100vh',
     borderRadius: 0,
   },
+  // Outlined and filled, so it reads as a control among the header's text.
+  // The bui Button's colours are custom properties set on
+  // `.bui-Button[data-variant='secondary']`, which `&&&` outranks whatever
+  // order the stylesheets load in.
   chip: {
     borderRadius: 999,
+    '&&&': {
+      '--bg': 'var(--bui-bg-neutral-2)',
+      '--bg-hover': 'var(--bui-bg-neutral-2-hover)',
+      '--bg-active': 'var(--bui-bg-neutral-2-pressed)',
+      border: '1px solid var(--bui-border-2)',
+      fontWeight: 'normal',
+    },
     maxWidth: 360,
     minWidth: 0,
   },
