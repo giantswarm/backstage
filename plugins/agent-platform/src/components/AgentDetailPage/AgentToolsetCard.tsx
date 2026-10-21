@@ -15,6 +15,7 @@ import {
   ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useMusterServers } from '../../hooks/useMusterServers';
@@ -122,6 +123,28 @@ function DeclaredSelectors({
 }
 
 /**
+ * How muster holds the agent to its toolset, in agent-manager's words
+ * (`get_info`'s `toolsetBound`): where the installation trusts the actor JWT,
+ * agent-manager binds the toolset to each session at muster when it starts,
+ * so every process in the sandbox is held to it whatever header it sends;
+ * elsewhere the runtime only declares it in the `X-Muster-Toolset` header.
+ */
+function ToolsetEnforcement({ isBound }: { isBound: boolean }) {
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant="body-small">
+        {isBound
+          ? 'Bound to each session at its start. A change applies to new sessions.'
+          : 'Declared: the agent sends it as the X-Muster-Toolset header, and a process in its sandbox that omits the header is not held to it.'}
+      </Text>
+      <Text variant="body-small" color="secondary">
+        Composition, not authorization: never more than your own access.
+      </Text>
+    </Flex>
+  );
+}
+
+/**
  * The agent's toolset: what it declares, and what that resolves to for the
  * person looking at it.
  *
@@ -155,6 +178,8 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     [declared],
   );
   const shape = toolsetShape(selectors);
+  const { info: managerInfo } = useAgentManagerInfo(installation);
+  const isBound = managerInfo?.capabilities?.toolsetBound === true;
 
   const musterApi = useMusterPluginApi();
   const catalogue = useMusterToolCatalogue(installation);
@@ -251,6 +276,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
           selectors={selectors}
           unmatched={resolution.unmatched}
         />
+        <ToolsetEnforcement isBound={isBound} />
         {shape === 'full' && (
           <Alert
             status="warning"
