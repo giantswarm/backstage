@@ -68,7 +68,8 @@ function SessionsStillUsing({
         {directories.map(directory => (
           <li key={directory.session}>
             <Text variant="body-medium">
-              {directory.name || directory.session}
+              {directory.name ||
+                (directory.unknown ? 'A deleted session' : directory.session)}
             </Text>
           </li>
         ))}

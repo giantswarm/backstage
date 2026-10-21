@@ -348,7 +348,7 @@ export function CustomizeWorkspacesPanel({
     },
     {
       id: 'repositories',
-      label: 'Repos',
+      label: 'Repositories',
       defaultWidth: '1fr',
       cell: row => (
         <CellText title={row.lastSync ? String(row.repositories) : '—'} />

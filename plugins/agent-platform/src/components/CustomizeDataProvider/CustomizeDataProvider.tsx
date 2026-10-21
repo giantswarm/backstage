@@ -84,7 +84,11 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     isAvailable: hasWorkspaces,
     isLoading: workspacesLoading,
     rows: { length: workspaceCount },
+    failures: workspaceFailures,
   } = useWorkspacesData();
+  // Nothing read, a sign-in or a refusal in the way: no count, not "0".
+  const workspacesUnread =
+    workspaceCount === 0 && Object.keys(workspaceFailures).length > 0;
 
   const modelRows = useMemo<ModelRow[]>(
     () =>
@@ -124,10 +128,14 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
             ? 'loading'
             : modelRows.length,
         skills: skillCountOf(skillCatalog),
-        workspaces:
-          workspacesLoading && workspaceCount === 0
+        workspaces: (() => {
+          if (workspacesUnread) {
+            return undefined;
+          }
+          return workspacesLoading && workspaceCount === 0
             ? 'loading'
-            : workspaceCount,
+            : workspaceCount;
+        })(),
       },
       hasWorkspaces,
       hasSkillRepositories: skillCatalog.isLoading
@@ -144,6 +152,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
       hasWorkspaces,
       workspacesLoading,
       workspaceCount,
+      workspacesUnread,
     ],
   );
 
