@@ -28,14 +28,19 @@ const PUSH_PAGE_SIZE = 200;
 /**
  * One workspace with its storage and Session directories (`get_workspace`),
  * as the person, read afresh each time it is `enabled`: what it says is
- * acted on. With `followSync`, read again while a sync runs or waits, until
- * it ends.
+ * acted on. With `followSync`, read again while a sync runs or waits, and
+ * while `awaitingSync` (a requested sync the read does not show ended yet),
+ * in a background tab too: the end of a sync the person asked for is shown
+ * whenever they look.
  */
 export function useWorkspaceDetail(
   installation: string,
   name: string,
   enabled: boolean = true,
-  { followSync = false }: { followSync?: boolean } = {},
+  {
+    followSync = false,
+    awaitingSync = false,
+  }: { followSync?: boolean; awaitingSync?: boolean } = {},
 ) {
   const client = useWorkspaceManagerClient(installation);
   return useQuery<WorkspaceDetail>({
@@ -46,9 +51,12 @@ export function useWorkspaceDetail(
     staleTime: 0,
     refetchOnMount: 'always',
     refetchInterval: query =>
-      followSync && query.state.data && isSettling(query.state.data.workspace)
+      followSync &&
+      (awaitingSync ||
+        (query.state.data && isSettling(query.state.data.workspace)))
         ? SETTLING_REFETCH_MS
         : false,
+    refetchIntervalInBackground: followSync,
   });
 }
 

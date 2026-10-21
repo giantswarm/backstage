@@ -143,14 +143,14 @@ function WorkspaceDetailContent({
   const tabHref = useWorkspacesTabHref(organization);
   const editRoute = useRouteRef(workspaceEditRouteRef);
   const availability = useWorkspaceManagerAvailability(installation);
+  // The sync this person asked for, until its outcome has been shown.
+  const [requestedAt, setRequestedAt] = useState<string>();
   const detail = useWorkspaceDetail(installation, name, !needsManagerSignIn, {
     followSync: true,
+    awaitingSync: Boolean(requestedAt),
   });
   const { sync, remove } = useWorkspaceActions(installation, name);
   const [isDeleteOpen, setDeleteOpen] = useState(false);
-
-  // The sync this person asked for, until its outcome has been shown.
-  const [requestedAt, setRequestedAt] = useState<string>();
   const [ended, setEnded] = useState<WorkspaceDetail['workspace']>();
   const workspace = detail.data?.workspace;
   useEffect(() => {

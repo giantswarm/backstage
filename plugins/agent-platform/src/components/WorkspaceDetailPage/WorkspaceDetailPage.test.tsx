@@ -36,6 +36,7 @@ type DetailQuery = {
   refetch: jest.Mock;
 };
 let mockDetail: DetailQuery;
+const mockUseWorkspaceDetail = jest.fn((..._args: unknown[]) => mockDetail);
 let mockPushes: Map<string, string> | undefined;
 const mockSync = {
   mutate: jest.fn(),
@@ -48,7 +49,7 @@ const mockRemove = {
   error: null,
 };
 jest.mock('../../hooks/useWorkspaceActions', () => ({
-  useWorkspaceDetail: () => mockDetail,
+  useWorkspaceDetail: (...args: unknown[]) => mockUseWorkspaceDetail(...args),
   useWorkspaceLastPushes: () => ({ data: mockPushes }),
   useWorkspaceActions: () => ({ sync: mockSync, remove: mockRemove }),
 }));
@@ -251,6 +252,34 @@ describe('WorkspaceDetailPage', () => {
 
     expect(screen.getByRole('button', { name: 'Syncing…' })).toBeDisabled();
     expect(screen.getByText(/^Syncing, started/)).toBeInTheDocument();
+  });
+
+  it('keeps reading, in a background tab too, until a requested sync shows ended', async () => {
+    mockSync.mutate.mockImplementation((_: unknown, options: any) =>
+      // The read after the request does not show the sync yet.
+      options.onSuccess({
+        workspace: 'ws-docs',
+        requestedAt: '2026-10-21T08:00:00Z',
+      }),
+    );
+    await renderPage();
+    expect(mockUseWorkspaceDetail).toHaveBeenLastCalledWith(
+      'gazelle',
+      'ws-docs',
+      true,
+      { followSync: true, awaitingSync: false },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+
+    expect(mockUseWorkspaceDetail).toHaveBeenLastCalledWith(
+      'gazelle',
+      'ws-docs',
+      true,
+      { followSync: true, awaitingSync: true },
+    );
+    expect(screen.getByRole('button', { name: 'Syncing…' })).toBeDisabled();
+    expect(screen.queryByTestId('workspace-sync-ended')).toBeNull();
   });
 
   it('runs Sync now and reports an unchanged result when the sync ends', async () => {
