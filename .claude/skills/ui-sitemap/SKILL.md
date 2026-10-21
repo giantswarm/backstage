@@ -44,8 +44,10 @@ pick around customer data. In return:
   (`reach` examples and notes stay neutral: "the first row", a connector
   every installation has), not in `sitemap.state.tsv`, this file, commits or
   pull requests. Screenshots stay in the gitignored `screens/`.
-- **Never share or publish the board**, and don't post screenshots or board
-  links anywhere public.
+- **Never share or publish the board**: don't change its sharing settings,
+  invite anyone or make it public, and don't post screenshots anywhere
+  public (pull requests included). Its link is fine; only the board's
+  members can open it.
 
 ## Run order
 
