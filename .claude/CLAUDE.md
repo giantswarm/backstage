@@ -331,6 +331,9 @@ through a route ref, an external route ref the app binds in
 disable comment with its reason. **A review of a change that adds or moves a
 route checks it against that skill's review checklist.**
 
+The shell's visual sitemap on Miro (a screenshot per page, tab, wizard step
+and dialog) is kept by the **`ui-sitemap`** skill (`.claude/skills/ui-sitemap/SKILL.md`).
+
 #### Analytics / Telemetry — keep in sync when adding pages
 
 Page views are reported via `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`,
