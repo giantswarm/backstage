@@ -115,6 +115,15 @@ With the chrome-devtools MCP, against a signed-in dev server
 - Navigate inside the app, not by reloading (`navigate_page` reloads the
   whole app and is much slower):
   `history.pushState({}, '', path); dispatchEvent(new PopStateEvent('popstate'))`.
+- **Never look at a screenshot.** An image in the context costs many
+  tokens. Always pass `filePath` to `take_screenshot` (without it the image
+  comes back into the conversation), and never open a PNG with Read or any
+  other viewer. Check the page in the DOM instead, with `evaluate_script`
+  right before each screenshot: no `[role="alert"]`, `[role="alertdialog"]`
+  or toast container left, no loading text (below), and the expected
+  heading present (the page's `h1`, or the dialog's title). View an image
+  only when the person explicitly asks for a visual check of a specific
+  page.
 - Wait until loaded: the body text length is stable for ~2 s, no line
   matches `^(Reading|Loading)\b.*(…|\.\.\.)$` ("Reading this agent's
   usage…"), and there is no `aria-busy="true"`, `role="progressbar"` or
@@ -130,8 +139,9 @@ With the chrome-devtools MCP, against a signed-in dev server
   viewport, and reset to 900. Chat-like pages with a docked composer (a
   session) stay at 900; their `note` says so. Dialogs are captured at 900,
   over their page.
-- `take_screenshot` with `filePath` writes only inside the MCP's workspace
-  roots (the working directory), not `/tmp` — `screens/` is inside.
+- `take_screenshot`, always with `filePath`, writes only inside the MCP's
+  workspace roots (the working directory), not `/tmp` — `screens/` is
+  inside.
 - Follow `reach`: empty means open `path`; otherwise it names a concrete
   example (`row "Kubernetes"`) and/or steps (`click "New agent" > fill
   Name=demo > click Continue`). Steps that don't start with `open` start on
