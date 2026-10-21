@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
-import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -10,16 +14,13 @@ import {
   Flex,
   Menu,
   MenuItem,
-  MenuSection,
   MenuTrigger,
   Table,
   Text,
 } from '@backstage/ui';
-import AddIcon from '@material-ui/icons/Add';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditIcon from '@material-ui/icons/Edit';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
-import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import SyncIcon from '@material-ui/icons/Sync';
 import {
   CatalogNoMatch,
@@ -36,35 +37,30 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useWorkspaceActions } from '../../hooks/useWorkspaceActions';
+import { workspaceDetailRouteRef, workspaceEditRouteRef } from '../../routes';
 import {
   sharedIdentityReason,
   sharedIdentityTitle,
 } from '../../lib/sharedIdentity';
 import {
   searchWorkspaces,
+  sizeLabel,
+  sourceLabel,
   sourcesLabel,
   storedLabel,
   syncState,
+  WORKSPACES_BLOCKED,
+  WORKSPACES_VIA,
   type WorkspaceRow,
 } from '../../lib/workspaceList';
+import { CreateWorkspaceButton } from '../CreateWorkspaceButton';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
+import { WorkspaceManagerSignIn } from '../WorkspaceManagerSignIn';
 import { useWorkspacesData } from '../WorkspacesDataProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
-
-/** What a muster without per-user sign-in withholds, and what goes through the manager. */
-const WORKSPACES_BLOCKED = 'Workspaces cannot be used';
-const WORKSPACES_VIA = 'Workspaces are managed through workspace-manager';
-
-/**
- * Why Open, Edit and Create workspace are not offered yet: the workspace's
- * page and its editor are built next, at
- * `/agent-platform/workspaces/<installation>/<organization>/<name>` and
- * `…/edit`.
- */
-const NOT_BUILT_YET = 'Coming with the workspace page';
 
 export type CustomizeWorkspacesPanelProps = {
   search: string;
@@ -83,7 +79,9 @@ function StoredCell({ row }: { row: WorkspaceRow }) {
           : storedLabel(row.storedBytes, row.volumeSize, row.grewFrom)
       }
       description={
-        row.grewFrom ? `Grown from ${row.grewFrom} at the last sync` : undefined
+        row.grewFrom
+          ? `Grown from ${sizeLabel(row.grewFrom)} at the last sync`
+          : undefined
       }
     />
   );
@@ -121,23 +119,29 @@ function LastSyncCell({ row }: { row: WorkspaceRow }) {
   );
 }
 
-/** Open, Edit, Sync now and Delete for one workspace. */
+/** Edit, Synchronize and Delete for one workspace; its name opens it. */
 function RowActions({ row }: { row: WorkspaceRow }) {
   const toastApi = useApi(toastApiRef);
   const { sync, remove } = useWorkspaceActions(row.installation, row.name);
+  const editRoute = useRouteRef(workspaceEditRouteRef);
+  const editHref = editRoute?.({
+    installation: row.installation,
+    organization: row.organization,
+    name: row.name,
+  });
   const [isDeleteOpen, setDeleteOpen] = useState(false);
 
   const syncNow = () =>
     sync.mutate(undefined, {
       onSuccess: () =>
         toastApi.post({
-          title: `Sync of ${row.name} requested`,
+          title: `Synchronization of ${row.name} requested`,
           status: 'success',
           timeout: TOAST_TIMEOUT_MS,
         }),
       onError: error =>
         toastApi.post({
-          title: `${row.name} could not be synced`,
+          title: `${row.name} could not be synchronized`,
           description: error.message,
           status: 'danger',
         }),
@@ -166,11 +170,18 @@ function RowActions({ row }: { row: WorkspaceRow }) {
         />
         <Menu maxWidth={MENU_WIDTH}>
           <MenuItem
+            iconStart={<EditIcon />}
+            isDisabled={row.deleting || !editHref}
+            href={editHref}
+          >
+            Edit
+          </MenuItem>
+          <MenuItem
             iconStart={<SyncIcon />}
             isDisabled={row.deleting || sync.isPending}
             onAction={syncNow}
           >
-            Sync now
+            Synchronize…
           </MenuItem>
           <MenuItem
             color="danger"
@@ -183,14 +194,6 @@ function RowActions({ row }: { row: WorkspaceRow }) {
           >
             Delete…
           </MenuItem>
-          <MenuSection title={NOT_BUILT_YET}>
-            <MenuItem iconStart={<OpenInNewIcon />} isDisabled>
-              Open
-            </MenuItem>
-            <MenuItem iconStart={<EditIcon />} isDisabled>
-              Edit
-            </MenuItem>
-          </MenuSection>
         </Menu>
       </MenuTrigger>
       <WorkspaceDeleteDialog
@@ -205,19 +208,8 @@ function RowActions({ row }: { row: WorkspaceRow }) {
   );
 }
 
-/** Create workspace, not offered until its editor exists. */
-function CreateWorkspaceAction() {
-  return (
-    <Flex direction="column" align="center" gap="2">
-      <Button variant="primary" iconStart={<AddIcon />} isDisabled>
-        Create workspace
-      </Button>
-      <Text variant="body-small" color="secondary">
-        {NOT_BUILT_YET}.
-      </Text>
-    </Flex>
-  );
-}
+/** muster's refusal of a tool call before the person signed in to its server. */
+const AUTH_REQUIRED = /\bauth_required\b/;
 
 /** The installations whose workspaces could not be read, and why. */
 function ReadFailures({
@@ -262,6 +254,29 @@ function ReadFailures({
 }
 
 /**
+ * The Workspaces tab's heading, above its search: whose workspaces these are
+ * and what they are for. Nothing while there is no Organization. Must be
+ * mounted inside a `WorkspacesDataProvider`.
+ */
+export function CustomizeWorkspacesIntro() {
+  const { organization } = useWorkspacesData();
+  if (!organization) {
+    return null;
+  }
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant="title-small" as="h2">
+        Workspaces of {organization}
+      </Text>
+      <Text variant="body-medium" color="secondary">
+        The repositories an agent works on. Everyone in {organization} can use
+        and change them.
+      </Text>
+    </Flex>
+  );
+}
+
+/**
  * The Workspaces tab of the shell's Customize screen: the workspaces of the
  * scope's Organization on the installations in scope — sources, repositories,
  * what the volume stores, the last sync and the Sessions on it — with Sync now
@@ -275,7 +290,6 @@ export function CustomizeWorkspacesPanel({
     isAvailable,
     rows: allRows,
     organization,
-    organizations,
     installations,
     sharedIdentity,
     isLoading,
@@ -289,6 +303,7 @@ export function CustomizeWorkspacesPanel({
   const showInstallation =
     new Set(allRows.map(row => row.installation)).size > 1;
   const isPhone = usePhoneLayout();
+  const detailRoute = useRouteRef(workspaceDetailRouteRef);
 
   const columns: ColumnConfig<WorkspaceRow>[] = [
     {
@@ -300,6 +315,11 @@ export function CustomizeWorkspacesPanel({
       cell: row => (
         <CellText
           title={row.name}
+          href={detailRoute?.({
+            installation: row.installation,
+            organization: row.organization,
+            name: row.name,
+          })}
           description={[
             ...(showInstallation ? [row.installation] : []),
             // At phone width the Sources column is hidden: they join the
@@ -313,7 +333,18 @@ export function CustomizeWorkspacesPanel({
       id: 'sources',
       label: 'Sources',
       defaultWidth: '2fr',
-      cell: row => <CellText title={sourcesLabel(row.sources)} />,
+      // One line per source.
+      cell: row => (
+        <Cell>
+          <Flex direction="column" gap="0">
+            {row.sources.map((source, index) => (
+              <Text key={index} variant="body-medium">
+                {sourceLabel(source)}
+              </Text>
+            ))}
+          </Flex>
+        </Cell>
+      ),
     },
     {
       id: 'repositories',
@@ -357,6 +388,17 @@ export function CustomizeWorkspacesPanel({
     'actions',
   ]);
 
+  // A read muster refused for want of the person's sign-in to
+  // workspace-manager offers that sign-in, not the refusal's text.
+  const signIns = Object.keys(failures).filter(installation =>
+    AUTH_REQUIRED.test(failures[installation]),
+  );
+  const otherFailures = Object.fromEntries(
+    Object.entries(failures).filter(
+      ([installation]) => !signIns.includes(installation),
+    ),
+  );
+
   const isReading = isLoading && allRows.length === 0;
   const failed = Object.keys(failures).length > 0;
   const isEverythingFailed =
@@ -394,7 +436,7 @@ export function CustomizeWorkspacesPanel({
       <EmptyStateCard
         title={`No workspaces in ${organization} yet`}
         description="A workspace holds the repositories a Session works on, synced for every member of the Organization."
-        actions={<CreateWorkspaceAction />}
+        actions={<CreateWorkspaceButton />}
       />
     );
   } else if (rows.length === 0) {
@@ -408,11 +450,16 @@ export function CustomizeWorkspacesPanel({
         noun="workspace"
       >
         {page => (
-          <Table<WorkspaceRow>
-            columnConfig={shownColumns}
-            data={page}
-            pagination={{ type: 'none' }}
-          />
+          <Flex direction="column" gap="2">
+            <Table<WorkspaceRow>
+              columnConfig={shownColumns}
+              data={page}
+              pagination={{ type: 'none' }}
+            />
+            <Text variant="body-small" color="secondary">
+              A failed sync shows its reason in Last sync.
+            </Text>
+          </Flex>
         )}
       </ShowMore>
     );
@@ -420,14 +467,16 @@ export function CustomizeWorkspacesPanel({
 
   return (
     <Flex direction="column" gap="5">
-      {organization && organizations.length > 1 && (
-        <Text variant="body-medium" color="secondary">
-          Workspaces of {organization}
-        </Text>
-      )}
+      {signIns.map(installation => (
+        <WorkspaceManagerSignIn
+          key={installation}
+          installation={installation}
+          onSignedIn={retry}
+        />
+      ))}
       <ReadFailures
-        failures={failures}
-        isEverything={isEverythingFailed}
+        failures={otherFailures}
+        isEverything={isEverythingFailed && signIns.length === 0}
         onRetry={retry}
       />
       {isAvailable && (

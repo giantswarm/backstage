@@ -24,8 +24,14 @@ import {
 } from './signInConnectorMemory';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
+import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { InstallationConfig, readInstallationsConfig } from '../installations';
+import { hasUserGesture } from './userGesture';
+import {
+  asLoginRequestCaller,
+  asLoginRequestCallerApi,
+} from './loginRequestCaller';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -42,8 +48,8 @@ function mainProviderDisplayName(providerName: string): string {
 
 /** Human-readable text shown in the cluster-access status popover. */
 const CLUSTER_TOKEN_ERROR_MESSAGES: Record<ClusterTokenErrorReason, string> = {
-  'session-expired': 'Your session expired -- sign in again',
-  subject_invalid: 'Your session was rejected -- sign in again',
+  'session-expired': SESSION_EXPIRED_MESSAGE,
+  subject_invalid: 'Your session was rejected, sign in again.',
   broker_unreachable: 'Token broker is unreachable',
   broker_unavailable:
     'Token broker is briefly unavailable -- try again shortly',
@@ -126,6 +132,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // read it. Per-installation and MCP providers have no say in it.
   private readonly signInConnectorMemory: SignInConnectorMemory;
 
+  // Whether a person started what runs now: only then may a cluster-token
+  // mint open the main sign-in.
+  private readonly hasUserGesture: () => boolean;
+
   constructor(options: GSAuthProvidersApiCreateOptions) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
@@ -133,6 +143,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     this.clusterAccessStatusApi = options.clusterAccessStatusApi;
     this.signInConnectorMemory =
       options.signInConnectorMemory ?? new LocalStorageSignInConnectorMemory();
+    this.hasUserGesture = options.hasUserGesture ?? hasUserGesture;
 
     this.mainAuthApi = this.createMainAuthApi();
 
@@ -300,17 +311,25 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     const mint = async (): Promise<ClusterToken | undefined> => {
       const mainAuthApi = this.getMainAuthApi();
 
-      // Auto re-auth: the non-optional getters return silently when the main
-      // Dex session exists and trigger the single main SSO login when it is
-      // gone -- the only popup a broker-backed cluster ever causes. A
-      // declined/failed login surfaces as a typed session-expired error.
-      let idToken: Awaited<ReturnType<typeof mainAuthApi.getIdToken>>;
-      let identity: Awaited<
-        ReturnType<typeof mainAuthApi.getBackstageIdentity>
-      >;
+      // Auto re-auth, only when a person acts: the interactive getters return
+      // silently when the main Dex session exists and trigger the single main
+      // SSO login when it is gone -- the only popup a broker-backed cluster
+      // ever causes. A background read (a poll, a refetch, a probe) takes the
+      // optional path instead, which refreshes silently where it can and ends
+      // as session-expired without prompting. A declined/failed login
+      // surfaces as the same typed session-expired error.
+      const optional = !this.hasUserGesture();
+      // A sign-in a person's read opens is named as the mint's
+      // (`data-login-requested-by`), apart from the portal fetch's.
+      const askMainLogin = async () => ({
+        idToken: await mainAuthApi.getIdToken({ optional }),
+        identity: await mainAuthApi.getBackstageIdentity({ optional }),
+      });
+      let main: Awaited<ReturnType<typeof askMainLogin>>;
       try {
-        idToken = await mainAuthApi.getIdToken();
-        identity = await mainAuthApi.getBackstageIdentity();
+        main = await (optional
+          ? askMainLogin()
+          : asLoginRequestCaller('cluster-token-mint', askMainLogin));
       } catch (error) {
         throw new ClusterTokenError(
           installationName,
@@ -318,6 +337,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
           'Main session expired and re-login did not complete',
         );
       }
+      const { idToken, identity } = main;
       if (!idToken || !identity) {
         throw new ClusterTokenError(installationName, 'session-expired');
       }
@@ -602,7 +622,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       this.githubAuthApi = OAuth2.create({
         authConnector: new GithubGrantAuthConnector({
           backendBaseUrl,
-          mainAuthApi,
+          mainAuthApi: asLoginRequestCallerApi('github-grant', mainAuthApi),
         }),
         // What the portal's plugins ask for (see the app's github-auth
         // factory); echoed by the connector, since a GitHub App user token

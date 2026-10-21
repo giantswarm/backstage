@@ -1,4 +1,4 @@
-import { useId, type ChangeEvent } from 'react';
+import { useId, type ChangeEvent, type FocusEvent } from 'react';
 import { FieldLabel } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { FieldErrorText } from '../FieldValidation';
@@ -70,6 +70,9 @@ export type TextAreaFieldProps = {
   maxLength?: number;
   /** Marks the field invalid and says why, right under it. */
   error?: string;
+  /** For `useFieldValidation`'s `blurProps`. */
+  onFocus?: (event: FocusEvent<Element>) => void;
+  onBlur?: (event: FocusEvent<Element>) => void;
 };
 
 /**
@@ -92,6 +95,8 @@ export function TextAreaField(props: TextAreaFieldProps) {
     mono = false,
     maxLength,
     error,
+    onFocus,
+    onBlur,
   } = props;
   const counterId = `${id}-counter`;
   const errorId = `${id}-error`;
@@ -99,6 +104,12 @@ export function TextAreaField(props: TextAreaFieldProps) {
     [maxLength !== undefined && counterId, error && errorId]
       .filter(Boolean)
       .join(' ') || undefined;
+  // Past the limit, the error appears while the person types — the one live
+  // check the counter makes — so it is announced as it appears. Other errors
+  // appear on leaving the field or on submit, which useFieldValidation
+  // announces or focuses.
+  const overLimit =
+    maxLength !== undefined && characterCount(value) > maxLength;
 
   return (
     <div className={classes.root}>
@@ -121,9 +132,11 @@ export function TextAreaField(props: TextAreaFieldProps) {
         onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
           onChange(e.target.value)
         }
+        onFocus={onFocus}
+        onBlur={onBlur}
       />
       {error && (
-        <FieldErrorText id={errorId} role="alert">
+        <FieldErrorText id={errorId} role={overLimit ? 'alert' : undefined}>
           {error}
         </FieldErrorText>
       )}

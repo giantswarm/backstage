@@ -60,6 +60,56 @@ describe('KagentApiClient', () => {
     getCredentials.mockResolvedValue({ token: 'dex-token' });
   });
 
+  describe('listSessionsIfComplete', () => {
+    const record = (id: string) => ({
+      id,
+      name: id,
+      agent: { namespace: 'kagent', name: 'sre-agent' },
+      creator: 'dev@lab.local',
+    });
+
+    it('returns every session of a complete listing', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ sessions: [record('a'), record('b')] }),
+      );
+
+      const sessions = await buildClient().listSessionsIfComplete('gazelle');
+
+      expect(sessions?.map(session => session.sessionId)).toEqual(['a', 'b']);
+    });
+
+    it('returns an empty list for a person without sessions', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}));
+
+      await expect(
+        buildClient().listSessionsIfComplete('gazelle'),
+      ).resolves.toEqual([]);
+    });
+
+    it.each`
+      read                     | body
+      ${'skipped rows'}        | ${{ sessions: [record('a'), { name: 'no id' }] }}
+      ${'a truncated listing'} | ${{ sessions: [record('a')], truncated: true }}
+      ${'an unparseable body'} | ${'<html>'}
+    `('returns nothing for $read', async ({ body }) => {
+      fetchMock.mockResolvedValue(jsonResponse(body));
+
+      await expect(
+        buildClient().listSessionsIfComplete('gazelle'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws as listSessions does on an in-band error', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: true, data: null, message: 'database down' }),
+      );
+
+      await expect(
+        buildClient().listSessionsIfComplete('gazelle'),
+      ).rejects.toThrow('database down');
+    });
+  });
+
   describe('listSessions', () => {
     it('targets the installation and forwards the minted token', async () => {
       fetchMock.mockResolvedValue(jsonResponse(v0_9_9));
@@ -683,6 +733,22 @@ describe('KagentApiClient', () => {
       });
     });
 
+    it('carries the images of a message, and no images key without any', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+      const images = [
+        { mediaType: 'image/png' as const, data: 'iVBORw0K', name: 'a.png' },
+      ];
+
+      await buildClient().sendMessage('gazelle', 'abc123', AGENT, {
+        ...MESSAGE,
+        images,
+      });
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).images).toEqual(
+        images,
+      );
+    });
+
     it('sends the agent’s real names rather than anything decoded', async () => {
       // kagent's stored `agent_id` rewrites every `-` to `_`, so a name containing
       // an underscore cannot be recovered from it. These come from the Agent
@@ -1102,13 +1168,19 @@ describe('KagentApiClient', () => {
   });
 
   describe('getIdentity', () => {
-    it('reads the subject kagent resolved', async () => {
+    it('reads the subject and the email kagent resolved', async () => {
+      // kagent 1.19 answers the token's claims: Dex's opaque subject, and the
+      // email agent-manager records as an agent's creator.
       fetchMock.mockResolvedValue(
-        jsonResponse({ sub: 'marian@giantswarm.io' }),
+        jsonResponse({
+          sub: 'CiQxYjFlYjVmMS0SBWxvY2Fs',
+          email: 'dev@lab.local',
+        }),
       );
 
       await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
-        sub: 'marian@giantswarm.io',
+        sub: 'CiQxYjFlYjVmMS0SBWxvY2Fs',
+        email: 'dev@lab.local',
       });
     });
 
@@ -1148,7 +1220,26 @@ describe('KagentApiClient', () => {
 
       await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
         sub: undefined,
+        email: 'marian@example.com',
       });
+    });
+  });
+
+  describe('listAgentNamespaces', () => {
+    it('asks the backend as the person and answers the namespaces', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ namespaces: ['kagent', 'org-a'] }),
+      );
+
+      await expect(
+        buildClient().listAgentNamespaces('gazelle'),
+      ).resolves.toEqual(['kagent', 'org-a']);
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain(
+        '/kagent/agent-namespaces?installation=gazelle',
+      );
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBeDefined();
     });
   });
 

@@ -8,6 +8,7 @@ import {
 
 import type {
   AgentManagerAgent,
+  AgentPluginEntry,
   AgentSkillEntry,
   WriteMode,
 } from '../../lib/agentManager';
@@ -22,6 +23,12 @@ import { egressProblem, parseEgressText } from '../../lib/egress';
 import type { HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
+  DiscoveredPlugin,
+  pluginEntryKey,
+  pluginId,
+  SelectedPlugin,
+} from '../../lib/plugins';
+import {
   normalizeSelection,
   toggleSelector,
   toolsetProblems,
@@ -32,6 +39,18 @@ export type NewAgentFormState = {
   slug: string;
   description: string;
   installation: string | undefined;
+  /**
+   * Creating only: the tenants (namespaces) on the installation in which the
+   * person may create an agent, as agent-manager's `get_info` answers them
+   * for the caller (`namespaces.managed`, a `SelfSubjectAccessReview` per
+   * namespace). `undefined` until it has answered: then nothing is required.
+   */
+  tenantChoices?: string[];
+  /**
+   * Creating only: the tenant, one of {@link tenantChoices}, the agent is
+   * created in -- the namespace its model, Harness and release live in.
+   */
+  tenant?: string;
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
   /**
@@ -67,6 +86,16 @@ export type NewAgentFormState = {
    * empty when creating.
    */
   keptSkills: AgentSkillEntry[];
+  /**
+   * The plugins the person picked, in selection order, each at the commit the
+   * skills step showed (an edited agent's at its pin). Optional.
+   */
+  selectedPlugins: SelectedPlugin[];
+  /**
+   * Editing only: the agent's plugins no configured repository lists, kept
+   * exactly as pinned until removed. Always empty when creating.
+   */
+  keptPlugins: AgentPluginEntry[];
   /**
    * The agent's toolset as selected: inline selectors (`preset:`, `server:`,
    * `workflow:`, `tool:`), in selection order. Starts empty on purpose —
@@ -114,6 +143,13 @@ export type NewAgentFormContextValue = {
   setSlug: (slug: string) => void;
   setDescription: (description: string) => void;
   setInstallation: (installation: string | undefined) => void;
+  /**
+   * Sets {@link NewAgentFormState.tenantChoices}. A tenant picked before
+   * stays when it is still a choice; otherwise the only choice is picked.
+   */
+  setTenantChoices: (choices: string[]) => void;
+  /** Picks the tenant; a model of another namespace is dropped. */
+  selectTenant: (tenant: string) => void;
   selectModelConfig: (
     name: string,
     namespace: string,
@@ -127,6 +163,15 @@ export type NewAgentFormContextValue = {
   toggleSkill: (skill: DiscoveredSkill) => void;
   /** Editing only: drops one of the kept skills (see `keptSkills`). */
   removeKeptSkill: (skill: AgentSkillEntry) => void;
+  /** A Claude Code plugin: adds it if not picked, removes it if picked. */
+  togglePlugin: (plugin: DiscoveredPlugin) => void;
+  /**
+   * An Agent Plugins package: enables or disables one of its skills. The
+   * package is picked while at least one of its skills is enabled.
+   */
+  togglePluginSkill: (plugin: DiscoveredPlugin, skill: string) => void;
+  /** Editing only: drops one of the kept plugins (see `keptPlugins`). */
+  removeKeptPlugin: (plugin: AgentPluginEntry) => void;
   /**
    * Adds the selector if absent, removes it if present. `preset:full` replaces
    * the whole selection and adding anything else drops it; `preset:none` clears
@@ -178,7 +223,13 @@ export type NewAgentFormContextValue = {
 
 /** The step-1 fields a validation problem can belong to. */
 export type NewAgentField =
-  'name' | 'systemMessage' | 'installation' | 'model' | 'slug' | 'egress';
+  | 'name'
+  | 'systemMessage'
+  | 'installation'
+  | 'tenant'
+  | 'model'
+  | 'slug'
+  | 'egress';
 
 export type NewAgentFieldErrors = Partial<Record<NewAgentField, string>>;
 
@@ -198,6 +249,8 @@ const initialState: NewAgentFormState = {
   egressText: '',
   selectedSkills: [],
   keptSkills: [],
+  selectedPlugins: [],
+  keptPlugins: [],
   toolset: [],
   // A new agent starts at the Tools step's *Nothing outside the chat* (T81):
   // nothing the author did not consciously add.
@@ -225,9 +278,36 @@ function hasCreateInput(state: NewAgentFormState): boolean {
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
     state.selectedSkills.length > 0 ||
+    state.selectedPlugins.length > 0 ||
     state.toolset.length > 0 ||
     state.toolsChatOnly !== initialState.toolsChatOnly
   );
+}
+
+/**
+ * The state with `tenant` picked: the agent's namespace, so a model (and the
+ * Harness it brought) of another namespace is dropped, and the model picker
+ * preselects the tenant's default instead.
+ */
+function withTenant(
+  state: NewAgentFormState,
+  tenant: string | undefined,
+): NewAgentFormState {
+  if (state.tenant === tenant) {
+    return state;
+  }
+  if (!state.modelConfigNamespace || state.modelConfigNamespace === tenant) {
+    return { ...state, tenant };
+  }
+  return {
+    ...state,
+    tenant,
+    modelConfigName: undefined,
+    modelConfigNamespace: undefined,
+    modelDisplayName: undefined,
+    harness: undefined,
+    droppedHarness: state.harness?.name ?? state.droppedHarness,
+  };
 }
 
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
@@ -261,7 +341,7 @@ export function NewAgentFormProvider({
     fieldErrors.systemMessage = systemMessageProblem(state.systemMessage);
     fieldErrors.egress = egressProblem(parseEgressText(state.egressText));
     if (!state.name.trim()) {
-      fieldErrors.name = 'Name is required';
+      fieldErrors.name = 'Enter a name for the agent.';
     }
     if (state.slug.trim()) {
       // The slug is emitted verbatim as a k8s object name — reject anything that
@@ -272,13 +352,20 @@ export function NewAgentFormProvider({
       }
     } else if (state.name.trim()) {
       // Only flag a missing slug once there's a name (it derives from the name).
-      fieldErrors.slug = 'Technical name is required';
+      fieldErrors.slug = 'Enter a technical name.';
     }
     if (!state.installation) {
-      fieldErrors.installation = 'Select an environment';
+      fieldErrors.installation = 'Choose an environment.';
+    }
+    if (!edit && state.installation && state.tenantChoices) {
+      if (state.tenantChoices.length === 0) {
+        fieldErrors.tenant = `You may create agents in no tenant on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
+      } else if (!state.tenant) {
+        fieldErrors.tenant = 'Choose a tenant.';
+      }
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
-      fieldErrors.model = 'Select a model';
+      fieldErrors.model = 'Choose a model.';
     }
     // The list keeps its historical order (the summary's, and the tests').
     const validationErrors = (
@@ -288,6 +375,7 @@ export function NewAgentFormProvider({
         'name',
         'slug',
         'installation',
+        'tenant',
         'model',
       ] as const
     )
@@ -328,18 +416,40 @@ export function NewAgentFormProvider({
         setState(prev => ({
           ...prev,
           installation,
+          tenantChoices: undefined,
+          tenant: undefined,
           modelConfigName: undefined,
           modelConfigNamespace: undefined,
           modelDisplayName: undefined,
           harness: undefined,
           droppedHarness: prev.harness?.name ?? prev.droppedHarness,
         })),
+      setTenantChoices: choices =>
+        setState(prev => {
+          if (
+            prev.tenantChoices?.join(',') === choices.join(',') &&
+            (prev.tenant === undefined || choices.includes(prev.tenant))
+          ) {
+            return prev;
+          }
+          let tenant = prev.tenant;
+          if (!tenant || !choices.includes(tenant)) {
+            tenant = choices.length === 1 ? choices[0] : undefined;
+          }
+          return withTenant({ ...prev, tenantChoices: choices }, tenant);
+        }),
+      selectTenant: tenant => setState(prev => withTenant(prev, tenant)),
       // The ModelConfig's namespace is the agent's, and an Agent names a
       // Harness of its own namespace, so a model in another namespace drops
-      // the Harness pick.
+      // the Harness pick. A model outside the picked tenant is not taken: a
+      // preselection made before the tenant was known would create the agent
+      // in the model's namespace instead (#3189).
       selectModelConfig: (name, namespace, displayName) =>
-        setState(prev =>
-          prev.modelConfigNamespace === namespace
+        setState(prev => {
+          if (prev.tenant !== undefined && prev.tenant !== namespace) {
+            return prev;
+          }
+          return prev.modelConfigNamespace === namespace
             ? { ...prev, modelConfigName: name, modelDisplayName: displayName }
             : {
                 ...prev,
@@ -348,8 +458,8 @@ export function NewAgentFormProvider({
                 modelDisplayName: displayName,
                 harness: undefined,
                 droppedHarness: prev.harness?.name ?? prev.droppedHarness,
-              },
-        ),
+              };
+        }),
       selectHarness: harness =>
         setState(prev => ({ ...prev, harness, droppedHarness: undefined })),
       setSystemMessage: systemMessage =>
@@ -391,6 +501,57 @@ export function NewAgentFormProvider({
           ...prev,
           keptSkills: prev.keptSkills.filter(
             kept => skillEntryKey(kept) !== skillEntryKey(skill),
+          ),
+        })),
+      togglePlugin: plugin =>
+        setState(prev => {
+          const id = pluginId(plugin);
+          const isSelected = prev.selectedPlugins.some(
+            selected => pluginId(selected.plugin) === id,
+          );
+          return {
+            ...prev,
+            selectedPlugins: isSelected
+              ? prev.selectedPlugins.filter(
+                  selected => pluginId(selected.plugin) !== id,
+                )
+              : [...prev.selectedPlugins, { plugin, skills: [] }],
+          };
+        }),
+      togglePluginSkill: (plugin, skill) =>
+        setState(prev => {
+          const id = pluginId(plugin);
+          const current = prev.selectedPlugins.find(
+            selected => pluginId(selected.plugin) === id,
+          );
+          if (!current) {
+            return {
+              ...prev,
+              selectedPlugins: [
+                ...prev.selectedPlugins,
+                { plugin, skills: [skill] },
+              ],
+            };
+          }
+          const skills = current.skills.includes(skill)
+            ? current.skills.filter(name => name !== skill)
+            : [...current.skills, skill];
+          return {
+            ...prev,
+            // A package with nothing enabled loads nothing: it is unpicked.
+            selectedPlugins:
+              skills.length === 0
+                ? prev.selectedPlugins.filter(selected => selected !== current)
+                : prev.selectedPlugins.map(selected =>
+                    selected === current ? { ...selected, skills } : selected,
+                  ),
+          };
+        }),
+      removeKeptPlugin: plugin =>
+        setState(prev => ({
+          ...prev,
+          keptPlugins: prev.keptPlugins.filter(
+            kept => pluginEntryKey(kept) !== pluginEntryKey(plugin),
           ),
         })),
       reset: () => {

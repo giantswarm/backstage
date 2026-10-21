@@ -18,6 +18,6 @@ export const PlansApiOverride = ApiBlueprint.make({
       api: plansAuthApiRef,
       deps: { gsAuthProvidersApi: gsAuthProvidersApiRef },
       factory: ({ gsAuthProvidersApi }) =>
-        new PlansMainAuth(getOptionalMainAuthApi(gsAuthProvidersApi)),
+        new PlansMainAuth(getOptionalMainAuthApi(gsAuthProvidersApi, 'plans')),
     }),
 });

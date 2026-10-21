@@ -19,7 +19,8 @@ import {
  * their destructive actions — Remove pool, Remove cache — live in each row's
  * ⋯ menu ("Actions for pool …" / "Actions for cache …") instead of the
  * desktop table's buttons (`gpu-node-pool.spec.ts`). cluster-manager stubbed
- * at the browser as there (the lab serves no Cluster API).
+ * at the browser as there (the lab serves no Cluster API), so these run on any
+ * lab, with or without cluster-manager.
  */
 
 async function openHosting(
@@ -31,16 +32,11 @@ async function openHosting(
   await installPersistedQueryDrop(page);
   await dropPersistedQueriesOnNextLoad(page);
   const calls = await stubClusterManager(page, options);
-  await open(page, `/agent-platform/models/${tab}`);
+  await open(page, `/customize/models/hosting/${tab}`);
   return calls;
 }
 
 test.describe('models on a phone (cluster-manager stubbed)', () => {
-  test.skip(
-    !process.env.AGENTLAB_CLUSTER_MANAGER,
-    'needs a lab with cluster-manager registered in muster; set AGENTLAB_CLUSTER_MANAGER=1',
-  );
-
   test('a GPU pool is a stacked row whose ⋯ menu removes it', async ({
     page,
   }) => {
@@ -114,8 +110,8 @@ test('the hosting header is one button and a ⋯ menu on a phone', async ({
   admin,
 }) => {
   for (const path of [
-    '/agent-platform/models/serving',
-    '/agent-platform/models/capacity',
+    '/customize/models/hosting',
+    '/customize/models/hosting/capacity',
   ]) {
     await open(admin, path);
     await expect(admin.getByRole('heading', { level: 1 })).toBeVisible();

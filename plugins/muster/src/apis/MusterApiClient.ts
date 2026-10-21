@@ -35,6 +35,7 @@ import {
   MusterInstallationsResponse,
   ServerSignInResult,
   ServerSignOutResult,
+  SignInTarget,
   MusterToolProgress,
   ToolDetail,
   WorkflowExecution,
@@ -93,6 +94,12 @@ const MAIN_LOGIN_PROVIDER = 'main';
  * `token has expired for workspace-manager, re-authenticate to refresh: …`.
  */
 const MUSTER_TOKEN_EXPIRED = /token has expired\b.*\bre-authenticate/i;
+
+/** How a request gets its token (see `resolveToken`). */
+type TokenOptions = {
+  /** A background read: never asks the person to sign in. */
+  silent?: boolean;
+};
 
 function isStringArray(value: unknown): value is string[] {
   return (
@@ -200,14 +207,22 @@ export class MusterApiClient implements MusterApi {
   }
 
   async getMcpUsage(
-    options: { installation?: string; hours?: number; window?: 'month' } = {},
+    options: {
+      installation?: string;
+      hours?: number;
+      servers?: readonly string[];
+      tool?: string;
+    } = {},
   ): Promise<McpUsage> {
     const searchParams = new URLSearchParams();
     if (options.hours !== undefined) {
       searchParams.set('hours', String(options.hours));
     }
-    if (options.window !== undefined) {
-      searchParams.set('window', options.window);
+    for (const server of options.servers ?? []) {
+      searchParams.append('server', server);
+    }
+    if (options.tool !== undefined) {
+      searchParams.set('tool', options.tool);
     }
     const query = searchParams.toString();
     return this.get<McpUsage>(
@@ -392,27 +407,29 @@ export class MusterApiClient implements MusterApi {
   }
 
   async getAuthStatus(installation?: string): Promise<AuthStatusResponse> {
-    return this.get<AuthStatusResponse>('/auth/status', installation);
+    return this.get<AuthStatusResponse>('/auth/status', installation, {
+      silent: true,
+    });
   }
 
   async signInServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignInResult> {
     return this.post<ServerSignInResult>(
       '/auth/login',
-      { server },
+      typeof server === 'string' ? { server } : server,
       installation,
     );
   }
 
   async signOutServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignOutResult> {
     return this.post<ServerSignOutResult>(
       '/auth/logout',
-      { server },
+      typeof server === 'string' ? { server } : server,
       installation,
     );
   }
@@ -523,8 +540,9 @@ export class MusterApiClient implements MusterApi {
 
   private async getAuthHeaders(
     installation?: string,
+    options: TokenOptions = {},
   ): Promise<Record<string, string>> {
-    const token = await this.resolveToken(installation);
+    const token = await this.resolveToken(installation, options);
     return token ? { [MUSTER_AUTH_HEADER]: token } : {};
   }
 
@@ -547,13 +565,29 @@ export class MusterApiClient implements MusterApi {
    *
    * Throws {@link MusterTokenMintError} when the token cannot be obtained, so
    * callers can tell "no token could be minted" from muster's own 401.
+   *
+   * `silent` answers from the current portal session only: it is refreshed
+   * quietly if it can be, and a gone session fails as session-expired before
+   * anything could open the interactive login dialog (the mint, the fetch's
+   * own identity header). Once the quiet check holds a token, the session is
+   * live and the steps after it answer without asking either.
    */
   private async resolveToken(
     installation?: string,
+    options: TokenOptions = {},
   ): Promise<string | undefined> {
     const required = await this.requiresToken(installation);
     if (!required) {
       return undefined;
+    }
+    if (options.silent && this.authProvidersApi) {
+      const { token } = await this.authProvidersApi.getCredentials(
+        required.authProvider,
+        { optional: true },
+      );
+      if (!token || isIdTokenExpired(token)) {
+        throw sessionExpiredError(installation);
+      }
     }
     if (installation && !(await this.isHomeInstallation(installation))) {
       return this.mintInstallationToken(installation);
@@ -620,9 +654,13 @@ export class MusterApiClient implements MusterApi {
    * several are configured (appended as `?installation=`); it is preserved
    * alongside any query string already present in `path`.
    */
-  private async get<T>(path: string, installation?: string): Promise<T> {
+  private async get<T>(
+    path: string,
+    installation?: string,
+    options: TokenOptions = {},
+  ): Promise<T> {
     const url = await this.buildUrl(path, installation);
-    const headers = await this.getAuthHeaders(installation);
+    const headers = await this.getAuthHeaders(installation, options);
     const response = await this.fetchApi.fetch(url, { headers });
     return this.handleResponse<T>(response, installation);
   }

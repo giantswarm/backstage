@@ -36,6 +36,13 @@ export type KagentCapabilities = {
    * treat `undefined` as "stay silent" rather than as either answer.
    */
   isUserScoped?: boolean;
+  /**
+   * The signed-in person as agent-manager records an agent's creator
+   * (`agent-platform.giantswarm.io/created-by`): the token's email, else its
+   * subject. Set when sessions are scoped to them (`isUserScoped`); "created
+   * by me" compares with it.
+   */
+  caller?: string;
 };
 
 /** Capabilities assumed before (or instead of) a successful probe: claim nothing. */

@@ -226,8 +226,19 @@ describe('createRouter', () => {
   });
 
   it.each([
-    ['a window other than the month', '/usage?window=week'],
-    ['both hours and a window', '/usage?hours=24&window=month'],
+    ['too many hours', '/usage?hours=2161'],
+    // Gone: a stale client must not read 24 hours as the month.
+    ['the month window', '/usage?window=month'],
+    ['a server that is not a resource name', '/usage?server=a%22b'],
+    ['an empty server', '/usage?server='],
+    ['a tool with a control character', '/usage?tool=a%0Ab'],
+    ['an overlong tool', `/usage?tool=${'t'.repeat(513)}`],
+    ['an empty tool', '/usage?tool='],
+    ['two tools', '/usage?tool=a&tool=b'],
+    [
+      'more servers than a read may name',
+      `/usage?${Array.from({ length: 257 }, (_, i) => `server=s${i}`).join('&')}`,
+    ],
   ])('rejects usage with %s', async (_, path) => {
     const response = await request(app).get(path);
 
@@ -236,20 +247,82 @@ describe('createRouter', () => {
   });
 
   it.each([
-    ['/usage?window=month', 'month'],
     ['/usage?hours=72', 72],
     ['/usage', 24],
-  ])('reads %s as the range %s', async (path, range) => {
+  ])(
+    'reads %s as the last %s hours of every connector',
+    async (path, hours) => {
+      mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+      const response = await request(app).get(path);
+
+      expect(response.status).toBe(200);
+      expect(mockGetMcpUsage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        hours,
+        [],
+        undefined,
+      );
+    },
+  );
+
+  it('takes any tool name muster may expose, left to the escaping', async () => {
     mockGetMcpUsage.mockResolvedValueOnce({ available: false });
 
-    const response = await request(app).get(path);
+    const response = await request(app).get(
+      `/usage?tool=${encodeURIComponent('x_legacy_get:item@v1 "a"}')}`,
+    );
 
     expect(response.status).toBe(200);
     expect(mockGetMcpUsage).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      range,
+      24,
+      [],
+      'x_legacy_get:item@v1 "a"}',
+    );
+  });
+
+  it('narrows usage to one tool of a connector', async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+    const response = await request(app).get(
+      '/usage?hours=720&server=kagi&tool=x_kagi_search',
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      720,
+      ['kagi'],
+      'x_kagi_search',
+    );
+  });
+
+  it("narrows usage to every server named, past the query parser's 20 repeats", async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+    const servers = Array.from(
+      { length: 25 },
+      (_, i) => `mc${i}-mcp-kubernetes`,
+    );
+
+    const response = await request(app).get(
+      `/usage?hours=720&${servers.map(name => `server=${name}`).join('&')}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      720,
+      servers,
+      undefined,
     );
   });
 
@@ -903,6 +976,38 @@ describe('createRouter', () => {
 
     it('requires a server name', async () => {
       const response = await login({});
+
+      expect(response.status).toBe(400);
+      expect(callToolWithStructured).not.toHaveBeenCalled();
+    });
+
+    it("starts the grant of a provider App with muster's app argument", async () => {
+      callToolWithStructured.mockResolvedValue({
+        text: "Authentication required for 'github'.",
+        structuredContent: {
+          app: 'github',
+          authUrl:
+            'https://muster.gazelle.example.io/oauth/proxy/start?state=app',
+        },
+      });
+
+      const response = await login({ app: 'github' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'auth_required',
+        authUrl:
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=app',
+      });
+      expect(callToolWithStructured).toHaveBeenCalledWith(
+        'core_auth_login',
+        { app: 'github' },
+        { authToken: TOKEN },
+      );
+    });
+
+    it('refuses a body naming both a server and an app', async () => {
+      const response = await login({ server: 'pro', app: 'github' });
 
       expect(response.status).toBe(400);
       expect(callToolWithStructured).not.toHaveBeenCalled();

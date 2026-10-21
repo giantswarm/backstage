@@ -47,6 +47,7 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
         commit: '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b',
       },
     ],
+    plugins: [],
     isLoading: false,
     error: null,
     hasRepositories: true,
@@ -114,9 +115,18 @@ jest.mock('../../hooks/useToolsetResolution', () => ({
     status: 'resolved',
   }),
 }));
+/** The HelmRelease verbs the person may not use on the agent's release. */
+let mockDeniedVerbs = new Set<string>();
+afterEach(() => {
+  mockDeniedVerbs = new Set();
+});
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: () => ({ resources: [], isLoading: false, errors: [] }),
+  useSelfSubjectAccessReview: (
+    _cluster: string,
+    attributes: { verb: string },
+  ) => ({ allowed: !mockDeniedVerbs.has(attributes.verb), isLoading: false }),
 }));
 // The review fold-out's targeted ModelConfig read: what the agent's model runs.
 jest.mock('../../hooks/useUnderlyingModel', () => ({
@@ -174,6 +184,10 @@ const PULL_REQUEST = 'https://github.com/giantswarm/agents/pull/42';
 
 type Scenario = {
   agent?: AgentManagerAgent;
+  /** What `get_agent` fails with, as agent-manager answers a refused read. */
+  getAgentError?: string;
+  /** muster's session is not connected to agent-manager: every tool fails. */
+  notConnected?: boolean;
   info?: Partial<AgentManagerInfo>;
   violations?: string[];
   /** What `/installations` reports for gazelle; true unless said otherwise. */
@@ -184,10 +198,16 @@ function makeMusterApi(scenario: Scenario = {}) {
   const agent = scenario.agent ?? AGENT;
   const callTool = jest.fn(
     async (name: string, args: Record<string, unknown>) => {
+      if (scenario.notConnected) {
+        throw new Error('server agent-manager not connected');
+      }
       switch (name) {
         case 'x_agent-manager_get_info':
           return { ...INFO, ...scenario.info };
         case 'x_agent-manager_get_agent':
+          if (scenario.getAgentError) {
+            throw new Error(scenario.getAgentError);
+          }
           return agent;
         case 'x_agent-manager_get_agent_status':
           return { agent: { generation: 3 } };
@@ -247,7 +267,7 @@ function makeMusterApi(scenario: Scenario = {}) {
   };
 }
 
-const BASE = '/agent-platform/agents/edit/gazelle/kagent/pr-reviewer';
+const BASE = '/customize/agents/gazelle/kagent/pr-reviewer/edit';
 
 function DetailProbe() {
   const location = useLocation();
@@ -276,11 +296,11 @@ async function renderEdit(path: string, scenario: Scenario = {}) {
         <PageHeaderActionsProvider>
           <Routes>
             <Route
-              path="/agent-platform/agents/edit/:installation/:namespace/:name/*"
+              path="/customize/agents/:installation/:namespace/:name/edit/*"
               element={<EditAgentPage />}
             />
             <Route
-              path="/agent-platform/agents/:installation/:namespace/:name"
+              path="/customize/agents/:installation/:namespace/:name"
               element={<DetailProbe />}
             />
           </Routes>
@@ -289,7 +309,7 @@ async function renderEdit(path: string, scenario: Scenario = {}) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+      mountedRoutes: { '/customize/agents': agentsRouteRef },
     },
   );
   return { callTool };
@@ -378,7 +398,7 @@ describe('EditAgentPage', () => {
     expect(within(runtime).queryByRole('radio')).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        'Choose what runs the agent. It cannot be changed once the agent exists.',
+        "What runs the agent. Change it with Change Harness in the Agent actions menu on the agent's page.",
       ),
     ).toBeInTheDocument();
   });
@@ -638,6 +658,53 @@ describe('EditAgentPage', () => {
       await screen.findByText('This agent cannot be edited from here'),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+  });
+
+  it('has no form for a person who may not update the agent’s release, and says whose role may', async () => {
+    mockDeniedVerbs = new Set(['update']);
+    await renderEdit(BASE);
+
+    expect(
+      await screen.findByText('You cannot change this agent'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/needs the agent-platform:editor role/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+  });
+
+  it('refuses a person who may not update the agent’s release, rather than reporting the read their role does not allow', async () => {
+    // agent-platform:user may not get HelmReleases, so agent-manager's
+    // get_agent fails as them before the page knows the agent.
+    mockDeniedVerbs = new Set(['update']);
+    await renderEdit(BASE, {
+      getAgentError:
+        'get helmrelease kagent/pr-reviewer: helmreleases.helm.toolkit.fluxcd.io "pr-reviewer" is forbidden: User "oidc:alice@lab.local" cannot get resource "helmreleases"',
+    });
+
+    expect(
+      await screen.findByText('You cannot change this agent'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Changing the agents of platform needs the agent-platform:editor role/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('agent-manager could not read this agent'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('asks to connect to agent-manager first where muster is not connected, whatever the access review says', async () => {
+    mockDeniedVerbs = new Set(['update']);
+    await renderEdit(BASE, { notConnected: true });
+
+    expect(
+      await screen.findByText(/server agent-manager not connected/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('You cannot change this agent'),
+    ).not.toBeInTheDocument();
   });
 
   it('has no form, and says why, where muster runs under its shared identity', async () => {

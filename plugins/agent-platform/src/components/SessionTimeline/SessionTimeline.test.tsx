@@ -1,6 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 
 import {
   buildTimeline,
@@ -21,6 +22,10 @@ import {
   tasksRuntimeLost,
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
+import {
+  mockCollapsibleLayout,
+  type MockedCollapsibleLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 function timelineFor(fixture: unknown) {
   return buildTimeline(normalizeTaskList(fixture).tasks);
@@ -1523,5 +1528,289 @@ describe('TimelineEntry — the connector of a tool call (UX review M2)', () => 
       name: /x_agentlab-mcp-kubernetes_get_pods/,
     });
     expect(row).toHaveTextContent('via Muster');
+  });
+});
+
+describe('SessionTimeline — a long user message', () => {
+  // jsdom lays nothing out: one line of the bubble's text per line of the
+  // message, and the cut's ten `lh` as ten of them.
+  let layout: MockedCollapsibleLayout;
+  beforeEach(() => {
+    layout = mockCollapsibleLayout();
+  });
+  afterEach(() => layout.restore());
+
+  const lines = (count: number, prefix = 'line') =>
+    Array.from({ length: count }, (_, i) => `${prefix} ${i + 1}`).join('\n');
+  const base = { taskIndex: 0, at: '2026-10-16T10:00:00Z' };
+  const timeline = (items: TimelineItem[]): Timeline => ({
+    items,
+    tokens: { total: 0, prompt: 0, completion: 0 },
+    skippedMessages: 0,
+  });
+
+  async function renderItems(items: TimelineItem[]) {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline(items)}
+        agentName="Issue tracker"
+        isAgentWorking={false}
+      />,
+    );
+  }
+
+  /** A timeline the test can replace, as a poll does. */
+  async function renderChanging(first: TimelineItem[]) {
+    let replace: (items: TimelineItem[]) => void = () => {};
+    function Harness() {
+      const [items, setItems] = useState(first);
+      replace = setItems;
+      return (
+        <SessionTimeline
+          timeline={timeline(items)}
+          agentName="Issue tracker"
+          isAgentWorking={false}
+        />
+      );
+    }
+    await renderInTestApp(<Harness />);
+    return (items: TimelineItem[]) => act(() => replace(items));
+  }
+
+  it('cuts it to ten lines behind Show more, and opens and closes it in place', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(40) },
+    ]);
+
+    const toggle = screen.getByRole('button', { name: 'Show more' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const region = panelFor(toggle);
+    // Ten lines of the bubble's own text, at whatever size the browser sets.
+    expect(region.style.maxHeight).toBe('10lh');
+    // Cut, not removed: the whole message stays in the page for a screen
+    // reader and for copying.
+    expect(region).toHaveTextContent('line 40');
+    // In the bubble, under the cut: after it, never over it.
+    const bubble = screen.getByTestId('user-message-bubble');
+    expect(bubble).toContainElement(toggle);
+    expect(region).not.toContainElement(toggle);
+    expect(
+      region.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await userEvent.click(toggle);
+    const less = screen.getByRole('button', { name: 'Show less' });
+    expect(less).toHaveAttribute('aria-expanded', 'true');
+    expect(panelFor(less).style.maxHeight).toBe('');
+    // At the end of the opened text, in the bubble still.
+    expect(bubble).toContainElement(less);
+    expect(panelFor(less)).not.toContainElement(less);
+
+    await userEvent.click(less);
+    expect(screen.getByRole('button', { name: 'Show more' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('opens from the keyboard', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(40) },
+    ]);
+
+    screen.getByRole('button', { name: 'Show more' }).focus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('shows a message that fits whole, with no control', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(10) },
+    ]);
+
+    expect(screen.getByText(/line 10/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show more' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows whole a message only a line or two past the cut', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: lines(12) },
+    ]);
+
+    expect(screen.getByText(/line 12/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show more' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps each message open or closed on its own', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u1', text: lines(40, 'first') },
+      { ...base, kind: 'agent-message', id: 'a1', text: 'Noted.' },
+      {
+        ...base,
+        taskIndex: 1,
+        kind: 'user-message',
+        id: 'u2',
+        text: lines(40, 'second'),
+      },
+    ]);
+
+    const [first, second] = screen.getAllByRole('button', {
+      name: 'Show more',
+    });
+    await userEvent.click(second);
+
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    expect(second).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('stays open when kagent’s copy of a sent message replaces the optimistic one', async () => {
+    const text = lines(40);
+    const replace = await renderChanging([
+      {
+        ...base,
+        kind: 'user-message',
+        id: 'pending:m1',
+        messageId: 'm1',
+        text,
+      },
+    ]);
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    // The poll's item: the same message under a positional key.
+    replace([
+      { ...base, kind: 'user-message', id: '0:0:0', messageId: 'm1', text },
+    ]);
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('stays open while its turn is out of the window and back', async () => {
+    const turn = (index: number): TimelineItem[] => [
+      {
+        ...base,
+        taskIndex: index,
+        kind: 'user-message',
+        id: `${index}:u`,
+        messageId: `m${index}`,
+        text: index === 0 ? lines(40, 'opener') : `Q${index}?`,
+      },
+      {
+        ...base,
+        taskIndex: index,
+        kind: 'agent-message',
+        id: `${index}:a`,
+        text: `A${index}.`,
+      },
+    ];
+    const turns = (count: number) =>
+      Array.from({ length: count }, (_, i) => turn(i)).flat();
+    const replace = await renderChanging(turns(RECENT_TURNS));
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    // A new turn pushes the opener's out of the window, unmounting it.
+    replace(turns(RECENT_TURNS + 1));
+    expect(screen.queryByText(/opener 1/)).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show earlier activity' }),
+    );
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('leaves the agent’s messages whole', async () => {
+    await renderItems([
+      { ...base, kind: 'user-message', id: 'u', text: 'Summarize it' },
+      { ...base, kind: 'agent-message', id: 'a', text: lines(40) },
+    ]);
+
+    expect(screen.queryByRole('button', { name: /Show more/ })).toBeNull();
+  });
+});
+
+describe('egress refusals', () => {
+  const at = '2026-10-19T10:42:00Z';
+  const timeline = (refusal: Partial<TimelineItem>): Timeline => ({
+    ...timelineFor(tasksEmpty),
+    items: [
+      { kind: 'user-message', id: 'u', taskIndex: 0, at, text: 'update' },
+      {
+        kind: 'egress-refused',
+        id: 'r',
+        taskIndex: 0,
+        at,
+        scheme: 'https',
+        host: 'proxy.golang.org',
+        port: 443,
+        count: 3,
+        ...refusal,
+      } as TimelineItem,
+      { kind: 'agent-message', id: 'a', taskIndex: 0, at, text: 'no' },
+    ],
+  });
+
+  it('names the host, the reason, the count and links the egress settings', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline({})}
+        agentName="otter-coder"
+        agentEgressHref="/customize/agents/lab/agents/otter-coder/edit"
+      />,
+    );
+
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText('Egress refused: proxy.golang.org:443'),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        /Not in otter-coder’s egress settings · .* · 3 requests in this turn/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        /can add https:\/\/proxy\.golang\.org to its Extra egress origins/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByRole('link', {
+        name: 'otter-coder’s egress settings',
+      }),
+    ).toHaveAttribute('href', '/customize/agents/lab/agents/otter-coder/edit');
+  });
+
+  it('says raw TCP is not available, with no origin to add', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline({
+          scheme: 'tcp',
+          host: '10.0.0.7',
+          port: 22,
+          count: 1,
+        })}
+        agentName="otter-coder"
+      />,
+    );
+
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        /Raw TCP connections are not available to agents · .* · 1 request$/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByRole('link')).not.toBeInTheDocument();
   });
 });

@@ -19,16 +19,22 @@ import {
   RAIL_WIDTH_STORAGE_KEY,
   RailWidthProvider,
 } from '../RailWidthProvider';
-import { customizeRouteRef } from '../routes';
+import { customizeRouteRef, homeRouteRef } from '../routes';
+import { fakeInbox } from '../NotificationInbox/testing/fakeInbox';
 import { AgentShellNav } from './AgentShellNav';
 
 const mockOpenPalette = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
-  const { createRouteRef } = jest.requireActual(
+  const { createRouteRef, createSubRouteRef } = jest.requireActual(
     '@backstage/frontend-plugin-api',
   );
+  const { fakeInboxPluginExports } = jest.requireActual(
+    '../NotificationInbox/testing/fakeInbox',
+  );
+  const sessions = createRouteRef();
   return {
+    ...fakeInboxPluginExports(),
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     CommandPalette: ({
       renderTrigger,
@@ -37,17 +43,21 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     }) => <>{renderTrigger(mockOpenPalette)}</>,
     agentPlatformPlugin: {
       routes: {
-        sessions: createRouteRef(),
+        sessions,
+        sessionDetail: createSubRouteRef({
+          path: '/:installation/:sessionId',
+          parent: sessions,
+        }),
         usage: createRouteRef(),
         agents: createRouteRef(),
         skills: createRouteRef(),
         models: createRouteRef(),
+        profile: createRouteRef(),
       },
     },
     RecentSessions: ({ shellRail }: { shellRail?: boolean }) => (
       <div data-testid="recent-sessions" data-shell-rail={String(shellRail)} />
     ),
-    NeedsInputToasts: () => <div data-testid="needs-input-toasts" />,
   };
 });
 
@@ -110,18 +120,21 @@ async function renderNav({
           }),
         ],
       ],
-      ...(bound && {
-        mountedRoutes: {
-          '/agent-platform/sessions': agentPlatformPlugin.routes.sessions,
+      mountedRoutes: {
+        // The shell's home, the app's own page: always there.
+        '/': homeRouteRef,
+        ...(bound && {
+          '/sessions': agentPlatformPlugin.routes.sessions,
           '/customize': customizeRouteRef,
-          '/agent-platform/usage': agentPlatformPlugin.routes.usage,
-          '/agent-platform/agents': agentPlatformPlugin.routes.agents,
-          '/agent-platform/skills': agentPlatformPlugin.routes.skills,
-          '/agent-platform/models': agentPlatformPlugin.routes.models,
-          '/agent-platform/mcp-servers': musterPlugin.routes.mcpServers,
-          '/agent-platform/workflows': musterPlugin.routes.workflows,
-        },
-      }),
+          '/usage': agentPlatformPlugin.routes.usage,
+          '/customize/agents': agentPlatformPlugin.routes.agents,
+          '/customize/skills': agentPlatformPlugin.routes.skills,
+          '/customize/models': agentPlatformPlugin.routes.models,
+          '/customize/connectors': musterPlugin.routes.mcpServers,
+          '/customize/workflows': musterPlugin.routes.workflows,
+          '/profile': agentPlatformPlugin.routes.profile,
+        }),
+      },
     },
   );
 }
@@ -135,6 +148,7 @@ function railLinks() {
 }
 
 beforeEach(() => {
+  fakeInbox.reset();
   window.localStorage.clear();
   signOut.mockClear();
   mockOpenPalette.mockClear();
@@ -148,7 +162,7 @@ describe('AgentShellNav', () => {
       ['Agent Platform', '/'],
       ['New session', '/'],
       ['Customize', '/customize'],
-      ['Usage', '/agent-platform/usage'],
+      ['Usage', '/usage'],
       ['Platform Portal', '/clusters'],
     ]);
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
@@ -186,7 +200,7 @@ describe('AgentShellNav', () => {
 
     expect(railLinks()).toEqual([
       ['New session', '/'],
-      ['Sessions', '/agent-platform/sessions'],
+      ['Sessions', '/sessions'],
       ['Customize', '/customize'],
     ]);
     expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
@@ -288,6 +302,8 @@ describe('AgentShellNav', () => {
           .getAllByRole('menuitem')
           .map(menuItem => menuItem.textContent),
       ).toEqual([
+        // The Notification inbox's entry leads (nothing unread here).
+        'Notifications',
         'Profile and settings',
         'Usage',
         'Platform Portal',
@@ -296,7 +312,7 @@ describe('AgentShellNav', () => {
       ]);
       // Usage stays in the shell; the cross-link leaves it in a new tab.
       const usage = within(menu).getByRole('menuitem', { name: 'Usage' });
-      expect(usage).toHaveAttribute('href', '/agent-platform/usage');
+      expect(usage).toHaveAttribute('href', '/usage');
       expect(usage).not.toHaveAttribute('target');
       const portal = within(menu).getByRole('menuitem', {
         name: 'Platform Portal',
@@ -335,7 +351,7 @@ describe('AgentShellNav', () => {
       ).toBeNull();
     });
 
-    it.each(['/agent-platform/usage/cost', '/agent-platform/profile'])(
+    it.each(['/usage/cost', '/profile'])(
       'marks Profile current on %s, a page only its menu leads to',
       async path => {
         await renderNav({ isMobile: true, path });
@@ -380,51 +396,128 @@ describe('AgentShellNav', () => {
     });
   });
 
-  describe('the needs-input toast watcher', () => {
-    it.each([
-      ['an expanded rail', { isPinned: true }],
-      ['a collapsed rail', { isPinned: false }],
-      ['the mobile bar', { isMobile: true }],
-    ])('is mounted exactly once with %s', async (_, options) => {
-      await renderNav(options);
-
-      // Once, and outside the rail's session list, which only the expanded
-      // rail renders: every layout gets the toast, none gets it twice.
-      expect(screen.getAllByTestId('needs-input-toasts')).toHaveLength(1);
-      const recent = screen.queryByTestId('recent-sessions');
-      expect(
-        recent?.contains(screen.getByTestId('needs-input-toasts')) ?? false,
-      ).toBe(false);
-    });
-  });
-
   it('mounts the cluster-access connector that the installation inventory waits on', async () => {
     await renderNav();
     expect(screen.getByTestId('cluster-access-connector')).toBeInTheDocument();
   });
 
-  it('has no notification bell: the session dots are the signal', async () => {
-    await renderNav();
+  describe('the notification bell', () => {
+    // Two sessions wait for the person, neither seen yet.
+    beforeEach(() => {
+      fakeInbox.setSessions([
+        { sessionId: 's1', title: 'Debug ingress', state: 'input-required' },
+        { sessionId: 's2', title: 'Deploy check', state: 'auth-required' },
+      ]);
+    });
 
-    const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(within(nav).queryByText('Notifications')).not.toBeInTheDocument();
-    expect(
-      within(nav).queryByRole('button', { name: /notification/i }),
-    ).not.toBeInTheDocument();
-  });
+    it('sits on the Profile row of the pinned rail, right of the Profile trigger, with the unread count', async () => {
+      await renderNav();
 
-  it('has no notification bell in the mobile bar either', async () => {
-    await renderNav({ isMobile: true });
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      const bell = within(nav).getByRole('button', {
+        name: 'Notifications, 2 unread',
+      });
+      const profile = within(nav).getByRole('button', {
+        name: 'Profile and settings',
+      });
+      const row = bell.closest('li')!;
+      expect(row).toContainElement(profile);
+      expect(
+        profile.compareDocumentPosition(bell) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(row).toHaveTextContent('2');
+    });
 
-    const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(
-      within(nav).queryByRole('button', { name: /notification/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(nav)
-        .getAllByRole('button')
-        .map(button => button.getAttribute('aria-label') ?? button.textContent),
-    ).toEqual(['Search', 'Profile and settings']);
+    it('stays in the collapsed rail, above the Profile avatar', async () => {
+      await renderNav({ isPinned: false });
+
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      const bell = within(nav).getByRole('button', {
+        name: 'Notifications, 2 unread',
+      });
+      const profile = within(nav).getByRole('button', {
+        name: 'Profile and settings',
+      });
+      expect(
+        bell.compareDocumentPosition(profile) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('says nothing is unread once everything is seen', async () => {
+      fakeInbox.setSessions([]);
+      await renderNav();
+
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      expect(
+        within(nav).getByRole('button', { name: 'Notifications' }),
+      ).toBeInTheDocument();
+    });
+
+    it('opens the overlay of notifications from the bell', async () => {
+      await renderNav();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Notifications, 2 unread' }),
+      );
+      const overlay = await screen.findByRole('dialog', {
+        name: 'Notifications',
+      });
+      expect(
+        within(overlay).getByText('SRE Agent needs your input'),
+      ).toBeInTheDocument();
+      expect(
+        within(overlay).getByText('SRE Agent needs your sign-in'),
+      ).toBeInTheDocument();
+    });
+
+    describe('on a phone', () => {
+      let layout: MockedLayout;
+
+      beforeEach(() => {
+        layout = mockPhoneLayout();
+      });
+
+      afterEach(() => {
+        layout.restore();
+      });
+
+      it('keeps the bar at five items, with the count on Profile', async () => {
+        await renderNav({ isMobile: true });
+
+        const nav = screen.getByRole('navigation', { name: 'Main' });
+        expect(within(nav).getAllByRole('listitem')).toHaveLength(5);
+        expect(
+          within(nav)
+            .getAllByRole('button')
+            .map(
+              button => button.getAttribute('aria-label') ?? button.textContent,
+            ),
+        ).toEqual(['Search', 'Profile and settings, 2 unread']);
+      });
+
+      it('opens the notifications as a sheet from the first entry of the Profile menu', async () => {
+        await renderNav({ isMobile: true });
+
+        await userEvent.click(
+          screen.getByRole('button', {
+            name: 'Profile and settings, 2 unread',
+          }),
+        );
+        const items = await screen.findAllByRole('menuitem');
+        expect(items[0]).toHaveTextContent('Notifications (2)');
+
+        await userEvent.click(items[0]);
+        const sheet = await screen.findByRole('dialog');
+        expect(
+          within(sheet).getByRole('heading', { name: 'Notifications' }),
+        ).toBeInTheDocument();
+        expect(
+          within(sheet).getByText('SRE Agent needs your input'),
+        ).toBeInTheDocument();
+      });
+    });
   });
 
   it('hides the items whose route is not bound', async () => {
@@ -458,7 +551,7 @@ describe('AgentShellNav', () => {
       ['Agent Platform', '/'],
       ['New session', '/'],
       ['Customize', '/customize'],
-      ['Usage', '/agent-platform/usage'],
+      ['Usage', '/usage'],
     ]);
     expect(
       screen.queryByRole('link', { name: 'Platform Portal' }),
@@ -523,7 +616,7 @@ describe('AgentShellNav', () => {
   });
 
   it('highlights the item of the current location', async () => {
-    await renderNav({ path: '/agent-platform/usage/cost' });
+    await renderNav({ path: '/usage/cost' });
 
     expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute(
       'aria-current',
@@ -535,11 +628,11 @@ describe('AgentShellNav', () => {
   });
 
   it.each([
-    '/agent-platform/agents/gazelle/kagent/sre',
-    '/agent-platform/skills/giantswarm/agent-skills/triage',
-    '/agent-platform/models/serving',
-    '/agent-platform/mcp-servers',
-    '/agent-platform/workflows/deploy',
+    '/customize/agents/gazelle/kagent/sre',
+    '/customize/skills/giantswarm/agent-skills/triage',
+    '/customize/models/hosting',
+    '/customize/connectors/gazelle/kubernetes',
+    '/customize/workflows/gazelle/deploy',
     '/customize/connectors',
   ])('makes Customize the current item on %s', async path => {
     await renderNav({ path });
@@ -803,7 +896,7 @@ describe('AgentShellNav', () => {
     // The shell's own profile page, same tab — not the classic /settings.
     expect(
       within(menu).getByRole('menuitem', { name: 'Profile and settings' }),
-    ).toHaveAttribute('href', '/agent-platform/profile');
+    ).toHaveAttribute('href', '/profile');
     const help = within(menu).getByRole('menuitem', {
       name: 'Help and feedback',
     });

@@ -271,8 +271,10 @@ describe('WorkspaceManagerClient', () => {
             name: 'github',
             kind: 'github',
             connected: false,
-            connectURL: 'https://workspaces.example.com/connect/github',
+            signIn:
+              'muster holds no grant for provider github: the workspace-manager is pinned to the App of provider gitlab only',
           },
+          { name: 'gitlab', kind: 'gitlab', connected: true },
         ],
       },
       [
@@ -280,31 +282,11 @@ describe('WorkspaceManagerClient', () => {
           name: 'github',
           kind: 'github',
           connected: false,
-          connectURL: 'https://workspaces.example.com/connect/github',
+          signIn:
+            'muster holds no grant for provider github: the workspace-manager is pinned to the App of provider gitlab only',
         },
+        { name: 'gitlab', kind: 'gitlab', connected: true },
       ],
-    ],
-    [
-      'connectProvider',
-      (c: WorkspaceManagerClient) => c.connectProvider('github'),
-      'x_workspace-manager_connect_provider',
-      { provider: 'github' },
-      {
-        provider: 'github',
-        authorizationURL: 'https://github.com/login/oauth/authorize?state=s',
-        expiresAt: '2026-10-12T10:10:00Z',
-      },
-      expect.objectContaining({
-        authorizationURL: 'https://github.com/login/oauth/authorize?state=s',
-      }),
-    ],
-    [
-      'disconnectProvider',
-      (c: WorkspaceManagerClient) => c.disconnectProvider('github'),
-      'x_workspace-manager_disconnect_provider',
-      { provider: 'github' },
-      { provider: 'github', revoked: true },
-      { provider: 'github', revoked: true },
     ],
   ])(
     '%s calls its tool on the installation and parses the answer',

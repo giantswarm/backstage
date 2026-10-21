@@ -8,6 +8,7 @@ import {
   ShellDocumentTitleProvider,
   shellDocumentTitle,
   shellTitleParts,
+  useShellDocumentTitleCount,
 } from './ShellDocumentTitle';
 
 const SUFFIX = 'Agent Platform';
@@ -26,6 +27,15 @@ describe('shellDocumentTitle', () => {
         SUFFIX,
       ),
     ).toBe('Usage · Agent Platform');
+  });
+
+  it('leads with a count above zero', () => {
+    expect(shellDocumentTitle(['Sessions'], SUFFIX, 2)).toBe(
+      '(2) Sessions · Agent Platform',
+    );
+    expect(shellDocumentTitle(['Sessions'], SUFFIX, 0)).toBe(
+      'Sessions · Agent Platform',
+    );
   });
 
   it('ends with the most general part when there is no suffix', () => {
@@ -65,6 +75,39 @@ describe('ShellDocumentTitle', () => {
     );
     await waitFor(() =>
       expect(document.title).toBe('Lab Helper · Agents · Agent Platform'),
+    );
+  });
+
+  it('is prefixed with the count set below the provider while it is set', async () => {
+    function Counter({ count }: { count: number }) {
+      useShellDocumentTitleCount(count);
+      return null;
+    }
+    const tree = (counter?: number) => (
+      <ShellDocumentTitleProvider suffix={SUFFIX}>
+        {counter !== undefined && <Counter count={counter} />}
+        <ShellDocumentTitle title={['Sessions']} />
+      </ShellDocumentTitleProvider>
+    );
+    const { rerender } = render(tree(3));
+    await waitFor(() =>
+      expect(document.title).toBe('(3) Sessions · Agent Platform'),
+    );
+
+    rerender(tree(0));
+    await waitFor(() =>
+      expect(document.title).toBe('Sessions · Agent Platform'),
+    );
+
+    rerender(tree(1));
+    await waitFor(() =>
+      expect(document.title).toBe('(1) Sessions · Agent Platform'),
+    );
+
+    // The counter goes (the person left the shell): so does the count.
+    rerender(tree());
+    await waitFor(() =>
+      expect(document.title).toBe('Sessions · Agent Platform'),
     );
   });
 

@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import { MarkdownContent } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
 import { useInRouterContext } from 'react-router-dom';
 import { createMarkdownLinkResolver } from '../../utils/resolveMarkdownLink';
 import { InPageAnchors } from './InPageAnchors';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 type Dialect = 'gfm' | 'common-mark';
 
@@ -14,11 +14,16 @@ type GSMarkdownContentProps = {
   dialect?: Dialect;
   /** URL the markdown was loaded from; relative links resolve against it. */
   sourceUrl?: string;
+  /**
+   * Target of links that leave the document, `_blank` to open them in a new
+   * tab. A `#fragment` link, a footnote's for one, stays in the page.
+   */
+  linkTarget?: string;
   className?: string;
 };
 
 const useStyles = makeStyles(theme => ({
-  // `MarkdownContent` emits bare `<p>`/`<li>` tags without MUI Typography
+  // The markdown renderer emits bare `<p>`/`<li>` tags without MUI Typography
   // classes, so they fall back to the document line-height and read
   // inconsistently — both next to surrounding MUI/bui text and against each
   // other (roomy paragraphs, dense list items). Normalise both to the body1
@@ -46,7 +51,8 @@ const useStyles = makeStyles(theme => ({
     '& img': {
       maxWidth: '100%',
     },
-    '& p, & li': {
+    // Not inside a diagram: Mermaid sizes its labels in its own font.
+    '& p:not(svg p), & li:not(svg li)': {
       ...theme.typography.body1,
     },
     // Space consecutive list items apart so lists don't read as one dense block.
@@ -78,18 +84,20 @@ const useStyles = makeStyles(theme => ({
 /**
  * Shared markdown renderer for Giant Swarm plugins.
  *
- * Wraps `@backstage/core-components`' `MarkdownContent` with a consistent
- * default (GFM) and the paragraph-typography fix every caller otherwise had to
- * add by hand. Use this for rendering user/authored markdown — README and SOUL
+ * Renders as `@backstage/core-components`' `MarkdownContent` does, with a
+ * consistent default (GFM) and the paragraph-typography fix every caller
+ * otherwise had to add by hand. Use this for rendering user/authored markdown — README and SOUL
  * of catalog entities, plan documents, PR bodies and comments, etc.
  *
  * A `#heading` link jumps to its target within this document, matched the way
  * GitHub matches it, and moves focus there as the browser does for a fragment.
+ * A ```mermaid block renders as its diagram, as on GitHub.
  */
 export const GSMarkdownContent = ({
   content,
   dialect = 'gfm',
   sourceUrl,
+  linkTarget,
   className,
 }: GSMarkdownContentProps) => {
   const classes = useStyles();
@@ -102,10 +110,11 @@ export const GSMarkdownContent = ({
 
   const rootClassName = classNames(classes.root, className);
   const markdown = (
-    <MarkdownContent
+    <MarkdownRenderer
       content={content}
       dialect={dialect}
       transformLinkUri={transformLinkUri}
+      linkTarget={linkTarget}
     />
   );
 

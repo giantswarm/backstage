@@ -60,6 +60,7 @@ function makeServer(
     suspended?: boolean;
     toolGroup?: string;
     family?: string;
+    displayName?: string;
   } = {},
 ): MCPServer {
   return new MCPServer(
@@ -68,6 +69,13 @@ function makeServer(
       kind: 'MCPServer',
       metadata: {
         name,
+        ...(options.displayName
+          ? {
+              annotations: {
+                'ui.giantswarm.io/display-name': options.displayName,
+              },
+            }
+          : {}),
         labels: options.toolGroup
           ? { [TOOL_GROUP_LABEL]: options.toolGroup }
           : {},
@@ -179,7 +187,7 @@ async function renderPanel(search = '', group?: ConnectorGroup) {
     {
       apis: [[musterApiRef, api]],
       mountedRoutes: {
-        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize/connectors': mcpServersRouteRef,
         '/customize': customizeExternalRouteRef,
       },
     },
@@ -256,7 +264,7 @@ describe('CustomizeConnectorsPanel', () => {
       within(github).getByText('Repositories and pull requests'),
     );
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/connectors/github?installation=gazelle',
+      '/customize/connectors/gazelle/github',
       undefined,
     );
   });
@@ -502,7 +510,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     await user.click(await within(rowOf('kubernetes')).findByText('Connected'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/connectors/kubernetes?installation=gazelle',
+      '/customize/connectors/gazelle/kubernetes',
       undefined,
     );
   });
@@ -605,15 +613,55 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(rowOf('kubernetes')).toHaveAttribute(
       'data-href',
-      '/agent-platform/connectors/kubernetes?installation=gazelle',
+      '/customize/connectors/gazelle/kubernetes',
     );
     // The name is a real link too (M21): keyboard, new tab.
     expect(
       within(rowOf('kubernetes')).getByRole('link', { name: 'kubernetes' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/connectors/kubernetes?installation=gazelle',
-    );
+    ).toHaveAttribute('href', '/customize/connectors/gazelle/kubernetes');
+  });
+
+  it('names a connector by its display name, linking by its name', async () => {
+    mockServers = [
+      makeServer('mcp-websearch', { displayName: 'Web search' }),
+      makeServer('github'),
+    ];
+    await renderPanel();
+
+    expect(
+      within(rowOf('Web search')).getByRole('link', { name: 'Web search' }),
+    ).toHaveAttribute('href', '/customize/connectors/gazelle/mcp-websearch');
+    expect(screen.queryByText('mcp-websearch')).not.toBeInTheDocument();
+  });
+
+  it('finds a connector by its display name and by its name', async () => {
+    mockServers = [
+      makeServer('mcp-websearch', { displayName: 'Web search' }),
+      makeServer('github'),
+    ];
+    const { unmount } = await renderPanel('web s');
+    expect(await screen.findByText('Web search')).toBeInTheDocument();
+    expect(screen.queryByText('github')).not.toBeInTheDocument();
+    unmount();
+
+    await renderPanel('mcp-web');
+    expect(await screen.findByText('Web search')).toBeInTheDocument();
+  });
+
+  it('names two connectors with the same display name by their own names', async () => {
+    mockServers = [
+      makeServer('github-org-a', { displayName: 'GitHub' }),
+      makeServer('github-org-b', { displayName: 'GitHub' }),
+    ];
+    await renderPanel();
+
+    expect(
+      await screen.findByRole('link', { name: 'github-org-a' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'github-org-b' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('GitHub')).not.toBeInTheDocument();
   });
 
   it('searches connectors by their tools too', async () => {
@@ -624,7 +672,7 @@ describe('CustomizeConnectorsPanel', () => {
     // The row opens its Tools tab on the same search.
     expect(rowOf('kubernetes')).toHaveAttribute(
       'data-href',
-      '/agent-platform/connectors/kubernetes?installation=gazelle&q=pods',
+      '/customize/connectors/gazelle/kubernetes?q=pods',
     );
   });
 
@@ -634,7 +682,7 @@ describe('CustomizeConnectorsPanel', () => {
     await screen.findByText('1 tool');
     expect(rowOf('kubernetes')).toHaveAttribute(
       'data-href',
-      '/agent-platform/connectors/kubernetes?installation=gazelle',
+      '/customize/connectors/gazelle/kubernetes',
     );
   });
 
@@ -926,6 +974,8 @@ describe('CustomizeConnectorsPanel', () => {
       expect(rowOf('github')).toBeInTheDocument();
     });
 
+    // 300 rows and a dozen menu round trips render far more than any other
+    // case here; on a loaded CI runner that outgrows jest's 5 s default.
     it('filters 300 connectors, paging the result from its first page', async () => {
       mockServers = Array.from({ length: 300 }, (_, i) =>
         makeServer(`connector-${String(i).padStart(3, '0')}`, {
@@ -979,7 +1029,7 @@ describe('CustomizeConnectorsPanel', () => {
       expect(
         screen.getByText('20 connectors shown, 280 more'),
       ).toBeInTheDocument();
-    });
+    }, 20_000);
   });
 
   describe('at phone width (T22 B8)', () => {
@@ -1005,10 +1055,7 @@ describe('CustomizeConnectorsPanel', () => {
       const github = itemOf('github');
       expect(
         within(github).getByRole('link', { name: 'github' }),
-      ).toHaveAttribute(
-        'href',
-        '/agent-platform/connectors/github?installation=gazelle',
-      );
+      ).toHaveAttribute('href', '/customize/connectors/gazelle/github');
       expect(within(github).getByText('Your own account')).toBeInTheDocument();
       expect(
         within(github).getByText('Repositories and pull requests'),
@@ -1259,10 +1306,7 @@ describe('CustomizeConnectorsPanel', () => {
       expect(within(muster).getByText('Connected')).toBeInTheDocument();
       expect(
         within(muster).getByRole('link', { name: 'muster' }),
-      ).toHaveAttribute(
-        'href',
-        '/agent-platform/connectors/muster?installation=gazelle',
-      );
+      ).toHaveAttribute('href', '/customize/connectors/gazelle/muster');
     });
 
     it('says an anonymous muster the probe could not reach is not connected', async () => {

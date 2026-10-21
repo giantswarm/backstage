@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import type { ComposerImage } from '../lib/messageImages';
 
 /**
  * The first message of a session that was just created, carried from whichever
@@ -21,10 +22,39 @@ export type NewSessionHandoff = {
    * it does not read as the person's own words (UX review M20).
    */
   prepared?: boolean;
+  /**
+   * The images attached to the first message. Not in the router state itself
+   * — see {@link stashHandoffImages} — but read back with it.
+   */
+  images?: ComposerImage[];
 };
 
 /** The router-state key the composers write and this hook reads. */
 export const NEW_SESSION_STATE_KEY = 'newSession';
+
+/**
+ * The images of the last hand-off, held in memory under a key the router state
+ * carries. Not in the router state: the browser serialises that into its
+ * session history (Firefox writes it to disk) and caps its size, and a
+ * message's images are megabytes. One slot is enough — a hand-off is read on
+ * the very next render of the page it navigates to — and it is emptied once
+ * that page has taken them.
+ */
+let stashedImages: { key: string; images: ComposerImage[] } | undefined;
+
+/**
+ * Hold a hand-off's images for the session page, returning the key to put in
+ * the router state as `imagesKey`, or `undefined` when there are none.
+ */
+export function stashHandoffImages(
+  images: ComposerImage[] | undefined,
+): string | undefined {
+  if (!images?.length) {
+    return undefined;
+  }
+  stashedImages = { key: crypto.randomUUID(), images };
+  return stashedImages.key;
+}
 
 function readHandoff(state: unknown): NewSessionHandoff | undefined {
   if (typeof state !== 'object' || state === null) {
@@ -35,10 +65,8 @@ function readHandoff(state: unknown): NewSessionHandoff | undefined {
     return undefined;
   }
 
-  const { text, agentNamespace, agentName, prepared } = candidate as Record<
-    string,
-    unknown
-  >;
+  const { text, agentNamespace, agentName, prepared, imagesKey } =
+    candidate as Record<string, unknown>;
   if (
     typeof text !== 'string' ||
     !text ||
@@ -55,6 +83,11 @@ function readHandoff(state: unknown): NewSessionHandoff | undefined {
     agentNamespace,
     agentName,
     ...(prepared === true ? { prepared: true } : {}),
+    // Left in the slot rather than taken: React may run this initialiser
+    // twice, and the second run must find them too.
+    ...(typeof imagesKey === 'string' && stashedImages?.key === imagesKey
+      ? { images: stashedImages.images }
+      : {}),
   };
 }
 
@@ -85,6 +118,9 @@ export function useNewSessionHandoff(): NewSessionHandoff | undefined {
       return;
     }
     cleared.current = true;
+    if (stashedImages && stashedImages.images === handoff.images) {
+      stashedImages = undefined;
+    }
     navigate(`${location.pathname}${location.search}`, {
       replace: true,
       state: null,

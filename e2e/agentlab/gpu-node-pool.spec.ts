@@ -1,6 +1,13 @@
 import type { Locator, Page } from '@playwright/test';
 
-import { expect, expectWizardStep, open, signIn, test } from './fixtures';
+import {
+  dismissInboxToasts,
+  expect,
+  expectWizardStep,
+  open,
+  signIn,
+  test,
+} from './fixtures';
 import {
   KEPT_CLAIM,
   PRESET_SOURCE,
@@ -28,8 +35,10 @@ import {
 /**
  * GPU node pools on the Models pages, against a lab whose agent-platform chart
  * carries cluster-manager (giantswarm/agent-platform#316, chart 4.26.0 with
- * `components.cluster-manager.enabled: true`). The suite is skipped with the
- * reason until AGENTLAB_CLUSTER_MANAGER=1 says the lab has it.
+ * `components.cluster-manager.enabled: true`). This first describe calls the
+ * real cluster-manager and is skipped with the reason until
+ * AGENTLAB_CLUSTER_MANAGER=1 says the lab has it; the describes below stub
+ * cluster-manager at the browser and run on any lab.
  *
  * The lab's kind cluster does not serve the Cluster API (`cluster.x-k8s.io`),
  * and cluster-manager 0.4.1+ says so: `list_clusters` answers no clusters and
@@ -79,11 +88,13 @@ async function offerAbsentCluster(page: Page, name: string): Promise<void> {
 }
 
 /** GPU pools, where Add GPU node pool returns to — with the pool's lifecycle panel open after a complete Deploy. */
-const CAPACITY_VIEW = /\/agent-platform\/models\/capacity\/?$/;
+const CAPACITY_VIEW = /\/customize\/models\/hosting\/capacity\/?$/;
 
 /** Add GPU node pool is a page of its own: its h1, its URL, its first step. */
 async function expectAddPoolPage(page: Page): Promise<void> {
-  await expect(page).toHaveURL(/\/agent-platform\/models\/capacity\/add-pool/);
+  await expect(page).toHaveURL(
+    /\/customize\/models\/hosting\/capacity\/add-pool/,
+  );
   await expect(
     page.getByRole('heading', { level: 1, name: 'Add GPU node pool' }),
   ).toBeVisible();
@@ -92,7 +103,7 @@ async function expectAddPoolPage(page: Page): Promise<void> {
 
 /** Serve model is a page of its own too, reached from the lifecycle panel's links with the pool in its query. */
 async function expectServePage(page: Page): Promise<void> {
-  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/serve\?/);
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/serve\?/);
   await expect(
     page.getByRole('heading', { level: 1, name: 'Serve model' }),
   ).toBeVisible({ timeout: 30_000 });
@@ -101,7 +112,7 @@ async function expectServePage(page: Page): Promise<void> {
 /** Serve model's Cancel: a lifecycle panel link carries no view to return to, so it lands on Running models. */
 async function cancelServe(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Cancel' }).click();
-  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/?$/);
+  await expect(page).toHaveURL(/\/customize\/models\/hosting\/?$/);
 }
 
 /** Cancel — a link in the page's footer — returns to GPU pools, where the flow was opened. */
@@ -120,7 +131,7 @@ test.describe('models: GPU node pools', () => {
     page,
   }) => {
     await signIn(page, lab.users.admin);
-    await open(page, '/agent-platform/models/capacity');
+    await open(page, '/customize/models/hosting/capacity');
 
     const panel = page.getByTestId('gpu-node-pools-panel');
     await expect(panel).toBeVisible();
@@ -143,7 +154,7 @@ test.describe('models: GPU node pools', () => {
     page,
   }) => {
     await signIn(page, lab.users.admin);
-    await open(page, '/agent-platform/models/capacity');
+    await open(page, '/customize/models/hosting/capacity');
 
     await page
       .getByRole('button', { name: 'Add GPU node pool' })
@@ -171,7 +182,7 @@ test.describe('models: GPU node pools', () => {
   }) => {
     await signIn(page, lab.users.admin);
     await offerAbsentCluster(page, 'nosuchcluster');
-    await open(page, '/agent-platform/models/capacity');
+    await open(page, '/customize/models/hosting/capacity');
 
     await page
       .getByRole('button', { name: 'Add GPU node pool' })
@@ -233,17 +244,25 @@ async function snapshot(page: Page, name: string): Promise<void> {
   }
 }
 
-/** Toggle a size in the picker: the react-aria input is visually hidden, its label is what a person clicks. */
-/** Click the label of a visually hidden bui checkbox or switch input. */
-async function toggleByLabel(input: Locator): Promise<void> {
-  await input.locator('xpath=ancestor::label[1]').click();
+/**
+ * Set a bui checkbox or switch to `checked`, whatever its start state, and
+ * assert the end state: the react-aria input is visually hidden, its label is
+ * what a person clicks, and only when the state differs.
+ */
+async function setCheckedByLabel(
+  input: Locator,
+  checked: boolean,
+): Promise<void> {
+  if ((await input.isChecked()) !== checked) {
+    await input.locator('xpath=ancestor::label[1]').click();
+  }
+  await expect(input).toBeChecked({ checked });
 }
 
+/** Toggle a size in the picker. */
 async function toggleSize(picker: Locator, size: RegExp): Promise<void> {
   const checkbox = picker.getByRole('checkbox', { name: size });
-  const before = await checkbox.isChecked();
-  await checkbox.locator('xpath=ancestor::label[1]').click();
-  await expect(checkbox).toBeChecked({ checked: !before });
+  await setCheckedByLabel(checkbox, !(await checkbox.isChecked()));
 }
 
 /**
@@ -255,7 +274,7 @@ async function reachForm(page: Page, options: StubOptions = {}) {
   await signIn(page, lab.users.admin);
   await dropPersistedQueries(page);
   const calls = await stubClusterManager(page, options);
-  await open(page, '/agent-platform/models/capacity');
+  await open(page, '/customize/models/hosting/capacity');
 
   // The header's button; a lab without a serving layer offers it once more
   // in the page's empty state.
@@ -593,6 +612,9 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
   test('a Deploy cut short lists the pending objects and Continue re-runs the same call', async ({
     page,
   }) => {
+    // The outcome's Continue sits at the foot of the page, where the inbox's
+    // toast shows while the lab's OAuth fixture waits for a sign-in.
+    await dismissInboxToasts(page);
     const { calls } = await reachReview(page, { partialApplies: 1 });
     await page.getByRole('button', { name: /^Deploy/ }).click();
 
@@ -641,6 +663,9 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
   test('the form offers every zone of the cluster chosen and the cache off; two zones and the cache on travel to the dry run, the review, Deploy and the lifecycle panel', async ({
     page,
   }) => {
+    // The zones picker sits at the foot of the form, where the inbox's toast
+    // shows while the lab's OAuth fixture waits for a sign-in.
+    await dismissInboxToasts(page);
     const { calls } = await reachForm(page);
     // The zones are under More options, their default every zone (T67).
     await page.getByText('More options').click();
@@ -670,13 +695,12 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
     expect(dryRuns(calls)[0].arguments).not.toHaveProperty('teleport');
     await snapshot(page, 'gpu-pool-zones-cache-defaults');
 
-    // bui's checkbox and switch inputs are visually hidden under their labels: click the label.
-    await toggleByLabel(zones.getByRole('checkbox', { name: 'eu-central-1b' }));
-    await toggleByLabel(cache);
-    await expect(
+    // Two zones and the cache on, set from whatever state the form holds.
+    await setCheckedByLabel(
       zones.getByRole('checkbox', { name: 'eu-central-1b' }),
-    ).not.toBeChecked();
-    await expect(cache).toBeChecked();
+      false,
+    );
+    await setCheckedByLabel(cache, true);
     await expect(page.getByTestId('zones-choice')).toContainText(
       'The nodes launch in eu-central-1a, eu-central-1c only.',
     );
@@ -752,8 +776,9 @@ test.describe('models: the model cache is the cluster’s and billed while it st
       'The existing cache hf-cache ($27.37/month) stays and keeps costing until it is removed under Model cache.',
       { timeout: 60_000 },
     );
-    await toggleByLabel(
+    await setCheckedByLabel(
       page.getByRole('switch', { name: 'Keep a model cache' }),
+      true,
     );
     await expect(page.getByTestId('cache-cost')).toContainText(
       '$27.37/month at list prices — billed while the claim exists, after this pool is removed too, until the cache is removed under Model cache.',
@@ -771,7 +796,7 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     // The kept claim: on Model hosting's Model cache tab, with its size, cost
     // and since when.
     await page.getByRole('tab', { name: 'Model cache' }).click();
-    await expect(page).toHaveURL(/\/agent-platform\/models\/cache/);
+    await expect(page).toHaveURL(/\/customize\/models\/hosting\/cache/);
     const card = page.getByTestId('model-cache-panel');
     await expect(card).toContainText('Standing: $27.37/month across 1 claim', {
       timeout: 60_000,
@@ -789,9 +814,9 @@ test.describe('models: the model cache is the cluster’s and billed while it st
       name: /Remove the model cache hf-cache on wc1\?/,
     });
     await expect(confirm.getByTestId('remove-cache-what')).toContainText(
-      'Deletes claim model-serving/hf-cache (100 GiB gp3 at 500 MiB/s, eu-central-1b) on wc1 of ' +
-        lab.installation +
-        ', with its volume. The $27.37/month at list prices stops.',
+      `Deletes claim model-serving/hf-cache (100 GiB gp3 at 500 MiB/s, eu-central-1b) on wc1 of ${
+        lab.installation
+      }, with its volume. The $27.37/month at list prices stops.`,
     );
     await expect(confirm).toContainText('Nothing mounts this claim');
     const remove = confirm.getByRole('button', { name: 'Remove cache' });
@@ -802,7 +827,7 @@ test.describe('models: the model cache is the cluster’s and billed while it st
         'Acknowledge that the cached weights go with the cache.',
       ),
     ).toBeVisible();
-    await toggleByLabel(confirm.getByRole('checkbox'));
+    await setCheckedByLabel(confirm.getByRole('checkbox'), true);
     await snapshot(page, 'gpu-pool-cache-remove-confirm');
     await remove.click();
     await expect(confirm).toBeHidden({ timeout: 30_000 });
@@ -903,7 +928,7 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       );
     }
     const href = (await serve.getAttribute('href')) ?? '';
-    expect(href).toContain('/agent-platform/models/serving/serve?');
+    expect(href).toContain('/customize/models/hosting/serve?');
     // The page's own query, not the dialog-era `?serve=1` link.
     expect(href).not.toContain('serve=1');
     expect(href).toContain(`installation=${lab.installation}`);
@@ -1470,7 +1495,7 @@ test.describe('models: GPU node pool serve intent — the preset chosen on the f
       name: 'Serve Qwen3 8B FP8 manually',
     });
     const href = (await link.getAttribute('href')) ?? '';
-    expect(href).toContain('/agent-platform/models/serving/serve?');
+    expect(href).toContain('/customize/models/hosting/serve?');
     expect(href).toContain('model=qwen3-8b-fp8');
     await link.click();
     await expectServePage(page);
@@ -1486,7 +1511,7 @@ test.describe('models: GPU node pool serve intent — the preset chosen on the f
 
     // Back on the pool: Try serving again asks model-manager once more, and
     // the second load is accepted.
-    await open(page, '/agent-platform/models/capacity');
+    await open(page, '/customize/models/hosting/capacity');
     const reopened = await reopenPanel(page);
     await reopened.getByRole('button', { name: 'Try serving again' }).click();
     await expect
@@ -1514,7 +1539,7 @@ async function reachRemove(page: Page, options: StubOptions = {}) {
     existingPool: 'gpu-e2e',
     ...options,
   });
-  await open(page, '/agent-platform/models/capacity');
+  await open(page, '/customize/models/hosting/capacity');
   const row = page.getByRole('row', { name: /wc1-gpu-e2e/ });
   await expect(row).toContainText('ready · 0 nodes', { timeout: 60_000 });
   await row.getByRole('button', { name: 'Remove pool wc1-gpu-e2e' }).click();
@@ -1577,7 +1602,7 @@ test.describe('models: GPU node pool Remove — Removing until gone, the refusal
     );
     await expect(
       refused.getByRole('link', { name: /qwen3-4b-instruct/ }),
-    ).toHaveAttribute('href', /\/agent-platform\/models\/serving/);
+    ).toHaveAttribute('href', /\/customize\/models\/hosting/);
     await expect(refused).toContainText(
       'Karpenter removes an empty node about 10 minutes after its last pod',
     );

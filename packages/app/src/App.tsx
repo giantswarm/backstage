@@ -3,8 +3,11 @@ import { createApp } from '@backstage/frontend-defaults';
 // App-level and nav modules:
 import { appOverrides } from './modules/app';
 import { navModule } from './modules/nav';
-import { agentShellModule } from './modules/agentShell';
-import { customizeRouteRef } from './modules/agentShell/routes';
+import {
+  agentPlatformLegacyPages,
+  agentShellModule,
+} from './modules/agentShell';
+import { customizeRouteRef, homeRouteRef } from './modules/agentShell/routes';
 
 // GS plugins:
 import gsPlugin from '@giantswarm/backstage-plugin-gs';
@@ -67,13 +70,16 @@ const app = createApp({
     fluxPluginOverrides,
     aiChatPlugin,
     aiChatPluginOverrides,
-    // The Agent Platform page's sections come from both plugins: muster
-    // attaches "Connectors" and "Workflows" (`attachTo: page:agent-platform`).
-    // The page sorts them itself (agent-platform's `AGENT_PLATFORM_TAB_ORDER`),
-    // so the order here does not matter for them. Both plugins' pages are
-    // mounted only where the agent shell is available (`AGENT_SHELL_ON`): the
-    // classic portal has none of them.
+    // The Customize page's tabs come from both plugins: agent-platform
+    // attaches Agents, Skills and Models, muster Connectors and Workflows
+    // (`attachTo: page:app/agent-shell-customize`). The page orders them
+    // itself (`CUSTOMIZE_TAB_IDS`), so the order here does not matter for
+    // them. Both plugins' pages are mounted only where the agent shell is
+    // available (`AGENT_SHELL_ON`): the classic portal has none of them. The
+    // old `/agent-platform/**` addresses redirect through the app's mapping
+    // (`agentPlatformLegacyPages`).
     agentPlatformPlugin,
+    agentPlatformLegacyPages,
     musterPlugin,
     musterPluginOverrides,
     plansPluginOverrides,
@@ -113,11 +119,20 @@ const app = createApp({
     githubPullRequestsNfsPlugin,
   ],
   bindRoutes({ bind }) {
-    // The shell's Customize page belongs to the app, which no plugin can name
-    // as a default target. Both plugins link to pages under it through their
-    // `customize` external route.
-    bind(musterPlugin.externalRoutes, { customize: customizeRouteRef });
-    bind(agentPlatformPlugin.externalRoutes, { customize: customizeRouteRef });
+    // The shell's Customize page and home belong to the app, which no plugin
+    // can name as a default target. Both plugins link to pages under
+    // Customize through their `customize` external route; agent-platform's
+    // "New session" links reach the home through `newSession`. A connector's
+    // Usage tab opens agent-platform's Usage → Connectors, which muster does
+    // not depend on, through `usageConnectors`.
+    bind(musterPlugin.externalRoutes, {
+      customize: customizeRouteRef,
+      usageConnectors: agentPlatformPlugin.routes.usageConnectors,
+    });
+    bind(agentPlatformPlugin.externalRoutes, {
+      customize: customizeRouteRef,
+      newSession: homeRouteRef,
+    });
   },
 });
 

@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  SESSION_FAILURE_REASONS,
+  SessionFailureReason,
+} from './kagentFailureReason';
 
 /**
  * One session's derived state, as the `session-states` route reports it.
@@ -21,6 +25,15 @@ export type SessionStateEntry = {
   state: string | null;
   /** Epoch ms the state last moved, when anything in the conversation says. */
   changedAt?: number;
+  /**
+   * Why the session failed, as a short class the backend reads from the
+   * failure text; the text itself never crosses the wire. Present on a failed
+   * or rejected newest turn, on a failed instance, and on a session kagent
+   * marked as having lost its runtime — whatever its newest turn's `state`
+   * says, since such a session cannot go on (`runtime-lost`). Absent
+   * otherwise.
+   */
+  failureReason?: SessionFailureReason;
 };
 
 export type SessionStatesResponse = {
@@ -49,7 +62,21 @@ const sessionStateEntrySchema = z.looseObject({
   sessionId: z.string(),
   state: z.string().nullable().optional(),
   changedAt: z.number().optional(),
+  failureReason: z.unknown().optional(),
 });
+
+/**
+ * A known class as itself; any other present value as `other`, so a class a
+ * newer backend adds still reads as a failure with a reason.
+ */
+function readFailureReason(value: unknown): SessionFailureReason | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return (SESSION_FAILURE_REASONS as readonly unknown[]).includes(value)
+    ? (value as SessionFailureReason)
+    : 'other';
+}
 
 const sessionStatesSchema = z.looseObject({
   evaluatedAt: z.number().optional(),
@@ -79,12 +106,14 @@ export function normalizeSessionStates(raw: unknown): SessionStatesResponse {
     if (!entry.success || !entry.data.sessionId) {
       continue;
     }
+    const failureReason = readFailureReason(entry.data.failureReason);
     states.push({
       sessionId: entry.data.sessionId,
       state: entry.data.state ?? null,
       ...(entry.data.changedAt === undefined
         ? {}
         : { changedAt: entry.data.changedAt }),
+      ...(failureReason === undefined ? {} : { failureReason }),
     });
   }
 

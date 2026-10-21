@@ -7,6 +7,13 @@ import { SessionRow } from '../SessionsDataProvider/helpers';
 import { sessionsRouteRef } from '../../routes';
 import { AgentSessionsCard } from './AgentSessionsCard';
 
+// The sessions here start without a workspace: nothing to name, nothing read.
+const mockNoWorkspaceName = () => undefined;
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceNames'),
+  useWorkspaceNames: () => mockNoWorkspaceName,
+}));
+
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
@@ -43,6 +50,7 @@ const states: FleetSessionStatesView = {
   failedInstallations: new Set(),
   skippedCount: 0,
   isLoading: false,
+  isComplete: true,
   isError: false,
 };
 
@@ -72,10 +80,36 @@ const sessions: AgentSessionsView = {
 };
 
 describe('AgentSessionsCard', () => {
+  it('marks the sessions started on an earlier revision of the agent, and only those', async () => {
+    await renderInTestApp(
+      <AgentSessionsCard
+        agentName="Swarmgeist"
+        currentRevision="rev-2"
+        sessions={{
+          ...sessions,
+          rows: [
+            {
+              ...session('a', 'Check the clusters'),
+              preparedRevision: 'rev-1',
+            },
+            { ...session('b', 'Release notes'), preparedRevision: 'rev-2' },
+          ],
+        }}
+      />,
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
+    );
+
+    const marks = await screen.findAllByText('Earlier revision');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].closest('[role="row"]')).toHaveTextContent(
+      'Check the clusters',
+    );
+  });
+
   it("lists the agent's few sessions as the Sessions page does: its words, no paging, no search", async () => {
     await renderInTestApp(
       <AgentSessionsCard agentName="Swarmgeist" sessions={sessions} />,
-      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
     );
 
     expect(

@@ -51,6 +51,12 @@ export type PendingConfirmation = {
   args?: unknown;
   /** The questions, for an `'input'`. Empty for an approval. */
   questions: AskUserQuestion[];
+  /**
+   * The `messageId` of the task status message that asks, when it has one.
+   * Tells this request apart from a later one in the same task: answering
+   * resumes the task, so a follow-up question keeps its `taskId`.
+   */
+  askedIn?: string;
 };
 
 /** The `questions` array out of an `ask_user` call's arguments. */
@@ -162,6 +168,12 @@ export function readPendingConfirmation(
     if (!Array.isArray(parts)) {
       return undefined;
     }
+    const statusMessageId = (statusMessage as { messageId?: unknown })
+      .messageId;
+    const askedIn =
+      typeof statusMessageId === 'string' && statusMessageId
+        ? { askedIn: statusMessageId }
+        : {};
 
     for (const rawPart of parts) {
       const part = parsePart(rawPart);
@@ -200,7 +212,7 @@ export function readPendingConfirmation(
       }
 
       if (isQuestion) {
-        return { taskId, asks: 'input', toolName, questions };
+        return { taskId, asks: 'input', toolName, questions, ...askedIn };
       }
 
       // The proposed call, looked through muster's `call_tool` wrapper the same
@@ -218,6 +230,7 @@ export function readPendingConfirmation(
         ...(effective.via !== undefined && { via: effective.via }),
         ...(effective.args !== undefined && { args: effective.args }),
         questions,
+        ...askedIn,
       };
     }
 

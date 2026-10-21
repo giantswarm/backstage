@@ -5,12 +5,11 @@ import {
   WorkspaceManagerError,
   classifyWorkspaceManagerError,
   workspaceManagerToolName,
-  type ConnectProviderResult,
   type CreateWorkspaceInput,
   type DeleteWorkspaceResult,
-  type DisconnectProviderResult,
   type ListRepositoriesInput,
   type PreviewWorkspaceInput,
+  type ProviderOwner,
   type RepositoriesPage,
   type SyncWorkspaceResult,
   type UpdateWorkspaceInput,
@@ -158,7 +157,7 @@ export class WorkspaceManagerClient {
     );
   }
 
-  /** The installation's provider instances, with the person's connection. */
+  /** The installation's provider instances, with the person's App grant. */
   async listProviders(): Promise<WorkspaceProvider[]> {
     const result = await this.call<{ providers?: WorkspaceProvider[] }>(
       WORKSPACE_MANAGER_TOOLS.listProviders,
@@ -167,19 +166,18 @@ export class WorkspaceManagerClient {
     return result.providers ?? [];
   }
 
-  /** The person's sign-in link at the provider. */
-  connectProvider(provider: string): Promise<ConnectProviderResult> {
-    return this.call<ConnectProviderResult>(
-      WORKSPACE_MANAGER_TOOLS.connectProvider,
-      { provider },
+  /**
+   * The owners on a provider instance the person can pick from, for the
+   * Organization's workspace; a manager before `list_owners` refuses it.
+   */
+  async listOwners(input: {
+    organization: string;
+    provider: string;
+  }): Promise<ProviderOwner[]> {
+    const result = await this.call<{ owners?: ProviderOwner[] }>(
+      WORKSPACE_MANAGER_TOOLS.listOwners,
+      { ...input },
     );
-  }
-
-  /** Revokes the person's grant at the provider and forgets the sign-in. */
-  disconnectProvider(provider: string): Promise<DisconnectProviderResult> {
-    return this.call<DisconnectProviderResult>(
-      WORKSPACE_MANAGER_TOOLS.disconnectProvider,
-      { provider },
-    );
+    return result.owners ?? [];
   }
 }

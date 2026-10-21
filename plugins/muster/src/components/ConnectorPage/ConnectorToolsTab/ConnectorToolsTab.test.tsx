@@ -45,7 +45,7 @@ function renderTab(tools: ToolSummary[], path = '/connector') {
     </>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+      mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
     },
   );
 }
@@ -71,7 +71,7 @@ function renderRoundTrip(tools: ToolSummary[]) {
   return renderInTestApp(
     <Routes>
       <Route
-        path="/agent-platform/connectors/jira"
+        path="/customize/connectors/gazelle/jira"
         element={
           <ConnectorToolsTab
             server="jira"
@@ -87,15 +87,13 @@ function renderRoundTrip(tools: ToolSummary[]) {
         }
       />
       <Route
-        path="/agent-platform/connectors/jira/tools/:tool"
+        path="/customize/connectors/gazelle/jira/tools/:tool"
         element={<ToolPageProbe />}
       />
     </Routes>,
     {
-      initialRouteEntries: [
-        '/agent-platform/connectors/jira?installation=gazelle',
-      ],
-      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+      initialRouteEntries: ['/customize/connectors/gazelle/jira'],
+      mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
     },
   );
 }
@@ -112,7 +110,7 @@ describe('ConnectorToolsTab', () => {
       within(first).getByRole('link', { name: 'tool_000' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/connectors/jira/tools/x_jira_tool_000?installation=gazelle',
+      '/customize/connectors/gazelle/jira/tools/x_jira_tool_000',
     );
     expect(within(first).getByText('Tool number 0')).toBeInTheDocument();
     expect(within(first).getByText('Reads')).toBeInTheDocument();
@@ -129,22 +127,19 @@ describe('ConnectorToolsTab', () => {
     );
     expect(toolRows()[0]).toHaveAttribute(
       'href',
-      '/agent-platform/connectors/jira/tools/x_jira_tool_299?installation=gazelle&q=tool_299',
+      '/customize/connectors/gazelle/jira/tools/x_jira_tool_299?q=tool_299',
     );
   });
 
   it("carries the effect filter into a tool's link, and opens on the filter the address names", async () => {
-    await renderTab(
-      makeTools(300),
-      '/connector?installation=gazelle&effect=changes',
-    );
+    await renderTab(makeTools(300), '/connector?effect=changes');
 
     // Every third tool reads: 200 change things, a page of them shown.
     expect(toolRows()).toHaveLength(20);
     expect(screen.getByText('20 tools shown, 180 more')).toBeInTheDocument();
     expect(toolRows()[0]).toHaveAttribute(
       'href',
-      '/agent-platform/connectors/jira/tools/x_jira_tool_001?installation=gazelle&effect=changes',
+      '/customize/connectors/gazelle/jira/tools/x_jira_tool_001?effect=changes',
     );
   });
 
@@ -257,10 +252,7 @@ describe('ConnectorToolsTab', () => {
   });
 
   it('opens on the tools the address searches for', async () => {
-    await renderTab(
-      makeTools(300),
-      '/connector?installation=gazelle&q=tool_29',
-    );
+    await renderTab(makeTools(300), '/connector?q=tool_29');
 
     expect(screen.getByRole('searchbox', { name: 'Search tools' })).toHaveValue(
       'tool_29',
@@ -270,10 +262,7 @@ describe('ConnectorToolsTab', () => {
   });
 
   it('does not write its search into the address', async () => {
-    await renderTab(
-      makeTools(300),
-      '/connector?installation=gazelle&q=tool_29',
-    );
+    await renderTab(makeTools(300), '/connector?q=tool_29');
 
     // Each change of the address is a page view.
     await userEvent.type(
@@ -281,7 +270,7 @@ describe('ConnectorToolsTab', () => {
       '9',
     );
     expect(toolRows()).toHaveLength(1);
-    expect(location()).toHaveTextContent('?installation=gazelle&q=tool_29');
+    expect(location()).toHaveTextContent('?q=tool_29');
     expect(location()).not.toHaveTextContent('tool_299');
   });
 

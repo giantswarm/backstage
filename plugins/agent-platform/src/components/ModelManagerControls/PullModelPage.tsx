@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Select, Switch, TextField } from '@backstage/ui';
 import {
-  fieldErrorProps,
   searchableIf,
   useFieldValidation,
   useProvidePageHeaderActions,
@@ -72,7 +71,7 @@ export type PullModelPageProps = {
  * of a reference that is already downloading is joined by model-manager, not
  * duplicated — the panel shows one job either way.
  *
- * A page of its own (`/agent-platform/models/serving/pull`), the app's
+ * A page of its own (`/customize/models/hosting/pull`), the app's
  * single-step create pattern (`WizardFrame`): a failed request stays on it,
  * saying so. The app's standard form: Pull stays
  * pressable, and a blocked Pull marks the field that is wrong, under it, and
@@ -111,7 +110,9 @@ export function PullModelPage({
     target: target ? undefined : 'Pick where the model is pulled.',
     model: validateModelRef(model),
   };
-  const targetError = useSelectFieldError(validation.errorFor(errors.target));
+  const targetError = useSelectFieldError(
+    validation.errorFor('target', errors.target),
+  );
 
   const submit = async () => {
     if (errors.target || errors.model) {
@@ -210,7 +211,7 @@ export function PullModelPage({
           onChange={setModel}
           placeholder="e.g. qwen2.5:0.5b"
           description="Agents need a model with tool calling; the list shows each model's features once it is downloaded."
-          {...fieldErrorProps(validation.errorFor(errors.model))}
+          {...validation.textFieldProps('model', errors.model)}
         />
 
         {target?.canWire && (

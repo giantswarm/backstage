@@ -51,6 +51,7 @@ jest.mock('../AgentsDataProvider', () => ({
 
 const loaded: SkillCatalog = {
   skills: [skill('summarise'), skill('triage')],
+  plugins: [],
   isLoading: false,
   error: null,
   hasRepositories: true,
@@ -76,7 +77,7 @@ function renderPanel(search = '') {
       <CustomizeSkillsPanel search={search} />
     </>,
     {
-      mountedRoutes: { '/agent-platform/skills': skillsRouteRef },
+      mountedRoutes: { '/customize/skills': skillsRouteRef },
     },
   );
 }
@@ -328,7 +329,7 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
 
     expect(screen.getByRole('link', { name: 'triage' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/giantswarm/skills/triage',
+      '/customize/skills/giantswarm/skills/triage',
     );
   });
 
@@ -343,7 +344,7 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
 
     expect(screen.getByRole('link', { name: 'local' })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/-/git.example.com/team/skills/-/local',
+      '/customize/skills/-/git.example.com/team/skills/-/local',
     );
   });
 
@@ -364,7 +365,7 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
 
     expect(screen.getByRole('link', { name: /Add skill/ })).toHaveAttribute(
       'href',
-      '/agent-platform/skills/new',
+      '/customize/skills/new',
     );
   });
 

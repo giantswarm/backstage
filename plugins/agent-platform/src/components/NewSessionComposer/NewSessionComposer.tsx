@@ -47,6 +47,18 @@ import { AgentAvatar } from '../AgentAvatar';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
+import {
+  ComposerImage,
+  imagesUnsupportedReason,
+} from '../../lib/messageImages';
+import { DROP_LABEL, useComposerImages } from '../../hooks/useComposerImages';
+import { ComposerImageList } from '../ComposerImageList';
+import {
+  WorkspaceManagerError,
+  type Workspace,
+} from '../../lib/workspaceManager';
+import { WorkspacePicker } from '../WorkspacePicker';
+import { WorkspaceStartNotice } from '../WorkspaceStartNotice';
 
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
@@ -252,8 +264,32 @@ export type NewSessionComposerProps = {
    * server instead of a dead-end message.
    */
   error?: string | Error;
-  /** Receives the chosen agent and the trimmed prompt. */
-  onStart: (agent: AgentRow, prompt: string) => void;
+  /**
+   * Lets the box take images — pasted or dropped on it — which go
+   * with the prompt as the session's first message. For the surfaces whose
+   * session page sends that message (`useNewSessionHandoff`). Off, the box
+   * takes text only.
+   */
+  acceptsImages?: boolean;
+  /**
+   * Offers a workspace beside the agent picker: the workspaces of the chosen
+   * agent's installation, or none (the default). Off for surfaces whose
+   * session is not the person's own work, agent creation's assistant for
+   * one. The chosen workspace reaches {@link onStart}, which starts the
+   * session in it (`useCreateSession`'s `workspace`).
+   */
+  offersWorkspaces?: boolean;
+  /**
+   * Receives the chosen agent, the trimmed prompt, the attached images (none
+   * without {@link acceptsImages}) and the chosen workspace's name (none
+   * without {@link offersWorkspaces}).
+   */
+  onStart: (
+    agent: AgentRow,
+    prompt: string,
+    images: ComposerImage[],
+    workspace?: string,
+  ) => void;
 };
 
 /**
@@ -393,6 +429,8 @@ export function NewSessionComposer({
   autoFocus = false,
   isStarting,
   error,
+  acceptsImages = false,
+  offersWorkspaces = false,
   onStart,
 }: NewSessionComposerProps) {
   const classes = useStyles();
@@ -403,6 +441,8 @@ export function NewSessionComposer({
   const [expanded, setExpanded] = useState(!collapsible);
   const [agentMissing, setAgentMissing] = useState(false);
   const agentSelectRef = useRef<HTMLDivElement>(null);
+  // bui's field forwards its ref to the wrapper, not the textarea.
+  const fieldRef = useRef<HTMLDivElement>(null);
   // Filtered once; every decision below reads the filtered list — what is offered,
   // what counts as a sole option, and whether a default is still valid.
   const offered = useMemo(() => agents.filter(isStartableAgent), [agents]);
@@ -479,6 +519,26 @@ export function NewSessionComposer({
   // Derived rather than cleared on pick: an agent can also arrive by adopting a
   // late default, which the picker's change handler never sees.
   const showAgentMissing = agentMissing && !selectedAgent;
+
+  // The workspace chosen for the agent it was chosen with: another agent
+  // starts from its own preset, so a choice never carries over to an agent
+  // on another installation.
+  const [workspaceChoice, setWorkspaceChoice] = useState<{
+    agentId: string;
+    workspace: Workspace | undefined;
+  }>();
+  const workspace =
+    offersWorkspaces && workspaceChoice?.agentId === selectedAgent?.id
+      ? workspaceChoice?.workspace
+      : undefined;
+  const chooseWorkspace = useCallback(
+    (agentId: string, next: Workspace | undefined) =>
+      setWorkspaceChoice({ agentId, workspace: next }),
+    [],
+  );
+  // The workspace the last Start asked for: what the notice above the box
+  // speaks of, whatever is picked since.
+  const [startedIn, setStartedIn] = useState<Workspace>();
 
   // The same deterministic avatar the sessions table and the agent's own page
   // show, so one agent looks the same everywhere. Seeded from the technical name,
@@ -666,11 +726,36 @@ export function NewSessionComposer({
   // visibly, for the picker.
   const awaitingAgent = agentFirst && !selectedAgent;
 
+  // Read for the agent chosen, so one that cannot take images says so the
+  // moment an image meets it — or the moment it is chosen with images already
+  // in the box, which then cannot start until they go or the agent changes.
+  const unsupportedReason = selectedAgent
+    ? imagesUnsupportedReason(selectedAgent)
+    : undefined;
+  const attached = useComposerImages({
+    enabled: acceptsImages,
+    paused: isStarting,
+    unsupportedReason,
+  });
+  const imagesRefused =
+    unsupportedReason && attached.images.length > 0
+      ? `${unsupportedReason} Remove the images, or choose another agent.`
+      : undefined;
+
   const text = prompt.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
-  const canSubmit = Boolean(text) && !isTooLong && !isStarting;
+  const canSubmit =
+    Boolean(text) &&
+    !isTooLong &&
+    !isStarting &&
+    !imagesRefused &&
+    !attached.problem &&
+    !attached.isPreparing;
 
-  const submit = () => {
+  // `override` starts in another workspace than the one picked: none, from
+  // the notice's "Start without workspace", or the one the notice speaks of.
+  const submit = (override?: { workspace: Workspace | undefined }) => {
+    const inWorkspace = override ? override.workspace : workspace;
     if (!canSubmit) {
       return;
     }
@@ -679,7 +764,12 @@ export function NewSessionComposer({
       agentSelectRef.current?.querySelector('button')?.focus();
       return;
     }
-    onStart(selectedAgent, text);
+    setStartedIn(inWorkspace);
+    if (inWorkspace) {
+      onStart(selectedAgent, text, attached.images, inWorkspace.name);
+    } else {
+      onStart(selectedAgent, text, attached.images);
+    }
     // Deliberately not cleared here. A create can fail, and this is the only
     // place the prompt still exists — the caller clears it by unmounting this
     // component (navigating away) once the session exists.
@@ -706,6 +796,8 @@ export function NewSessionComposer({
     caption = 'Choose an agent first.';
   } else if (isTooLong) {
     caption = `That prompt is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
+  } else if (attached.isPreparing) {
+    caption = 'Reading the images…';
   } else if (isLoadingAgents) {
     caption = 'Still checking the remaining environments for agents…';
   } else {
@@ -720,8 +812,32 @@ export function NewSessionComposer({
 
   const pickerOnTop = pickerPlacement === 'top';
 
+  // Said in place of the caption, as the problem it is.
+  const imageProblem = isTooLong
+    ? undefined
+    : (imagesRefused ?? attached.notice ?? attached.problem);
+
+  // A problem to fix before starting, said in place of the caption. The
+  // missing agent first: an image problem waits until there is an agent to
+  // judge it by.
+  let problemLine: string | undefined;
+  if (showAgentMissing && !isTooLong) {
+    problemLine = 'Choose an agent to start.';
+  } else if (imageProblem && !awaitingAgent) {
+    problemLine = imageProblem;
+  }
+
+  const imageList = (
+    <ComposerImageList
+      images={attached.images}
+      onRemove={attached.remove}
+      onEmptied={() => fieldRef.current?.querySelector('textarea')?.focus()}
+    />
+  );
+
   const field = (
     <TextAreaField
+      ref={fieldRef}
       aria-label="Prompt"
       placeholder={
         promptPlaceholder?.(selectedAgent) ?? 'What should the agent do?'
@@ -730,6 +846,7 @@ export function NewSessionComposer({
       onChange={setPrompt}
       onFocus={() => setExpanded(true)}
       onKeyDown={handleKeyDown}
+      onPaste={attached.onPaste}
       enterKeyHint={sendEnterKeyHint(touch)}
       // Disabled, not just refused on submit: agent-first surfaces say
       // "this is step two" by the field itself. react-aria announces
@@ -810,13 +927,44 @@ export function NewSessionComposer({
           (Boolean(soleAgent) && listed.length === 1 && !pickerFooterAction)
         }
       />
+      {offersWorkspaces && selectedAgent && (
+        <WorkspacePicker
+          key={selectedAgent.id}
+          agent={selectedAgent}
+          value={workspace}
+          onChange={next => chooseWorkspace(selectedAgent.id, next)}
+          isDisabled={isStarting}
+          showLabel={pickerOnTop && Boolean(pickerLabel)}
+        />
+      )}
       {renderPickerAccessory?.(selectedAgent)}
     </>
   );
 
+  // A start in a workspace says its access check, its sign-ins and its
+  // refusal above the box; any other failure stays the alert below.
+  const workspaceNotice =
+    startedIn && selectedAgent ? (
+      <WorkspaceStartNotice
+        installation={selectedAgent.installation}
+        workspace={startedIn.name}
+        repositories={startedIn.repositories}
+        isStarting={isStarting}
+        error={error}
+        onRetry={() => submit({ workspace: startedIn })}
+        onStartWithout={() => {
+          chooseWorkspace(selectedAgent.id, undefined);
+          submit({ workspace: undefined });
+        }}
+      />
+    ) : null;
+  const workspaceSaysError =
+    Boolean(startedIn) && error instanceof WorkspaceManagerError;
+
   return (
     <form onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
+        {workspaceNotice}
         {error instanceof AgentManagerNotConnectedError && selectedAgent ? (
           <ConnectAgentManagerAlert
             installation={selectedAgent.installation}
@@ -824,7 +972,8 @@ export function NewSessionComposer({
             action="Sessions are started"
           />
         ) : (
-          error && (
+          error &&
+          !workspaceSaysError && (
             <Alert
               status="danger"
               title="Session not started"
@@ -846,52 +995,64 @@ export function NewSessionComposer({
           />
         )}
 
-        <ComposerFrame
-          className={STABLE_CLASS_NAMES.composer}
-          minRows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
-          maxRows={MAX_ROWS}
-          // Picker-first, the frame's input slot carries the picker row and
-          // then the text field: the frame stacks its children, so the row
-          // heads the box without a slot of its own.
-          input={
-            pickerOnTop ? (
+        {/* The drop target is the box, and only the box: a drop beside it
+        is refused page-wide (see `useComposerImages`). */}
+        <div {...attached.dropTargetProps}>
+          <ComposerFrame
+            className={STABLE_CLASS_NAMES.composer}
+            minRows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
+            maxRows={MAX_ROWS}
+            isDropTarget={attached.isDropTarget}
+            dropLabel={unsupportedReason ?? DROP_LABEL}
+            // Picker-first, the images sit under the picker row, with the text
+            // they go with (in the input slot below).
+            attachments={pickerOnTop ? undefined : imageList}
+            // Picker-first, the frame's input slot carries the picker row and
+            // then the text field: the frame stacks its children, so the row
+            // heads the box without a slot of its own.
+            input={
+              pickerOnTop ? (
+                <>
+                  <div className={classes.pickerRow}>
+                    {pickerLabel && (
+                      <Text
+                        as="span"
+                        variant="body-small"
+                        className={classes.pickerLabel}
+                      >
+                        {pickerLabel(selectedAgent)}
+                      </Text>
+                    )}
+                    {picker}
+                  </div>
+                  {imageList}
+                  {field}
+                </>
+              ) : (
+                field
+              )
+            }
+            leading={pickerOnTop ? undefined : picker}
+            trailing={
               <>
-                <div className={classes.pickerRow}>
-                  {pickerLabel && (
-                    <Text
-                      as="span"
-                      variant="body-small"
-                      className={classes.pickerLabel}
-                    >
-                      {pickerLabel(selectedAgent)}
-                    </Text>
-                  )}
-                  {picker}
-                </div>
-                {field}
+                <ButtonIcon
+                  type="submit"
+                  aria-label="Start"
+                  icon={<ArrowForwardIcon />}
+                  // Not disabled while starting: pending keeps the button focused,
+                  // so the wait is announced and a failure leaves focus in place.
+                  // Agent-first, it waits with the field until an agent is chosen.
+                  isDisabled={awaitingAgent || (!canSubmit && !isStarting)}
+                  isPending={isStarting}
+                />
               </>
-            ) : (
-              field
-            )
-          }
-          leading={pickerOnTop ? undefined : picker}
-          trailing={
-            <ButtonIcon
-              type="submit"
-              aria-label="Start"
-              icon={<ArrowForwardIcon />}
-              // Not disabled while starting: pending keeps the button focused,
-              // so the wait is announced and a failure leaves focus in place.
-              // Agent-first, it waits with the field until an agent is chosen.
-              isDisabled={awaitingAgent || (!canSubmit && !isStarting)}
-              isPending={isStarting}
-            />
-          }
-        />
+            }
+          />
+        </div>
 
-        {showAgentMissing && !isTooLong ? (
+        {problemLine ? (
           <Text variant="body-small" color="danger" role="alert">
-            Choose an agent to start.
+            {problemLine}
           </Text>
         ) : (
           <Text variant="body-small" color="secondary">

@@ -174,7 +174,7 @@ function renderPanel(
     </QueryClientProvider>,
     {
       apis: [[musterApiRef, api]],
-      mountedRoutes: { '/agent-platform/workflows': workflowsRouteRef },
+      mountedRoutes: { '/customize/workflows': workflowsRouteRef },
     },
   );
 }
@@ -208,15 +208,12 @@ describe('CustomizeWorkflowsPanel', () => {
     ).toBeInTheDocument();
     expect(report).toHaveAttribute(
       'data-href',
-      '/agent-platform/workflows/ticket-report?installation=gazelle',
+      '/customize/workflows/gazelle/ticket-report',
     );
     // The name is a real link too (M21): keyboard, new tab.
     expect(
       within(report).getByRole('link', { name: 'ticket-report' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/workflows/ticket-report?installation=gazelle',
-    );
+    ).toHaveAttribute('href', '/customize/workflows/gazelle/ticket-report');
 
     const check = screen.getByRole('row', { name: /upgrade-check/ });
     expect(within(check).getByText('1 step')).toBeInTheDocument();
@@ -233,15 +230,22 @@ describe('CustomizeWorkflowsPanel', () => {
 
     const report = screen.getByRole('row', { name: /ticket-report/ });
     expect(within(report).getByText('support')).toBeInTheDocument();
-    expect(await within(report).findByText('Only reads')).toBeInTheDocument();
+    expect(await within(report).findByText('Reads')).toBeInTheDocument();
+    // The tool's words, with what they mean for a workflow's steps.
+    expect(
+      within(report).getByText('Reads').closest('[tabindex]'),
+    ).toHaveAccessibleDescription('Every step only reads.');
     expect(within(report).getByText('GitOps')).toBeInTheDocument();
 
     // Without a derived readOnlyHint the workflow can change things — the
     // honest MCP default, never presented as harmless.
     const check = screen.getByRole('row', { name: /upgrade-check/ });
     expect(
-      await within(check).findByText('Can change things'),
+      await within(check).findByText('Changes things'),
     ).toBeInTheDocument();
+    expect(
+      within(check).getByText('Changes things').closest('[tabindex]'),
+    ).toHaveAccessibleDescription('At least one step can change things.');
     expect(within(check).getByText('Manually added')).toBeInTheDocument();
   });
 
@@ -291,8 +295,8 @@ describe('CustomizeWorkflowsPanel', () => {
     expect(api.listExecutions).not.toHaveBeenCalled();
     expect(api.filterTools).not.toHaveBeenCalled();
     // No badge is claimed while the hint cannot be read.
-    expect(screen.queryByText('Only reads')).toBeNull();
-    expect(screen.queryByText('Can change things')).toBeNull();
+    expect(screen.queryByText('Reads')).toBeNull();
+    expect(screen.queryByText('Changes things')).toBeNull();
   });
 
   it('asks for no session while one is connected', async () => {
@@ -403,11 +407,8 @@ describe('CustomizeWorkflowsPanel at phone width (T22 B9)', () => {
     const report = itemOf('ticket-report');
     expect(
       within(report).getByRole('link', { name: 'ticket-report' }),
-    ).toHaveAttribute(
-      'href',
-      '/agent-platform/workflows/ticket-report?installation=gazelle',
-    );
-    expect(await within(report).findByText('Only reads')).toBeInTheDocument();
+    ).toHaveAttribute('href', '/customize/workflows/gazelle/ticket-report');
+    expect(await within(report).findByText('Reads')).toBeInTheDocument();
     expect(within(report).getByText('support')).toBeInTheDocument();
     expect(within(report).getByText('4 steps')).toBeInTheDocument();
     expect(
@@ -420,7 +421,7 @@ describe('CustomizeWorkflowsPanel at phone width (T22 B9)', () => {
 
     const check = itemOf('upgrade-check');
     expect(
-      await within(check).findByText('Can change things'),
+      await within(check).findByText('Changes things'),
     ).toBeInTheDocument();
     expect(await within(check).findByText('No runs yet')).toBeInTheDocument();
     expect(within(check).getByText('Manually added')).toBeInTheDocument();

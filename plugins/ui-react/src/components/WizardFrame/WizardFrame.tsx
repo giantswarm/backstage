@@ -55,8 +55,14 @@ const COLUMN_PADDING_X = 64;
 /** The rail's distance from the frame's right edge. */
 const RAIL_MARGIN_END = 32;
 
-/** The footer's measured height, published on the frame for the clearance. */
-const FOOTER_HEIGHT_VAR = '--wizard-footer-height';
+/**
+ * The footer's measured height, published on the frame for the clearance, and
+ * on the document root while a frame is mounted, for what floats over the page
+ * from outside it (the agent shell's toasts): it lifts itself by this, so it
+ * never lands on Continue or Create.
+ */
+export const WIZARD_FOOTER_HEIGHT_VAR = '--wizard-footer-height';
+const FOOTER_HEIGHT_VAR = WIZARD_FOOTER_HEIGHT_VAR;
 
 /**
  * How far the footer's top edge can reach into the viewport: its own height —
@@ -66,7 +72,16 @@ const FOOTER_HEIGHT_VAR = '--wizard-footer-height';
  * validation focusing it — never lands under the docked footer (or the
  * shell's mobile bottom bar below it).
  */
-const FOOTER_CLEARANCE = `calc(var(${FOOTER_HEIGHT_VAR}, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px))`;
+/**
+ * The agent shell's toast, while one shows, floats right above the footer
+ * (agent-shell.css): `--agent-shell-toast-height` is its height (the shell's
+ * `useToastHeight`; classic chrome never defines it). The step leaves that
+ * much room at its end, so its last control can be scrolled clear of it, and
+ * a field scrolled into view keeps clear of it too.
+ */
+const TOAST_ROOM = 'var(--agent-shell-toast-height, 0px)';
+
+const FOOTER_CLEARANCE = `calc(var(${FOOTER_HEIGHT_VAR}, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px) + ${TOAST_ROOM})`;
 
 // Phone first: the narrow padding is the default, and the two-column tier
 // (≥ 768px, where forms go to two columns) widens it.
@@ -255,6 +270,16 @@ const useStyles = makeStyles({
       display: 'block',
     },
   },
+  // In the spacer's place: the header's right end, where a scope line sits.
+  meta: {
+    flex: '1 1 0',
+    minWidth: 0,
+    textAlign: 'right',
+    [PHONE_MEDIA]: {
+      flexBasis: '100%',
+      textAlign: 'left',
+    },
+  },
   body: {
     flex: '1 1 auto',
   },
@@ -286,11 +311,13 @@ const useStyles = makeStyles({
     boxSizing: 'border-box',
     margin: '0 auto',
     padding: '24px 16px',
+    paddingBottom: `calc(24px + ${TOAST_ROOM})`,
     display: 'flex',
     flexDirection: 'column',
     gap: 24,
     [TWO_COLUMN_MEDIA]: {
       padding: '40px 32px',
+      paddingBottom: `calc(40px + ${TOAST_ROOM})`,
     },
     '& :is(input, textarea, select, button, [tabindex])': {
       scrollMarginTop: 96,
@@ -411,10 +438,11 @@ function useFrameMeasurements() {
   useEffect(() => {
     const root = rootRef.current;
     const footer = footerRef.current;
-    if (!root || !footer || typeof ResizeObserver === 'undefined') {
+    if (!root || !footer) {
       return undefined;
     }
-    const observer = new ResizeObserver(() => {
+    const documentRoot = document.documentElement;
+    const measure = () => {
       // The border box: a reserved aside is padding on the frame, and must
       // not shrink the width it is measured against.
       const width = root.getBoundingClientRect().width;
@@ -423,12 +451,25 @@ function useFrameMeasurements() {
       }
       const height = footer.getBoundingClientRect().height;
       if (height > 0) {
-        root.style.setProperty(FOOTER_HEIGHT_VAR, `${Math.ceil(height)}px`);
+        const value = `${Math.ceil(height)}px`;
+        root.style.setProperty(FOOTER_HEIGHT_VAR, value);
+        documentRoot.style.setProperty(FOOTER_HEIGHT_VAR, value);
       }
-    });
-    observer.observe(root);
-    observer.observe(footer);
-    return () => observer.disconnect();
+    };
+    // At once as well: the shell's toasts clear the footer from the first
+    // paint, not from the observer's first callback.
+    measure();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(measure);
+    observer?.observe(root);
+    observer?.observe(footer);
+    return () => {
+      observer?.disconnect();
+      // No frame, no footer: the notice goes back to the corner.
+      documentRoot.style.removeProperty(FOOTER_HEIGHT_VAR);
+    };
   }, []);
 
   return { rootRef, footerRef, frameWidth };
@@ -451,6 +492,11 @@ export interface WizardFrameProps {
   documentTitle?: ReadonlyArray<string | undefined>;
   /** Muted text after the title, e.g. "Customize / Models". */
   context?: ReactNode;
+  /**
+   * Muted text at the header's right end, e.g. the scope the flow works in
+   * ("Organization acme · gazelle"); under the title at phone width.
+   */
+  meta?: ReactNode;
   steps?: WizardStep[];
   /** The id of the step on screen. */
   currentStep?: string;
@@ -503,6 +549,7 @@ export function WizardFrame({
   title,
   documentTitle,
   context,
+  meta,
   steps,
   currentStep,
   closeHref,
@@ -680,7 +727,17 @@ export function WizardFrame({
             </div>
           </div>
           {stepStrip}
-          <div className={classes.spacer} />
+          {meta ? (
+            <Text
+              variant="body-small"
+              color="secondary"
+              className={classes.meta}
+            >
+              {meta}
+            </Text>
+          ) : (
+            <div className={classes.spacer} />
+          )}
         </header>
         <WizardRailContext.Provider value={railDocked}>
           <div

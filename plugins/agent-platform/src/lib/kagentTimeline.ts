@@ -3,7 +3,8 @@ import {
   addTokenUsage,
   AttachmentPreview,
   ASK_USER_TOOL_NAME,
-  claimEndedTurnUsage,
+  claimEndedTurnMessage,
+  ContextReading,
   CONFIRMATION_TOOL_NAME,
   historyWithPendingPrompt,
   isAgentToolName,
@@ -21,9 +22,9 @@ import {
   readMessageText,
   readAttachment,
   readAttachmentPreview,
+  readUsageReport,
   readNestedTokenUsage,
   readPartText,
-  readTokenUsage,
   readTurnStatus,
   TokenUsage,
   TurnStatus,
@@ -151,6 +152,21 @@ export type TimelineItem =
        * entry says so without inventing a reason.
        */
       reason?: string;
+    })
+  | (TimelineItemBase & {
+      /**
+       * Connections the agent's egress policy refused during this turn, to one
+       * destination. Not from kagent: the Substrate egress gateway counts them
+       * per actor, and `withEgressRefusals` places them on their turn.
+       */
+      kind: 'egress-refused';
+      /** `http`, `https` or `tcp`. */
+      scheme: string;
+      /** Absent when the gateway counted it without naming the host. */
+      host?: string;
+      port?: number;
+      /** Refusals of this destination in this turn. */
+      count: number;
     });
 
 export type SessionTimeline = {
@@ -158,14 +174,19 @@ export type SessionTimeline = {
   /** Total usage across the session, message-level plus delegated agents. */
   tokens: TokenUsage;
   /**
-   * The newest turn's own usage — the closest measurement of the model's
-   * current context that exists, since its `prompt` count is what the turn's
-   * model calls were sent. Summed over the turn's calls (kagent records no
-   * per-call usage) and **excluding** delegated agents' nested usage, which
-   * belongs to their own context. Undefined when no turn reported any usage —
-   * a session that never ran, or whose newest turns are still working.
+   * The context indicator's reading: the largest model call of the newest turn
+   * that reported usage. A turn's context only grows from call to call, so its
+   * largest call is its newest root-agent call — and, unlike the newest bag,
+   * it cannot be undercut by a small auxiliary or sub-agent call recorded in
+   * the same turn, or by a bag that counts no tokens. (A compaction mid-turn
+   * is the exception: the figure stays at the pre-compaction size until the
+   * next turn.) Calls are never summed: each re-sends the whole context.
+   * When any bag of the turn is a total over several calls (the claude
+   * Harness), the turn's reading is that bag, `perCall: false` — no call's
+   * context is known. Delegated agents' nested usage is excluded: it belongs
+   * to their own context. Undefined when no turn reported any usage.
    */
-  lastTurnTokens?: TokenUsage;
+  context?: ContextReading;
   /**
    * History entries that failed to parse at all — genuine data loss, safe for the
    * UI to report as "N messages could not be read".
@@ -176,6 +197,27 @@ export type SessionTimeline = {
    */
   skippedMessages: number;
 };
+
+/**
+ * One turn's context reading so far, given its next bag's: the larger of two
+ * per-call readings, and a turn total (not per call) over anything, since a
+ * turn that reports a total measures no call on its own.
+ */
+function foldContext(
+  turn: ContextReading | undefined,
+  next: ContextReading | undefined,
+): ContextReading | undefined {
+  if (!next || next.tokens <= 0) {
+    return turn;
+  }
+  if (!turn || !next.perCall) {
+    return next;
+  }
+  if (!turn.perCall) {
+    return turn;
+  }
+  return next.tokens > turn.tokens ? next : turn;
+}
 
 /** A `tool-call`/`agent-call` item still waiting for its response. */
 type OpenCall = { callId: string; itemIndex: number };
@@ -310,7 +352,7 @@ function readTurnEnding(
 export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
   const items: TimelineItem[] = [];
   let tokens = EMPTY_USAGE;
-  let lastTurnTokens: TokenUsage | undefined;
+  let context: ContextReading | undefined;
   let skippedMessages = 0;
 
   // kagent repeats a message under the same `messageId` — reliably for the user's
@@ -343,10 +385,10 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     // when a tool is used repeatedly.
     const openCalls: OpenCall[] = [];
 
-    // This turn's own usage, for `lastTurnTokens`. Message-level bags and the
+    // This turn's reading, for `context`. Message-level bags and the
     // ended-turn claim only — a delegated agent's nested usage is another
     // session's context, so it counts toward the session total but not here.
-    let taskUsage = EMPTY_USAGE;
+    let taskContext: ContextReading | undefined;
 
     entries.forEach((entry, entryIndex) => {
       const parsed = parseHistoryEntry(entry);
@@ -382,9 +424,9 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       // tokens to the agent's reply, and a user message carrying a usage bag
       // (some do) would double count the same turn.
       if (!isUser) {
-        const usage = readTokenUsage(message.metadata);
-        tokens = addTokenUsage(tokens, usage);
-        taskUsage = addTokenUsage(taskUsage, usage);
+        const report = readUsageReport(message.metadata);
+        tokens = addTokenUsage(tokens, report?.usage);
+        taskContext = foldContext(taskContext, report?.context);
       }
 
       const parts = Array.isArray(message.parts) ? message.parts : [];
@@ -680,14 +722,18 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       });
     }
     // After the ending: it reads the reason against the ids rendered so far.
-    const endedUsage = claimEndedTurnUsage(status, seenMessageIds);
-    tokens = addTokenUsage(tokens, endedUsage);
-    taskUsage = addTokenUsage(taskUsage, endedUsage);
+    const endedReport = readUsageReport(
+      claimEndedTurnMessage(status, seenMessageIds)?.metadata,
+    );
+    tokens = addTokenUsage(tokens, endedReport?.usage);
+    taskContext = foldContext(taskContext, endedReport?.context);
 
-    // The newest turn with a prompt count wins: a turn still working has not
-    // reported usage yet, and must not zero out the last real measurement.
-    if (taskUsage.prompt > 0) {
-      lastTurnTokens = taskUsage;
+    // The newest turn with a reading wins, as soon as its first call reports:
+    // on the API v2 line ADK's per-call bags arrive on artifacts while the turn
+    // is still working, so the indicator moves mid-turn. A turn that has
+    // reported nothing yet keeps the previous turn's reading.
+    if (taskContext) {
+      context = taskContext;
     }
   });
 
@@ -695,7 +741,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     items,
     tokens,
     skippedMessages,
-    ...(lastTurnTokens && { lastTurnTokens }),
+    ...(context && { context }),
   };
 }
 

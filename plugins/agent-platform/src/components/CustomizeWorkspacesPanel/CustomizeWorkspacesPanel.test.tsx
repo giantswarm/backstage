@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { WorkspaceRow } from '../../lib/workspaceList';
 import type { WorkspacesData } from '../WorkspacesDataProvider';
+import { workspacesRouteRef } from '../../routes';
 import { CustomizeWorkspacesPanel } from './CustomizeWorkspacesPanel';
 
 const docs: WorkspaceRow = {
@@ -53,6 +54,19 @@ const mockRemove = {
 jest.mock('../WorkspacesDataProvider', () => ({
   useWorkspacesData: () => mockData,
 }));
+jest.mock('../WorkspaceManagerSignIn', () => ({
+  WorkspaceManagerSignIn: (props: {
+    installation: string;
+    onSignedIn: () => void;
+  }) => (
+    <button
+      data-testid={`sign-in-${props.installation}`}
+      onClick={props.onSignedIn}
+    >
+      signed in
+    </button>
+  ),
+}));
 jest.mock('../../hooks/useWorkspaceActions', () => ({
   useWorkspaceActions: () => ({ sync: mockSync, remove: mockRemove }),
   useWorkspaceDetail: (_installation: string, name: string) => ({
@@ -94,7 +108,9 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
 }
 
 function renderPanel(search = '') {
-  return renderInTestApp(<CustomizeWorkspacesPanel search={search} />);
+  return renderInTestApp(<CustomizeWorkspacesPanel search={search} />, {
+    mountedRoutes: { '/customize/workspaces': workspacesRouteRef },
+  });
 }
 
 describe('CustomizeWorkspacesPanel', () => {
@@ -108,11 +124,11 @@ describe('CustomizeWorkspacesPanel', () => {
 
     const row = screen.getByRole('row', { name: /docs/ });
     expect(
-      within(row).getByText('github: example-org · topic docs'),
+      within(row).getByText('example-org · topic docs'),
     ).toBeInTheDocument();
     expect(within(row).getByText('12')).toBeInTheDocument();
     expect(
-      within(row).getByText(/4(\.0)? GiB of 15Gi|4(\.0)? GB of 15Gi/),
+      within(row).getByText(/4(\.0)? GiB of 15 GiB|4(\.0)? GB of 15 GiB/),
     ).toBeInTheDocument();
     expect(within(row).getByText('Synced')).toBeInTheDocument();
     expect(within(row).getByText('2')).toBeInTheDocument();
@@ -152,9 +168,9 @@ describe('CustomizeWorkspacesPanel', () => {
     await renderPanel();
 
     const row = screen.getByRole('row', { name: /docs/ });
-    expect(within(row).getByText(/ of 16Gi ↑$/)).toBeInTheDocument();
+    expect(within(row).getByText(/ of 16 GiB ↑$/)).toBeInTheDocument();
     expect(
-      within(row).getByText('Grown from 8Gi at the last sync'),
+      within(row).getByText('Grown from 8 GiB at the last sync'),
     ).toBeInTheDocument();
   });
 
@@ -169,17 +185,15 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.queryByRole('table')).toBeNull();
   });
 
-  it('shows the empty state with Create workspace, not offered until the editor exists', async () => {
+  it('shows the empty state with Create workspace, opening the editor for the Organization', async () => {
     mockData = data({ rows: [] });
     await renderPanel();
 
     expect(screen.getByText('No workspaces in alpha yet')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Create workspace' }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText('Coming with the workspace page.'),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'New workspace' })).toHaveAttribute(
+      'href',
+      '/customize/workspaces/new?installation=gazelle&organization=alpha',
+    );
   });
 
   it('says so where no environment in scope has the workspace-manager', async () => {
@@ -246,9 +260,7 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(
       screen.getByText('No Organization to show workspaces of'),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Create workspace' }),
-    ).toBeNull();
+    expect(screen.queryByRole('link', { name: 'New workspace' })).toBeNull();
   });
 
   it('lists the rest and names the installation it could not read', async () => {
@@ -284,6 +296,23 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(mockData.retry).toHaveBeenCalled();
   });
 
+  it('offers the sign-in to workspace-manager, not muster’s refusal, where the person has not signed in to it', async () => {
+    mockData = data({
+      rows: [],
+      failures: {
+        gazelle:
+          "agent-platform: auth_required: server 'workspace-manager' requires authentication before its tools can be called",
+      },
+    });
+    await renderPanel();
+
+    expect(screen.getByTestId('sign-in-gazelle')).toBeInTheDocument();
+    expect(screen.queryByText('Your workspaces could not be read')).toBeNull();
+    expect(screen.queryByText(/auth_required/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'signed in' }));
+    expect(mockData.retry).toHaveBeenCalled();
+  });
+
   it('names the unreachable muster, not a missing workspace-manager, where no muster answered', async () => {
     mockData = data({
       isAvailable: undefined,
@@ -309,21 +338,29 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.getByText(/nothing-like-it/)).toBeInTheDocument();
   });
 
-  it('offers Sync now and Delete, and Open and Edit only once the workspace page exists', async () => {
+  it('links the name to the workspace page', async () => {
+    await renderPanel();
+
+    expect(screen.getByRole('link', { name: 'docs' })).toHaveAttribute(
+      'href',
+      '/customize/workspaces/gazelle/alpha/docs',
+    );
+  });
+
+  it('offers Edit, Synchronize and Delete, and no Open beside the name link', async () => {
     await renderPanel();
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Actions for docs' }),
     );
-    expect(screen.getByRole('menuitem', { name: 'Open' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
+    expect(screen.queryByRole('menuitem', { name: 'Open' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
+      'href',
+      '/customize/workspaces/gazelle/alpha/docs/edit',
     );
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Sync now' }));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Synchronize…' }),
+    );
     expect(mockSync.mutate).toHaveBeenCalled();
   });
 

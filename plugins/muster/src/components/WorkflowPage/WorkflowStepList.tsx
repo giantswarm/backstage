@@ -2,7 +2,7 @@ import { useCallback, useId, useRef, useState } from 'react';
 import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ShowMore } from '@giantswarm/backstage-plugin-ui-react';
-import type { ToolEffect } from '../../lib/toolAnnotations';
+import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { conditionSummary } from '../../lib/workflowDisplay';
 import {
@@ -20,6 +20,7 @@ import {
   runSpoken,
   toolLine,
 } from './flowLabels';
+import { EffectBadge, MarkerBadge } from '../shared';
 import { WorkflowStepDetails } from './WorkflowStepDetails';
 
 /** The cleanup lane's line, the same words the canvas puts on it. */
@@ -89,20 +90,13 @@ const useStyles = makeStyles({
     gap: 8,
     minWidth: 0,
   },
+  // The step's number, round; its look is MarkerBadge's, as on the canvas.
   number: {
     flex: 'none',
-    height: 18,
     minWidth: 18,
     marginTop: 1,
-    padding: '0 5px',
     boxSizing: 'border-box',
     borderRadius: 9,
-    border: '1px solid var(--bui-border-2)',
-    background: 'var(--bui-bg-neutral-1)',
-    fontSize: 11,
-    lineHeight: '16px',
-    textAlign: 'center',
-    color: 'var(--bui-fg-secondary)',
     fontVariantNumeric: 'tabular-nums',
   },
   // The title is the information: it wraps, it is never cut.
@@ -149,22 +143,6 @@ const useStyles = makeStyles({
     display: 'flex',
     flexWrap: 'wrap',
     gap: 4,
-  },
-  marker: {
-    height: 18,
-    padding: '0 6px',
-    borderRadius: 6,
-    border: '1px solid var(--bui-border-2)',
-    background: 'var(--bui-bg-neutral-1)',
-    fontSize: 11,
-    lineHeight: '16px',
-    whiteSpace: 'nowrap',
-    color: 'var(--bui-fg-secondary)',
-  },
-  markerChanges: {
-    borderColor: 'var(--bui-warning-border)',
-    background: 'var(--bui-warning-bg-subdued)',
-    color: 'var(--bui-warning-fg-subdued)',
   },
   cleanup: {
     display: 'flex',
@@ -250,7 +228,7 @@ function StepCard({
       aria-label={accessibleName(node, [
         groupLabel ?? line,
         gate,
-        effect && (effect === 'changes' ? 'changes things' : 'only reads'),
+        effect && TOOL_EFFECT_LABELS[effect].toLowerCase(),
         node.allowFailure && 'may fail',
         overlay && runSpoken(overlay),
       ])}
@@ -259,7 +237,11 @@ function StepCard({
       data-run-status={overlay?.status}
     >
       <span className={classes.head}>
-        {node.number && <span className={classes.number}>{node.number}</span>}
+        {node.number && (
+          <MarkerBadge tone="neutral" size="compact" className={classes.number}>
+            {node.number}
+          </MarkerBadge>
+        )}
         <span className={classes.title}>{node.title}</span>
         {overlay && (
           <span className={`${classes.run} ${runClass}`}>
@@ -278,17 +260,11 @@ function StepCard({
       )}
       {hasMarkers && (
         <span className={classes.markers}>
-          {effect && (
-            <span
-              className={`${classes.marker} ${
-                effect === 'changes' ? classes.markerChanges : ''
-              }`}
-            >
-              {effect === 'changes' ? 'Changes things' : 'Reads'}
-            </span>
-          )}
+          {effect && <EffectBadge effect={effect} size="compact" />}
           {node.allowFailure && (
-            <span className={classes.marker}>May fail</span>
+            <MarkerBadge tone="neutral" size="compact">
+              May fail
+            </MarkerBadge>
           )}
         </span>
       )}
@@ -299,7 +275,7 @@ function StepCard({
 export interface WorkflowStepListProps {
   graph: WorkflowGraph;
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
   /** The latest run's outcome per step key, when a run is known. */
   overlayOf: (key: string) => StepRunOverlay | undefined;
   /** What each step's tool does, by step key, where the catalogue says. */

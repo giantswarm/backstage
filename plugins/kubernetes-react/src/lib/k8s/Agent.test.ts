@@ -168,6 +168,11 @@ describe('Agent', () => {
       } as Partial<AgentInterface>);
 
       expect(agent.getHarnessName()).toBeUndefined();
+      expect(agent.getInlineHarnessRuntime()).toBe('claude');
+    });
+
+    it('reads no inline runtime from an agent that names its Harness', () => {
+      expect(withTemplate({}).getInlineHarnessRuntime()).toBeUndefined();
     });
   });
 

@@ -48,9 +48,19 @@ import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useRenameSession } from '../../hooks/useRenameSession';
+import {
+  useWorkspaceNames,
+  workspaceInstallations,
+} from '../../hooks/useWorkspaceNames';
+import {
+  UNNAMED_WORKSPACE_LABEL,
+  workspaceNameLabel,
+} from '../../lib/sessionWorkspace';
 import { PinIcon } from '../PinIcon';
 import { SessionRow, sessionSearchFn } from '../SessionsDataProvider/helpers';
 import { SessionActionsMenu } from '../SessionDetailPage/SessionActionsMenu';
+import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
+import type { SessionNotificationsControl } from '../SessionDetailPage/SessionActionsMenu';
 import { SessionRenameDialog } from '../SessionDetailPage/SessionRenameDialog';
 import {
   compareSessionRecency,
@@ -72,6 +82,8 @@ import {
   sessionSelectionOf,
 } from './filters';
 import {
+  EARLIER_REVISION_LABEL,
+  EARLIER_REVISION_TITLE,
   RUNTIME_LOST_LABEL,
   RUNTIME_LOST_TITLE,
   SessionAgent,
@@ -185,7 +197,7 @@ function ShellStateCell({
 }
 
 /**
- * A row's rename and delete menu.
+ * A row's rename, notifications and delete menu.
  *
  * Presses inside it, the menu's popover and dialogs included (React events
  * bubble through portals), are kept from the row, which would otherwise open
@@ -194,9 +206,11 @@ function ShellStateCell({
 function SessionRowMenu({
   row,
   onDeleted,
+  notifications,
 }: {
   row: SessionTableRow;
   onDeleted: () => void;
+  notifications: SessionNotificationsControl;
 }) {
   const deletion = useDeleteSession(row.installation, row.sessionId);
   const rename = useRenameSession(row.installation, row.sessionId);
@@ -223,6 +237,7 @@ function SessionRowMenu({
         isUserScoped={isUserScoped}
         triggerLabel={`More actions for “${row.title}”`}
         onDeleted={onDeleted}
+        notifications={notifications}
       />
       <SessionRenameDialog
         title={row.title}
@@ -281,17 +296,23 @@ function RowActions({
   focusAfterDelete,
   onRowDeleted,
   onTogglePin,
+  notificationsFor,
 }: {
   row: SessionTableRow;
   focusAfterDelete: (rowId: string) => string | undefined;
   onRowDeleted: (focusRowId: string | undefined) => void;
   onTogglePin: (rowId: string) => void;
+  notificationsFor: (row: SessionTableRow) => SessionNotificationsControl;
 }) {
   const focusRowId = focusAfterDelete(row.id);
   return (
     <Flex align="center" gap="1">
       <RowPinButton row={row} onToggle={onTogglePin} />
-      <SessionRowMenu row={row} onDeleted={() => onRowDeleted(focusRowId)} />
+      <SessionRowMenu
+        row={row}
+        onDeleted={() => onRowDeleted(focusRowId)}
+        notifications={notificationsFor(row)}
+      />
     </Flex>
   );
 }
@@ -302,10 +323,12 @@ function shellColumns({
   isLoadingStates,
   showAgent,
   showInstallation,
+  showWorkspace,
   currentYear,
   focusAfterDelete,
   onRowDeleted,
   onTogglePin,
+  notificationsFor,
 }: {
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>;
   hrefFor: (row: SessionRow) => string | undefined;
@@ -313,11 +336,14 @@ function shellColumns({
   /** Off on one agent's own sessions, where every row has that agent. */
   showAgent: boolean;
   showInstallation: boolean;
+  /** On where a listed session works in a workspace. */
+  showWorkspace: boolean;
   currentYear: number;
   /** The row to focus once a row is deleted, by the deleted row's id. */
   focusAfterDelete: (rowId: string) => string | undefined;
   onRowDeleted: (focusRowId: string | undefined) => void;
   onTogglePin: (rowId: string) => void;
+  notificationsFor: (row: SessionTableRow) => SessionNotificationsControl;
 }): ShellColumn[] {
   const columns: ShellColumn[] = [
     {
@@ -359,6 +385,15 @@ function shellColumns({
                   {RUNTIME_LOST_LABEL}
                 </Badge>
               )}
+              {row.earlierRevision && (
+                <Badge
+                  size="small"
+                  title={EARLIER_REVISION_TITLE}
+                  style={{ flexShrink: 0 }}
+                >
+                  {EARLIER_REVISION_LABEL}
+                </Badge>
+              )}
             </Flex>
           </Cell>
         );
@@ -375,6 +410,14 @@ function shellColumns({
           <SessionAgent row={row} buildAvatarUrl={buildAvatarUrl} />
         </Cell>
       ),
+    });
+  }
+  if (showWorkspace) {
+    columns.push({
+      id: 'workspace',
+      label: 'Workspace',
+      width: '14%',
+      cell: row => <WorkspaceCell row={row} />,
     });
   }
   columns.push({
@@ -424,12 +467,41 @@ function shellColumns({
             focusAfterDelete={focusAfterDelete}
             onRowDeleted={onRowDeleted}
             onTogglePin={onTogglePin}
+            notificationsFor={notificationsFor}
           />
         </Cell>
       ),
     },
   );
   return columns;
+}
+
+/** A row's workspace by name; a dash for a session without one. */
+function WorkspaceCell({ row }: { row: SessionTableRow }) {
+  if (!row.workspace) {
+    return (
+      <Cell>
+        <Text variant="body-medium" color="secondary" title="No workspace">
+          —
+        </Text>
+      </Cell>
+    );
+  }
+  if (!row.workspaceName) {
+    return (
+      <Cell>
+        <Skeleton width="80px" height="12px" />
+      </Cell>
+    );
+  }
+  return (
+    <CellText
+      title={row.workspaceName}
+      {...(row.workspaceName === UNNAMED_WORKSPACE_LABEL && {
+        description: 'not listed for you',
+      })}
+    />
+  );
 }
 
 /**
@@ -666,14 +738,32 @@ export function ShellSessionsTable({
 
   const { isPinned, togglePin } = usePinnedSessions();
 
-  // The pin joined onto the row like the state, so the Pinned filter and group
-  // run through the same search/filter/sort pipeline as everything else.
+  // The workspaces' names: one list per installation with a session in one.
+  const installationsWithWorkspaces = useMemo(
+    () => workspaceInstallations(rows),
+    [rows],
+  );
+  const workspaceNameOf = useWorkspaceNames(installationsWithWorkspaces);
+  const showWorkspace = installationsWithWorkspaces.length > 0;
+
+  // The pin and the workspace's name joined onto the row like the state, so
+  // the Pinned filter and group, and the search, run through the same
+  // search/filter/sort pipeline as everything else.
   const stateRows = useMemo(
     () =>
-      withSessionStates(rows, sessionStates).map(row =>
-        isPinned(row.id) ? { ...row, pinned: true } : row,
-      ),
-    [rows, sessionStates, isPinned],
+      withSessionStates(rows, sessionStates).map(row => {
+        const pinned = isPinned(row.id);
+        const workspaceName = workspaceNameLabel(workspaceNameOf(row));
+        // A row with nothing to add stays the same object.
+        return pinned || workspaceName
+          ? {
+              ...row,
+              ...(pinned && { pinned }),
+              ...(workspaceName && { workspaceName }),
+            }
+          : row;
+      }),
+    [rows, sessionStates, isPinned, workspaceNameOf],
   );
 
   const hasStates = sessionStates !== undefined;
@@ -829,6 +919,19 @@ export function ShellSessionsTable({
     return () => cancelAnimationFrame(frame);
   }, [focusRequest]);
 
+  // Every row's Notifications submenu, from one reading of the record.
+  const notificationSettings = useSessionNotificationSettings();
+  const notificationsFor = useCallback(
+    (row: SessionTableRow): SessionNotificationsControl => ({
+      level: notificationSettings.isKnown
+        ? notificationSettings.levelOf(row.installation, row.sessionId)
+        : undefined,
+      onChange: level =>
+        notificationSettings.setLevel(row.installation, row.sessionId, level),
+    }),
+    [notificationSettings],
+  );
+
   const columns = useMemo(
     () =>
       shellColumns({
@@ -837,10 +940,12 @@ export function ShellSessionsTable({
         isLoadingStates,
         showAgent,
         showInstallation,
+        showWorkspace,
         currentYear,
         focusAfterDelete,
         onRowDeleted,
         onTogglePin: togglePin,
+        notificationsFor,
       }),
     [
       buildAvatarUrl,
@@ -848,10 +953,12 @@ export function ShellSessionsTable({
       isLoadingStates,
       showAgent,
       showInstallation,
+      showWorkspace,
       currentYear,
       focusAfterDelete,
       onRowDeleted,
       togglePin,
+      notificationsFor,
     ],
   );
 
@@ -980,6 +1087,7 @@ export function ShellSessionsTable({
                       focusAfterDelete={focusAfterDelete}
                       onRowDeleted={onRowDeleted}
                       onTogglePin={togglePin}
+                      notificationsFor={notificationsFor}
                     />
                   )}
                 />

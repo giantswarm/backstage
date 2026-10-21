@@ -20,6 +20,7 @@ import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
 import { AgentShellNav } from '../agentShell/AgentShellNav';
 import { isAgentArea, usePortals } from '../agentShell/agentArea';
+import { homeRouteRef } from '../agentShell/routes';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import AndroidIcon from '@material-ui/icons/Android';
 import FolderIcon from '@material-ui/icons/Folder';
@@ -92,6 +93,27 @@ function CreateSidebarItem({ fallback }: { fallback?: string }) {
   return <SidebarItem icon={CreateComponentIcon} to={to} text="Create..." />;
 }
 
+/**
+ * The classic portal's cross-link into the Agent Platform shell, at the
+ * section's root route; nothing while that page is not mounted.
+ */
+function AgentPlatformSidebarItem({ newTab }: { newTab: boolean }) {
+  // The Agent Platform's address is the shell's home, the new-session screen
+  // (`/`), where the old `/agent-platform` redirects too.
+  const rootLink = useRouteRef(homeRouteRef);
+  if (!rootLink) {
+    return null;
+  }
+  return (
+    <SidebarItem
+      icon={AndroidIcon}
+      to={rootLink()}
+      target={newTab ? '_blank' : undefined}
+      text="Agent Platform"
+    />
+  );
+}
+
 function ClassicSidebar({
   navItems,
   portals,
@@ -120,12 +142,9 @@ function ClassicSidebar({
   // is never drawn here.
   nav.take('page:agent-platform');
   const agentPlatformEntry = portals.agentPlatform ? (
-    <SidebarItem
+    <AgentPlatformSidebarItem
       key="agent-platform"
-      icon={AndroidIcon}
-      to="/agent-platform"
-      target={portals.platformPortal ? '_blank' : undefined}
-      text="Agent Platform"
+      newTab={portals.platformPortal}
     />
   ) : null;
 

@@ -1,6 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ModelConfig,
@@ -60,7 +60,7 @@ function renderPage(edit?: ModelEdit) {
         />
       </Routes>
     </PageHeaderActionsProvider>,
-    { mountedRoutes: { '/agent-platform/models': modelsRouteRef } },
+    { mountedRoutes: { '/customize/models': modelsRouteRef } },
   );
 }
 
@@ -164,12 +164,12 @@ describe('NewModelPage', () => {
 
     expect(displayName).toHaveAttribute('aria-invalid', 'true');
     expect(displayName).toHaveAccessibleDescription(
-      expect.stringContaining('Name is required'),
+      expect.stringContaining('Enter a name for the model.'),
     );
     expect(displayName).toHaveFocus();
     expect(model).toHaveAttribute('aria-invalid', 'true');
     expect(model).toHaveAccessibleDescription(
-      expect.stringContaining('Model is required'),
+      expect.stringContaining('Enter the model id.'),
     );
     // The technical name is only empty because the display name is: More
     // options stays closed, its field unflagged, and the key is optional.
@@ -230,7 +230,7 @@ describe('NewModelPage', () => {
     await renderPage();
     expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
   });
 });
@@ -347,6 +347,216 @@ describe('NewModelPage · editing a model', () => {
       expect.stringContaining(
         'The stored key is for Anthropic, not OpenAI (or compatible)',
       ),
+    );
+  });
+});
+
+describe('NewModelPage · Vertex AI', () => {
+  const serviceAccountKey = (projectID: string) =>
+    JSON.stringify(
+      {
+        type: 'service_account',
+        project_id: projectID,
+        private_key: 'not-a-key',
+        client_email: `kagent@${projectID}.iam.gserviceaccount.com`,
+        token_uri: 'https://oauth2.googleapis.com/token',
+      },
+      null,
+      2,
+    );
+  const keyFile = (content: string, name = 'key.json') =>
+    new File([content], name, { type: 'application/json' });
+  const chooseKeyFile = (file: File) =>
+    userEvent.upload(screen.getByLabelText('Service account key file'), file);
+  const keyGroup = () =>
+    screen.getByRole('group', { name: /^Service account key/ });
+
+  async function chooseProvider(name: string) {
+    await userEvent.click(screen.getByRole('button', { name: /Provider/ }));
+    await userEvent.click(await screen.findByRole('option', { name }));
+  }
+
+  async function fillGemini() {
+    await chooseProvider('Gemini on Vertex AI');
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Gemini Pro');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Location/ }),
+      'europe-west4',
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Model/ }),
+      'gemini-2.5-pro',
+    );
+  }
+
+  it('asks for a location and a key file instead of an endpoint or a typed key', async () => {
+    await renderPage();
+    await chooseProvider('Claude on Vertex AI');
+
+    expect(screen.getByRole('heading', { name: 'Provider' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Model' })).toBeVisible();
+    expect(screen.getByRole('textbox', { name: /^Location/ })).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Choose key file' }),
+    ).toBeVisible();
+    expect(screen.queryByRole('textbox', { name: /^Project ID/ })).toBeNull();
+    expect(screen.queryByLabelText(/^API key/)).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /^Base URL/ })).toBeNull();
+    expect(
+      screen.queryByRole('switch', {
+        name: /Skip TLS certificate verification/,
+      }),
+    ).toBeNull();
+  });
+
+  it('says what the key file names, takes its project and saves', async () => {
+    await renderPage();
+    await fillGemini();
+
+    const key = serviceAccountKey('my-project-123');
+    await chooseKeyFile(keyFile(key, 'my-project-123-abc.json'));
+
+    const status = within(keyGroup()).getByRole('status');
+    await waitFor(() =>
+      expect(status).toHaveTextContent('Read from my-project-123-abc.json.'),
+    );
+    expect(status).toHaveTextContent(
+      'Service account kagent@my-project-123.iam.gserviceaccount.com',
+    );
+    expect(status).toHaveTextContent('Project my-project-123');
+    expect(status).not.toHaveTextContent('not-a-key');
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Connect model' }),
+    );
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(mockSave.mock.calls[0][0].values).toEqual(
+      expect.objectContaining({
+        provider: 'GeminiVertexAI',
+        name: 'gemini-pro',
+        projectID: 'my-project-123',
+        location: 'europe-west4',
+        apiKey: key,
+      }),
+    );
+  });
+
+  it('says at once that a chosen file is not a key, and clears it when a key is chosen', async () => {
+    await renderPage();
+    await fillGemini();
+
+    await chooseKeyFile(keyFile('{"type": "authorized_user"}'));
+
+    const choose = screen.getByRole('button', { name: 'Choose another file' });
+    await waitFor(() =>
+      expect(choose).toHaveAccessibleDescription(
+        expect.stringContaining('This file is not a service account key.'),
+      ),
+    );
+
+    await chooseKeyFile(keyFile(serviceAccountKey('my-project-123')));
+    await waitFor(() => expect(choose).not.toHaveAccessibleDescription());
+  });
+
+  it('asks for the key file only on submit, and moves the focus to it', async () => {
+    await renderPage();
+    await fillGemini();
+
+    await userEvent.tab();
+    expect(
+      screen.queryByText('Choose the service account key file.'),
+    ).toBeNull();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Connect model' }),
+    );
+
+    expect(mockSave).not.toHaveBeenCalled();
+    const choose = screen.getByRole('button', { name: 'Choose key file' });
+    expect(choose).toHaveAccessibleDescription(
+      'Choose the service account key file.',
+    );
+    await waitFor(() => expect(choose).toHaveFocus());
+  });
+
+  it('checks the location when the person leaves it, and clears the error once fixed', async () => {
+    await renderPage();
+    await chooseProvider('Claude on Vertex AI');
+
+    const location = screen.getByRole('textbox', { name: /^Location/ });
+    await userEvent.type(location, 'Europe');
+    expect(location).not.toHaveAttribute('aria-invalid');
+
+    await userEvent.tab();
+    expect(location).toHaveAttribute('aria-invalid', 'true');
+    expect(location).toHaveAccessibleDescription(
+      expect.stringContaining(
+        'Enter global, us, eu or a region such as europe-west4.',
+      ),
+    );
+
+    await userEvent.clear(location);
+    await userEvent.type(location, 'global');
+    expect(location).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('keeps the stored key on an edit, and takes the project of a replacement', async () => {
+    const modelConfig = new ModelConfig(
+      {
+        apiVersion: 'api.kagent.dev/v1alpha3',
+        kind: 'ModelConfig',
+        metadata: { name: 'sonnet', namespace: 'kagent' },
+        spec: {
+          provider: 'AnthropicVertexAI',
+          model: 'claude-sonnet-4-5@20250929',
+          apiKeySecret: 'kagent-sonnet',
+          apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
+          anthropicVertexAI: {
+            projectID: 'my-project-123',
+            location: 'europe-west4',
+          },
+        },
+      } as ModelConfigInterface,
+      'inst-1',
+    );
+    await renderPage({
+      installation: 'inst-1',
+      modelConfig,
+      detailHref: '/customize/models/inst-1/kagent/sonnet',
+    });
+
+    expect(keyGroup()).toHaveTextContent(
+      'The stored key of project my-project-123 is kept.',
+    );
+    const location = screen.getByRole('textbox', { name: /^Location/ });
+    expect(location).toHaveValue('europe-west4');
+    await userEvent.clear(location);
+    await userEvent.type(location, 'global');
+
+    await chooseKeyFile(keyFile(serviceAccountKey('new-project')));
+    await waitFor(() =>
+      expect(keyGroup()).toHaveTextContent('Project new-project'),
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Keep the stored key' }),
+    );
+    expect(keyGroup()).toHaveTextContent(
+      'The stored key of project my-project-123 is kept.',
+    );
+
+    await chooseKeyFile(keyFile(serviceAccountKey('new-project')));
+    await waitFor(() =>
+      expect(keyGroup()).toHaveTextContent('Project new-project'),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(mockSave.mock.calls[0][0].values).toEqual(
+      expect.objectContaining({
+        location: 'global',
+        projectID: 'new-project',
+        apiKey: serviceAccountKey('new-project'),
+      }),
     );
   });
 });

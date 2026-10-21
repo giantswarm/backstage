@@ -1,17 +1,27 @@
 import { type ReactNode, useState } from 'react';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { TestApiProvider } from '@backstage/test-utils';
 import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
-import { agentsRouteRef, installationsExternalRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  installationsExternalRouteRef,
+  newSessionExternalRouteRef,
+} from '../../routes';
 import { CustomizeAgentsPanel } from './CustomizeAgentsPanel';
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
@@ -61,11 +71,21 @@ jest.mock('../AgentsDataProvider', () => {
               (mockAgents.installations ?? []).length === 0,
           },
         ),
+        noAccessInstallations: [],
         ...mockAgents,
       };
     },
   };
 });
+// The person as agent-manager names a creator, on every installation: whom
+// "created by me" compares an agent's creator with.
+const mockCaller = 'me@example.com';
+jest.mock('../../hooks/useKagentCapabilities', () => ({
+  useKagentCapabilitiesMap: () => () => ({
+    isUserScoped: true,
+    caller: mockCaller,
+  }),
+}));
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   useInstallationInventory: () => ({ refresh: () => {} }),
@@ -151,14 +171,63 @@ const notes = row({
   readiness: 'failed',
 });
 
-function renderPanel(search = '', storage: StorageApi = mockApis.storage()) {
-  return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
-    mountedRoutes: {
-      '/agent-platform/agents': agentsRouteRef,
-      '/installations': installationsExternalRouteRef,
+function renderPanel(
+  search = '',
+  storage: StorageApi = mockApis.storage(),
+  musterApi?: MusterApi,
+) {
+  const panel = (
+    // The first-agent card asks agent-manager where the person may create.
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <CustomizeAgentsPanel search={search} />
+    </QueryClientProvider>
+  );
+  return renderInTestApp(
+    musterApi ? (
+      <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+        {panel}
+      </TestApiProvider>
+    ) : (
+      panel
+    ),
+    {
+      mountedRoutes: {
+        '/': newSessionExternalRouteRef,
+        '/customize/agents': agentsRouteRef,
+        '/installations': installationsExternalRouteRef,
+      },
+      apis: [[storageApiRef, storage]],
     },
-    apis: [[storageApiRef, storage]],
-  });
+  );
+}
+
+/**
+ * muster on each installation named, reaching agent-manager as the person,
+ * whose `get_info` names `managed`: the tenants the person may create agents
+ * in there.
+ */
+function musterWhereCreatableIn(managed: Record<string, string[]>): MusterApi {
+  return {
+    listInstallations: async () => ({
+      installations: Object.keys(managed).map(name => ({
+        name,
+        requiresAuth: true,
+      })),
+    }),
+    listServers: async () => ({ mcpServers: [{ name: 'agent-manager' }] }),
+    callTool: async (name: string, _args: unknown, installation: string) => {
+      if (name !== 'x_agent-manager_get_info') {
+        throw new Error(`unexpected tool ${name}`);
+      }
+      return {
+        namespaces: { default: 'kagent', managed: managed[installation] },
+      };
+    },
+  } as unknown as MusterApi;
 }
 
 // Re-render the panel from inside the test app (its own `rerender` would drop
@@ -172,10 +241,18 @@ function RerenderablePanel() {
 }
 
 function renderRerenderablePanel() {
-  return renderInTestApp(<RerenderablePanel />, {
-    mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
-    apis: [[storageApiRef, mockApis.storage()]],
-  });
+  return renderInTestApp(
+    <QueryClientProvider client={new QueryClient()}>
+      <RerenderablePanel />
+    </QueryClientProvider>,
+    {
+      mountedRoutes: {
+        '/': newSessionExternalRouteRef,
+        '/customize/agents': agentsRouteRef,
+      },
+      apis: [[storageApiRef, mockApis.storage()]],
+    },
+  );
 }
 
 /** A storage with these agents already favorited. */
@@ -242,7 +319,7 @@ describe('CustomizeAgentsPanel', () => {
     const triageLink = within(items[0]).getByRole('link');
     expect(triageLink).toHaveAttribute(
       'href',
-      '/agent-platform/agents/golem/support/triage',
+      '/customize/agents/golem/support/triage',
     );
     expect(within(triageLink).getByText('Support triage')).toBeInTheDocument();
     expect(within(triageLink).getByText('Sorts tickets')).toBeInTheDocument();
@@ -367,8 +444,75 @@ describe('CustomizeAgentsPanel', () => {
       expect(screen.getByText(/An agent is an assistant/)).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'Create your first agent' }),
-      ).toHaveAttribute('href', '/agent-platform/agents/new');
+      ).toHaveAttribute('href', '/customize/agents/new');
       expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    });
+
+    it('says who grants access where no tenant binds the person, instead of inviting a first agent', async () => {
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        noAccessInstallations: ['golem'],
+      };
+      await renderPanel();
+
+      expect(
+        screen.getByRole('heading', { name: 'No agents for you yet' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/no tenant’s agents on golem\. .*agent-platform:user/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: 'Create your first agent' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['in no tenant', [], 'No agents for you yet', false],
+      ['in a tenant', ['org-acme'], 'No agents yet', true],
+    ])(
+      'follows where the person may create, though every tenant answered: %s',
+      async (_case, managed, title, invited) => {
+        // The platform tenant answers everyone (bound to all authenticated
+        // people), so nothing was refused; agent-manager decides the offer.
+        mockAgents = { ...mockAgents, rows: [], noAccessInstallations: [] };
+        await renderPanel(
+          '',
+          mockApis.storage(),
+          musterWhereCreatableIn({ golem: managed }),
+        );
+
+        expect(
+          await screen.findByRole('heading', { name: title }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryAllByRole('link', { name: 'Create your first agent' }),
+        ).toHaveLength(invited ? 1 : 0);
+        expect(
+          screen.queryAllByText(/agent-platform:user.*agent-platform:editor/),
+        ).toHaveLength(invited ? 0 : 1);
+      },
+    );
+
+    it('invites creating where the person may, though another environment refused every tenant', async () => {
+      mockAgents = {
+        ...mockAgents,
+        rows: [],
+        installations: ['golem', 'lab'],
+        noAccessInstallations: ['golem'],
+      };
+      await renderPanel(
+        '',
+        mockApis.storage(),
+        musterWhereCreatableIn({ lab: ['org-acme'] }),
+      );
+
+      expect(
+        await screen.findByRole('link', { name: 'Create your first agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('No agents for you yet'),
+      ).not.toBeInTheDocument();
     });
 
     it('says when no environments are configured', async () => {
@@ -997,6 +1141,49 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
   beforeEach(() => {
     mockSessions = [];
     mockMetaAgent = undefined;
+  });
+
+  it('filters by tenant and by who created the agent, each row naming its tenant', async () => {
+    mockAgents = {
+      rows: [
+        row({
+          name: 'SRE',
+          technicalName: 'sre',
+          namespace: 'kagent',
+          tenant: 'platform',
+        }),
+        row({
+          name: 'Billing',
+          technicalName: 'billing',
+          namespace: 'org-acme',
+          tenant: 'organization acme',
+          createdBy: mockCaller,
+        }),
+        row({
+          name: 'Sales',
+          technicalName: 'sales',
+          namespace: 'org-acme',
+          tenant: 'organization acme',
+          createdBy: 'other@example.com',
+        }),
+      ],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    await renderPanel();
+
+    expect(listed()[0]).toHaveTextContent('platform');
+    expect(await filterOptions('tenant')).toEqual([
+      'organization acme 2',
+      'platform 1',
+    ]);
+    expect(await filterOptions('created by')).toEqual(['Me 1']);
+
+    await pickFilter('created by', 'Me 1');
+    expect(listed().map(item => item.textContent)).toEqual([
+      expect.stringContaining('Billing'),
+    ]);
   });
 
   it('offers the model dropdown over three agents on one model, none starred', async () => {

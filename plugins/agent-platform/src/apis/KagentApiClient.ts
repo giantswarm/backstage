@@ -33,6 +33,7 @@ import {
   KAGENT_AUTH_HEADER,
   KagentApi,
   KagentIdentity,
+  OutboundMessage,
   REQUEST_ID_HEADER,
 } from './types';
 
@@ -213,6 +214,21 @@ export class KagentApiClient implements KagentApi {
   }
 
   async listSessions(installation: string): Promise<KagentSession[]> {
+    const { sessions } = await this.readSessionList(installation);
+    return sessions;
+  }
+
+  async listSessionsIfComplete(
+    installation: string,
+  ): Promise<KagentSession[] | undefined> {
+    const { sessions, drift } = await this.readSessionList(installation);
+    // Any drift that did not throw left sessions out: rows that did not parse,
+    // a body that did not parse at all (read as no sessions), or a listing
+    // the backend cut at its page limit.
+    return drift ? undefined : sessions;
+  }
+
+  private async readSessionList(installation: string) {
     const body = await this.get<unknown>('/kagent/sessions', installation);
     const { sessions, drift } = normalizeSessionList(body, installation);
 
@@ -237,7 +253,7 @@ export class KagentApiClient implements KagentApi {
       throw upstreamError(drift.message);
     }
 
-    return sessions;
+    return { sessions, drift };
   }
 
   async getSessionDetail(
@@ -424,7 +440,7 @@ export class KagentApiClient implements KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
   ): Promise<void> {
     const { url, headers } = await this.prepare(
       `/kagent/sessions/${encodeURIComponent(sessionId)}/messages`,
@@ -438,6 +454,7 @@ export class KagentApiClient implements KagentApi {
         agentName: agent.name,
         messageId: message.messageId,
         text: message.text,
+        ...(message.images?.length ? { images: message.images } : {}),
       }),
     });
 
@@ -468,7 +485,7 @@ export class KagentApiClient implements KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
   ): Promise<void> {
@@ -480,6 +497,7 @@ export class KagentApiClient implements KagentApi {
         agentName: agent.name,
         messageId: message.messageId,
         text: message.text,
+        ...(message.images?.length ? { images: message.images } : {}),
       },
       onEvent,
       signal,
@@ -673,7 +691,22 @@ export class KagentApiClient implements KagentApi {
       tokenRequired: false,
     });
     const parsed = kagentMeWireSchema.safeParse(body);
-    return { sub: parsed.success ? parsed.data.sub : undefined };
+    return parsed.success
+      ? { sub: parsed.data.sub, email: parsed.data.email }
+      : { sub: undefined };
+  }
+
+  async listAgentNamespaces(installation: string): Promise<string[]> {
+    const body = await this.get<{ namespaces?: unknown }>(
+      '/kagent/agent-namespaces',
+      installation,
+    );
+    return Array.isArray(body?.namespaces)
+      ? body.namespaces.filter(
+          (namespace): namespace is string =>
+            typeof namespace === 'string' && namespace !== '',
+        )
+      : [];
   }
 
   /** GET a backend route, forwarding the target installation's Dex token. */

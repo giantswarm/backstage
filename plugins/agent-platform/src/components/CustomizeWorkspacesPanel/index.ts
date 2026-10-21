@@ -1,2 +1,5 @@
-export { CustomizeWorkspacesPanel } from './CustomizeWorkspacesPanel';
+export {
+  CustomizeWorkspacesIntro,
+  CustomizeWorkspacesPanel,
+} from './CustomizeWorkspacesPanel';
 export type { CustomizeWorkspacesPanelProps } from './CustomizeWorkspacesPanel';

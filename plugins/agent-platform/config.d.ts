@@ -21,7 +21,7 @@ export interface Config {
        * Values are the window size in tokens. A model no pattern names shows
        * its raw token count instead of a percentage.
        *
-       * Example: `{ 'claude-*': 200000, 'gpt-5*': 400000 }`.
+       * Example: `{ '*claude-opus-4-5*': 200000, '*claude-opus-5*': 1000000 }`.
        */
       contextWindows?: {
         [modelPattern: string]: number;

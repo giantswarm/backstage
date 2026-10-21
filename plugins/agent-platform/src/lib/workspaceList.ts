@@ -3,8 +3,10 @@
  * `list_workspaces`.
  */
 
+import { matches } from './search';
 import { formatBytes } from './formatNumbers';
-import type { Workspace, WorkspaceSource } from './workspaceManager';
+import { quantityToGiB } from './workspaceDraft';
+import type { LastSync, Workspace, WorkspaceSource } from './workspaceManager';
 
 /**
  * A workspace with the installation whose workspace-manager listed it; `id`
@@ -21,7 +23,7 @@ export function workspaceRowId(row: {
 }
 
 /**
- * One source in a line: `github: example-org · lang Go · topic mcp`, the
+ * One source in a line: `example-org · lang Go · topic mcp`, the
  * repositories by name (`repo-a, repo-b`), the exclusions last. A source
  * with neither names nor filters selects all of the owner's repositories.
  */
@@ -45,7 +47,7 @@ export function sourceLabel(source: WorkspaceSource): string {
   if (source.exclude?.length) {
     parts.push(`excl. ${source.exclude.join(', ')}`);
   }
-  return [`${source.provider}: ${source.owner}`, ...parts].join(' · ');
+  return [source.owner, ...parts].join(' · ');
 }
 
 /** Every source of a workspace, one after the other. */
@@ -53,7 +55,27 @@ export function sourcesLabel(sources: WorkspaceSource[]): string {
   return sources.map(sourceLabel).join('; ');
 }
 
+/** What a muster without per-user sign-in withholds, and what goes through the manager. */
+export const WORKSPACES_BLOCKED = 'Workspaces cannot be used';
+export const WORKSPACES_VIA =
+  'Workspaces are managed through workspace-manager';
+
 export type SyncTone = 'success' | 'danger' | 'info' | 'neutral';
+
+/** A sync cycle's result in one word, the list's and the page's alike. */
+export function lastSyncLabel(last: LastSync): {
+  label: string;
+  tone: SyncTone;
+} {
+  switch (last.result) {
+    case 'Succeeded':
+      return { label: 'Synced', tone: 'success' };
+    case 'NoChange':
+      return { label: 'Unchanged', tone: 'success' };
+    default:
+      return { label: 'Failed', tone: 'danger' };
+  }
+}
 
 /**
  * The Last sync column: the state now (deleting, syncing, requested), else
@@ -89,23 +111,16 @@ export function syncState(workspace: Workspace): {
   if (!last) {
     return { label: 'Not synced yet', tone: 'neutral' };
   }
+  const { label, tone } = lastSyncLabel(last);
   switch (last.result) {
     case 'Succeeded':
-      return {
-        label: 'Synced',
-        tone: 'success',
-        when: { verb: 'Synced', at: last.time },
-      };
+      return { label, tone, when: { verb: 'Synced', at: last.time } };
     case 'NoChange':
-      return {
-        label: 'No change',
-        tone: 'success',
-        when: { verb: 'Checked', at: last.time },
-      };
+      return { label, tone, when: { verb: 'Checked', at: last.time } };
     default:
       return {
-        label: 'Failed',
-        tone: 'danger',
+        label,
+        tone,
         when: { verb: 'Failed', at: last.time },
         detail: last.message,
       };
@@ -119,10 +134,16 @@ export function isSettling(workspace: Workspace): boolean {
   );
 }
 
+/** A volume's Kubernetes quantity in GiB (`15Gi` → `15 GiB`), else as written. */
+export function sizeLabel(quantity: string): string {
+  const gib = quantityToGiB(quantity);
+  return gib ? `${gib} GiB` : quantity;
+}
+
 /**
  * What the volume stores (mirrors and session directories), the share's size
  * where its class provisions one, and ↑ when the last sync grew the share:
- * `9.5 GB of 15Gi ↑`.
+ * `9.5 GiB of 15 GiB ↑`.
  */
 export function storedLabel(
   storedBytes: number,
@@ -130,7 +151,7 @@ export function storedLabel(
   grewFrom?: string,
 ): string {
   const stored = formatBytes(storedBytes);
-  const share = volumeSize ? `${stored} of ${volumeSize}` : stored;
+  const share = volumeSize ? `${stored} of ${sizeLabel(volumeSize)}` : stored;
   return grewFrom ? `${share} ↑` : share;
 }
 
@@ -144,10 +165,12 @@ export function searchWorkspaces(
     return rows;
   }
   return rows.filter(row =>
-    [row.name, row.organization, row.installation, sourcesLabel(row.sources)]
-      .join('\n')
-      .toLowerCase()
-      .includes(needle),
+    matches(needle, [
+      row.name,
+      row.organization,
+      row.installation,
+      sourcesLabel(row.sources),
+    ]),
   );
 }
 

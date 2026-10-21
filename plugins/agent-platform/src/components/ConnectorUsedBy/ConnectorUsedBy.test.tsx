@@ -95,7 +95,7 @@ beforeEach(() => {
 async function render() {
   await renderInTestApp(<ConnectorUsedBy />, {
     mountedRoutes: {
-      '/agent-platform/agents': agentsRouteRef,
+      '/customize/agents': agentsRouteRef,
     },
   });
 }
@@ -125,13 +125,13 @@ describe('ConnectorUsedBy', () => {
 
     expect(screen.getByRole('link', { name: 'Ops' })).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/team/ops',
+      '/customize/agents/gazelle/team/ops',
     );
     expect(
       screen.getByRole('link', { name: 'Escalation Helper' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/agents/gazelle/team/escalation-helper',
+      '/customize/agents/gazelle/team/escalation-helper',
     );
   });
 
@@ -141,7 +141,7 @@ describe('ConnectorUsedBy', () => {
     await userEvent.click(screen.getByText('All tools'));
 
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/agents/gazelle/team/ops',
+      '/customize/agents/gazelle/team/ops',
       undefined,
     );
   });

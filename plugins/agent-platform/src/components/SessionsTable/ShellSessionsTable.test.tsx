@@ -48,6 +48,29 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
 
+// The workspaces' names by volume, as one list per installation resolves them.
+// Stable, as the hook's is: a resolver new on every render would rebuild
+// every row on every render.
+const mockWorkspaceInstallations = jest.fn<void, [string[]]>();
+const mockWorkspaceNameOf = (row: { workspace?: { volumeHandle: string } }) => {
+  if (!row.workspace) {
+    return undefined;
+  }
+  return row.workspace.volumeHandle === 'fs-1::docs'
+    ? { status: 'named', workspace: { name: 'ws-docs' } }
+    : { status: 'unnamed' };
+};
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  workspaceInstallations: (sessions: SessionRow[]) =>
+    Array.from(
+      new Set(sessions.filter(s => s.workspace).map(s => s.installation)),
+    ).sort(),
+  useWorkspaceNames: (installations: string[]) => {
+    mockWorkspaceInstallations(installations);
+    return mockWorkspaceNameOf;
+  },
+}));
+
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
@@ -127,6 +150,7 @@ const states: FleetSessionStatesView = {
   failedInstallations: new Set(),
   skippedCount: 0,
   isLoading: false,
+  isComplete: true,
   isError: false,
 };
 
@@ -134,9 +158,9 @@ async function renderShell(
   sessionRows: SessionRow[] = rows,
   sessionStates: FleetSessionStatesView = states,
   storage: StorageApi = mockApis.storage(),
-  path = '/agent-platform/sessions',
+  path = '/sessions',
 ) {
-  await renderInTestApp(
+  return renderInTestApp(
     <SessionsTable
       rows={sessionRows}
       sessionStates={sessionStates}
@@ -145,7 +169,7 @@ async function renderShell(
     {
       apis: [[storageApiRef, storage]],
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      mountedRoutes: { '/sessions': sessionsRouteRef },
     },
   );
 }
@@ -203,6 +227,69 @@ describe('SessionsTable in the shell layout', () => {
     mockNavigate.mockClear();
     mockDeleteSession.mockClear();
     mockRenameSession.mockClear();
+  });
+
+  describe('the Workspace column', () => {
+    const inWorkspace = (
+      row: SessionRow,
+      volumeHandle: string,
+    ): SessionRow => ({
+      ...row,
+      workspace: { volumeHandle, fetched: [], providers: [] },
+    });
+
+    beforeEach(() => mockWorkspaceInstallations.mockClear());
+
+    it('is not there while no session works in a workspace, and nothing is read', async () => {
+      await renderShell();
+
+      expect(
+        screen.queryByRole('columnheader', { name: 'Workspace' }),
+      ).not.toBeInTheDocument();
+      expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith([]);
+    });
+
+    it('names each session’s workspace from one lookup per installation', async () => {
+      await renderShell([
+        inWorkspace(rows[0], 'fs-1::docs'),
+        inWorkspace(rows[1], 'fs-1::gone'),
+        rows[2],
+        rows[3],
+      ]);
+
+      expect(
+        screen.getAllByRole('columnheader', { name: 'Workspace' }).length,
+      ).toBeGreaterThan(0);
+      expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
+      const today = screen.getByRole('grid', { name: 'Today' });
+      expect(within(today).getByText('ws-docs')).toBeInTheDocument();
+      // A workspace the person cannot see any more, unnamed.
+      const yesterday = screen.getByRole('grid', { name: 'Yesterday' });
+      expect(within(yesterday).getByText('workspace')).toBeInTheDocument();
+      expect(
+        within(yesterday).getByText('not listed for you'),
+      ).toBeInTheDocument();
+      // A session without one.
+      const earlier = screen.getByRole('grid', { name: 'Earlier' });
+      expect(within(earlier).getAllByTitle('No workspace')).toHaveLength(2);
+    });
+
+    it('finds a session by its workspace’s name', async () => {
+      await renderShell([
+        inWorkspace(filterable[0], 'fs-1::docs'),
+        ...filterable.slice(1),
+      ]);
+
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: /search/i }),
+        'ws-docs',
+      );
+      await waitFor(() =>
+        expect(
+          screen.getAllByRole('rowheader').map(cell => cell.textContent),
+        ).toEqual(['Triage this week']),
+      );
+    });
   });
 
   it('shows one table per day the sessions were last active, each named by its heading', async () => {
@@ -405,7 +492,7 @@ describe('SessionsTable in the shell layout', () => {
       rows,
       states,
       mockApis.storage(),
-      '/agent-platform/sessions?state=waiting',
+      '/sessions?state=waiting',
     );
 
     expect(dropdown('state')).toHaveTextContent('Waiting for you');
@@ -420,7 +507,7 @@ describe('SessionsTable in the shell layout', () => {
       filterable,
       states,
       mockApis.storage(),
-      '/agent-platform/sessions?q=release',
+      '/sessions?q=release',
     );
 
     expect(
@@ -437,7 +524,7 @@ describe('SessionsTable in the shell layout', () => {
       filterable,
       states,
       mockApis.storage(),
-      '/agent-platform/sessions?state=bogus',
+      '/sessions?state=bogus',
     );
 
     expect(dropdown('state')).toHaveTextContent('StateAll');
@@ -491,6 +578,54 @@ describe('SessionsTable in the shell layout', () => {
       await screen.findByRole('menuitem', { name: 'Rename session…' }),
     ).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('sets a row’s notifications from its menu, without opening the session, and keeps them across a reload', async () => {
+    const user = userEvent.setup();
+    const storage = mockApis.storage();
+    const openNotifications = async (title: string) => {
+      await user.click(
+        screen.getByRole('button', { name: `More actions for “${title}”` }),
+      );
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Notifications' }),
+      );
+      await screen.findByRole('menu', { name: 'Notifications' });
+    };
+    const view = await renderShell(rows, states, storage);
+
+    await openNotifications('Release notes');
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Default' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('menuitemradio', { name: 'Muted' }));
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        storage
+          .forBucket('agent-platform')
+          .snapshot('sessionNotificationSettings').value,
+      ).toEqual({
+        sessions: { 'gazelle/b': { level: 'muted', at: expect.any(Number) } },
+      }),
+    );
+
+    // A reload: the list starts afresh from the stored record.
+    view.unmount();
+    await renderShell(rows, states, storage);
+    await openNotifications('Release notes');
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Muted' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    await user.keyboard('{Escape}');
+    await user.keyboard('{Escape}');
+
+    // Each row has its own level.
+    await openNotifications('Triage this week');
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Default' }),
+    ).toHaveAttribute('aria-checked', 'true');
   });
 
   it('names the agent filter by its field, inside the dropdown', async () => {
@@ -753,7 +888,7 @@ describe('SessionsTable in the shell layout', () => {
 
     it('moves focus to the next row', async () => {
       await renderInTestApp(<DeletingList initial={rows} />, {
-        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        mountedRoutes: { '/sessions': sessionsRouteRef },
       });
 
       await deleteRow('Release notes');
@@ -770,7 +905,7 @@ describe('SessionsTable in the shell layout', () => {
 
     it('moves focus to the row before when the last row goes', async () => {
       await renderInTestApp(<DeletingList initial={rows} />, {
-        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        mountedRoutes: { '/sessions': sessionsRouteRef },
       });
 
       await deleteRow('Untimed');
@@ -794,9 +929,7 @@ describe('SessionsTable in the shell layout', () => {
         'Release Writer',
       ),
     );
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/b',
-    );
+    expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/b');
   });
 
   describe('at phone width (T22 B1)', () => {
@@ -830,7 +963,7 @@ describe('SessionsTable in the shell layout', () => {
       const today = dayList('Today');
       expect(
         within(today).getByRole('link', { name: 'Triage this week' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions/gazelle/a');
+      ).toHaveAttribute('href', '/sessions/gazelle/a');
       const row = within(today).getByRole('listitem');
       expect(within(row).getByText('Support Triage')).toBeInTheDocument();
       expect(within(row).getByText('Waiting for you')).toBeInTheDocument();

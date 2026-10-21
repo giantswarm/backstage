@@ -257,13 +257,46 @@ describe('WizardFrame', () => {
   it('keeps the scroll clearance in step with the footer’s measured height', () => {
     renderFrame();
 
-    // Until measured, the clearance assumes the one-row footer's 64px.
+    // Until measured, the clearance assumes the one-row footer's 64px; a
+    // shell toast above the footer adds its height.
     const styles = Array.from(document.querySelectorAll('style'))
       .map(style => style.textContent)
       .join('\n');
     expect(styles).toContain(
-      'scroll-margin-bottom: calc(var(--wizard-footer-height, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px))',
+      'scroll-margin-bottom: calc(var(--wizard-footer-height, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px) + var(--agent-shell-toast-height, 0px))',
     );
+  });
+
+  it('leaves room at the step’s end for a shell toast above the footer', () => {
+    renderFrame();
+
+    const styles = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent)
+      .join('\n');
+    expect(styles).toContain(
+      'padding-bottom: calc(24px + var(--agent-shell-toast-height, 0px))',
+    );
+    expect(styles).toContain(
+      'padding-bottom: calc(40px + var(--agent-shell-toast-height, 0px))',
+    );
+  });
+
+  it('publishes the footer’s height on the document while it is mounted, for the shell’s toasts', () => {
+    const rect = jest
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 1200, height: 65 } as DOMRect);
+    const root = document.documentElement;
+    try {
+      const { unmount } = renderFrame();
+      expect(root.style.getPropertyValue('--wizard-footer-height')).toBe(
+        '65px',
+      );
+
+      unmount();
+      expect(root.style.getPropertyValue('--wizard-footer-height')).toBe('');
+    } finally {
+      rect.mockRestore();
+    }
   });
 
   it('widens its padding at the two-column tier, not at a breakpoint of its own', () => {

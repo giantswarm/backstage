@@ -1,18 +1,17 @@
 import type { ReactNode } from 'react';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   WizardFrame,
   type WizardStep,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import {
-  mcpServersRouteRef,
-  newMcpServerAuthRouteRef,
-  newMcpServerRouteRef,
-} from '../../routes';
+import { connectorDisplayNameOn } from '../../lib/serverGrouping';
+import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
-import { withEditParam } from '../NewMcpServerEditGate';
-import { useConnectorGroupPaths, useServerPageLinks } from '../shared';
+import {
+  useConnectorsListHref,
+  useConnectorWizardLinks,
+} from '../NewMcpServerEditGate';
+import { useServerPageLinks } from '../shared';
 
 /** The shell connector wizard's three steps, in order. */
 export type ConnectorWizardStepId = 'connect' | 'signin' | 'test';
@@ -21,17 +20,17 @@ export type ConnectorWizardStepId = 'connect' | 'signin' | 'test';
  * Where leaving the shell connector wizard lands. An edit — a run seeded from
  * a registered connector, its Edit — goes back to that connector's page,
  * where it started. A registration goes to the Customize screen's Connectors
- * tab when the app binds it, else the connectors list (also where it goes on
- * after "Add connector", so "Done" ends where adding began).
+ * tab's own list, Your connectors (also where it goes on after "Add
+ * connector", so "Done" ends where adding began).
  */
 export function useConnectorWizardCloseHref(): string {
-  const groupPaths = useConnectorGroupPaths();
-  const serversLink = useRouteRef(mcpServersRouteRef);
+  const connectors = useConnectorsListHref();
   const pageLinks = useServerPageLinks();
   const { registeredName, registeredInstallation, lastSave } =
     useNewMcpServerForm();
+  // Set together, so both are there for an edit.
   const editedPage =
-    registeredName && lastSave !== 'create'
+    registeredName && registeredInstallation && lastSave !== 'create'
       ? pageLinks.server(registeredName, registeredInstallation)
       : undefined;
   if (editedPage) {
@@ -39,7 +38,7 @@ export function useConnectorWizardCloseHref(): string {
   }
   // A registered connector carries no tool-group label: it is listed on
   // Your connectors, the Connectors tab's default sub-tab.
-  return groupPaths.group('yours') ?? serversLink?.() ?? '/';
+  return connectors;
 }
 
 /**
@@ -61,21 +60,27 @@ export function ConnectorWizardFrame({
   onBack?: () => void;
   children: ReactNode;
 }) {
-  const connectLink = useRouteRef(newMcpServerRouteRef);
-  const signInLink = useRouteRef(newMcpServerAuthRouteRef);
+  const wizardLinks = useConnectorWizardLinks();
   const closeHref = useConnectorWizardCloseHref();
-  const { registeredName } = useNewMcpServerForm();
+  const { registeredName, registeredInstallation } = useNewMcpServerForm();
+  const { mcpServers } = useMusterInstance();
+  // What people call the connector being edited, on the installation it was
+  // registered on; links keep its name.
+  const shownName = registeredName
+    ? connectorDisplayNameOn(mcpServers, registeredInstallation, registeredName)
+    : undefined;
 
+  const edited = { name: registeredName, installation: registeredInstallation };
   const steps: WizardStep[] = [
     {
       id: 'connect',
       label: 'Connect',
-      href: connectLink && withEditParam(connectLink(), registeredName),
+      href: wizardLinks('connect', edited),
     },
     {
       id: 'signin',
       label: 'Sign-in',
-      href: signInLink && withEditParam(signInLink(), registeredName),
+      href: wizardLinks('auth', edited),
     },
     { id: 'test', label: 'Test' },
   ];
@@ -86,11 +91,11 @@ export function ConnectorWizardFrame({
       // context line and the document title.
       title={registeredName ? 'Edit connector' : 'Add connector'}
       documentTitle={
-        registeredName ? [`Edit ${registeredName}`, 'Connectors'] : undefined
+        shownName ? [`Edit ${shownName}`, 'Connectors'] : undefined
       }
       context={
-        registeredName
-          ? `Customize / Connectors / ${registeredName}`
+        shownName
+          ? `Customize / Connectors / ${shownName}`
           : 'Customize / Connectors'
       }
       steps={steps}

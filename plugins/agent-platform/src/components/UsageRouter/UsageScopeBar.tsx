@@ -48,7 +48,7 @@ export function UsageScopeBar() {
   // Only the sessions view has a backend-fixed window; the gateway views
   // query any window directly, so everything stays selectable there.
   const { pathname } = useLocation();
-  const isSessionsView = /\/conversations\/?$/.test(pathname);
+  const isSessionsView = /\/your-sessions\/?$/.test(pathname);
 
   const { installation } = useUsageInstallation();
   const { usage } = useSessionUsage(installation, {

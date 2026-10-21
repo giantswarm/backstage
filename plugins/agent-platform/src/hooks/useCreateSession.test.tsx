@@ -1,6 +1,10 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { analyticsApiRef } from '@backstage/core-plugin-api';
+import {
+  analyticsApiRef,
+  storageApiRef,
+  type StorageApi,
+} from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import {
   InvalidateQueryFilters,
@@ -71,6 +75,7 @@ const analyticsApi = mockApis.analytics.mock();
 function renderWith(
   entryPoint: SessionEntryPoint = 'agentDetail',
   options?: UseCreateSessionOptions,
+  storage: StorageApi = mockApis.storage(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
@@ -82,6 +87,7 @@ function renderWith(
       apis={[
         [musterApiRef, musterApi],
         [analyticsApiRef, analyticsApi],
+        [storageApiRef, storage],
       ]}
     >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -149,6 +155,21 @@ describe('useCreateSession', () => {
     expect(startCalls()[0].args.sessionName).toBe(prompt.trim());
   });
 
+  it('titles the session by the title it is given rather than the prompt', async () => {
+    // A prompt the portal wrote opens with its framing, not with the topic.
+    const { result } = renderWith('sessionDetail');
+
+    await act(async () => {
+      await result.current.createSession({
+        agent,
+        prompt: 'I am continuing a session with you that could not be resumed.',
+        title: 'Continued: Fried potatoes',
+      });
+    });
+
+    expect(startCalls()[0].args.sessionName).toBe('Continued: Fried potatoes');
+  });
+
   it('reports the started session with its entry point', async () => {
     const { result } = renderWith();
 
@@ -160,7 +181,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'agentDetail' },
+        attributes: { entryPoint: 'agentDetail', workspace: 'none' },
       }),
     );
   });
@@ -175,7 +196,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'home' },
+        attributes: { entryPoint: 'home', workspace: 'none' },
       }),
     );
   });
@@ -190,7 +211,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'createAgentAssist' },
+        attributes: { entryPoint: 'createAgentAssist', workspace: 'none' },
       }),
     );
   });
@@ -205,7 +226,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'skillCreationAssist' },
+        attributes: { entryPoint: 'skillCreationAssist', workspace: 'none' },
       }),
     );
   });
@@ -225,7 +246,7 @@ describe('useCreateSession', () => {
       expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'AgentPlatform.sessionStarted',
-          attributes: { entryPoint },
+          attributes: { entryPoint, workspace: 'none' },
         }),
       );
     },
@@ -241,7 +262,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'searchPalette' },
+        attributes: { entryPoint: 'searchPalette', workspace: 'none' },
       }),
     );
   });
@@ -346,6 +367,49 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
+  it('says a refusal from the controller as one that names the agent’s tenant', async () => {
+    // agent-manager's answer when the controller refuses CreateSession
+    // (PermissionDenied): the person may not use that tenant's agents.
+    callTool.mockRejectedValueOnce(
+      new Error(
+        'forbidden: kagent: create session: not allowed to create session',
+      ),
+    );
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({
+          agent: {
+            ...agent,
+            namespace: 'org-acme',
+            tenant: 'organization acme',
+          },
+          prompt: 'Check',
+        }),
+      ).rejects.toMatchObject({
+        code: 'forbidden',
+        message: expect.stringContaining(
+          'SRE Agent: it belongs to organization acme',
+        ),
+      });
+    });
+  });
+
+  it('keeps a refusal of another origin in agent-manager’s own words', async () => {
+    // muster refusing the sandbox bind is not the tenant's refusal.
+    callTool.mockRejectedValueOnce(
+      new Error('forbidden: muster refused the sandbox binding'),
+    );
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({ agent, prompt: 'Check' }),
+      ).rejects.toThrow('muster refused the sandbox binding');
+    });
+  });
+
   it('keeps a stable identity across re-renders', async () => {
     // The composer passes these down; a new object every render would re-render
     // it on every unrelated poll.
@@ -423,12 +487,77 @@ describe('useCreateSession', () => {
     expect(sessionId).toBe('new-session-id');
   });
 
+  it('records the started session as portal-started in the person’s notification record', async () => {
+    const storage = mockApis.storage();
+    const { result } = renderWith('agentDetail', undefined, storage);
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check the nodes' });
+    });
+
+    await waitFor(() =>
+      expect(
+        storage
+          .forBucket('agent-platform')
+          .snapshot('sessionNotificationSettings').value,
+      ).toEqual({
+        sessions: {
+          'gazelle/new-session-id': {
+            origin: 'portal',
+            at: expect.any(Number),
+          },
+        },
+      }),
+    );
+  });
+
+  it('records nothing when the start fails', async () => {
+    const storage = mockApis.storage();
+    callTool.mockRejectedValueOnce(new Error('agent-manager is down'));
+    const { result } = renderWith('agentDetail', undefined, storage);
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({ agent, prompt: 'Check the nodes' }),
+      ).rejects.toThrow('agent-manager is down');
+    });
+
+    expect(
+      storage
+        .forBucket('agent-platform')
+        .snapshot('sessionNotificationSettings').presence,
+    ).toBe('absent');
+  });
+
+  it('still starts the session when the record cannot be written', async () => {
+    const storage = mockApis.storage();
+    jest
+      .spyOn(storage.forBucket('agent-platform'), 'set')
+      .mockRejectedValue(new Error('user-settings is down'));
+    const { result } = renderWith('agentDetail', undefined, storage);
+
+    let sessionId: string | undefined;
+    await act(async () => {
+      sessionId = await result.current.createSession({
+        agent,
+        prompt: 'Check the nodes',
+      });
+    });
+
+    expect(sessionId).toBe('new-session-id');
+  });
+
   it('fails without the muster plugin, the only way to reach agent-manager', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false } },
     });
     const wrapper = ({ children }: PropsWithChildren<{}>) => (
-      <TestApiProvider apis={[[analyticsApiRef, analyticsApi]]}>
+      <TestApiProvider
+        apis={[
+          [analyticsApiRef, analyticsApi],
+          [storageApiRef, mockApis.storage()],
+        ]}
+      >
         <QueryClientProvider client={queryClient}>
           {children}
         </QueryClientProvider>
@@ -455,5 +584,132 @@ describe('useCreateSession', () => {
     });
 
     expect(startCalls()).toHaveLength(0);
+  });
+});
+
+describe('useCreateSession in a workspace', () => {
+  /** workspace-manager's answer to `authorize_workspace`, then start_session as before. */
+  function answerAuthorization(authorization: Record<string, unknown>) {
+    const startSession = callTool.getMockImplementation()!;
+    callTool.mockImplementation(async (name, args, installation) =>
+      name === 'x_workspace-manager_authorize_workspace'
+        ? { workspace: args.workspace, ...authorization }
+        : startSession(name, args, installation),
+    );
+  }
+
+  afterEach(() => {
+    callTool.mockReset();
+    callTool.mockImplementation(async (_name, args) => {
+      const requestId = String(args.requestId);
+      if (!sessionsByRequest.has(requestId)) {
+        sessionsByRequest.set(
+          requestId,
+          sessionsByRequest.size === 0
+            ? 'new-session-id'
+            : `session-${sessionsByRequest.size + 1}`,
+        );
+      }
+      return { session: { id: sessionsByRequest.get(requestId) } };
+    });
+  });
+
+  it('checks access as the person first and starts with the grant it returns', async () => {
+    answerAuthorization({ outcome: 'granted', grant: 'signed.grant.jwt' });
+    const { result } = renderWith('home');
+
+    await act(async () => {
+      await result.current.createSession({
+        agent,
+        prompt: 'List the repositories',
+        workspace: 'platform-mix',
+      });
+    });
+
+    expect(startCalls().map(call => call.name)).toEqual([
+      'x_workspace-manager_authorize_workspace',
+      'x_agent-manager_start_session',
+    ]);
+    expect(startCalls()[0]).toMatchObject({
+      args: { workspace: 'platform-mix' },
+      installation: 'gazelle',
+    });
+    expect(startCalls()[1].args.workspaceGrant).toBe('signed.grant.jwt');
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'home', workspace: 'picked' },
+      }),
+    );
+  });
+
+  it('starts nothing when the check refuses, naming the unreadable repositories', async () => {
+    answerAuthorization({
+      outcome: 'refused',
+      reason: 'you cannot read 1 repository of platform-mix',
+      unreadable: ['agentlab-org/secret-api'],
+    });
+    const { result } = renderWith('home');
+
+    let failure: unknown;
+    await act(async () => {
+      await result.current
+        .createSession({
+          agent,
+          prompt: 'List the repositories',
+          workspace: 'platform-mix',
+        })
+        .catch(error => {
+          failure = error;
+        });
+    });
+
+    expect(failure).toMatchObject({
+      name: 'WorkspaceManagerError',
+      kind: 'refused',
+      repositories: ['agentlab-org/secret-api'],
+    });
+    expect(startCalls().map(call => call.name)).toEqual([
+      'x_workspace-manager_authorize_workspace',
+    ]);
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('asks for the provider sign-in, then starts with the grant once signed in', async () => {
+    answerAuthorization({
+      outcome: 'connect_required',
+      reason: 'sign in to github first',
+      connect: [
+        { provider: 'github', signIn: 'core_auth_login server=github-app' },
+      ],
+    });
+    const { result } = renderWith('home');
+    const start = {
+      agent,
+      prompt: 'List the repositories',
+      workspace: 'platform-mix',
+    };
+
+    let failure: unknown;
+    await act(async () => {
+      await result.current.createSession(start).catch(error => {
+        failure = error;
+      });
+    });
+    expect(failure).toMatchObject({
+      kind: 'not_connected',
+      connect: [{ provider: 'github' }],
+    });
+
+    answerAuthorization({ outcome: 'granted', grant: 'signed.grant.jwt' });
+    await act(async () => {
+      await result.current.createSession(start);
+    });
+
+    const starts = startCalls().filter(
+      call => call.name === 'x_agent-manager_start_session',
+    );
+    expect(starts).toHaveLength(1);
+    expect(starts[0].args.workspaceGrant).toBe('signed.grant.jwt');
   });
 });

@@ -361,3 +361,37 @@ export function musterWorkspacesQueryKey(installation: string) {
 export function musterWorkspaceQueryKey(installation: string, name: string) {
   return ['muster', 'agent-platform', 'workspace', installation, name] as const;
 }
+
+/**
+ * The last pushes of a workspace's repositories as of its last sync
+ * (`preview_workspace`): a sibling of the workspace's key, so re-reading the
+ * workspace after Sync now or Delete leaves the provider previews alone.
+ */
+export function musterWorkspaceLastPushesQueryKey(
+  installation: string,
+  name: string,
+  lastSyncTime: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'workspace-last-pushes',
+    installation,
+    name,
+    lastSyncTime,
+  ] as const;
+}
+
+/**
+ * The namespaces of the Agents the person may list on an installation
+ * (`ListAgents` as the person). One person's view: `'agent-namespaces'` is on
+ * `QueryClientProvider`'s never-persist list.
+ */
+export function kagentAgentNamespacesQueryKey(installation: string) {
+  return [
+    'agent-platform',
+    'kagent',
+    'agent-namespaces',
+    installation,
+  ] as const;
+}

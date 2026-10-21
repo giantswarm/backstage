@@ -5,9 +5,10 @@
  * (one owner on one provider instance each, selected by name, language and
  * topics), synced on a cycle into bare mirrors on the workspace's one
  * read-write-many volume, with a directory per Session on it. It checks on
- * every call that the caller is a member of the workspace's Organization and
- * keeps the person's own provider sign-ins, against which `authorize_workspace`
- * checks the person reads every repository before a Session starts. It speaks
+ * every call that the caller is a member of the workspace's Organization;
+ * `authorize_workspace` checks, with the provider App token muster attaches
+ * for the person, that they read every repository before a Session starts. The
+ * person grants that App in muster, never in the manager. It speaks
  * MCP only; the portal reaches it as the signed-in person through the
  * installation's muster, where its tools appear as `x_workspace-manager_<tool>`.
  * The shapes here mirror `internal/api` of giantswarm/workspace-manager.
@@ -30,8 +31,7 @@ export const WORKSPACE_MANAGER_TOOLS = {
   previewWorkspace: 'preview_workspace',
   authorizeWorkspace: 'authorize_workspace',
   listProviders: 'list_providers',
-  connectProvider: 'connect_provider',
-  disconnectProvider: 'disconnect_provider',
+  listOwners: 'list_owners',
 } as const;
 
 export type WorkspaceManagerTool =
@@ -97,7 +97,13 @@ export type WorkspaceSizing = {
 
 /** What started a sync cycle. */
 export type SyncTrigger =
-  'schedule' | 'change' | 'request' | 'retry' | 'deletion';
+  | 'change'
+  | 'request'
+  | 'retry'
+  | 'cleanup'
+  | 'deletion'
+  | 'sessionDeleted'
+  | 'schedule';
 
 /** The last sync cycle's outcome. */
 export type LastSync = {
@@ -209,6 +215,8 @@ export type SessionDirectory = {
   sizeBytes: number;
   /** When the directory is deleted. */
   cleanupAfter?: string;
+  /** Why the last sync could neither measure nor delete it. */
+  error?: string;
 };
 
 /**
@@ -314,6 +322,24 @@ export type RepositoriesPage = {
   /** Every language and topic the owner's repositories carry. */
   languages: string[];
   topics: string[];
+  /**
+   * How many of the owner's repositories carry each language and topic,
+   * most used first; absent from a manager before facet counts.
+   */
+  languageCounts?: FacetCount[];
+  topicCounts?: FacetCount[];
+  /** How many of the owner's repositories carry any topic. */
+  withTopics?: number;
+};
+
+/** A language or topic and how many repositories carry it. */
+export type FacetCount = { name: string; count: number };
+
+/** `list_owners`: the owners on a provider instance the person can pick from. */
+export type ProviderOwner = {
+  name: string;
+  /** `organization`, `group`, `user`, … as the provider calls it. */
+  kind: string;
 };
 
 /** `preview_workspace`: an existing workspace by name, or a draft. */
@@ -356,38 +382,114 @@ export type WorkspacePreview = {
   repositories: PreviewRepository[];
 };
 
-/** A provider instance, with whether the person is connected to it. */
+/**
+ * A provider instance, with whether the person granted its App in muster
+ * (muster attached the App's token to the call).
+ */
 export type WorkspaceProvider = {
   name: string;
   kind: string;
   connected: boolean;
-  connectURL: string;
+  /** How the person grants the App, while they have not; a sentence. */
+  signIn?: string;
+  /** The instance's host, e.g. `github.com`; absent from older managers. */
+  host?: string;
+  /** Who the person is on the instance once granted; absent from older managers. */
+  login?: string;
 };
 
-/** `connect_provider`: the person's own sign-in link, valid for minutes. */
-export type ConnectProviderResult = {
-  provider: string;
-  authorizationURL: string;
-  expiresAt: string;
+const PROVIDER_KIND_NAMES: Record<string, string> = {
+  github: 'GitHub',
+  gitlab: 'GitLab',
+  gitea: 'Gitea',
+  bitbucket: 'Bitbucket',
 };
 
-/** `disconnect_provider`: false when there was nothing left to revoke. */
-export type DisconnectProviderResult = {
-  provider: string;
-  revoked: boolean;
-};
+/**
+ * A provider instance in the editor's Provider select: its kind and host
+ * ("GitHub · github.com"), or its display name while the manager names no
+ * host.
+ */
+export function providerOptionLabel(
+  provider: Pick<WorkspaceProvider, 'name' | 'kind' | 'host'>,
+): string {
+  return provider.host
+    ? `${providerKindName(provider.kind)} · ${provider.host}`
+    : providerDisplayName(provider);
+}
 
-/** A provider the person connects before the workspace is theirs. */
+/** The signed-in line of a source: "Signed in to GitHub as octocat". */
+export function signedInLine(
+  provider: Pick<WorkspaceProvider, 'name' | 'kind' | 'login'>,
+): string {
+  const name = providerDisplayName(provider);
+  return provider.login
+    ? `Signed in to ${name} as ${provider.login}`
+    : `Signed in to ${name}`;
+}
+
+/** A provider kind as the provider spells it ("GitHub"), else as given. */
+export function providerKindName(kind: string): string {
+  return PROVIDER_KIND_NAMES[kind.toLowerCase()] ?? kind;
+}
+
+/**
+ * A provider instance as people read it: the kind's own spelling ("GitHub")
+ * when the instance is named after its kind, else the instance's name with
+ * that spelling ("github-enterprise (GitHub)").
+ */
+export function providerDisplayName(
+  provider: Pick<WorkspaceProvider, 'name' | 'kind'>,
+): string {
+  const kind = providerKindName(provider.kind);
+  if (
+    !provider.name ||
+    provider.name.toLowerCase() === provider.kind.toLowerCase()
+  ) {
+    return kind;
+  }
+  return kind ? `${provider.name} (${kind})` : provider.name;
+}
+
+/**
+ * What muster signs the person in to for a provider, from the manager's
+ * `signIn` sentence: the provider instance's own App (`… core_auth_login
+ * app=<instance>`), or the server the manager is pinned to (`… core_auth_login
+ * server=<server>`); undefined where the sentence names no grant the portal's
+ * sign-in can start.
+ */
+export function providerSignInTarget(
+  signIn?: string,
+): { name: string; app: boolean } | undefined {
+  // muster's App names are lower-case letters, digits and dashes; a server
+  // name may hold dots, but never ends a sentence with one.
+  const match = signIn?.match(
+    /\bcore_auth_login (?:app=([a-z0-9-]+)|server=([\w.-]*\w))/,
+  );
+  if (!match) {
+    return undefined;
+  }
+  return match[1]
+    ? { name: match[1], app: true }
+    : { name: match[2], app: false };
+}
+
+/** A provider whose App the person grants in muster before the workspace is theirs. */
 export type ProviderConnect = {
   provider: string;
-  url: string;
+  /**
+   * How, in a sentence: muster's `core_auth_login` for the provider the
+   * manager is pinned to, or that muster holds no grant for this one.
+   */
+  signIn: string;
 };
 
 /**
  * `authorize_workspace`: may the person start a Session on the workspace?
  * Granted carries the grant, opaque to the portal, which `start_session`
  * takes; refused names the unreadable repositories or why the workspace cannot
- * be started on yet; connect_required names the providers to connect first.
+ * be started on yet; connect_required names the providers to grant in muster
+ * first.
  */
 export type WorkspaceAuthorization = {
   workspace: string;
@@ -410,8 +512,8 @@ export type WorkspaceAuthorization = {
  * (workspace-manager's own check from the forwarded groups, or, once
  * workspaces live in the Organization's namespace, the Kubernetes permission
  * refusal); `refused` — the person cannot read the repositories named;
- * `not_connected` — the person has not connected the provider instances
- * named, each with its connect link; `invalid` — the manager's validation
+ * `not_connected` — the person has not granted the App of the provider
+ * instances named in muster, each with how to sign in; `invalid` — the manager's validation
  * message; `not_found`, `already_exists`, `conflict` (changed since read);
  * `unavailable` — the installation's muster does not reach workspace-manager
  * for this person; `failed` — anything else, verbatim.
@@ -435,7 +537,7 @@ export class WorkspaceManagerError extends Error {
     message: string,
     /** `refused`: the repositories the person cannot read. */
     readonly repositories: string[] = [],
-    /** `not_connected`: the providers to connect, with their links. */
+    /** `not_connected`: the providers to grant, with how to sign in. */
     readonly connect: ProviderConnect[] = [],
   ) {
     super(message);
@@ -486,7 +588,7 @@ export function classifyWorkspaceManagerError(
 
 /**
  * An `authorize_workspace` answer other than granted, as the error a Session
- * start shows: `not_connected` with the providers and their links, or
+ * start shows: `not_connected` with the providers and how to sign in, or
  * `refused` with the unreadable repositories (none when the workspace cannot
  * be started on yet, the reason says why). `undefined` for a grant.
  */

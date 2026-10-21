@@ -1,6 +1,7 @@
 import type { AgentSkillEntry, AgentSpec } from './agentManager';
 import type { DiscoveredSkill } from './skills';
 import { parseEgressText } from './egress';
+import { pluginEntryOf } from './plugins';
 import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**
@@ -51,6 +52,9 @@ export function agentSpecOf(
   }
   if (state.selectedSkills.length > 0) {
     spec.skills = state.selectedSkills.map(skillEntryOf);
+  }
+  if (state.selectedPlugins.length > 0) {
+    spec.plugins = state.selectedPlugins.map(pluginEntryOf);
   }
   const egress = parseEgressText(state.egressText);
   if (egress.length > 0) {

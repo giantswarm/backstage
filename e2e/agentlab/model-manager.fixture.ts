@@ -1,7 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { open, test } from './fixtures';
 import { lab } from './lab';
-import { WorkspaceTools } from './workspaces.fixture';
+import { MusterRoute } from './musterRoute';
 
 /**
  * model-manager at the browser: the answers of `x_model-manager_<tool>` calls
@@ -47,6 +47,8 @@ export type ModelManagerStub = {
 
 const TOOL_PREFIX = 'x_model-manager_';
 
+let modelManagerVerdict: Promise<string | undefined> | undefined;
+
 /**
  * Why the lab cannot show Model hosting, or undefined when it can: the
  * portal draws the serving layer where model-manager answers (or KServe's API
@@ -66,15 +68,13 @@ export function modelManagerUnavailable(
   return modelManagerVerdict;
 }
 
-let modelManagerVerdict: Promise<string | undefined> | undefined;
-
 async function readModelManagerVerdict(
   page: Page,
 ): Promise<string | undefined> {
   // Signed in again first where another context's sign-in as the admin
   // rotated this page's session away.
   await open(page, '/');
-  const servers = await new WorkspaceTools(page, lab.users.admin).listServers();
+  const servers = await new MusterRoute(page, lab.users.admin).listServers();
   const server = servers.find(entry => entry.name === 'model-manager');
   if (!server) {
     return "the lab's muster serves no model-manager (platform.modelManager off): `agentlab configure --model-manager`, then `agentlab platform`";

@@ -1,5 +1,12 @@
 import { TimelineItem } from '../../lib/kagentTimeline';
-import { createPolledPairing, fresherStreamedCopy } from './helpers';
+import {
+  createPolledPairing,
+  describeContinuationStart,
+  fresherStreamedCopy,
+  readLastUserMessage,
+  readUnansweredUserMessage,
+  withFailedSend,
+} from './helpers';
 
 describe('fresherStreamedCopy', () => {
   const call = (
@@ -147,5 +154,204 @@ describe('createPolledPairing', () => {
     expect(pair({ kind: 'agent-message', messageId: 'm-1' })).toBeUndefined();
     expect(pair({ kind: 'agent-message', messageId: 'm-2' })).toBeUndefined();
     expect(pair({ kind: 'agent-message' })).toBeUndefined();
+  });
+});
+
+describe('readLastUserMessage', () => {
+  const image = (
+    id: string,
+    messageId: string,
+    isUser = true,
+  ): TimelineItem => ({
+    kind: 'attachment',
+    id,
+    taskIndex: 1,
+    messageId,
+    isUser,
+    name: `${id}.png`,
+    preview: {
+      kind: 'image',
+      type: 'image/png',
+      dataUrl: `data:image/png;base64,${id}`,
+      byteSize: 3,
+    },
+  });
+
+  it('reads the last message the person sent, with its images as the composer holds them', () => {
+    const items: TimelineItem[] = [
+      {
+        kind: 'user-message',
+        id: 'u0',
+        taskIndex: 0,
+        messageId: 'm0',
+        text: 'first',
+      },
+      image('old', 'm0'),
+      {
+        kind: 'user-message',
+        id: 'u1',
+        taskIndex: 1,
+        messageId: 'm1',
+        text: 'look',
+      },
+      image('a', 'm1'),
+      image('agent', 'm1', false),
+      {
+        kind: 'attachment',
+        id: 'pdf',
+        taskIndex: 1,
+        messageId: 'm1',
+        isUser: true,
+        name: 'report.pdf',
+        preview: { kind: 'none', reason: 'not-previewable', byteSize: 9 },
+      },
+    ];
+
+    expect(readLastUserMessage(items)).toEqual({
+      text: 'look',
+      images: [
+        {
+          id: 'sent:a',
+          name: 'a.png',
+          mediaType: 'image/png',
+          byteSize: 3,
+          previewUrl: 'data:image/png;base64,a',
+        },
+      ],
+    });
+  });
+
+  it('reads nothing from a conversation the person has not written in', () => {
+    expect(readLastUserMessage([])).toBeUndefined();
+  });
+});
+
+describe('describeContinuationStart', () => {
+  it('says the conversation alone when the session waits on nothing', () => {
+    expect(
+      describeContinuationStart({
+        continuation: { messageCount: 3, includedMessageCount: 3 },
+        hasQuestion: false,
+        hasAnswer: false,
+      }),
+    ).toBe(
+      'Its first message holds this conversation (3 messages), with tools named but not their results.',
+    );
+  });
+
+  it('adds the open question, and the answer to it', () => {
+    expect(
+      describeContinuationStart({ hasQuestion: true, hasAnswer: false }),
+    ).toBe(
+      'Its first message holds this conversation, with tools named but not their results, and the open question.',
+    );
+    expect(
+      describeContinuationStart({ hasQuestion: true, hasAnswer: true }),
+    ).toBe(
+      'Its first message holds this conversation, with tools named but not their results, the open question and your answer.',
+    );
+  });
+
+  it('says plainly when none of the conversation fits', () => {
+    expect(
+      describeContinuationStart({
+        continuation: { messageCount: 7, includedMessageCount: 0 },
+        hasQuestion: true,
+        hasAnswer: false,
+      }),
+    ).toBe(
+      "Its first message holds the open question; this conversation's 7 messages do not fit beside it.",
+    );
+    expect(
+      describeContinuationStart({
+        continuation: { messageCount: 7, includedMessageCount: 0 },
+        hasQuestion: true,
+        hasAnswer: true,
+      }),
+    ).toBe(
+      "Its first message holds the open question and your answer; this conversation's 7 messages do not fit beside them.",
+    );
+  });
+});
+
+describe('withFailedSend', () => {
+  const sent: TimelineItem = {
+    id: 'u1',
+    kind: 'user-message',
+    taskIndex: 2,
+    messageId: 'm-1',
+    text: 'Plan a barbecue.',
+  };
+  const image = {
+    id: 'image-1',
+    name: 'shot.png',
+    mediaType: 'image/png' as const,
+    byteSize: 70,
+    previewUrl: 'data:image/png;base64,AAAA',
+  };
+
+  it('adds a failed send the transcript does not hold, with its images', () => {
+    const items = withFailedSend([sent], {
+      messageId: 'm-2',
+      text: 'Six are vegetarian.',
+      images: [image],
+    });
+
+    expect(items).toHaveLength(3);
+    expect(items[1]).toMatchObject({
+      kind: 'user-message',
+      taskIndex: 2,
+      messageId: 'm-2',
+      text: 'Six are vegetarian.',
+    });
+    expect(items[2]).toMatchObject({
+      kind: 'attachment',
+      messageId: 'm-2',
+      isUser: true,
+      name: 'shot.png',
+      preview: { kind: 'image', dataUrl: image.previewUrl },
+    });
+    // The images go with the new session as the composer holds them.
+    expect(readUnansweredUserMessage(items)?.images).toEqual([
+      expect.objectContaining({
+        name: 'shot.png',
+        previewUrl: image.previewUrl,
+      }),
+    ]);
+  });
+
+  it('adds nothing the transcript already holds', () => {
+    expect(
+      withFailedSend([sent], { messageId: 'm-1', text: 'Plan a barbecue.' }),
+    ).toEqual([sent]);
+    expect(withFailedSend([sent], null)).toEqual([sent]);
+  });
+});
+
+describe('readUnansweredUserMessage', () => {
+  const user: TimelineItem = {
+    id: 'u1',
+    kind: 'user-message',
+    taskIndex: 0,
+    messageId: 'm-1',
+    text: 'Plan a barbecue.',
+  };
+
+  it('is the newest message while nothing answered it', () => {
+    expect(
+      readUnansweredUserMessage([
+        user,
+        { id: 'f', kind: 'turn-failed', taskIndex: 0, state: 'failed' },
+      ])?.text,
+    ).toBe('Plan a barbecue.');
+  });
+
+  it('is none once the agent replied or asked something', () => {
+    expect(
+      readUnansweredUserMessage([
+        user,
+        { id: 'a', kind: 'agent-message', taskIndex: 0, text: 'Sure.' },
+      ]),
+    ).toBeUndefined();
   });
 });

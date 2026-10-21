@@ -10,6 +10,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import {
+  bucketLabel,
   CatalogueGroup,
   countNoun,
   groupWorkflows,
@@ -118,10 +119,12 @@ function ServerTools({
       <Flex direction="column" gap="2">
         <Alert
           status="info"
-          title={`Sign in to see the tools of ${bucket.name}`}
+          title={`Sign in to see the tools of ${bucketLabel(bucket)}`}
           description={
             wholeServerSelected
-              ? `Selected without a sign-in: it resolves for people with access to ${bucket.name}. Sign in to list and pick its tools.`
+              ? `Selected without a sign-in: it resolves for people with access to ${bucketLabel(
+                  bucket,
+                )}. Sign in to list and pick its tools.`
               : 'Sign in to list and pick its tools. The whole connector can be selected without it.'
           }
         />
@@ -132,6 +135,7 @@ function ServerTools({
           <ServerSignIn
             noun="connector"
             serverName={bucket.name}
+            displayName={bucketLabel(bucket)}
             installation={installation}
           />
         )}
@@ -142,7 +146,7 @@ function ServerTools({
     return (
       <ToolRows
         tools={bucket.tools}
-        ariaLabel={`Tools of ${bucket.name}`}
+        ariaLabel={`Tools of ${bucketLabel(bucket)}`}
         noun="tool"
         selected={selected}
         onToggle={onToggle}
@@ -184,12 +188,12 @@ function ServerPanel({
           selector itself as the meta. */}
       <ToolTable
         role="group"
-        ariaLabel={`Whole connector ${bucket.name}`}
+        ariaLabel={`Whole connector ${bucketLabel(bucket)}`}
         items={[
           {
             key: selector,
-            name: `Every tool of ${bucket.name}`,
-            ariaLabel: `Connector ${bucket.name}`,
+            name: `Every tool of ${bucketLabel(bucket)}`,
+            ariaLabel: `Connector ${bucketLabel(bucket)}`,
             meta: (
               <Text variant="body-x-small" color="secondary">
                 <span className={cardClasses.code}>{selector}</span>
@@ -234,7 +238,7 @@ function serverEntries(
       : countNoun(bucket.tools.length, 'tool');
     return {
       key: `${group.key}/${bucket.name}`,
-      trigger: `${bucket.name} — ${summary}${pickedSuffix(
+      trigger: `${bucketLabel(bucket)} — ${summary}${pickedSuffix(
         pickedTools(bucket.tools, props.selected),
         whole,
       )}`,

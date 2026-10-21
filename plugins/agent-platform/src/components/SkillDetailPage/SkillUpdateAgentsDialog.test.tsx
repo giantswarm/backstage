@@ -218,12 +218,21 @@ describe('SkillUpdateAgentsDialog', () => {
     });
 
     await userEvent.click(all);
-    expect(
+    // Pressable with nothing selected: it says so under the list and puts the
+    // focus on the select-all box, and updates nothing.
+    await userEvent.click(
       screen.getByRole('button', { name: 'Update agents' }),
-    ).toBeDisabled();
+    );
+    expect(
+      screen.getByText('Choose at least one agent to update.'),
+    ).toBeInTheDocument();
+    expect(all).toHaveFocus();
 
     await userEvent.click(all);
     expect(await confirmButton('Update 2 agents')).toBeEnabled();
+    expect(
+      screen.queryByText('Choose at least one agent to update.'),
+    ).not.toBeInTheDocument();
   });
 
   it('proposes a pull request for an agent applied from git and writes the others live', async () => {

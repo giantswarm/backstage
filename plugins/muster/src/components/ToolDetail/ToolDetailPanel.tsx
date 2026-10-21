@@ -1,48 +1,27 @@
-import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useId, useMemo, useRef } from 'react';
 import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import {
   SectionHeader,
-  TechnicalDetailsFoldOut,
-  YamlEditorFormField,
   isAwaitingData,
+  useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useToolDescription } from '../shared';
 import {
   buildArgs,
   enumDefaults,
   fieldKind,
-  FormValue,
+  type FormValue,
   schemaFields,
 } from '../../lib/schemaForm';
 import { ToolArgField } from './ToolArgField';
-import { RESULT_MAX_HEIGHT, ToolResultViewer } from './ToolResultViewer';
+import { ToolResultViewer } from './ToolResultViewer';
+import { InputSchemaFoldOut } from './InputSchemaFoldOut';
 import { ExplorerError } from './ExplorerError';
 import { DetailSkeleton } from './states';
 import { ToolRun, useToolRun } from './useToolRun';
+import { ToolForm, useToolForm } from './useToolForm';
 
-/** localStorage key for a tool's last-used arguments, scoped per installation. */
-function argsKey(installation: string | undefined, name: string): string {
-  return `muster-tool-args:${installation ?? 'default'}/${name}`;
-}
-
-function loadStoredArgs(key: string): Record<string, FormValue> {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as Record<string, FormValue>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function storeArgs(key: string, values: Record<string, FormValue>) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(values));
-  } catch {
-    // localStorage may be unavailable (private mode); not fatal.
-  }
-}
-
-/** A section of the tool's page: an `h2` that names its region, then the content. */
+/** A section of the run form: an `h2` that names its region, then the content. */
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const headingId = useId();
   return (
@@ -65,9 +44,9 @@ export interface ToolDetailPanelProps {
   note?: string;
   /**
    * What the tool is: a connector's or muster's own tool, or the tool muster
-   * runs a workflow as (`workflow_<name>`). A workflow's page says what it is
-   * for on Overview, so its run form leaves the description out and speaks
-   * of inputs and the workflow.
+   * runs a workflow as (`workflow_<name>`). A workflow's run form speaks of
+   * inputs and the workflow, and keeps the input schema folded above it; a
+   * tool's page shows the schema on its Overview instead.
    */
   subject?: 'tool' | 'workflow';
   /**
@@ -75,15 +54,18 @@ export interface ToolDetailPanelProps {
    * workflow page, across its tabs); else the panel keeps its own.
    */
   run?: ToolRun;
+  /**
+   * What is typed into the form, where a page keeps it above the panel (a
+   * tool's page, across its tabs); else the panel keeps its own.
+   */
+  form?: ToolForm;
 }
 
 /**
- * The body of a tool's page, in sections down its single column: the
- * tool's description, its input schema folded away, "Try it" (the argument
- * form and the run button) and the result. The page's header carries the
- * name and the markers. A workflow's Run it tab renders the same body for
- * the workflow's tool, without the description and with "Inputs" for "Try
- * it".
+ * The body of a Run it tab, in sections down its single column: "Try it"
+ * (the argument form and the run button) and the result. A tool's page and
+ * a workflow's both render it, the workflow's with "Inputs" for "Try it" and
+ * its input schema folded above. What the tool is for is on Overview.
  *
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
  * form (typed widgets, inline validation, remembered last-used args), and
@@ -95,24 +77,25 @@ export function ToolDetailPanel({
   note,
   subject = 'tool',
   run,
+  form,
 }: ToolDetailPanelProps) {
   // Always called, as hooks must be; idle where the page passes its own.
   const ownRun = useToolRun(name, installation);
   const toolRun = run ?? ownRun;
+  const ownForm = useToolForm(name, installation);
+  const { values, setValues, jsonModes, setJsonModes, remember } =
+    form ?? ownForm;
+  // Each argument shows its problem once the person leaves it having typed
+  // in it, or presses Run; a blocked Run focuses the first (the `forms`
+  // skill). Scoped to the form: a workflow's tab has its own fields around.
+  const formScope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(formScope);
+  const { reset: resetValidation } = validation;
 
-  const storageKey = argsKey(installation, name);
-  const [values, setValues] = useState<Record<string, FormValue>>(() =>
-    loadStoredArgs(storageKey),
-  );
-  const [jsonModes, setJsonModes] = useState<Record<string, boolean>>({});
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  // Reload the remembered args when the selected tool changes.
+  // A fresh check for another tool; its form reloads its own arguments.
   useEffect(() => {
-    setValues(loadStoredArgs(storageKey));
-    setJsonModes({});
-    setFieldErrors({});
-  }, [storageKey]);
+    resetValidation();
+  }, [name, installation, resetValidation]);
 
   const description = useToolDescription(name, installation);
   const { data, error } = description;
@@ -139,7 +122,7 @@ export function ToolDetailPanel({
       }
       return changed ? next : prev;
     });
-  }, [fields]);
+  }, [fields, setValues]);
 
   const setValue = (key: string, value: FormValue) =>
     setValues(prev => ({ ...prev, [key]: value }));
@@ -174,14 +157,18 @@ export function ToolDetailPanel({
   };
 
   const execute = (args: Record<string, unknown>) => {
-    storeArgs(storageKey, values);
+    remember();
     toolRun.run(args);
   };
 
+  const {
+    args,
+    errors: fieldErrors,
+    errorItems,
+  } = useMemo(() => buildArgs(fields, values), [fields, values]);
   const submit = () => {
-    const { args, errors } = buildArgs(fields, values);
-    setFieldErrors(errors);
-    if (Object.keys(errors).length > 0) {
+    if (Object.keys(fieldErrors).length > 0) {
+      validation.reveal();
       return;
     }
     execute(args);
@@ -202,41 +189,8 @@ export function ToolDetailPanel({
 
   return (
     <Flex direction="column" gap="5">
-      {/* Headed as the agent, skill and workflow pages head theirs. */}
-      {subject === 'tool' && (
-        <Section title="What it’s for">
-          {data?.description ? (
-            <Text
-              as="p"
-              variant="body-medium"
-              style={{
-                margin: 0,
-                whiteSpace: 'pre-wrap',
-                overflowWrap: 'anywhere',
-              }}
-            >
-              {data.description}
-            </Text>
-          ) : (
-            <Text as="p" variant="body-medium" color="secondary">
-              Its connector gives no description.
-            </Text>
-          )}
-        </Section>
-      )}
-
-      {data?.inputSchema && (
-        // Technical detail, folded in place and boxed as the other pages'
-        // Technical details: the form below is the schema drawn for people.
-        // Opened, it is as tall as a result may be.
-        <TechnicalDetailsFoldOut title="Input schema" defaultExpanded={false}>
-          <YamlEditorFormField
-            value={JSON.stringify(data.inputSchema, null, 2)}
-            language="json"
-            readOnly
-            maxHeight={RESULT_MAX_HEIGHT}
-          />
-        </TechnicalDetailsFoldOut>
+      {subject === 'workflow' && data?.inputSchema && (
+        <InputSchemaFoldOut schema={data.inputSchema} />
       )}
 
       <Section title={subject === 'workflow' ? 'Inputs' : 'Try it'}>
@@ -247,19 +201,27 @@ export function ToolDetailPanel({
               : 'This tool takes no arguments.'}
           </Text>
         ) : (
-          fields.map(field => (
-            <ToolArgField
-              key={field.name}
-              field={field}
-              value={values[field.name]}
-              error={fieldErrors[field.name]}
-              jsonMode={
-                Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
-              }
-              onChange={value => setValue(field.name, value)}
-              onToggleJson={() => toggleJson(field)}
-            />
-          ))
+          <div ref={formScope}>
+            {fields.map(field => (
+              <ToolArgField
+                key={field.name}
+                field={field}
+                value={values[field.name]}
+                error={validation.errorFor(field.name, fieldErrors[field.name])}
+                invalidItem={errorItems[field.name]}
+                blurProps={validation.blurProps(
+                  field.name,
+                  fieldErrors[field.name],
+                  values[field.name],
+                )}
+                jsonMode={
+                  Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
+                }
+                onChange={value => setValue(field.name, value)}
+                onToggleJson={() => toggleJson(field)}
+              />
+            ))}
+          </div>
         )}
         <Box mt="2">
           {note ? (

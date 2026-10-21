@@ -1,8 +1,7 @@
-import { ReactNode, useRef, useState } from 'react';
+import { ReactNode, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
   DialogBody,
   DialogFooter,
   DialogHeader,
@@ -12,11 +11,16 @@ import {
 import {
   ALERT_MESSAGE_STYLE,
   ConfirmDialog,
-  dialogDismissLock,
+  BusyDialog,
+  useFieldValidation,
   useOnDialogOpen,
+  type FieldBlurProps,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import {
+  useTrackedMutation,
+  type PortalEvent,
+} from '@giantswarm/backstage-plugin-analytics-react';
 import { musterApiRef } from '../../../apis';
 import { mutationErrorMessage } from '../../../lib/authError';
 import { useMusterMutationRefresh } from '../../MusterInstanceProvider';
@@ -25,10 +29,14 @@ export type DefinitionEditorProps = {
   value: string;
   onChange: (value: string) => void;
   /**
-   * The text did not parse: the dialog shows the parse error. A tool's
-   * refusal or a failed call (an expired session, the network) is not this.
+   * Why the text does not parse, once the field shows it: the editor shows it
+   * under itself (`fieldErrorProps`, `FieldErrorText`). A tool's refusal or a
+   * failed call (an expired session, the network) is not this; the dialog
+   * shows those above its buttons.
    */
-  invalid: boolean;
+  error?: string;
+  /** Spread onto the editor, so leaving it checks the text. */
+  blurProps: FieldBlurProps;
 };
 
 export type DefinitionEditorDialogProps = {
@@ -43,7 +51,7 @@ export type DefinitionEditorDialogProps = {
   seed: () => string;
   /**
    * Turns the editor's text into the tool arguments. Throws an `Error` whose
-   * message is shown as the dialog's error.
+   * message is shown on the editor.
    */
   parse: (value: string) => Record<string, unknown>;
   renderEditor: (props: DefinitionEditorProps) => ReactNode;
@@ -51,8 +59,13 @@ export type DefinitionEditorDialogProps = {
   validateTool: string;
   /** The muster tool that writes the definition. */
   saveTool: string;
-  /** Why the save is not a tracked portal action. */
-  saveUntrackedReason: string;
+  /**
+   * What a save reports once it went through, or why it reports nothing (an
+   * edit through a create flow, say).
+   */
+  saveTracking:
+    | { event: PortalEvent; untrackedReason?: never }
+    | { event: null; untrackedReason: string };
   /** The success message once the save went through. */
   savedMessage: string;
 };
@@ -79,7 +92,7 @@ export function DefinitionEditorDialog({
   renderEditor,
   validateTool,
   saveTool,
-  saveUntrackedReason,
+  saveTracking,
   savedMessage,
 }: DefinitionEditorDialogProps) {
   const musterApi = useApi(musterApiRef);
@@ -92,8 +105,26 @@ export function DefinitionEditorDialog({
   const [isDiscardOpen, setDiscardOpen] = useState(false);
   const isDirty = value !== baseline;
   const [error, setError] = useState<string | undefined>();
-  const [parseFailed, setParseFailed] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
+  // The text's own problem shows on the editor once the person leaves it or
+  // presses Validate or Save, and follows each change from then on (the
+  // `forms` skill).
+  const scope = useRef<HTMLDivElement>(null);
+  const fieldCheck = useFieldValidation(scope, { isOpen: open });
+  const parsed = useMemo<
+    { definition: Record<string, unknown> } | { problem: string }
+  >(() => {
+    try {
+      return { definition: parse(value) };
+    } catch (e) {
+      return {
+        problem:
+          (e instanceof Error && e.message) ||
+          'The definition could not be parsed.',
+      };
+    }
+  }, [parse, value]);
+  const parseProblem = 'problem' in parsed ? parsed.problem : undefined;
 
   const onError = (e: Error) => setError(mutationErrorMessage(e));
   const validation = useTrackedMutation({
@@ -105,8 +136,9 @@ export function DefinitionEditorDialog({
     onError,
   });
   const save = useTrackedMutation({
-    event: null,
-    untrackedReason: saveUntrackedReason,
+    ...(saveTracking.event
+      ? { event: () => saveTracking.event }
+      : { event: null, untrackedReason: saveTracking.untrackedReason }),
     mutationFn: (def: Record<string, unknown>) =>
       musterApi.callTool(saveTool, def, installation),
     onSuccess: () => {
@@ -131,34 +163,27 @@ export function DefinitionEditorDialog({
     setBaseline(seeded);
     setDiscardOpen(false);
     setError(undefined);
-    setParseFailed(false);
     setMessage(undefined);
   });
 
   const submit = (mutation: typeof validation) => {
-    let def: Record<string, unknown>;
-    try {
-      def = parse(value);
-    } catch (e) {
-      setError(
-        (e instanceof Error && e.message) ||
-          'The definition could not be parsed.',
-      );
-      setParseFailed(true);
-      setMessage(undefined);
+    setError(undefined);
+    setMessage(undefined);
+    // On the parse's verdict, not the value's truthiness: `null` or `0`
+    // parse, and muster's own answer says what is wrong with them.
+    if ('problem' in parsed) {
+      fieldCheck.reveal();
       return;
     }
-    setError(undefined);
-    setParseFailed(false);
-    setMessage(undefined);
     submitted.current = value;
-    mutation.mutate(def);
+    mutation.mutate(parsed.definition);
   };
 
   return (
-    <Dialog
+    <BusyDialog
       isOpen={open}
-      {...dialogDismissLock(Boolean(busy), next => {
+      isBusy={Boolean(busy)}
+      onOpenChange={next => {
         if (!next) {
           if (isDirty) {
             setDiscardOpen(true);
@@ -166,17 +191,27 @@ export function DefinitionEditorDialog({
             onClose();
           }
         }
-      })}
+      }}
       width="min(90vw, 860px)"
     >
       <DialogHeader>{title}</DialogHeader>
       <DialogBody>
-        <Flex direction="column" gap="3">
+        <Flex direction="column" gap="3" ref={scope}>
           <Text as="p" variant="body-medium">
             {description} Validate before saving; both run as live mutations
             against installation <code>{installation}</code>.
           </Text>
-          {renderEditor({ value, onChange: setValue, invalid: parseFailed })}
+          {renderEditor({
+            value,
+            onChange: edited => {
+              setValue(edited);
+              // The last call's verdict was about the text before this edit.
+              setMessage(undefined);
+              setError(undefined);
+            },
+            error: fieldCheck.errorFor('definition', parseProblem),
+            blurProps: fieldCheck.blurProps('definition', parseProblem),
+          })}
           {error && (
             <Alert
               status="danger"
@@ -224,6 +259,6 @@ export function DefinitionEditorDialog({
       >
         <Text variant="body-medium">What you entered will not be saved.</Text>
       </ConfirmDialog>
-    </Dialog>
+    </BusyDialog>
   );
 }

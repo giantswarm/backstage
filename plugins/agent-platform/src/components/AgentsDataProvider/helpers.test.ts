@@ -272,6 +272,7 @@ describe('toAgentRow', () => {
       // fields: only `modelName` matches what the gateway calls the model
       // (`gen_ai_response_model`), so only it can price a session.
       modelName: 'claude-sonnet-4-6',
+      modelProvider: 'Anthropic',
       harness: 'kagent',
       skillCount: 3,
       skillIds: Array.from(
@@ -283,6 +284,19 @@ describe('toAgentRow', () => {
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
       readinessMessage: undefined,
+      tenant: 'namespace sre-team',
+    });
+  });
+
+  it('carries the creator agent-manager recorded, for display and filtering', () => {
+    const agent = makeAgent({ name: 'triager', namespace: 'org-acme' });
+    agent.jsonData.metadata.annotations = {
+      'agent-platform.giantswarm.io/created-by': 'ana@acme.example',
+    };
+
+    expect(toAgentRow(agent, [])).toMatchObject({
+      tenant: 'organization acme',
+      createdBy: 'ana@acme.example',
     });
   });
 
@@ -413,6 +427,13 @@ describe('toAgentRow', () => {
       ]).harnessTitle,
     ).toBe('Go coder Harness');
     expect(toAgentRow(agent, []).harnessTitle).toBeUndefined();
+    // Its runtime too, which decides whether a message may carry images.
+    expect(
+      toAgentRow(agent, [], undefined, undefined, [
+        harness('claude-go', namespace!),
+      ]).harnessRuntime,
+    ).toBe('claude');
+    expect(toAgentRow(agent, []).harnessRuntime).toBeUndefined();
   });
 
   it('carries the Harness warnings', () => {

@@ -76,7 +76,7 @@ function render(targets: ImportTarget[] = [target]) {
     <Wrapper>
       <ImportModelPage
         targets={targets}
-        closeHref="/agent-platform/models/serving"
+        closeHref="/customize/models/hosting"
         onImported={onImported}
       />
     </Wrapper>,
@@ -305,7 +305,7 @@ describe('ImportModelPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/serving',
+      '/customize/models/hosting',
     );
 
     expect(onImported).not.toHaveBeenCalled();

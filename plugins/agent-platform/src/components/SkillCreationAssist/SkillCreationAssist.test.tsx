@@ -85,7 +85,7 @@ function renderAssist(target: SkillCreationTarget = CREATE) {
       isEdit={target.kind === 'update'}
     />,
     {
-      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      mountedRoutes: { '/sessions': sessionsRouteRef },
     },
   );
 }
@@ -182,20 +182,17 @@ describe('SkillCreationAssist', () => {
       agent: mockRows[1],
       prompt,
     });
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/sessions/gazelle/session-9',
-      {
-        state: {
-          newSession: {
-            text: prompt,
-            agentNamespace: 'kagent',
-            agentName: 'skill-creator',
-            // The session page captions it as the portal's (M20).
-            prepared: true,
-          },
+    expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/session-9', {
+      state: {
+        newSession: {
+          text: prompt,
+          agentNamespace: 'kagent',
+          agentName: 'skill-creator',
+          // The session page captions it as the portal's (M20).
+          prepared: true,
         },
       },
-    );
+    });
   }, 30_000);
 
   it('stays on the form and says why when the session could not start', async () => {

@@ -3,6 +3,7 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 import { useApi } from '@backstage/core-plugin-api';
 import { kagentApiRef } from '../apis';
 import { useStreamedTurn } from './useStreamedTurn';
+import { ComposerImage, toMessageImages } from '../lib/messageImages';
 
 /** A message submitted locally, before kagent's copy of it has been read back. */
 export type PendingMessage = {
@@ -13,6 +14,11 @@ export type PendingMessage = {
    */
   messageId: string;
   text: string;
+  /**
+   * The images attached to it, shown with the stand-in and handed back to the
+   * composer with the text when the send fails.
+   */
+  images?: ComposerImage[];
 };
 
 /**
@@ -62,9 +68,8 @@ export function useSendMessage(
 
   const { run, clear } = turn;
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'A turn inside a running session; sessionStarted measures sessions.',
+    // Neither the text nor its images: only that a message went.
+    event: () => ({ name: 'AgentPlatform.messageSent', attributes: {} }),
     mutationFn: async (message: PendingMessage) => {
       if (!agent) {
         // Not a user-facing path: the composer is withheld when the session's
@@ -80,7 +85,13 @@ export function useSendMessage(
           installation,
           sessionId,
           agent,
-          message,
+          {
+            messageId: message.messageId,
+            text: message.text,
+            ...(message.images?.length
+              ? { images: toMessageImages(message.images) }
+              : {}),
+          },
           onEvent,
           signal,
         ),
@@ -95,7 +106,8 @@ export function useSendMessage(
     },
     // The stand-in goes — nothing was recorded, so the transcript must not keep
     // showing a message that was never sent — but the *text* is handed back, because
-    // the composer cleared itself on submit and this is the only remaining copy.
+    // the composer cleared itself on submit and this is the only remaining copy
+    // (of the images too).
     // Losing a pasted manifest to a 502 is exactly what the generous length limit
     // exists to permit.
     onError: (_error, message) => {
@@ -108,10 +120,11 @@ export function useSendMessage(
   const { mutateAsync, reset } = mutation;
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, images?: ComposerImage[]) => {
       const message: PendingMessage = {
         messageId: crypto.randomUUID(),
         text,
+        ...(images?.length ? { images } : {}),
       };
       setPending(message);
       setFailed(null);

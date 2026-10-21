@@ -17,9 +17,11 @@ import { Alert, Button, Flex } from '@backstage/ui';
 import {
   Agent,
   ErrorsProvider,
+  HelmRelease,
   isNotFoundError,
   ModelConfig,
   useResource,
+  useSelfSubjectAccessReview,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
@@ -40,7 +42,10 @@ import {
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
 import { useCreateSession } from '../../hooks/useCreateSession';
-import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
+import {
+  AGENT_CREATED_STATE_KEY,
+  type AgentWriteAction,
+} from '../../hooks/useAgentCreatedHandoff';
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -52,7 +57,11 @@ import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import {
+  NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
+} from '../../hooks/useNewSessionHandoff';
+import type { ComposerImage } from '../../lib/messageImages';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { clientLookupOf } from '../../lib/serving';
 import { toolsetHasTools } from '../../lib/toolset';
@@ -75,9 +84,13 @@ import {
 } from '../AgentsTable/readinessStatus';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { isStartableAgent } from '../../lib/startableAgent';
+import { tenantOf } from '../../lib/tenants';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { toneOfIntent } from '../../lib/customize';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import {
+  type CustomizePaths,
+  useCustomizePaths,
+} from '../../hooks/useCustomizePaths';
 import { AgentCreationProgress } from '../AgentCreationProgress';
 import { AgentActionsMenu, agentWriteMode } from './AgentActionsMenu';
 import { AgentDeleteDialog, isCommitSettled } from './AgentDeleteDialog';
@@ -87,6 +100,7 @@ import { AgentSessionBlocker } from './AgentSessionBlocker';
 import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
+import { AgentChangeHarnessDialog } from './AgentChangeHarnessDialog';
 import { AgentUsageTab } from './AgentUsageTab';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -127,10 +141,13 @@ function BackToAgents({ children }: { children: ReactNode }) {
  * Where an agent's page sits inside the shell: "Customize / Agents / <agent>",
  * on every tab, as on the connector and skill pages.
  */
-function agentBreadcrumbs(title: string): BreadcrumbItem[] {
+function agentBreadcrumbs(
+  title: string,
+  { customize, agents }: CustomizePaths,
+): BreadcrumbItem[] {
   return [
-    { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
-    { label: 'Agents', href: `${SHELL_CUSTOMIZE_PATH}/agents` },
+    { label: 'Customize', href: customize },
+    { label: 'Agents', href: agents },
     { label: title },
   ];
 }
@@ -155,10 +172,11 @@ function AgentFrame({
   /** The h1 instead of `title`, e.g. its skeleton while the agent is read. */
   heading?: ReactNode;
 }) {
+  const customizePaths = useCustomizePaths();
   return (
     <ShellPage
       title={heading ?? title}
-      breadcrumbs={agentBreadcrumbs(title)}
+      breadcrumbs={agentBreadcrumbs(title, customizePaths)}
       {...shellProps}
     >
       {children}
@@ -325,6 +343,35 @@ function AgentDetailPageContent() {
   const isGitOpsOwned = managerAgent?.managed === 'gitops';
   const canCommit = agentManagerInfo?.capabilities?.commit === true;
 
+  // A live write runs as the person against the agent's HelmRelease in its
+  // tenant's namespace, so the API server answers whether they may make it:
+  // a tenant's user sees no Edit or Delete, its editor does. Not asked for an
+  // agent applied from git, which changes through a pull request instead, nor
+  // where agent-manager writes as its ServiceAccount, not as the person.
+  const writesAsPerson = agentManagerInfo?.identity !== 'serviceAccount';
+  const asksAccess =
+    isAgentManagerReachable &&
+    !isReadingManagerAgent &&
+    !isGitOpsOwned &&
+    writesAsPerson;
+  const helmRelease = {
+    group: HelmRelease.group,
+    resource: HelmRelease.plural,
+    namespace: managerAgent?.helmRelease?.namespace ?? namespace,
+    // Named, so a grant restricted via `resourceNames` answers accurately.
+    name: managerAgent?.helmRelease?.name ?? name,
+  };
+  const updateAccess = useSelfSubjectAccessReview(
+    installation,
+    { ...helmRelease, verb: 'update' },
+    { enabled: asksAccess },
+  );
+  const deleteAccess = useSelfSubjectAccessReview(
+    installation,
+    { ...helmRelease, verb: 'delete' },
+    { enabled: asksAccess },
+  );
+
   const agentManagerGate = useMemo(
     () => ({
       presence,
@@ -332,7 +379,11 @@ function AgentDetailPageContent() {
       isGitOpsOwned,
       canCommit,
       isVerdictPending:
-        isReadingManagerAgent || (isGitOpsOwned && isReadingManagerInfo),
+        isReadingManagerAgent ||
+        (isGitOpsOwned && isReadingManagerInfo) ||
+        (asksAccess && (updateAccess.isLoading || deleteAccess.isLoading)),
+      mayUpdate: !asksAccess || updateAccess.allowed,
+      mayDelete: !asksAccess || deleteAccess.allowed,
     }),
     [
       presence,
@@ -341,6 +392,11 @@ function AgentDetailPageContent() {
       canCommit,
       isReadingManagerAgent,
       isReadingManagerInfo,
+      asksAccess,
+      updateAccess.isLoading,
+      updateAccess.allowed,
+      deleteAccess.isLoading,
+      deleteAccess.allowed,
     ],
   );
 
@@ -350,7 +406,16 @@ function AgentDetailPageContent() {
    * agent-manager can commit: the Edit agent page and the Update skills dialog
    * then open a pull request instead of writing live.
    */
-  const canEditAgent = writeMode !== undefined;
+  const canEditAgent = writeMode !== undefined && agentManagerGate.mayUpdate;
+  // What the person may not do to an agent they may use: said once, naming
+  // the tenant whose editors may.
+  const refusedWrites =
+    writeMode === 'apply'
+      ? [
+          ...(agentManagerGate.mayUpdate ? [] : ['editing']),
+          ...(agentManagerGate.mayDelete ? [] : ['deleting']),
+        ]
+      : [];
 
   const deletion = useAgentDeletion(installation, namespace, name);
   const updating = useUpdateAgent(installation);
@@ -360,6 +425,10 @@ function AgentDetailPageContent() {
   const [updateSkillsMode, setUpdateSkillsMode] = useState<'apply' | 'commit'>(
     'apply',
   );
+  const [isChangeHarnessOpen, setChangeHarnessOpen] = useState(false);
+  const [changeHarnessMode, setChangeHarnessMode] = useState<
+    'apply' | 'commit'
+  >('apply');
   const [commitResult, setCommitResult] = useState<CommitAgentResult>();
   const toastApi = useApi(toastApiRef);
   const agentsRoute = useRouteRef(agentsRouteRef);
@@ -371,7 +440,7 @@ function AgentDetailPageContent() {
     // The menu's answer, fixed while the dialog is open, so a re-read of the
     // verdict cannot swap its action under the cursor.
     const mode = agentWriteMode(agentManagerGate);
-    if (!mode) {
+    if (!mode || !agentManagerGate.mayDelete) {
       return;
     }
     // Clear a previous attempt's error, so the dialog does not open still
@@ -389,12 +458,21 @@ function AgentDetailPageContent() {
     // Fixed while the dialog is open, like Delete's: a re-read of the verdict
     // cannot swap a live write for a pull request (or back) under the cursor.
     const mode = agentWriteMode(agentManagerGate);
-    if (!mode) {
+    if (!mode || !agentManagerGate.mayUpdate) {
       return;
     }
     resetUpdating();
     setUpdateSkillsMode(mode);
     setUpdateSkillsOpen(true);
+  }, [agentManagerGate, resetUpdating]);
+  const openChangeHarness = useCallback(() => {
+    const mode = agentWriteMode(agentManagerGate);
+    if (!mode) {
+      return;
+    }
+    resetUpdating();
+    setChangeHarnessMode(mode);
+    setChangeHarnessOpen(true);
   }, [agentManagerGate, resetUpdating]);
 
   // Starting a session from this page. The dialog itself is rendered in the page
@@ -480,16 +558,15 @@ function AgentDetailPageContent() {
     }
   }, [commitDeletion]);
 
-  // After Update skills the page watches the new revision converge exactly as
-  // it does after a create — through the same handoff, on the same URL.
-  const onSkillsUpdated = useCallback(
-    (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
-      toastApi.post({
-        title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
-        description: 'Its Harness compiles a new revision.',
-        status: 'success',
-        timeout: TOAST_TIMEOUT_MS,
-      });
+  // After Update skills or Change Harness the page watches the new revision
+  // converge exactly as it does after a create — through the same handoff, on
+  // the same URL.
+  const followRevision = useCallback(
+    (
+      action: AgentWriteAction,
+      requestedBy?: string,
+      fromGeneration?: number,
+    ) => {
       navigate(
         { pathname: location.pathname, search: location.search },
         {
@@ -500,7 +577,7 @@ function AgentDetailPageContent() {
               namespace,
               name,
               requestedBy,
-              action: 'skills-updated',
+              action,
               fromGeneration,
             },
           },
@@ -508,23 +585,60 @@ function AgentDetailPageContent() {
       );
     },
     [
-      toastApi,
-      agent,
-      name,
       navigate,
       location.pathname,
       location.search,
       installation,
       namespace,
+      name,
     ],
+  );
+
+  const onSkillsUpdated = useCallback(
+    (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
+      toastApi.post({
+        title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
+        description: 'Its Harness compiles a new revision.',
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+      followRevision('skills-updated', requestedBy, fromGeneration);
+    },
+    [toastApi, agent, name, followRevision],
+  );
+
+  // The toast is where the person learns that running Sessions stay where
+  // they are; on the Sessions tab they carry the "Earlier revision" mark until
+  // deleted.
+  const onHarnessChanged = useCallback(
+    (
+      from: string,
+      to: string,
+      requestedBy?: string,
+      fromGeneration?: number,
+    ) => {
+      toastApi.post({
+        title: `Runtime of "${agent?.getDisplayName() ?? name}" changed to ${to}`,
+        description: `Running Sessions stay on ${from} until you delete them; new Sessions start on ${to} once its revision is Ready.`,
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+      followRevision('harness-changed', requestedBy, fromGeneration);
+    },
+    [toastApi, agent, name, followRevision],
   );
 
   const { createSession } = creation;
   const onStartSession = useCallback(
-    async (target: AgentRow, prompt: string) => {
+    async (
+      target: AgentRow,
+      prompt: string,
+      images?: ComposerImage[],
+      workspace?: string,
+    ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent: target, prompt });
+        sessionId = await createSession({ agent: target, prompt, workspace });
       } catch {
         // Left to the dialog, which stays open and renders the hook's `error`
         // beside the prompt the user still has.
@@ -551,6 +665,7 @@ function AgentDetailPageContent() {
             text: prompt,
             agentNamespace: target.namespace,
             agentName: target.technicalName,
+            imagesKey: stashHandoffImages(images),
           },
         },
       });
@@ -573,10 +688,11 @@ function AgentDetailPageContent() {
           agent={agent}
           agentManager={agentManagerGate}
           onUpdateSkills={openUpdateSkills}
+          onChangeHarness={openChangeHarness}
           onDelete={openDelete}
         />
       ) : null,
-    [agent, agentManagerGate, openUpdateSkills, openDelete],
+    [agent, agentManagerGate, openUpdateSkills, openChangeHarness, openDelete],
   );
   // An installation where agent-manager cannot start a session as the person
   // withholds "Use this agent" too, and the note above the tabs says why.
@@ -758,6 +874,27 @@ function AgentDetailPageContent() {
         isGitOpsOwned={agentManagerGate.isGitOpsOwned}
       />
 
+      {refusedWrites.length > 0 && (
+        <Alert
+          status="info"
+          icon
+          title={
+            refusedWrites.length === 2
+              ? 'You can use this agent, not change it'
+              : `You cannot ${
+                  refusedWrites[0] === 'editing' ? 'edit' : 'delete'
+                } this agent`
+          }
+          description={`${
+            refusedWrites.length === 2
+              ? 'Editing and deleting'
+              : refusedWrites[0].replace(/^./, c => c.toUpperCase())
+          } the agents of ${tenantOf(
+            namespace,
+          )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
+        />
+      )}
+
       {sessionBlocker && (
         <Alert
           status="info"
@@ -810,6 +947,23 @@ function AgentDetailPageContent() {
         updating={updating}
         onUpdated={onSkillsUpdated}
       />
+      {/* Mounted only while open: it lists the namespace's Harnesses, which
+          a page view that never opens it has no need to read. */}
+      {isChangeHarnessOpen && (
+        <AgentChangeHarnessDialog
+          installation={installation}
+          namespace={namespace}
+          name={name}
+          displayName={agent.getDisplayName()}
+          currentHarness={agent.getHarnessName()}
+          isOpen={isChangeHarnessOpen}
+          onOpenChange={setChangeHarnessOpen}
+          mode={changeHarnessMode}
+          updating={updating}
+          editHref={agentEditRoute?.({ installation, namespace, name })}
+          onChanged={onHarnessChanged}
+        />
+      )}
     </>
   );
 
@@ -898,6 +1052,7 @@ function AgentDetailPageContent() {
               <AgentSessionsCard
                 agentName={displayName}
                 sessions={sessions}
+                currentRevision={agent.getLatestSuccessfulRevision()}
                 onStartSession={isReady ? openNewSession : undefined}
               />
             }

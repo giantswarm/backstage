@@ -6,6 +6,7 @@ import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   serverPageResolver,
   ServerSignIn,
+  withInstallationQuery,
 } from '@giantswarm/backstage-plugin-muster';
 import {
   InfoCard,
@@ -14,6 +15,7 @@ import {
   ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useMusterServers } from '../../hooks/useMusterServers';
@@ -121,6 +123,28 @@ function DeclaredSelectors({
 }
 
 /**
+ * How muster holds the agent to its toolset, in agent-manager's words
+ * (`get_info`'s `toolsetBound`): where the installation trusts the actor JWT,
+ * agent-manager binds the toolset to each session at muster when it starts,
+ * so every process in the sandbox is held to it whatever header it sends;
+ * elsewhere the runtime only declares it in the `X-Muster-Toolset` header.
+ */
+function ToolsetEnforcement({ isBound }: { isBound: boolean }) {
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant="body-small">
+        {isBound
+          ? 'Bound to each session at its start. A change applies to new sessions.'
+          : 'Declared: the agent sends it as the X-Muster-Toolset header, and a process in its sandbox that omits the header is not held to it.'}
+      </Text>
+      <Text variant="body-small" color="secondary">
+        Composition, not authorization: never more than your own access.
+      </Text>
+    </Flex>
+  );
+}
+
+/**
  * The agent's toolset: what it declares, and what that resolves to for the
  * person looking at it.
  *
@@ -154,12 +178,15 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     [declared],
   );
   const shape = toolsetShape(selectors);
+  const { info: managerInfo } = useAgentManagerInfo(installation);
+  const isBound = managerInfo?.capabilities?.toolsetBound === true;
 
   const musterApi = useMusterPluginApi();
   const catalogue = useMusterToolCatalogue(installation);
   const {
     servers,
     resources: serverResources,
+    labels,
     isLoading: isLoadingServers,
   } = useMusterServers(installation);
   // `preset:none` is exactly "no tools"; asking muster what it resolves to
@@ -192,14 +219,13 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       return undefined;
     }
     const pageOfTool = serverPageResolver(serverResources);
-    const scope = `?installation=${encodeURIComponent(installation)}`;
     return (name: string): string | undefined => {
       const server = pageOfTool(name);
-      if (server && toolRoute) {
-        return `${toolRoute({ server, tool: name })}${scope}`;
+      if (server && toolRoute && installation) {
+        return toolRoute({ installation, server, tool: name });
       }
       return serversRoute
-        ? `${serversRoute()}${scope}&q=${encodeURIComponent(name)}`
+        ? withInstallationQuery(serversRoute(), installation, { q: name })
         : undefined;
     };
   }, [
@@ -250,6 +276,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
           selectors={selectors}
           unmatched={resolution.unmatched}
         />
+        <ToolsetEnforcement isBound={isBound} />
         {shape === 'full' && (
           <Alert
             status="warning"
@@ -273,6 +300,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
                   noun="connector"
                   key={selector}
                   serverName={name}
+                  displayName={labels.get(name)}
                   installation={installation}
                   showName
                 />

@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionsRouteRef } from '../../routes';
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
+import type { NotificationLevel } from '../../lib/notificationRecord';
 import { SessionActionsMenu } from './SessionActionsMenu';
 
 // The delete state arrives as a prop — the menu renders in the shared plugin
@@ -57,7 +58,7 @@ const renderMenu = (isUserScoped?: boolean) =>
       onRename={onRename}
       isUserScoped={isUserScoped}
     />,
-    { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    { mountedRoutes: { '/sessions': sessionsRouteRef } },
   );
 
 async function openMenu() {
@@ -125,7 +126,7 @@ describe('SessionActionsMenu', () => {
       );
     }
     await renderInTestApp(<Harness />, {
-      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      mountedRoutes: { '/sessions': sessionsRouteRef },
     });
 
     const pin = screen.getByRole('button', { name: 'Pin session' });
@@ -231,7 +232,7 @@ describe('SessionActionsMenu', () => {
     expect(mockToastPost.mock.calls[0][0].title).toMatch(
       /Session "What issues are assigned to me\?" deleted/,
     );
-    expect(mockNavigate).toHaveBeenCalledWith('/agent-platform/sessions');
+    expect(mockNavigate).toHaveBeenCalledWith('/sessions');
 
     await waitFor(() => {
       expect(
@@ -249,8 +250,8 @@ describe('SessionActionsMenu', () => {
         triggerLabel="More actions for “What issues are assigned to me?”"
       />,
       {
-        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
-        initialRouteEntries: ['/agent-platform/sessions'],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+        initialRouteEntries: ['/sessions'],
       },
     );
     await userEvent.click(
@@ -330,6 +331,183 @@ describe('SessionActionsMenu', () => {
   });
 });
 
+describe('SessionActionsMenu — Notifications', () => {
+  /** The menu with a level the test controls, as a page hands it over. */
+  function Harness({
+    initial,
+    onChange,
+  }: {
+    initial: NotificationLevel | undefined;
+    onChange: (level: NotificationLevel) => Promise<void>;
+  }) {
+    const [level, setLevel] = useState(initial);
+    return (
+      <SessionActionsMenu
+        title="What issues are assigned to me?"
+        deletion={deletion}
+        onRename={onRename}
+        notifications={{
+          level,
+          onChange: async next => {
+            await onChange(next);
+            setLevel(next);
+          },
+        }}
+      />
+    );
+  }
+
+  const renderWithLevel = (
+    initial: NotificationLevel | undefined,
+    onChange: (level: NotificationLevel) => Promise<void> = jest
+      .fn()
+      .mockResolvedValue(undefined),
+  ) =>
+    renderInTestApp(<Harness initial={initial} onChange={onChange} />, {
+      mountedRoutes: { '/sessions': sessionsRouteRef },
+    });
+
+  async function openNotifications() {
+    await openMenu();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Notifications' }),
+    );
+    return screen.findByRole('menu', { name: 'Notifications' });
+  }
+
+  function levelItem(name: string) {
+    return screen.getByRole('menuitemradio', { name });
+  }
+
+  it('offers no Notifications item unless the page hands the level over', async () => {
+    await renderMenu();
+    await openMenu();
+
+    expect(
+      screen.queryByRole('menuitem', { name: 'Notifications' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('sits between rename and delete, which stays last', async () => {
+    await renderWithLevel('default');
+    await openMenu();
+
+    const items = screen.getAllByRole('menuitem').map(item => item.textContent);
+    expect(items).toEqual([
+      expect.stringMatching(/Rename session/),
+      expect.stringMatching(/Notifications/),
+      expect.stringMatching(/Delete session/),
+    ]);
+  });
+
+  it.each`
+    level        | ticked
+    ${'default'} | ${'Default'}
+    ${'all'}     | ${'All activity'}
+    ${'muted'}   | ${'Muted'}
+  `('ticks $ticked for a session at $level', async ({ level, ticked }) => {
+    await renderWithLevel(level);
+    await openNotifications();
+
+    for (const name of ['Default', 'All activity', 'Muted']) {
+      expect(levelItem(name)).toHaveAttribute(
+        'aria-checked',
+        String(name === ticked),
+      );
+    }
+  });
+
+  it('ticks nothing while the stored level is still being read', async () => {
+    await renderWithLevel(undefined);
+    await openNotifications();
+
+    for (const name of ['Default', 'All activity', 'Muted']) {
+      expect(levelItem(name)).toHaveAttribute('aria-checked', 'false');
+    }
+  });
+
+  it('sets the chosen level, closes the menu and ticks it on the next opening', async () => {
+    const onChange = jest.fn().mockResolvedValue(undefined);
+    await renderWithLevel('default', onChange);
+    await openNotifications();
+
+    await userEvent.click(levelItem('Muted'));
+
+    expect(onChange).toHaveBeenCalledWith('muted');
+    await waitFor(() =>
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument(),
+    );
+    await openNotifications();
+    expect(levelItem('Muted')).toHaveAttribute('aria-checked', 'true');
+    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('ticks the chosen level at once, while its write is still under way', async () => {
+    // A tick that moved only once the round trip ended changed the menu as
+    // it closed: a flicker.
+    let finishWrite: () => void = () => {};
+    const onChange = jest.fn(
+      () => new Promise<void>(resolve => (finishWrite = resolve)),
+    );
+    await renderWithLevel('default', onChange);
+    await openNotifications();
+
+    await userEvent.click(levelItem('All activity'));
+    await waitFor(() =>
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument(),
+    );
+    await openNotifications();
+
+    expect(levelItem('All activity')).toHaveAttribute('aria-checked', 'true');
+    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'false');
+
+    finishWrite();
+    await waitFor(() =>
+      expect(levelItem('All activity')).toHaveAttribute('aria-checked', 'true'),
+    );
+  });
+
+  it('unmutes with Default', async () => {
+    const onChange = jest.fn().mockResolvedValue(undefined);
+    await renderWithLevel('muted', onChange);
+    await openNotifications();
+
+    await userEvent.click(levelItem('Default'));
+
+    expect(onChange).toHaveBeenCalledWith('default');
+  });
+
+  it('writes nothing when the current level is chosen again', async () => {
+    const onChange = jest.fn().mockResolvedValue(undefined);
+    await renderWithLevel('all', onChange);
+    await openNotifications();
+
+    await userEvent.click(levelItem('All activity'));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('says so when the level could not be stored, and keeps the stored one ticked', async () => {
+    const onChange = jest.fn().mockRejectedValue(new Error('backend down'));
+    await renderWithLevel('default', onChange);
+    await openNotifications();
+
+    await userEvent.click(levelItem('All activity'));
+
+    await waitFor(() =>
+      expect(mockToastPost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Could not change the session’s notifications',
+          status: 'danger',
+          timeout: expect.any(Number),
+        }),
+      ),
+    );
+    await openNotifications();
+    expect(levelItem('Default')).toHaveAttribute('aria-checked', 'true');
+  });
+});
+
 describe('SessionActionsMenu — deleting a session whose runtime is lost', () => {
   const unavailable = new Error(
     "The kagent API for installation 'gazelle' is unavailable: Failed to delete AgentInstance",
@@ -351,7 +529,7 @@ describe('SessionActionsMenu — deleting a session whose runtime is lost', () =
           attempts: 2,
         }}
       />,
-      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
     );
     await openDeleteDialog();
 
@@ -371,7 +549,7 @@ describe('SessionActionsMenu — deleting a session whose runtime is lost', () =
         deletion={deletion}
         onRename={onRename}
       />,
-      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
     );
     await openDeleteDialog();
 

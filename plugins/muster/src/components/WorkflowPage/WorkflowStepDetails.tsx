@@ -1,25 +1,22 @@
 import { Fragment, ReactNode } from 'react';
 import { Box, Button, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { countNoun, PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import type { WorkflowCondition, WorkflowSubStep } from '../../lib/k8s';
-import type { ToolEffect } from '../../lib/toolAnnotations';
+import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { formatDuration } from '../../lib/formatDuration';
 import {
   conditionSummary,
   formatArgValue,
   toolDisplay,
-  WORKFLOW_EFFECT_LABELS,
 } from '../../lib/workflowDisplay';
 import {
   FlowStepContext,
   forEachSummary,
   StepRunOverlay,
 } from '../../lib/workflowGraph';
-import { workflowDetailRouteRef } from '../../routes';
-import { DisclosureAccordion } from '../shared';
+import { DisclosureAccordion, useWorkflowPageLinks } from '../shared';
 
 const useStyles = makeStyles({
   panel: {
@@ -89,13 +86,6 @@ const useStyles = makeStyles({
   },
 });
 
-/** `?installation=<inst>`, or nothing without one. */
-function installationSearch(installation?: string): string {
-  return installation
-    ? `?installation=${encodeURIComponent(installation)}`
-    : '';
-}
-
 /** What a step calls, in plain words — a link for a called workflow. */
 function PlainTool({
   tool,
@@ -104,22 +94,19 @@ function PlainTool({
 }: {
   tool: string;
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
 }) {
   const classes = useStyles();
-  const detailRoute = useRouteRef(workflowDetailRouteRef);
+  const workflowLinks = useWorkflowPageLinks();
   const display = toolDisplay(tool, prefixes);
   switch (display.kind) {
     case 'workflow': {
-      const base = detailRoute?.({ name: display.workflow });
+      const href = workflowLinks.workflow(display.workflow, installation);
       return (
         <>
           Runs the workflow{' '}
-          {base ? (
-            <Link
-              href={`${base}${installationSearch(installation)}`}
-              variant="body-medium"
-            >
+          {href ? (
+            <Link href={href} variant="body-medium">
               {display.workflow}
             </Link>
           ) : (
@@ -287,7 +274,7 @@ export interface WorkflowStepDetailsProps {
   /** Top-level step ids, to name a `fromStep` reference by number. */
   stepIds: string[];
   prefixes: ServerPrefixInfo[];
-  installation?: string;
+  installation: string;
   /** The latest run's outcome for this step, when a run is known. */
   overlay?: StepRunOverlay;
   /** What the step's tool does, from the tool catalogue, when known. */
@@ -379,11 +366,7 @@ export function WorkflowStepDetails({
     facts.push('May fail without stopping the workflow.');
   }
   if (effect) {
-    facts.push(
-      effect === 'reads'
-        ? `Its tool ${WORKFLOW_EFFECT_LABELS.reads.toLowerCase()}.`
-        : 'Its tool can change things.',
-    );
+    facts.push(`Its tool ${TOOL_EFFECT_LABELS[effect].toLowerCase()}.`);
   }
   if (overlay) {
     facts.push(lastRunSentence(overlay));

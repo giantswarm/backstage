@@ -35,11 +35,13 @@ function app(
   logger: ReturnType<
     typeof mockServices.logger.mock
   > = mockServices.logger.mock(),
+  now: () => number = Date.now,
 ) {
   const router = createAvatarRouter({
     config,
     logger,
     fetchFn: fetchFn as unknown as typeof fetch,
+    now,
   });
   const middleware = MiddlewareFactory.create({
     logger,
@@ -170,22 +172,103 @@ describe('GET /avatars/:installation/v1/...', () => {
     expect(response.status).toBe(404);
   });
 
+  /** The catch-all MCP route of an installation without DiceBear. */
+  const catchAll = () =>
+    new Response('mcp: client must accept text/event-stream', {
+      status: 406,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+
   it.each([
+    [
+      'a route that is not the renderer answers its avatars host',
+      catchAll,
+      /serves no avatars: its avatars host answered 406 with text\/plain/,
+    ],
+    [
+      'its avatars host has no address',
+      () =>
+        Promise.reject(
+          new TypeError('fetch failed', {
+            cause: Object.assign(new Error('getaddrinfo ENOTFOUND'), {
+              code: 'ENOTFOUND',
+            }),
+          }),
+        ),
+      /serves no avatars: its avatars host has no address \(ENOTFOUND\)/,
+    ],
+  ])(
+    'answers an agent without an avatar 404, not 502, when %s',
+    async (_, answer, reason) => {
+      const logger = mockServices.logger.mock();
+      const fetchFn = upstream(answer);
+
+      const response = await request(app(fetchFn, logger)).get(
+        '/avatars/gazelle/v1/48/e2e-agent.png',
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.headers['cache-control']).toBe('private, max-age=60');
+      expect(response.body.error.name).toBe('NotFoundError');
+      expect(response.body.error.message).toMatch(reason);
+      // Handled, not a fault: visible in the logs, nothing for Sentry.
+      expect(logger.info).toHaveBeenCalledWith(
+        'The installation serves no avatars',
+        expect.objectContaining({ installation: 'gazelle' }),
+      );
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+    },
+  );
+
+  it('asks an installation that serves no avatars again only after a minute', async () => {
+    const logger = mockServices.logger.mock();
+    const fetchFn = upstream(catchAll);
+    let clock = 1_000_000;
+    const server = app(fetchFn, logger, () => clock);
+
+    await request(server).get('/avatars/gazelle/v1/48/a.png');
+    clock += 30_000;
+    const cached = await request(server).get('/avatars/gazelle/v1/96/b.png');
+
+    expect(cached.status).toBe(404);
+    expect(cached.headers['cache-control']).toBe('private, max-age=30');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+
+    clock += 30_000;
+    await request(server).get('/avatars/gazelle/v1/48/a.png');
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases the connection of an answer it does not forward', async () => {
+    const cancel = jest.fn(async () => undefined);
+    const fetchFn = upstream(() => {
+      const response = catchAll();
+      jest.spyOn(response.body!, 'cancel').mockImplementation(cancel);
+      return response;
+    });
+
+    await request(app(fetchFn)).get('/avatars/gazelle/v1/48/a.png');
+
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it.each<[string, () => Response | Promise<Response>, RegExp]>([
     [
       'answers an error',
       () => new Response('down', { status: 503 }),
       /answered 503/,
     ],
-    [
-      // The lab's avatars host without DiceBear: a catch-all MCP route.
-      'is not behind the host at all',
-      () =>
-        new Response('mcp: client must accept text/event-stream', {
-          status: 406,
-          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-        }),
-      /answered 406 with text\/plain/,
-    ],
+    // A renderer or a gateway in trouble, not an installation without one.
+    ...[400, 401, 403, 422, 429].map(
+      status =>
+        [
+          `answers ${status}`,
+          () => new Response('no', { status }),
+          new RegExp(`answered ${status}`),
+        ] as [string, () => Response, RegExp],
+    ),
     [
       'answers something that is not an image',
       () =>

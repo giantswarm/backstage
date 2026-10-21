@@ -3,9 +3,20 @@ import {
   A2aTaskWire,
   KagentSession,
   KagentSessionDetail,
+  MessageImage,
   SessionStatesResponse,
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+
+/**
+ * A message the person sends: its id (minted by the caller), its text, and
+ * the images attached to it.
+ */
+export type OutboundMessage = {
+  messageId: string;
+  text: string;
+  images?: readonly MessageImage[];
+};
 
 export type { KagentInstallation } from '../lib/kagentInstallations';
 
@@ -40,6 +51,8 @@ export type ConfirmationAnswerRequest = {
 export type KagentIdentity = {
   /** The `sub` kagent used to scope the session query, when it reported one. */
   sub?: string;
+  /** The token's `email` claim, when kagent reported one. */
+  email?: string;
 };
 
 export interface KagentApi {
@@ -64,6 +77,18 @@ export interface KagentApi {
    * isn't deployed here" from "we couldn't read it".
    */
   listSessions(installation: string): Promise<KagentSession[]>;
+
+  /**
+   * The signed-in user's sessions on one installation, but only when the
+   * read is known to be complete: every row parsed, and the listing not cut
+   * at the backend's page limit. Undefined otherwise. Throws as
+   * {@link listSessions} does. For a caller that acts on a session's
+   * *absence* (dropping what is stored about deleted sessions); a list shown
+   * to the person uses {@link listSessions}, which keeps partial data.
+   */
+  listSessionsIfComplete(
+    installation: string,
+  ): Promise<KagentSession[] | undefined>;
 
   /**
    * One session's metadata, plus the message timestamps recovered from its
@@ -185,7 +210,7 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
   ): Promise<void>;
 
   /**
@@ -223,7 +248,7 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: OutboundMessage,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
   ): Promise<void>;
@@ -276,4 +301,11 @@ export interface KagentApi {
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
   getIdentity(installation: string): Promise<KagentIdentity>;
+
+  /**
+   * The namespaces of the Agents the person may list on the installation
+   * (`ListAgents` with no namespace, as the person): with the controller's
+   * Kubernetes authorizer, their tenants that hold an agent.
+   */
+  listAgentNamespaces(installation: string): Promise<string[]>;
 }

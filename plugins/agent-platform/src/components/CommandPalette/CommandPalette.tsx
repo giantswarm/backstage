@@ -25,17 +25,20 @@ import {
 
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import {
+  NEW_SESSION_STATE_KEY,
+  stashHandoffImages,
+} from '../../hooks/useNewSessionHandoff';
+import type { ComposerImage } from '../../lib/messageImages';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { skillSource, uniqueSkills } from '../../lib/customize';
-import { skillDetailPath } from '../../lib/skills';
 import {
   agentDetailRouteRef,
-  musterServersExternalRouteRef,
+  musterServerExternalRouteRef,
   musterWorkflowDetailExternalRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
-  skillsRouteRef,
 } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
 import { useAgents, type AgentRow } from '../AgentsDataProvider';
@@ -45,7 +48,6 @@ import {
 } from '../NewSessionDialog';
 import { useSessions } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { EnterKey } from '../EnterKey';
 import { Kbd } from '../Kbd';
 import {
@@ -318,10 +320,15 @@ function PaletteSessionComposer({
     useCreateSession('searchPalette');
 
   const onStart = useCallback(
-    async (chosen: AgentRow, prompt: string) => {
+    async (
+      chosen: AgentRow,
+      prompt: string,
+      images?: ComposerImage[],
+      workspace?: string,
+    ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent: chosen, prompt });
+        sessionId = await createSession({ agent: chosen, prompt, workspace });
       } catch {
         // Left to the dialog, which stays open and shows the hook's error.
         return;
@@ -342,6 +349,7 @@ function PaletteSessionComposer({
             text: prompt,
             agentNamespace: chosen.namespace,
             agentName: chosen.technicalName,
+            imagesKey: stashHandoffImages(images),
           },
         },
       });
@@ -394,9 +402,10 @@ function PaletteDialog({
 
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
-  const skillsRoute = useRouteRef(skillsRouteRef);
-  const serversRoute = useRouteRef(musterServersExternalRouteRef);
-  const { modelDetail: modelDetailRoute } = useCustomizePaths();
+  const skillPaths = useSkillPaths();
+  const serverRoute = useRouteRef(musterServerExternalRouteRef);
+  const customizePaths = useCustomizePaths();
+  const { modelDetail: modelDetailRoute } = customizePaths;
   const workflowDetailRoute = useRouteRef(musterWorkflowDetailExternalRouteRef);
   const sessionsRoute = useRouteRef(sessionsRouteRef);
 
@@ -443,9 +452,9 @@ function PaletteDialog({
     const skillCandidates: PaletteCandidate[] = uniqueSkills(
       skillCatalog.skills,
     ).flatMap(skill => {
-      const detailPath = skillDetailPath(skill);
-      // A skill outside github.com has no detail page to open.
-      if (!detailPath || !skillsRoute) {
+      const href = skillPaths.detail(skill);
+      // A skill whose repository has no address has no detail page to open.
+      if (!href) {
         return [];
       }
       return [
@@ -454,22 +463,22 @@ function PaletteDialog({
           title: skill.name,
           description: skill.description || undefined,
           meta: skillSource(skill),
-          href: `${skillsRoute()}/${detailPath}`,
+          href,
           haystack: [skill.name, skill.description],
         },
       ];
     });
 
-    const connectorCandidates: PaletteCandidate[] = serversRoute
+    const connectorCandidates: PaletteCandidate[] = serverRoute
       ? connectors.rows.map(connector => ({
-          id: `connector:${connector.page}`,
-          title: connector.page,
-          meta:
-            connector.installations.length > 1
-              ? `${connector.installations.length} environments`
-              : connector.installations[0],
-          href: `${serversRoute()}/${encodeURIComponent(connector.page)}`,
-          haystack: [connector.page],
+          id: `connector:${connector.installation}/${connector.page}`,
+          title: connector.displayName,
+          meta: connector.installation,
+          href: serverRoute({
+            installation: connector.installation,
+            server: connector.page,
+          }),
+          haystack: [connector.displayName, connector.page],
         }))
       : [];
 
@@ -494,9 +503,10 @@ function PaletteDialog({
           title: workflow.name,
           description: workflow.description,
           meta: workflow.installation,
-          href: `${workflowDetailRoute({
+          href: workflowDetailRoute({
+            installation: workflow.installation,
             name: workflow.name,
-          })}?installation=${encodeURIComponent(workflow.installation)}`,
+          }),
           haystack: [workflow.name, workflow.description],
         }))
       : [];
@@ -505,9 +515,9 @@ function PaletteDialog({
       sessions: sessionCandidates.filter(candidate => candidate.href),
       agents: agentCandidates.filter(candidate => candidate.href),
       skills: skillCandidates,
-      connectors: connectorCandidates,
+      connectors: connectorCandidates.filter(candidate => candidate.href),
       models: modelCandidates,
-      workflows: workflowCandidates,
+      workflows: workflowCandidates.filter(candidate => candidate.href),
     };
   }, [
     sessions.rows,
@@ -518,8 +528,8 @@ function PaletteDialog({
     workflows.rows,
     sessionDetailRoute,
     agentDetailRoute,
-    skillsRoute,
-    serversRoute,
+    skillPaths,
+    serverRoute,
     modelDetailRoute,
     workflowDetailRoute,
   ]);
@@ -538,8 +548,12 @@ function PaletteDialog({
         ? `${sessionsRoute()}${sessionsListSearch({ query: trimmedQuery })}`
         : undefined;
     }
+    const list = customizePaths[group];
+    if (!list) {
+      return undefined;
+    }
     const search = trimmedQuery ? `?q=${encodeURIComponent(trimmedQuery)}` : '';
-    return `${SHELL_CUSTOMIZE_PATH}/${group}${search}`;
+    return `${list}${search}`;
   };
 
   // What the arrow keys walk: the groups' rows, in order.

@@ -14,12 +14,13 @@ import { lab } from './lab';
  */
 
 const WORKFLOW = 'lab-cluster-overview';
-const workflowPath = `/agent-platform/workflows/${WORKFLOW}`;
+/** The workflow's page, on the lab installation it runs on. */
+const workflowPath = `/customize/workflows/${lab.installation}/${WORKFLOW}`;
 
 test('Customize · Workflows lists the lab workflow and opens its page', async ({
   admin,
 }) => {
-  // The old list address lands on Customize's Workflows tab.
+  // The old list address lands on Customize's Workflows tab, in one hop.
   await open(
     admin,
     `/agent-platform/workflows?installation=${lab.installation}`,
@@ -28,14 +29,20 @@ test('Customize · Workflows lists the lab workflow and opens its page', async (
   const row = admin.getByRole('row', { name: new RegExp(`^${WORKFLOW}`) });
   await expect(row).toBeVisible({ timeout: 60_000 });
   await expect(row.getByRole('gridcell', { name: '2 steps' })).toBeVisible();
-  await expect(row.getByRole('gridcell', { name: 'Only reads' })).toBeVisible();
+  // The Access cell: the tools' "Reads" badge, with its hint as the badge's
+  // description, which the cell's name also takes in.
+  const access = row.getByRole('gridcell', { name: /^Reads\b/ });
+  await expect(access.getByText('Reads', { exact: true })).toBeVisible();
+  await expect(access.locator('[tabindex="0"]')).toHaveAccessibleDescription(
+    'Every step only reads.',
+  );
 
   // The name is a real link (M21): keyboard-reachable, opens in a new tab.
   await expect(
     row.getByRole('link', { name: WORKFLOW, exact: true }),
-  ).toHaveAttribute('href', new RegExp(`${workflowPath}\\?installation=`));
+  ).toHaveAttribute('href', workflowPath);
   await row.getByRole('rowheader').click();
-  await expect(admin).toHaveURL(new RegExp(`${workflowPath}(\\?|$)`));
+  await expect(admin).toHaveURL(new RegExp(`${workflowPath}$`));
   await expect(
     admin.getByRole('heading', { level: 1, name: WORKFLOW }),
   ).toBeVisible();
@@ -48,7 +55,7 @@ test('a workflow’s page loads with its steps on a canvas, a step selectable, n
   // (T88), so this pins what survives it — the page, its canvas of steps,
   // a step that takes a click, and no write action on Overview: running is
   // the Run it tab's.
-  await open(admin, `${workflowPath}?installation=${lab.installation}`);
+  await open(admin, workflowPath);
   await expect(
     admin.getByRole('heading', { level: 1, name: WORKFLOW }),
   ).toBeVisible();
@@ -120,7 +127,7 @@ test('a GitOps-managed workflow says where in Git to change it, from Edit in Git
   admin,
 }) => {
   await stageFluxWorkflow(admin);
-  await open(admin, `${workflowPath}?installation=${lab.installation}`);
+  await open(admin, workflowPath);
   await expect(
     admin.getByRole('heading', { level: 1, name: WORKFLOW }),
   ).toBeVisible();
@@ -155,7 +162,7 @@ test('a GitOps-managed workflow says where in Git to change it, from Edit in Git
 test('a workflow’s page keeps its statistics on Usage, its facts on Details and its manifest in the menu', async ({
   admin,
 }) => {
-  await open(admin, `${workflowPath}?installation=${lab.installation}`);
+  await open(admin, workflowPath);
   await expect(
     admin.getByRole('heading', {
       level: 2,
@@ -169,15 +176,11 @@ test('a workflow’s page keeps its statistics on Usage, its facts on Details an
   );
 
   await admin.getByRole('tab', { name: 'Usage', exact: true }).click();
-  await expect(admin).toHaveURL(
-    new RegExp(`${workflowPath}/usage\\?installation=`),
-  );
+  await expect(admin).toHaveURL(new RegExp(`${workflowPath}/usage$`));
   await expect(admin.getByText(/^Every run counts/)).toBeVisible();
 
   await admin.getByRole('tab', { name: 'Details', exact: true }).click();
-  await expect(admin).toHaveURL(
-    new RegExp(`${workflowPath}/details\\?installation=`),
-  );
+  await expect(admin).toHaveURL(new RegExp(`${workflowPath}/details$`));
   const facts = admin.getByRole('region', {
     name: 'Workflow details',
     exact: true,
@@ -227,7 +230,7 @@ test('a workflow runs from its Run it tab with the tool page’s form, and shows
   admin,
 }) => {
   test.setTimeout(150_000);
-  await open(admin, `${workflowPath}?installation=${lab.installation}`);
+  await open(admin, workflowPath);
   // After Overview: the tabs read Overview · Run it · Usage · Details.
   await expect(admin.getByRole('tab')).toHaveText([
     'Overview',
@@ -236,9 +239,7 @@ test('a workflow runs from its Run it tab with the tool page’s form, and shows
     'Details',
   ]);
   await admin.getByRole('tab', { name: 'Run it', exact: true }).click();
-  await expect(admin).toHaveURL(
-    new RegExp(`${workflowPath}/run\\?installation=`),
-  );
+  await expect(admin).toHaveURL(new RegExp(`${workflowPath}/run$`));
 
   const run = admin
     .getByRole('main')
@@ -253,7 +254,13 @@ test('a workflow runs from its Run it tab with the tool page’s form, and shows
   ).toBeVisible();
   // muster marks it read-only, as the badge says.
   await expect(inputs.getByText(/Nothing is changed\./)).toBeVisible();
-  await expect(admin.getByText('Only reads', { exact: true })).toBeVisible();
+  // The badge beside the title, in the tools' words.
+  await expect(
+    admin
+      .getByRole('heading', { level: 1, name: WORKFLOW, exact: true })
+      .locator('..')
+      .getByText('Reads', { exact: true }),
+  ).toBeVisible();
 
   await run.click();
   await expect(

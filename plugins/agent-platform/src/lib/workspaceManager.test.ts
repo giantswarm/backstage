@@ -1,7 +1,10 @@
 import {
+  WORKSPACE_MANAGER_TOOLS,
   WorkspaceManagerError,
   authorizationError,
   classifyWorkspaceManagerError,
+  providerDisplayName,
+  providerSignInTarget,
   workspaceManagerToolName,
   type WorkspaceAuthorization,
 } from './workspaceManager';
@@ -28,7 +31,8 @@ const REFUSALS = {
     'create workspace: invalid workspace: invalid workspace "platform": sources[0]: unknown provider instance "gitlab" (configured: github)',
   invalidSizing:
     'update workspace: invalid workspace: invalid workspace: sizing.minimum "lots": quantities must match the regular expression',
-  unknownProvider: 'connect provider: unknown provider "gitlab"',
+  unknownProvider:
+    'list repositories: unknown provider instance "gitlab" (configured: github)',
   missingArgument: 'required argument "workspace" not found',
   missingOwner: 'list repositories: provider and owner are required',
   notFound:
@@ -41,6 +45,16 @@ const REFUSALS = {
   musterAuthRequired: 'server workspace-manager requires authentication',
   other: 'list workspaces: list workspaces: the server is currently unable',
 };
+
+describe('WORKSPACE_MANAGER_TOOLS', () => {
+  it('calls no sign-in tool: the person grants the App in muster', () => {
+    expect(Object.values(WORKSPACE_MANAGER_TOOLS)).not.toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^(connect|disconnect)_provider$/),
+      ]),
+    );
+  });
+});
 
 describe('workspaceManagerToolName', () => {
   it('names a tool as muster exposes it', () => {
@@ -124,7 +138,7 @@ describe('authorizationError', () => {
     expect(error.message).toMatch(/has not synced yet/);
   });
 
-  it('names the providers to connect with their links', () => {
+  it('names the providers to grant in muster with how to sign in', () => {
     const error = authorizationError({
       workspace: 'platform',
       outcome: 'connect_required',
@@ -133,7 +147,8 @@ describe('authorizationError', () => {
       connect: [
         {
           provider: 'github',
-          url: 'https://workspaces.example.com/connect/github',
+          signIn:
+            'grant the App of provider github once in muster: core_auth_login server=workspace-manager',
         },
       ],
     })!;
@@ -141,8 +156,57 @@ describe('authorizationError', () => {
     expect(error.connect).toEqual([
       {
         provider: 'github',
-        url: 'https://workspaces.example.com/connect/github',
+        signIn:
+          'grant the App of provider github once in muster: core_auth_login server=workspace-manager',
       },
     ]);
+  });
+});
+
+describe('providerDisplayName', () => {
+  it('spells an instance named after its kind the way the provider does', () => {
+    expect(providerDisplayName({ name: 'github', kind: 'github' })).toBe(
+      'GitHub',
+    );
+    expect(providerDisplayName({ name: 'gitlab', kind: 'gitlab' })).toBe(
+      'GitLab',
+    );
+  });
+
+  it('keeps an instance name of its own beside the kind', () => {
+    expect(providerDisplayName({ name: 'gitlab-lab', kind: 'gitlab' })).toBe(
+      'gitlab-lab (GitLab)',
+    );
+  });
+
+  it('falls back to the kind as given for an unknown one', () => {
+    expect(providerDisplayName({ name: 'forge', kind: 'forge' })).toBe('forge');
+  });
+});
+
+describe('providerSignInTarget', () => {
+  it('reads the provider App or the pinned server from the sentence', () => {
+    expect(
+      providerSignInTarget(
+        'grant it once in muster: core_auth_login app=github',
+      ),
+    ).toEqual({ name: 'github', app: true });
+    expect(
+      providerSignInTarget('core_auth_login server=workspace-manager'),
+    ).toEqual({ name: 'workspace-manager', app: false });
+  });
+
+  it('leaves a sentence’s closing period out of the name', () => {
+    expect(
+      providerSignInTarget('grant it first: core_auth_login app=gitlab-lab.'),
+    ).toEqual({ name: 'gitlab-lab', app: true });
+    expect(
+      providerSignInTarget('sign in: core_auth_login server=mcp.github.'),
+    ).toEqual({ name: 'mcp.github', app: false });
+  });
+
+  it('names no target where the sentence names no grant', () => {
+    expect(providerSignInTarget('ask your platform team')).toBeUndefined();
+    expect(providerSignInTarget(undefined)).toBeUndefined();
   });
 });

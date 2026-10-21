@@ -53,12 +53,19 @@ export {
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
 export {
+  connectorDisplayNames,
+  connectorNameSource,
+  mcpServerDisplayNames,
+} from './lib/serverGrouping';
+export type { ConnectorNameSource } from './lib/serverGrouping';
+export {
   CONNECTOR_GROUPS,
   connectorGroupInfo,
   connectorGroupOfPath,
   LEGACY_CONNECTOR_GROUP_PATHS,
 } from './lib/connectorGroups';
 export type { ConnectorGroup, ConnectorGroupInfo } from './lib/connectorGroups';
+export { withInstallationQuery, withQuery } from './lib/installationLink';
 export {
   installationErrorLine,
   isMcpTransportText,
@@ -114,16 +121,31 @@ export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel'
 export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';
-export { useConnectorPageTarget } from './components/ConnectorPage';
-export type { ConnectorPageTarget } from './components/ConnectorPage';
+export {
+  CONNECTOR_PAGE_TAB_PATHS,
+  useConnectorPageTarget,
+} from './components/ConnectorPage';
+export type {
+  ConnectorPageTabPath,
+  ConnectorPageTarget,
+} from './components/ConnectorPage';
 export { useWorkflowPageTarget } from './components/WorkflowPage';
 export type { WorkflowPageTarget } from './components/WorkflowPage';
 export { WORKFLOW_PAGE_TABS } from './components/WorkflowPage';
+export { toolPageTabs } from './components/ToolPage';
 export {
   McpAuthDialog,
   useMcpServersAwaitingSignIn,
-} from './components/McpAuthNotice';
+} from './components/McpAuthDialog';
 export type {
   McpAuthDialogProps,
   McpServersAwaitingSignIn,
-} from './components/McpAuthNotice';
+} from './components/McpAuthDialog';
+export {
+  McpSignInProvider,
+  useMcpSignIn,
+} from './components/McpSignInProvider';
+export type {
+  McpServerAwaitingSignIn,
+  McpSignInStatus,
+} from './components/McpSignInProvider';

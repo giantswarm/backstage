@@ -30,6 +30,7 @@ export function SignInStatusText({
   serverName,
   signInStatus: { shown, details },
 }: {
+  /** What the hint calls the server: its display name, where it has one. */
   serverName: string;
   signInStatus: ServerSignInStatusState;
 }) {
@@ -72,7 +73,7 @@ export function ServerSignInStatus(props: ServerSignInStatusProps) {
   return (
     <span className={classes.cell}>
       <SignInStatusText
-        serverName={props.serverName}
+        serverName={props.displayName ?? props.serverName}
         signInStatus={signInStatus}
       />
       <SignInStatusActions signInStatus={signInStatus} />

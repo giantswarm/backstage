@@ -7,7 +7,7 @@ import {
   useAgentCreatedHandoff,
 } from './useAgentCreatedHandoff';
 
-const AGENT_URL = '/agent-platform/agents/gazelle/kagent/sre-agent';
+const AGENT_URL = '/customize/agents/gazelle/kagent/sre-agent';
 
 const created = {
   installation: 'gazelle',

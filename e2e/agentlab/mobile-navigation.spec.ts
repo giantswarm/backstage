@@ -21,7 +21,7 @@ const bar = (page: Page) =>
 test('the bottom bar holds New session · Sessions · Search · Customize · Profile, each reaching its page', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/sessions');
+  await open(admin, '/sessions');
   const nav = bar(admin);
   await expect(nav).toHaveClass(/agent-shell-mobile-bar/);
   // Profile's item carries the person's avatar (an initial) before its label.
@@ -47,7 +47,7 @@ test('the bottom bar holds New session · Sessions · Search · Customize · Pro
   ).toBeVisible();
 
   await nav.getByRole('link', { name: 'Sessions' }).click();
-  await expect(admin).toHaveURL(/\/agent-platform\/sessions$/);
+  await expect(admin).toHaveURL(/\/sessions$/);
   await expect(
     admin.getByRole('heading', { level: 1, name: 'Sessions' }),
   ).toBeVisible();
@@ -66,7 +66,7 @@ test('the bottom bar holds New session · Sessions · Search · Customize · Pro
 test('the Profile menu carries Usage and the Platform Portal on a phone', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/sessions');
+  await open(admin, '/sessions');
   await bar(admin)
     .getByRole('button', { name: 'Profile and settings' })
     .click();
@@ -77,7 +77,7 @@ test('the Profile menu carries Usage and the Platform Portal on a phone', async 
   ).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
   await menu.getByRole('menuitem', { name: 'Usage' }).click();
-  await expect(admin).toHaveURL(/\/agent-platform\/usage/);
+  await expect(admin).toHaveURL(/\/usage/);
   await expect(
     admin.getByRole('heading', { level: 1, name: 'Usage' }),
   ).toBeVisible();
@@ -198,7 +198,7 @@ test('Customize’s tab strip scrolls sideways with fades, the underline under t
 });
 
 test('Usage’s tabs and pages fit a phone', async ({ admin }) => {
-  await open(admin, '/agent-platform/usage');
+  await open(admin, '/usage');
   const tablist = admin.getByRole('main').getByRole('tablist').first();
   // The PO's order (T90), Connectors last.
   const names = ['Overview', 'Cost', 'Your sessions', 'Connectors'];
@@ -240,11 +240,11 @@ test('an agent’s page fits a phone, its actions clear of the bar', async ({
 
 test('the hosting pages and Sessions fit a phone', async ({ admin }) => {
   for (const path of [
-    '/agent-platform/sessions',
-    '/agent-platform/models/serving',
-    '/agent-platform/models/capacity',
-    '/agent-platform/models/cache',
-    '/agent-platform/profile',
+    '/sessions',
+    '/customize/models/hosting',
+    '/customize/models/hosting/capacity',
+    '/customize/models/hosting/cache',
+    '/profile',
   ]) {
     await open(admin, path);
     await expect(admin.getByRole('heading', { level: 1 })).toBeVisible();

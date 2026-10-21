@@ -137,8 +137,6 @@
   "integrations.azure[].host",
   "integrations.bitbucketServer[].apiBaseUrl",
   "integrations.bitbucketServer[].host",
-  "integrations.bitbucket[].apiBaseUrl",
-  "integrations.bitbucket[].host",
   "integrations.gerrit[].baseUrl",
   "integrations.gerrit[].cloneUrl",
   "integrations.gerrit[].disableEditUrl",

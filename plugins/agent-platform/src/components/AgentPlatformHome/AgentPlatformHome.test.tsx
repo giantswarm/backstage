@@ -48,9 +48,20 @@ function mockPassThrough({ children }: { children: ReactNode }) {
 jest.mock('../AgentPlatformCookieAuth', () => ({
   AgentPlatformCookieAuth: mockPassThrough,
 }));
-jest.mock('../QueryClientProvider', () => ({
-  QueryClientProvider: mockPassThrough,
-}));
+// A fresh client in place of the plugin's persisted one: the first-agent card
+// asks agent-manager where the person may create.
+jest.mock('../QueryClientProvider', () => {
+  const { QueryClient, QueryClientProvider } = jest.requireActual(
+    '@tanstack/react-query',
+  );
+  return {
+    QueryClientProvider: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={new QueryClient()}>
+        {children}
+      </QueryClientProvider>
+    ),
+  };
+});
 jest.mock('../ModelConfigsProvider', () => ({
   ModelConfigsProvider: mockPassThrough,
 }));
@@ -169,10 +180,12 @@ const loadedAgents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  noAccessInstallations: [],
   kagentMissing: undefined,
   kagentSwitchedOff: [],
   unknownPin: undefined,
   inventoryFailure: undefined,
+  retry: async () => {},
 };
 
 function environment(
@@ -274,8 +287,8 @@ function render({
       ],
       ...(bound && {
         mountedRoutes: {
-          '/agent-platform/sessions': sessionsRouteRef,
-          '/agent-platform/agents': agentsRouteRef,
+          '/sessions': sessionsRouteRef,
+          '/customize/agents': agentsRouteRef,
           '/installations': installationsExternalRouteRef,
         },
       }),
@@ -437,19 +450,68 @@ describe('AgentPlatformHome', () => {
     );
   });
 
-  it('says why no session can be started when the agents could not be read', async () => {
+  it('shows a failed agent read as an error with Retry, never as no agents', async () => {
+    const retry = jest.fn().mockResolvedValue(undefined);
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      unreachableInstallations: ['gazelle'],
+      retry,
+    });
+
+    await render();
+
+    expect(
+      screen.getByRole('heading', { name: "Couldn't load your agents" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'No agents yet' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the agents once Retry reads them', async () => {
     mockUseAgents.mockReturnValue({
       ...loadedAgents,
       rows: [],
       unreachableInstallations: ['gazelle'],
     });
-
-    await render();
-
-    expect(screen.getByText(/No agents could be read/)).toBeInTheDocument();
+    await render({ rerenderable: true });
     expect(
-      screen.getByText(/Could not read 1 environment/),
+      screen.getByRole('heading', { name: "Couldn't load your agents" }),
     ).toBeInTheDocument();
+
+    mockUseAgents.mockReturnValue(loadedAgents);
+    act(() => rerenderHome());
+
+    expect(
+      screen.queryByRole('heading', { name: "Couldn't load your agents" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeInTheDocument();
+  });
+
+  it('shows No agents yet once Retry reads an empty roster', async () => {
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      unreachableInstallations: ['gazelle'],
+    });
+    await render({ rerenderable: true });
+
+    mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [] });
+    act(() => rerenderHome());
+
+    expect(
+      screen.getByRole('heading', { name: 'No agents yet' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: "Couldn't load your agents" }),
+    ).not.toBeInTheDocument();
   });
 
   describe('when the environments in scope have no agent to start', () => {
@@ -593,7 +655,7 @@ describe('AgentPlatformHome', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'Create your first agent' }),
-      ).toHaveAttribute('href', '/agent-platform/agents/new');
+      ).toHaveAttribute('href', '/customize/agents/new');
       expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
     });
 
@@ -760,7 +822,7 @@ describe('AgentPlatformHome', () => {
         screen.getByRole('link', { name: 'See which tools' }),
       ).toHaveAttribute(
         'href',
-        '/agent-platform/agents/gazelle/research/research-agent/tools',
+        '/customize/agents/gazelle/research/research-agent/tools',
       );
     });
 
@@ -785,7 +847,7 @@ describe('AgentPlatformHome', () => {
         screen.getByRole('link', { name: 'See which tools' }),
       ).toHaveAttribute(
         'href',
-        '/agent-platform/agents/gazelle/kagent/sre-agent/tools',
+        '/customize/agents/gazelle/kagent/sre-agent/tools',
       );
     });
 

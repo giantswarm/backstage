@@ -59,7 +59,7 @@ const MODEL_FACETS: CatalogFacet<ModelRow>[] = [
 
 /**
  * A model's state, and beside it the controller's reason where the verdict
- * falls short ("Not accepted" because a key Secret is missing): a hint, so
+ * falls short ("Incomplete" because a key Secret is missing): a hint, so
  * the label stays short enough to read in the column. The connectors'
  * status layout: the dot and label, then the `StatusHint`, 4px apart, the
  * pair never shrinking.

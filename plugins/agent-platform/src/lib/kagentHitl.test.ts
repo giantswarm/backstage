@@ -159,6 +159,16 @@ describe('readPendingConfirmation', () => {
     });
   });
 
+  it('names the status message that asks, so a follow-up in the same task reads as new', () => {
+    const asking = questionTask('task-1');
+    (asking.status!.message as { messageId?: string }).messageId = 'status-1';
+
+    expect(readPendingConfirmation([asking])?.askedIn).toBe('status-1');
+    expect(
+      readPendingConfirmation([questionTask('task-1')]),
+    ).not.toHaveProperty('askedIn');
+  });
+
   describe('which task counts as pending', () => {
     it('ignores a stranded older question once a newer task has completed', () => {
       // The case that matters most in practice. Every question answered from Slack

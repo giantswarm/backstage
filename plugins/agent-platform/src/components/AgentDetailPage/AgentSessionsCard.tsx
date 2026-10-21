@@ -1,8 +1,10 @@
+import { useMemo } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
 
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { SessionsTable } from '../SessionsTable';
+import { markEarlierRevisions } from '../SessionsDataProvider/helpers';
 
 /**
  * The signed-in user's sessions with this agent.
@@ -27,12 +29,18 @@ export function AgentSessionsCard({
   sessions,
   onStartSession,
   agentName,
+  currentRevision,
 }: {
   sessions: AgentSessionsView;
   /** Opens the new-session dialog. Absent while the agent is not ready. */
   onStartSession?: () => void;
   /** The agent's name, for the caption. */
   agentName?: string;
+  /**
+   * The Agent's latest successful revision: a session prepared on another one
+   * is marked as running an earlier revision.
+   */
+  currentRevision?: string;
 }) {
   const { rows, installation, isLoading, isNotUserScoped, isUnavailable } =
     sessions;
@@ -40,6 +48,10 @@ export function AgentSessionsCard({
   // this card after that tab costs nothing, and this page's read warms it back.
   const sessionStates = useFleetSessionStates(
     rows.length ? [installation] : [],
+  );
+  const markedRows = useMemo(
+    () => markEarlierRevisions(rows, currentRevision),
+    [rows, currentRevision],
   );
 
   if (isUnavailable) {
@@ -91,7 +103,7 @@ export function AgentSessionsCard({
             chrome, with search and filters only once there is something to
             narrow down. */}
       <SessionsTable
-        rows={rows}
+        rows={markedRows}
         sessionStates={sessionStates}
         isLoading={isLoading}
         hideColumns={['agentName', 'installation']}

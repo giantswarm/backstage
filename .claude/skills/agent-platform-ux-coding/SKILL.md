@@ -6,9 +6,12 @@ description: Rules for building UI in the agent-platform shell — patterns to r
 # Agent Platform UI: UX and coding rules
 
 Load this skill before you touch anything that renders in the agent-platform
-shell: `/`, `/agent-platform/**` and `/customize/**`, built from
-`plugins/agent-platform`, `plugins/muster`, the shell components in
-`plugins/ui-react` and `packages/app/src/modules/agentShell`.
+shell: `/`, `/sessions/**`, `/usage/**`, `/profile` and `/customize/**`, built
+from `plugins/agent-platform`, `plugins/muster`, the shell components in
+`plugins/ui-react` and `packages/app/src/modules/agentShell`. The old
+`/agent-platform/**` addresses only redirect. Where a page lives, how it is
+addressed and linked, and what adding or moving one takes are the
+[`urls`](../urls/SKILL.md) skill's rules.
 
 Repository conventions (bui first, component directories, named exports,
 telemetry, `useTrackedMutation`, changesets, logging) live in
@@ -158,6 +161,9 @@ them and never invent a palette.
 - Technical detail is a fold-out in place, never a page-wide toggle, switch or
   stored "technical mode". Pages use a "Technical details" bui `Accordion`
   styled by `useSimpleAccordionStyles`, mounted only while open.
+  Plain facts directly above it (a Details tab's, the model page's Overview)
+  sit in `FoldOutAlignedSection`, which lines them up with the fold-out's
+  title.
 - The one page-wide switch is the session page's "Show tool activity" (PO,
   S9): it hides the agent's work, it does not change how detail reads. It is
   small, at the end of the header's meta line after "Started …", on by
@@ -172,9 +178,11 @@ them and never invent a palette.
 - Field edges, focus rings and invalid states come from the shell's
   `--agent-shell-input-*` rules in `agent-shell.css`. Do not restyle fields per
   component.
-- Validate per field with `useFieldValidation` (`ui-react/FieldValidation`):
-  errors appear after the first blocked attempt, on the field, and focus moves
-  to the first invalid one. A summary box is only for problems no field can
+- Validation follows the [`forms`](../forms/SKILL.md) skill: a field is
+  checked when the person leaves it, a shown error follows each change until
+  it is fixed, and a blocked submit shows every error and focuses the first
+  invalid field, all through `useFieldValidation` (`ui-react/FieldValidation`).
+  Submit buttons stay enabled. A summary box is only for problems no field can
   show.
 - Mark optional fields "(optional)" consistently within a form.
 
@@ -187,7 +195,8 @@ them and never invent a palette.
 - Copy affordances: `CopyButton`. Manifests: `ManifestDialog`.
 - Running a tool: `ToolRunPanel` (muster `ToolDetail`), the argument form,
   Run button, run note and result that a tool's page and a workflow's Run it
-  tab share. Do not build a second run form or result viewer.
+  tab share. Do not build a second run form or result viewer. A connector's
+  and a tool's Usage tab share `UsageFigures` (muster `ConnectorPage`).
 - Meta-agent hand-off strips: `MetaAgentBanner`; session starts go through
   `useMetaAgentHandoff`.
 - Before writing a helper, grep `ui-react/src/utils`,
@@ -226,6 +235,7 @@ them and never invent a palette.
 | Gateway-priced money           | **Spend** ("Est. spend" when converted); every tile says whose                                                                            | Cost, Spend (estimated)                                |
 | Token-based estimate           | **Est. cost**                                                                                                                             | Estimated cost                                         |
 | Runtime-reported money         | **Reported cost**                                                                                                                         |                                                        |
+| ModelConfig verdict            | `modelStatus`: Not accepted (`Accepted` False), Incomplete (`ResolvedRefs` False), Pending                                                | "Not accepted" for a missing key                       |
 | Served-model readiness         | `SERVED_MODEL_READINESS` labels: Ready, Not serving, Pending, Idle                                                                        | Serving already, Not running, Available (on Customize) |
 | A session with no turn running | **Idle**                                                                                                                                  | Finished                                               |
 | Starting from an agent         | **Start a session** ("New session" stays the nav, home and Sessions entry); the agent page's header button alone reads **Use this agent** | Use this agent anywhere else                           |
@@ -255,12 +265,16 @@ them and never invent a palette.
     portal".
 - Never lose typed work. Links out of a form that is being filled open in a
   new tab.
-- A page whose work in flight shows only on it (a workflow run on Run it)
-  asks before the person leaves, saying whether the work goes on. The app's
-  router has no blocker, so hold what can be held: the page's tabs through
-  `ShellPage`'s `onTabNavigate`, plain clicks on links in the capture phase,
-  and `beforeunload`. `useRunLeaveGuard` (muster `WorkflowPage`) is the
-  precedent. Back, the palette and navigation from code pass.
+- A page whose work in flight shows only on it (a tool's or a workflow's run)
+  asks before the person leaves, saying whether the work goes on. Keep the
+  work above the tabs where the page can (a tool's page keeps the run and
+  the typed form with `useToolRun` and `useToolForm`), so only leaving the
+  page asks; a page that keeps it in a tab (a workflow's Run it) holds its
+  tabs too. The app's router has no blocker, so hold what can be held: the
+  page's tabs through `ShellPage`'s `onTabNavigate`, plain clicks on links in
+  the capture phase, and `beforeunload`. `useRunLeaveGuard` (muster
+  `ToolDetail`) is the precedent. Back, the palette and navigation from code
+  pass.
 - A field that cannot change after creation is shown read-only, and the lock
   is stated once in a sentence ("Its technical name is `x`; it cannot be
   changed once the agent exists."). Do not use disabled fields or a "fixed"

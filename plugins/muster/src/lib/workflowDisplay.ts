@@ -49,7 +49,7 @@ export function toolDisplay(
       : tool;
     return {
       kind: 'connector',
-      connector: match.family ?? match.serverName,
+      connector: match.displayName ?? match.family ?? match.serverName,
       tool: short,
     };
   }
@@ -104,7 +104,11 @@ export function workflowToolOf<
   return tools?.find(t => t.name === `${WORKFLOW_TOOL_PREFIX}${name}`);
 }
 
-/** The derived read-only effect of one workflow's `workflow_<name>` tool. */
+/**
+ * The derived effect of one workflow's `workflow_<name>` tool: muster marks it
+ * read-only only when every tool the workflow's steps can reach is, so a
+ * workflow reads only when all its steps do.
+ */
 export function workflowEffect(
   name: string,
   tools: { name: string; annotations?: ToolAnnotations }[] | null | undefined,
@@ -112,17 +116,6 @@ export function workflowEffect(
   const tool = workflowToolOf(name, tools);
   return tool ? toolEffect(tool) : undefined;
 }
-
-/**
- * The honest badge wording for a workflow's derived effect: muster marks the
- * `workflow_<name>` tool read-only only when every tool its steps can reach is
- * read-only, so "Only reads" is a guarantee and anything else can change
- * things.
- */
-export const WORKFLOW_EFFECT_LABELS: Record<ToolEffect, string> = {
-  reads: 'Only reads',
-  changes: 'Can change things',
-};
 
 /** The tone and label a run (or step) outcome renders with. */
 export function executionOutcome(status: WorkflowExecutionStatus): {

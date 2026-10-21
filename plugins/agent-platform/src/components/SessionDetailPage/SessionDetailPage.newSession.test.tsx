@@ -49,11 +49,15 @@ jest.mock('../../hooks/useTokenRates', () => ({
     window: '7d',
   }),
 }));
+jest.mock('../../hooks/useSessionEgressRefusals', () => ({
+  useSessionEgressRefusals: () => [],
+}));
 
 jest.mock('../../hooks/useMusterServers', () => ({
   useMusterServers: () => ({
     servers: [],
     resources: [],
+    labels: new Map(),
     isLoading: false,
     isUnavailable: false,
   }),
@@ -82,10 +86,12 @@ const agents: AgentsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  noAccessInstallations: [],
   kagentMissing: undefined,
   kagentSwitchedOff: [],
   unknownPin: undefined,
   inventoryFailure: undefined,
+  retry: async () => {},
 };
 
 jest.mock('../AgentsDataProvider', () => ({
@@ -161,7 +167,7 @@ async function startSession(sessionId: string) {
           }
         />
         <Route
-          path="/agent-platform/sessions/:installation/:sessionId"
+          path="/sessions/:installation/:sessionId"
           element={
             <QueryClientProvider key="sessions">
               <SessionDetailRoute />
@@ -176,8 +182,8 @@ async function startSession(sessionId: string) {
         [musterApiRef, musterApi],
       ],
       mountedRoutes: {
-        '/agent-platform/sessions': sessionsRouteRef,
-        '/agent-platform/agents': agentsRouteRef,
+        '/sessions': sessionsRouteRef,
+        '/customize/agents': agentsRouteRef,
       },
     },
   );

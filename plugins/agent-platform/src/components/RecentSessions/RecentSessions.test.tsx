@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { TOUCH_QUERY } from '@giantswarm/backstage-plugin-ui-react';
+import { declaredStyle } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { kagentApiRef } from '../../apis';
 import { KagentApi } from '../../apis/types';
 import { sessionsRouteRef } from '../../routes';
@@ -64,6 +65,15 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilitiesMap: () => () => ({}),
 }));
 
+const mockWorkspaceNameOf = (row: { workspace?: unknown }) =>
+  row.workspace
+    ? { status: 'named', workspace: { name: 'ws-docs' } }
+    : undefined;
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceNames'),
+  useWorkspaceNames: () => mockWorkspaceNameOf,
+}));
+
 const listSessions = jest.fn();
 const listSessionStates = jest.fn();
 const listInstallations = jest
@@ -114,7 +124,7 @@ function renderRecent(
       ],
       initialRouteEntries: [path],
       ...(mounted && {
-        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        mountedRoutes: { '/sessions': sessionsRouteRef },
       }),
     },
   );
@@ -160,10 +170,26 @@ describe('RecentSessions', () => {
     const list = await screen.findByRole('list', { name: 'Recent' });
     const links = await within(list).findAllByRole('link');
     expect(links.map(link => link.getAttribute('href'))).toEqual([
-      '/agent-platform/sessions/gazelle/new',
-      '/agent-platform/sessions/gazelle/mid',
+      '/sessions/gazelle/new',
+      '/sessions/gazelle/mid',
     ]);
     expect(within(list).queryByText('Oldest')).not.toBeInTheDocument();
+  });
+
+  it('names the workspace a session works in beside its agent', async () => {
+    listSessions.mockResolvedValue([
+      {
+        ...session('new', '2026-07-23T10:00:00Z', 'Newest'),
+        workspace: { volumeHandle: 'fs-1::docs', fetched: [], providers: [] },
+      },
+      session('mid', '2026-07-22T10:00:00Z', 'Middle'),
+    ]);
+    await renderRecent();
+
+    const list = await screen.findByRole('list', { name: 'Recent' });
+    const [newest, middle] = await within(list).findAllByRole('link');
+    expect(newest).toHaveTextContent(/ · ws-docs$/);
+    expect(middle).not.toHaveTextContent('ws-docs');
   });
 
   it('labels the list without a heading of its own', async () => {
@@ -195,7 +221,7 @@ describe('RecentSessions', () => {
   });
 
   it('marks the session open at the current location', async () => {
-    await renderRecent({ path: '/agent-platform/sessions/gazelle/mid' });
+    await renderRecent({ path: '/sessions/gazelle/mid' });
 
     const middle = (await screen.findByText('Middle')).closest('a');
     expect(middle).toHaveAttribute('aria-current', 'page');
@@ -225,13 +251,13 @@ describe('RecentSessions', () => {
       // No cutoff, so no count: the link is only the way to the full list.
       expect(screen.queryByText(/ more$/)).not.toBeInTheDocument();
       const link = screen.getByRole('link', { name: 'All sessions' });
-      expect(link).toHaveAttribute('href', '/agent-platform/sessions');
+      expect(link).toHaveAttribute('href', '/sessions');
       expect(link).not.toHaveAttribute('aria-current');
       // After the last session, not on a heading.
       const sessionLinks = screen
         .getAllByRole('link')
         .filter(element =>
-          element.getAttribute('href')?.startsWith('/agent-platform/sessions/'),
+          element.getAttribute('href')?.startsWith('/sessions/'),
         );
       expect(
         sessionLinks.every(
@@ -272,27 +298,31 @@ describe('RecentSessions', () => {
       expect(rows[7]).toContain('Session 292');
       expect(
         screen.getByRole('link', { name: 'All sessions' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions');
+      ).toHaveAttribute('href', '/sessions');
       expect(screen.getByText('292 more')).toBeInTheDocument();
     });
 
-    it('orders by last activity: a session continued today leads, under Today (T91)', async () => {
-      const now = Date.now();
+    /**
+     * Renders the rail at a pinned local clock, with one session whose
+     * newest turn finished `secondsAgo` before it: the rows' times and the
+     * day boundaries they are grouped by come from the same clock.
+     */
+    async function renderContinuedSession(now: Date, secondsAgo: number) {
+      jest.useFakeTimers({ now, advanceTimers: true });
       const daysAgo = (days: number) =>
-        new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+        new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
       listSessions.mockResolvedValue([
         session('started', daysAgo(1), 'Started yesterday'),
-        session('continued', daysAgo(5), 'Continued today'),
+        session('continued', daysAgo(5), 'Continued'),
         session('idle', daysAgo(3), 'Untouched'),
       ]);
       listSessionStates.mockResolvedValue({
         evaluatedAt: 0,
         states: [
-          // Its newest turn finished a minute ago.
           {
             sessionId: 'continued',
             state: 'completed',
-            changedAt: now - 60_000,
+            changedAt: now.getTime() - secondsAgo * 1000,
           },
         ],
         unreadable: [],
@@ -300,16 +330,35 @@ describe('RecentSessions', () => {
       });
 
       await renderRecent({ shellRail: true, limit: 2 });
+    }
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('orders by last activity: a session continued today leads, under Today (T91)', async () => {
+      // Its newest turn finished a minute ago, at midday.
+      await renderContinuedSession(new Date(2026, 9, 9, 12, 0), 60);
 
       const today = await screen.findByRole('list', { name: 'Today' });
-      expect(
-        await within(today).findByText('Continued today'),
-      ).toBeInTheDocument();
+      expect(await within(today).findByText('Continued')).toBeInTheDocument();
       const week = screen.getByRole('list', { name: 'Previous 7 days' });
       expect(within(week).getByText('Started yesterday')).toBeInTheDocument();
       // Past the cutoff of two.
       expect(screen.queryByText('Untouched')).not.toBeInTheDocument();
       expect(screen.getByText('1 more')).toBeInTheDocument();
+    });
+
+    it('just after midnight, groups a turn that finished before it under Previous 7 days', async () => {
+      // At 00:00:30, a minute ago was yesterday.
+      await renderContinuedSession(new Date(2026, 9, 9, 0, 0, 30), 60);
+
+      const week = await screen.findByRole('list', { name: 'Previous 7 days' });
+      expect(await within(week).findByText('Continued')).toBeInTheDocument();
+      expect(within(week).getByText('Started yesterday')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('list', { name: 'Today' }),
+      ).not.toBeInTheDocument();
     });
 
     it('keeps a waiting session in view above the recent ones, however old (T100 H5)', async () => {
@@ -347,7 +396,7 @@ describe('RecentSessions', () => {
       // The count beside All sessions opens the list narrowed to them.
       expect(
         screen.getByRole('link', { name: '1 waiting for you' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions?state=waiting');
+      ).toHaveAttribute('href', '/sessions?state=waiting');
       expect(screen.getByText('1 waiting')).toBeInTheDocument();
     });
 
@@ -406,7 +455,7 @@ describe('RecentSessions', () => {
       await renderRecent({
         shellRail: true,
         limit: 8,
-        path: '/agent-platform/sessions',
+        path: '/sessions',
       });
 
       expect(
@@ -418,7 +467,7 @@ describe('RecentSessions', () => {
       await renderRecent({
         shellRail: true,
         limit: 8,
-        path: '/agent-platform/sessions/gazelle/mid',
+        path: '/sessions/gazelle/mid',
       });
 
       // Middle waits for input: its row settles under "Waiting for you".
@@ -428,16 +477,15 @@ describe('RecentSessions', () => {
       const link = within(waiting).getByRole('link', { name: /Middle/ });
       const row = link.closest('li') as HTMLElement;
       // The row carries the highlight, so it spans the rail's width rather
-      // than stopping short of the pin beside the link.
-      expect(window.getComputedStyle(row).background).toBe(
-        'var(--bui-bg-neutral-3)',
-      );
-      expect(window.getComputedStyle(link).background).toBe('');
+      // than stopping short of the pin beside the link. Declared, not computed
+      // values: jsdom computes a `var()` to the property's initial value.
+      expect(declaredStyle(row, 'background')).toBe('var(--bui-bg-neutral-3)');
+      expect(declaredStyle(link, 'background')).toBe('');
       expect(
         within(row).getByRole('button', { name: 'Pin “Middle”' }),
       ).toBeInTheDocument();
       const other = screen.getByText('Newest').closest('li') as HTMLElement;
-      expect(window.getComputedStyle(other).background).toBe('');
+      expect(declaredStyle(other, 'background')).toBe('');
       // The dot sits above the row's stretched hit area, so its tooltip is
       // reached by hovering it.
       const dot = within(link).getByRole('img', { name: 'Needs your input' });
@@ -519,7 +567,7 @@ describe('RecentSessions', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: '3 more pinned' }),
-      ).toHaveAttribute('href', '/agent-platform/sessions?state=pinned');
+      ).toHaveAttribute('href', '/sessions?state=pinned');
     });
 
     it('has no overflow link while the pins fit', async () => {

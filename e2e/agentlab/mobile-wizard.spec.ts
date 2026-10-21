@@ -28,7 +28,7 @@ async function continueFrom(page: Page, step: string) {
 
 test('the agent wizard walks to Review at 375px', async ({ admin }) => {
   test.setTimeout(4 * 60_000);
-  await open(admin, '/agent-platform/agents/new');
+  await open(admin, '/customize/agents/new');
 
   // --- Details ------------------------------------------------------------
   await expectWizardStep(admin, 'Details');

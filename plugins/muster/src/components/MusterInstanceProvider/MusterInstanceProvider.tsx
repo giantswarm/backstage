@@ -13,14 +13,12 @@ import {
   type InstallationScope,
   type InventoryFailure,
 } from '@giantswarm/backstage-plugin-gs';
-import {
-  useResources,
-  useShowErrors,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
 import { MusterInstallationInfo } from '../../apis/types';
 import { selectMusterInstallations } from './selectInstallations';
 import { useMusterInstallations } from './useMusterInstallations';
+import { useMusterResources } from './useMusterResources';
 
 // A light background refetch so the live health reads (per-MC pills, the
 // healthy count) don't drift silently from the CRD between page loads.
@@ -152,6 +150,13 @@ function resolveActive(
 }
 
 type MusterInstanceProviderProps = {
+  /**
+   * The installation the address names (a connector's, tool's or workflow's
+   * page, a connector's edit): the active instance is that one, whatever the
+   * section's scope, and none where it runs no muster the section can show —
+   * never another installation's resource of the same name.
+   */
+  installation?: string;
   children: ReactNode;
 };
 
@@ -164,9 +169,12 @@ type MusterInstanceProviderProps = {
  * control that scopes every tab, MCP Servers included -- so "All
  * installations" shows the home muster. CRD reads (MCPServer, Workflow) are
  * scoped to that one installation via the Backstage kubernetes proxy -- no
- * muster MCP session is needed for the reads.
+ * muster MCP session is needed for the reads -- and fall back to muster's
+ * namespace where the person may not list them cluster-wide
+ * (`useMusterResources`).
  */
 export const MusterInstanceProvider = ({
+  installation: pageInstallation,
   children,
 }: MusterInstanceProviderProps) => {
   const { scope, setScope, home, isSingleInstallation } =
@@ -177,7 +185,9 @@ export const MusterInstanceProvider = ({
 
   // The pinned installation, or nothing under "All installations": then the
   // home muster is the one shown (see `resolveActive`).
-  const preferred = scope === ALL_INSTALLATIONS ? null : scope;
+  // A page's own installation outranks it.
+  const scopePin = scope === ALL_INSTALLATIONS ? null : scope;
+  const preferred = pageInstallation ?? scopePin;
 
   // Which installations run muster at all comes from the installation
   // inventory (one `GET /apis` per installation, home first); the backend only
@@ -202,8 +212,10 @@ export const MusterInstanceProvider = ({
   // reason there is nothing to show then.
   const inventoryFailure = useMemo(
     () =>
-      selectInventoryFailure(inventory, preferred, { fallBackToHome: true }),
-    [inventory, preferred],
+      selectInventoryFailure(inventory, preferred, {
+        fallBackToHome: !pageInstallation,
+      }),
+    [inventory, preferred, pageInstallation],
   );
   const refreshInventory = inventory.refresh;
 
@@ -215,13 +227,17 @@ export const MusterInstanceProvider = ({
     inventory.isLoading ||
     (installations.length === 0 && inventory.isProbing);
 
-  const activeInstallation = useMemo(
-    () =>
-      isLoadingInstallations
-        ? undefined
-        : resolveActive(installations, preferred),
-    [isLoadingInstallations, installations, preferred],
-  );
+  const activeInstallation = useMemo(() => {
+    if (isLoadingInstallations) {
+      return undefined;
+    }
+    if (pageInstallation) {
+      return installations.includes(pageInstallation)
+        ? pageInstallation
+        : undefined;
+    }
+    return resolveActive(installations, preferred);
+  }, [isLoadingInstallations, installations, preferred, pageInstallation]);
 
   // Choosing an installation through the section pins the whole scope (store,
   // localStorage, URL), exactly what the header selector does. Nothing is
@@ -248,28 +264,18 @@ export const MusterInstanceProvider = ({
     isLoading: isLoadingServers,
     retry: retryServers,
     queries: mcpServerQueries,
-  } = useResources(
-    clusters,
-    MCPServer,
-    {},
-    {
-      refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
-    },
-  );
+  } = useMusterResources(clusters, MCPServer, {
+    refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
+  });
 
   const {
     resources: workflows,
     errors: workflowErrors,
     isLoading: isLoadingWorkflowsQuery,
     retry: retryWorkflows,
-  } = useResources(
-    clusters,
-    MusterWorkflow,
-    {},
-    {
-      refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
-    },
-  );
+  } = useMusterResources(clusters, MusterWorkflow, {
+    refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
+  });
 
   // When the server list was last read, for a caller that must know it
   // postdates a write (the registration wizard's verify step).

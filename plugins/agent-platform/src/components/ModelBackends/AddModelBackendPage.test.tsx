@@ -109,7 +109,7 @@ function renderPage(
           <AddModelBackendPage
             installations={installations}
             registeredKinds={() => registered}
-            closeHref="/agent-platform/models/serving"
+            closeHref="/customize/models/hosting"
             onDeployed={onDeployed}
           />
         </PageHeaderActionsProvider>
@@ -365,7 +365,7 @@ describe('AddModelBackendPage', () => {
     ).toEqual(['Cancel', 'Back', 'Commit', 'Deploy']);
     expect(
       within(footer).getByRole('link', { name: 'Cancel' }),
-    ).toHaveAttribute('href', '/agent-platform/models/serving');
+    ).toHaveAttribute('href', '/customize/models/hosting');
 
     await userEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByLabelText(/^Endpoint/)).toHaveValue(

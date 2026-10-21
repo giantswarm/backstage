@@ -1,7 +1,9 @@
 # Agent Platform configuration
 
 What a deployment configures for the **Agent Platform shell**, the UI on `/`,
-`/agent-platform/**` and `/customize/**` (see [agent-platform.md](agent-platform.md)).
+`/sessions`, `/usage`, `/profile` and `/customize/**` (see
+[agent-platform.md](agent-platform.md)). The old `/agent-platform/**`
+addresses redirect there until the end of 2026.
 The classic Platform Portal is out of scope.
 
 The schemas are `packages/app/config.d.ts`, `plugins/agent-platform/config.d.ts`,
@@ -77,15 +79,20 @@ start, before sign-in, so both keys are public.
 | Mode                                                          | Result                                                                                                                                                                                                        |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Only `platformPortal` (the default; also neither or both off) | Exactly the classic portal: no Agent Platform item or route, even where `app.extensions` lists `page:agent-platform`. The `agent-platform-shell` feature flag opts one browser into the shell after a reload. |
-| Both on                                                       | The shell on `/`, `/agent-platform/**` and `/customize/**`, the classic portal everywhere else, each linking to the other in a new tab (classic to `/agent-platform`, the shell to `/clusters`).              |
+| Both on                                                       | The shell on `/`, `/sessions`, `/usage`, `/profile` and `/customize/**`, the classic portal everywhere else, each linking to the other in a new tab (classic to `/`, the shell to `/clusters`).               |
 | Only `agentPlatform`                                          | The shell is the whole navigation, without a Platform Portal item. Classic pages stay reachable by URL, and their Agent Platform item leads back in the same tab.                                             |
 
-The Sessions, Agents, Models and Usage screens live on `page:agent-platform`
-(`plugins/agent-platform/src/plugin.tsx`). It is enabled by default and mounted
-only where the shell is on, so `app.portals.agentPlatform` alone switches the
-Agent Platform on. `page:agent-platform: false` in `app.extensions` turns the
-screens off. The classic sidebar's Agent Platform item follows `app.portals`,
-not `nav-item:agent-platform`.
+The shell's pages are the app's Customize page (`page:app/agent-shell-customize`)
+with the tabs the plugins attach to it (`sub-page:agent-platform/agents`,
+`…/skills`, `…/models`, `sub-page:muster/mcp-servers`, `…/workflows`), and
+`page:agent-platform/sessions`, `…/usage` and `…/profile`
+(`plugins/agent-platform/src/plugin.tsx`). `page:agent-platform` is the old
+`/agent-platform/**` tree, which only redirects
+(`packages/app/src/modules/agentShell/legacyPagesModule.tsx`). Every one is
+enabled by default and mounted only where the shell is on, so
+`app.portals.agentPlatform` alone switches the Agent Platform on; `false` for
+one in `app.extensions` turns it off. The classic sidebar's Agent Platform item
+follows `app.portals`, not `nav-item:agent-platform`.
 
 ```yaml
 app:
@@ -365,16 +372,35 @@ No platform component reports a hosted model's context window, so the context
 indicator (`SessionCostPopover`) takes it from here. Keys are model-name
 patterns matched case-insensitively against the ModelConfig's `spec.model` (`*`
 matches any run of characters; the most specific pattern wins); values are
-tokens. Default `{}`: an unmatched model shows its raw token count instead of a
-percentage.
+tokens. An unmatched model shows its raw token count instead of a percentage.
+
+`app-config.yaml` ships a table for the Claude models. Its values follow
+Anthropic's [context windows](https://platform.claude.com/docs/en/build-with-claude/context-windows)
+page: the models listed there with a 1M window (the 5.x families, Opus 4.6 to
+4.8, Sonnet 4.6) have it by default, without a beta header, on the Claude API,
+Bedrock and Vertex; the other Claude models have 200k. kagent and
+agentgateway send no `context-1m` beta header, and the 1M models need none.
+Each family has its own pattern and there is no `claude-*` catch-all, so a
+model released after the table shows its raw count rather than a share of the
+wrong window. A leading `*` also matches Bedrock ids
+(`us.anthropic.claude-...`).
+
+An installation's own entries merge into that table. A broader pattern there
+(say `claude-*`) only covers models the shipped table does not name, since the
+more specific pattern wins. Add an entry for a model the table lacks:
 
 ```yaml
 agentPlatform:
   models:
     contextWindows:
-      'claude-*': 200000
-      'gpt-5*': 400000
+      'example-model-*': 128000
 ```
+
+A model the table does not name, such as a Claude release newer than the
+table, shows its raw count with a line saying no window is configured for it.
+When a session's context is larger than the configured window, the popover
+shows the raw count and says the setting may be too small (or that the turn
+ran on another model), instead of a share.
 
 ## User settings: pins, favorites, dismissals
 
@@ -448,7 +474,7 @@ agentPlatform:
     slack: true
   models:
     contextWindows:
-      'claude-*': 200000
+      'example-model-*': 128000
   kagent:
     installations:
       golem: {}

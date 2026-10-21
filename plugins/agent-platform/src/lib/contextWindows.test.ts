@@ -50,8 +50,11 @@ describe('contextWindowFor', () => {
 });
 
 describe('contextUsage', () => {
+  const call = (tokens: number) => ({ tokens, perCall: true });
+
   it('computes the share of a known window', () => {
-    expect(contextUsage(24000, 200000)).toEqual({
+    expect(contextUsage(call(24000), 200000)).toEqual({
+      kind: 'share',
       usedTokens: 24000,
       windowTokens: 200000,
       percent: 12,
@@ -59,26 +62,50 @@ describe('contextUsage', () => {
   });
 
   it('reports only the raw count when the window is unknown', () => {
-    expect(contextUsage(24000, undefined)).toEqual({ usedTokens: 24000 });
-  });
-
-  it('caps the share at 100%', () => {
-    // The numerator is a per-turn sum over the turn's model calls, so it can
-    // exceed the window without the context ever having done so.
-    expect(contextUsage(500000, 200000).percent).toBe(100);
-  });
-
-  it('treats a negative or non-finite count as zero', () => {
-    expect(contextUsage(-5, 200000)).toEqual({
-      usedTokens: 0,
-      windowTokens: 200000,
-      percent: 0,
+    expect(contextUsage(call(24000), undefined)).toEqual({
+      kind: 'tokens',
+      usedTokens: 24000,
     });
-    expect(contextUsage(NaN, 200000).usedTokens).toBe(0);
+  });
+
+  it('claims no share of a window the count exceeds', () => {
+    // A model cannot be sent more than its window, so the configured window
+    // is wrong; a share of it, capped or not, would contradict the count.
+    expect(contextUsage(call(969000), 200000)).toEqual({
+      kind: 'over-window',
+      usedTokens: 969000,
+      windowTokens: 200000,
+    });
+  });
+
+  it('shows a full window as a share', () => {
+    expect(contextUsage(call(200000), 200000)).toMatchObject({
+      kind: 'share',
+      percent: 100,
+    });
+  });
+
+  it('measures nothing from a turn total over several calls', () => {
+    // The claude Harness's bag sums the turn's calls: no call's context.
+    expect(contextUsage({ tokens: 71338, perCall: false }, 1000000)).toEqual({
+      kind: 'unmeasured',
+    });
+  });
+
+  it('reports nothing without a reading or with a nonsensical count', () => {
+    expect(contextUsage(undefined, 200000)).toEqual({ kind: 'none' });
+    expect(contextUsage(call(-5), 200000)).toEqual({ kind: 'none' });
+    expect(contextUsage(call(NaN), 200000)).toEqual({ kind: 'none' });
   });
 
   it('ignores a nonsensical window', () => {
-    expect(contextUsage(100, 0)).toEqual({ usedTokens: 100 });
-    expect(contextUsage(100, -1)).toEqual({ usedTokens: 100 });
+    expect(contextUsage(call(100), 0)).toEqual({
+      kind: 'tokens',
+      usedTokens: 100,
+    });
+    expect(contextUsage(call(100), -1)).toEqual({
+      kind: 'tokens',
+      usedTokens: 100,
+    });
   });
 });

@@ -4,6 +4,7 @@ import {
   authFieldAvailability,
   composeMcpServerDefinition,
   deriveSlug,
+  displayNameArgument,
   emptyFormState,
   formStateFromServer,
   hasUserInput,
@@ -13,6 +14,7 @@ import {
   WIZARD_ANSWER_MODES,
   WIZARD_AUTH_MODES,
   sigv4Advisories,
+  takesDisplayName,
   validateNewMcpServerForm,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
@@ -52,6 +54,7 @@ describe('composeMcpServerDefinition', () => {
   it('composes a no-auth server without an auth block', () => {
     expect(composeMcpServerDefinition(state())).toEqual({
       name: 'weather-mcp',
+      displayName: 'Weather MCP',
       type: 'streamable-http',
       url: 'https://weather.example.com/mcp',
       autoStart: true,
@@ -64,6 +67,7 @@ describe('composeMcpServerDefinition', () => {
       composeMcpServerDefinition(state({ authMode: 'own-account' })),
     ).toEqual({
       name: 'weather-mcp',
+      displayName: 'Weather MCP',
       type: 'streamable-http',
       url: 'https://weather.example.com/mcp',
       autoStart: true,
@@ -83,6 +87,7 @@ describe('composeMcpServerDefinition', () => {
       ),
     ).toEqual({
       name: 'weather-mcp',
+      displayName: 'Weather MCP',
       type: 'streamable-http',
       url: 'https://weather.example.com/mcp',
       autoStart: true,
@@ -164,6 +169,7 @@ describe('composeMcpServerDefinition', () => {
       ),
     ).toEqual({
       name: 'weather-mcp',
+      displayName: 'Weather MCP',
       type: 'sse',
       url: 'https://weather.example.com/mcp',
       autoStart: true,
@@ -292,6 +298,62 @@ describe('deriveSlug', () => {
   });
 });
 
+describe('displayNameArgument', () => {
+  it('keeps the typed name on create where it is not the technical name', () => {
+    expect(displayNameArgument('Stack Overflow', 'stack-overflow')).toBe(
+      'Stack Overflow',
+    );
+    expect(displayNameArgument('  Jira  ', 'jira')).toBe('Jira');
+  });
+
+  it('sends none on create for a plain id', () => {
+    expect(displayNameArgument('jira', 'jira')).toBeUndefined();
+    expect(displayNameArgument(' jira ', 'jira')).toBeUndefined();
+    expect(displayNameArgument('', '')).toBeUndefined();
+  });
+
+  it.each([
+    // unchanged: omitted keeps the annotation
+    ['Stack Overflow', 'Stack Overflow', undefined],
+    ['stack-overflow', undefined, undefined],
+    // blank: the field shows the error, nothing to send
+    ['  ', 'Stack Overflow', undefined],
+    // a new name
+    ['Stack Exchange', 'Stack Overflow', 'Stack Exchange'],
+    ['Stack Overflow', undefined, 'Stack Overflow'],
+    // back to the technical name: remove the annotation
+    ['stack-overflow', 'Stack Overflow', ''],
+  ])(
+    'on edit sends for %j over a stored %j: %j',
+    (typed, current, expected) => {
+      expect(
+        displayNameArgument(typed, 'stack-overflow', { stored: current }),
+      ).toBe(expected);
+    },
+  );
+});
+
+describe('takesDisplayName', () => {
+  it('reads the argument from the tool’s input schema', () => {
+    expect(
+      takesDisplayName({
+        properties: {
+          name: { type: 'string' },
+          displayName: { type: 'string' },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('is false for a muster from before display names, or no schema', () => {
+    expect(takesDisplayName({ properties: { name: { type: 'string' } } })).toBe(
+      false,
+    );
+    expect(takesDisplayName({})).toBe(false);
+    expect(takesDisplayName(undefined)).toBe(false);
+  });
+});
+
 describe('validateNewMcpServerForm', () => {
   it('accepts a complete state', () => {
     expect(validateNewMcpServerForm(state())).toEqual([]);
@@ -299,15 +361,15 @@ describe('validateNewMcpServerForm', () => {
 
   it('reports every missing field of an empty form, in form order', () => {
     expect(validateNewMcpServerForm(emptyFormState)).toEqual([
-      'Name is required',
-      'Select an installation',
-      'URL is required',
+      'Enter a name for the connector.',
+      'Choose an environment.',
+      'Enter the URL, e.g. https://mcp.example.com/mcp.',
     ]);
   });
 
   it('asks for a technical name only once the display name is set', () => {
     expect(validateNewMcpServerForm(state({ slug: '' }))).toEqual([
-      'Technical name is required',
+      'Enter a technical name.',
     ]);
   });
 
@@ -417,7 +479,7 @@ describe('validateNewMcpServerForm', () => {
 
   it('requires a signing region for AWS SigV4', () => {
     expect(validateNewMcpServerForm(sigv4State({ sigv4Region: '  ' }))).toEqual(
-      ['Signing region is required for AWS SigV4'],
+      ['Enter the signing region for AWS SigV4, e.g. eu-central-1.'],
     );
   });
 
@@ -1126,6 +1188,37 @@ describe('editing a registered server in the wizard', () => {
     });
     expect(validateNewMcpServerForm(form)).toEqual([]);
     expect(composeMcpServerDefinition(form).auth).toEqual(server.getAuth());
+  });
+
+  it('names the form by the server’s display name, keeping its technical name', () => {
+    const server = registered({});
+    server.jsonData.metadata.annotations = {
+      'ui.giantswarm.io/display-name': 'Weather',
+    };
+    const form = formStateFromServer(server);
+
+    expect(form).toMatchObject({ name: 'Weather', slug: 'weather-mcp' });
+    // Unchanged, the update leaves the annotation alone.
+    expect(
+      composeMcpServerDefinition(form, { stored: 'Weather' }),
+    ).not.toHaveProperty('displayName');
+    expect(
+      composeMcpServerDefinition(
+        { ...form, name: 'Weather forecasts' },
+        { stored: 'Weather' },
+      ).displayName,
+    ).toBe('Weather forecasts');
+  });
+
+  it('sends a changed display name, never one carried from the last save', () => {
+    const saved = composeMcpServerDefinition(state());
+    expect(saved.displayName).toBe('Weather MCP');
+
+    const unchanged = mergeOntoExisting(
+      saved,
+      composeMcpServerDefinition(state(), { stored: 'Weather MCP' }),
+    );
+    expect(unchanged).not.toHaveProperty('displayName');
   });
 
   it('trims request metadata values on the round trip', () => {

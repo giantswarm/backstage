@@ -86,7 +86,7 @@ describe('buildArgs', () => {
 
   it('reports a missing required field', () => {
     const { errors } = buildArgs(fields, { count: '3' });
-    expect(errors.name).toBe('required');
+    expect(errors.name).toBe('Enter a value for name.');
   });
 
   it('reports an unparseable number and invalid JSON', () => {
@@ -95,8 +95,8 @@ describe('buildArgs', () => {
       count: 'abc',
       spec: 'not json',
     });
-    expect(errors.count).toBe('must be a number');
-    expect(errors.spec).toBe('must be valid JSON');
+    expect(errors.count).toBe('Enter a number, e.g. 3 or 0.5.');
+    expect(errors.spec).toBe('Enter valid JSON, e.g. {"key": "value"}.');
   });
 
   it('always sends a boolean even when left at its default', () => {
@@ -143,9 +143,11 @@ describe('array fields', () => {
   });
 
   it('reports a required array left empty and a non-array JSON fallback', () => {
-    expect(buildArgs(fields, { labels: [] }).errors.labels).toBe('required');
+    expect(buildArgs(fields, { labels: [] }).errors.labels).toBe(
+      'Enter a value for labels.',
+    );
     expect(buildArgs(fields, { labels: '{"a":1}' }).errors.labels).toBe(
-      'must be a JSON array',
+      'Enter a JSON array, e.g. ["a", "b"].',
     );
   });
 });
