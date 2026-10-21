@@ -12,6 +12,13 @@ import {
   isRecoverableSessionError,
   McpClientCache,
 } from '../mcp';
+import {
+  AUTH_LOGIN_TOOL,
+  AUTH_LOGOUT_TOOL,
+  AUTH_STATUS_RESOURCE,
+  parseAuthLoginResult,
+} from './authLogin';
+import { PendingSignIns } from './pendingSignIns';
 
 /**
  * The muster aggregator only exposes its meta-tools over MCP. Discovery
@@ -34,6 +41,26 @@ export type MetaToolName = (typeof META_TOOLS)[number];
 
 /** Muster meta-tool used to execute any aggregated tool by name. */
 const CALL_TOOL = 'call_tool';
+
+/**
+ * The page {@link MusterMcpClient.listTools} asks `list_tools` for, as
+ * muster's own `ListAllTools` does: a usual catalogue arrives in one round
+ * trip. Without a `limit`, muster answers 50 tools.
+ */
+const LIST_TOOLS_PAGE_SIZE = 1000;
+
+/**
+ * The most `list_tools` pages one listing reads: far above any real catalogue,
+ * so a muster that keeps answering `truncated` fails the listing instead of
+ * looping.
+ */
+const LIST_TOOLS_MAX_PAGES = 20;
+
+/** What the paging reads of a `list_tools` page; the rest passes through. */
+type ListToolsPage = Record<string, unknown> & {
+  tools?: unknown[];
+  truncated?: boolean;
+};
 
 export interface MusterServerConfig {
   url: string;
@@ -210,23 +237,74 @@ function messageOf(error: unknown): string {
  * the inner text blocks; otherwise the text already is the message.
  */
 function errorTextsOf(text: string): string[] {
+  const inner = innerResultOf(text);
+  if (!inner || !Array.isArray(inner.content)) {
+    return [text];
+  }
+  const texts = (inner.content as ContentItem[])
+    .filter(item => item?.type === 'text' && typeof item.text === 'string')
+    .map(item => item.text as string);
+  return texts.length > 0 ? texts : [text];
+}
+
+/** The MCP result serialized in `text`, when it is one. */
+function innerResultOf(
+  text: string,
+): { content?: unknown; structuredContent?: unknown } | undefined {
   let inner: unknown;
   try {
     inner = JSON.parse(text);
   } catch {
-    return [text];
+    return undefined;
   }
-  if (inner === null || typeof inner !== 'object') {
-    return [text];
+  return inner !== null && typeof inner === 'object' ? inner : undefined;
+}
+
+/** `<iss> <sub>` of a JWT, read without verifying it; undefined otherwise. */
+function subjectOf(token: string | undefined): string | undefined {
+  const payload = token?.split('.')[1];
+  if (!payload) {
+    return undefined;
   }
-  const content = (inner as { content?: unknown }).content;
-  if (!Array.isArray(content)) {
-    return [text];
+  try {
+    const { iss, sub } = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    ) as { iss?: unknown; sub?: unknown };
+    return typeof sub === 'string' && sub !== ''
+      ? `${typeof iss === 'string' ? iss : ''} ${sub}`
+      : undefined;
+  } catch {
+    return undefined;
   }
-  const texts = (content as ContentItem[])
-    .filter(item => item?.type === 'text' && typeof item.text === 'string')
-    .map(item => item.text as string);
-  return texts.length > 0 ? texts : [text];
+}
+
+/**
+ * The server an errored result is muster's auth_required answer for, and the
+ * sign-in link it carries: `structuredContent: {status: "auth_required",
+ * server, authUrl?}`, on the result or on the wrapped result in its text.
+ */
+function authRequiredOf(
+  structuredContent: unknown,
+  text: string | undefined,
+): { server: string; authUrl?: string } | undefined {
+  const structured = (structuredContent ??
+    (text === undefined
+      ? undefined
+      : innerResultOf(text)?.structuredContent)) as
+    | { status?: unknown; server?: unknown; authUrl?: unknown }
+    | null
+    | undefined;
+  if (
+    structured?.status !== 'auth_required' ||
+    typeof structured.server !== 'string'
+  ) {
+    return undefined;
+  }
+  const authUrl =
+    typeof structured.authUrl === 'string' && structured.authUrl !== ''
+      ? structured.authUrl
+      : undefined;
+  return { server: structured.server, authUrl };
 }
 
 /**
@@ -239,12 +317,35 @@ function errorTextsOf(text: string): string[] {
  * with the message.
  */
 export class MusterToolError extends Error {
-  readonly name = 'MusterToolError';
+  readonly name: string = 'MusterToolError';
   readonly details: string[];
 
   constructor(message: string, details: string[] = []) {
     super(message);
     this.details = details;
+  }
+}
+
+/**
+ * Muster's auth_required answer to a call of a server's tool: the caller's
+ * session holds no grant for `server` and has to complete the sign-in at
+ * `authUrl` (absent when muster could not start one, e.g. its sign-in rate
+ * limit). `status` makes Backstage's error middleware answer it 401, a state
+ * for the page to offer the sign-in at, not a failure of the backend.
+ */
+export class MusterAuthRequiredError extends MusterToolError {
+  override readonly name = 'MusterAuthRequiredError';
+  readonly status = 401;
+
+  constructor(
+    readonly server: string,
+    readonly authUrl: string | undefined,
+    [message, ...details]: string[],
+  ) {
+    super(
+      message ?? `auth_required: server '${server}' requires authentication`,
+      details,
+    );
   }
 }
 
@@ -304,6 +405,7 @@ async function connectProgressClient(
  */
 export class MusterMcpClient {
   private readonly cache: McpClientCache;
+  private readonly signIns: PendingSignIns;
 
   constructor(
     private readonly installation: MusterInstallationConfig,
@@ -323,8 +425,127 @@ export class MusterMcpClient {
       headers: Record<string, string> | undefined,
     ) => Promise<ProgressCallClient> = headers =>
       connectProgressClient(installation.url, headers),
+    now: () => number = Date.now,
   ) {
     this.cache = new McpClientCache(logger);
+    this.signIns = new PendingSignIns(now);
+  }
+
+  /**
+   * Runs a call of an aggregated tool for the caller, unless muster asked
+   * the caller to sign in to the tool's server moments ago: then that
+   * answer is the call's, and muster -- which starts a sign-in, one of the
+   * few a person gets a minute, for every such call -- is not asked again
+   * (see {@link PendingSignIns}).
+   */
+  private async gated<T>(
+    toolName: string,
+    options: { authToken?: string } | undefined,
+    call: () => Promise<T>,
+  ): Promise<T> {
+    const caller = this.callerOf(options);
+    const token = this.tokenOf(options);
+    const pending = this.signIns.pendingFor(caller, toolName);
+    if (pending) {
+      // The link and muster's text belong to the token muster answered;
+      // another token of the person (a reload, a second tab) learns only
+      // that a sign-in is pending, and takes its link from its own
+      // core_auth_login, the page's Sign in.
+      throw pending.token === token
+        ? new MusterAuthRequiredError(
+            pending.server,
+            pending.authUrl,
+            pending.texts,
+          )
+        : new MusterAuthRequiredError(pending.server, undefined, [
+            `auth_required: server '${pending.server}' requires authentication; a sign-in to it is pending for you, sign in to use its tools.`,
+          ]);
+    }
+    try {
+      return await call();
+    } catch (error) {
+      if (error instanceof MusterAuthRequiredError) {
+        this.signIns.remember(caller, toolName, {
+          server: error.server,
+          authUrl: error.authUrl,
+          texts: [error.message, ...error.details],
+          token,
+        });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The person a call is made as: the issuer and subject of their muster
+   * token, on this installation. Read, not verified: it only groups the
+   * person's tokens, and a hold is only made from muster's answer to a
+   * token muster accepted. A token that is no JWT is its own caller.
+   */
+  private callerOf(options: { authToken?: string } | undefined): string {
+    const subject = subjectOf(options?.authToken);
+    return subject
+      ? McpClientCache.buildKey(`${this.installation.name}:person`, subject)
+      : this.tokenOf(options);
+  }
+
+  /** The caller's token, as a key (never the token itself). */
+  private tokenOf(options: { authToken?: string } | undefined): string {
+    return McpClientCache.buildKey(this.installation.name, options?.authToken);
+  }
+
+  /**
+   * The caller's own sign-in or sign-out of a server ends the wait for it:
+   * connected or signed out, the server's calls go to muster again; a new
+   * sign-in link replaces the one the calls carried.
+   */
+  private noteAuthTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    options: { authToken?: string } | undefined,
+    result: { text?: string; structuredContent?: unknown },
+  ): void {
+    const server = args.server;
+    if (typeof server !== 'string') {
+      return;
+    }
+    const caller = this.callerOf(options);
+    if (toolName === AUTH_LOGOUT_TOOL) {
+      this.signIns.forget(caller, server);
+    } else if (toolName === AUTH_LOGIN_TOOL) {
+      const login = parseAuthLoginResult(result);
+      if (login.status === 'auth_required' && login.authUrl) {
+        this.signIns.restarted(
+          caller,
+          server,
+          login.authUrl,
+          this.tokenOf(options),
+        );
+      } else if (login.status === 'connected') {
+        this.signIns.forget(caller, server);
+      }
+    }
+  }
+
+  /**
+   * A server `auth://status` reads connected for the caller -- a sign-in
+   * completed in the browser, or in another client of the person's -- has
+   * its calls go to muster again at once.
+   */
+  private noteAuthStatus(
+    status: unknown,
+    options: { authToken?: string } | undefined,
+  ): void {
+    const servers = (status as { servers?: unknown } | null)?.servers;
+    if (!Array.isArray(servers)) {
+      return;
+    }
+    const caller = this.callerOf(options);
+    for (const server of servers as { name?: unknown; status?: unknown }[]) {
+      if (typeof server?.name === 'string' && server.status === 'connected') {
+        this.signIns.forget(caller, server.name);
+      }
+    }
   }
 
   /**
@@ -348,36 +569,38 @@ export class MusterMcpClient {
       signal?: AbortSignal;
     },
   ): Promise<unknown> {
-    let client: ProgressCallClient;
-    try {
-      client = await this.progressClientFactory(
-        this.headersFor(options.authToken),
-      );
-    } catch (error) {
-      throw this.explain(error);
-    }
-    try {
-      const result = await client.callTool(
-        { name: CALL_TOOL, arguments: { name: toolName, arguments: args } },
-        undefined,
-        {
-          onprogress: ({ progress, total, message }) =>
-            options.onProgress({ progress, total, message }),
-          resetTimeoutOnProgress: true,
-          timeout: PROGRESS_IDLE_TIMEOUT_MS,
-          maxTotalTimeout: PROGRESS_CALL_MAX_MS,
-          signal: options.signal,
-        },
-      );
-      return this.parseResult(result, toolName);
-    } catch (error) {
-      if (error instanceof MusterToolError) {
-        throw error;
+    return this.gated(toolName, options, async () => {
+      let client: ProgressCallClient;
+      try {
+        client = await this.progressClientFactory(
+          this.headersFor(options.authToken),
+        );
+      } catch (error) {
+        throw this.explain(error);
       }
-      throw this.explain(error);
-    } finally {
-      await client.close().catch(() => undefined);
-    }
+      try {
+        const result = await client.callTool(
+          { name: CALL_TOOL, arguments: { name: toolName, arguments: args } },
+          undefined,
+          {
+            onprogress: ({ progress, total, message }) =>
+              options.onProgress({ progress, total, message }),
+            resetTimeoutOnProgress: true,
+            timeout: PROGRESS_IDLE_TIMEOUT_MS,
+            maxTotalTimeout: PROGRESS_CALL_MAX_MS,
+            signal: options.signal,
+          },
+        );
+        return this.parseResult(result, toolName);
+      } catch (error) {
+        if (error instanceof MusterToolError) {
+          throw error;
+        }
+        throw this.explain(error);
+      } finally {
+        await client.close().catch(() => undefined);
+      }
+    });
   }
 
   /**
@@ -537,10 +760,12 @@ export class MusterMcpClient {
     args: Record<string, unknown>,
     options?: { authToken?: string },
   ): Promise<unknown> {
-    return this.invokeMetaTool(
-      CALL_TOOL,
-      { name: toolName, arguments: args },
-      options,
+    return this.gated(toolName, options, () =>
+      this.invokeMetaTool(
+        CALL_TOOL,
+        { name: toolName, arguments: args },
+        options,
+      ),
     );
   }
 
@@ -556,23 +781,27 @@ export class MusterMcpClient {
     args: Record<string, unknown>,
     options?: { authToken?: string },
   ): Promise<{ text?: string; structuredContent?: unknown }> {
-    const result = await this.executeMetaTool(
-      CALL_TOOL,
-      { name: toolName, arguments: args },
-      options,
-    );
-    const unwrapped = this.unwrapCallTool(result, toolName);
-    switch (unwrapped.kind) {
-      case 'empty':
-        return {};
-      case 'direct':
-        return { text: unwrapped.envelope };
-      default:
-        return {
-          text: unwrapped.text,
-          structuredContent: unwrapped.structuredContent,
-        };
-    }
+    const answer = await this.gated(toolName, options, async () => {
+      const result = await this.executeMetaTool(
+        CALL_TOOL,
+        { name: toolName, arguments: args },
+        options,
+      );
+      const unwrapped = this.unwrapCallTool(result, toolName);
+      switch (unwrapped.kind) {
+        case 'empty':
+          return {};
+        case 'direct':
+          return { text: unwrapped.envelope };
+        default:
+          return {
+            text: unwrapped.text,
+            structuredContent: unwrapped.structuredContent,
+          };
+      }
+    });
+    this.noteAuthTool(toolName, args, options, answer);
+    return answer;
   }
 
   /**
@@ -587,24 +816,59 @@ export class MusterMcpClient {
     args: Record<string, unknown>,
     options?: { authToken?: string },
   ): Promise<McpContentItem[]> {
-    const result = await this.executeMetaTool(
-      CALL_TOOL,
-      { name: toolName, arguments: args },
-      options,
-    );
-    const unwrapped = this.unwrapCallTool(result, toolName);
-    switch (unwrapped.kind) {
-      case 'empty':
-        return [];
-      case 'direct':
-        return [{ type: 'text', text: unwrapped.envelope }];
-      default:
-        return unwrapped.content;
-    }
+    const content = await this.gated(toolName, options, async () => {
+      const result = await this.executeMetaTool(
+        CALL_TOOL,
+        { name: toolName, arguments: args },
+        options,
+      );
+      const unwrapped = this.unwrapCallTool(result, toolName);
+      switch (unwrapped.kind) {
+        case 'empty':
+          return [];
+        case 'direct':
+          return [{ type: 'text', text: unwrapped.envelope }];
+        default:
+          return unwrapped.content;
+      }
+    });
+    this.noteAuthTool(toolName, args, options, {});
+    return content;
   }
 
+  /**
+   * Every tool of the caller's catalogue. `list_tools` answers one page, so
+   * this reads page after page until one is not `truncated`, as muster's own
+   * `ListAllTools` does, and answers the first page with the tools of every
+   * page. A failed page fails the listing.
+   */
   async listTools(options?: { authToken?: string }): Promise<unknown> {
-    return this.invokeMetaTool('list_tools', {}, options);
+    let all: ListToolsPage | undefined;
+    for (let page = 0; page < LIST_TOOLS_MAX_PAGES; page++) {
+      const tools = all?.tools ?? [];
+      const next = (await this.invokeMetaTool(
+        'list_tools',
+        { limit: LIST_TOOLS_PAGE_SIZE, offset: tools.length },
+        options,
+      )) as ListToolsPage;
+      const added = next.tools ?? [];
+      all = all
+        ? {
+            ...all,
+            tools: [...tools, ...added],
+            filtered_count: tools.length + added.length,
+            total: next.total,
+            truncated: next.truncated,
+          }
+        : next;
+      // A page without tools cannot move the offset on, whatever it claims.
+      if (!next.truncated || added.length === 0) {
+        return all;
+      }
+    }
+    throw new ServiceUnavailableError(
+      `Muster's list_tools on '${this.installation.name}' was still truncated after ${LIST_TOOLS_MAX_PAGES} pages`,
+    );
   }
 
   async filterTools(
@@ -675,11 +939,16 @@ export class MusterMcpClient {
       );
     }
 
+    let parsed: unknown;
     try {
-      return JSON.parse(text);
+      parsed = JSON.parse(text);
     } catch {
       return text;
     }
+    if (uri === AUTH_STATUS_RESOURCE) {
+      this.noteAuthStatus(parsed, options);
+    }
+    return parsed;
   }
 
   async dispose(): Promise<void> {
@@ -699,16 +968,25 @@ export class MusterMcpClient {
     result: unknown,
     toolName: string,
   ): string | undefined {
-    const { content, isError } = (result ?? {}) as {
+    const { content, isError, structuredContent } = (result ?? {}) as {
       content?: ContentItem[];
       isError?: boolean;
+      structuredContent?: unknown;
     };
 
     const text = content?.find(item => item.type === 'text')?.text;
 
     if (isError) {
-      const [message, ...details] =
-        text === undefined ? [] : errorTextsOf(text);
+      const texts = text === undefined ? [] : errorTextsOf(text);
+      const authRequired = authRequiredOf(structuredContent, text);
+      if (authRequired) {
+        throw new MusterAuthRequiredError(
+          authRequired.server,
+          authRequired.authUrl,
+          texts,
+        );
+      }
+      const [message, ...details] = texts;
       throw new MusterToolError(
         message ?? `Muster tool ${toolName} failed without an error message`,
         details,
