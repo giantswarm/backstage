@@ -126,6 +126,23 @@ async function openEditor(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'New workspace' }).first().click();
 }
 
+/**
+ * Picks the provider instance for the editor's first source where the lab
+ * offers several: the prompt is for the source's own provider.
+ */
+async function chooseProvider(page: Page, provider: Provider): Promise<void> {
+  const picker = page
+    .getByRole('region', { name: 'Source 1' })
+    .getByRole('button', { name: /Provider$/ });
+  if ((await picker.count()) === 0) {
+    return;
+  }
+  await picker.click();
+  await page
+    .getByRole('option', { name: new RegExp(`^${provider.name}\\b`, 'i') })
+    .click();
+}
+
 /** The person comes back to the portal's tab from the sign-in tab. */
 async function returnFocus(page: Page) {
   await page.evaluate(() => {
@@ -149,6 +166,7 @@ test('the workspace editor prompts for an unconnected provider, and not once it 
 
   await openEditor(admin);
   const provider = await unconnected();
+  await chooseProvider(admin, provider);
   const prompt = admin.getByTestId(`provider-connect-${provider.name}`);
   await expect(prompt).toBeVisible({ timeout: 60_000 });
   await expect(
