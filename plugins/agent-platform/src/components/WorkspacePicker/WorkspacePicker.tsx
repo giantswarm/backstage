@@ -10,7 +10,7 @@ import {
   useLastWorkspace,
   useSessionWorkspaces,
 } from '../../hooks/useSessionWorkspaces';
-import { shortAge } from '../../lib/shortAge';
+import { syncedAgo } from '../../lib/sessionWorkspace';
 import type { Workspace } from '../../lib/workspaceManager';
 import type { AgentRow } from '../AgentsDataProvider';
 
@@ -40,14 +40,10 @@ export function workspaceOptionDescription(
   const count = `${workspace.repositories} ${
     workspace.repositories === 1 ? 'repository' : 'repositories'
   }`;
-  const age = shortAge(workspace.lastSync?.time, now);
-  const synced = age
-    ? `synced ${age === 'now' ? 'now' : `${age} ago`}`
-    : 'not synced yet';
   return [
     ...(multipleOrganizations ? [workspace.organization] : []),
     count,
-    synced,
+    syncedAgo(workspace.lastSync?.time, now),
   ].join(' · ');
 }
 

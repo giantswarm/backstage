@@ -197,7 +197,7 @@ describe('WorkspaceDetailPage', () => {
     expect(
       within(status).getByText('A change to the workspace'),
     ).toBeInTheDocument();
-    const storage = screen.getByRole('region', { name: 'Storage' });
+    const storage = screen.getByRole('region', { name: 'Disk' });
     expect(within(storage).getByText('Total')).toBeInTheDocument();
     expect(within(storage).getByText('10.0 MiB')).toBeInTheDocument();
     expect(within(storage).getByText('7.0 MiB')).toBeInTheDocument();
@@ -252,7 +252,7 @@ describe('WorkspaceDetailPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        '1 pushed to after the last synchronization; a Session starting now fetches them first.',
+        '1 pushed to after the last synchronization; a session starting now fetches them first.',
       ),
     ).toBeInTheDocument();
   });
@@ -312,7 +312,9 @@ describe('WorkspaceDetailPage', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      within(region).getByText('A retry after the failed sync before it'),
+      within(region).getByText(
+        'A retry after the failed synchronization before it',
+      ),
     ).toBeInTheDocument();
   });
 

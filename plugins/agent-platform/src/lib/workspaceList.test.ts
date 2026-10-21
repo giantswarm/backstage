@@ -41,8 +41,8 @@ describe('sourceLabel', () => {
 
 describe('syncState', () => {
   it.each<[Partial<Workspace>, string]>([
-    [{}, 'Not synced yet'],
-    [{ lastSync: { time: 't', result: 'Succeeded' } }, 'Synced'],
+    [{}, 'Not synchronized yet'],
+    [{ lastSync: { time: 't', result: 'Succeeded' } }, 'Synchronized'],
     [{ lastSync: { time: 't', result: 'NoChange' } }, 'Unchanged'],
     [{ lastSync: { time: 't', result: 'Failed', message: 'm' } }, 'Failed'],
     [
@@ -50,9 +50,9 @@ describe('syncState', () => {
         lastSync: { time: 't', result: 'Failed' },
         syncRequest: { requestedAt: 'u' },
       },
-      'Sync requested',
+      'Synchronization requested',
     ],
-    [{ activeSync: { job: 'j', startedAt: 'u' } }, 'Syncing'],
+    [{ activeSync: { job: 'j', startedAt: 'u' } }, 'Synchronizing'],
     [{ deleting: true, activeSync: { job: 'j', startedAt: 'u' } }, 'Deleting'],
   ])('%j is %s', (overrides, label) => {
     expect(syncState({ ...base, ...overrides }).label).toBe(label);

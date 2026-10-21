@@ -189,7 +189,7 @@ function UnavailableWorkspace({
         description={
           sharedIdentity
             ? sharedIdentityReason(WORKSPACES_VIA, [installation])
-            : `${installation} does not run the workspace-manager for this portal.`
+            : `Workspaces are not turned on for ${installation}. Ask your platform team to turn them on.`
         }
         actions={<Link href={tabHref}>Back to workspaces</Link>}
       />
@@ -435,7 +435,7 @@ function WorkspaceDetailContent({
           <Alert
             status="info"
             title={`${name} is being deleted`}
-            description="Its synchronization has stopped and no new Session starts on it. Each Session keeps its directory until it is cleaned up; then the volume goes."
+            description="Its synchronization has stopped and no new session starts on it. Each session keeps its directory until it is cleaned up; then the disk is deleted."
           />
         )}
         <Routes>
@@ -540,7 +540,7 @@ function SyncSection({ detail }: { detail: WorkspaceDetail }) {
   return (
     <PageSection
       title="Synchronization status"
-      description="The repositories are fetched after every change to the workspace, on Synchronize, and when a Session starts on it after a while without a synchronization. There is no schedule."
+      description="The repositories are fetched after every change to the workspace, on Synchronize, and when a session starts on it after a while without a synchronization. There is no schedule."
     >
       <FactList facts={facts} labelWidth={160} />
     </PageSection>
@@ -592,7 +592,7 @@ function StorageSection({ detail }: { detail: WorkspaceDetail }) {
     }
   }
   return (
-    <PageSection title="Storage">
+    <PageSection title="Disk">
       <FactList facts={facts} labelWidth={160} />
     </PageSection>
   );
@@ -662,7 +662,7 @@ function RepositoriesTab({
           }
           description={
             mirror.droppedAt
-              ? 'left the selection, kept while a Session uses it'
+              ? 'left the selection, kept while a session uses it'
               : undefined
           }
         />
@@ -751,7 +751,7 @@ function RepositoriesTab({
       <Text variant="body-medium" color="secondary">
         {[
           pushedSince > 0
-            ? `${pushedSince} pushed to after the last synchronization; a Session starting now fetches them first.`
+            ? `${pushedSince} pushed to after the last synchronization; a session starting now fetches them first.`
             : 'As the last synchronization fetched them.',
           ...(pushes.data?.partial
             ? [
@@ -836,7 +836,7 @@ function SessionsTab({
             href={href || undefined}
             description={
               directory.unknown
-                ? 'Its Session is gone; the directory waits for cleanup'
+                ? 'Its session is gone; the directory waits for cleanup'
                 : directory.error
             }
           />
@@ -886,13 +886,13 @@ function SessionsTab({
   if (directories.length === 0) {
     body = (
       <Text variant="body-medium" color="secondary">
-        No Session has a directory on this workspace.
+        No session has a directory on this workspace.
       </Text>
     );
   } else if (shown.length === 0) {
     body = (
       <CatalogNoMatch
-        plural="Sessions"
+        plural="sessions"
         search={search}
         isFiltered={filters.isFiltered}
         onClearFilters={filters.clear}
@@ -904,7 +904,7 @@ function SessionsTab({
         key={`${search.trim()}|${filters.key}`}
         items={shown}
         initial={INITIAL_ROWS}
-        noun="Session"
+        noun="session"
       >
         {page => (
           <Table<DirectoryRow>
@@ -923,14 +923,14 @@ function SessionsTab({
   return (
     <Flex direction="column" gap="3">
       <Text variant="body-medium" color="secondary">
-        The Sessions with a directory on this workspace. A directory is deleted
-        14 days after its Session's last turn, unless the installation sets
+        The sessions with a directory on this workspace. A directory is deleted
+        14 days after its session's last turn, unless the environment sets
         another time; a new turn moves the date.
       </Text>
       {(directories.length > SEARCH_MIN || search) && (
         <SearchField
-          aria-label="Search Sessions"
-          placeholder="Search Sessions"
+          aria-label="Search sessions"
+          placeholder="Search sessions"
           value={search}
           onChange={setSearch}
         />

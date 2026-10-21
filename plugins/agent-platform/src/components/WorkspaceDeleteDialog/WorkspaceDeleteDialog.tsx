@@ -33,7 +33,7 @@ function SessionsStillUsing({
   if (isAwaitingData(detail)) {
     return (
       <Text variant="body-medium" color="secondary">
-        Checking which Sessions still use it…
+        Checking which sessions still use it…
       </Text>
     );
   }
@@ -43,17 +43,17 @@ function SessionsStillUsing({
     return row.sessions > 0 ? (
       <Text variant="body-medium">
         {sessionsNoun(row.sessions)} still {row.sessions === 1 ? 'uses' : 'use'}{' '}
-        it; each keeps its directory until it is cleaned up, then the volume
-        goes.
+        it; each keeps its directory until it is cleaned up, then the disk is
+        deleted.
       </Text>
     ) : (
-      <Text variant="body-medium">Its volume goes with it.</Text>
+      <Text variant="body-medium">Its disk is deleted with it.</Text>
     );
   }
   if (directories.length === 0) {
     return (
       <Text variant="body-medium">
-        No Session uses it: its volume goes with it.
+        No session uses it: its disk is deleted with it.
       </Text>
     );
   }
@@ -62,13 +62,14 @@ function SessionsStillUsing({
       <Text variant="body-medium">
         {sessionsNoun(directories.length)} still{' '}
         {directories.length === 1 ? 'uses' : 'use'} it; each keeps its directory
-        until it is cleaned up, then the volume goes:
+        until it is cleaned up, then the disk is deleted:
       </Text>
       <ul style={{ margin: 0, paddingLeft: 'var(--bui-space-5)' }}>
         {directories.map(directory => (
           <li key={directory.session}>
             <Text variant="body-medium">
-              {directory.name || directory.session}
+              {directory.name ||
+                (directory.unknown ? 'A deleted session' : directory.session)}
             </Text>
           </li>
         ))}
@@ -100,7 +101,7 @@ export function WorkspaceDeleteDialog({
     >
       <Flex direction="column" gap="3">
         <Text variant="body-medium">
-          Its sync stops and no new Session can start on it.
+          Its synchronization stops and no new session can start on it.
         </Text>
         <SessionsStillUsing row={row} isOpen={isOpen} />
       </Flex>

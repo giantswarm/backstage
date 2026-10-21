@@ -84,11 +84,11 @@ describe('isSyncing', () => {
 describe('syncTriggerLabel', () => {
   it('names what started a cycle, and nothing for none', () => {
     expect(syncTriggerLabel('request')).toBe(
-      'A request: Synchronize, or a Session starting on it',
+      'A request: Synchronize, or a session starting on it',
     );
     expect(syncTriggerLabel('change')).toBe('A change to the workspace');
     expect(syncTriggerLabel('sessionDeleted')).toBe(
-      'A deleted Session’s directory',
+      'A deleted session’s directory',
     );
     expect(syncTriggerLabel(undefined)).toBeUndefined();
   });

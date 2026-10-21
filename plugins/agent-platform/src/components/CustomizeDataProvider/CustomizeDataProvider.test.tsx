@@ -9,6 +9,7 @@ let mockAgentsLoading = false;
 let mockModelsLoading = false;
 let mockSkillsLoading = false;
 let mockWorkspacesLoading = false;
+let mockWorkspaceFailures: Record<string, string> = {};
 
 jest.mock('../QueryClientProvider', () => ({
   QueryClientProvider: ({ children }: { children: ReactNode }) => children,
@@ -54,8 +55,13 @@ jest.mock('../WorkspacesDataProvider', () => ({
   WorkspacesDataProvider: ({ children }: { children: ReactNode }) => children,
   useWorkspacesData: () =>
     mockWorkspacesLoading
-      ? { isAvailable: undefined, isLoading: true, rows: [] }
-      : { isAvailable: true, isLoading: false, rows: [{}, {}, {}] },
+      ? { isAvailable: undefined, isLoading: true, rows: [], failures: {} }
+      : {
+          isAvailable: true,
+          isLoading: false,
+          rows: Object.keys(mockWorkspaceFailures).length ? [] : [{}, {}, {}],
+          failures: mockWorkspaceFailures,
+        },
 }));
 jest.mock('../ServingProvider', () => ({
   ServingProvider: ({ children }: { children: ReactNode }) => children,
@@ -109,6 +115,7 @@ describe('CustomizeDataProvider', () => {
     mockWorkspacesLoading = false;
     mockSkills = [{ name: 'triage', repoUrl: SKILLS, path: 'triage' }];
     mockFailedRepositories = [];
+    mockWorkspaceFailures = {};
   });
 
   it('counts each tab', () => {
@@ -132,6 +139,14 @@ describe('CustomizeDataProvider', () => {
     mockSkills = [];
     mockFailedRepositories = [SKILLS];
     expect(read().counts.skills).toBeUndefined();
+  });
+
+  it('leaves the workspaces count out when none could be read', () => {
+    mockWorkspaceFailures = {
+      golem:
+        "auth_required: server 'workspace-manager' requires authentication",
+    };
+    expect(read().counts.workspaces).toBeUndefined();
   });
 
   it('marks the counts still loading, for the strip to hold their place', () => {

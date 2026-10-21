@@ -80,7 +80,7 @@ function StoredCell({ row }: { row: WorkspaceRow }) {
       }
       description={
         row.grewFrom
-          ? `Grown from ${sizeLabel(row.grewFrom)} at the last sync`
+          ? `Grown from ${sizeLabel(row.grewFrom)} at the last synchronization`
           : undefined
       }
     />
@@ -348,7 +348,7 @@ export function CustomizeWorkspacesPanel({
     },
     {
       id: 'repositories',
-      label: 'Repos',
+      label: 'Repositories',
       defaultWidth: '1fr',
       cell: row => (
         <CellText title={row.lastSync ? String(row.repositories) : '—'} />
@@ -364,7 +364,7 @@ export function CustomizeWorkspacesPanel({
     },
     {
       id: 'lastSync',
-      label: 'Last sync',
+      label: 'Last synchronization',
       defaultWidth: '2fr',
       minWidth: 152,
       cell: row => <LastSyncCell row={row} />,
@@ -419,7 +419,7 @@ export function CustomizeWorkspacesPanel({
     body = (
       <EmptyStateCard
         title="Workspaces are not available here"
-        description="No environment in scope runs the workspace-manager. Pick another environment, or ask your platform team to turn workspaces on."
+        description="Workspaces are turned on for no environment in scope. Pick another environment, or ask your platform team to turn workspaces on."
       />
     );
   } else if (isReading || isAvailable === undefined) {
@@ -435,7 +435,7 @@ export function CustomizeWorkspacesPanel({
     body = (
       <EmptyStateCard
         title={`No workspaces in ${organization} yet`}
-        description="A workspace holds the repositories a Session works on, synced for every member of the Organization."
+        description="A workspace holds the repositories a session works on, synchronized for every member of the Organization."
         actions={<CreateWorkspaceButton />}
       />
     );
@@ -450,16 +450,11 @@ export function CustomizeWorkspacesPanel({
         noun="workspace"
       >
         {page => (
-          <Flex direction="column" gap="2">
-            <Table<WorkspaceRow>
-              columnConfig={shownColumns}
-              data={page}
-              pagination={{ type: 'none' }}
-            />
-            <Text variant="body-small" color="secondary">
-              A failed sync shows its reason in Last sync.
-            </Text>
-          </Flex>
+          <Table<WorkspaceRow>
+            columnConfig={shownColumns}
+            data={page}
+            pagination={{ type: 'none' }}
+          />
         )}
       </ShowMore>
     );

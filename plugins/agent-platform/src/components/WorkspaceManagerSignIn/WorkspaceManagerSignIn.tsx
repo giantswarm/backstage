@@ -45,9 +45,9 @@ function SignInCard({ installation, onSignedIn }: WorkspaceManagerSignInProps) {
       description={
         <Flex direction="column" gap="2">
           <Text variant="body-small">
-            Workspaces are read as you, through workspace-manager with your own
-            sign-in, and your session on {installation} has not signed in to it
-            yet. Sign in once; the list opens here.
+            Workspaces on {installation} are read with your own sign-in, and you
+            have not signed in to them there yet. Sign in once; the list opens
+            here.
           </Text>
           <ServerSignIn
             noun="connector"
