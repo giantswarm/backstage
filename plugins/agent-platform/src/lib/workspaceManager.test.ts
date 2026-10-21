@@ -4,6 +4,7 @@ import {
   authorizationError,
   classifyWorkspaceManagerError,
   providerDisplayName,
+  providerSignInTarget,
   workspaceManagerToolName,
   type WorkspaceAuthorization,
 } from './workspaceManager';
@@ -180,5 +181,32 @@ describe('providerDisplayName', () => {
 
   it('falls back to the kind as given for an unknown one', () => {
     expect(providerDisplayName({ name: 'forge', kind: 'forge' })).toBe('forge');
+  });
+});
+
+describe('providerSignInTarget', () => {
+  it('reads the provider App or the pinned server from the sentence', () => {
+    expect(
+      providerSignInTarget(
+        'grant it once in muster: core_auth_login app=github',
+      ),
+    ).toEqual({ name: 'github', app: true });
+    expect(
+      providerSignInTarget('core_auth_login server=workspace-manager'),
+    ).toEqual({ name: 'workspace-manager', app: false });
+  });
+
+  it('leaves a sentence’s closing period out of the name', () => {
+    expect(
+      providerSignInTarget('grant it first: core_auth_login app=gitlab-lab.'),
+    ).toEqual({ name: 'gitlab-lab', app: true });
+    expect(
+      providerSignInTarget('sign in: core_auth_login server=mcp.github.'),
+    ).toEqual({ name: 'mcp.github', app: false });
+  });
+
+  it('names no target where the sentence names no grant', () => {
+    expect(providerSignInTarget('ask your platform team')).toBeUndefined();
+    expect(providerSignInTarget(undefined)).toBeUndefined();
   });
 });

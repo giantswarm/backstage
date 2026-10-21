@@ -116,12 +116,22 @@ export interface AuthLogoutResult {
  */
 const SIGNED_OUT_MARKER = 'Successfully logged out';
 
-/** Classify `core_auth_logout`'s answer. The result is prose-only. */
+/**
+ * Classify `core_auth_logout`'s answer: prose for a server; for a provider
+ * App (`app=<instance>`) muster answers "Disconnected provider App '<name>':
+ * …" with `structuredContent.status` `disconnected`.
+ */
 export function parseAuthLogoutResult(result: {
   text?: string;
+  structuredContent?: unknown;
 }): AuthLogoutResult {
   const message = result.text ?? '';
-  if (message.includes(SIGNED_OUT_MARKER)) {
+  const structured = result.structuredContent as
+    { status?: unknown } | undefined;
+  if (
+    message.includes(SIGNED_OUT_MARKER) ||
+    structured?.status === 'disconnected'
+  ) {
     return { status: 'signed_out', message };
   }
   return { status: 'unknown', message };
