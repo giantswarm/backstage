@@ -214,12 +214,17 @@ describe('createClusterTokenRouter', () => {
   });
 
   describe('with minLifetimeLeft', () => {
-    /** A JWT issued `ageSeconds` ago; only its `iat` is read. */
-    function jwtIssued(ageSeconds: number): string {
-      const iat = Math.floor(Date.now() / 1000) - ageSeconds;
-      const payload = Buffer.from(JSON.stringify({ iat })).toString(
-        'base64url',
-      );
+    /**
+     * A 30-minute JWT issued `ageSeconds` ago by an issuer whose clock runs
+     * `issuerBehindSeconds` behind this backend's; only `iat` and `exp` are
+     * read.
+     */
+    function jwtIssued(ageSeconds: number, issuerBehindSeconds = 0): string {
+      const iat =
+        Math.floor(Date.now() / 1000) - ageSeconds - issuerBehindSeconds;
+      const payload = Buffer.from(
+        JSON.stringify({ iat, exp: iat + 1800 }),
+      ).toString('base64url');
       return `header.${payload}.signature`;
     }
 
@@ -281,6 +286,26 @@ describe('createClusterTokenRouter', () => {
         token: 'fresh-token',
         expiresInSeconds: 1800,
       });
+    });
+
+    it("measures the lifetime on the issuer's clock alone", async () => {
+      // Just issued, by an issuer 10 minutes behind: its iat looks 10 minutes
+      // old here, which must not make it look short.
+      const fetchSpy = mockBrokerResponse({
+        access_token: jwtIssued(0, 600),
+        expires_in: 1800,
+      });
+      const app = buildApp()!;
+
+      await request(app)
+        .post('/cluster-token/golem')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+      await request(app)
+        .post('/cluster-token/golem')
+        .query({ minLifetimeLeft: String(25 / 30) })
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
 
     it.each(['0', '1.5', 'soon', ''])(

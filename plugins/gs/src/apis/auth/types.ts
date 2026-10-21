@@ -37,6 +37,27 @@ export type AuthApi = OAuthApi &
   BackstageIdentityApi &
   SessionApi;
 
+/**
+ * A Kubernetes (OIDC) auth API of the portal: an {@link AuthApi} that can also
+ * hand out an ID token that lasts.
+ */
+export type LastingAuthApi = AuthApi & {
+  /**
+   * The session's ID token with at least `minLifetimeLeft` (a share of the
+   * token's lifetime, `exp` − `iat`, from 0 to 1) still ahead of it, for a
+   * request whose receiver keeps the token for as long as the work it starts
+   * runs (an agent turn). The session is refreshed silently for it when its
+   * token falls short, which a plain `getIdToken` only does in its last 3
+   * minutes; `request` applies to the session's token as in `getIdToken`.
+   * The refresh never opens a sign-in; when it fails, this resolves the
+   * session's token.
+   */
+  getLastingIdToken(
+    minLifetimeLeft: number,
+    request?: AuthRequestOptions,
+  ): Promise<string>;
+};
+
 export type AuthProvider = {
   providerName: string;
   providerDisplayName: string;
@@ -80,22 +101,9 @@ export type GSAuthProvidersApi = {
    * Async lookup of a per-installation kubernetes (OIDC) auth API, awaiting
    * lazy initialization first. Returns `undefined` if not configured.
    */
-  getKubernetesAuthApi: (providerName: string) => Promise<AuthApi | undefined>;
-  /**
-   * The provider's ID token with at least `minLifetimeLeft` (a share of the
-   * token's lifetime, `exp` − `iat`, from 0 to 1) still ahead of it, for a
-   * request whose receiver keeps the token for as long as the work it starts
-   * runs (an agent turn). The provider's session is refreshed silently for it
-   * when its token falls short, which a plain `getIdToken` only does in its
-   * last 3 minutes; `request` applies to the session's token as in
-   * `getIdToken`. When the refresh fails, resolves the session's token. Waits
-   * for lazy initialization; rejects for a provider that is not configured.
-   */
-  getLastingIdToken: (
+  getKubernetesAuthApi: (
     providerName: string,
-    minLifetimeLeft: number,
-    request?: AuthRequestOptions,
-  ) => Promise<string>;
+  ) => Promise<LastingAuthApi | undefined>;
   /**
    * Names of installations whose cluster access is fully covered by the token
    * broker (a Dex target, or muster with `clusterTokenAudience` set; never

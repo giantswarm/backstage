@@ -55,6 +55,13 @@ export const kagentApiRef = createApiRef<KagentApi>({
  * session's cached token alone may have as little as 3 minutes left, when
  * Backstage refreshes it; a turn asks for one with this much left, which
  * refreshes the session first when needed. Reads keep the cached token.
+ *
+ * The cost: while a person keeps chatting, a turn refreshes the session at
+ * most once per 5 minutes per installation (the token refreshed to is kept
+ * until it drops below this share), each a refresh-token grant at Dex, or for
+ * a broker-covered installation a main refresh and a token exchange, ahead of
+ * that one send. A smaller share would make that rarer and cap the turns that
+ * can finish; no turn length is known up front to size it by.
  */
 export const TURN_TOKEN_MIN_LIFETIME_LEFT = 25 / 30;
 

@@ -140,6 +140,42 @@ describe('LastingIdTokens', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it('drops a refresh that was still running at sign-out', async () => {
+    const session = idToken('session', T0);
+    const { tokens, refresh, emitState } = setup(session);
+    jest.setSystemTime(T0 + 6 * MINUTE);
+    let finish: (token: string) => void = () => {};
+    refresh.mockImplementationOnce(
+      () =>
+        new Promise<string>(resolve => {
+          finish = resolve;
+        }),
+    );
+
+    const pending = tokens.getIdToken(TURN);
+    await Promise.resolve();
+    emitState(SessionState.SignedOut);
+    finish(idToken('signed-out', Date.now()));
+
+    // The request made before the sign-out gets its own session's token; the
+    // refreshed one is neither handed out nor kept.
+    await expect(pending).resolves.toBe(session);
+    await tokens.getIdToken(TURN);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not keep a refreshed token whose lifetime cannot be read', async () => {
+    const { tokens, refresh } = setup(idToken('session', T0));
+    refresh.mockResolvedValueOnce('opaque-token');
+    jest.setSystemTime(T0 + 6 * MINUTE);
+
+    await expect(tokens.getIdToken(TURN)).resolves.toBe('opaque-token');
+    // The next request refreshes again rather than serve it forever.
+    const next = await tokens.getIdToken(TURN);
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(minutesLeft(next)).toBeGreaterThanOrEqual(25);
+  });
+
   it('forgets the refreshed token on sign-out', async () => {
     const { tokens, refresh, setSessionToken, emitState } = setup(
       idToken('session', T0),

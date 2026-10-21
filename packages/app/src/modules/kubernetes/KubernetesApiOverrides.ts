@@ -47,7 +47,7 @@ type KubernetesRequestBody = Parameters<
  * awaits lazy initialization).
  *
  * An OIDC credential asked for with `minLifetimeLeft` (an agent turn's) comes
- * from `gsAuthProvidersApi.getLastingIdToken`, which refreshes the session
+ * from the auth API's `getLastingIdToken`, which refreshes the session
  * first when its token has less of its lifetime left.
  */
 export class GSKubernetesAuthProviders
@@ -80,11 +80,7 @@ export class GSKubernetesAuthProviders
     const getIdToken = (...request: [AuthRequestOptions?]) =>
       minLifetimeLeft === undefined
         ? authApi.getIdToken(...request)
-        : this.gsAuthProvidersApi.getLastingIdToken(
-            providerName,
-            minLifetimeLeft,
-            ...request,
-          );
+        : authApi.getLastingIdToken(minLifetimeLeft, ...request);
     // Only a person's action may open the sign-in (Login Required), as in
     // the portal's fetch: a poll or a refetch takes the live session's token
     // or fails as session-expired. A sign-in the person's read opens is named

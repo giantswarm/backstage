@@ -2,6 +2,7 @@ import { AuthRequestOptions, SessionState } from '@backstage/core-plugin-api';
 import {
   hasIdTokenLifetimeLeft,
   idTokenExpiresAt,
+  idTokenLifetimeLeft,
 } from '@giantswarm/backstage-plugin-gs-react';
 import { AuthApi } from './types';
 
@@ -43,6 +44,9 @@ export class LastingIdTokens {
 
   private lasting?: string;
   private refreshing?: Promise<string>;
+  // Counts sign-outs: a refresh that was running across one belongs to the
+  // signed-out session, and its token is neither kept nor shared.
+  private generation = 0;
 
   constructor(options: Options) {
     this.authApi = options.authApi;
@@ -51,7 +55,9 @@ export class LastingIdTokens {
     // made after a new sign-in.
     this.authApi.sessionState$().subscribe(state => {
       if (state === SessionState.SignedOut) {
+        this.generation += 1;
         this.lasting = undefined;
+        this.refreshing = undefined;
       }
     });
   }
@@ -79,19 +85,25 @@ export class LastingIdTokens {
       return this.lasting;
     }
 
+    const generation = this.generation;
     let refreshed: string;
     try {
       refreshed = await this.collapsedRefresh(minLifetimeLeft);
     } catch {
       return token;
     }
-    if (!refreshed) {
+    if (!refreshed || generation !== this.generation) {
       return token;
     }
     // A refresh can come back no better, from a broker that hands out a token
     // it cached itself: the caller then gets the longer of the two.
-    this.lasting = laterExpiring(refreshed, token);
-    return this.lasting;
+    const lasting = laterExpiring(refreshed, token);
+    // Kept only while its lifetime can be read: one that cannot would count
+    // as lasting long enough forever, past its expiry.
+    if (idTokenLifetimeLeft(lasting) !== undefined) {
+      this.lasting = lasting;
+    }
+    return lasting;
   }
 
   private lastsLongEnough(token: string, minLifetimeLeft: number): boolean {
@@ -101,9 +113,12 @@ export class LastingIdTokens {
   /** One refresh at a time: requests made while it runs share its token. */
   private collapsedRefresh(minLifetimeLeft: number): Promise<string> {
     if (!this.refreshing) {
-      this.refreshing = this.refresh(minLifetimeLeft).finally(() => {
-        this.refreshing = undefined;
+      const refreshing = this.refresh(minLifetimeLeft).finally(() => {
+        if (this.refreshing === refreshing) {
+          this.refreshing = undefined;
+        }
       });
+      this.refreshing = refreshing;
     }
     return this.refreshing;
   }

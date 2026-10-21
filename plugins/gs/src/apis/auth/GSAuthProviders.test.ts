@@ -696,7 +696,7 @@ describe('GSAuthProviders cluster-token mint', () => {
   });
 });
 
-describe('GSAuthProviders.getLastingIdToken', () => {
+describe('GSAuthProviders lasting ID tokens', () => {
   const MINUTE = 60_000;
   const T0 = new Date('2026-10-19T06:30:00Z').getTime();
   const TURN = 25 / 30;
@@ -732,6 +732,9 @@ describe('GSAuthProviders.getLastingIdToken', () => {
   }
 
   let fetchSpy: jest.SpyInstance;
+  let gesture: boolean;
+  let signInPrompts: jest.Mock;
+  let statusApi: { recordSessionExpired: jest.Mock; recordDegraded: jest.Mock };
 
   function requests(path: string): { url: string; subject?: string }[] {
     return fetchSpy.mock.calls
@@ -799,14 +802,23 @@ describe('GSAuthProviders.getLastingIdToken', () => {
         ),
       } as unknown as ConfigApi,
       discoveryApi,
-      oauthRequestApi,
-      hasUserGesture: () => false,
+      oauthRequestApi: {
+        createAuthRequester: jest.fn(() => signInPrompts),
+        authRequest$: jest.fn(),
+      },
+      clusterAccessStatusApi: statusApi as unknown as ClusterAccessStatusApi,
+      hasUserGesture: () => gesture,
     });
   }
 
   beforeEach(() => {
     getSignedInConfig.mockReset();
     jest.useFakeTimers({ now: T0 });
+    gesture = false;
+    signInPrompts = jest.fn(async () => {
+      throw new Error('Login failed');
+    });
+    statusApi = { recordSessionExpired: jest.fn(), recordDegraded: jest.fn() };
   });
 
   afterEach(() => {
@@ -825,9 +837,7 @@ describe('GSAuthProviders.getLastingIdToken', () => {
     await expect(main!.getIdToken({ optional: true })).resolves.toBe(signedIn);
     expect(requests('/oidc-a/refresh')).toHaveLength(1);
 
-    const lasting = await api.getLastingIdToken('oidc-a', TURN, {
-      optional: true,
-    });
+    const lasting = await main!.getLastingIdToken(TURN, { optional: true });
     expect(requests('/oidc-a/refresh')).toHaveLength(2);
     expect(lasting).not.toBe(signedIn);
     expect(minutesLeft(lasting)).toBeGreaterThanOrEqual(25);
@@ -849,7 +859,7 @@ describe('GSAuthProviders.getLastingIdToken', () => {
     jest.setSystemTime(T0 + 6 * MINUTE);
     await expect(cluster!.getIdToken({ optional: true })).resolves.toBe(first);
 
-    const lasting = await api.getLastingIdToken('oidc-b', TURN, {
+    const lasting = await cluster!.getLastingIdToken(TURN, {
       optional: true,
     });
 
@@ -863,10 +873,59 @@ describe('GSAuthProviders.getLastingIdToken', () => {
     expect(minutesLeft(exchange.subject!)).toBeGreaterThanOrEqual(25);
   });
 
-  it('rejects for a provider that is not configured', async () => {
+  it("keeps the cluster session's token when the lasting mint finds the main session gone, without a sign-in or a status change", async () => {
     const api = createLastingApi();
-    await expect(api.getLastingIdToken('oidc-z', TURN)).rejects.toThrow(
-      /not configured/,
+    const main = await api.getKubernetesAuthApi('oidc-a');
+    await main!.getIdToken({ optional: true });
+    // The cluster token is minted 10 minutes after the main sign-in.
+    jest.setSystemTime(T0 + 10 * MINUTE);
+    const cluster = await api.getKubernetesAuthApi('oidc-b');
+    const first = await cluster!.getIdToken({ optional: true });
+
+    // The main token is in its last 3 minutes and its Dex session is gone;
+    // the cluster token is still valid, with 12 of its 30 minutes left.
+    jest.setSystemTime(T0 + 28 * MINUTE);
+    fetchSpy.mockImplementation(async input => {
+      if (String(input).includes('/oidc-a/refresh')) {
+        return new Response('', { status: 401, statusText: 'Unauthorized' });
+      }
+      throw new Error(`unexpected fetch ${String(input)}`);
+    });
+
+    // A person clicked Send: the turn would be allowed to open the sign-in.
+    gesture = true;
+    await expect(
+      cluster!.getLastingIdToken(TURN, { optional: true }),
+    ).resolves.toBe(first);
+
+    expect(signInPrompts).not.toHaveBeenCalled();
+    expect(statusApi.recordSessionExpired).not.toHaveBeenCalled();
+    expect(statusApi.recordDegraded).not.toHaveBeenCalled();
+  });
+
+  it('leaves the cluster-access status alone when a lasting exchange fails', async () => {
+    const api = createLastingApi();
+    const cluster = await api.getKubernetesAuthApi('oidc-b');
+    const first = await cluster!.getIdToken({ optional: true });
+
+    jest.setSystemTime(T0 + 6 * MINUTE);
+    const respond = fetchSpy.getMockImplementation()!;
+    fetchSpy.mockImplementation(async (input, init) =>
+      String(input).includes('/api/auth/cluster-token/')
+        ? new Response(
+            JSON.stringify({
+              error: 'Token broker is temporarily unavailable',
+              reason: 'broker_unavailable',
+            }),
+            { status: 502 },
+          )
+        : respond(input, init),
     );
+
+    await expect(
+      cluster!.getLastingIdToken(TURN, { optional: true }),
+    ).resolves.toBe(first);
+    expect(statusApi.recordDegraded).not.toHaveBeenCalled();
+    expect(statusApi.recordSessionExpired).not.toHaveBeenCalled();
   });
 });

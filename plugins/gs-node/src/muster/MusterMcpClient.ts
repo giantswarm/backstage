@@ -7,6 +7,7 @@ import {
 } from '@ai-sdk/mcp';
 import { Client as SdkClient } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { readJwtClaims } from '@giantswarm/backstage-plugin-gs-common';
 import {
   describeMcpFailure,
   isRecoverableSessionError,
@@ -262,20 +263,10 @@ function innerResultOf(
 
 /** `<iss> <sub>` of a JWT, read without verifying it; undefined otherwise. */
 function subjectOf(token: string | undefined): string | undefined {
-  const payload = token?.split('.')[1];
-  if (!payload) {
-    return undefined;
-  }
-  try {
-    const { iss, sub } = JSON.parse(
-      Buffer.from(payload, 'base64url').toString('utf8'),
-    ) as { iss?: unknown; sub?: unknown };
-    return typeof sub === 'string' && sub !== ''
-      ? `${typeof iss === 'string' ? iss : ''} ${sub}`
-      : undefined;
-  } catch {
-    return undefined;
-  }
+  const { iss, sub } = readJwtClaims(token) ?? {};
+  return typeof sub === 'string' && sub !== ''
+    ? `${typeof iss === 'string' ? iss : ''} ${sub}`
+    : undefined;
 }
 
 /**

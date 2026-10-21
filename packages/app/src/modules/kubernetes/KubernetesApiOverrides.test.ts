@@ -14,7 +14,7 @@ function setup(options: { session: boolean; gesture: boolean }) {
   });
   // The same session's token refreshed to last, for a request that asks.
   const getLastingIdToken = jest.fn(
-    async (_name: string, _minLifetimeLeft: number, request?) => {
+    async (_minLifetimeLeft: number, request?: { optional?: boolean }) => {
       if (options.session) {
         return 'lasting-id-token';
       }
@@ -23,9 +23,10 @@ function setup(options: { session: boolean; gesture: boolean }) {
   );
   const gsAuthProvidersApi = {
     getKubernetesAuthApi: jest.fn(async (name: string) =>
-      name === 'oidc-agent-platform' ? { getIdToken } : undefined,
+      name === 'oidc-agent-platform'
+        ? { getIdToken, getLastingIdToken }
+        : undefined,
     ),
-    getLastingIdToken,
   } as unknown as GSAuthProvidersApi;
   const base = {
     getCredentials: jest.fn(async () => ({ token: 'base-token' })),
@@ -99,11 +100,7 @@ describe('GSKubernetesAuthProviders', () => {
           minLifetimeLeft: 0.8,
         }),
       ).resolves.toEqual({ token: 'lasting-id-token' });
-      expect(getLastingIdToken).toHaveBeenCalledWith(
-        'oidc-agent-platform',
-        0.8,
-        { optional: true },
-      );
+      expect(getLastingIdToken).toHaveBeenCalledWith(0.8, { optional: true });
       expect(getIdToken).not.toHaveBeenCalled();
     });
 
@@ -125,10 +122,7 @@ describe('GSKubernetesAuthProviders', () => {
           minLifetimeLeft: 0.8,
         }),
       ).resolves.toEqual({ token: 'token-after-sign-in' });
-      expect(getLastingIdToken).toHaveBeenCalledWith(
-        'oidc-agent-platform',
-        0.8,
-      );
+      expect(getLastingIdToken).toHaveBeenCalledWith(0.8);
     });
   });
 

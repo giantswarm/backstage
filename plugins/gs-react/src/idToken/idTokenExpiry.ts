@@ -1,3 +1,8 @@
+import {
+  jwtLifetimeSeconds,
+  readJwtLifetimeClaims,
+} from '@giantswarm/backstage-plugin-gs-common';
+
 /**
  * How long before its `exp` an ID token already counts as expired: a token
  * sent in that window may lapse in flight or on a clock a little ahead of the
@@ -6,34 +11,12 @@
 export const ID_TOKEN_EXPIRY_SKEW_MS = 60_000;
 
 /**
- * The numeric `exp` and `iat` claims of a JWT, in seconds, or an empty object
- * when the value is not a JWT. The signature is not checked: the token is the
+ * The `exp` of a JWT as a Date, or undefined when the value is not a JWT or
+ * carries no numeric `exp`. The signature is not checked: the token is the
  * browser's own, and only its lifetime is read.
  */
-function readLifetimeClaims(token: string): { exp?: number; iat?: number } {
-  const payload = token.split('.')[1];
-  if (!payload) {
-    return {};
-  }
-  try {
-    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const json = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='));
-    const { exp, iat } = JSON.parse(json) as { exp?: unknown; iat?: unknown };
-    return {
-      exp: typeof exp === 'number' ? exp : undefined,
-      iat: typeof iat === 'number' ? iat : undefined,
-    };
-  } catch {
-    return {};
-  }
-}
-
-/**
- * The `exp` of a JWT as a Date, or undefined when the value is not a JWT or
- * carries no numeric `exp`.
- */
 export function idTokenExpiresAt(token: string): Date | undefined {
-  const { exp } = readLifetimeClaims(token);
+  const { exp } = readJwtLifetimeClaims(token);
   return exp === undefined ? undefined : new Date(exp * 1000);
 }
 
@@ -59,11 +42,12 @@ export function idTokenLifetimeLeft(
   token: string,
   now: number = Date.now(),
 ): number | undefined {
-  const { exp, iat } = readLifetimeClaims(token);
-  if (exp === undefined || iat === undefined || exp <= iat) {
+  const { exp } = readJwtLifetimeClaims(token);
+  const lifetime = jwtLifetimeSeconds(token);
+  if (exp === undefined || lifetime === undefined) {
     return undefined;
   }
-  const left = (exp * 1000 - now) / ((exp - iat) * 1000);
+  const left = (exp * 1000 - now) / (lifetime * 1000);
   return Math.min(1, Math.max(0, left));
 }
 

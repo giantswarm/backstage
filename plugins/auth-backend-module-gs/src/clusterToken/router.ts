@@ -11,7 +11,10 @@ import { InputError, NotFoundError } from '@backstage/errors';
 // broker exchanges for a per-management-cluster token. Backstage does not
 // expose provider sessions server-side, so the token travels alongside the
 // regular Backstage credentials (same pattern the AI chat uses for MCP auth).
-import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  jwtLifetimeSeconds,
+  SUBJECT_TOKEN_HEADER,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 const TOKEN_EXCHANGE_GRANT_TYPE =
   'urn:ietf:params:oauth:grant-type:token-exchange';
@@ -33,29 +36,14 @@ const DEFAULT_EXPIRES_IN_SECONDS = 300;
 
 type CachedToken = {
   token: string;
-  issuedAt: number;
+  /**
+   * The token's whole lifetime: its `exp` − `iat` when it is a JWT (both on
+   * the issuer's clock), else its `expires_in`, as if just issued.
+   */
+  lifetimeMs: number;
+  /** When it expires on this backend's clock: the exchange plus expires_in. */
   expiresAt: number;
 };
-
-/**
- * The `iat` of a JWT in milliseconds, or undefined when the token is no JWT
- * or carries no numeric `iat`. Unverified: only the lifetime of a token the
- * broker just issued is read.
- */
-function jwtIssuedAt(token: string): number | undefined {
-  const payload = token.split('.')[1];
-  if (!payload) {
-    return undefined;
-  }
-  try {
-    const { iat } = JSON.parse(
-      Buffer.from(payload, 'base64url').toString('utf8'),
-    ) as { iat?: unknown };
-    return typeof iat === 'number' ? iat * 1000 : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * The `minLifetimeLeft` query parameter: the share of its lifetime (0 to 1)
@@ -239,8 +227,7 @@ export function createClusterTokenRouter(
       const lastsLongEnough = (token: CachedToken) =>
         token.expiresAt - now > EXPIRY_SKEW_SECONDS * 1000 &&
         (minLifetimeLeft === undefined ||
-          token.expiresAt - now >=
-            minLifetimeLeft * (token.expiresAt - token.issuedAt));
+          token.expiresAt - now >= minLifetimeLeft * token.lifetimeMs);
       if (cached && lastsLongEnough(cached)) {
         res.json({
           token: cached.token,
@@ -419,15 +406,15 @@ export function createClusterTokenRouter(
 
       const expiresInSeconds =
         tokenResponse.expires_in ?? DEFAULT_EXPIRES_IN_SECONDS;
-      // The token's own `iat` when it has one: a broker that hands out a
-      // token it cached itself reports only what is left of it in expires_in.
-      const issuedAt = Math.min(
-        jwtIssuedAt(tokenResponse.access_token) ?? now,
-        now,
-      );
+      // The token's own lifetime when it says: a broker that hands out a
+      // token it cached itself reports only what is left of it in
+      // expires_in. What is left is still measured on this backend's clock
+      // (now + expires_in), so no clock but the issuer's enters the lifetime.
       tokenCache.set(cacheKey, {
         token: tokenResponse.access_token,
-        issuedAt,
+        lifetimeMs:
+          (jwtLifetimeSeconds(tokenResponse.access_token) ?? expiresInSeconds) *
+          1000,
         expiresAt: now + expiresInSeconds * 1000,
       });
 

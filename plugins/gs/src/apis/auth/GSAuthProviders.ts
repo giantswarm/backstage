@@ -7,6 +7,7 @@ import {
 import {
   AuthApi,
   AuthProvider,
+  LastingAuthApi,
   GSAuthProvidersApi,
   GSAuthProvidersApiCreateOptions,
   gsAuthProvidersApiRef,
@@ -104,7 +105,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // loads from the authenticated backend endpoint (post main sign-in). They
   // start empty.
   private kubernetesAuthProviders: AuthProvider[] = [];
-  private kubernetesAuthApis: { [providerName: string]: AuthApi } = {};
+  private kubernetesAuthApis: { [providerName: string]: LastingAuthApi } = {};
   // The silent broker path, from the signed-in config, so known once
   // `ensureInitialized()` has run; empty until then, when there are no
   // per-installation providers to filter anyway. `gs.clusterTokenBroker.tokenUrl`
@@ -119,10 +120,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // The main sign-in auth API is built synchronously from `gs.authProvider`
   // alone (which stays frontend-visible). It does NOT need `gs.installations`,
   // so sign-in works before installations are loaded.
-  private readonly mainAuthApi?: AuthApi;
+  private readonly mainAuthApi?: LastingAuthApi;
   // The login page's fallback card: the main provider pinned to another Dex
   // connector. Built on first use, since most deployments configure none.
-  private fallbackSignInAuthApi?: AuthApi;
+  private fallbackSignInAuthApi?: LastingAuthApi;
 
   private readonly mcpAuthProviders: AuthProvider[];
   private readonly mcpAuthApis: { [providerName: string]: AuthApi };
@@ -132,10 +133,6 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private githubAuthApi?: OAuth2;
 
   private readonly clusterAccessStatusApi?: ClusterAccessStatusApi;
-
-  // The lasting ID tokens of each OAuth2 API built here, for the callers that
-  // need a token with most of its lifetime left (`getLastingIdToken`).
-  private readonly lastingIdTokens = new WeakMap<AuthApi, LastingIdTokens>();
 
   // Shared by the main sign-in API and the fallback card: the fallback card
   // records the connector it signed in with, the main API's re-login popups
@@ -173,7 +170,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
    * broker path (its own session IS the broker's subject token), so no
    * per-installation config is required.
    */
-  private createMainAuthApi(): AuthApi | undefined {
+  private createMainAuthApi(): LastingAuthApi | undefined {
     const mainProviderName =
       this.configApi?.getOptionalString('gs.authProvider');
     if (!mainProviderName) {
@@ -332,7 +329,11 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       // optional path instead, which refreshes silently where it can and ends
       // as session-expired without prompting. A declined/failed login
       // surfaces as the same typed session-expired error.
-      const optional = !this.hasUserGesture();
+      //
+      // A mint for a token that has to last always takes the optional path:
+      // it runs only while the cluster session still holds a valid token,
+      // which the caller falls back to, so it must never wait on a sign-in.
+      const optional = minLifetimeLeft !== undefined || !this.hasUserGesture();
       // A sign-in a person's read opens is named as the mint's
       // (`data-login-requested-by`), apart from the portal fetch's.
       // A token that has to last is exchanged for a subject token that does
@@ -341,7 +342,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
         idToken:
           minLifetimeLeft === undefined
             ? await mainAuthApi.getIdToken({ optional })
-            : await this.getLastingIdTokenOf(mainAuthApi, minLifetimeLeft, {
+            : await mainAuthApi.getLastingIdToken(minLifetimeLeft, {
                 optional,
               }),
         identity: await mainAuthApi.getBackstageIdentity({ optional }),
@@ -412,7 +413,13 @@ export class GSAuthProviders implements GSAuthProvidersApi {
         // broker-level failure states, which that probe defers to.
         return clusterToken;
       } catch (error) {
-        if (error instanceof ClusterTokenError) {
+        // A failed mint for a token that has to last says nothing new about
+        // access: the cluster session's own token is still valid and in use,
+        // and the regular mint and the probe record what is wrong with it.
+        if (
+          error instanceof ClusterTokenError &&
+          request?.minLifetimeLeft === undefined
+        ) {
           const message = CLUSTER_TOKEN_ERROR_MESSAGES[error.reason];
           // A rejected/expired main session is fixed by the single SSO
           // re-login, so it is a session-expired state rather than a degraded
@@ -438,7 +445,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
    * credential source are one and the same OAuth2 client.
    */
   private buildKubernetesAuthApis(providers: AuthProvider[]): {
-    [providerName: string]: AuthApi;
+    [providerName: string]: LastingAuthApi;
   } {
     const mainProviderName =
       this.configApi?.getOptionalString('gs.authProvider');
@@ -467,14 +474,19 @@ export class GSAuthProviders implements GSAuthProvidersApi {
    * per-installation providers (broker-backed cluster-token provider). Only
    * the main provider's instances -- the sign-in API and the fallback card --
    * take part in remembering the Dex connector of the browser's sign-in.
+   *
+   * The API carries `getLastingIdToken` (see {@link LastingIdTokens}), which
+   * refreshes through the same connector.
    */
   private createKubernetesAuthApi(
     providerName: string,
     providerDisplayName: string,
-    clusterTokenProvider?: () => Promise<ClusterToken | undefined>,
+    clusterTokenProvider?: (
+      request?: ClusterTokenRequest,
+    ) => Promise<ClusterToken | undefined>,
     isMainProvider = false,
     startParams?: Record<string, string>,
-  ): AuthApi {
+  ): LastingAuthApi {
     const authConnector = new DefaultAuthConnector({
       configApi: this.configApi,
       discoveryApi: this.discoveryApi,
@@ -503,50 +515,22 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
     const defaultScopes = getOIDCScopes(this.configApi);
     const authApi = OAuth2.create({ authConnector, defaultScopes });
-    this.lastingIdTokens.set(
+    const lasting = new LastingIdTokens({
       authApi,
-      new LastingIdTokens({
-        authApi,
-        refresh: async minLifetimeLeft => {
-          const session: OAuth2Session = await authConnector.refreshSession({
-            scopes: new Set(defaultScopes),
-            minLifetimeLeft,
-          });
-          return session.providerInfo.idToken;
-        },
-      }),
-    );
-    return authApi;
-  }
-
-  /**
-   * The ID token of an auth API with at least `minLifetimeLeft` of its
-   * lifetime left, see {@link LastingIdTokens}; its plain `getIdToken` for an
-   * API built elsewhere.
-   */
-  private getLastingIdTokenOf(
-    authApi: AuthApi,
-    minLifetimeLeft: number,
-    request?: AuthRequestOptions,
-  ): Promise<string> {
-    const lasting = this.lastingIdTokens.get(authApi);
-    return lasting
-      ? lasting.getIdToken(minLifetimeLeft, request)
-      : authApi.getIdToken(request);
-  }
-
-  async getLastingIdToken(
-    providerName: string,
-    minLifetimeLeft: number,
-    request?: AuthRequestOptions,
-  ): Promise<string> {
-    const authApi =
-      (await this.getKubernetesAuthApi(providerName)) ??
-      this.getAuthApi(providerName);
-    if (!authApi) {
-      throw new Error(`Auth provider "${providerName}" is not configured.`);
-    }
-    return this.getLastingIdTokenOf(authApi, minLifetimeLeft, request);
+      refresh: async minLifetimeLeft => {
+        const session: OAuth2Session = await authConnector.refreshSession({
+          scopes: new Set(defaultScopes),
+          minLifetimeLeft,
+        });
+        return session.providerInfo.idToken;
+      },
+    });
+    return Object.assign(authApi, {
+      getLastingIdToken: (
+        minLifetimeLeft: number,
+        request?: AuthRequestOptions,
+      ) => lasting.getIdToken(minLifetimeLeft, request),
+    });
   }
 
   private getMCPAuthProvidersFromConfig(): AuthProvider[] {
@@ -644,7 +628,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
    * sign-in through it is remembered for this browser, so the main API's
    * later re-login popups return to the same connector.
    */
-  getFallbackSignInAuthApi(): AuthApi {
+  getFallbackSignInAuthApi(): LastingAuthApi {
     const mainProviderName =
       this.configApi?.getOptionalString('gs.authProvider');
     const connectorId = this.configApi?.getOptionalString(
@@ -728,12 +712,12 @@ export class GSAuthProviders implements GSAuthProvidersApi {
    */
   async getKubernetesAuthApi(
     providerName: string,
-  ): Promise<AuthApi | undefined> {
+  ): Promise<LastingAuthApi | undefined> {
     await this.ensureInitialized();
     return this.kubernetesAuthApis[providerName];
   }
 
-  getMainAuthApi() {
+  getMainAuthApi(): LastingAuthApi {
     const authProviderName =
       this.configApi?.getOptionalString('gs.authProvider');
 
