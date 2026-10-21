@@ -1,17 +1,26 @@
 // node --test .claude/skills/ui-sitemap/layout.test.mjs
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   SITEMAP_COLUMNS,
   STATE_COLUMNS,
-  diffPlans,
+  drawnRows,
   layout,
   levelSpec,
   parseTsv,
+  planChanges,
   pngSize,
 } from './layout.mjs';
 
@@ -206,39 +215,214 @@ test('sizes a screenshot from its PNG, else from the state viewport', () => {
   assert.equal(item(plan, 'profile/path').miroId, 'p1');
 });
 
-test('a new node moves only what it has to', () => {
-  const before = layout({ rows: sitemap(SMALL) });
-  const after = layout({
-    rows: sitemap([
-      ...SMALL,
-      node('settings', 'profile', 'page', '/profile/x'),
-    ]),
+const CAPTURED = '2026-10-21T12:00:00Z';
+
+/**
+ * The state a completed run writes for a plan: a made-up Miro id per item,
+ * the capture time and the viewport each image was sized by.
+ */
+function drawnState(plan) {
+  const rows = new Map();
+  const row = id =>
+    rows.get(id) ??
+    rows
+      .set(id, {
+        id,
+        captured: '',
+        viewport: '',
+        card: '',
+        image: '',
+        label: '',
+        edge: '',
+      })
+      .get(id);
+  for (const i of plan.items) {
+    const r = row(i.node ?? i.key);
+    const id = `m:${i.key}`;
+    if (i.type === 'image') {
+      if (i.source === 'default' && !i.file) {
+        continue;
+      }
+      r.image = id;
+      r.captured = CAPTURED;
+      r.viewport = `${i.pixelWidth / 2}x${i.pixelHeight / 2}x2`;
+    } else {
+      r[i.stateColumn] = r[i.stateColumn] ? `${r[i.stateColumn]},${id}` : id;
+    }
+  }
+  return [...rows.values()];
+}
+
+/** What the CLI does: lay out, lay out the board as drawn, compare. */
+function run({ rows, state = [], boardRows = rows, screenSize }) {
+  const plan = layout({ rows, state, screenSize });
+  const drawn = drawnRows(boardRows, state);
+  const board = drawn.length > 0 ? layout({ rows: drawn, state }) : undefined;
+  plan.changes = planChanges(plan, state, board);
+  return plan;
+}
+
+test('a first run creates every item but the missing screenshots', () => {
+  const { changes, items } = run({ rows: sitemap(SMALL) });
+  const drawable = items.filter(i => i.type !== 'image');
+  assert.deepEqual(changes.create.sort(), drawable.map(i => i.key).sort());
+  assert.deepEqual(changes.update, []);
+  assert.deepEqual(changes.delete, []);
+  assert.ok(
+    items.filter(i => i.type === 'image').every(i => i.action === 'none'),
+  );
+});
+
+test('a run on an unchanged board keeps everything', () => {
+  const rows = sitemap(SMALL);
+  const state = drawnState(layout({ rows }));
+  const { changes } = run({ rows, state });
+  assert.deepEqual(changes, {
+    create: [],
+    update: [],
+    replace: [],
+    delete: [],
   });
-  const changes = diffPlans(before, after);
-  assert.deepEqual(changes.added.sort(), [
+});
+
+test('a new node creates its items and moves only what it has to', () => {
+  const state = drawnState(layout({ rows: sitemap(SMALL) }));
+  const rows = sitemap([
+    ...SMALL,
+    node('settings', 'profile', 'page', '/profile/x'),
+  ]);
+  const { changes } = run({ rows, state });
+  assert.deepEqual(changes.create.sort(), [
     'settings/card',
     'settings/edge',
-    'settings/image',
     'settings/name',
     'settings/path',
   ]);
   // Everything left of the new node's subtree stays put.
   for (const id of ['sessions', 'session', 'customize', 'agents', 'agent']) {
-    assert.deepEqual(item(after, `${id}/card`), item(before, `${id}/card`));
+    assert.ok(!changes.update.includes(`${id}/card`), id);
   }
-  assert.equal(changes.removed.length, 0);
+  assert.deepEqual(changes.delete, []);
 });
 
-test('lists state rows whose node is gone', () => {
-  const plan = layout({
-    rows: sitemap(SMALL),
-    state: [
-      { id: 'old-page', card: 'c9' },
-      { id: '_title', label: 't1' },
-    ],
+test('deletes every id the plan no longer has, level markers included', () => {
+  const state = drawnState(layout({ rows: sitemap(SMALL) }));
+  // Without the agents' subtrees the tree is a level shallower, and the
+  // profile has lost its path.
+  const rows = sitemap(
+    SMALL.filter(
+      ([id]) =>
+        ![
+          'agent',
+          'update-skills',
+          'new-agent',
+          'details',
+          'tools',
+          'session',
+        ].includes(id),
+    ).map(r => (r[0] === 'profile' ? [...r.slice(0, 4), ''] : r)),
+  );
+  const { changes } = run({ rows, state });
+  const deleted = changes.delete.map(d => d.miroId);
+  for (const id of [
+    'm:_level-2',
+    'm:agent/card',
+    'm:update-skills/edge',
+    'm:tools/edge',
+    'm:profile/path',
+  ]) {
+    assert.ok(deleted.includes(id), id);
+  }
+  assert.ok(!deleted.includes('m:profile/name'));
+  assert.ok(!deleted.includes('m:_level-1'));
+});
+
+test('replaces a screenshot only when its PNG is newer than the capture', () => {
+  const rows = sitemap(SMALL);
+  const first = layout({
+    rows,
+    screenSize: () => ({ width: 2880, height: 1800, mtimeMs: 0 }),
   });
-  assert.deepEqual(plan.removed, ['old-page']);
-  assert.equal(item(plan, '_title').miroId, 't1');
+  const state = drawnState(first);
+  const captured = Date.parse(CAPTURED);
+  const png = mtimeMs => id => ({
+    width: 2880,
+    height: id === 'home' ? 4800 : 1800,
+    mtimeMs: id === 'home' ? mtimeMs : captured - 1000,
+  });
+  const stale = run({ rows, state, screenSize: png(captured - 1000) });
+  assert.deepEqual(stale.changes.replace, []);
+  assert.equal(item(stale, 'home/image').file, null);
+  const fresh = run({ rows, state, screenSize: png(captured + 1000) });
+  assert.deepEqual(fresh.changes.replace, ['home/image']);
+  assert.ok(fresh.changes.delete.some(d => d.miroId === 'm:home/image'));
+  assert.ok(fresh.changes.update.includes('home/card'));
+});
+
+test('updates an item whose style or text changed', () => {
+  const rows = sitemap(SMALL);
+  const state = drawnState(layout({ rows }));
+  // The board was drawn when "profile" had another name.
+  const boardRows = rows.map(r =>
+    r.id === 'profile' ? { ...r, name: 'Me' } : r,
+  );
+  const plan = run({ rows, state, boardRows });
+  assert.deepEqual(plan.changes.update, ['profile/name']);
+  const board = layout({ rows: drawnRows(rows, state), state });
+  item(board, 'agent/edge').color = '#000000';
+  const restyled = planChanges(layout({ rows, state }), state, board);
+  assert.deepEqual(restyled.update, ['agent/edge']);
+});
+
+test('chains a page’s dialogs so no line crosses a card', () => {
+  const plan = layout({
+    rows: sitemap([...SMALL, node('change-harness', 'agent', 'dialog')]),
+  });
+  const first = item(plan, 'update-skills/card');
+  const second = item(plan, 'change-harness/card');
+  const edge = item(plan, 'change-harness/edge');
+  assert.equal(edge.from, 'update-skills/card');
+  assert.ok(second.x > first.x + first.width);
+  assert.ok(
+    edge.points.every(([x]) => x >= first.x + first.width && x <= second.x),
+  );
+});
+
+test('a wizard arrow stays within both steps, and goes over a step’s dialog', () => {
+  const tall = id =>
+    id === 'tools' ? { width: 2880, height: 4800 } : undefined;
+  const plan = layout({ rows: sitemap(SMALL), screenSize: tall });
+  const details = item(plan, 'details/card');
+  const [[, y]] = item(plan, 'tools/edge').points;
+  assert.ok(y > details.y && y < details.y + details.height);
+
+  const withDialog = layout({
+    rows: sitemap([...SMALL, node('leave', 'details', 'dialog')]),
+  });
+  const edge = item(withDialog, 'tools/edge');
+  const dialog = item(withDialog, 'leave/card');
+  assert.equal(edge.fromSide, 'top');
+  assert.equal(edge.toSide, 'top');
+  assert.ok(edge.points.slice(1, -1).every(([, py]) => py < dialog.y));
+});
+
+test('runs through a symlink and reads only a PNG’s header', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ui-sitemap-'));
+  try {
+    symlinkSync(HERE, join(dir, 'skill'));
+    writeFileSync(join(dir, 'home.png'), pngHeader(2880, 4800));
+    utimesSync(join(dir, 'home.png'), new Date(), new Date());
+    const out = execFileSync(
+      process.execPath,
+      [join(dir, 'skill', 'layout.mjs'), '--screens', dir],
+      { cwd: dir, encoding: 'utf8' },
+    );
+    const plan = JSON.parse(out);
+    assert.equal(item(plan, 'home/image').file, 'home.png');
+    assert.equal(item(plan, 'home/image').height, 2400);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('rejects a sitemap that breaks the rules', () => {

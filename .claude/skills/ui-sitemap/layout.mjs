@@ -5,12 +5,23 @@
 // drawing rules are in SKILL.md; this file is their one implementation.
 //
 //   node .claude/skills/ui-sitemap/layout.mjs [--out plan.json]
-//     [--previous plan.json] [--screens dir | --no-screens]
+//     [--screens dir | --no-screens] [--board-sitemap file]
 //     [--sitemap file] [--state file] [--origin x,y]
 //
 // No dependencies, so it runs from the repo root without an install.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -258,11 +269,26 @@ export function layout({
   const { root, byId } = buildTree(rows);
   const stateById = new Map(state.map(row => [row.id, row]));
 
-  // The screenshot's aspect ratio (height / width) and where it came from.
+  // The screenshot's aspect ratio (height / width) and where it came from. A
+  // PNG counts only when it is newer than what the board shows: a node
+  // without an image on the board, or a file written after the state's
+  // `captured`. An older file left in `screens/` is what the board shows.
+  const isNew = (id, png) => {
+    const row = stateById.get(id);
+    const captured = Date.parse(row?.captured ?? '');
+    return (
+      !row?.image || Number.isNaN(captured) || (png.mtimeMs ?? 0) > captured
+    );
+  };
   const imageOf = node => {
     const png = screenSize(node.id);
-    if (png) {
-      return { aspect: png.height / png.width, source: 'png', ...png };
+    if (png && isNew(node.id, png)) {
+      return {
+        aspect: png.height / png.width,
+        source: 'png',
+        width: png.width,
+        height: png.height,
+      };
     }
     const viewport = parseViewport(stateById.get(node.id)?.viewport);
     if (viewport) {
@@ -311,14 +337,18 @@ export function layout({
     const spec = levelSpec(level);
     const sideGap = 6 * spec.padding;
     const block = { node, level, cards: [], group: undefined, slots: [] };
+    // A chain to the owner's right, each joined to the card before it, so no
+    // line crosses another card.
     const placeSides = (owner, ownerCard, startX) => {
       let x = startX;
+      let previous = ownerCard;
       for (const side of owner.children.filter(c => SIDE_KINDS.has(c.kind))) {
         x += sideGap;
         const card = { ...measureSide(side, level), x, y: ownerCard.y };
-        card.owner = ownerCard;
+        card.joinedTo = previous;
         block.cards.push(card);
         x += card.width;
+        previous = card;
       }
       return x;
     };
@@ -342,6 +372,7 @@ export function layout({
         card.previous = node.kind === 'wizard' ? previous : undefined;
         block.cards.push(card);
         x = placeSides(child, card, x + card.width);
+        card.hasSides = x > card.x + card.width;
         block.slots.push({ card, children: rowChildren(child) });
         previous = card;
       }
@@ -553,7 +584,8 @@ export function layout({
     return item;
   };
 
-  // Side lines: straight from the owner's right edge to the side card's left.
+  // Side lines: straight from the right edge of the card before it in the
+  // chain to the side card's left.
   const sideLine = (card, ownerBox) => {
     const box = boxes.get(card.node.id);
     const y = round(ownerBox.y + Math.min(ownerBox.height, box.height) / 2);
@@ -612,21 +644,40 @@ export function layout({
       }
       if (card.previous) {
         const from = boxes.get(card.previous.node.id);
-        const y = round(by + card.y + card.height / 2);
-        line(card.node, from, box, {
-          shape: 'straight',
-          dashed: false,
-          fromSide: 'right',
-          toSide: 'left',
-          points: [
-            [from.x + from.width, y],
-            [box.x, y],
-          ],
-        });
+        if (card.previous.hasSides) {
+          // Over the top: the previous step's dialogs and states sit between.
+          const y = round(box.y - card.spec.padding / 2);
+          const fromX = round(from.x + from.width / 2);
+          const toX = round(box.x + box.width / 2);
+          line(card.node, from, box, {
+            shape: 'elbowed',
+            dashed: false,
+            fromSide: 'top',
+            toSide: 'top',
+            points: [
+              [fromX, from.y],
+              [fromX, y],
+              [toX, y],
+              [toX, box.y],
+            ],
+          });
+        } else {
+          const y = round(box.y + Math.min(from.height, box.height) / 2);
+          line(card.node, from, box, {
+            shape: 'straight',
+            dashed: false,
+            fromSide: 'right',
+            toSide: 'left',
+            points: [
+              [from.x + from.width, y],
+              [box.x, y],
+            ],
+          });
+        }
       }
     }
-    for (const card of block.cards.filter(c => c.owner)) {
-      sideLine(card, boxes.get(card.owner.node?.id ?? block.node.id));
+    for (const card of block.cards.filter(c => c.joinedTo)) {
+      sideLine(card, boxes.get(card.joinedTo.node.id));
     }
     if (parentBox) {
       const from = [
@@ -721,52 +772,116 @@ export function layout({
   const top = Math.min(...boxed.map(i => i.y));
   const right = Math.max(...boxed.map(i => i.x + i.width));
   const bottom = Math.max(...boxed.map(i => i.y + i.height));
-  const ids = new Set(byId.keys());
   return {
     board: BOARD_URL,
     bounds: { x: left, y: top, width: right - left, height: bottom - top },
     nodes,
-    // Rows of sitemap.state.tsv whose node is gone: their items come off the
-    // board (after the person confirms the delete).
-    removed: state
-      .map(row => row.id)
-      .filter(id => !id.startsWith('_') && !ids.has(id)),
     items: all,
   };
 }
 
-/** What changed between two plans, by item key. */
-export function diffPlans(previous, next) {
-  const geometry = item =>
-    JSON.stringify([item.x, item.y, item.width, item.height, item.points]);
-  const content = item =>
-    JSON.stringify([item.text, item.file, item.fill, item.label, item.dashed]);
-  const before = new Map(previous.items.map(item => [item.key, item]));
-  const after = new Map(next.items.map(item => [item.key, item]));
-  const changes = { added: [], moved: [], changed: [], removed: [] };
-  for (const [key, item] of after) {
-    const old = before.get(key);
-    if (!old) {
-      changes.added.push(key);
-    } else if (geometry(old) !== geometry(item)) {
-      changes.moved.push(key);
-    } else if (content(old) !== content(item)) {
-      changes.changed.push(key);
+/**
+ * The sitemap rows the board shows: those with a card in the state, under a
+ * parent that is drawn too, and groups with a member drawn.
+ */
+export function drawnRows(rows, state) {
+  const drawn = new Set(state.filter(row => row.card).map(row => row.id));
+  let kept = rows.filter(row => drawn.has(row.id));
+  for (;;) {
+    const ids = new Set(kept.map(row => row.id));
+    const next = kept.filter(
+      row =>
+        (row.parent === '' || ids.has(row.parent)) &&
+        (!MEMBER_KIND[row.kind] ||
+          kept.some(
+            child =>
+              child.parent === row.id && child.kind === MEMBER_KIND[row.kind],
+          )),
+    );
+    if (next.length === kept.length) {
+      return kept;
+    }
+    kept = next;
+  }
+}
+
+// Fields that say nothing about how an item looks.
+const BOOKKEEPING = new Set(['miroId', 'action', 'file', 'source']);
+const look = item =>
+  JSON.stringify(
+    Object.entries(item).filter(([field]) => !BOOKKEEPING.has(field)),
+  );
+
+/**
+ * What a run does to the board, from the state's Miro ids. `board` is the
+ * plan the board was drawn from (`layout` of `drawnRows`, sized by the state
+ * alone); without it every item with an id is updated. Sets each item's
+ * `action` and returns the keys per action, and the Miro ids to delete:
+ * every id in the state that no item keeps, `_` rows included, and the old
+ * image of every replaced screenshot.
+ */
+export function planChanges(plan, state, board) {
+  const before = new Map(board?.items.map(item => [item.key, item]));
+  const changes = { create: [], update: [], replace: [], delete: [] };
+  const kept = new Set();
+  for (const item of plan.items) {
+    if (!item.miroId) {
+      item.action = item.type === 'image' && !item.file ? 'none' : 'create';
+    } else if (item.type === 'image' && item.file) {
+      item.action = 'replace';
+    } else {
+      const old = before.get(item.key);
+      item.action = old && look(old) === look(item) ? 'keep' : 'update';
+      kept.add(item.miroId);
+    }
+    if (item.action !== 'keep' && item.action !== 'none') {
+      changes[item.action].push(item.key);
     }
   }
-  for (const key of before.keys()) {
-    if (!after.has(key)) {
-      changes.removed.push(key);
+  for (const row of state) {
+    for (const column of ['card', 'image', 'label', 'edge']) {
+      for (const cell of row[column]?.split(',') ?? []) {
+        const miroId = cell.trim();
+        if (miroId && !kept.has(miroId)) {
+          changes.delete.push({ node: row.id, column, miroId });
+        }
+      }
     }
   }
-  changes.unchanged =
-    after.size -
-    changes.added.length -
-    changes.moved.length -
-    changes.changed.length;
   return changes;
 }
 
+/** The sitemap as it was when the state was last committed, if git knows. */
+function committedSitemap(sitemapFile, stateFile) {
+  try {
+    const cwd = dirname(stateFile);
+    const git = (...args) =>
+      execFileSync('git', args, {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+    const commit = git('log', '-1', '--format=%H', '--', stateFile).trim();
+    if (!commit || git('status', '--porcelain', '--', stateFile).trim()) {
+      return undefined;
+    }
+    return git('show', `${commit}:./${relative(cwd, sitemapFile)}`);
+  } catch {
+    return undefined;
+  }
+}
+
+/** A PNG's pixel size and modification time, from its first 24 bytes. */
+function readPngSize(file) {
+  const header = Buffer.alloc(24);
+  const fd = openSync(file, 'r');
+  try {
+    readSync(fd, header, 0, 24, 0);
+  } finally {
+    closeSync(fd);
+  }
+  return { ...pngSize(header), mtimeMs: statSync(file).mtimeMs };
+}
 // ------------------------------------------------------------------ cli ----
 
 function parseArgs(argv) {
@@ -798,8 +913,8 @@ function parseArgs(argv) {
       case '--no-screens':
         args.screens = undefined;
         break;
-      case '--previous':
-        args.previous = resolve(value());
+      case '--board-sitemap':
+        args.boardSitemap = resolve(value());
         break;
       case '--out':
         args.out = resolve(value());
@@ -852,9 +967,30 @@ function main(argv) {
       return undefined;
     }
     const file = join(args.screens, `${id}.png`);
-    return existsSync(file) ? pngSize(readFileSync(file)) : undefined;
+    return existsSync(file) ? readPngSize(file) : undefined;
   };
   const plan = layout({ rows, state, screenSize, origin: args.origin });
+  // The board as the state says it was drawn: the sitemap of the state's
+  // commit, the drawn nodes only, sized by the state.
+  const boardText = args.boardSitemap
+    ? readFileSync(args.boardSitemap, 'utf8')
+    : committedSitemap(args.sitemap, args.state);
+  if (!boardText && state.some(row => row.card)) {
+    process.stderr.write(
+      'layout.mjs: no committed sitemap for the state; comparing against the current one, so a renamed node is not updated\n',
+    );
+  }
+  const boardRows = drawnRows(
+    boardText
+      ? parseTsv(boardText, SITEMAP_COLUMNS, 'the board sitemap')
+      : rows,
+    state,
+  );
+  const board =
+    boardRows.length > 0
+      ? layout({ rows: boardRows, state, origin: args.origin })
+      : undefined;
+  plan.changes = planChanges(plan, state, board);
   if (args.screens) {
     for (const item of plan.items) {
       if (item.file) {
@@ -865,12 +1001,6 @@ function main(argv) {
       }
     }
   }
-  if (args.previous) {
-    plan.changes = diffPlans(
-      JSON.parse(readFileSync(args.previous, 'utf8')),
-      plan,
-    );
-  }
   const json = `${JSON.stringify(plan, null, 2)}\n`;
   if (args.out) {
     mkdirSync(dirname(args.out), { recursive: true });
@@ -880,10 +1010,16 @@ function main(argv) {
   }
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+/** Whether node runs this file, also through a symlinked path. */
+function isMain() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
   try {
     main(process.argv.slice(2));
   } catch (error) {

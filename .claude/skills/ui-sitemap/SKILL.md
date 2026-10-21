@@ -26,28 +26,34 @@ it (`--origin`) or asks once to delete it.
 Paths follow the [`urls`](../urls/SKILL.md) skill's tree: take a new node's
 path from there, or from the router, never from memory.
 
+**Keep the sitemap complete.** A run captures only the nodes `sitemap.tsv`
+lists, and the map is only as complete as that file. It lists every shell
+page, tab, wizard and the dialogs worth showing as of this skill's last
+change; edit pages are one node each (the create wizard's steps, filled in).
+Before a run, compare it with the `urls` skill's tree and with the shell's
+cases in `getTelemetryPageViewPayload` (`packages/app/src/utils/telemetry.ts`),
+which names every routed page and tab; add a row for anything missing.
+
 ## Run order
 
 Commands run from the repo root; `S=.claude/skills/ui-sitemap`.
 
-1. **Read** `sitemap.tsv` and `sitemap.state.tsv`. Run
-   `node $S/layout.mjs --no-screens --out $S/screens/before.json` — the
-   board as the state says it is.
-2. **Decide** what to capture: nodes with no state row (new), nodes whose
-   `commit` is older than a change to their page (`git log <commit>..HEAD --
-   <the page's component>`), and what the person asked for. A state row
-   whose node is gone shows in the plan's `removed`. Say what you will
-   capture, replace and remove before you start.
-3. **Capture** each one to `screens/<id>.png` ([Capture](#capture)).
-4. **Lay out**:
-   `node $S/layout.mjs --previous $S/screens/before.json --out $S/screens/plan.json`.
-   Its `changes` lists the item keys added, moved, changed (text, file,
-   style) and removed against step 1.
-5. **Apply** the plan to Miro ([Miro](#miro)): create what is added, update
-   what moved or changed, delete what is removed — after one confirmation
-   for all the deletes of the run.
+1. **Read** `sitemap.tsv` and `sitemap.state.tsv`, and check the sitemap
+   is complete (above).
+2. **Decide** what to capture: nodes without an image in the state (new),
+   nodes whose `commit` is older than a change to their page
+   (`git log <commit>..HEAD -- <the page's component>`), and what the person
+   asked for. Say what you will capture before you start.
+3. **Capture** each one to `$S/screens/<id>.png` ([Capture](#capture)).
+4. **Lay out**: `node $S/layout.mjs --out $S/screens/plan.json`. Its
+   `changes` says what to do to the board ([The plan](#the-plan)): which
+   items to create, update and replace, and which Miro ids to delete.
+5. **Apply** the plan to Miro ([Miro](#miro)): cards, group boxes and labels,
+   then lines, then images. Ask once for all the run's deletes, listing them,
+   and delete only after a yes.
 6. **Write back** `sitemap.state.tsv` (one row per drawn node, ids from the
-   Miro results) and commit it with any `sitemap.tsv` change, in a PR.
+   Miro results) and commit it with any `sitemap.tsv` change, in a PR. Until
+   that commit the next layout compares against the board as last committed.
 
 ## Capture
 
@@ -71,15 +77,18 @@ With the chrome-devtools MCP, against a signed-in dev server
   roots (the working directory), not `/tmp` — `screens/` is inside.
 - Follow `reach`: empty means open `path`; otherwise it names a concrete
   example (`row "Kubernetes"`) and/or steps (`click "New agent" > fill
-  Name=demo > click Continue`).
+  Name=demo > click Continue`). Steps that don't start with `open` start on
+  the parent's page.
 - **Never submit a form or run an action.** Dialogs and wizard steps are
   opened and filled only as far as the state needs; `note` says what not to
   press. Close a dialog with Escape afterwards.
 - **Privacy**: a screenshot can show agent names or descriptions that look
   like a real customer's. Prefer demo data or agentlab; skip a page you can't
   show clean and say so.
-- Record per node: the date, `git rev-parse --short HEAD` of the code you
-  captured, and the viewport (`1440x2400x2`).
+- Record per node: the time (UTC, `2026-10-21T14:03:00Z`), `git rev-parse
+  --short HEAD` of the code you captured, and the viewport (`1440x2400x2`).
+  A PNG in `screens/` counts as new only while it is newer than that time,
+  so screenshots left over from an earlier run are not uploaded again.
 
 ## Miro
 
@@ -126,11 +135,16 @@ person's OK.
   sitemap order, at the page's level size. No lines between tabs; the parent
   connects to the group box; a tab's children connect from its tab card.
 - `wizard`: a group box like `tabs`, with a card per `step` and straight
-  arrows from each step to the next, because they are a sequence.
+  arrows from each step to the next, because they are a sequence. Where a
+  step has dialogs or states beside it, the arrow to the next step goes
+  elbowed over the top of them.
 - `dialog`: a card at its page's size, beside the page in the same row,
   joined by a straight dashed line labelled "Dialog".
 - `state` (empty, error, …): a card one level smaller, faint amber
   `#fff8e6`, beside its page, joined by a dashed line labelled "State".
+- Several dialogs and states of one page form a chain to its right, in
+  sitemap order, each line joining a card to the one before it, so no line
+  crosses a card.
 - Lines between levels: elbowed, `#313131`, width 4, arrow at the child, from
   the bottom of the parent to the top of the child.
 
@@ -164,13 +178,13 @@ id	parent	kind	name	path	reach	note
 id	captured	commit	viewport	card	image	label	edge
 ```
 
-One row per node on the board: the capture date (`2026-10-21`), the short
+One row per node on the board: the capture time (`2026-10-21T14:03:00Z`), the short
 commit captured, the viewport (`1440x2400x2`), and the Miro ids of its card
 (or group box), image, labels (name and path, comma-separated) and incoming
 line. Rows whose `id` starts with `_` are the board's own items (`_title`,
 `_subtitle`, `_level-0`, …), with the id in `label`. Written only by a run,
 after the items exist, in sitemap row order. A node's `viewport` is what
-`layout.mjs` sizes it by when its PNG is not in `screens/`, so the board's
+`layout.mjs` sizes it by when there is no new PNG for it, so the board's
 layout can be recomputed on any machine.
 
 ## The plan
@@ -186,10 +200,19 @@ layout can be recomputed on any machine.
   carry `file` (null when there is no new screenshot), `source` (`png`,
   `state`, `default`) and `cx`/`cy`.
 - `nodes`: each node's kind, level, reach, note and capture state.
-- `removed`: state rows whose node is no longer in the sitemap.
-- `changes` (with `--previous`): item keys `added`, `moved`, `changed`,
-  `removed`.
+- `changes`, from the state's Miro ids: the item keys to `create` (no id
+  yet), `update` (moved, resized, restyled or new text) and `replace` (a new
+  screenshot: a new image item), and `delete`, every Miro id in the state
+  that no item keeps — removed nodes, a cleared path's label, a level marker
+  the tree no longer reaches, the old image of a replaced screenshot. Each
+  item also carries its `action` (`create`, `update`, `replace`, `keep`, or
+  `none` for a screenshot not taken yet).
+
+"What moved" is measured against the board as the state says it was drawn:
+`layout.mjs` lays out the sitemap from the commit that last wrote the state
+(`git show`), keeping only the nodes with a card in the state, sized by the
+state alone. `--board-sitemap file` gives that sitemap by hand.
 
 The same input always gives the same plan. Options: `--screens dir`,
-`--no-screens`, `--sitemap`, `--state`, `--origin x,y` (where the tree's
-top-left corner goes on the board); `--help` lists them.
+`--no-screens`, `--sitemap`, `--state`, `--board-sitemap`, `--origin x,y`
+(where the tree's top-left corner goes on the board); `--help` lists them.
