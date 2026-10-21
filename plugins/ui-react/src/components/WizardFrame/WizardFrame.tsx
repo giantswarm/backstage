@@ -72,7 +72,16 @@ const FOOTER_HEIGHT_VAR = WIZARD_FOOTER_HEIGHT_VAR;
  * validation focusing it — never lands under the docked footer (or the
  * shell's mobile bottom bar below it).
  */
-const FOOTER_CLEARANCE = `calc(var(${FOOTER_HEIGHT_VAR}, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px))`;
+/**
+ * The agent shell's toast, while one shows, floats right above the footer
+ * (agent-shell.css): `--agent-shell-toast-height` is its height (the shell's
+ * `useToastHeight`; classic chrome never defines it). The step leaves that
+ * much room at its end, so its last control can be scrolled clear of it, and
+ * a field scrolled into view keeps clear of it too.
+ */
+const TOAST_ROOM = 'var(--agent-shell-toast-height, 0px)';
+
+const FOOTER_CLEARANCE = `calc(var(${FOOTER_HEIGHT_VAR}, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px) + ${TOAST_ROOM})`;
 
 // Phone first: the narrow padding is the default, and the two-column tier
 // (≥ 768px, where forms go to two columns) widens it.
@@ -302,11 +311,13 @@ const useStyles = makeStyles({
     boxSizing: 'border-box',
     margin: '0 auto',
     padding: '24px 16px',
+    paddingBottom: `calc(24px + ${TOAST_ROOM})`,
     display: 'flex',
     flexDirection: 'column',
     gap: 24,
     [TWO_COLUMN_MEDIA]: {
       padding: '40px 32px',
+      paddingBottom: `calc(40px + ${TOAST_ROOM})`,
     },
     '& :is(input, textarea, select, button, [tabindex])': {
       scrollMarginTop: 96,

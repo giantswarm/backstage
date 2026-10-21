@@ -31,6 +31,7 @@ import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
 import {
+  kagentAgentNamespacesQueryKey,
   musterAgentManagerInfoQueryKey,
   musterServersQueryKey,
 } from '../../lib/queryKeys';
@@ -503,9 +504,9 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   );
 
   // Everything an installation's agent read is made of: its Agent lists,
-  // cluster-wide and per namespace (one key prefix), and muster's answers on
-  // which namespaces to read. Active queries refetch; a failed one with
-  // `retry: false` included.
+  // cluster-wide and per namespace (one key prefix), and muster's and the
+  // controller's answers on which namespaces to read. Active queries refetch;
+  // a failed one with `retry: false` included.
   const queryClient = useQueryClient();
   const retry = useCallback(async () => {
     const { group, plural } = Agent;
@@ -527,6 +528,9 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
         }),
         queryClient.invalidateQueries({
           queryKey: musterAgentManagerInfoQueryKey(installation),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: kagentAgentNamespacesQueryKey(installation),
         }),
       ]),
     ]);
