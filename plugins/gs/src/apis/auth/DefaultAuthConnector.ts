@@ -54,6 +54,23 @@ export type ClusterToken = {
   expiresInSeconds?: number;
 };
 
+/**
+ * What a cluster token mint may ask for: `minLifetimeLeft`, the share of its
+ * lifetime (0 to 1) the token must still have, so a token the broker cached
+ * with less is exchanged anew.
+ */
+export type ClusterTokenRequest = {
+  minLifetimeLeft?: number;
+};
+
+/**
+ * {@link DefaultAuthConnector.refreshSession}'s options: Backstage's, plus
+ * {@link ClusterTokenRequest.minLifetimeLeft} for a broker-backed cluster. A
+ * cookie refresh always comes back with a new token.
+ */
+export type RefreshSessionOptions = AuthConnectorRefreshSessionOptions &
+  ClusterTokenRequest;
+
 export { ClusterTokenError, type ClusterTokenErrorReason };
 
 type Options<AuthSession> = {
@@ -96,7 +113,9 @@ type Options<AuthSession> = {
    * cookie-based refresh, so broker-covered clusters never trigger a login
    * popup. Returning undefined or throwing falls back to the legacy flow.
    */
-  clusterTokenProvider?: () => Promise<ClusterToken | undefined>;
+  clusterTokenProvider?: (
+    request?: ClusterTokenRequest,
+  ) => Promise<ClusterToken | undefined>;
   /**
    * True for the main sign-in provider (the one whose id equals
    * `gs.authProvider`). Its id may follow the `oidc-<name>` shape, but it is
@@ -144,9 +163,9 @@ export class DefaultAuthConnector<
   private readonly sessionTransform: (response: any) => Promise<AuthSession>;
   private readonly enableExperimentalRedirectFlow: boolean;
   private readonly popupOptions: PopupOptions | undefined;
-  private readonly clusterTokenProvider?: () => Promise<
-    ClusterToken | undefined
-  >;
+  private readonly clusterTokenProvider?: (
+    request?: ClusterTokenRequest,
+  ) => Promise<ClusterToken | undefined>;
   private readonly isMainProvider: boolean;
   private readonly startParams: Record<string, string>;
   private readonly signInConnectorMemory?: SignInConnectorMemory;
@@ -226,14 +245,14 @@ export class DefaultAuthConnector<
     return this.authRequester(options.scopes);
   }
 
-  async refreshSession(
-    options?: AuthConnectorRefreshSessionOptions,
-  ): Promise<any> {
+  async refreshSession(options?: RefreshSessionOptions): Promise<any> {
     // Broker-backed clusters are broker-only: no cookie `/refresh`, no popup.
     // A failure surfaces as a typed ClusterTokenError instead of silently
     // falling back to a legacy flow that 404s for private clusters.
     if (this.clusterTokenProvider) {
-      return this.mintBrokerSession(options?.scopes);
+      return this.mintBrokerSession(options?.scopes, {
+        minLifetimeLeft: options?.minLifetimeLeft,
+      });
     }
 
     const res = await fetch(
@@ -278,8 +297,11 @@ export class DefaultAuthConnector<
    * on a real broker failure -- both propagate to the caller unchanged so the
    * cluster-access status UI can react. No cookie refresh, no per-cluster popup.
    */
-  private async mintBrokerSession(scopes?: Set<string>): Promise<AuthSession> {
-    const clusterToken = await this.clusterTokenProvider!();
+  private async mintBrokerSession(
+    scopes?: Set<string>,
+    request?: ClusterTokenRequest,
+  ): Promise<AuthSession> {
+    const clusterToken = await this.clusterTokenProvider!(request);
     if (!clusterToken) {
       throw new ClusterTokenError(
         this.installationId() ?? this.provider.id,

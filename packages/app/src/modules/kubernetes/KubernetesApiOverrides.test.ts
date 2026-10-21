@@ -12,9 +12,20 @@ function setup(options: { session: boolean; gesture: boolean }) {
     }
     return request?.optional ? '' : 'token-after-sign-in';
   });
+  // The same session's token refreshed to last, for a request that asks.
+  const getLastingIdToken = jest.fn(
+    async (_minLifetimeLeft: number, request?: { optional?: boolean }) => {
+      if (options.session) {
+        return 'lasting-id-token';
+      }
+      return request?.optional ? '' : 'token-after-sign-in';
+    },
+  );
   const gsAuthProvidersApi = {
     getKubernetesAuthApi: jest.fn(async (name: string) =>
-      name === 'oidc-agent-platform' ? { getIdToken } : undefined,
+      name === 'oidc-agent-platform'
+        ? { getIdToken, getLastingIdToken }
+        : undefined,
     ),
   } as unknown as GSAuthProvidersApi;
   const base = {
@@ -26,7 +37,7 @@ function setup(options: { session: boolean; gesture: boolean }) {
     gsAuthProvidersApi,
     () => options.gesture,
   );
-  return { providers, getIdToken, base };
+  return { providers, getIdToken, getLastingIdToken, base };
 }
 
 describe('GSKubernetesAuthProviders', () => {
@@ -76,6 +87,43 @@ describe('GSKubernetesAuthProviders', () => {
     await providers.getCredentials('oidc.oidc-agent-platform');
     expect(requestedBy).toBe('kubernetes-token');
     expect(document.body.getAttribute('data-login-requested-by')).toBeNull();
+  });
+
+  describe('with a minimum lifetime', () => {
+    it('answers with a lasting token, and asks the session only through it', async () => {
+      const { providers, getIdToken, getLastingIdToken } = setup({
+        session: true,
+        gesture: false,
+      });
+      await expect(
+        providers.getCredentials('oidc.oidc-agent-platform', {
+          minLifetimeLeft: 0.8,
+        }),
+      ).resolves.toEqual({ token: 'lasting-id-token' });
+      expect(getLastingIdToken).toHaveBeenCalledWith(0.8, { optional: true });
+      expect(getIdToken).not.toHaveBeenCalled();
+    });
+
+    it('fails a background request as session-expired once the session is gone', async () => {
+      const { providers } = setup({ session: false, gesture: false });
+      const error = await providers
+        .getCredentials('oidc.oidc-agent-platform', { minLifetimeLeft: 0.8 })
+        .catch(e => e);
+      expect(isSessionExpiredError(error)).toBe(true);
+    });
+
+    it("takes the interactive path for a person's action", async () => {
+      const { providers, getLastingIdToken } = setup({
+        session: false,
+        gesture: true,
+      });
+      await expect(
+        providers.getCredentials('oidc.oidc-agent-platform', {
+          minLifetimeLeft: 0.8,
+        }),
+      ).resolves.toEqual({ token: 'token-after-sign-in' });
+      expect(getLastingIdToken).toHaveBeenCalledWith(0.8);
+    });
   });
 
   it('leaves non-OIDC providers to the upstream implementation', async () => {
