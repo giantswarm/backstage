@@ -1,11 +1,10 @@
 import {
-  detailSyncState,
+  isSyncing,
   lastPushes,
   lastSyncResult,
   pushedSinceSync,
   requestedSyncEnded,
   searchMirrors,
-  shortHead,
   sortedDirectories,
   sortedMirrors,
   syncTriggerLabel,
@@ -64,24 +63,21 @@ describe('lastSyncResult', () => {
   });
 });
 
-describe('detailSyncState', () => {
-  it('calls a no-change cycle unchanged', () => {
+describe('isSyncing', () => {
+  it('follows a running or requested sync, not a deletion', () => {
     expect(
-      detailSyncState({
+      isSyncing({
         ...workspace,
-        lastSync: { time: '2026-10-20T10:00:00Z', result: 'NoChange' },
-      }).label,
-    ).toBe('Unchanged');
-  });
-
-  it('shows a running sync over the last result', () => {
-    expect(
-      detailSyncState({
-        ...workspace,
-        lastSync: { time: '2026-10-20T10:00:00Z', result: 'NoChange' },
         activeSync: { job: 'sync-1', startedAt: '2026-10-20T11:00:00Z' },
-      }).label,
-    ).toBe('Syncing');
+      }),
+    ).toBe(true);
+    expect(
+      isSyncing({
+        ...workspace,
+        syncRequest: { requestedAt: '2026-10-20T11:00:00Z' },
+      }),
+    ).toBe(true);
+    expect(isSyncing({ ...workspace, deleting: true })).toBe(false);
   });
 });
 
@@ -91,8 +87,10 @@ describe('syncTriggerLabel', () => {
       'A request: Sync now, or a Session starting on it',
     );
     expect(syncTriggerLabel('change')).toBe('A change to the workspace');
+    expect(syncTriggerLabel('sessionDeleted')).toBe(
+      'A deleted Session’s directory',
+    );
     expect(syncTriggerLabel(undefined)).toBeUndefined();
-    expect(syncTriggerLabel('something-new')).toBe('something-new');
   });
 });
 
@@ -118,6 +116,18 @@ describe('requestedSyncEnded', () => {
         {
           ...workspace,
           lastSync: { time: '2026-10-20T09:00:00Z', result: 'Succeeded' },
+        },
+        requestedAt,
+      ),
+    ).toBe(false);
+  });
+
+  it('takes a cycle that ended in the request’s second for the one before', () => {
+    expect(
+      requestedSyncEnded(
+        {
+          ...workspace,
+          lastSync: { time: requestedAt, result: 'Succeeded' },
         },
         requestedAt,
       ),
@@ -161,7 +171,7 @@ describe('pushedSinceSync', () => {
   });
 
   it('marks a repository its provider lists a later push for', () => {
-    const pushes = lastPushes([preview('2026-10-21T08:00:00Z')]);
+    const { pushes } = lastPushes([preview('2026-10-21T08:00:00Z')], false);
     expect(pushedSinceSync(mirror('example-org/api'), pushes)).toBe(true);
     expect(pushedSinceSync(mirror('example-org/web'), pushes)).toBe(false);
   });
@@ -170,7 +180,7 @@ describe('pushedSinceSync', () => {
     expect(
       pushedSinceSync(
         mirror('example-org/api'),
-        lastPushes([preview('2026-10-20T10:00:00Z')]),
+        lastPushes([preview('2026-10-20T10:00:00Z')], false).pushes,
       ),
     ).toBe(false);
     expect(pushedSinceSync(mirror('example-org/api'), undefined)).toBe(false);
@@ -192,11 +202,6 @@ describe('mirrors and directories', () => {
     expect(searchMirrors(sorted, 'TRUNK').map(m => m.repository)).toEqual([
       'example-org/alpha',
     ]);
-  });
-
-  it('abbreviates a head commit', () => {
-    expect(shortHead('0123456789abcdef')).toBe('0123456');
-    expect(shortHead(undefined)).toBeUndefined();
   });
 
   it('lists the latest turn first, unknown directories last', () => {

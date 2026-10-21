@@ -3,24 +3,26 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 
 import { useWorkspaceManagerClient } from './useWorkspaceManager';
 import {
+  musterWorkspaceLastPushesQueryKey,
   musterWorkspaceQueryKey,
   musterWorkspacesQueryKey,
 } from '../lib/queryKeys';
-import { lastPushes } from '../lib/workspaceDetail';
-import { isSettling } from '../lib/workspaceList';
+import { isSyncing, lastPushes, type LastPushes } from '../lib/workspaceDetail';
 import {
   WorkspaceManagerError,
   type DeleteWorkspaceResult,
   type SyncWorkspaceResult,
   type WorkspaceDetail,
-  type WorkspacePreview,
 } from '../lib/workspaceManager';
 
 /** How often a workspace whose sync runs or waits is read again. */
 const SETTLING_REFETCH_MS = 5000;
 
-/** The most `preview_workspace` pages read for the repositories' last pushes. */
-const MAX_PUSH_PAGES = 10;
+/**
+ * The most `preview_workspace` pages read for the repositories' last pushes:
+ * 5,000 repositories; the page says when a workspace selects more.
+ */
+const MAX_PUSH_PAGES = 25;
 
 /** `preview_workspace`'s largest page. */
 const PUSH_PAGE_SIZE = 200;
@@ -28,10 +30,11 @@ const PUSH_PAGE_SIZE = 200;
 /**
  * One workspace with its storage and Session directories (`get_workspace`),
  * as the person, read afresh each time it is `enabled`: what it says is
- * acted on. With `followSync`, read again while a sync runs or waits, and
- * while `awaitingSync` (a requested sync the read does not show ended yet),
- * in a background tab too: the end of a sync the person asked for is shown
- * whenever they look.
+ * acted on. With `followSync`, read again while a sync runs or waits (not
+ * for the whole of a deletion, which lasts until the last Session directory
+ * is cleaned up), and while `awaitingSync` (a requested sync the read does not
+ * show ended yet), in a background tab too: the end of a sync the person
+ * asked for is shown whenever they look.
  */
 export function useWorkspaceDetail(
   installation: string,
@@ -53,7 +56,7 @@ export function useWorkspaceDetail(
     refetchInterval: query =>
       followSync &&
       (awaitingSync ||
-        (query.state.data && isSettling(query.state.data.workspace)))
+        (query.state.data && isSyncing(query.state.data.workspace)))
         ? SETTLING_REFETCH_MS
         : false,
     refetchIntervalInBackground: followSync,
@@ -74,27 +77,30 @@ export function useWorkspaceLastPushes(
   enabled: boolean,
 ) {
   const client = useWorkspaceManagerClient(installation);
-  return useQuery<Map<string, string>>({
-    queryKey: [
-      ...musterWorkspaceQueryKey(installation, name),
-      'last-pushes',
+  return useQuery<LastPushes>({
+    queryKey: musterWorkspaceLastPushesQueryKey(
+      installation,
+      name,
       lastSyncTime ?? '',
-    ],
+    ),
     enabled: enabled && Boolean(client),
     queryFn: async () => {
-      const pages: WorkspacePreview[] = [];
-      for (let page = 1; page <= MAX_PUSH_PAGES; page++) {
-        const preview = await client!.previewWorkspace({
+      const page = (n: number) =>
+        client!.previewWorkspace({
           workspace: name,
-          page,
+          page: n,
           pageSize: PUSH_PAGE_SIZE,
         });
-        pages.push(preview);
-        if (page * PUSH_PAGE_SIZE >= preview.matching) {
-          break;
-        }
-      }
-      return lastPushes(pages);
+      // The first page says how many there are; the rest are read at once.
+      const first = await page(1);
+      const pageCount = Math.ceil(first.matching / PUSH_PAGE_SIZE);
+      const rest = await Promise.all(
+        Array.from(
+          { length: Math.min(pageCount, MAX_PUSH_PAGES) - 1 },
+          (_, i) => page(i + 2),
+        ),
+      );
+      return lastPushes([first, ...rest], pageCount > MAX_PUSH_PAGES);
     },
     retry: false,
     staleTime: Infinity,

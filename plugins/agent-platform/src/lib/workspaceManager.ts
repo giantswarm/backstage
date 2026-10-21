@@ -97,7 +97,13 @@ export type WorkspaceSizing = {
 
 /** What started a sync cycle. */
 export type SyncTrigger =
-  'schedule' | 'change' | 'request' | 'retry' | 'deletion';
+  | 'change'
+  | 'request'
+  | 'retry'
+  | 'cleanup'
+  | 'deletion'
+  | 'sessionDeleted'
+  | 'schedule';
 
 /** The last sync cycle's outcome. */
 export type LastSync = {

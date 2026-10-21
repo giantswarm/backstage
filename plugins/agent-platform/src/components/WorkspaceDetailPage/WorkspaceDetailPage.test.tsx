@@ -18,14 +18,20 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
     caller: mockCaller,
   }),
 }));
-// No muster plugin: the page reads without muster's sign-in step.
+// The muster plugin, signed in to workspace-manager.
+let mockMusterApi: object | undefined;
 jest.mock('../../hooks/useMusterPluginApi', () => ({
-  useMusterPluginApi: () => undefined,
+  useMusterPluginApi: () => mockMusterApi,
 }));
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  useServerSignIn: () => ({ needsLogin: false }),
+  ServerSignIn: () => null,
+}));
+let mockPresence: string;
 jest.mock('../../hooks/useWorkspaceManager', () => ({
   useWorkspaceManagerAvailability: () => ({
-    presence: 'available',
-    isAvailable: true,
+    presence: mockPresence,
+    isAvailable: mockPresence === 'available',
     isLoading: false,
   }),
 }));
@@ -37,7 +43,7 @@ type DetailQuery = {
 };
 let mockDetail: DetailQuery;
 const mockUseWorkspaceDetail = jest.fn((..._args: unknown[]) => mockDetail);
-let mockPushes: Map<string, string> | undefined;
+let mockPushes: { pushes: Map<string, string>; partial: boolean } | undefined;
 const mockSync = {
   mutate: jest.fn(),
   isPending: false,
@@ -152,6 +158,8 @@ describe('WorkspaceDetailPage', () => {
     jest.clearAllMocks();
     mockDetail = { data: docs(), error: null, refetch: jest.fn() };
     mockPushes = undefined;
+    mockMusterApi = {};
+    mockPresence = 'available';
   });
 
   it('shows the workspace with its sources, sync, storage and actions', async () => {
@@ -173,10 +181,13 @@ describe('WorkspaceDetailPage', () => {
   });
 
   it('lists the repositories with their head commits, marking those pushed since', async () => {
-    mockPushes = new Map([
-      ['github\u0000example-org/web', '2026-10-21T07:00:00Z'],
-      ['github\u0000example-org/api', '2026-10-18T08:00:00Z'],
-    ]);
+    mockPushes = {
+      pushes: new Map([
+        ['github\u0000example-org/web', '2026-10-21T07:00:00Z'],
+        ['github\u0000example-org/api', '2026-10-18T08:00:00Z'],
+      ]),
+      partial: false,
+    };
     await renderPage();
 
     const region = screen.getByRole('region', { name: 'Repositories (2)' });
@@ -311,7 +322,56 @@ describe('WorkspaceDetailPage', () => {
       'Nothing had changed, so nothing was fetched.',
     );
     expect(screen.getByRole('button', { name: 'Sync now' })).toBeEnabled();
+
+    // A second request that fails takes the first one's outcome away.
+    mockSync.mutate.mockImplementation((_: unknown, options: any) =>
+      options.onError(new Error('workspace-manager unreachable')),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+    expect(screen.queryByTestId('workspace-sync-ended')).toBeNull();
   });
+
+  it('goes to the workspace’s own address from one naming another Organization', async () => {
+    await renderPage('/customize/workspaces/gazelle/other-org/ws-docs');
+
+    expect(
+      await screen.findByText(
+        'Organization lab · gazelle · example-org · api, web',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/other-org/)).toBeNull();
+  });
+
+  it.each([
+    [
+      'without the muster plugin',
+      undefined,
+      'available',
+      'Workspaces are not available here',
+    ],
+    [
+      'where muster lists no workspace-manager',
+      {},
+      'missing',
+      'Workspaces are not available here',
+    ],
+    [
+      'where muster acts under its shared identity',
+      {},
+      'sharedIdentity',
+      'Workspaces cannot be used on gazelle from this portal',
+    ],
+  ])(
+    'says why there is no workspace %s',
+    async (_, musterApi, presence, title) => {
+      mockMusterApi = musterApi;
+      mockPresence = presence;
+      await renderPage();
+
+      expect(screen.getByText(title)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+    },
+  );
 
   it('gives a person outside the Organization a not-a-member page, not the workspace', async () => {
     mockDetail = {

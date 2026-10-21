@@ -4,7 +4,8 @@
  * `get_workspace`.
  */
 
-import { syncState, type SyncTone } from './workspaceList';
+import { matches } from './search';
+import { lastSyncLabel, type SyncTone } from './workspaceList';
 import type {
   LastSync,
   SessionDirectory,
@@ -20,7 +21,9 @@ import type {
  * manager records no schedule any more, but a cycle that ran at the upgrade
  * may still name it.
  */
-export function syncTriggerLabel(trigger: SyncTrigger | string | undefined) {
+export function syncTriggerLabel(
+  trigger: SyncTrigger | undefined,
+): string | undefined {
   switch (trigger) {
     case 'change':
       return 'A change to the workspace';
@@ -36,40 +39,38 @@ export function syncTriggerLabel(trigger: SyncTrigger | string | undefined) {
       return 'The workspace’s deletion';
     case 'schedule':
       return 'The old nightly schedule';
-    case undefined:
-    case '':
-      return undefined;
     default:
-      return trigger;
+      return undefined;
   }
 }
 
 /**
- * The last sync's result in a sentence: what it fetched, that it fetched
- * nothing, or why it failed in the manager's own words.
+ * The last sync's result in a word and a sentence: what it fetched, that it
+ * fetched nothing, or why it failed in the manager's own words.
  */
 export function lastSyncResult(last: LastSync): {
   label: string;
   tone: SyncTone;
   sentence: string;
 } {
+  const { label, tone } = lastSyncLabel(last);
   switch (last.result) {
     case 'Succeeded':
       return {
-        label: 'Synced',
-        tone: 'success',
+        label,
+        tone,
         sentence: 'Fetched what changed since the sync before.',
       };
     case 'NoChange':
       return {
-        label: 'Unchanged',
-        tone: 'success',
+        label,
+        tone,
         sentence: 'Nothing had changed, so nothing was fetched.',
       };
     default:
       return {
-        label: 'Failed',
-        tone: 'danger',
+        label,
+        tone,
         sentence: last.message
           ? `The mirrors stay as they were: ${last.message}`
           : 'The mirrors stay as they were; the workspace-manager gave no reason.',
@@ -77,31 +78,26 @@ export function lastSyncResult(last: LastSync): {
   }
 }
 
-/**
- * The state in the page's header: the sync's state now, else the last
- * cycle's result. The list's words, with "Unchanged" for a cycle that found
- * nothing to fetch.
- */
-export function detailSyncState(workspace: Workspace) {
-  const state = syncState(workspace);
-  return workspace.lastSync?.result === 'NoChange' &&
-    state.label === 'No change'
-    ? { ...state, label: 'Unchanged' }
-    : state;
+/** Whether a sync runs or waits to run: the page reads it again soon. */
+export function isSyncing(workspace: Workspace): boolean {
+  return Boolean(workspace.activeSync || workspace.syncRequest);
 }
 
 /**
- * Whether the sync a person asked for at `requestedAt` has ended: nothing
- * runs or waits any more, and the last cycle is no older than the request.
+ * Whether the sync a person asked for at `requestedAt` (the manager's time)
+ * has ended: nothing runs or waits any more, and the last cycle ended after
+ * the request. The manager writes both in whole seconds, and a cycle takes
+ * longer than one, so a cycle that ended in the request's second is the one
+ * before it.
  */
 export function requestedSyncEnded(
   workspace: Workspace,
   requestedAt: string,
 ): boolean {
-  if (workspace.activeSync || workspace.syncRequest || !workspace.lastSync) {
+  if (isSyncing(workspace) || !workspace.lastSync) {
     return false;
   }
-  return Date.parse(workspace.lastSync.time) >= Date.parse(requestedAt);
+  return Date.parse(workspace.lastSync.time) > Date.parse(requestedAt);
 }
 
 /** A mirror's key across provider instances. */
@@ -111,16 +107,25 @@ export function mirrorKey(mirror: { provider: string; repository: string }) {
 
 /**
  * The last push of each repository the workspace selects now, as its
- * provider lists it (`preview_workspace`), by {@link mirrorKey}.
+ * providers list it (`preview_workspace`), by {@link mirrorKey}; `partial`
+ * when the pages read left some of them out.
  */
-export function lastPushes(previews: WorkspacePreview[]): Map<string, string> {
+export type LastPushes = {
+  pushes: ReadonlyMap<string, string>;
+  partial: boolean;
+};
+
+export function lastPushes(
+  previews: WorkspacePreview[],
+  partial: boolean,
+): LastPushes {
   const pushes = new Map<string, string>();
   for (const preview of previews) {
     for (const repository of preview.repositories) {
       pushes.set(mirrorKey(repository), repository.lastPush);
     }
   }
-  return pushes;
+  return { pushes, partial };
 }
 
 /**
@@ -153,20 +158,15 @@ export function searchMirrors(
   search: string,
 ): WorkspaceMirror[] {
   const needle = search.trim().toLowerCase();
-  if (!needle) {
-    return mirrors;
-  }
-  return mirrors.filter(mirror =>
-    [mirror.repository, mirror.provider, mirror.defaultBranch ?? '']
-      .join('\n')
-      .toLowerCase()
-      .includes(needle),
-  );
-}
-
-/** A commit's short id, as git abbreviates it. */
-export function shortHead(head: string | undefined): string | undefined {
-  return head ? head.slice(0, 7) : undefined;
+  return needle
+    ? mirrors.filter(mirror =>
+        matches(needle, [
+          mirror.repository,
+          mirror.provider,
+          mirror.defaultBranch,
+        ]),
+      )
+    : mirrors;
 }
 
 /**
@@ -191,13 +191,9 @@ export function searchDirectories(
   search: string,
 ): SessionDirectory[] {
   const needle = search.trim().toLowerCase();
-  if (!needle) {
-    return directories;
-  }
-  return directories.filter(directory =>
-    [directory.name ?? '', directory.session, directory.creator ?? '']
-      .join('\n')
-      .toLowerCase()
-      .includes(needle),
-  );
+  return needle
+    ? directories.filter(directory =>
+        matches(needle, [directory.name, directory.session, directory.creator]),
+      )
+    : directories;
 }

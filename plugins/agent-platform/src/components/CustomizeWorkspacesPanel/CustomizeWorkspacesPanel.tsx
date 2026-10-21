@@ -50,6 +50,8 @@ import {
   sourcesLabel,
   storedLabel,
   syncState,
+  WORKSPACES_BLOCKED,
+  WORKSPACES_VIA,
   type WorkspaceRow,
 } from '../../lib/workspaceList';
 import { CreateWorkspaceButton } from '../CreateWorkspaceButton';
@@ -60,10 +62,6 @@ import { useWorkspacesData } from '../WorkspacesDataProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
-
-/** What a muster without per-user sign-in withholds, and what goes through the manager. */
-const WORKSPACES_BLOCKED = 'Workspaces cannot be used';
-const WORKSPACES_VIA = 'Workspaces are managed through workspace-manager';
 
 export type CustomizeWorkspacesPanelProps = {
   search: string;

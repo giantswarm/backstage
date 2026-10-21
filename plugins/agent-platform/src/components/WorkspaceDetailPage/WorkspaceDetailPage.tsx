@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
   toastApiRef,
   useApi,
@@ -22,11 +22,11 @@ import {
   CatalogFilterBar,
   CatalogNoMatch,
   type CatalogFacet,
+  DateComponent,
   EmptyStateCard,
   type Fact,
   FactList,
   formatLocalDateFull,
-  getRelativeDate,
   INITIAL_ROWS,
   MoreActionsMenu,
   PageSection,
@@ -53,13 +53,17 @@ import {
 import { useWorkspaceManagerAvailability } from '../../hooks/useWorkspaceManager';
 import { formatBytes } from '../../lib/formatNumbers';
 import {
-  detailSyncState,
+  sharedIdentityReason,
+  sharedIdentityTitle,
+} from '../../lib/sharedIdentity';
+import { shortCommit } from '../../lib/skills';
+import {
+  isSyncing,
   lastSyncResult,
   pushedSinceSync,
   requestedSyncEnded,
   searchDirectories,
   searchMirrors,
-  shortHead,
   sortedDirectories,
   sortedMirrors,
   syncTriggerLabel,
@@ -67,7 +71,10 @@ import {
 import {
   sizeLabel,
   sourcesLabel,
+  syncState,
   workspaceRowId,
+  WORKSPACES_BLOCKED,
+  WORKSPACES_VIA,
   type WorkspaceRow,
 } from '../../lib/workspaceList';
 import {
@@ -77,7 +84,11 @@ import {
   type WorkspaceDetail,
   type WorkspaceMirror,
 } from '../../lib/workspaceManager';
-import { sessionDetailRouteRef, workspaceEditRouteRef } from '../../routes';
+import {
+  sessionDetailRouteRef,
+  workspaceDetailRouteRef,
+  workspaceEditRouteRef,
+} from '../../routes';
 import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
 import { WorkspaceManagerSignIn } from '../WorkspaceManagerSignIn';
 import { useWorkspacesTabHref } from '../WorkspaceEditorPage';
@@ -89,13 +100,14 @@ const TOAST_TIMEOUT_MS = 6000;
 type MirrorRow = WorkspaceMirror & { id: string };
 type DirectoryRow = SessionDirectory & { id: string };
 
-/** A time as "3 hours ago", the full date behind it. */
+/** A time as "3 hours ago", kept current, the full date behind it. */
 function When({ at }: { at: string }) {
-  return (
-    <span title={formatLocalDateFull(at)}>
-      {getRelativeDate(at, new Date())}
-    </span>
-  );
+  return <DateComponent value={at} relative />;
+}
+
+/** The Organization a membership refusal names, as the manager words it. */
+function refusedOrganization(message: string): string | undefined {
+  return message.match(/\bOrganization ([\w.-]+)/)?.[1];
 }
 
 export type WorkspaceDetailPageProps = {
@@ -117,7 +129,56 @@ export function WorkspaceDetailPage(props: WorkspaceDetailPageProps) {
   return useMusterPluginApi() ? (
     <SignedInWorkspaceDetail {...props} />
   ) : (
-    <WorkspaceDetailContent {...props} needsManagerSignIn={false} />
+    <UnavailableWorkspace {...props} />
+  );
+}
+
+/**
+ * The frame of every state of the page: the breadcrumbs back to the
+ * Workspaces tab of the workspace's Organization.
+ */
+function useWorkspaceFrame(name: string, organization: string) {
+  const { customize, workspaces } = useCustomizePaths();
+  const tabHref = useWorkspacesTabHref(organization);
+  const breadcrumbs: BreadcrumbItem[] = [
+    { label: 'Customize', href: customize },
+    { label: 'Workspaces', href: workspaces ? tabHref : undefined },
+    { label: name },
+  ];
+  return {
+    tabHref,
+    frame: { breadcrumbs, documentTitle: [name, 'Workspaces'] },
+  };
+}
+
+/**
+ * Where workspaces cannot be read from this portal: no muster plugin, no
+ * workspace-manager in the installation's muster, or a muster acting under
+ * its shared identity — the list's and the editor's words.
+ */
+function UnavailableWorkspace({
+  installation,
+  organization,
+  name,
+  sharedIdentity = false,
+}: WorkspaceDetailPageProps & { sharedIdentity?: boolean }) {
+  const { tabHref, frame } = useWorkspaceFrame(name, organization);
+  return (
+    <ShellPage title={name} {...frame}>
+      <EmptyStateCard
+        title={
+          sharedIdentity
+            ? sharedIdentityTitle(WORKSPACES_BLOCKED, [installation])
+            : 'Workspaces are not available here'
+        }
+        description={
+          sharedIdentity
+            ? sharedIdentityReason(WORKSPACES_VIA, [installation])
+            : `${installation} does not run the workspace-manager for this portal.`
+        }
+        actions={<Link href={tabHref}>Back to workspaces</Link>}
+      />
+    </ShellPage>
   );
 }
 
@@ -139,8 +200,8 @@ function WorkspaceDetailContent({
 }: WorkspaceDetailPageProps & { needsManagerSignIn: boolean }) {
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
-  const { customize, workspaces } = useCustomizePaths();
-  const tabHref = useWorkspacesTabHref(organization);
+  const { tabHref, frame } = useWorkspaceFrame(name, organization);
+  const detailRoute = useRouteRef(workspaceDetailRouteRef);
   const editRoute = useRouteRef(workspaceEditRouteRef);
   const availability = useWorkspaceManagerAvailability(installation);
   // The sync this person asked for, until its outcome has been shown.
@@ -164,22 +225,26 @@ function WorkspaceDetailContent({
     }
   }, [workspace, requestedAt]);
 
-  const syncNow = useCallback(
-    () =>
-      sync.mutate(undefined, {
-        onSuccess: result => {
-          setEnded(undefined);
-          setRequestedAt(result.requestedAt || new Date().toISOString());
-        },
-        onError: error =>
-          toastApi.post({
-            title: `${name} could not be synced`,
-            description: error.message,
-            status: 'danger',
-          }),
-      }),
-    [sync, toastApi, name],
-  );
+  const syncNow = () => {
+    // A new request: the last one's outcome no longer stands.
+    setEnded(undefined);
+    sync.mutate(undefined, {
+      // The manager's time, which the last sync's is compared with; without
+      // it, the last sync the page knows.
+      onSuccess: result =>
+        setRequestedAt(
+          result.requestedAt ||
+            workspace?.lastSync?.time ||
+            new Date(0).toISOString(),
+        ),
+      onError: error =>
+        toastApi.post({
+          title: `${name} could not be synced`,
+          description: error.message,
+          status: 'danger',
+        }),
+    });
+  };
 
   const confirmDelete = () =>
     remove.mutate(undefined, {
@@ -194,16 +259,6 @@ function WorkspaceDetailContent({
       },
     });
 
-  const breadcrumbs: BreadcrumbItem[] = [
-    { label: 'Customize', href: customize },
-    { label: 'Workspaces', href: workspaces ? tabHref : undefined },
-    { label: name },
-  ];
-  const frame = {
-    breadcrumbs,
-    documentTitle: [name, 'Workspaces'],
-  };
-
   if (needsManagerSignIn) {
     return (
       <ShellPage title={name} {...frame}>
@@ -214,15 +269,17 @@ function WorkspaceDetailContent({
       </ShellPage>
     );
   }
-  if (availability.presence === 'missing') {
+  if (
+    availability.presence === 'missing' ||
+    availability.presence === 'sharedIdentity'
+  ) {
     return (
-      <ShellPage title={name} {...frame}>
-        <EmptyStateCard
-          title="Workspaces are not available here"
-          description={`${installation} does not run the workspace-manager.`}
-          actions={<Link href={tabHref}>Back to workspaces</Link>}
-        />
-      </ShellPage>
+      <UnavailableWorkspace
+        installation={installation}
+        organization={organization}
+        name={name}
+        sharedIdentity={availability.presence === 'sharedIdentity'}
+      />
     );
   }
   if (detail.error) {
@@ -230,8 +287,15 @@ function WorkspaceDetailContent({
     let title = `${name} could not be read`;
     let description = error.message;
     if (error.kind === 'not_member') {
-      title = `You are not a member of ${organization}`;
-      description = `${name} belongs to Organization ${organization}, and only its members can see its workspaces. An admin of ${organization} can add you.`;
+      // The manager names the workspace's Organization; the address's
+      // segment is only what the link said.
+      const owner = refusedOrganization(error.message);
+      title = owner
+        ? `You are not a member of ${owner}`
+        : 'You are not a member of this workspace’s Organization';
+      description = owner
+        ? `${name} belongs to Organization ${owner}, and only its members can see its workspaces. An admin of ${owner} can add you.`
+        : `Only the members of the Organization ${name} belongs to can see it. An admin of that Organization can add you.`;
     } else if (error.kind === 'not_found') {
       title = `No workspace ${name} on ${installation}`;
       description =
@@ -259,10 +323,21 @@ function WorkspaceDetailContent({
     );
   }
 
-  const state = detailSyncState(workspace);
-  const isSyncing = Boolean(
-    workspace.activeSync || workspace.syncRequest || requestedAt,
-  );
+  // The address names the workspace's Organization; a link that names
+  // another goes to the workspace's own address.
+  if (workspace.organization !== organization) {
+    const canonical = detailRoute?.({
+      installation,
+      organization: workspace.organization,
+      name,
+    });
+    if (canonical) {
+      return <Navigate to={canonical} replace />;
+    }
+  }
+
+  const state = syncState(workspace);
+  const syncing = isSyncing(workspace) || Boolean(requestedAt);
   const row: WorkspaceRow = {
     ...workspace,
     installation,
@@ -283,10 +358,10 @@ function WorkspaceDetailContent({
       )}
       <Button
         variant="primary"
-        isDisabled={workspace.deleting || isSyncing || sync.isPending}
+        isDisabled={workspace.deleting || syncing || sync.isPending}
         onPress={syncNow}
       >
-        {isSyncing || sync.isPending ? 'Syncing…' : 'Sync now'}
+        {syncing || sync.isPending ? 'Syncing…' : 'Sync now'}
       </Button>
     </>
   );
@@ -514,7 +589,7 @@ function RepositoriesSection({
     mirrors.length > 0,
   );
   const pushedSince = mirrors.filter(mirror =>
-    pushedSinceSync(mirror, pushes.data),
+    pushedSinceSync(mirror, pushes.data?.pushes),
   ).length;
 
   const columns: ColumnConfig<MirrorRow>[] = [
@@ -528,7 +603,7 @@ function RepositoriesSection({
         <CellText
           title={mirror.repository}
           description={[
-            ...(pushedSinceSync(mirror, pushes.data)
+            ...(pushedSinceSync(mirror, pushes.data?.pushes)
               ? ['pushed since the last sync']
               : []),
             ...(mirror.droppedAt
@@ -550,7 +625,9 @@ function RepositoriesSection({
       defaultWidth: '1fr',
       cell: mirror => (
         <Cell>
-          <code title={mirror.head}>{shortHead(mirror.head) ?? '—'}</code>
+          <code title={mirror.head}>
+            {mirror.head ? shortCommit(mirror.head) : '—'}
+          </code>
         </Cell>
       ),
     },
@@ -610,11 +687,16 @@ function RepositoriesSection({
   return (
     <PageSection
       title={`Repositories (${mirrors.length})`}
-      description={
+      description={[
         pushedSince > 0
           ? `${pushedSince} pushed to since the last sync; a Session starting now fetches them first.`
-          : 'As the last sync mirrored them.'
-      }
+          : 'As the last sync mirrored them.',
+        ...(pushes.data?.partial
+          ? [
+              'Pushes since the last sync are marked for the first 5,000 repositories only.',
+            ]
+          : []),
+      ].join(' ')}
     >
       <Flex direction="column" gap="3">
         {(mirrors.length > SEARCH_MIN || search) && (
