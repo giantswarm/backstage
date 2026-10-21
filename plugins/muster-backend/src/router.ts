@@ -160,6 +160,24 @@ function isResourceName(value: string): boolean {
   );
 }
 
+/** How long a tool name `/usage` narrows to may be. */
+const MAX_USAGE_TOOL_LENGTH = 512;
+
+/**
+ * Whether a value can be the tool label muster records a call under: any
+ * name muster exposes, whatever characters its downstream server gave it, so
+ * only what cannot be one is refused (empty, overlong, control characters).
+ * The PromQL selector escapes the rest.
+ */
+function isToolLabel(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= MAX_USAGE_TOOL_LENGTH &&
+    // eslint-disable-next-line no-control-regex
+    !/[\u0000-\u001f\u007f]/.test(value)
+  );
+}
+
 /**
  * Every value of a query parameter that may repeat (`?toolset=a&toolset=b`),
  * in order, read from the raw query string. `req.query` is the root router's
@@ -805,6 +823,7 @@ export async function createRouter(
    *
    * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
    * family's instances included, and lists every tool they were called with.
+   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
    */
   router.get('/usage', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -828,6 +847,10 @@ export async function createRouter(
         throw new InputError('server must be an MCPServer name');
       }
     }
+    const tool = singleQueryValue(req.query.tool, 'tool');
+    if (tool !== undefined && !isToolLabel(tool)) {
+      throw new InputError('tool must be a tool name');
+    }
     res.json(
       await getMcpUsage(
         client,
@@ -835,6 +858,7 @@ export async function createRouter(
         readCallOptions(req, installation),
         hours ?? 24,
         servers,
+        tool,
       ),
     );
   });

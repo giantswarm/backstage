@@ -64,6 +64,7 @@ export { useServerPageLinks } from './useServerPageLinks';
 export type {
   ServerPageLinks,
   ServerPageTab,
+  ToolPageTab,
   ToolsListView,
 } from './useServerPageLinks';
 export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';

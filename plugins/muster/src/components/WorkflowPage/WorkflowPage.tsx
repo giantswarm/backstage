@@ -54,6 +54,7 @@ import { WorkflowDetailsTab } from './WorkflowDetailsTab';
 import { WorkflowManifestDialog } from './WorkflowManifestDialog';
 import { WorkflowOverviewTab } from './WorkflowOverviewTab';
 import { WorkflowRunTab } from './WorkflowRunTab';
+import { useRunLeaveGuard } from '../ToolDetail';
 import { workflowRunsAsCaller } from './WorkflowRunTab/workflowRunsAsCaller';
 import { WorkflowUsageTab } from './WorkflowUsageTab';
 import {
@@ -61,7 +62,6 @@ import {
   WorkflowPageTargetProvider,
 } from './workflowPageTarget';
 import { WORKFLOW_PAGE_TABS } from './workflowTabs';
-import { useRunLeaveGuard } from './useRunLeaveGuard';
 import { useWorkflowTool } from './useWorkflowTool';
 
 export type WorkflowPageProps = {
@@ -201,7 +201,7 @@ function WorkflowPageContent({
 
   // A run in flight shows its result only on Run it: leaving asks first.
   const [running, setRunning] = useState(false);
-  const leaveGuard = useRunLeaveGuard(running);
+  const leaveGuard = useRunLeaveGuard(running, 'workflow');
 
   const target = useMemo<WorkflowPageTarget>(
     () => ({

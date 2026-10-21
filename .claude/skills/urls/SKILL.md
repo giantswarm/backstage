@@ -32,7 +32,7 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/connectors[/infrastructure|/internal]
 /customize/connectors/new[/auth|/verify]
 /customize/connectors/<inst>/<server>[/resources|/prompts|/usage|/used-by|/instances|/details]
-/customize/connectors/<inst>/<server>/tools/<tool>
+/customize/connectors/<inst>/<server>/tools/<tool>[/run|/usage]
 /customize/connectors/<inst>/<server>/edit[/auth|/verify]
 /customize/models[/new]
 /customize/models/<inst>/<ns>/<name>[/usage|/used-by]

@@ -65,7 +65,7 @@ function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
   return (
     <MusterSubPage context={CONTEXT} installation={installation}>
       <Routes>
-        <Route path=":server/tools/:tool" element={<ToolPage />} />
+        <Route path=":server/tools/:tool/*" element={<ToolPage />} />
         <Route path=":server/edit/*">{wizardSteps}</Route>
         <Route path=":server/*" element={<ConnectorPage usedBy={usedBy} />} />
         {/* An installation alone names no page. */}

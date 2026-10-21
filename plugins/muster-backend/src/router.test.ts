@@ -231,6 +231,10 @@ describe('createRouter', () => {
     ['the month window', '/usage?window=month'],
     ['a server that is not a resource name', '/usage?server=a%22b'],
     ['an empty server', '/usage?server='],
+    ['a tool with a control character', '/usage?tool=a%0Ab'],
+    ['an overlong tool', `/usage?tool=${'t'.repeat(513)}`],
+    ['an empty tool', '/usage?tool='],
+    ['two tools', '/usage?tool=a&tool=b'],
     [
       'more servers than a read may name',
       `/usage?${Array.from({ length: 257 }, (_, i) => `server=s${i}`).join('&')}`,
@@ -259,9 +263,46 @@ describe('createRouter', () => {
         expect.anything(),
         hours,
         [],
+        undefined,
       );
     },
   );
+
+  it('takes any tool name muster may expose, left to the escaping', async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+    const response = await request(app).get(
+      `/usage?tool=${encodeURIComponent('x_legacy_get:item@v1 "a"}')}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      24,
+      [],
+      'x_legacy_get:item@v1 "a"}',
+    );
+  });
+
+  it('narrows usage to one tool of a connector', async () => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+    const response = await request(app).get(
+      '/usage?hours=720&server=kagi&tool=x_kagi_search',
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      720,
+      ['kagi'],
+      'x_kagi_search',
+    );
+  });
 
   it("narrows usage to every server named, past the query parser's 20 repeats", async () => {
     mockGetMcpUsage.mockResolvedValueOnce({ available: false });
@@ -281,6 +322,7 @@ describe('createRouter', () => {
       expect.anything(),
       720,
       servers,
+      undefined,
     );
   });
 
