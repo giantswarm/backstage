@@ -278,6 +278,25 @@ describe('NewAgentPage', () => {
     expect(egress).not.toHaveAttribute('aria-invalid');
   });
 
+  it('refuses a tls:// service without a port, naming why, and takes it with one', async () => {
+    await renderPage();
+    await userEvent.click(screen.getByText('More options'));
+    const egress = screen.getByLabelText(/^Extra egress origins/);
+
+    await userEvent.type(egress, 'tls://db.example.com');
+    await userEvent.tab();
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+    expect(
+      screen.getAllByText(
+        /"tls:\/\/db\.example\.com" has no port: a tls:\/\/ origin requires one/,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    await userEvent.type(egress, ':5432');
+    expect(egress).toHaveValue('tls://db.example.com:5432');
+    expect(egress).not.toHaveAttribute('aria-invalid');
+  });
+
   it('says nothing about an empty Name that was only tabbed through', async () => {
     await renderPage();
     const name = screen.getByLabelText(/^Name/);
