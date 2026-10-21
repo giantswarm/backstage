@@ -88,7 +88,7 @@ describe('syncTriggerLabel', () => {
     );
     expect(syncTriggerLabel('change')).toBe('A change to the workspace');
     expect(syncTriggerLabel('sessionDeleted')).toBe(
-      'A deleted Session’s directory',
+      'A deleted session’s directory',
     );
     expect(syncTriggerLabel(undefined)).toBeUndefined();
   });

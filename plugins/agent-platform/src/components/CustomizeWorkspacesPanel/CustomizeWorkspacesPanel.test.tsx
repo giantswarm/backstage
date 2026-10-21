@@ -170,7 +170,7 @@ describe('CustomizeWorkspacesPanel', () => {
     const row = screen.getByRole('row', { name: /docs/ });
     expect(within(row).getByText(/ of 16 GiB ↑$/)).toBeInTheDocument();
     expect(
-      within(row).getByText('Grown from 8 GiB at the last sync'),
+      within(row).getByText('Grown from 8 GiB at the last synchronization'),
     ).toBeInTheDocument();
   });
 

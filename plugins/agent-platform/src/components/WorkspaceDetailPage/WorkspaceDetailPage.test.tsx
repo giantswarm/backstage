@@ -312,7 +312,9 @@ describe('WorkspaceDetailPage', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      within(region).getByText('A retry after the failed sync before it'),
+      within(region).getByText(
+        'A retry after the failed synchronization before it',
+      ),
     ).toBeInTheDocument();
   });
 

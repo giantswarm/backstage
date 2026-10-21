@@ -398,7 +398,13 @@ const CELL = { padding: '4px 8px 4px 0', verticalAlign: 'middle' } as const;
 
 /** The listing's column names, which a screen reader reads with each cell. */
 function RepositoryColumns() {
-  const columns = ['Repository', 'Language', 'Topics', 'Last push', 'Selection'];
+  const columns = [
+    'Repository',
+    'Language',
+    'Topics',
+    'Last push',
+    'Selection',
+  ];
   return (
     <thead>
       <tr style={{ borderBottom: '1px solid var(--bui-border-1)' }}>

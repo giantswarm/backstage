@@ -135,7 +135,13 @@ test('the repository picker names its columns, and a pick by name reaches the pr
   const table = source.getByRole('table', { name: `Repositories of ${OWNER}` });
   await expect(
     table.getByRole('columnheader').allTextContents(),
-  ).resolves.toEqual(['Repository', 'Language', 'Topics', 'Last push', 'Selection']);
+  ).resolves.toEqual([
+    'Repository',
+    'Language',
+    'Topics',
+    'Last push',
+    'Selection',
+  ]);
 
   await table.getByRole('checkbox', { name: 'beta' }).check();
   await expect(source.getByTestId('repository-summary')).toHaveText(
