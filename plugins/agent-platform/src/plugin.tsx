@@ -61,6 +61,7 @@ import {
   usageConversationsRouteRef,
   usageCostRouteRef,
   usageRouteRef,
+  workspaceDetailRouteRef,
   workspaceEditRouteRef,
   workspacesRouteRef,
   newWorkspaceRouteRef,
@@ -145,9 +146,9 @@ const modelsSubPage = SubPageBlueprint.make({
 });
 
 // The Customize screen's Workspaces tab: the create flow
-// (`/customize/workspaces/new`) and one workspace's edit
-// (`/customize/workspaces/<installation>/<organization>/<name>/edit`), driven
-// by WorkspacesRouter.
+// (`/customize/workspaces/new`), one workspace's page
+// (`/customize/workspaces/<installation>/<organization>/<name>`) and its edit
+// (`…/<name>/edit`), driven by WorkspacesRouter.
 const workspacesSubPage = SubPageBlueprint.make({
   name: 'workspaces',
   attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
@@ -465,6 +466,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     modelCache: modelCacheRouteRef,
     workspaces: workspacesRouteRef,
     newWorkspace: newWorkspaceRouteRef,
+    workspaceDetail: workspaceDetailRouteRef,
     workspaceEdit: workspaceEditRouteRef,
   },
   // All but `customize` and `newSession` carry a `defaultTarget`, so they
