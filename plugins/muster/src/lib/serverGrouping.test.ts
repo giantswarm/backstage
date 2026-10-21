@@ -16,7 +16,7 @@ import {
   presenceByMc,
   selectRepresentative,
   connectorDisplayNameOn,
-  connectorPageKey,
+  connectorPageKeys,
   connectorDisplayNames,
   mcpServerDisplayNames,
   serverRowDisplayName,
@@ -628,32 +628,51 @@ describe('connectorDisplayNames', () => {
   });
 });
 
-describe('connectorPageKey', () => {
-  const servers = [
+describe('connectorPageKeys', () => {
+  const keys = connectorPageKeys([
     makeServer({ name: 'mcp-github' }),
     makeServer({ name: 'k8s-gazelle', family: 'kubernetes' }),
     makeServer({ name: 'k8s-wombat', family: 'kubernetes' }),
     // Shadowed: the family's page and muster's own take these names.
     makeServer({ name: 'kubernetes' }),
     makeServer({ name: 'muster' }),
-  ];
+    makeServer({ name: 'muster-a', family: 'muster' }),
+  ]);
 
-  it('is a singular server’s own name', () => {
-    expect(connectorPageKey(servers, 'mcp-github')).toBe('mcp-github');
+  it('keys a singular server by its own name', () => {
+    expect(keys.get('mcp-github')).toBe('mcp-github');
   });
 
-  it('is the family’s name for each of its instances', () => {
-    expect(connectorPageKey(servers, 'k8s-gazelle')).toBe('kubernetes');
-    expect(connectorPageKey(servers, 'k8s-wombat')).toBe('kubernetes');
+  it('keys each instance of a family by the family’s name', () => {
+    expect(keys.get('k8s-gazelle')).toBe('kubernetes');
+    expect(keys.get('k8s-wombat')).toBe('kubernetes');
   });
 
-  it('is undefined for a server the installation does not run', () => {
-    expect(connectorPageKey(servers, 'removed-server')).toBeUndefined();
-    expect(connectorPageKey([], 'mcp-github')).toBeUndefined();
+  it('has no key for a server the installation does not run', () => {
+    expect(keys.has('removed-server')).toBe(false);
+    expect(connectorPageKeys([]).size).toBe(0);
   });
 
-  it('is undefined for a server whose page another one takes', () => {
-    expect(connectorPageKey(servers, 'kubernetes')).toBeUndefined();
-    expect(connectorPageKey(servers, 'muster')).toBeUndefined();
+  it('has no key for a server whose page another one takes', () => {
+    expect(keys.has('kubernetes')).toBe(false);
+    expect(keys.has('muster')).toBe(false);
+    expect(keys.has('muster-a')).toBe(false);
+  });
+
+  it('agrees with the page each key opens', () => {
+    const servers = [
+      makeServer({ name: 'mcp-github' }),
+      makeServer({ name: 'k8s-gazelle', family: 'kubernetes' }),
+    ];
+    for (const [name, key] of connectorPageKeys(servers)) {
+      const row = findServerRow(servers, key);
+      let shown: string[] = [];
+      if (row?.kind === 'family') {
+        shown = row.servers.map(server => server.getName());
+      } else if (row?.kind === 'server') {
+        shown = [row.server.getName()];
+      }
+      expect(shown).toContain(name);
+    }
   });
 });

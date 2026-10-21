@@ -743,6 +743,36 @@ describe('ConnectorPage Usage tab', () => {
     );
   });
 
+  it('covers the window Usage → Connectors linked with; Details keeps 30 days', async () => {
+    const api = await renderAt(`${BASE}/jira/usage?window=90d`);
+
+    expect(
+      await screen.findByText(
+        "Every caller's tool calls to this connector over the last 90 days on gazelle.",
+      ),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 2160,
+      servers: ['jira'],
+    });
+    // The way back opens Usage → Connectors on the same window.
+    expect(screen.getByRole('link', { name: 'Open in Usage' })).toHaveAttribute(
+      'href',
+      '/usage/connectors?installation=gazelle&window=90d',
+    );
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await screen.findByText('Calls, last 30 days');
+    await waitFor(() =>
+      expect(api.getMcpUsage).toHaveBeenLastCalledWith({
+        installation: 'gazelle',
+        hours: 720,
+        servers: ['jira'],
+      }),
+    );
+  });
+
   it('reads the usage once for the tab and the Details facts', async () => {
     const api = await renderAt(`${BASE}/jira/usage`);
     await screen.findByText('1 of 2');

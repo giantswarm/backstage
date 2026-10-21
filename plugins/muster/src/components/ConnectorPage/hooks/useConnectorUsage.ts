@@ -26,21 +26,28 @@ export interface ConnectorUsage {
 }
 
 /**
- * Every caller's tool calls to one connector over the last
- * {@link CONNECTOR_USAGE_DAYS} days, from muster's dispatch metrics narrowed
- * to its MCPServers: the connector's Usage tab, its Details' calls and its
- * tools' pages read this one query, so they agree and share one request.
- * Read through the muster session, so disabled without one, and for muster
- * itself.
+ * Every caller's tool calls to one connector over the last `days` (by
+ * default {@link CONNECTOR_USAGE_DAYS}), from muster's dispatch metrics
+ * narrowed to its MCPServers: the connector's Usage tab, its Details' calls
+ * and its tools' pages read this one query, so they agree and share one
+ * request. Read through the muster session, so disabled without one, and for
+ * muster itself.
  */
 export function useConnectorUsage(
   row: ServerPageRow | undefined,
   installation: string | undefined,
-  { enabled }: { enabled: boolean },
+  {
+    enabled,
+    days = CONNECTOR_USAGE_DAYS,
+  }: {
+    enabled: boolean;
+    /** The window, in days: the Usage tab's follows Usage → Connectors'. */
+    days?: number;
+  },
 ): ConnectorUsage {
   const musterApi = useApi(musterApiRef);
   const servers = useMemo(() => (row ? usageServerNames(row) : []), [row]);
-  const hours = CONNECTOR_USAGE_DAYS * 24;
+  const hours = days * 24;
   const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'mcp-usage', installation, hours, servers],
     queryFn: () => musterApi.getMcpUsage({ installation, hours, servers }),

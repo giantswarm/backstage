@@ -1,5 +1,10 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  formatUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+  type UsageWindowDays,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { withQuery } from '../../lib/installationLink';
 import type { ConnectorPageTabPath } from '../ConnectorPage/connectorTabs';
 import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
@@ -22,12 +27,16 @@ export interface ToolsListView {
 export interface ServerPageLinks {
   /**
    * A server page -- its Tools, or another tab; `q` pre-fills the Tools
-   * search and `effect` its "What it does" filter.
+   * search and `effect` its "What it does" filter, and `usageWindow` the
+   * window its Usage tab covers (the default 30 days names none).
    */
   server: (
     server: string,
     installation: string,
-    options?: { tab?: ServerPageTab } & ToolsListView,
+    options?: {
+      tab?: ServerPageTab;
+      usageWindow?: UsageWindowDays;
+    } & ToolsListView,
   ) => string | undefined;
   /**
    * A tool's page beneath its server; `q` and `effect` are the Tools search
@@ -62,6 +71,9 @@ export function useServerPageLinks(): ServerPageLinks {
         return withQuery(options.tab ? `${base}/${options.tab}` : base, {
           q: options.q,
           effect: options.effect?.join(','),
+          [USAGE_WINDOW_PARAM]: options.usageWindow
+            ? formatUsageWindowParam(options.usageWindow)
+            : undefined,
         });
       },
       tool: (server, tool, installation, options = {}) =>

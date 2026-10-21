@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { makeStyles, Theme } from '@material-ui/core';
 import { Progress } from '@backstage/core-components';
 import { Box, Link, Text } from '@backstage/ui';
@@ -9,6 +10,7 @@ import {
   formatSeconds,
   parseUsageWindowParam,
   USAGE_WINDOW_PARAM,
+  type UsageWindowDays,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   SectionHeader,
@@ -18,7 +20,7 @@ import {
 
 import { musterApiRef } from '../../apis';
 import { connectorNames } from '../../lib/connectorName';
-import { connectorPageKey } from '../../lib/serverGrouping';
+import { connectorPageKeys } from '../../lib/serverGrouping';
 import type { MCPServer } from '../../lib/k8s';
 import type { McpUsage } from '../../apis';
 import {
@@ -50,9 +52,9 @@ import { SessionGate, Stat, useServerPageLinks } from '../shared';
  * an hourly-bucketed chart under daily ones. The page's windows are whole
  * days, so the buckets stay daily.
  */
-function useWindowHours(): number {
+function useWindowDays(): UsageWindowDays {
   const [searchParams] = useSearchParams();
-  return parseUsageWindowParam(searchParams.get(USAGE_WINDOW_PARAM)) * 24;
+  return parseUsageWindowParam(searchParams.get(USAGE_WINDOW_PARAM));
 }
 
 /**
@@ -106,22 +108,24 @@ type ServerRow = McpUsage['servers'][number] & { id: string };
 
 function UsageBody({
   data,
-  hours,
+  windowDays,
   installation,
-  servers = [],
+  servers,
 }: {
   data: McpUsage;
-  hours: number;
+  /** The Usage screen's window, which each connector's link carries. */
+  windowDays: UsageWindowDays;
   /** The installation the figures are read on, whose connector pages rows open. */
   installation: string;
   /**
    * The installation's MCPServer CRs, to name each connector as Customize
    * does and find the page that shows its usage.
    */
-  servers?: MCPServer[];
+  servers: MCPServer[];
 }) {
   const classes = useStyles();
   const links = useServerPageLinks();
+  const pageKeys = useMemo(() => connectorPageKeys(servers), [servers]);
   const names = connectorNames(
     [
       ...(data.servers ?? []).map(entry => entry.server),
@@ -144,14 +148,17 @@ function UsageBody({
   });
   const serverColumns = useUsageColumns(serverRows, {
     label: 'Connector',
-    // To the connector's Usage tab: a family instance's is its family's,
-    // which lists each instance. A row no page shows (muster's own tools, a
-    // server since removed) stays plain text.
+    // To the connector's Usage tab over the same window: a family instance's
+    // is its family's, which lists each instance. A row no page shows
+    // (muster's own tools, a server since removed) stays plain text.
     renderName: row => {
       const name = names.get(row.server) ?? row.server;
-      const key = connectorPageKey(servers, row.server);
+      const key = pageKeys.get(row.server);
       const href = key
-        ? links.server(key, installation, { tab: 'usage' })
+        ? links.server(key, installation, {
+            tab: 'usage',
+            usageWindow: windowDays,
+          })
         : undefined;
       return href ? <Link href={href}>{name}</Link> : name;
     },
@@ -168,8 +175,6 @@ function UsageBody({
 
   const { totals } = data;
   const errorRatio = errorRatioFigure(totals.error_ratio);
-  // One fixed window now, so the label is derived rather than looked up.
-  const windowDays = Math.round(hours / 24);
   const rangeLabel = `${windowDays}d`;
   const windowNote = `over the last ${windowDays} days`;
 
@@ -277,13 +282,18 @@ function UsageBody({
 function McpUsageBody() {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
-  const { activeInstallation, mcpServers } = useMusterInstance();
+  const {
+    activeInstallation,
+    mcpServers,
+    isLoading: isLoadingServers,
+  } = useMusterInstance();
   // The usage route reads muster's own metrics through the live session; an
   // installation whose muster the backend cannot reach gets the note instead
   // of a request that can only fail.
   const session = useMusterSession();
   const unreachable = isUnreachableSession(session);
-  const hours = useWindowHours();
+  const windowDays = useWindowDays();
+  const hours = windowDays * 24;
 
   const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'mcp-usage', activeInstallation, hours],
@@ -305,7 +315,9 @@ function McpUsageBody() {
         context="Usage metrics need a muster session."
       />
     );
-  } else if (!activeInstallation || isLoading) {
+  } else if (!activeInstallation || isLoading || isLoadingServers) {
+    // The servers too: each connector's link waits for them, so the table
+    // never shows its names as text that turn into links a moment later.
     body = <Progress />;
   } else if (error) {
     body = (
@@ -317,7 +329,7 @@ function McpUsageBody() {
     body = (
       <UsageBody
         data={data}
-        hours={hours}
+        windowDays={windowDays}
         installation={activeInstallation}
         servers={mcpServers}
       />
@@ -339,9 +351,7 @@ function McpUsageBody() {
         as="h3"
         variant="title-x-small"
         title="Connector tool calls on this environment"
-        description={`This covers every caller's tool calls, not only yours, over the last ${Math.round(
-          hours / 24,
-        )} days.`}
+        description={`This covers every caller's tool calls, not only yours, over the last ${windowDays} days.`}
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this

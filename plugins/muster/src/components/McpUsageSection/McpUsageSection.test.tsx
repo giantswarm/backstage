@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { act, screen } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
@@ -435,6 +435,16 @@ describe('McpUsageSection connector links', () => {
     );
   });
 
+  it('carries the Usage screen’s window to the tab, which then covers it', async () => {
+    path = '/usage/connectors?window=90d';
+    await renderWith(['mcp-github']);
+
+    expect(screen.getByRole('link', { name: 'mcp-github' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/gazelle/mcp-github/usage?window=90d',
+    );
+  });
+
   it("links each instance of a family to the family's Usage tab", async () => {
     // Instances have no page of their own; the family's Usage tab lists each
     // one's calls in its Instances table.
@@ -446,6 +456,21 @@ describe('McpUsageSection connector links', () => {
         '/customize/connectors/gazelle/kubernetes/usage',
       );
     }
+  });
+
+  it('waits for the installation’s servers before showing the table', async () => {
+    // Otherwise the names would show as text and turn into links a moment
+    // later.
+    const api = {
+      getMcpUsage: jest.fn().mockResolvedValue(usageOn(['mcp-github'])),
+      filterTools: jest.fn().mockResolvedValue({ tools: [] }),
+      signIn: jest.fn(),
+    };
+    mountSection(api, { ...reachable(), isLoading: true });
+
+    await waitFor(() => expect(api.getMcpUsage).toHaveBeenCalled());
+    await act(() => new Promise(resolve => setTimeout(resolve, 20)));
+    expect(screen.queryByText('mcp-github')).toBeNull();
   });
 
   it('leaves a row with no connector page unlinked', async () => {

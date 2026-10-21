@@ -480,26 +480,25 @@ export function findServerRow(
 }
 
 /**
- * The `:server` segment of the page that shows the MCPServer `name`'s usage
- * on this installation: its family's for a family member (instances have no
- * page of their own; the family's Usage tab lists each one), else its own.
- * Undefined where no page shows it: no such MCPServer (muster's own tools, a
- * server since removed), or one whose page is shadowed by muster's or by a
- * family of the same name.
+ * The `:server` segment of the page that shows each MCPServer's usage on one
+ * installation, by CR name: the family's for a family member (instances have
+ * no page of their own; the family's Usage tab lists each one), else its own.
+ * A server is left out where no page shows it: one named like a family, or
+ * muster's own page, which takes that name. A name not in the map (muster's
+ * own tools, a server since removed) has no page either.
  */
-export function connectorPageKey(
-  servers: MCPServer[],
-  name: string,
-): string | undefined {
-  const server = servers.find(s => s.getName() === name);
-  if (!server) {
-    return undefined;
+export function connectorPageKeys(
+  servers: readonly MCPServer[],
+): Map<string, string> {
+  const families = new Set(servers.map(server => server.getFamily()));
+  const keys = new Map<string, string>();
+  for (const server of servers) {
+    const key = server.getFamily() ?? server.getName();
+    const shadowed =
+      key === MUSTER_SERVER_KEY || (!server.getFamily() && families.has(key));
+    if (!shadowed) {
+      keys.set(server.getName(), key);
+    }
   }
-  const key = server.getFamily() ?? name;
-  const row = findServerRow(servers, key);
-  const shows =
-    row?.kind === 'family'
-      ? row.servers.includes(server)
-      : row?.kind === 'server' && row.server === server;
-  return shows ? key : undefined;
+  return keys;
 }

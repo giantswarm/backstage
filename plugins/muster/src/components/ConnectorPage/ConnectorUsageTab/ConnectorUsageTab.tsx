@@ -4,6 +4,9 @@ import { Alert, Flex, Link, Text } from '@backstage/ui';
 import {
   formatCount,
   formatSeconds,
+  formatUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+  type UsageWindowDays,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   EmptyStateCard,
@@ -149,6 +152,11 @@ export type ConnectorUsageTabProps = {
   /** The connector's key in the address, which its tools' pages sit under. */
   server: string;
   installation: string;
+  /**
+   * The window the figures cover: Usage → Connectors' when it linked here
+   * with one, else {@link CONNECTOR_USAGE_DAYS}.
+   */
+  days?: UsageWindowDays;
   usage: ConnectorUsage;
   tools: ServerTools;
   /** Whether a tool's name resolves to this connector, by its prefix. */
@@ -159,7 +167,7 @@ export type ConnectorUsageTabProps = {
 
 /**
  * A connector's Usage tab: every caller's tool calls to it over the last 30
- * days, from muster's dispatch metrics — how many, how many failed, how fast
+ * days (or the window Usage → Connectors linked here with), from muster's dispatch metrics — how many, how many failed, how fast
  * it answered, which of its tools were used and, for a family, on which
  * instance. Laid out as the model page's Usage tab: the window first, the
  * tiles, the chart, then the tables, and a way to the Usage page.
@@ -168,6 +176,7 @@ export function ConnectorUsageTab({
   row,
   server,
   installation,
+  days = CONNECTOR_USAGE_DAYS,
   usage: { usage, isLoading, error },
   tools,
   ownsTool,
@@ -176,7 +185,9 @@ export function ConnectorUsageTab({
   const links = useServerPageLinks();
   const usageRoute = useRouteRef(usageConnectorsExternalRouteRef);
   const usageHref = usageRoute
-    ? withInstallationQuery(usageRoute(), installation)
+    ? withInstallationQuery(usageRoute(), installation, {
+        [USAGE_WINDOW_PARAM]: formatUsageWindowParam(days),
+      })
     : undefined;
 
   const catalogue = useMemo<ToolCatalogue>(
@@ -249,15 +260,15 @@ export function ConnectorUsageTab({
 
   const { totals } = usage;
   const errorRatio = errorRatioFigure(totals.error_ratio);
-  const sub = `every caller's, last ${CONNECTOR_USAGE_DAYS} days`;
+  const sub = `every caller's, last ${days} days`;
 
   return (
     <Flex direction="column" gap="4">
       <Text as="p" variant="body-medium" color="secondary">
-        Every caller's tool calls to this connector over the last{' '}
-        {CONNECTOR_USAGE_DAYS} days on {installation}.
+        Every caller's tool calls to this connector over the last {days} days on{' '}
+        {installation}.
       </Text>
-      <McpDataStartNote usage={usage} windowDays={CONNECTOR_USAGE_DAYS} />
+      <McpDataStartNote usage={usage} windowDays={days} />
 
       <StatGrid>
         <Stat
@@ -287,7 +298,7 @@ export function ConnectorUsageTab({
           label="Tools used"
           hint={toolsUsedHint(catalogue.complete, tools.truncated)}
           value={toolsUsedLine(toolRows, catalogue.complete)}
-          sub={`last ${CONNECTOR_USAGE_DAYS} days`}
+          sub={`last ${days} days`}
         />
       </StatGrid>
 
@@ -314,7 +325,7 @@ export function ConnectorUsageTab({
         </>
       ) : (
         <EmptyStateCard
-          title={`No tool calls in the last ${CONNECTOR_USAGE_DAYS} days`}
+          title={`No tool calls in the last ${days} days`}
           description="Calls from agents, sessions and this portal show here once they reach this connector."
         />
       )}

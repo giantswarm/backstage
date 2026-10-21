@@ -370,15 +370,16 @@ test("a connector's Usage tab shows its tool calls over 30 days, or why it canno
     );
     await connectToMuster(admin, table.or(noCalls));
     await expect(table.or(noCalls)).toBeVisible({ timeout: 60_000 });
-    const kubernetes = admin.getByRole('link', {
+    // The rows come with the table, so whether the instance has one is known
+    // once it shows; its link is then asserted, waiting for it.
+    const kubernetes = admin.getByRole('rowheader', {
       name: SHOWN.kubernetes,
       exact: true,
     });
     if ((await kubernetes.count()) > 0) {
-      await expect(kubernetes).toHaveAttribute(
-        'href',
-        `${connectorPages}/${KUBERNETES_FAMILY}/usage`,
-      );
+      await expect(
+        kubernetes.getByRole('link', { name: SHOWN.kubernetes, exact: true }),
+      ).toHaveAttribute('href', `${connectorPages}/${KUBERNETES_FAMILY}/usage`);
     }
   }
 });
