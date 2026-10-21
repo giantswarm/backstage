@@ -87,7 +87,7 @@ describe('MusterMcpClient gated sign-ins', () => {
 
     const error = await client
       .callTool(LIST, {}, { authToken: 'alice' })
-      .catch(e => e);
+      .catch((e: MusterAuthRequiredError) => e);
 
     expect(error).toBeInstanceOf(MusterAuthRequiredError);
     expect(error).toMatchObject({
@@ -314,9 +314,9 @@ describe('MusterMcpClient gated sign-ins', () => {
     await expect(
       client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
     ).rejects.toMatchObject({ authUrl: AUTH_URL });
-    const reload = await client
+    const reload = (await client
       .callTool(LIST, {}, { authToken: jwt('alice', 2) })
-      .catch(e => e);
+      .catch((e: unknown) => e)) as MusterAuthRequiredError;
 
     expect(execute).toHaveBeenCalledTimes(1);
     expect(reload).toBeInstanceOf(MusterAuthRequiredError);
