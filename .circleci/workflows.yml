@@ -78,7 +78,7 @@ jobs:
   # repo redirects its bespoke toolchain by editing those scripts, not this job.
   node-build:
     docker:
-    - image: cimg/node:24.21.0
+    - image: cimg/node:24.22.1
     resource_class: large
     # Worker counts sized from the resource class's memory, not from the CPUs
     # the tools detect (the Docker executor shows the host's count to
@@ -106,7 +106,7 @@ jobs:
     # partially and skip postinstall (patch-package), see devctl#2183.
     - restore_cache:
         keys:
-        - node-build-yarn-v2-24.21.0-{{ checksum "yarn.lock" }}
+        - node-build-yarn-v2-24.22.1-{{ checksum "yarn.lock" }}
     - run:
         name: Install dependencies
         command: yarn install --immutable
@@ -143,7 +143,7 @@ jobs:
     # incremental caches those steps write under node_modules/.cache -- the
     # compute-side analogue of persisting $GOCACHE. Write-once per lockfile.
     - save_cache:
-        key: node-build-yarn-v2-24.21.0-{{ checksum "yarn.lock" }}
+        key: node-build-yarn-v2-24.22.1-{{ checksum "yarn.lock" }}
         paths:
         - node_modules
         - .yarn/install-state.gz
