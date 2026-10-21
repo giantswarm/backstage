@@ -340,10 +340,12 @@ function AgentLine({
   const { row, pinned } = behind;
   const updatable = verdict.kind === 'apply' || verdict.kind === 'commit';
 
+  // A row still being checked is laid out as the updatable row it most often
+  // becomes — the box, unticked and disabled, over its commits, with no note
+  // under them — so the list holds its height as the verdicts arrive. The
+  // line under the list says the checks are running.
   let note: string | undefined;
-  if (verdict.kind === 'checking') {
-    note = 'Checking whether you can update it…';
-  } else if (verdict.kind === 'blocked') {
+  if (verdict.kind === 'blocked') {
     note = verdict.reason;
   } else if (verdict.kind === 'commit') {
     note =
@@ -351,7 +353,11 @@ function AgentLine({
   }
 
   return (
-    <li className={classes.row} data-testid={`behind-agent-${row.id}`}>
+    <li
+      className={classes.row}
+      data-testid={`behind-agent-${row.id}`}
+      aria-busy={verdict.kind === 'checking'}
+    >
       <Checkbox
         isSelected={isSelected}
         isDisabled={!updatable || isLocked || outcome !== undefined}
@@ -549,9 +555,17 @@ export function SkillUpdateAgentsDialog({
   ]
     .filter(Boolean)
     .join(', ');
+  let statusLine: string | undefined;
+  if (isDone) {
+    statusLine = summary ? `${summary}.` : undefined;
+  } else if (isChecking) {
+    statusLine = 'Checking which agents you can update…';
+  }
 
   const allSelected =
     updatable.length > 0 && selected.length === updatable.length;
+  const showsSelectAll =
+    !isDone && behind.length > 1 && (isChecking || updatable.length > 1);
   const count = selected.length;
   const selection = useGroupFieldError(
     validation.errorFor(
@@ -628,11 +642,13 @@ export function SkillUpdateAgentsDialog({
           className={classes.selection}
           {...selection.groupProps}
         >
-          {updatable.length > 1 && !isDone && (
+          {/* Shown from the start while the checks run, so it does not push
+              the list down when the second updatable agent comes in. */}
+          {showsSelectAll && (
             <Checkbox
               isSelected={allSelected}
               isIndeterminate={!allSelected && selected.length > 0}
-              isDisabled={isRunning}
+              isDisabled={isRunning || updatable.length === 0}
               onChange={toggleAll}
             >
               {`All agents you can update (${updatable.length})`}
@@ -660,16 +676,17 @@ export function SkillUpdateAgentsDialog({
           </ShowMore>
         </div>
         {selection.message}
-        {isChecking && !isDone && (
-          <Text as="p" variant="body-small" color="secondary">
-            Checking which agents you can update…
-          </Text>
-        )}
-        {isDone && summary && (
-          <Text as="p" variant="body-small" weight="bold">
-            {summary}.
-          </Text>
-        )}
+        {/* One line under the list in every state — the checks running, the
+            summary, or a blank — so nothing above it moves when the checks
+            finish. */}
+        <Text
+          as="p"
+          variant="body-small"
+          color={isDone ? 'primary' : 'secondary'}
+          weight={isDone ? 'bold' : 'regular'}
+        >
+          {statusLine ?? '\u00a0'}
+        </Text>
       </Flex>
     </ConfirmDialog>
   );

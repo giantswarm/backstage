@@ -65,15 +65,22 @@ type Scenario = {
   /** Technical names of agents applied from git. */
   gitops?: string[];
   canCommit?: boolean;
+  /** Holds every agent read until it settles, to see the rows still checked. */
+  heldReads?: Promise<void>;
 };
 
-function makeMusterApi({ gitops = [], canCommit = true }: Scenario = {}) {
+function makeMusterApi({
+  gitops = [],
+  canCommit = true,
+  heldReads,
+}: Scenario = {}) {
   const callTool = jest.fn(
     async (tool: string, args: Record<string, unknown>) => {
       switch (tool) {
         case 'x_agent-manager_get_info':
           return { capabilities: { commit: canCommit } };
         case 'x_agent-manager_get_agent': {
+          await heldReads;
           const name = String(args.name);
           return {
             name,
@@ -187,6 +194,46 @@ describe('SkillUpdateAgentsDialog', () => {
     // Done: only Close is left.
     expect(
       screen.queryByRole('button', { name: /Update \d agent/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('lays a row still being checked out as the updatable row it becomes', async () => {
+    let release = () => {};
+    const heldReads = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    await renderDialog(behind(row('alpha-bot'), row('beta-bot')), {
+      heldReads,
+    });
+
+    // No note of its own under a row being checked — the line under the list
+    // says the checks run — and the select-all box is there from the start,
+    // so neither moves the list when the verdicts arrive.
+    const line = screen.getByTestId('behind-agent-gazelle/kagent/alpha-bot');
+    expect(line).toHaveAttribute('aria-busy', 'true');
+    const checkingText = line.textContent;
+    expect(
+      within(line).getByRole('checkbox', { name: 'alpha-bot' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('checkbox', { name: 'All agents you can update (0)' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText('Checking which agents you can update…'),
+    ).toBeInTheDocument();
+
+    release();
+    await confirmButton('Update 2 agents');
+    expect(line).toHaveAttribute('aria-busy', 'false');
+    expect(line.textContent).toBe(checkingText);
+    expect(
+      within(line).getByRole('checkbox', { name: 'alpha-bot' }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('checkbox', { name: 'All agents you can update (2)' }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByText('Checking which agents you can update…'),
     ).not.toBeInTheDocument();
   });
 

@@ -10,9 +10,11 @@ export function SkillRefreshSkeletonRow() {
   return (
     <tr aria-hidden>
       <td>
-        <Flex direction="column" gap="1">
+        {/* The real cell's name over its source, at their line heights and
+            gap, so the row does not grow when the skills arrive. */}
+        <Flex direction="column" gap="0.5">
           <CellSkeleton width="50%" />
-          <CellSkeleton width="80%" />
+          <CellSkeleton width="80%" variant="body-x-small" />
         </Flex>
       </td>
       <td>
