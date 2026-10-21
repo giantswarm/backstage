@@ -19,6 +19,8 @@ export type ProviderConnectPromptProps = {
    * the host sees the new state and carries on with its draft.
    */
   onRecheck: () => void;
+  /** What happens once the person is back, said while muster waits. */
+  waitingNote?: string;
 };
 
 /**
@@ -90,6 +92,7 @@ export function ProviderConnectAction({
   installation,
   provider,
   onRecheck,
+  waitingNote,
 }: ProviderConnectPromptProps) {
   const server = providerSignInServer(provider.signIn);
   if (!server) {
@@ -108,6 +111,7 @@ export function ProviderConnectAction({
       provider={provider}
       server={server}
       onRecheck={onRecheck}
+      waitingNote={waitingNote}
     />
   );
 }
@@ -117,6 +121,7 @@ function MusterGrant({
   provider,
   server,
   onRecheck,
+  waitingNote = 'Finish in the other tab. The owners and repositories appear here as soon as you are back.',
 }: ProviderConnectPromptProps & { server: string }) {
   const signIn = useServerSignIn(server, installation, { noun: 'connector' });
   const kind = providerKindName(provider.kind);
@@ -158,8 +163,7 @@ function MusterGrant({
           Waiting for {kind}…
         </Text>
         <Text variant="body-small" color="secondary">
-          Finish in the other tab. The owners and repositories appear here as
-          soon as you are back.
+          {waitingNote}
         </Text>
         {signIn.signInTabOpened || !signIn.authUrl ? (
           <div>

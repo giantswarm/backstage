@@ -118,10 +118,15 @@ export function StartNewSession({
 
   const { createSession } = creation;
   const onStart = useCallback(
-    async (agent: AgentRow, prompt: string, images?: ComposerImage[]) => {
+    async (
+      agent: AgentRow,
+      prompt: string,
+      images?: ComposerImage[],
+      workspace?: string,
+    ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent, prompt });
+        sessionId = await createSession({ agent, prompt, workspace });
       } catch {
         // Left to the composer, which renders the hook's `error` beside the
         // prompt the user still has.
@@ -317,6 +322,7 @@ export function StartNewSession({
       error={creation.error ?? undefined}
       // The session page sends the prompt, images and all.
       acceptsImages
+      offersWorkspaces
       onStart={onStart}
     />
   );

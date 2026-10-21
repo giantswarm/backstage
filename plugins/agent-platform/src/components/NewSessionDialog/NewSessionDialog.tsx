@@ -20,7 +20,12 @@ export type NewSessionDialogProps = {
   defaultAgent?: AgentRow;
   isStarting: boolean;
   error?: string | Error;
-  onStart: (agent: AgentRow, prompt: string, images?: ComposerImage[]) => void;
+  onStart: (
+    agent: AgentRow,
+    prompt: string,
+    images?: ComposerImage[],
+    workspace?: string,
+  ) => void;
 };
 
 /**
@@ -65,6 +70,9 @@ export function NewSessionDialog({
           // Every caller hands the prompt to the session page, which sends it
           // images and all.
           acceptsImages
+          // Every caller starts the session through `useCreateSession`
+          // with the workspace it is handed.
+          offersWorkspaces
           // Deliberate here and only here: this is a modal the user opened in
           // order to type, and react-aria focuses the dialog container rather
           // than the field. See the composer, which carries the full reasoning.

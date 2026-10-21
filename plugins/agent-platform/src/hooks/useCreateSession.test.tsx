@@ -181,7 +181,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'agentDetail' },
+        attributes: { entryPoint: 'agentDetail', workspace: 'none' },
       }),
     );
   });
@@ -196,7 +196,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'home' },
+        attributes: { entryPoint: 'home', workspace: 'none' },
       }),
     );
   });
@@ -211,7 +211,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'createAgentAssist' },
+        attributes: { entryPoint: 'createAgentAssist', workspace: 'none' },
       }),
     );
   });
@@ -226,7 +226,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'skillCreationAssist' },
+        attributes: { entryPoint: 'skillCreationAssist', workspace: 'none' },
       }),
     );
   });
@@ -246,7 +246,7 @@ describe('useCreateSession', () => {
       expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'AgentPlatform.sessionStarted',
-          attributes: { entryPoint },
+          attributes: { entryPoint, workspace: 'none' },
         }),
       );
     },
@@ -262,7 +262,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
-        attributes: { entryPoint: 'searchPalette' },
+        attributes: { entryPoint: 'searchPalette', workspace: 'none' },
       }),
     );
   });
@@ -584,5 +584,132 @@ describe('useCreateSession', () => {
     });
 
     expect(startCalls()).toHaveLength(0);
+  });
+});
+
+describe('useCreateSession in a workspace', () => {
+  /** workspace-manager's answer to `authorize_workspace`, then start_session as before. */
+  function answerAuthorization(authorization: Record<string, unknown>) {
+    const startSession = callTool.getMockImplementation()!;
+    callTool.mockImplementation(async (name, args, installation) =>
+      name === 'x_workspace-manager_authorize_workspace'
+        ? { workspace: args.workspace, ...authorization }
+        : startSession(name, args, installation),
+    );
+  }
+
+  afterEach(() => {
+    callTool.mockReset();
+    callTool.mockImplementation(async (_name, args) => {
+      const requestId = String(args.requestId);
+      if (!sessionsByRequest.has(requestId)) {
+        sessionsByRequest.set(
+          requestId,
+          sessionsByRequest.size === 0
+            ? 'new-session-id'
+            : `session-${sessionsByRequest.size + 1}`,
+        );
+      }
+      return { session: { id: sessionsByRequest.get(requestId) } };
+    });
+  });
+
+  it('checks access as the person first and starts with the grant it returns', async () => {
+    answerAuthorization({ outcome: 'granted', grant: 'signed.grant.jwt' });
+    const { result } = renderWith('home');
+
+    await act(async () => {
+      await result.current.createSession({
+        agent,
+        prompt: 'List the repositories',
+        workspace: 'platform-mix',
+      });
+    });
+
+    expect(startCalls().map(call => call.name)).toEqual([
+      'x_workspace-manager_authorize_workspace',
+      'x_agent-manager_start_session',
+    ]);
+    expect(startCalls()[0]).toMatchObject({
+      args: { workspace: 'platform-mix' },
+      installation: 'gazelle',
+    });
+    expect(startCalls()[1].args.workspaceGrant).toBe('signed.grant.jwt');
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'home', workspace: 'picked' },
+      }),
+    );
+  });
+
+  it('starts nothing when the check refuses, naming the unreadable repositories', async () => {
+    answerAuthorization({
+      outcome: 'refused',
+      reason: 'you cannot read 1 repository of platform-mix',
+      unreadable: ['agentlab-org/secret-api'],
+    });
+    const { result } = renderWith('home');
+
+    let failure: unknown;
+    await act(async () => {
+      await result.current
+        .createSession({
+          agent,
+          prompt: 'List the repositories',
+          workspace: 'platform-mix',
+        })
+        .catch(error => {
+          failure = error;
+        });
+    });
+
+    expect(failure).toMatchObject({
+      name: 'WorkspaceManagerError',
+      kind: 'refused',
+      repositories: ['agentlab-org/secret-api'],
+    });
+    expect(startCalls().map(call => call.name)).toEqual([
+      'x_workspace-manager_authorize_workspace',
+    ]);
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('asks for the provider sign-in, then starts with the grant once signed in', async () => {
+    answerAuthorization({
+      outcome: 'connect_required',
+      reason: 'sign in to github first',
+      connect: [
+        { provider: 'github', signIn: 'core_auth_login server=github-app' },
+      ],
+    });
+    const { result } = renderWith('home');
+    const start = {
+      agent,
+      prompt: 'List the repositories',
+      workspace: 'platform-mix',
+    };
+
+    let failure: unknown;
+    await act(async () => {
+      await result.current.createSession(start).catch(error => {
+        failure = error;
+      });
+    });
+    expect(failure).toMatchObject({
+      kind: 'not_connected',
+      connect: [{ provider: 'github' }],
+    });
+
+    answerAuthorization({ outcome: 'granted', grant: 'signed.grant.jwt' });
+    await act(async () => {
+      await result.current.createSession(start);
+    });
+
+    const starts = startCalls().filter(
+      call => call.name === 'x_agent-manager_start_session',
+    );
+    expect(starts).toHaveLength(1);
+    expect(starts[0].args.workspaceGrant).toBe('signed.grant.jwt');
   });
 });

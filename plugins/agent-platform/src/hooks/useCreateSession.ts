@@ -5,6 +5,8 @@ import {
   type PortalEventAttributes,
 } from '@giantswarm/backstage-plugin-analytics-react';
 import { AgentManagerClient } from '../apis/AgentManagerClient';
+import { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
+import { authorizationError } from '../lib/workspaceManager';
 import {
   AgentManagerError,
   AgentManagerNotConnectedError,
@@ -26,6 +28,11 @@ export type NewSession = {
    * Derived from the prompt when absent.
    */
   title?: string;
+  /**
+   * The workspace on the agent's installation the session starts in, by
+   * name; absent, the plain session.
+   */
+  workspace?: string;
 };
 
 /**
@@ -104,14 +111,15 @@ export function useCreateSession(
   const markPortalStarted = usePortalStartedRecorder();
 
   const mutation = useTrackedMutation({
-    event: () => ({
+    event: (_result, { workspace }: NewSessionRequest) => ({
       name: 'AgentPlatform.sessionStarted',
-      attributes: { entryPoint },
+      attributes: { entryPoint, workspace: workspace ? 'picked' : 'none' },
     }),
     mutationFn: async ({
       agent,
       prompt,
       title,
+      workspace,
       requestId,
     }: NewSessionRequest) => {
       if (!musterApi) {
@@ -127,6 +135,22 @@ export function useCreateSession(
       if (!sessionName) {
         throw new Error('A session starts with a prompt; this one is empty.');
       }
+      // The access check comes first and as the person: kagent admits a
+      // Session on a workspace only with the grant it returns, which is
+      // passed on and never kept. Refused or connect_required is thrown as
+      // the error the composer shows.
+      let workspaceGrant: string | undefined;
+      if (workspace) {
+        const authorization = await new WorkspaceManagerClient(
+          musterApi,
+          agent.installation,
+        ).authorizeWorkspace(workspace);
+        const refusal = authorizationError(authorization);
+        if (refusal) {
+          throw refusal;
+        }
+        workspaceGrant = authorization.grant;
+      }
       try {
         const { sessionId } = await new AgentManagerClient(
           musterApi,
@@ -138,6 +162,7 @@ export function useCreateSession(
           name: agent.technicalName,
           requestId,
           sessionName,
+          workspaceGrant,
         });
         return { sessionId };
       } catch (error) {
@@ -179,7 +204,8 @@ export function useCreateSession(
       const request: NewSessionRequest =
         previous &&
         previous.agent.id === newSession.agent.id &&
-        previous.prompt === newSession.prompt
+        previous.prompt === newSession.prompt &&
+        previous.workspace === newSession.workspace
           ? { ...newSession, requestId: previous.requestId }
           : { ...newSession, requestId: crypto.randomUUID() };
       lastRequest.current = request;

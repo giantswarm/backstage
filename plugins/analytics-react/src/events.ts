@@ -52,6 +52,7 @@ export const portalEvents = defineEvents({
         'workflowEdit',
         'workflowCreateAssist',
       ],
+      workspace: ['picked', 'none'],
     },
   },
   'AgentPlatform.messageSent': {

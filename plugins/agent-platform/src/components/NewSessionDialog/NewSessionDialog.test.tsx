@@ -12,6 +12,12 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => mockBuildAvatarUrl,
 }));
 
+// The picker's reads are the hook's own tests'; here the installation offers none.
+jest.mock('../../hooks/useSessionWorkspaces', () => ({
+  ...jest.requireActual('../../hooks/useSessionWorkspaces'),
+  useSessionWorkspaces: () => ({ workspaces: [], isLoading: false }),
+}));
+
 const onStart = jest.fn();
 const onOpenChange = jest.fn();
 

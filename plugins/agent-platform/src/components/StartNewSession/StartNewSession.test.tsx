@@ -15,6 +15,12 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
 }));
 
+// The picker's reads are the hook's own tests'; here the installation offers none.
+jest.mock('../../hooks/useSessionWorkspaces', () => ({
+  ...jest.requireActual('../../hooks/useSessionWorkspaces'),
+  useSessionWorkspaces: () => ({ workspaces: [], isLoading: false }),
+}));
+
 const mockUseAgents = jest.fn<AgentsContextValue, []>();
 jest.mock('../AgentsDataProvider', () => ({
   ...jest.requireActual('../AgentsDataProvider'),
