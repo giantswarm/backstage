@@ -1,7 +1,9 @@
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
 
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useHarnessChoices } from '../../hooks/useHarnessChoices';
 import { harnessTitle, type HarnessChoice } from '../../lib/harnesses';
+import { tenantOf } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import {
   SelectableCard,
@@ -21,6 +23,12 @@ import {
  * that could not be read, fully or in part, says so, since a choice may have
  * been missed; a pick dropped by a later model or installation change says so
  * too.
+ *
+ * A tenant other than the platform's (an Organization's namespace) runs its
+ * agents on the platform Harness only: agent-manager copies that one Harness
+ * there, and no other. The picker names it and reads nothing beyond the
+ * tenant, so a person who may not read the platform namespace sees no
+ * warning.
  */
 export function HarnessPicker() {
   const classes = useSelectableCardStyles();
@@ -30,8 +38,15 @@ export function HarnessPicker() {
     modelConfigNamespace: namespace,
     droppedHarness,
   } = state;
+  // The tenant the agent is created in; editing, its own namespace.
+  const tenant = state.tenant ?? namespace;
+  const { info } = useAgentManagerInfo(installation);
+  const platformNamespace = info?.namespaces?.default;
+  const inOtherTenant = Boolean(
+    tenant && platformNamespace && tenant !== platformNamespace,
+  );
   const { choices, platformHarness, platformChoice, errors, isLoading } =
-    useHarnessChoices(installation, namespace);
+    useHarnessChoices(installation, inOtherTenant ? tenant : namespace);
 
   if (!installation || !namespace) {
     return null;
@@ -83,7 +98,7 @@ export function HarnessPicker() {
     );
   }
 
-  const hasChoice = choices.length > 1;
+  const hasChoice = !inOtherTenant && choices.length > 1;
   const couldNotRead = !isLoading && choices.length === 0 && errors.length > 0;
 
   const dropNotice = droppedHarness ? (
@@ -97,6 +112,29 @@ export function HarnessPicker() {
       />
     </div>
   ) : null;
+
+  // Known by its name alone until (or unless) the tenant's copy is read.
+  if (inOtherTenant && tenant) {
+    const platform = platformChoice ?? {
+      name: platformHarness,
+      displayName: platformHarness,
+    };
+    return (
+      <Flex direction="column" gap="2">
+        <FieldLabel
+          label="Runtime"
+          secondaryLabel="Harness"
+          description={`The agents of ${tenantOf(
+            tenant,
+          )} run on the platform Harness.`}
+        />
+        {dropNotice}
+        <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
+          <StaticCard>{content(platform)}</StaticCard>
+        </SelectableCardGrid>
+      </Flex>
+    );
+  }
 
   if (isLoading && choices.length === 0) {
     return (

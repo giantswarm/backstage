@@ -15,7 +15,10 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: () => ({
-    info: { harness: { name: 'kagent' } },
+    info: {
+      harness: { name: 'kagent' },
+      namespaces: { default: 'kagent', managed: ['kagent', 'org-acme'] },
+    },
     isLoading: false,
     error: null,
   }),
@@ -47,11 +50,21 @@ function harness(
 }
 
 let formHarness: string | undefined;
+/**
+ * The tenant the wizard creates in; unset, it never learns one. Set, the model
+ * stays the platform's one, as the wizard keeps it when the tenant and the
+ * preselected model land in one render (giantswarm/backstage#3189).
+ */
+let probeTenant: string | undefined;
 
 function Probe() {
-  const { state, setInstallation, selectModelConfig } = useNewAgentForm();
+  const { state, setInstallation, setTenantChoices, selectModelConfig } =
+    useNewAgentForm();
   useEffect(() => {
     setInstallation('gazelle');
+    if (probeTenant) {
+      setTenantChoices([probeTenant]);
+    }
     selectModelConfig('opus', 'kagent');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -80,8 +93,28 @@ async function render() {
   );
 }
 
+/**
+ * The Harnesses each namespace lists for the person: a namespace missing from
+ * `readable` refuses the read (403).
+ */
+function listingByNamespace(readable: Record<string, Harness[]>) {
+  mockUseResources.mockImplementation(
+    (
+      _installations,
+      _resource,
+      options: Record<string, { namespace: string }>,
+    ) => {
+      const namespace = options.gazelle?.namespace;
+      return namespace && readable[namespace]
+        ? listing(readable[namespace])
+        : listing([], [{ cluster: 'gazelle', error: new Error('Forbidden') }]);
+    },
+  );
+}
+
 beforeEach(() => {
   formHarness = undefined;
+  probeTenant = undefined;
   mockUseResources.mockReset();
 });
 
@@ -120,6 +153,45 @@ describe('HarnessPicker', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  });
+
+  it("offers an Organization's editor the platform Harness of the tenant, without a warning for the platform namespace they may not read", async () => {
+    probeTenant = 'org-acme';
+    listingByNamespace({
+      'org-acme': [harness('kagent', 'kagent', { namespace: 'org-acme' })],
+    });
+    await render();
+
+    expect(
+      screen.queryByText('Could not read the runtimes'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    const card = screen.getByRole('listitem');
+    expect(card).toHaveTextContent('Declarative (Go ADK)');
+    expect(card).toHaveTextContent('Harness kagent');
+    expect(
+      screen.getByText(
+        'The agents of organization acme run on the platform Harness.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('offers an admin creating in an Organization the platform Harness only, though the platform namespace lists more', async () => {
+    probeTenant = 'org-acme';
+    listingByNamespace({
+      kagent: [
+        harness('kagent', 'kagent'),
+        harness('claude', 'claude'),
+        harness('codex', 'codex'),
+      ],
+      'org-acme': [harness('kagent', 'kagent', { namespace: 'org-acme' })],
+    });
+    await render();
+
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    const cards = screen.getAllByRole('listitem');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toHaveTextContent('Harness kagent');
   });
 
   it("titles a card by the Harness's display name when an admin set one", async () => {
