@@ -22,6 +22,9 @@ const ID_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:id_token';
  * larger than the frontend's session refresh margin (3 minutes in OAuth2's
  * sessionShouldRefresh), so a refresh-triggering request never gets a token
  * that immediately triggers another refresh.
+ *
+ * A request that needs more names it in `minLifetimeLeft` (an agent turn,
+ * whose token has to outlast the turn): see {@link readMinLifetimeLeft}.
  */
 const EXPIRY_SKEW_SECONDS = 240;
 
@@ -30,8 +33,49 @@ const DEFAULT_EXPIRES_IN_SECONDS = 300;
 
 type CachedToken = {
   token: string;
+  issuedAt: number;
   expiresAt: number;
 };
+
+/**
+ * The `iat` of a JWT in milliseconds, or undefined when the token is no JWT
+ * or carries no numeric `iat`. Unverified: only the lifetime of a token the
+ * broker just issued is read.
+ */
+function jwtIssuedAt(token: string): number | undefined {
+  const payload = token.split('.')[1];
+  if (!payload) {
+    return undefined;
+  }
+  try {
+    const { iat } = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    ) as { iat?: unknown };
+    return typeof iat === 'number' ? iat * 1000 : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The `minLifetimeLeft` query parameter: the share of its lifetime (0 to 1)
+ * a cached token must still have to be served, so the caller gets a token
+ * that lasts. Undefined when absent; anything but a number in (0, 1] is an
+ * InputError.
+ */
+function readMinLifetimeLeft(req: express.Request): number | undefined {
+  const raw = req.query.minLifetimeLeft;
+  if (raw === undefined) {
+    return undefined;
+  }
+  const value = typeof raw === 'string' ? Number(raw) : NaN;
+  if (!(value > 0 && value <= 1)) {
+    throw new InputError(
+      'minLifetimeLeft must be a number greater than 0 and at most 1',
+    );
+  }
+  return value;
+}
 
 /**
  * One RFC 8693 token endpoint and the confidential client the portal
@@ -103,7 +147,9 @@ export interface ClusterTokenRouterOptions {
  * Given the caller's authenticated Backstage session and their main Dex ID
  * token (forwarded in the `gs-subject-token` header), it mints a short-lived
  * per-management-cluster token (RFC 8693 token exchange) and caches it per
- * (user, installation) with expiry-aware re-exchange. An installation with an
+ * (user, installation) with expiry-aware re-exchange; `?minLifetimeLeft=`
+ * asks for a token with at least that share of its lifetime left, which a
+ * cached one may not have. An installation with an
  * entry under `gs.clusterTokenBroker.targets` is exchanged at its own Dex;
  * every other one at the muster broker (`gs.clusterTokenBroker.tokenUrl`),
  * when one is configured. Exchanged tokens are returned to the frontend as
@@ -181,6 +227,7 @@ export function createClusterTokenRouter(
       if (!subjectToken) {
         throw new InputError(`Missing ${SUBJECT_TOKEN_HEADER} header`);
       }
+      const minLifetimeLeft = readMinLifetimeLeft(req);
 
       res.setHeader('Cache-Control', 'no-store');
 
@@ -189,7 +236,12 @@ export function createClusterTokenRouter(
 
       const cacheKey = `${userEntityRef}:${installation}`;
       const cached = tokenCache.get(cacheKey);
-      if (cached && cached.expiresAt - now > EXPIRY_SKEW_SECONDS * 1000) {
+      const lastsLongEnough = (token: CachedToken) =>
+        token.expiresAt - now > EXPIRY_SKEW_SECONDS * 1000 &&
+        (minLifetimeLeft === undefined ||
+          token.expiresAt - now >=
+            minLifetimeLeft * (token.expiresAt - token.issuedAt));
+      if (cached && lastsLongEnough(cached)) {
         res.json({
           token: cached.token,
           expiresInSeconds: Math.floor((cached.expiresAt - now) / 1000),
@@ -367,8 +419,15 @@ export function createClusterTokenRouter(
 
       const expiresInSeconds =
         tokenResponse.expires_in ?? DEFAULT_EXPIRES_IN_SECONDS;
+      // The token's own `iat` when it has one: a broker that hands out a
+      // token it cached itself reports only what is left of it in expires_in.
+      const issuedAt = Math.min(
+        jwtIssuedAt(tokenResponse.access_token) ?? now,
+        now,
+      );
       tokenCache.set(cacheKey, {
         token: tokenResponse.access_token,
+        issuedAt,
         expiresAt: now + expiresInSeconds * 1000,
       });
 

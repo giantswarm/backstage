@@ -1,5 +1,6 @@
 import {
   AuthProviderInfo,
+  AuthRequestOptions,
   BackstageIdentityApi,
   ConfigApi,
   OAuthApi,
@@ -80,6 +81,21 @@ export type GSAuthProvidersApi = {
    * lazy initialization first. Returns `undefined` if not configured.
    */
   getKubernetesAuthApi: (providerName: string) => Promise<AuthApi | undefined>;
+  /**
+   * The provider's ID token with at least `minLifetimeLeft` (a share of the
+   * token's lifetime, `exp` − `iat`, from 0 to 1) still ahead of it, for a
+   * request whose receiver keeps the token for as long as the work it starts
+   * runs (an agent turn). The provider's session is refreshed silently for it
+   * when its token falls short, which a plain `getIdToken` only does in its
+   * last 3 minutes; `request` applies to the session's token as in
+   * `getIdToken`. When the refresh fails, resolves the session's token. Waits
+   * for lazy initialization; rejects for a provider that is not configured.
+   */
+  getLastingIdToken: (
+    providerName: string,
+    minLifetimeLeft: number,
+    request?: AuthRequestOptions,
+  ) => Promise<string>;
   /**
    * Names of installations whose cluster access is fully covered by the token
    * broker (a Dex target, or muster with `clusterTokenAudience` set; never

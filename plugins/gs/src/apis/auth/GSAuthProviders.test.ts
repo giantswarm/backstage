@@ -8,6 +8,7 @@ import { InstallationConfig } from '../installations';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { Config, ConfigReader } from '@backstage/config';
 import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 
 jest.mock('@backstage/core-app-api', () => ({
   ...jest.requireActual('@backstage/core-app-api'),
@@ -692,5 +693,180 @@ describe('GSAuthProviders cluster-token mint', () => {
       'http://backend/api/auth/cluster-token/b',
       'http://backend/api/auth/cluster-token/c',
     ]);
+  });
+});
+
+describe('GSAuthProviders.getLastingIdToken', () => {
+  const MINUTE = 60_000;
+  const T0 = new Date('2026-10-19T06:30:00Z').getTime();
+  const TURN = 25 / 30;
+
+  const installations = {
+    a: { authProvider: 'oidc', oidcTokenProvider: 'oidc-a' },
+    b: {
+      authProvider: 'oidc',
+      oidcTokenProvider: 'oidc-b',
+      clusterTokenAudience: 'b',
+    },
+  };
+
+  /** A 30-minute ID token issued now, numbered so tests can tell them apart. */
+  let issued = 0;
+  function idTokenIssuedNow(name: string): string {
+    const b64url = (value: object) =>
+      btoa(JSON.stringify(value))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+    const iat = Math.floor(Date.now() / 1000);
+    return `${b64url({ alg: 'RS256' })}.${b64url({
+      name: `${name}-${++issued}`,
+      iat,
+      exp: iat + 30 * 60,
+    })}.signature`;
+  }
+
+  function minutesLeft(token: string): number {
+    const exp = JSON.parse(atob(token.split('.')[1])).exp as number;
+    return (exp * 1000 - Date.now()) / MINUTE;
+  }
+
+  let fetchSpy: jest.SpyInstance;
+
+  function requests(path: string): { url: string; subject?: string }[] {
+    return fetchSpy.mock.calls
+      .filter(([input]) => String(input).includes(path))
+      .map(([input, init]) => ({
+        url: String(input),
+        subject: (init?.headers as Record<string, string> | undefined)?.[
+          SUBJECT_TOKEN_HEADER
+        ],
+      }));
+  }
+
+  function createLastingApi() {
+    getSignedInConfig.mockResolvedValue(
+      new ConfigReader({
+        gs: {
+          installations,
+          clusterTokenBroker: {
+            tokenUrl: 'https://muster.example.com/oauth/token',
+          },
+        },
+      }),
+    );
+    fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async input => {
+      const url = String(input);
+      if (url.includes('/oidc-a/refresh')) {
+        // The main Dex session: every refresh is a new 30-minute token.
+        const idToken = idTokenIssuedNow('main');
+        return new Response(
+          JSON.stringify({
+            providerInfo: {
+              idToken,
+              accessToken: 'main-access-token',
+              scope: 'openid',
+              expiresInSeconds: 3600,
+            },
+            backstageIdentity: {
+              token: 'backstage-token',
+              identity: {
+                type: 'user',
+                userEntityRef: 'user:default/someone',
+                ownershipEntityRefs: [],
+              },
+              expiresInSeconds: 3600,
+            },
+            profile: {},
+          }),
+        );
+      }
+      if (url.includes('/api/auth/cluster-token/')) {
+        return new Response(
+          JSON.stringify({
+            token: idTokenIssuedNow('cluster'),
+            expiresInSeconds: 1800,
+          }),
+        );
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    return GSAuthProviders.create({
+      configApi: {
+        ...configApi,
+        getOptionalString: jest.fn((key: string) =>
+          key === 'gs.authProvider' ? 'oidc-a' : undefined,
+        ),
+      } as unknown as ConfigApi,
+      discoveryApi,
+      oauthRequestApi,
+      hasUserGesture: () => false,
+    });
+  }
+
+  beforeEach(() => {
+    getSignedInConfig.mockReset();
+    jest.useFakeTimers({ now: T0 });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it("refreshes the main session for a token that has to last, and keeps reads on Backstage's 3 minutes", async () => {
+    const api = createLastingApi();
+    const main = await api.getKubernetesAuthApi('oidc-a');
+    const signedIn = await main!.getIdToken({ optional: true });
+    expect(requests('/oidc-a/refresh')).toHaveLength(1);
+
+    // 24 of 30 minutes left: a read keeps the cached token.
+    jest.setSystemTime(T0 + 6 * MINUTE);
+    await expect(main!.getIdToken({ optional: true })).resolves.toBe(signedIn);
+    expect(requests('/oidc-a/refresh')).toHaveLength(1);
+
+    const lasting = await api.getLastingIdToken('oidc-a', TURN, {
+      optional: true,
+    });
+    expect(requests('/oidc-a/refresh')).toHaveLength(2);
+    expect(lasting).not.toBe(signedIn);
+    expect(minutesLeft(lasting)).toBeGreaterThanOrEqual(25);
+
+    // Reads still get the session's own token.
+    await expect(main!.getIdToken({ optional: true })).resolves.toBe(signedIn);
+  });
+
+  it('exchanges a broker-covered token anew, for a subject token that lasts too', async () => {
+    const api = createLastingApi();
+    const cluster = await api.getKubernetesAuthApi('oidc-b');
+    const first = await cluster!.getIdToken({ optional: true });
+    expect(requests('/api/auth/cluster-token/')).toEqual([
+      expect.objectContaining({
+        url: 'http://backend/api/auth/cluster-token/b',
+      }),
+    ]);
+
+    jest.setSystemTime(T0 + 6 * MINUTE);
+    await expect(cluster!.getIdToken({ optional: true })).resolves.toBe(first);
+
+    const lasting = await api.getLastingIdToken('oidc-b', TURN, {
+      optional: true,
+    });
+
+    expect(minutesLeft(lasting)).toBeGreaterThanOrEqual(25);
+    const [, exchange] = requests('/api/auth/cluster-token/');
+    expect(exchange.url).toBe(
+      `http://backend/api/auth/cluster-token/b?minLifetimeLeft=${TURN}`,
+    );
+    // The subject is the main session's token refreshed for the occasion.
+    expect(requests('/oidc-a/refresh')).toHaveLength(2);
+    expect(minutesLeft(exchange.subject!)).toBeGreaterThanOrEqual(25);
+  });
+
+  it('rejects for a provider that is not configured', async () => {
+    const api = createLastingApi();
+    await expect(api.getLastingIdToken('oidc-z', TURN)).rejects.toThrow(
+      /not configured/,
+    );
   });
 });

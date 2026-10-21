@@ -213,6 +213,90 @@ describe('createClusterTokenRouter', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
+  describe('with minLifetimeLeft', () => {
+    /** A JWT issued `ageSeconds` ago; only its `iat` is read. */
+    function jwtIssued(ageSeconds: number): string {
+      const iat = Math.floor(Date.now() / 1000) - ageSeconds;
+      const payload = Buffer.from(JSON.stringify({ iat })).toString(
+        'base64url',
+      );
+      return `header.${payload}.signature`;
+    }
+
+    it('serves a cached token that still has that share of its lifetime', async () => {
+      const fetchSpy = mockBrokerResponse({
+        access_token: 'mc-token',
+        expires_in: 1800,
+      });
+      const app = buildApp()!;
+
+      await request(app)
+        .post('/cluster-token/golem')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+      const res = await request(app)
+        .post('/cluster-token/golem')
+        .query({ minLifetimeLeft: '0.8' })
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.token).toBe('mc-token');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-exchanges a cached token with less of its lifetime left', async () => {
+      // 30 minutes of lifetime, issued 10 minutes ago: 20 left, beyond the
+      // default margin but short of 25.
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ access_token: jwtIssued(600), expires_in: 1200 }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ access_token: 'fresh-token', expires_in: 1800 }),
+            { status: 200 },
+          ),
+        );
+      const app = buildApp()!;
+
+      await request(app)
+        .post('/cluster-token/golem')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+      const defaultMargin = await request(app)
+        .post('/cluster-token/golem')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(defaultMargin.body.token).not.toBe('fresh-token');
+
+      const res = await request(app)
+        .post('/cluster-token/golem')
+        .query({ minLifetimeLeft: String(25 / 30) })
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(res.body).toEqual({
+        token: 'fresh-token',
+        expiresInSeconds: 1800,
+      });
+    });
+
+    it.each(['0', '1.5', 'soon', ''])(
+      'refuses minLifetimeLeft=%p',
+      async value => {
+        const fetchSpy = mockBrokerResponse({ access_token: 'mc-token' });
+        const res = await request(buildApp()!)
+          .post('/cluster-token/golem')
+          .query({ minLifetimeLeft: value })
+          .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+        expect(res.status).toBe(400);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   it('maps broker errors to 502 without leaking details', async () => {
     mockBrokerResponse(
       { error: 'invalid_target', error_description: 'unknown audience' },

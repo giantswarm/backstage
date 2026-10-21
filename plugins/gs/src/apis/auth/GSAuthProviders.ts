@@ -1,5 +1,9 @@
-import { OAuth2 } from '@backstage/core-app-api';
-import { ConfigApi, OAuthRequestApi } from '@backstage/core-plugin-api';
+import { OAuth2, OAuth2Session } from '@backstage/core-app-api';
+import {
+  AuthRequestOptions,
+  ConfigApi,
+  OAuthRequestApi,
+} from '@backstage/core-plugin-api';
 import {
   AuthApi,
   AuthProvider,
@@ -12,8 +16,10 @@ import {
   ClusterToken,
   ClusterTokenError,
   ClusterTokenErrorReason,
+  ClusterTokenRequest,
   DefaultAuthConnector,
 } from './DefaultAuthConnector';
+import { LastingIdTokens } from './LastingIdTokens';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { getOIDCScopes } from './scopes';
 import { toOAuth2Session } from './toOAuth2Session';
@@ -126,6 +132,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private githubAuthApi?: OAuth2;
 
   private readonly clusterAccessStatusApi?: ClusterAccessStatusApi;
+
+  // The lasting ID tokens of each OAuth2 API built here, for the callers that
+  // need a token with most of its lifetime left (`getLastingIdToken`).
+  private readonly lastingIdTokens = new WeakMap<AuthApi, LastingIdTokens>();
 
   // Shared by the main sign-in API and the fallback card: the fallback card
   // records the connector it signed in with, the main API's re-login popups
@@ -288,7 +298,9 @@ export class GSAuthProviders implements GSAuthProvidersApi {
    */
   private createClusterTokenProvider(
     provider: AuthProvider,
-  ): (() => Promise<ClusterToken | undefined>) | undefined {
+  ):
+    | ((request?: ClusterTokenRequest) => Promise<ClusterToken | undefined>)
+    | undefined {
     if (!this.configApi) {
       return undefined;
     }
@@ -308,7 +320,9 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     const backendBaseUrl = this.configApi.getString('backend.baseUrl');
     const statusApi = this.clusterAccessStatusApi;
 
-    const mint = async (): Promise<ClusterToken | undefined> => {
+    const mint = async ({ minLifetimeLeft }: ClusterTokenRequest = {}): Promise<
+      ClusterToken | undefined
+    > => {
       const mainAuthApi = this.getMainAuthApi();
 
       // Auto re-auth, only when a person acts: the interactive getters return
@@ -321,8 +335,15 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       const optional = !this.hasUserGesture();
       // A sign-in a person's read opens is named as the mint's
       // (`data-login-requested-by`), apart from the portal fetch's.
+      // A token that has to last is exchanged for a subject token that does
+      // too, so the exchange never hinges on the main session's 3 minutes.
       const askMainLogin = async () => ({
-        idToken: await mainAuthApi.getIdToken({ optional }),
+        idToken:
+          minLifetimeLeft === undefined
+            ? await mainAuthApi.getIdToken({ optional })
+            : await this.getLastingIdTokenOf(mainAuthApi, minLifetimeLeft, {
+                optional,
+              }),
         identity: await mainAuthApi.getBackstageIdentity({ optional }),
       });
       let main: Awaited<ReturnType<typeof askMainLogin>>;
@@ -342,20 +363,24 @@ export class GSAuthProviders implements GSAuthProvidersApi {
         throw new ClusterTokenError(installationName, 'session-expired');
       }
 
+      const url = new URL(
+        `${backendBaseUrl}/api/auth/cluster-token/${encodeURIComponent(
+          installationName,
+        )}`,
+      );
+      if (minLifetimeLeft !== undefined) {
+        url.searchParams.set('minLifetimeLeft', String(minLifetimeLeft));
+      }
+
       let response: Response;
       try {
-        response = await fetch(
-          `${backendBaseUrl}/api/auth/cluster-token/${encodeURIComponent(
-            installationName,
-          )}`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${identity.token}`,
-              [SUBJECT_TOKEN_HEADER]: idToken,
-            },
+        response = await fetch(url.toString(), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${identity.token}`,
+            [SUBJECT_TOKEN_HEADER]: idToken,
           },
-        );
+        });
       } catch (error) {
         throw new ClusterTokenError(
           installationName,
@@ -375,9 +400,9 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       return { token, expiresInSeconds };
     };
 
-    return async () => {
+    return async request => {
       try {
-        const clusterToken = await mint();
+        const clusterToken = await mint(request);
         // A successful token mint only proves the broker is reachable, not that
         // the cluster's apiserver is — so it must NOT be recorded as healthy here
         // (that showed a misleading green, e.g. right after un-muting an
@@ -476,10 +501,52 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       },
     });
 
-    return OAuth2.create({
-      authConnector,
-      defaultScopes: getOIDCScopes(this.configApi),
-    });
+    const defaultScopes = getOIDCScopes(this.configApi);
+    const authApi = OAuth2.create({ authConnector, defaultScopes });
+    this.lastingIdTokens.set(
+      authApi,
+      new LastingIdTokens({
+        authApi,
+        refresh: async minLifetimeLeft => {
+          const session: OAuth2Session = await authConnector.refreshSession({
+            scopes: new Set(defaultScopes),
+            minLifetimeLeft,
+          });
+          return session.providerInfo.idToken;
+        },
+      }),
+    );
+    return authApi;
+  }
+
+  /**
+   * The ID token of an auth API with at least `minLifetimeLeft` of its
+   * lifetime left, see {@link LastingIdTokens}; its plain `getIdToken` for an
+   * API built elsewhere.
+   */
+  private getLastingIdTokenOf(
+    authApi: AuthApi,
+    minLifetimeLeft: number,
+    request?: AuthRequestOptions,
+  ): Promise<string> {
+    const lasting = this.lastingIdTokens.get(authApi);
+    return lasting
+      ? lasting.getIdToken(minLifetimeLeft, request)
+      : authApi.getIdToken(request);
+  }
+
+  async getLastingIdToken(
+    providerName: string,
+    minLifetimeLeft: number,
+    request?: AuthRequestOptions,
+  ): Promise<string> {
+    const authApi =
+      (await this.getKubernetesAuthApi(providerName)) ??
+      this.getAuthApi(providerName);
+    if (!authApi) {
+      throw new Error(`Auth provider "${providerName}" is not configured.`);
+    }
+    return this.getLastingIdTokenOf(authApi, minLifetimeLeft, request);
   }
 
   private getMCPAuthProvidersFromConfig(): AuthProvider[] {
