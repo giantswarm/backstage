@@ -141,6 +141,54 @@ describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0
     expect(rows[0].state).toBe('hibernating');
   });
 
+  it('reads the workspace a session works in from its volume source', () => {
+    const { sessions: rows } = normalizeSessionList(
+      {
+        sessions: [
+          {
+            ...sessions.sessions[0],
+            volumeSource: {
+              volume: {
+                csiDriver: 'nfs.csi.k8s.io',
+                volumeHandle: 'nfs-server#share#ws-docs',
+              },
+              mounts: [
+                { subPath: 'sessions/${SESSION_ID}', mountPath: '/workspace' },
+              ],
+            },
+            providers: [
+              { hostname: 'github.com', scheme: 'Basic', provider: 'github' },
+              {
+                hostname: 'api.github.com',
+                scheme: 'Bearer',
+                provider: 'github',
+              },
+              // Stored before `provider` existed.
+              {
+                hostname: 'gitlab.example',
+                scheme: 'Basic',
+                audience: 'gitlab',
+              },
+            ],
+            changed: ['giantswarm/devctl', 7],
+            lastTurnTime: '2026-10-21T08:00:00Z',
+          },
+          sessions.sessions[0],
+        ],
+      },
+      'lab',
+    );
+    expect(rows[0].workspace).toEqual({
+      volumeHandle: 'nfs-server#share#ws-docs',
+      csiDriver: 'nfs.csi.k8s.io',
+      fetched: ['giantswarm/devctl'],
+      providers: ['github', 'gitlab'],
+    });
+    // A session started without a workspace has none.
+    expect(rows[1].workspace).toBeUndefined();
+    expect('workspace' in rows[1]).toBe(false);
+  });
+
   it('spells runtime states as one lower-case word', () => {
     expect(normalizeRuntimeState('RUNTIME_STATE_READY')).toBe('ready');
     expect(normalizeRuntimeState('ready')).toBe('ready');

@@ -22,6 +22,34 @@ const resourceReferenceWireSchema = z.looseObject({
 });
 
 /**
+ * The workspace volume a Session works in (`volumeSource`), by the CSI handle
+ * workspace-manager lists its workspaces' volumes under. The mounts are the
+ * controller's business and not read.
+ */
+const sessionVolumeSourceWireSchema = z.looseObject({
+  volume: z
+    .looseObject({ csiDriver: wireString, volumeHandle: wireString })
+    .nullish()
+    .catch(undefined),
+});
+
+/** A host whose credential the Session gets, by its provider instance. */
+const sessionProviderWireSchema = z.looseObject({
+  provider: wireString,
+  // Read as the provider on a Session stored before `provider` existed.
+  audience: wireString,
+});
+
+/** A list of strings, a malformed entry dropped rather than the list. */
+const wireStringList = z
+  .array(wireString)
+  .nullish()
+  .catch(undefined)
+  .transform(values =>
+    (values ?? []).filter((value): value is string => value !== undefined),
+  );
+
+/**
  * One Session record. `state` and `operation` are enum names on the wire
  * (`RUNTIME_STATE_READY`); they are read permissively and normalised by
  * {@link normalizeRuntimeState}, so an enum value this layer has not seen
@@ -42,6 +70,12 @@ export const sessionRecordWireSchema = z.looseObject({
   updatedAt: wireString,
   name: wireString,
   contextId: wireString,
+  volumeSource: sessionVolumeSourceWireSchema.nullish().catch(undefined),
+  providers: z
+    .array(sessionProviderWireSchema.catch({}))
+    .nullish()
+    .catch(undefined),
+  changed: wireStringList,
 });
 
 export type SessionRecordWire = z.infer<typeof sessionRecordWireSchema>;
@@ -125,6 +159,28 @@ export function encodeKagentAgentId(namespace: string, name: string): string {
   return `${namespace}/${name}`.replace(/-/g, '_').replace('/', '__NS__');
 }
 
+/**
+ * The Session's workspace, from its volume source and what the admission
+ * admitted with it; undefined for a Session started without one.
+ */
+function readSessionWorkspace(
+  wire: SessionRecordWire,
+): KagentSession['workspace'] {
+  const volume = wire.volumeSource?.volume;
+  if (!volume?.volumeHandle) {
+    return undefined;
+  }
+  const providers = (wire.providers ?? [])
+    .map(entry => entry.provider ?? entry.audience)
+    .filter((name): name is string => name !== undefined);
+  return {
+    volumeHandle: volume.volumeHandle,
+    ...(volume.csiDriver && { csiDriver: volume.csiDriver }),
+    fetched: wire.changed,
+    providers: Array.from(new Set(providers)).sort(),
+  };
+}
+
 /** Parse a single wire record, for callers that already have one. */
 export function parseSessionRecordWire(
   raw: unknown,
@@ -156,6 +212,7 @@ export function normalizeSessionRecord(
           ...(wire.failure.message && { message: wire.failure.message }),
         }
       : undefined;
+  const workspace = readSessionWorkspace(wire);
   return {
     id: `${installation}/${sessionId}`,
     sessionId,
@@ -174,5 +231,6 @@ export function normalizeSessionRecord(
     ...(wire.state && { state: normalizeRuntimeState(wire.state) }),
     ...(wire.contextId && { contextId: wire.contextId }),
     ...(failure && { failure }),
+    ...(workspace && { workspace }),
   };
 }

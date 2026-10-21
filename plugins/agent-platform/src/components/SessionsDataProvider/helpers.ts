@@ -1,6 +1,7 @@
 import {
   encodeKagentAgentId,
   KagentSession,
+  type KagentSessionWorkspace,
   readReportedRuntimeLoss,
   SessionStateEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -88,6 +89,18 @@ export type SessionRow = {
    * {@link markEarlierRevisions}); a fleet-wide list never sets it.
    */
   earlierRevision?: boolean;
+  /**
+   * The workspace the session works in, by its volume; its name is
+   * workspace-manager's to tell (`useWorkspaceNames`). Absent for a session
+   * started without one.
+   */
+  workspace?: KagentSessionWorkspace;
+  /**
+   * The workspace's name, or "workspace" where the person cannot see it by
+   * name; joined onto the row by a list that resolves it (`useWorkspaceNames`),
+   * absent while it is read and for a session without a workspace.
+   */
+  workspaceName?: string;
 };
 
 /**
@@ -173,6 +186,7 @@ export function toSessionRow(
     createdAt: session.createdAt,
     runtimeLost: readReportedRuntimeLoss(session) !== undefined,
     preparedRevision: session.preparedRevision,
+    ...(session.workspace && { workspace: session.workspace }),
   };
 }
 
@@ -307,7 +321,7 @@ export function sortSessionRows(
   });
 }
 
-/** Free-text search over the title and the agent name. */
+/** Free-text search over the title, the agent, the environment and the workspace. */
 export function sessionSearchFn<T extends SessionRow>(
   rows: T[],
   search: string,
@@ -320,6 +334,7 @@ export function sessionSearchFn<T extends SessionRow>(
     row =>
       row.title.toLowerCase().includes(needle) ||
       row.agentName.toLowerCase().includes(needle) ||
-      row.installation.toLowerCase().includes(needle),
+      row.installation.toLowerCase().includes(needle) ||
+      Boolean(row.workspaceName?.toLowerCase().includes(needle)),
   );
 }

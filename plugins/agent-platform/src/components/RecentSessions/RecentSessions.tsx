@@ -16,6 +16,11 @@ import { SESSION_STATE_LABELS } from '@giantswarm/backstage-plugin-agent-platfor
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
+import {
+  useWorkspaceNames,
+  workspaceInstallations,
+} from '../../hooks/useWorkspaceNames';
+import { workspaceNameLabel } from '../../lib/sessionWorkspace';
 import { ACTIVE_REFETCH_INTERVAL_MS } from '../../lib/kagentSessionPolling';
 import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
@@ -161,6 +166,7 @@ type SessionDetailRoute = RouteFunc<{
 
 function SessionItem({
   row,
+  workspaceName,
   href,
   isActive,
   waiting,
@@ -168,6 +174,8 @@ function SessionItem({
   pin,
 }: {
   row: SessionRow;
+  /** The session's workspace by name, once read; absent without one. */
+  workspaceName?: string;
   href: string;
   isActive: boolean;
   waiting: boolean;
@@ -223,9 +231,9 @@ function SessionItem({
             >
               {row.title}
             </Text>
-            {row.agentName && (
+            {(row.agentName || workspaceName) && (
               <Text as="div" variant="body-x-small" color="secondary" truncate>
-                {row.agentName}
+                {[row.agentName, workspaceName].filter(Boolean).join(' · ')}
               </Text>
             )}
           </Box>
@@ -314,6 +322,11 @@ function RecentSessionsList({
     [rows, pinnedKey, limit, shellRail, today, states],
   );
   const recent = useMemo(() => pickRecentSessions(rows, limit), [rows, limit]);
+  const installationsWithWorkspaces = useMemo(
+    () => workspaceInstallations(rows),
+    [rows],
+  );
+  const workspaceNameOf = useWorkspaceNames(installationsWithWorkspaces);
 
   const renderRow = (row: SessionRow) => {
     const href = sessionDetailRoute({
@@ -324,6 +337,7 @@ function RecentSessionsList({
       <SessionItem
         key={row.id}
         row={row}
+        workspaceName={workspaceNameLabel(workspaceNameOf(row))}
         href={href}
         isActive={pathname === href}
         waiting={needsAttention(states.get(row.id))}

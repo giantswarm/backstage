@@ -48,6 +48,29 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
 
+// The workspaces' names by volume, as one list per installation resolves them.
+// Stable, as the hook's is: a resolver new on every render would rebuild
+// every row on every render.
+const mockWorkspaceInstallations = jest.fn<void, [string[]]>();
+const mockWorkspaceNameOf = (row: { workspace?: { volumeHandle: string } }) => {
+  if (!row.workspace) {
+    return undefined;
+  }
+  return row.workspace.volumeHandle === 'fs-1::docs'
+    ? { status: 'named', workspace: { name: 'ws-docs' } }
+    : { status: 'unnamed' };
+};
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  workspaceInstallations: (sessions: SessionRow[]) =>
+    Array.from(
+      new Set(sessions.filter(s => s.workspace).map(s => s.installation)),
+    ).sort(),
+  useWorkspaceNames: (installations: string[]) => {
+    mockWorkspaceInstallations(installations);
+    return mockWorkspaceNameOf;
+  },
+}));
+
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
@@ -204,6 +227,69 @@ describe('SessionsTable in the shell layout', () => {
     mockNavigate.mockClear();
     mockDeleteSession.mockClear();
     mockRenameSession.mockClear();
+  });
+
+  describe('the Workspace column', () => {
+    const inWorkspace = (
+      row: SessionRow,
+      volumeHandle: string,
+    ): SessionRow => ({
+      ...row,
+      workspace: { volumeHandle, fetched: [], providers: [] },
+    });
+
+    beforeEach(() => mockWorkspaceInstallations.mockClear());
+
+    it('is not there while no session works in a workspace, and nothing is read', async () => {
+      await renderShell();
+
+      expect(
+        screen.queryByRole('columnheader', { name: 'Workspace' }),
+      ).not.toBeInTheDocument();
+      expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith([]);
+    });
+
+    it('names each session’s workspace from one lookup per installation', async () => {
+      await renderShell([
+        inWorkspace(rows[0], 'fs-1::docs'),
+        inWorkspace(rows[1], 'fs-1::gone'),
+        rows[2],
+        rows[3],
+      ]);
+
+      expect(
+        screen.getAllByRole('columnheader', { name: 'Workspace' }).length,
+      ).toBeGreaterThan(0);
+      expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
+      const today = screen.getByRole('grid', { name: 'Today' });
+      expect(within(today).getByText('ws-docs')).toBeInTheDocument();
+      // A workspace the person cannot see any more, unnamed.
+      const yesterday = screen.getByRole('grid', { name: 'Yesterday' });
+      expect(within(yesterday).getByText('workspace')).toBeInTheDocument();
+      expect(
+        within(yesterday).getByText('not listed for you'),
+      ).toBeInTheDocument();
+      // A session without one.
+      const earlier = screen.getByRole('grid', { name: 'Earlier' });
+      expect(within(earlier).getAllByTitle('No workspace')).toHaveLength(2);
+    });
+
+    it('finds a session by its workspace’s name', async () => {
+      await renderShell([
+        inWorkspace(filterable[0], 'fs-1::docs'),
+        ...filterable.slice(1),
+      ]);
+
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: /search/i }),
+        'ws-docs',
+      );
+      await waitFor(() =>
+        expect(
+          screen.getAllByRole('rowheader').map(cell => cell.textContent),
+        ).toEqual(['Triage this week']),
+      );
+    });
   });
 
   it('shows one table per day the sessions were last active, each named by its heading', async () => {

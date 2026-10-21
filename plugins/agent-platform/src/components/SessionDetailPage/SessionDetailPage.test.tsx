@@ -8,7 +8,13 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
 
-import { agentsRouteRef, sessionsRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  sessionsRouteRef,
+  workspacesRouteRef,
+} from '../../routes';
+import type { SessionWorkspaceName } from '../../hooks/useWorkspaceNames';
+import type { Workspace, WorkspaceDetail } from '../../lib/workspaceManager';
 import type { AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionDetailView } from '../../hooks/useSessionDetail';
 import type {
@@ -23,6 +29,7 @@ import { buildTimeline, type TimelineItem } from '../../lib/kagentTimeline';
 import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
   deriveSessionState,
+  formatBytes,
   normalizeSessionDetail,
   normalizeTaskList,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -52,6 +59,24 @@ jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useParams: () => ({ installation: 'gazelle', sessionId: 'abc' }),
   useNavigate: () => mockNavigate,
+}));
+
+// The workspace's name as the list resolves it; a session without a
+// workspace gets none, whatever a test sets.
+const mockWorkspaceInstallations = jest.fn<void, [string[]]>();
+let mockWorkspaceName: SessionWorkspaceName = { status: 'unnamed' };
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceNames'),
+  useWorkspaceNames: (installations: string[]) => {
+    mockWorkspaceInstallations(installations);
+    return (session: { workspace?: unknown }) =>
+      session.workspace ? mockWorkspaceName : undefined;
+  },
+}));
+const mockUseWorkspaceDetail = jest.fn();
+jest.mock('../../hooks/useWorkspaceActions', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceActions'),
+  useWorkspaceDetail: (...args: unknown[]) => mockUseWorkspaceDetail(...args),
 }));
 
 const mockUseSessionDetail = jest.fn<SessionDetailView, []>();
@@ -3445,6 +3470,167 @@ describe('SessionDetailPage', () => {
           name: /Session cost and context/,
         }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the workspace', () => {
+    const fourHoursAgo = () =>
+      new Date(Date.now() - 4 * 3600 * 1000).toISOString();
+    const docs = (): Workspace => ({
+      name: 'ws-docs',
+      organization: 'lab',
+      sources: [],
+      sync: { schedule: 'nightly' },
+      resourceVersion: '1',
+      createdAt: '2026-10-01T00:00:00Z',
+      repositories: 2,
+      sessions: 1,
+      lastSync: { time: fourHoursAgo(), result: 'Succeeded' },
+      volume: { handle: 'fs-1::docs' },
+    });
+    const docsDetail = (): WorkspaceDetail => ({
+      workspace: docs(),
+      mirrors: [
+        {
+          provider: 'github',
+          repository: 'giantswarm/devctl',
+          pushedAt: '2026-10-20T00:00:00Z',
+          sizeBytes: 1,
+        },
+        {
+          provider: 'github',
+          repository: 'giantswarm/agentlab',
+          pushedAt: '2026-10-20T00:00:00Z',
+          sizeBytes: 1,
+        },
+        {
+          provider: 'github',
+          repository: 'giantswarm/dropped',
+          pushedAt: '2026-10-20T00:00:00Z',
+          sizeBytes: 1,
+          droppedAt: '2026-10-20T00:00:00Z',
+        },
+      ],
+      storage: { mirrorsBytes: 2, sessionsBytes: 3 * 1024 * 1024 },
+      sessionDirectories: [
+        {
+          session: detail.session.sessionId,
+          sizeBytes: 3 * 1024 * 1024,
+          cleanupAfter: '2026-11-04T08:00:00Z',
+        },
+      ],
+    });
+
+    function withWorkspace() {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: {
+          ...detail,
+          session: {
+            ...detail.session,
+            workspace: {
+              volumeHandle: 'fs-1::docs',
+              fetched: ['giantswarm/devctl'],
+              providers: ['github'],
+            },
+          },
+        },
+      });
+    }
+
+    async function renderWithWorkspaces() {
+      return renderInTestApp(<SessionDetailPage />, {
+        mountedRoutes: {
+          '/sessions': sessionsRouteRef,
+          '/customize/agents': agentsRouteRef,
+          '/customize/workspaces': workspacesRouteRef,
+        },
+      });
+    }
+
+    beforeEach(() => {
+      mockWorkspaceInstallations.mockClear();
+      mockUseWorkspaceDetail.mockReset();
+      mockUseWorkspaceDetail.mockReturnValue({
+        data: docsDetail(),
+        isPending: false,
+        error: null,
+      });
+      mockWorkspaceName = { status: 'named', workspace: docs() };
+    });
+
+    it('leaves the header of a session without a workspace as it was, reading no workspace list', async () => {
+      await render();
+
+      expect(
+        screen.queryByRole('button', { name: /^Workspace/ }),
+      ).not.toBeInTheDocument();
+      expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith([]);
+    });
+
+    it('shows the workspace’s name, last sync and fetched repositories as a chip opening a drawer', async () => {
+      withWorkspace();
+      await renderWithWorkspaces();
+
+      expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
+      const chip = screen.getByRole('button', {
+        name: 'Workspace: ws-docs · synced 4 h ago · 1 fetched',
+      });
+      await userEvent.click(chip);
+
+      const drawer = screen.getByRole('dialog');
+      expect(
+        within(drawer).getByRole('heading', { name: 'Workspace: ws-docs' }),
+      ).toBeInTheDocument();
+      expect(
+        within(drawer).getByRole('link', { name: 'ws-docs' }),
+      ).toHaveAttribute(
+        'href',
+        '/customize/workspaces/gazelle/lab/ws-docs/edit',
+      );
+      expect(mockUseWorkspaceDetail).toHaveBeenCalledWith(
+        'gazelle',
+        'ws-docs',
+        true,
+      );
+      const lists = within(drawer).getAllByRole('list');
+      // Fetched before the first turn, then the workspace's repositories,
+      // the fetched one marked and the dropped one left out.
+      expect(within(lists[0]).getByText('giantswarm/devctl')).toBeVisible();
+      expect(
+        within(lists[1])
+          .getAllByRole('listitem')
+          .map(item => item.textContent),
+      ).toEqual(['giantswarm/agentlab', 'giantswarm/devctl (fetched)']);
+      expect(within(drawer).getByText('Repositories (2)')).toBeVisible();
+      expect(within(drawer).getByText(/^Deleted on /)).toBeVisible();
+      expect(
+        within(drawer).getByText(formatBytes(3 * 1024 * 1024)),
+      ).toBeVisible();
+      expect(within(drawer).getByText('Acting as you on')).toBeVisible();
+      expect(within(drawer).getByText('github')).toBeVisible();
+    });
+
+    it('shows a workspace the person can no longer see unnamed, not as an error', async () => {
+      withWorkspace();
+      mockWorkspaceName = { status: 'unnamed' };
+      await renderWithWorkspaces();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Workspace: Workspace · 1 fetched',
+        }),
+      );
+
+      const drawer = screen.getByRole('dialog');
+      expect(
+        within(drawer).getByText(/not listed for you any more/),
+      ).toBeVisible();
+      expect(within(drawer).queryByRole('link')).not.toBeInTheDocument();
+      // Nothing to read of a workspace without a name.
+      expect(mockUseWorkspaceDetail).toHaveBeenCalledWith('gazelle', '', false);
+      expect(within(drawer).getByText('giantswarm/devctl')).toBeVisible();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
 

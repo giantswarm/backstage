@@ -7,6 +7,13 @@ import { SessionRow } from '../SessionsDataProvider/helpers';
 import { sessionsRouteRef } from '../../routes';
 import { AgentSessionsCard } from './AgentSessionsCard';
 
+// The sessions here start without a workspace: nothing to name, nothing read.
+const mockNoWorkspaceName = () => undefined;
+jest.mock('../../hooks/useWorkspaceNames', () => ({
+  ...jest.requireActual('../../hooks/useWorkspaceNames'),
+  useWorkspaceNames: () => mockNoWorkspaceName,
+}));
+
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));

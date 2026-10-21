@@ -129,7 +129,8 @@ export type SessionStackedRowOptions = {
  *
  * - Line 1: the title — the link to the session, its hit area the whole row,
  *   wrapping to two lines — the runtime-lost mark, and the row's actions.
- * - Line 2: avatar and agent · state · environment · the row's time.
+ * - Line 2: avatar and agent · workspace · state · environment · the row's
+ *   time.
  *
  * The columns a page hides (an agent's own sessions hide the agent and the
  * environment) are left out of line 2 the same way.
@@ -171,6 +172,7 @@ export function sessionStackedRow({
       showAgent && Boolean(row.agentName) && (
         <AgentFact key="agent" row={row} buildAvatarUrl={buildAvatarUrl} />
       ),
+      row.workspaceName,
       showState && (
         <StateFact key="state" row={row} isLoading={isLoadingStates} />
       ),
