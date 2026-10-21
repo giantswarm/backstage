@@ -35,6 +35,7 @@ import {
   MusterInstallationsResponse,
   ServerSignInResult,
   ServerSignOutResult,
+  SignInTarget,
   MusterToolProgress,
   ToolDetail,
   WorkflowExecution,
@@ -210,6 +211,7 @@ export class MusterApiClient implements MusterApi {
       installation?: string;
       hours?: number;
       servers?: readonly string[];
+      tool?: string;
     } = {},
   ): Promise<McpUsage> {
     const searchParams = new URLSearchParams();
@@ -218,6 +220,9 @@ export class MusterApiClient implements MusterApi {
     }
     for (const server of options.servers ?? []) {
       searchParams.append('server', server);
+    }
+    if (options.tool !== undefined) {
+      searchParams.set('tool', options.tool);
     }
     const query = searchParams.toString();
     return this.get<McpUsage>(
@@ -408,23 +413,23 @@ export class MusterApiClient implements MusterApi {
   }
 
   async signInServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignInResult> {
     return this.post<ServerSignInResult>(
       '/auth/login',
-      { server },
+      typeof server === 'string' ? { server } : server,
       installation,
     );
   }
 
   async signOutServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignOutResult> {
     return this.post<ServerSignOutResult>(
       '/auth/logout',
-      { server },
+      typeof server === 'string' ? { server } : server,
       installation,
     );
   }

@@ -461,8 +461,23 @@ export interface ServerAuthStatus {
   sso_attempt_failed?: boolean;
 }
 
+/**
+ * The person's grant of one provider App muster keeps (`aggregator.providerApps`,
+ * each App named after its provider instance), granted once per person with
+ * `core_auth_login app=<name>` and attached by muster to every call of a server
+ * that receives it.
+ */
+export interface ProviderAppAuthStatus {
+  name: string;
+  status: 'connected' | 'auth_required';
+  auth_tool?: string;
+  error?: string;
+}
+
 export interface AuthStatusResponse {
   servers: ServerAuthStatus[];
+  /** The person's provider App grants; absent from musters without Apps. */
+  providerApps?: ProviderAppAuthStatus[];
   /**
    * Set when muster's `auth://status` could not be read at all (unsupported,
    * unreachable, mid-outage). The proxy answers 200 either way so polling it
@@ -530,6 +545,8 @@ export interface MusterApi {
      * instances), and lists every tool they were called with.
      */
     servers?: readonly string[];
+    /** Narrows every figure to one tool, by the name muster exposes it as. */
+    tool?: string;
   }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
@@ -598,10 +615,11 @@ export interface MusterApi {
    * Start the downstream OAuth flow for one aggregated server via muster's
    * `core_auth_login`. Either reports the server as already connected or
    * returns a sign-in URL the user must open in a browser; muster connects the
-   * server for this session once the flow completes.
+   * server for this session once the flow completes. `{ app }` starts the
+   * person's grant of a provider App the same way.
    */
   signInServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignInResult>;
   /**
@@ -610,10 +628,16 @@ export interface MusterApi {
    * tools re-gate until the next sign-in.
    */
   signOutServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignOutResult>;
 }
+
+/**
+ * What a sign-in is for: an aggregated server by name, or a provider App
+ * muster keeps (`core_auth_login app=<name>`).
+ */
+export type SignInTarget = string | { app: string };
 
 export interface MusterAuthCredentials {
   token?: string;

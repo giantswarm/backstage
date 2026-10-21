@@ -28,6 +28,8 @@ export type WorkspaceManagerFake = {
   signInServer: jest.Mock;
   /** The muster servers granting a provider's App, by state; mutable. */
   grants: Record<string, 'connected' | 'auth_required'>;
+  /** The provider Apps muster keeps, by the person's grant; mutable. */
+  appGrants: Record<string, 'connected' | 'auth_required'>;
   calls: FakeCall[];
   callsOf: (tool: string) => Array<Record<string, any>>;
   /** Replaces the answer of a write: throw to refuse it. */
@@ -94,6 +96,7 @@ export function createWorkspaceManagerFake({
   workspaces = [],
   managerSignIn = 'connected',
   grants = {},
+  appGrants = {},
 }: {
   providers: WorkspaceProvider[];
   repositories: FakeRepository[];
@@ -105,6 +108,11 @@ export function createWorkspaceManagerFake({
    * providers' `signIn`), by their state; a test flips one to `connected`.
    */
   grants?: Record<string, 'connected' | 'auth_required'>;
+  /**
+   * The provider Apps muster keeps (`core_auth_login app=<instance>`), by the
+   * person's grant; a test flips one to `connected`.
+   */
+  appGrants?: Record<string, 'connected' | 'auth_required'>;
 }): WorkspaceManagerFake {
   const calls: FakeCall[] = [];
   const writes: Record<string, (args: any) => unknown> = {
@@ -236,10 +244,16 @@ export function createWorkspaceManagerFake({
       { name: 'workspace-manager', status: managerSignIn },
       ...Object.entries(grants).map(([name, status]) => ({ name, status })),
     ],
+    providerApps: Object.entries(appGrants).map(([name, status]) => ({
+      name,
+      status,
+    })),
   }));
-  const signInServer = jest.fn(async (server: string) => ({
+  const signInServer = jest.fn(async (server: string | { app: string }) => ({
     status: 'auth_required',
-    authUrl: `https://sign-in.example/${server}`,
+    authUrl: `https://sign-in.example/${
+      typeof server === 'string' ? server : `app/${server.app}`
+    }`,
   }));
 
   return {
@@ -249,6 +263,7 @@ export function createWorkspaceManagerFake({
     getAuthStatus,
     signInServer,
     grants,
+    appGrants,
     calls,
     callsOf: tool => calls.filter(c => c.tool === tool).map(c => c.args),
     onWrite: (tool, handler) => {

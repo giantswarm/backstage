@@ -11,6 +11,12 @@ import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
 export type ServerPageTab = ConnectorPageTabPath;
 
 /**
+ * A tool page's tabs below its own address, by their path segment. Overview
+ * is the index, so a link to it names no tab.
+ */
+export type ToolPageTab = 'run' | 'usage';
+
+/**
  * The Tools tab's search and "What it does" filter, as an address carries
  * them: `?q=` and `?effect=reads,changes`.
  */
@@ -30,14 +36,15 @@ export interface ServerPageLinks {
     options?: { tab?: ServerPageTab } & ToolsListView,
   ) => string | undefined;
   /**
-   * A tool's page beneath its server; `q` and `effect` are the Tools search
-   * and filter it was opened from, which the page's way back keeps.
+   * A tool's page beneath its server -- its Overview, or another tab; `q`
+   * and `effect` are the Tools search and filter it was opened from, which
+   * the page's way back keeps.
    */
   tool: (
     server: string,
     tool: string,
     installation: string,
-    options?: ToolsListView,
+    options?: { tab?: ToolPageTab } & ToolsListView,
   ) => string | undefined;
 }
 
@@ -64,13 +71,16 @@ export function useServerPageLinks(): ServerPageLinks {
           effect: options.effect?.join(','),
         });
       },
-      tool: (server, tool, installation, options = {}) =>
-        toolRoute && installation
-          ? withQuery(toolRoute({ installation, server, tool }), {
-              q: options.q,
-              effect: options.effect?.join(','),
-            })
-          : undefined,
+      tool: (server, tool, installation, options = {}) => {
+        if (!toolRoute || !installation) {
+          return undefined;
+        }
+        const base = toolRoute({ installation, server, tool });
+        return withQuery(options.tab ? `${base}/${options.tab}` : base, {
+          q: options.q,
+          effect: options.effect?.join(','),
+        });
+      },
     }),
     [serverRoute, toolRoute],
   );

@@ -9,6 +9,7 @@ import {
   ServerAuthStatus,
   ServerSignInResult,
   ServerSignOutResult,
+  SignInTarget,
 } from '../../apis';
 import {
   deactivatedSignInGate,
@@ -96,7 +97,7 @@ function makeApi(options: {
   };
   return {
     getAuthStatus: jest.fn(() => Promise.resolve(response)),
-    signInServer: jest.fn((_server: string, _installation?: string) =>
+    signInServer: jest.fn((_server: SignInTarget, _installation?: string) =>
       Promise.resolve(
         options.signIn ?? {
           status: 'auth_required',
@@ -106,7 +107,7 @@ function makeApi(options: {
         },
       ),
     ),
-    signOutServer: jest.fn((_server: string, _installation?: string) =>
+    signOutServer: jest.fn((_server: SignInTarget, _installation?: string) =>
       Promise.resolve(
         options.signOut ?? {
           status: 'signed_out',
