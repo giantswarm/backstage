@@ -10,7 +10,7 @@ import { WorkspaceEditorRoute } from '../WorkspaceEditorPage';
 /**
  * The workspace pages under `/customize/workspaces`: `/new` creates a
  * workspace, `<installation>/<organization>/<name>` is one workspace's page
- * and `…/<name>/edit` edits it; anything else goes to the list, the shell's
+ * (its tabs below it) and `…/<name>/edit` edits it; anything else goes to the list, the shell's
  * Customize → Workspaces tab. Its own `PageHeaderActionsProvider`, since the page renders without
  * the app's page layout (`noHeader`).
  */
@@ -21,7 +21,7 @@ export function WorkspacesRouter() {
         <Routes>
           <Route path="new" element={<WorkspaceEditorRoute mode="create" />} />
           <Route
-            path=":installation/:organization/:name"
+            path=":installation/:organization/:name/*"
             element={<WorkspaceDetailRoute />}
           />
           <Route

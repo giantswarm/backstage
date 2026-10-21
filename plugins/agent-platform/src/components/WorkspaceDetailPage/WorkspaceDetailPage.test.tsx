@@ -7,6 +7,7 @@ import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react
 import {
   WorkspaceManagerError,
   type WorkspaceDetail,
+  type WorkspaceProvider,
 } from '../../lib/workspaceManager';
 import { sessionsRouteRef, workspacesRouteRef } from '../../routes';
 import { WorkspaceDetailRoute } from './WorkspaceDetailPage';
@@ -29,6 +30,7 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => ({
 }));
 let mockPresence: string;
 jest.mock('../../hooks/useWorkspaceManager', () => ({
+  useWorkspaceManagerClient: () => undefined,
   useWorkspaceManagerAvailability: () => ({
     presence: mockPresence,
     isAvailable: mockPresence === 'available',
@@ -54,6 +56,10 @@ const mockRemove = {
   isPending: false,
   error: null,
 };
+let mockProviders: WorkspaceProvider[] | undefined;
+jest.mock('../../hooks/useWorkspaceEditor', () => ({
+  useWorkspaceProviders: () => ({ data: mockProviders }),
+}));
 jest.mock('../../hooks/useWorkspaceActions', () => ({
   useWorkspaceDetail: (...args: unknown[]) => mockUseWorkspaceDetail(...args),
   useWorkspaceLastPushes: () => ({ data: mockPushes }),
@@ -138,7 +144,7 @@ function renderPage(path = '/customize/workspaces/gazelle/lab/ws-docs') {
     <PageHeaderActionsProvider>
       <Routes>
         <Route
-          path="/customize/workspaces/:installation/:organization/:name"
+          path="/customize/workspaces/:installation/:organization/:name/*"
           element={<WorkspaceDetailRoute />}
         />
       </Routes>
@@ -158,11 +164,12 @@ describe('WorkspaceDetailPage', () => {
     jest.clearAllMocks();
     mockDetail = { data: docs(), error: null, refetch: jest.fn() };
     mockPushes = undefined;
+    mockProviders = undefined;
     mockMusterApi = {};
     mockPresence = 'available';
   });
 
-  it('shows the workspace with its sources, sync, storage and actions', async () => {
+  it('shows the workspace with its sources, tabs and actions', async () => {
     await renderPage();
 
     expect(
@@ -171,16 +178,57 @@ describe('WorkspaceDetailPage', () => {
     expect(
       screen.getByText('Organization lab · gazelle · example-org · api, web'),
     ).toBeInTheDocument();
-    expect(screen.getByText('A change to the workspace')).toBeInTheDocument();
-    expect(screen.getByText(/7.0 MiB of repositories/)).toBeInTheDocument();
-    expect(screen.getByText('20 GiB · needs 6 GiB')).toBeInTheDocument();
-    expect(screen.getByText('20 GiB')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sync now' })).toBeEnabled();
+    expect(
+      screen
+        .getAllByRole('tab')
+        .map(tab => tab.textContent?.replace(/ \(\d+\)$/, '')),
+    ).toEqual(['Repositories', 'Sessions', 'Details']);
+    expect(screen.getByRole('button', { name: 'Synchronize' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
     expect(screen.queryByText(/next sync/i)).toBeNull();
   });
 
-  it('lists the repositories with their head commits, marking those pushed since', async () => {
+  it('shows the synchronization status and the storage under Details', async () => {
+    await renderPage('/customize/workspaces/gazelle/lab/ws-docs/details');
+
+    const status = screen.getByRole('region', {
+      name: 'Synchronization status',
+    });
+    expect(
+      within(status).getByText('A change to the workspace'),
+    ).toBeInTheDocument();
+    const storage = screen.getByRole('region', { name: 'Storage' });
+    expect(within(storage).getByText('Total')).toBeInTheDocument();
+    expect(within(storage).getByText('10.0 MiB')).toBeInTheDocument();
+    expect(within(storage).getByText('7.0 MiB')).toBeInTheDocument();
+    expect(within(storage).getByText('3.0 MiB')).toBeInTheDocument();
+    expect(
+      within(storage).getByText(
+        '20 GiB · needs 6 GiB · grows when more is needed, never shrinks',
+      ),
+    ).toBeInTheDocument();
+    expect(within(storage).getByText('20 GiB')).toBeInTheDocument();
+  });
+
+  it('says an elastic volume has no fixed size', async () => {
+    const detail = docs({ volumeSize: undefined, neededSize: undefined });
+    detail.storage = {
+      ...detail.storage,
+      volumeSize: undefined,
+      neededSize: undefined,
+    };
+    mockDetail = { ...mockDetail, data: detail };
+    await renderPage('/customize/workspaces/gazelle/lab/ws-docs/details');
+
+    expect(
+      screen.getByText(
+        'The storage class grows the volume as it fills, so it has no fixed size.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Headroom')).toBeNull();
+  });
+
+  it('lists the repositories with their head commits, marking those pushed after the last synchronization', async () => {
     mockPushes = {
       pushes: new Map([
         ['github\u0000example-org/web', '2026-10-21T07:00:00Z'],
@@ -190,31 +238,45 @@ describe('WorkspaceDetailPage', () => {
     };
     await renderPage();
 
-    const region = screen.getByRole('region', { name: 'Repositories (2)' });
-    const rows = within(region).getAllByRole('row').slice(1);
+    const rows = within(screen.getByRole('grid')).getAllByRole('row').slice(1);
     expect(
       rows.map(row => within(row).getAllByRole('rowheader')[0].textContent),
-    ).toEqual(['example-org/api', 'example-org/webpushed since the last sync']);
+    ).toEqual(['example-org/api', 'example-org/web']);
     expect(within(rows[0]).getByText('0123456')).toBeInTheDocument();
     expect(within(rows[1]).getByText('fedcba9')).toBeInTheDocument();
     expect(
-      within(region).getByText(
-        '1 pushed to since the last sync; a Session starting now fetches them first.',
+      within(rows[0]).queryByText('after last synchronization'),
+    ).toBeNull();
+    expect(
+      within(rows[1]).getByText('after last synchronization'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '1 pushed to after the last synchronization; a Session starting now fetches them first.',
       ),
     ).toBeInTheDocument();
   });
 
-  it('lists the Sessions on the workspace with their cleanup dates, and filters to mine', async () => {
+  it('links each repository at its provider’s host', async () => {
+    mockProviders = [
+      { name: 'github', kind: 'github', connected: true, host: 'github.com' },
+    ];
     await renderPage();
 
-    const region = screen.getByRole('region', {
-      name: 'Sessions on this workspace (2)',
-    });
     expect(
-      within(region).getByRole('link', { name: 'Fix the flaky test' }),
+      screen.getByRole('link', { name: 'example-org/api' }),
+    ).toHaveAttribute('href', 'https://github.com/example-org/api');
+  });
+
+  it('lists the Sessions on the workspace with their cleanup dates, and filters to mine', async () => {
+    await renderPage('/customize/workspaces/gazelle/lab/ws-docs/sessions');
+
+    const table = screen.getByRole('grid');
+    expect(
+      within(table).getByRole('link', { name: 'Fix the flaky test' }),
     ).toHaveAttribute('href', '/sessions/gazelle/sess-mine');
-    expect(within(region).getByText('dev@example.com')).toBeInTheDocument();
-    expect(within(region).getAllByRole('row')[1]).toHaveTextContent(/2026/);
+    expect(within(table).getByText('dev@example.com')).toBeInTheDocument();
+    expect(within(table).getAllByRole('row')[1]).toHaveTextContent(/2026/);
 
     await userEvent.click(
       screen.getByRole('button', { name: /Filter by created by/i }),
@@ -222,11 +284,11 @@ describe('WorkspaceDetailPage', () => {
     const listbox = await screen.findByRole('listbox');
     await userEvent.click(within(listbox).getByRole('option', { name: /Me/ }));
     await userEvent.keyboard('{Escape}');
-    expect(within(region).queryByText('Bump the chart')).toBeNull();
-    expect(within(region).getByText('Fix the flaky test')).toBeInTheDocument();
+    expect(screen.queryByText('Bump the chart')).toBeNull();
+    expect(screen.getByText('Fix the flaky test')).toBeInTheDocument();
   });
 
-  it('shows a failed last sync with the manager’s reason', async () => {
+  it('shows a failed last synchronization with the manager’s reason', async () => {
     mockDetail = {
       ...mockDetail,
       data: docs({
@@ -238,9 +300,11 @@ describe('WorkspaceDetailPage', () => {
         },
       }),
     };
-    await renderPage();
+    await renderPage('/customize/workspaces/gazelle/lab/ws-docs/details');
 
-    const region = screen.getByRole('region', { name: 'Sync' });
+    const region = screen.getByRole('region', {
+      name: 'Synchronization status',
+    });
     expect(within(region).getByText('Failed')).toBeInTheDocument();
     expect(
       within(region).getByText(
@@ -252,22 +316,24 @@ describe('WorkspaceDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows a sync running in place of Sync now', async () => {
+  it('shows a synchronization running in place of Synchronize', async () => {
     mockDetail = {
       ...mockDetail,
       data: docs({
         activeSync: { job: 'sync-9', startedAt: '2026-10-21T08:00:05Z' },
       }),
     };
-    await renderPage();
+    await renderPage('/customize/workspaces/gazelle/lab/ws-docs/details');
 
-    expect(screen.getByRole('button', { name: 'Syncing…' })).toBeDisabled();
-    expect(screen.getByText(/^Syncing, started/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Synchronizing…' }),
+    ).toBeDisabled();
+    expect(screen.getByText(/^Synchronizing, started/)).toBeInTheDocument();
   });
 
-  it('keeps reading, in a background tab too, until a requested sync shows ended', async () => {
+  it('keeps reading, in a background tab too, until a requested synchronization shows ended', async () => {
     mockSync.mutate.mockImplementation((_: unknown, options: any) =>
-      // The read after the request does not show the sync yet.
+      // The read after the request does not show the synchronization yet.
       options.onSuccess({
         workspace: 'ws-docs',
         requestedAt: '2026-10-21T08:00:00Z',
@@ -281,7 +347,7 @@ describe('WorkspaceDetailPage', () => {
       { followSync: true, awaitingSync: false },
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Synchronize' }));
 
     expect(mockUseWorkspaceDetail).toHaveBeenLastCalledWith(
       'gazelle',
@@ -289,13 +355,17 @@ describe('WorkspaceDetailPage', () => {
       true,
       { followSync: true, awaitingSync: true },
     );
-    expect(screen.getByRole('button', { name: 'Syncing…' })).toBeDisabled();
-    expect(screen.queryByTestId('workspace-sync-ended')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Synchronizing…' }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByText('Workspace synchronization successful'),
+    ).toBeNull();
   });
 
-  it('runs Sync now and reports an unchanged result when the sync ends', async () => {
+  it('runs Synchronize and notifies an unchanged result when it ends', async () => {
     mockSync.mutate.mockImplementation((_: unknown, options: any) => {
-      // The read after the request finds the sync ended, unchanged.
+      // The read after the request finds the synchronization ended, unchanged.
       mockDetail = {
         ...mockDetail,
         data: docs({
@@ -313,22 +383,16 @@ describe('WorkspaceDetailPage', () => {
     });
     await renderPage();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Synchronize' }));
 
     expect(mockSync.mutate).toHaveBeenCalled();
-    const ended = await screen.findByTestId('workspace-sync-ended');
-    expect(ended).toHaveTextContent('The sync ended: unchanged');
-    expect(ended).toHaveTextContent(
-      'Nothing had changed, so nothing was fetched.',
-    );
-    expect(screen.getByRole('button', { name: 'Sync now' })).toBeEnabled();
-
-    // A second request that fails takes the first one's outcome away.
-    mockSync.mutate.mockImplementation((_: unknown, options: any) =>
-      options.onError(new Error('workspace-manager unreachable')),
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Sync now' }));
-    expect(screen.queryByTestId('workspace-sync-ended')).toBeNull();
+    expect(
+      await screen.findByText('Workspace synchronization successful'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Nothing had changed, so nothing was fetched.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Synchronize' })).toBeEnabled();
   });
 
   it('goes to the workspace’s own address from one naming another Organization', async () => {
@@ -369,7 +433,7 @@ describe('WorkspaceDetailPage', () => {
       await renderPage();
 
       expect(screen.getByText(title)).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Synchronize' })).toBeNull();
     },
   );
 
@@ -385,7 +449,7 @@ describe('WorkspaceDetailPage', () => {
     await renderPage();
 
     expect(screen.getByText('You are not a member of lab')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
-    expect(screen.queryByRole('region', { name: /Repositories/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Synchronize' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Repositories/ })).toBeNull();
   });
 });

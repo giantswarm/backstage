@@ -474,6 +474,16 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/workspaces/:installation/:organization/:name',
     ],
     [
+      '/customize/workspaces/gazelle/acme/platform-mcp/sessions',
+      { page: 'Workspace detail', view: 'sessions' },
+      '/customize/workspaces/:installation/:organization/:name/sessions',
+    ],
+    [
+      '/customize/workspaces/gazelle/acme/platform-mcp/x',
+      { page: 'Workspace detail', view: 'redirect' },
+      '/customize/workspaces/:installation/:organization/:name/*',
+    ],
+    [
       '/customize/models/new',
       { page: 'Models', view: 'new' },
       '/customize/models/new',
@@ -804,6 +814,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/workspaces/new',
       '/customize/workspaces/gazelle/acme/platform-mcp/edit',
       '/customize/workspaces/gazelle/acme/platform-mcp',
+      '/customize/workspaces/gazelle/acme/platform-mcp/details',
       '/customize/agents/new',
       '/customize/agents/new/skills',
       '/customize/agents/new/tools',

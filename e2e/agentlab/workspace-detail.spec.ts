@@ -43,28 +43,35 @@ test('shows the workspace, its repositories with head commits and its Sessions w
     ),
   ).toBeVisible();
 
-  const repositories = main.getByRole('region', {
-    name: /^Repositories \(\d+\)$/,
-  });
-  // The Head cell: the short commit, on its own.
+  // Repositories, the page's own address: the Head cell, the short commit
+  // on its own.
   await expect(
-    repositories
+    main
+      .locator('table')
       .getByRole('row')
       .nth(1)
       .getByText(/^[0-9a-f]{7}$/),
   ).toBeVisible();
 
-  const sessions = main.getByRole('region', {
-    name: /^Sessions on this workspace \(\d+\)$/,
-  });
+  await main.getByRole('tab', { name: /^Sessions/ }).click();
+  await expect(admin).toHaveURL(new RegExp(`${path}/sessions$`));
+  const sessions = main.locator('table');
   await expect(sessions.getByRole('row').nth(1)).toContainText(/\d{4}/);
   await expect(sessions.getByRole('link').first()).toHaveAttribute(
     'href',
     new RegExp(`/sessions/${lab.installation}/`),
   );
+
+  await main.getByRole('tab', { name: /^Details/ }).click();
+  await expect(
+    main.getByRole('region', { name: 'Synchronization status' }),
+  ).toBeVisible();
+  await expect(main.getByRole('region', { name: 'Storage' })).toContainText(
+    'Capacity',
+  );
 });
 
-test('Sync now shows the sync running and reports its result when it ends', async ({
+test('Synchronize shows the synchronization running and notifies its result when it ends', async ({
   admin,
 }) => {
   test.setTimeout(5 * 60_000);
@@ -75,15 +82,20 @@ test('Sync now shows the sync running and reports its result when it ends', asyn
   );
 
   const main = admin.getByRole('main');
-  await main.getByRole('button', { name: 'Sync now' }).click();
-  await expect(main.getByRole('button', { name: 'Syncing…' })).toBeDisabled();
-  const ended = admin.getByTestId('workspace-sync-ended');
-  await expect(ended).toBeVisible({ timeout: 4 * 60_000 });
-  // An unchanged workspace says so; a moved repository was fetched.
-  await expect(ended).toContainText(
-    /The sync ended: (unchanged|synced)|The sync failed/,
-  );
-  await expect(main.getByRole('button', { name: 'Sync now' })).toBeEnabled();
+  await main.getByRole('button', { name: 'Synchronize' }).click();
+  await expect(
+    main.getByRole('button', { name: 'Synchronizing…' }),
+  ).toBeDisabled();
+  // The outcome is a notification: success, unchanged or with what was
+  // fetched, or the failure with the manager's reason.
+  await expect(
+    admin
+      .getByText(
+        /^Workspace synchronization successful$|^Synchronization of .* failed$/,
+      )
+      .first(),
+  ).toBeVisible({ timeout: 4 * 60_000 });
+  await expect(main.getByRole('button', { name: 'Synchronize' })).toBeEnabled();
 });
 
 test('an address naming another Organization goes to the workspace’s own', async ({
@@ -124,10 +136,12 @@ test('a person outside the Organization gets a "not a member" page, not the work
     );
     const main = viewer.getByRole('main');
     await expect(main.getByText(/^You are not a member of /)).toBeVisible();
-    await expect(main.getByRole('button', { name: 'Sync now' })).toHaveCount(0);
-    await expect(
-      main.getByRole('region', { name: /^Repositories/ }),
-    ).toHaveCount(0);
+    await expect(main.getByRole('button', { name: 'Synchronize' })).toHaveCount(
+      0,
+    );
+    await expect(main.getByRole('tab', { name: /^Repositories/ })).toHaveCount(
+      0,
+    );
   } finally {
     await context.close();
   }

@@ -17,7 +17,7 @@ import type {
 
 /**
  * What started a sync cycle, as the page says it. A Session's start past the
- * refresh threshold and Sync now both reach the manager as a request; the
+ * refresh threshold and Synchronize both reach the manager as a request; the
  * manager records no schedule any more, but a cycle that ran at the upgrade
  * may still name it.
  */
@@ -28,7 +28,7 @@ export function syncTriggerLabel(
     case 'change':
       return 'A change to the workspace';
     case 'request':
-      return 'A request: Sync now, or a Session starting on it';
+      return 'A request: Synchronize, or a Session starting on it';
     case 'retry':
       return 'A retry after the failed sync before it';
     case 'cleanup':

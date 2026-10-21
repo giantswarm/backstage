@@ -21,7 +21,6 @@ import {
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditIcon from '@material-ui/icons/Edit';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
-import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import SyncIcon from '@material-ui/icons/Sync';
 import {
   CatalogNoMatch,
@@ -120,32 +119,29 @@ function LastSyncCell({ row }: { row: WorkspaceRow }) {
   );
 }
 
-/** Open, Edit, Sync now and Delete for one workspace. */
+/** Edit, Synchronize and Delete for one workspace; its name opens it. */
 function RowActions({ row }: { row: WorkspaceRow }) {
   const toastApi = useApi(toastApiRef);
   const { sync, remove } = useWorkspaceActions(row.installation, row.name);
-  const detailRoute = useRouteRef(workspaceDetailRouteRef);
   const editRoute = useRouteRef(workspaceEditRouteRef);
-  const params = {
+  const editHref = editRoute?.({
     installation: row.installation,
     organization: row.organization,
     name: row.name,
-  };
-  const openHref = detailRoute?.(params);
-  const editHref = editRoute?.(params);
+  });
   const [isDeleteOpen, setDeleteOpen] = useState(false);
 
   const syncNow = () =>
     sync.mutate(undefined, {
       onSuccess: () =>
         toastApi.post({
-          title: `Sync of ${row.name} requested`,
+          title: `Synchronization of ${row.name} requested`,
           status: 'success',
           timeout: TOAST_TIMEOUT_MS,
         }),
       onError: error =>
         toastApi.post({
-          title: `${row.name} could not be synced`,
+          title: `${row.name} could not be synchronized`,
           description: error.message,
           status: 'danger',
         }),
@@ -174,13 +170,6 @@ function RowActions({ row }: { row: WorkspaceRow }) {
         />
         <Menu maxWidth={MENU_WIDTH}>
           <MenuItem
-            iconStart={<OpenInNewIcon />}
-            isDisabled={!openHref}
-            href={openHref}
-          >
-            Open
-          </MenuItem>
-          <MenuItem
             iconStart={<EditIcon />}
             isDisabled={row.deleting || !editHref}
             href={editHref}
@@ -192,7 +181,7 @@ function RowActions({ row }: { row: WorkspaceRow }) {
             isDisabled={row.deleting || sync.isPending}
             onAction={syncNow}
           >
-            Sync now
+            Synchronize…
           </MenuItem>
           <MenuItem
             color="danger"

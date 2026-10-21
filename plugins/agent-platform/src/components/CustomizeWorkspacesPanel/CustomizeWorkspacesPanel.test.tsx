@@ -347,21 +347,20 @@ describe('CustomizeWorkspacesPanel', () => {
     );
   });
 
-  it('offers Open, Edit, Sync now and Delete', async () => {
+  it('offers Edit, Synchronize and Delete, and no Open beside the name link', async () => {
     await renderPanel();
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Actions for docs' }),
     );
-    expect(screen.getByRole('menuitem', { name: 'Open' })).toHaveAttribute(
-      'href',
-      '/customize/workspaces/gazelle/alpha/docs',
-    );
+    expect(screen.queryByRole('menuitem', { name: 'Open' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveAttribute(
       'href',
       '/customize/workspaces/gazelle/alpha/docs/edit',
     );
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Sync now' }));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Synchronize…' }),
+    );
     expect(mockSync.mutate).toHaveBeenCalled();
   });
 

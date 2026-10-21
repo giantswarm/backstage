@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import {
   toastApiRef,
   useApi,
@@ -39,6 +46,7 @@ import {
   StatusDot,
   useCatalogFilters,
   usePhoneColumns,
+  useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
@@ -50,7 +58,11 @@ import {
   useWorkspaceDetail,
   useWorkspaceLastPushes,
 } from '../../hooks/useWorkspaceActions';
-import { useWorkspaceManagerAvailability } from '../../hooks/useWorkspaceManager';
+import {
+  useWorkspaceManagerAvailability,
+  useWorkspaceManagerClient,
+} from '../../hooks/useWorkspaceManager';
+import { useWorkspaceProviders } from '../../hooks/useWorkspaceEditor';
 import { formatBytes } from '../../lib/formatNumbers';
 import {
   sharedIdentityReason,
@@ -92,6 +104,7 @@ import {
 import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
 import { WorkspaceManagerSignIn } from '../WorkspaceManagerSignIn';
 import { useWorkspacesTabHref } from '../WorkspaceEditorPage';
+import { workspacePageTabs } from './workspaceTabs';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -120,9 +133,11 @@ export type WorkspaceDetailPageProps = {
  * One workspace of an Organization, read as the person (`get_workspace`):
  * its sources, the last sync with its result and what started it, what the
  * volume stores, the repositories of the last sync's manifest, and the
- * Sessions with a directory on the volume with their cleanup dates. Sync now
- * (`sync_workspace`) shows the sync running and refreshes the page when it
- * ends; Edit and Delete sit beside it. A person outside the Organization gets
+ * Sessions with a directory on the volume with their cleanup dates, as the
+ * tabs Repositories (the index), Sessions and Details. Synchronize
+ * (`sync_workspace`) shows the synchronization running, refreshes the page
+ * when it ends and reports its outcome as a notification; Edit and Delete sit
+ * beside it. A person outside the Organization gets
  * a "not a member" page, not the workspace.
  */
 export function WorkspaceDetailPage(props: WorkspaceDetailPageProps) {
@@ -203,6 +218,8 @@ function WorkspaceDetailContent({
   const { tabHref, frame } = useWorkspaceFrame(name, organization);
   const detailRoute = useRouteRef(workspaceDetailRouteRef);
   const editRoute = useRouteRef(workspaceEditRouteRef);
+  const basePath = useSplatBasePath();
+  const { search } = useLocation();
   const availability = useWorkspaceManagerAvailability(installation);
   // The sync this person asked for, until its outcome has been shown.
   const [requestedAt, setRequestedAt] = useState<string>();
@@ -212,22 +229,35 @@ function WorkspaceDetailContent({
   });
   const { sync, remove } = useWorkspaceActions(installation, name);
   const [isDeleteOpen, setDeleteOpen] = useState(false);
-  const [ended, setEnded] = useState<WorkspaceDetail['workspace']>();
   const workspace = detail.data?.workspace;
+  // The outcome of the synchronization the person asked for, as a
+  // notification: the page shows the state from then on, which may move on.
   useEffect(() => {
     if (
-      workspace &&
+      workspace?.lastSync &&
       requestedAt &&
       requestedSyncEnded(workspace, requestedAt)
     ) {
-      setEnded(workspace);
       setRequestedAt(undefined);
+      const result = lastSyncResult(workspace.lastSync);
+      toastApi.post(
+        result.tone === 'danger'
+          ? {
+              title: `Synchronization of ${name} failed`,
+              description: result.sentence,
+              status: 'danger',
+            }
+          : {
+              title: 'Workspace synchronization successful',
+              description: result.sentence,
+              status: 'success',
+              timeout: TOAST_TIMEOUT_MS,
+            },
+      );
     }
-  }, [workspace, requestedAt]);
+  }, [workspace, requestedAt, toastApi, name]);
 
   const syncNow = () => {
-    // A new request: the last one's outcome no longer stands.
-    setEnded(undefined);
     sync.mutate(undefined, {
       // The manager's time, which the last sync's is compared with; without
       // it, the last sync the page knows.
@@ -239,7 +269,7 @@ function WorkspaceDetailContent({
         ),
       onError: error =>
         toastApi.post({
-          title: `${name} could not be synced`,
+          title: `${name} could not be synchronized`,
           description: error.message,
           status: 'danger',
         }),
@@ -361,7 +391,7 @@ function WorkspaceDetailContent({
         isDisabled={workspace.deleting || syncing || sync.isPending}
         onPress={syncNow}
       >
-        {syncing || sync.isPending ? 'Syncing…' : 'Sync now'}
+        {syncing || sync.isPending ? 'Synchronizing…' : 'Synchronize'}
       </Button>
     </>
   );
@@ -375,6 +405,11 @@ function WorkspaceDetailContent({
         workspace.sources,
       )}`}
       actions={actions}
+      tabs={workspacePageTabs({
+        repositories: detail.data.mirrors.length,
+        sessions: detail.data.sessionDirectories.length,
+      })}
+      tabsBasePath={basePath}
       menu={
         <MoreActionsMenu
           items={
@@ -395,23 +430,46 @@ function WorkspaceDetailContent({
         />
       }
     >
-      <Flex direction="column" gap="6">
+      <Flex direction="column" gap="5">
         {workspace.deleting && (
           <Alert
             status="info"
             title={`${name} is being deleted`}
-            description="Its sync has stopped and no new Session starts on it. Each Session below keeps its directory until it is cleaned up; then the volume goes."
+            description="Its synchronization has stopped and no new Session starts on it. Each Session keeps its directory until it is cleaned up; then the volume goes."
           />
         )}
-        {ended?.lastSync && <SyncEnded workspace={ended} />}
-        <SyncSection detail={detail.data} />
-        <StorageSection detail={detail.data} />
-        <RepositoriesSection
-          installation={installation}
-          name={name}
-          detail={detail.data}
-        />
-        <SessionsSection installation={installation} detail={detail.data} />
+        <Routes>
+          <Route
+            index
+            element={
+              <RepositoriesTab
+                installation={installation}
+                name={name}
+                detail={detail.data}
+              />
+            }
+          />
+          <Route
+            path="sessions"
+            element={
+              <SessionsTab installation={installation} detail={detail.data} />
+            }
+          />
+          <Route
+            path="details"
+            element={
+              <Flex direction="column" gap="6">
+                <SyncSection detail={detail.data} />
+                <StorageSection detail={detail.data} />
+              </Flex>
+            }
+          />
+          {/* An address the page does not have lands on Repositories. */}
+          <Route
+            path="*"
+            element={<Navigate to={`${basePath}${search}`} replace />}
+          />
+        </Routes>
       </Flex>
       <WorkspaceDeleteDialog
         row={row}
@@ -425,23 +483,6 @@ function WorkspaceDetailContent({
   );
 }
 
-/** The outcome of the sync this person started with Sync now. */
-function SyncEnded({ workspace }: { workspace: WorkspaceDetail['workspace'] }) {
-  const result = lastSyncResult(workspace.lastSync!);
-  return (
-    <Alert
-      status={result.tone === 'danger' ? 'danger' : 'success'}
-      title={
-        result.tone === 'danger'
-          ? 'The sync failed'
-          : `The sync ended: ${result.label.toLowerCase()}`
-      }
-      description={result.sentence}
-      data-testid="workspace-sync-ended"
-    />
-  );
-}
-
 /** The last sync, its result and what started it, and the sync running now. */
 function SyncSection({ detail }: { detail: WorkspaceDetail }) {
   const { workspace } = detail;
@@ -452,7 +493,7 @@ function SyncSection({ detail }: { detail: WorkspaceDetail }) {
       label: 'Now',
       value: (
         <>
-          Syncing, started <When at={workspace.activeSync.startedAt} />
+          Synchronizing, started <When at={workspace.activeSync.startedAt} />
         </>
       ),
     });
@@ -461,7 +502,8 @@ function SyncSection({ detail }: { detail: WorkspaceDetail }) {
       label: 'Now',
       value: (
         <>
-          Sync requested <When at={workspace.syncRequest.requestedAt} />
+          Synchronization requested{' '}
+          <When at={workspace.syncRequest.requestedAt} />
           {workspace.syncRequest.requestedBy &&
             ` by ${workspace.syncRequest.requestedBy}`}
           , waiting to start
@@ -472,7 +514,7 @@ function SyncSection({ detail }: { detail: WorkspaceDetail }) {
   if (last) {
     const result = lastSyncResult(last);
     facts.push(
-      { label: 'Last sync', value: <When at={last.time} /> },
+      { label: 'Last synchronization', value: <When at={last.time} /> },
       {
         label: 'Result',
         value: (
@@ -490,12 +532,15 @@ function SyncSection({ detail }: { detail: WorkspaceDetail }) {
       facts.push({ label: 'Started by', value: trigger });
     }
   } else if (!workspace.activeSync) {
-    facts.push({ label: 'Last sync', value: 'Not synced yet' });
+    facts.push({
+      label: 'Last synchronization',
+      value: 'Not synchronized yet',
+    });
   }
   return (
     <PageSection
-      title="Sync"
-      description="The mirrors are fetched after every change to the workspace, on Sync now, and when a Session starts on it after a while without a sync. There is no schedule."
+      title="Synchronization status"
+      description="The repositories are fetched after every change to the workspace, on Synchronize, and when a Session starts on it after a while without a synchronization. There is no schedule."
     >
       <FactList facts={facts} labelWidth={160} />
     </PageSection>
@@ -513,25 +558,26 @@ function StorageSection({ detail }: { detail: WorkspaceDetail }) {
   const neededSize = storage.neededSize ?? workspace.neededSize;
   const facts: Fact[] = [
     {
-      label: 'Stored',
-      value: `${formatBytes(
-        storage.mirrorsBytes + storage.sessionsBytes,
-      )}: ${formatBytes(storage.mirrorsBytes)} of repositories, ${formatBytes(
-        storage.sessionsBytes,
-      )} of Session directories`,
+      label: 'Total',
+      value: formatBytes(storage.mirrorsBytes + storage.sessionsBytes),
+    },
+    { label: 'Repositories', value: formatBytes(storage.mirrorsBytes) },
+    { label: 'Sessions', value: formatBytes(storage.sessionsBytes) },
+    {
+      label: 'Capacity',
+      value: volumeSize
+        ? [
+            sizeLabel(volumeSize),
+            ...(neededSize ? [`needs ${sizeLabel(neededSize)}`] : []),
+            ...(workspace.grewFrom
+              ? [`grown from ${sizeLabel(workspace.grewFrom)}`]
+              : []),
+            'grows when more is needed, never shrinks',
+          ].join(' · ')
+        : 'The storage class grows the volume as it fills, so it has no fixed size.',
     },
   ];
   if (volumeSize) {
-    facts.push({
-      label: 'Share',
-      value: [
-        sizeLabel(volumeSize),
-        ...(neededSize ? [`needs ${sizeLabel(neededSize)}`] : []),
-        ...(workspace.grewFrom
-          ? [`grown from ${sizeLabel(workspace.grewFrom)} at the last sync`]
-          : []),
-      ].join(' · '),
-    });
     facts.push({
       label: 'Headroom',
       value: workspace.sizing?.headroom
@@ -546,14 +592,7 @@ function StorageSection({ detail }: { detail: WorkspaceDetail }) {
     }
   }
   return (
-    <PageSection
-      title="Storage"
-      description={
-        volumeSize
-          ? 'The share grows when more is needed and never shrinks.'
-          : 'The storage class grows the volume as it fills, so it has no fixed size.'
-      }
-    >
+    <PageSection title="Storage">
       <FactList facts={facts} labelWidth={160} />
     </PageSection>
   );
@@ -564,7 +603,7 @@ function StorageSection({ detail }: { detail: WorkspaceDetail }) {
  * branch, head commit, measured mirror size and last push, marked when its
  * provider lists a later push. Searchable past a handful, a page at a time.
  */
-function RepositoriesSection({
+function RepositoriesTab({
   installation,
   name,
   detail,
@@ -591,6 +630,20 @@ function RepositoriesSection({
   const pushedSince = mirrors.filter(mirror =>
     pushedSinceSync(mirror, pushes.data?.pushes),
   ).length;
+  // Each repository at its provider instance's host, where the manager names
+  // one: `https://<host>/<owner>/<name>`.
+  const providers = useWorkspaceProviders(
+    useWorkspaceManagerClient(installation),
+  );
+  const hosts = useMemo(
+    () =>
+      new Map(
+        (providers.data ?? []).flatMap(provider =>
+          provider.host ? [[provider.name, provider.host] as const] : [],
+        ),
+      ),
+    [providers.data],
+  );
 
   const columns: ColumnConfig<MirrorRow>[] = [
     {
@@ -602,14 +655,16 @@ function RepositoriesSection({
       cell: mirror => (
         <CellText
           title={mirror.repository}
-          description={[
-            ...(pushedSinceSync(mirror, pushes.data?.pushes)
-              ? ['pushed since the last sync']
-              : []),
-            ...(mirror.droppedAt
-              ? ['left the selection, kept while a Session uses it']
-              : []),
-          ].join(' · ')}
+          href={
+            hosts.has(mirror.provider)
+              ? `https://${hosts.get(mirror.provider)}/${mirror.repository}`
+              : undefined
+          }
+          description={
+            mirror.droppedAt
+              ? 'left the selection, kept while a Session uses it'
+              : undefined
+          }
         />
       ),
     },
@@ -643,7 +698,14 @@ function RepositoriesSection({
       defaultWidth: '1fr',
       cell: mirror => (
         <Cell>
-          <When at={mirror.pushedAt} />
+          <Flex direction="column" gap="0">
+            <When at={mirror.pushedAt} />
+            {pushedSinceSync(mirror, pushes.data?.pushes) && (
+              <Text variant="body-small" color="secondary">
+                after last synchronization
+              </Text>
+            )}
+          </Flex>
         </Cell>
       ),
     },
@@ -655,8 +717,8 @@ function RepositoriesSection({
     body = (
       <Text variant="body-medium" color="secondary">
         {detail.workspace.lastSync
-          ? 'The last sync mirrored no repository.'
-          : 'The repositories are listed once the first sync ends.'}
+          ? 'The last synchronization fetched no repository.'
+          : 'The repositories are listed once the first synchronization ends.'}
       </Text>
     );
   } else if (shown.length === 0) {
@@ -685,31 +747,29 @@ function RepositoriesSection({
   }
 
   return (
-    <PageSection
-      title={`Repositories (${mirrors.length})`}
-      description={[
-        pushedSince > 0
-          ? `${pushedSince} pushed to since the last sync; a Session starting now fetches them first.`
-          : 'As the last sync mirrored them.',
-        ...(pushes.data?.partial
-          ? [
-              'Pushes since the last sync are marked for the first 5,000 repositories only.',
-            ]
-          : []),
-      ].join(' ')}
-    >
-      <Flex direction="column" gap="3">
-        {(mirrors.length > SEARCH_MIN || search) && (
-          <SearchField
-            aria-label="Search repositories"
-            placeholder="Search repositories"
-            value={search}
-            onChange={setSearch}
-          />
-        )}
-        {body}
-      </Flex>
-    </PageSection>
+    <Flex direction="column" gap="3">
+      <Text variant="body-medium" color="secondary">
+        {[
+          pushedSince > 0
+            ? `${pushedSince} pushed to after the last synchronization; a Session starting now fetches them first.`
+            : 'As the last synchronization fetched them.',
+          ...(pushes.data?.partial
+            ? [
+                'Pushes after it are marked for the first 5,000 repositories only.',
+              ]
+            : []),
+        ].join(' ')}
+      </Text>
+      {(mirrors.length > SEARCH_MIN || search) && (
+        <SearchField
+          aria-label="Search repositories"
+          placeholder="Search repositories"
+          value={search}
+          onChange={setSearch}
+        />
+      )}
+      {body}
+    </Flex>
   );
 }
 
@@ -718,7 +778,7 @@ function RepositoriesSection({
  * turn, directory size and cleanup date, filterable to the person's own and
  * shown a page at a time.
  */
-function SessionsSection({
+function SessionsTab({
   installation,
   detail,
 }: {
@@ -861,27 +921,27 @@ function SessionsSection({
   }
 
   return (
-    <PageSection
-      title={`Sessions on this workspace (${directories.length})`}
-      description="A Session's directory is deleted 14 days after its last turn, unless the installation sets another time; a new turn moves the date."
-    >
-      <Flex direction="column" gap="3">
-        {(directories.length > SEARCH_MIN || search) && (
-          <SearchField
-            aria-label="Search Sessions"
-            placeholder="Search Sessions"
-            value={search}
-            onChange={setSearch}
-          />
-        )}
-        <CatalogFilterBar
-          dimensions={filters.dimensions}
-          onSelect={filters.select}
-          onClear={filters.clear}
+    <Flex direction="column" gap="3">
+      <Text variant="body-medium" color="secondary">
+        The Sessions with a directory on this workspace. A directory is deleted
+        14 days after its Session's last turn, unless the installation sets
+        another time; a new turn moves the date.
+      </Text>
+      {(directories.length > SEARCH_MIN || search) && (
+        <SearchField
+          aria-label="Search Sessions"
+          placeholder="Search Sessions"
+          value={search}
+          onChange={setSearch}
         />
-        {body}
-      </Flex>
-    </PageSection>
+      )}
+      <CatalogFilterBar
+        dimensions={filters.dimensions}
+        onSelect={filters.select}
+        onClear={filters.clear}
+      />
+      {body}
+    </Flex>
   );
 }
 
