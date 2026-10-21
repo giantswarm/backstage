@@ -3584,10 +3584,7 @@ describe('SessionDetailPage', () => {
       ).toBeInTheDocument();
       expect(
         within(drawer).getByRole('link', { name: 'ws-docs' }),
-      ).toHaveAttribute(
-        'href',
-        '/customize/workspaces/gazelle/lab/ws-docs/edit',
-      );
+      ).toHaveAttribute('href', '/customize/workspaces/gazelle/lab/ws-docs');
       expect(mockUseWorkspaceDetail).toHaveBeenCalledWith(
         'gazelle',
         'ws-docs',

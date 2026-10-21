@@ -3,9 +3,10 @@
  * `list_workspaces`.
  */
 
+import { matches } from './search';
 import { formatBytes } from './formatNumbers';
 import { quantityToGiB } from './workspaceDraft';
-import type { Workspace, WorkspaceSource } from './workspaceManager';
+import type { LastSync, Workspace, WorkspaceSource } from './workspaceManager';
 
 /**
  * A workspace with the installation whose workspace-manager listed it; `id`
@@ -54,7 +55,27 @@ export function sourcesLabel(sources: WorkspaceSource[]): string {
   return sources.map(sourceLabel).join('; ');
 }
 
+/** What a muster without per-user sign-in withholds, and what goes through the manager. */
+export const WORKSPACES_BLOCKED = 'Workspaces cannot be used';
+export const WORKSPACES_VIA =
+  'Workspaces are managed through workspace-manager';
+
 export type SyncTone = 'success' | 'danger' | 'info' | 'neutral';
+
+/** A sync cycle's result in one word, the list's and the page's alike. */
+export function lastSyncLabel(last: LastSync): {
+  label: string;
+  tone: SyncTone;
+} {
+  switch (last.result) {
+    case 'Succeeded':
+      return { label: 'Synced', tone: 'success' };
+    case 'NoChange':
+      return { label: 'Unchanged', tone: 'success' };
+    default:
+      return { label: 'Failed', tone: 'danger' };
+  }
+}
 
 /**
  * The Last sync column: the state now (deleting, syncing, requested), else
@@ -90,23 +111,16 @@ export function syncState(workspace: Workspace): {
   if (!last) {
     return { label: 'Not synced yet', tone: 'neutral' };
   }
+  const { label, tone } = lastSyncLabel(last);
   switch (last.result) {
     case 'Succeeded':
-      return {
-        label: 'Synced',
-        tone: 'success',
-        when: { verb: 'Synced', at: last.time },
-      };
+      return { label, tone, when: { verb: 'Synced', at: last.time } };
     case 'NoChange':
-      return {
-        label: 'No change',
-        tone: 'success',
-        when: { verb: 'Checked', at: last.time },
-      };
+      return { label, tone, when: { verb: 'Checked', at: last.time } };
     default:
       return {
-        label: 'Failed',
-        tone: 'danger',
+        label,
+        tone,
         when: { verb: 'Failed', at: last.time },
         detail: last.message,
       };
@@ -151,10 +165,12 @@ export function searchWorkspaces(
     return rows;
   }
   return rows.filter(row =>
-    [row.name, row.organization, row.installation, sourcesLabel(row.sources)]
-      .join('\n')
-      .toLowerCase()
-      .includes(needle),
+    matches(needle, [
+      row.name,
+      row.organization,
+      row.installation,
+      sourcesLabel(row.sources),
+    ]),
   );
 }
 

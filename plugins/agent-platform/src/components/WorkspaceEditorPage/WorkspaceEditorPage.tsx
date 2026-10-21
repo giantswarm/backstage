@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Skeleton, Text, TextField } from '@backstage/ui';
 import {
   EmptyStateCard,
@@ -55,6 +56,7 @@ import {
   WorkspacePreviewPanel,
 } from './WorkspacePreviewPanel';
 import { WorkspaceSourceEditor } from './WorkspaceSourceEditor';
+import { workspaceDetailRouteRef } from '../../routes';
 
 /** The manager's sources limit (the CRD's `maxItems`). */
 const MAX_SOURCES = 32;
@@ -157,7 +159,12 @@ function WorkspaceEditor({
     [providersQuery.data],
   );
   const edited = useEditedWorkspace(client, name);
-  const closeHref = useWorkspacesTabHref(organization);
+  const tabHref = useWorkspacesTabHref(organization);
+  // Editing closes to the workspace's page, its address's parent; creating to
+  // the Workspaces tab.
+  const detailRoute = useRouteRef(workspaceDetailRouteRef);
+  const closeHref =
+    (name && detailRoute?.({ installation, organization, name })) || tabHref;
 
   const [draft, setDraft] = useState<WorkspaceDraft | undefined>(
     isEdit ? undefined : emptyDraft(),

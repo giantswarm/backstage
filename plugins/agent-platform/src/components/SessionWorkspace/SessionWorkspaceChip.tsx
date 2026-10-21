@@ -25,7 +25,7 @@ import {
   workspaceChipLabel,
 } from '../../lib/sessionWorkspace';
 import type { Workspace } from '../../lib/workspaceManager';
-import { workspaceEditRouteRef } from '../../routes';
+import { workspaceDetailRouteRef } from '../../routes';
 
 const useStyles = makeStyles({
   // A drawer on the right, the conversation still in view beside it: the
@@ -179,7 +179,7 @@ function SessionWorkspaceDetails({
   workspace: KagentSessionWorkspace;
   named?: Workspace;
 }) {
-  const editRoute = useRouteRef(workspaceEditRouteRef);
+  const detailRoute = useRouteRef(workspaceDetailRouteRef);
   const detail = useWorkspaceDetail(
     installation,
     named?.name ?? '',
@@ -187,7 +187,7 @@ function SessionWorkspaceDetails({
   );
   const href =
     named &&
-    editRoute?.({
+    detailRoute?.({
       installation,
       organization: named.organization,
       name: named.name,
