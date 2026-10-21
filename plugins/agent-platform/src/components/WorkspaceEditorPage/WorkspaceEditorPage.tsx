@@ -386,7 +386,6 @@ function WorkspaceEditor({
     >
       <EditorBody
         gate={gate}
-        onRecheckProviders={() => void providersQuery.refetch()}
         availability={availability}
         isEdit={isEdit}
         isLoading={
@@ -441,7 +440,6 @@ function WorkspaceEditor({
                           })
                       : undefined
                   }
-                  onRecheckProviders={() => void providersQuery.refetch()}
                   errorFor={errorFor}
                   touch={touch}
                   onExpand={
@@ -515,7 +513,6 @@ function diskLine({
 
 type EditorBodyProps = {
   gate: EditorGate | undefined;
-  onRecheckProviders: () => void;
   availability: ReturnType<typeof useWorkspaceManagerAvailability>;
   isEdit: boolean;
   isLoading: boolean;
@@ -541,7 +538,6 @@ type EditorBodyProps = {
 /** The form inside the frame: it reads whether the frame docks the preview. */
 function EditorBody({
   gate,
-  onRecheckProviders,
   availability,
   isEdit,
   isLoading,
@@ -572,13 +568,7 @@ function EditorBody({
     );
   }
   if (gate) {
-    return (
-      <WorkspaceEditorGate
-        gate={gate}
-        installation={installation}
-        onRecheckProviders={onRecheckProviders}
-      />
-    );
+    return <WorkspaceEditorGate gate={gate} installation={installation} />;
   }
   if (loadError) {
     return (

@@ -10,9 +10,10 @@ type HeldLeave = () => void;
  * Whether a click is a plain one on a link to another address of this app:
  * the kind react-router's `Link` turns into client-side navigation, and
  * skips once the click is `defaultPrevented`. A modified click or one on a
- * link to a new tab leaves the page where it is, so it passes.
+ * link to a new tab leaves the page where it is, so it passes, and so does a
+ * link to an address under `page` (its tabs), where the page keeps the run.
  */
-function leavingHref(event: MouseEvent): string | undefined {
+function leavingHref(event: MouseEvent, page?: string): string | undefined {
   if (
     event.defaultPrevented ||
     event.button !== 0 ||
@@ -34,16 +35,33 @@ function leavingHref(event: MouseEvent): string | undefined {
   const url = new URL(anchor.href, window.location.href);
   if (
     url.origin !== window.location.origin ||
-    url.pathname === window.location.pathname
+    url.pathname === window.location.pathname ||
+    (page !== undefined &&
+      (url.pathname === page || url.pathname.startsWith(`${page}/`)))
   ) {
     return undefined;
   }
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+/** What leaving says it loses, by what the page runs. */
+const LEAVE_COPY: Record<'tool' | 'workflow', { title: string; body: string }> =
+  {
+    tool: {
+      title: 'Leave while the tool runs?',
+      body: 'muster finishes the call after you leave, but the result it returns shows only here, so leaving loses it.',
+    },
+    workflow: {
+      title: 'Leave while the workflow runs?',
+      body: 'muster keeps running it after you leave, and the Usage tab shows how it ended. The result it returns shows only here, so leaving loses it.',
+    },
+  };
+
 /**
- * Asks before the person leaves a workflow's Run it tab while a run is in
- * flight, because the result shows only there. The app's router is a
+ * Asks before the person leaves a tool's or a workflow's Run it tab while a
+ * run is in flight, because the result shows only there. A page that keeps
+ * the run above its tabs (a tool's) passes its own address as `page`: its
+ * tabs then pass, and only leaving the page asks. The app's router is a
  * `BrowserRouter`, with no navigation blocker, so this holds what can be
  * held without one:
  *
@@ -58,7 +76,11 @@ function leavingHref(event: MouseEvent): string | undefined {
  * header action's hand-off) are not held: without a data router there is no
  * way to stop them.
  */
-export function useRunLeaveGuard(active: boolean): {
+export function useRunLeaveGuard(
+  active: boolean,
+  subject: 'tool' | 'workflow',
+  { page }: { page?: string } = {},
+): {
   onTabNavigate: (href: string, navigate: () => void) => void;
   dialog: ReactNode;
 } {
@@ -78,7 +100,7 @@ export function useRunLeaveGuard(active: boolean): {
       return undefined;
     }
     const onClick = (event: MouseEvent) => {
-      const href = leavingHref(event);
+      const href = leavingHref(event, page);
       if (href === undefined) {
         return;
       }
@@ -96,7 +118,7 @@ export function useRunLeaveGuard(active: boolean): {
       document.removeEventListener('click', onClick, true);
       window.removeEventListener('beforeunload', onBeforeUnload);
     };
-  }, [active, navigate]);
+  }, [active, navigate, page]);
 
   const onTabNavigate = useCallback(
     (_href: string, go: () => void) => {
@@ -117,7 +139,7 @@ export function useRunLeaveGuard(active: boolean): {
           setHeld(undefined);
         }
       }}
-      title="Leave while the workflow runs?"
+      title={LEAVE_COPY[subject].title}
       confirmLabel="Leave"
       cancelLabel="Stay"
       onConfirm={() => {
@@ -127,8 +149,7 @@ export function useRunLeaveGuard(active: boolean): {
       }}
     >
       <Text as="p" variant="body-medium">
-        muster keeps running it after you leave, and the Usage tab shows how it
-        ended. The result it returns shows only here, so leaving loses it.
+        {LEAVE_COPY[subject].body}
       </Text>
     </ConfirmDialog>
   );

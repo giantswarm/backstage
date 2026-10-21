@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
@@ -81,52 +81,43 @@ describe('ToolDetailPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the described tool and its argument form', async () => {
+  it('renders the tool’s argument form, leaving what it is for to Overview', async () => {
     const api = makeApi();
     await renderPanel(api);
 
-    // Headed as the agent, skill and workflow pages head theirs.
     expect(
-      within(
-        await screen.findByRole('region', { name: 'What it’s for' }),
-      ).getByText('Echoes a message back.'),
+      await screen.findByRole('heading', { level: 2, name: 'Try it' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Try it' }),
-    ).toBeInTheDocument();
-    // Folded: the form is the schema drawn for people. Mounted only once
-    // opened, as the other pages' Technical details are.
-    expect(
-      screen.getByRole('button', { name: 'Input schema' }),
-    ).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText(/"What to echo"/)).not.toBeInTheDocument();
     expect(
       screen.getByRole('textbox', { name: /message/i }),
     ).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Input schema' }));
-    expect(await screen.findByText(/"What to echo"/)).toBeInTheDocument();
+    // The tool page's Overview says what it is for and shows the schema.
+    expect(screen.queryByRole('region', { name: 'What it’s for' })).toBeNull();
+    expect(screen.queryByText('Echoes a message back.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Input schema' })).toBeNull();
   });
 
-  it('says so when the connector gives the tool no description', async () => {
+  it('keeps a workflow’s input schema folded above its inputs', async () => {
     const api = makeApi();
-    api.describeTool = jest.fn(() =>
-      Promise.resolve({ ...detail, description: undefined }),
-    );
-    await renderPanel(api);
+    await renderPanel(api, undefined, {
+      name: 'workflow_echo',
+      subject: 'workflow',
+    });
 
+    // Mounted only once opened, as the other pages' Technical details are.
     expect(
-      within(
-        await screen.findByRole('region', { name: 'What it’s for' }),
-      ).getByText('Its connector gives no description.'),
-    ).toBeInTheDocument();
+      await screen.findByRole('button', { name: 'Input schema' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/"What to echo"/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Input schema' }));
+    expect(await screen.findByText(/"What to echo"/)).toBeInTheDocument();
   });
 
   it('executes the tool and shows the result', async () => {
     const api = makeApi();
     await renderPanel(api);
 
-    await screen.findByText('Echoes a message back.');
+    await screen.findByRole('heading', { level: 2, name: 'Try it' });
     await userEvent.type(
       screen.getByRole('textbox', { name: /message/i }),
       'hi',
@@ -149,7 +140,7 @@ describe('ToolDetailPanel', () => {
     const api = makeApi();
     await renderPanel(api);
 
-    await screen.findByText('Echoes a message back.');
+    await screen.findByRole('heading', { level: 2, name: 'Try it' });
     await userEvent.click(screen.getByRole('button', { name: 'Run' }));
     expect(
       await screen.findByRole('heading', { level: 2, name: 'Result' }),
@@ -169,7 +160,7 @@ describe('ToolDetailPanel', () => {
     const api = makeApi();
     await renderPanel(api);
 
-    await screen.findByText('Echoes a message back.');
+    await screen.findByRole('heading', { level: 2, name: 'Try it' });
     await userEvent.click(screen.getByRole('button', { name: 'Run' }));
     await screen.findByRole('heading', { level: 2, name: 'Result' });
 
@@ -186,7 +177,7 @@ describe('ToolDetailPanel', () => {
   it('shows a note beside the Run button when given one', async () => {
     await renderPanel(makeApi(), 'Nothing is changed.');
 
-    await screen.findByText('Echoes a message back.');
+    await screen.findByRole('heading', { level: 2, name: 'Try it' });
     expect(screen.getByText('Nothing is changed.')).toBeInTheDocument();
   });
 

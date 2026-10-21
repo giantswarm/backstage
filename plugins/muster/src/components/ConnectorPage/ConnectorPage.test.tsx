@@ -756,11 +756,20 @@ describe('ConnectorPage Usage tab', () => {
       hours: 2160,
       servers: ['jira'],
     });
-    // The way back opens Usage → Connectors on the same window.
+    // The way back opens Usage → Connectors on the same window, and each
+    // tool's Usage tab covers it too.
     expect(screen.getByRole('link', { name: 'Open in Usage' })).toHaveAttribute(
       'href',
       '/usage/connectors?installation=gazelle&window=90d',
     );
+    const toolLinks = screen
+      .getAllByRole('link')
+      .map(link => link.getAttribute('href') ?? '')
+      .filter(href => href.includes('/tools/'));
+    expect(toolLinks.length).toBeGreaterThan(0);
+    for (const href of toolLinks) {
+      expect(href).toMatch(/\/usage\?window=90d$/);
+    }
 
     await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
     await screen.findByText('Calls, last 30 days');

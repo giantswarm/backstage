@@ -160,6 +160,24 @@ function isResourceName(value: string): boolean {
   );
 }
 
+/** How long a tool name `/usage` narrows to may be. */
+const MAX_USAGE_TOOL_LENGTH = 512;
+
+/**
+ * Whether a value can be the tool label muster records a call under: any
+ * name muster exposes, whatever characters its downstream server gave it, so
+ * only what cannot be one is refused (empty, overlong, control characters).
+ * The PromQL selector escapes the rest.
+ */
+function isToolLabel(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= MAX_USAGE_TOOL_LENGTH &&
+    // eslint-disable-next-line no-control-regex
+    !/[\u0000-\u001f\u007f]/.test(value)
+  );
+}
+
 /**
  * Every value of a query parameter that may repeat (`?toolset=a&toolset=b`),
  * in order, read from the raw query string. `req.query` is the root router's
@@ -176,6 +194,24 @@ function repeatedQueryValues(
     'http://localhost',
   ).searchParams.getAll(name);
   return values.length > 0 ? values : undefined;
+}
+
+/**
+ * What `core_auth_login` signs the person in to: one aggregated server, or
+ * one provider App muster keeps (`app`), never both.
+ */
+function loginTarget(
+  server: unknown,
+  app: unknown,
+): { server: string } | { app: string } {
+  const hasServer = typeof server === 'string' && server !== '';
+  const hasApp = typeof app === 'string' && app !== '';
+  if (hasServer === hasApp) {
+    throw new InputError(
+      'either server or app is required in the request body',
+    );
+  }
+  return hasServer ? { server: server as string } : { app: app as string };
 }
 
 export async function createRouter(
@@ -654,7 +690,9 @@ export async function createRouter(
    * Start (or complete) the OAuth flow for one aggregated MCP server via
    * muster's `core_auth_login`. A challenge carries the sign-in URL as
    * `structuredContent.authUrl`; "already connected" outcomes are prose-only.
-   * The response is normalised here.
+   * The response is normalised here. `{ app }` in place of `{ server }`
+   * starts the person's grant of a provider App muster keeps
+   * (`core_auth_login app=<instance>`), which answers the same way.
    *
    * Muster reports refusals (SSO-managed server, rate limit, undiscoverable
    * issuer) as MCP tool errors, which the client turns into a thrown Error.
@@ -666,11 +704,8 @@ export async function createRouter(
    */
   router.post('/auth/login', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const { server } = req.body ?? {};
-
-    if (typeof server !== 'string' || server === '') {
-      throw new InputError('server is required in the request body');
-    }
+    const { server, app } = req.body ?? {};
+    const target = loginTarget(server, app);
     if (!hasPerUserSession(installation)) {
       res.json({
         status: 'error',
@@ -685,7 +720,7 @@ export async function createRouter(
     try {
       payload = await client.callToolWithStructured(
         AUTH_LOGIN_TOOL,
-        { server },
+        target,
         callOptions,
       );
     } catch (error) {
@@ -695,7 +730,7 @@ export async function createRouter(
       const message = error instanceof Error ? error.message : String(error);
       logger.info(`${AUTH_LOGIN_TOOL} declined to connect the server`, {
         installation: installation.name,
-        server,
+        ...target,
         message,
       });
       res.json({ status: 'error', message });
@@ -710,7 +745,8 @@ export async function createRouter(
    * session via `core_auth_logout` -- the inverse of /auth/login. Muster
    * revokes the session's auth state for the server (and clears its issuer's
    * tokens when no other server shares them), so the server's tools re-gate
-   * until the next sign-in.
+   * until the next sign-in. `{ app }` drops the person's grant of a provider
+   * App instead.
    *
    * Same error contract as /auth/login: muster's refusals (unknown server,
    * SSO-managed server) are MCP tool errors returned as structured 200s so
@@ -719,11 +755,8 @@ export async function createRouter(
    */
   router.post('/auth/logout', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const { server } = req.body ?? {};
-
-    if (typeof server !== 'string' || server === '') {
-      throw new InputError('server is required in the request body');
-    }
+    const { server, app } = req.body ?? {};
+    const target = loginTarget(server, app);
     if (!hasPerUserSession(installation)) {
       res.json({
         status: 'error',
@@ -734,11 +767,11 @@ export async function createRouter(
 
     const callOptions = readCallOptions(req, installation);
 
-    let payload: { text?: string };
+    let payload: { text?: string; structuredContent?: unknown };
     try {
       payload = await client.callToolWithStructured(
         AUTH_LOGOUT_TOOL,
-        { server },
+        target,
         callOptions,
       );
     } catch (error) {
@@ -748,7 +781,7 @@ export async function createRouter(
       const message = error instanceof Error ? error.message : String(error);
       logger.info(`${AUTH_LOGOUT_TOOL} declined to sign out the server`, {
         installation: installation.name,
-        server,
+        ...target,
         message,
       });
       res.json({ status: 'error', message });
@@ -790,6 +823,7 @@ export async function createRouter(
    *
    * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
    * family's instances included, and lists every tool they were called with.
+   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
    */
   router.get('/usage', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -813,6 +847,10 @@ export async function createRouter(
         throw new InputError('server must be an MCPServer name');
       }
     }
+    const tool = singleQueryValue(req.query.tool, 'tool');
+    if (tool !== undefined && !isToolLabel(tool)) {
+      throw new InputError('tool must be a tool name');
+    }
     res.json(
       await getMcpUsage(
         client,
@@ -820,6 +858,7 @@ export async function createRouter(
         readCallOptions(req, installation),
         hours ?? 24,
         servers,
+        tool,
       ),
     );
   });
