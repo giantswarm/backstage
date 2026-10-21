@@ -1,6 +1,6 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Progress } from '@backstage/core-components';
-import { Box, Text } from '@backstage/ui';
+import { Box, Link, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -18,6 +18,7 @@ import {
 
 import { musterApiRef } from '../../apis';
 import { connectorNames } from '../../lib/connectorName';
+import { connectorPageKey } from '../../lib/serverGrouping';
 import type { MCPServer } from '../../lib/k8s';
 import type { McpUsage } from '../../apis';
 import {
@@ -34,7 +35,7 @@ import {
   McpUsageTable,
   useUsageColumns,
 } from '../McpUsage';
-import { SessionGate, Stat } from '../shared';
+import { SessionGate, Stat, useServerPageLinks } from '../shared';
 
 /**
  * The window: the Usage screen's own time-range control (`?window=7d`, the
@@ -106,14 +107,21 @@ type ServerRow = McpUsage['servers'][number] & { id: string };
 function UsageBody({
   data,
   hours,
+  installation,
   servers = [],
 }: {
   data: McpUsage;
   hours: number;
-  /** The installation's MCPServer CRs, to name each connector as Customize does. */
+  /** The installation the figures are read on, whose connector pages rows open. */
+  installation: string;
+  /**
+   * The installation's MCPServer CRs, to name each connector as Customize
+   * does and find the page that shows its usage.
+   */
   servers?: MCPServer[];
 }) {
   const classes = useStyles();
+  const links = useServerPageLinks();
   const names = connectorNames(
     [
       ...(data.servers ?? []).map(entry => entry.server),
@@ -136,7 +144,17 @@ function UsageBody({
   });
   const serverColumns = useUsageColumns(serverRows, {
     label: 'Connector',
-    renderName: row => names.get(row.server) ?? row.server,
+    // To the connector's Usage tab: a family instance's is its family's,
+    // which lists each instance. A row no page shows (muster's own tools, a
+    // server since removed) stays plain text.
+    renderName: row => {
+      const name = names.get(row.server) ?? row.server;
+      const key = connectorPageKey(servers, row.server);
+      const href = key
+        ? links.server(key, installation, { tab: 'usage' })
+        : undefined;
+      return href ? <Link href={href}>{name}</Link> : name;
+    },
   });
 
   if (!data.available) {
@@ -296,7 +314,14 @@ function McpUsageBody() {
       </Text>
     );
   } else if (data) {
-    body = <UsageBody data={data} hours={hours} servers={mcpServers} />;
+    body = (
+      <UsageBody
+        data={data}
+        hours={hours}
+        installation={activeInstallation}
+        servers={mcpServers}
+      />
+    );
   }
 
   return (

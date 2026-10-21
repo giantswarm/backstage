@@ -478,3 +478,28 @@ export function findServerRow(
   const server = servers.find(s => !s.getFamily() && s.getName() === key);
   return server ? { kind: 'server', server } : undefined;
 }
+
+/**
+ * The `:server` segment of the page that shows the MCPServer `name`'s usage
+ * on this installation: its family's for a family member (instances have no
+ * page of their own; the family's Usage tab lists each one), else its own.
+ * Undefined where no page shows it: no such MCPServer (muster's own tools, a
+ * server since removed), or one whose page is shadowed by muster's or by a
+ * family of the same name.
+ */
+export function connectorPageKey(
+  servers: MCPServer[],
+  name: string,
+): string | undefined {
+  const server = servers.find(s => s.getName() === name);
+  if (!server) {
+    return undefined;
+  }
+  const key = server.getFamily() ?? name;
+  const row = findServerRow(servers, key);
+  const shows =
+    row?.kind === 'family'
+      ? row.servers.includes(server)
+      : row?.kind === 'server' && row.server === server;
+  return shows ? key : undefined;
+}

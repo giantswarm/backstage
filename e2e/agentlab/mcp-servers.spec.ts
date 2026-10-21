@@ -355,6 +355,32 @@ test("a connector's Usage tab shows its tool calls over 30 days, or why it canno
   await expect(
     admin.getByRole('tab', { name: 'Usage', exact: true }),
   ).toHaveCount(0);
+
+  // Usage → Connectors links each connector back to its Usage tab: the lab's
+  // kubernetes instance to its family's, which lists the instances. There is
+  // a row to check only where the instance was called in the window.
+  if (hasFigures) {
+    await open(admin, `/usage/connectors${scope}`);
+    const table = admin.getByRole('columnheader', {
+      name: 'Connector',
+      exact: true,
+    });
+    const noCalls = admin.getByText(
+      /^No tool calls were dispatched to connectors/,
+    );
+    await connectToMuster(admin, table.or(noCalls));
+    await expect(table.or(noCalls)).toBeVisible({ timeout: 60_000 });
+    const kubernetes = admin.getByRole('link', {
+      name: SHOWN.kubernetes,
+      exact: true,
+    });
+    if ((await kubernetes.count()) > 0) {
+      await expect(kubernetes).toHaveAttribute(
+        'href',
+        `${connectorPages}/${KUBERNETES_FAMILY}/usage`,
+      );
+    }
+  }
 });
 
 test("muster's own connector page lists its core tools, and one opens on its page and runs there", async ({

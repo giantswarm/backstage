@@ -16,6 +16,7 @@ import {
   presenceByMc,
   selectRepresentative,
   connectorDisplayNameOn,
+  connectorPageKey,
   connectorDisplayNames,
   mcpServerDisplayNames,
   serverRowDisplayName,
@@ -624,5 +625,35 @@ describe('connectorDisplayNames', () => {
     expect(connectorDisplayNameOn([here, there], 'gazelle', 'gone')).toBe(
       'gone',
     );
+  });
+});
+
+describe('connectorPageKey', () => {
+  const servers = [
+    makeServer({ name: 'mcp-github' }),
+    makeServer({ name: 'k8s-gazelle', family: 'kubernetes' }),
+    makeServer({ name: 'k8s-wombat', family: 'kubernetes' }),
+    // Shadowed: the family's page and muster's own take these names.
+    makeServer({ name: 'kubernetes' }),
+    makeServer({ name: 'muster' }),
+  ];
+
+  it('is a singular server’s own name', () => {
+    expect(connectorPageKey(servers, 'mcp-github')).toBe('mcp-github');
+  });
+
+  it('is the family’s name for each of its instances', () => {
+    expect(connectorPageKey(servers, 'k8s-gazelle')).toBe('kubernetes');
+    expect(connectorPageKey(servers, 'k8s-wombat')).toBe('kubernetes');
+  });
+
+  it('is undefined for a server the installation does not run', () => {
+    expect(connectorPageKey(servers, 'removed-server')).toBeUndefined();
+    expect(connectorPageKey([], 'mcp-github')).toBeUndefined();
+  });
+
+  it('is undefined for a server whose page another one takes', () => {
+    expect(connectorPageKey(servers, 'kubernetes')).toBeUndefined();
+    expect(connectorPageKey(servers, 'muster')).toBeUndefined();
   });
 });
