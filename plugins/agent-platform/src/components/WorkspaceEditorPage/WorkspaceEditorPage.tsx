@@ -687,7 +687,9 @@ function EditorBody({
             <TextField
               label="Minimum size"
               inputMode="numeric"
-              description="The disk never gets smaller than this. 0 means automatic sizing only. Raise it if agents need a lot of room, for example for large builds."
+              // The unit drawn after the number is no text a screen reader
+              // reads: the description names it.
+              description="The disk never gets smaller than this many GiB. 0 means automatic sizing only. Raise it if agents need a lot of room, for example for large builds."
               value={draft.minimumGiB}
               onChange={value => update({ ...draft, minimumGiB: value })}
               onBlur={() => touch('sizing.minimum')}
