@@ -15,7 +15,7 @@ jobs:
   # repo redirects its bespoke toolchain by editing those scripts, not this job.
   node-build:
     docker:
-    - image: cimg/node:24.20.0
+    - image: cimg/node:24.22.1
     resource_class: large
     steps:
     - checkout
@@ -30,8 +30,8 @@ jobs:
     # stale-ABI binaries. The Node analogue of go-build's $GOCACHE persist.
     - restore_cache:
         keys:
-        - node-build-yarn-v1-24.20.0-{{ checksum "yarn.lock" }}
-        - node-build-yarn-v1-24.20.0-
+        - node-build-yarn-v1-24.22.1-{{ checksum "yarn.lock" }}
+        - node-build-yarn-v1-24.22.1-
     - run:
         name: Install dependencies
         command: yarn install --immutable
@@ -70,7 +70,7 @@ jobs:
     # restore prefix keeps every run warm-started from the last good cache, so a
     # red build never leaves a repo cold).
     - save_cache:
-        key: node-build-yarn-v1-24.20.0-{{ checksum "yarn.lock" }}
+        key: node-build-yarn-v1-24.22.1-{{ checksum "yarn.lock" }}
         paths:
         - node_modules
         - .yarn/install-state.gz
