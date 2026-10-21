@@ -678,7 +678,11 @@ describe('AgentDetailPage', () => {
         ...base.jsonData,
         spec: {
           ...base.jsonData.spec,
-          egress: ['https://github.com:443', 'https://*.githubusercontent.com'],
+          egress: [
+            'https://github.com:443',
+            'https://*.githubusercontent.com',
+            'tls://db.example.com:5432',
+          ],
         },
       },
       'gazelle',
@@ -696,6 +700,7 @@ describe('AgentDetailPage', () => {
     expect(
       screen.getByText('https://*.githubusercontent.com'),
     ).toBeInTheDocument();
+    expect(screen.getByText('tls://db.example.com:5432')).toBeInTheDocument();
   });
 
   // Update skills runs from this page and navigates to the URL it is already

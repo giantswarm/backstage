@@ -17,6 +17,7 @@ export const SHELL_SPECS = [
   'agent-avatars.spec.ts',
   'agent-change-harness.spec.ts',
   'agent-edit-commit.spec.ts',
+  'agent-egress-tls.spec.ts',
   'agent-lifecycle.spec.ts',
   'agent-platform-navigation.spec.ts',
   'agents-list-states.spec.ts',
