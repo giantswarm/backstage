@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from '@backstage/ui';
+import type { UsageWindowDays } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import type { ServerPageRow } from '../../../lib/serverGrouping';
 import { useConnectorUsage } from '../../ConnectorPage/hooks/useConnectorUsage';
@@ -11,6 +12,8 @@ export type ToolUsageTabProps = {
   /** The connector that offers it: one MCPServer, or a family's instances. */
   row: ServerPageRow;
   installation: string;
+  /** The window, from the `?window=` the tab opened with; 30 days without. */
+  days?: UsageWindowDays;
   /** The connector as people call it. */
   connectorName: string;
   /** The connector's Usage tab. */
@@ -19,7 +22,7 @@ export type ToolUsageTabProps = {
 
 /**
  * A connector tool's Usage tab: every caller's calls to this one tool over
- * the last 30 days, from muster's dispatch metrics narrowed to the tool —
+ * the last 30 days (or the window it opened with), from muster's dispatch metrics narrowed to the tool —
  * how many, how many failed, how fast it answered, calls per day by outcome
  * and, for a family, on which instance. The connector's Usage tab's figures
  * ({@link UsageFigures}), with a way to it. The tab reads the usage itself,
@@ -29,12 +32,14 @@ export function ToolUsageTab({
   name,
   row,
   installation,
+  days,
   connectorName,
   connectorUsageHref,
 }: ToolUsageTabProps) {
   const read = useConnectorUsage(row, installation, {
     enabled: true,
     tool: name,
+    days,
   });
   const instances = useMemo(
     () =>
@@ -48,6 +53,7 @@ export function ToolUsageTab({
     <UsageFigures
       subject="tool"
       installation={installation}
+      days={days}
       read={read}
       instances={instances}
       footer={

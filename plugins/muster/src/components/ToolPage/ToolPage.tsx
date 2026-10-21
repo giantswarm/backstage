@@ -8,6 +8,10 @@ import {
 } from 'react-router-dom';
 import { Alert, Link } from '@backstage/ui';
 import {
+  parseUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
   EmptyStateCard,
   LoadingIndicator,
   ShellPage,
@@ -94,6 +98,8 @@ function ToolPageContent() {
     q: params.get('q') ?? undefined,
     effect: params.get('effect')?.split(',').filter(Boolean),
   };
+  // The Usage tab's window, as the connector's Usage tab linked here with it.
+  const usageDays = parseUsageWindowParam(params.get(USAGE_WINDOW_PARAM));
   const paths = useConnectorGroupPaths();
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
@@ -256,9 +262,11 @@ function ToolPageContent() {
                 name={tool}
                 row={row}
                 installation={installation}
+                days={usageDays}
                 connectorName={serverName}
                 connectorUsageHref={links.server(serverKey, installation, {
                   tab: 'usage',
+                  usageWindow: usageDays,
                 })}
               />
             }

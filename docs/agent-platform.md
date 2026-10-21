@@ -204,7 +204,11 @@ metrics narrowed to its MCPServers (a family's instances together): tool
 calls, error ratio, p95 latency and how many of its tools were called, calls
 per day by outcome, every tool it offers with its calls, errors and p95
 (never-called tools included), and for a family each instance's. It links to
-Usage → Connectors.
+Usage → Connectors, whose connector table links back to it. Opened from there
+it covers that view's window (`?window=7d` or `90d`, 30 days without one),
+and its links keep it: back to Usage → Connectors, on to each tool's Usage
+tab (which covers it too) and from there back to the connector's. Details
+stays on 30 days, which its label names.
 
 A connector's page ends with a Details tab: sign-in, health, calls over the
 last 30 days (the Usage tab's figure) and when it was added, then a Technical
@@ -268,7 +272,10 @@ not held: the app's router has no navigation blocker.
 - **Overview** — platform health and trends from the LLM gateway.
 - **Cost** — spend from the gateway, by agent and model.
 - **Connectors** — every caller's tool calls from muster's metrics. Only where
-  the muster plugin is registered.
+  the muster plugin is registered. Each connector in its table links to that
+  connector's Usage tab on the selected installation and window; an instance
+  of a family links to the family's, which lists each instance, and a server
+  no connector page shows (one since removed) is not linked.
 - **Your sessions** — the person's own usage from their kagent sessions,
   limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
   30 days by default); wider ranges are disabled there.
