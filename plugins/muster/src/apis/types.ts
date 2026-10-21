@@ -545,6 +545,8 @@ export interface MusterApi {
      * instances), and lists every tool they were called with.
      */
     servers?: readonly string[];
+    /** Narrows every figure to one tool, by the name muster exposes it as. */
+    tool?: string;
   }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;

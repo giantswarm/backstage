@@ -440,8 +440,34 @@ describe('getTelemetryPageViewPayload', () => {
     ],
     [
       '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice',
-      { page: 'Connector tool' },
+      { page: 'Connector tool', view: 'overview' },
       '/customize/connectors/:installation/:server/tools/:tool',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice/run',
+      { page: 'Connector tool', view: 'run' },
+      '/customize/connectors/:installation/:server/tools/:tool/run',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice/usage',
+      { page: 'Connector tool', view: 'usage' },
+      '/customize/connectors/:installation/:server/tools/:tool/usage',
+    ],
+    [
+      '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice/x',
+      { page: 'Connector tool', view: 'redirect' },
+      '/customize/connectors/:installation/:server/tools/:tool/*',
+    ],
+    // muster's own tools have no Usage tab: the address only redirects.
+    [
+      '/customize/connectors/acme-prod/muster/tools/core_service_list/usage',
+      { page: 'Connector tool', view: 'redirect' },
+      '/customize/connectors/:installation/:server/tools/:tool/*',
+    ],
+    [
+      '/customize/connectors/acme-prod/muster/tools/core_service_list/run',
+      { page: 'Connector tool', view: 'run' },
+      '/customize/connectors/:installation/:server/tools/:tool/run',
     ],
     [
       '/customize/workflows/acme-prod/rotate-payments-keys',
@@ -754,6 +780,7 @@ describe('getTelemetryPageViewPayload', () => {
     '/customize/agents/acme-prod/team-payments/invoice-helper/edit/tools',
     '/customize/models/acme-prod/team-payments/acme-llm/acme-tab',
     '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice',
+    '/customize/connectors/acme-prod/acme-jira/tools/x_acme_create_invoice/acme-tab',
     '/customize/workflows/acme-prod/rotate-payments-keys/acme-tab',
     '/customize/skills/acme/payments-skills/invoice-triage/used-by',
     '/customize/skills/edit/acme/payments-skills/invoice-triage',
@@ -841,6 +868,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/connectors/gazelle/kubernetes/usage',
       '/customize/connectors/gazelle/kubernetes/used-by',
       '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods',
+      '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods/run',
+      '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods/usage',
       '/customize/connectors/gazelle/jira/edit',
       '/customize/connectors/gazelle/jira/edit/auth',
       '/customize/connectors/gazelle/jira/edit/verify',

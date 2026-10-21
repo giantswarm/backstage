@@ -1,11 +1,11 @@
 import { Route, Routes } from 'react-router-dom';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
-import { musterApiRef } from '../../apis';
+import { type McpUsage, musterApiRef, type ToolDetail } from '../../apis';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
@@ -23,6 +23,7 @@ jest.mock('../MusterSubPage', () => ({
 }));
 
 let mockAuthenticated = true;
+let mockLoading = false;
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
     installations: ['gazelle'],
@@ -53,7 +54,7 @@ jest.mock('../MusterInstanceProvider', () => ({
       ),
     ],
     workflows: [],
-    isLoading: false,
+    isLoading: mockLoading,
   }),
   useMusterSession: () => ({
     authenticated: mockAuthenticated,
@@ -67,14 +68,15 @@ jest.mock('../MusterInstanceProvider', () => ({
 function makeApi() {
   return {
     filterTools: jest.fn(async () => ({
-      total: 3,
+      total: 4,
       tools: [
+        { name: 'core_service_list' },
         { name: 'x_aws-root_list_buckets' },
         { name: 'x_jira_search_issues' },
         { name: 'x_jira_add_comment' },
       ],
     })),
-    describeTool: jest.fn(async (name: string) => ({
+    describeTool: jest.fn(async (name: string): Promise<ToolDetail> => ({
       name,
       description: 'List the buckets of the account.',
       // Only adding a comment changes anything.
@@ -85,7 +87,7 @@ function makeApi() {
       },
     })),
     callTool: jest.fn(async () => ({ buckets: ['logs'] })),
-    getMcpUsage: jest.fn(async () => ({
+    getMcpUsage: jest.fn(async (): Promise<McpUsage> => ({
       available: true,
       range_hours: 720,
       step_hours: 24,
@@ -141,29 +143,94 @@ async function renderAt(path: string, api = makeApi()) {
 
 beforeEach(() => {
   mockAuthenticated = true;
+  mockLoading = false;
   window.localStorage.clear();
 });
 
+/** The title block: the h1 and the badges beside it. */
+const pageHeader = () =>
+  screen.getByRole('heading', { level: 1 }).parentElement!;
+
 describe('ToolPage', () => {
-  it('shows the tool under its server and runs it', async () => {
-    const api = await renderAt(
-      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`,
-    );
+  it('opens on Overview: what it is for, its facts and its schema, folded', async () => {
+    await renderAt(`${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`);
 
     expect(
       screen.getByRole('heading', { level: 1, name: 'list_buckets' }),
     ).toBeInTheDocument();
+    // The workflow page's tabs and order, without Details.
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      'Overview',
+      'Run it',
+      'Usage',
+    ]);
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     expect(
-      await screen.findByText('List the buckets of the account.'),
+      within(
+        await screen.findByRole('region', { name: 'What it’s for' }),
+      ).getByText('List the buckets of the account.'),
     ).toBeInTheDocument();
-    // Once, beside the title, as the Tools list's row says it: the panel
-    // shows no badge of its own.
-    expect(screen.getAllByText('Reads')).toHaveLength(1);
-    expect(screen.getByText('Input schema')).toBeInTheDocument();
+
+    const facts = screen.getByRole('region', { name: 'Tool details' });
+    expect(
+      within(facts).getByRole('link', { name: 'aws-root' }),
+    ).toHaveAttribute('href', `${BASE}/gazelle/aws-root`);
+    expect(within(facts).getByText('Exposed by muster as')).toBeInTheDocument();
+    expect(within(facts).getByText('Only reads')).toBeInTheDocument();
+
+    // Mounted only once opened, as the other pages' Technical details are.
+    expect(
+      screen.getByRole('button', { name: 'Input schema' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/"AWS region"/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Input schema' }));
+    expect(await screen.findByText(/"AWS region"/)).toBeInTheDocument();
+
+    // Once, beside the title, as the Tools list's row says it.
+    expect(within(pageHeader()).getByText('Reads')).toBeInTheDocument();
+    // Running it is on Run it.
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+  });
+
+  it('says so when the connector gives the tool no description', async () => {
+    const api = makeApi();
+    api.describeTool.mockImplementation(async (name: string) => ({
+      name,
+      annotations: {},
+    }));
+    await renderAt(
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`,
+      api,
+    );
 
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Try it' }),
+      within(
+        await screen.findByRole('region', { name: 'What it’s for' }),
+      ).getByText('Its connector gives no description.'),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('None declared, so it counts as changing things'),
+    ).toBeInTheDocument();
+  });
+
+  it('runs the tool on Run it', async () => {
+    const api = await renderAt(
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/run`,
+    );
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Try it' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Run it' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    // Overview says what it is for and shows the schema.
+    expect(screen.queryByRole('region', { name: 'What it’s for' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Input schema' })).toBeNull();
     // Read-only and run with the portal's own credentials.
     expect(screen.getByText('Nothing is changed.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Run' }));
@@ -178,31 +245,67 @@ describe('ToolPage', () => {
   });
 
   it('says a tool of a connector each person signs in to runs as them', async () => {
-    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_search_issues`);
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_search_issues/run`);
     expect(
       await screen.findByText('Runs as you. Nothing is changed.'),
     ).toBeInTheDocument();
   });
 
   it('does not promise that a tool which changes things changes nothing', async () => {
-    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_add_comment`);
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_add_comment/run`);
     expect(await screen.findByText('Runs as you.')).toBeInTheDocument();
     expect(screen.queryByText(/Nothing is changed/)).not.toBeInTheDocument();
     // The Tools list's word for it, never the server's "destructive".
-    expect(screen.getByText('Changes things')).toBeInTheDocument();
+    expect(
+      within(pageHeader()).getByText('Changes things'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/destructive/i)).not.toBeInTheDocument();
   });
 
-  it('leads back to the Tools search and filter it was opened from', async () => {
+  it('keeps the Tools search and filter it was opened from on every tab', async () => {
     await renderAt(
-      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets?q=list&effect=reads`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/run?q=list&effect=reads`,
+    );
+    const toolsHref = `${BASE}/gazelle/aws-root?q=list&effect=reads`;
+    expect(
+      within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
+        'link',
+        { name: 'aws-root' },
+      ),
+    ).toHaveAttribute('href', toolsHref);
+
+    await screen.findByRole('heading', { level: 2, name: 'Try it' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    expect(
+      await screen.findByRole('region', { name: 'What it’s for' }),
+    ).toBeInTheDocument();
+    // The crumb, from Overview too.
+    expect(
+      within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
+        'link',
+        { name: 'aws-root' },
+      ),
+    ).toHaveAttribute('href', toolsHref);
+  });
+
+  it('lands an address the page does not have on Overview, keeping its query', async () => {
+    await renderAt(
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/details?q=list`,
+    );
+
+    expect(
+      await screen.findByRole('region', { name: 'What it’s for' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
     );
     expect(
       within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
         'link',
         { name: 'aws-root' },
       ),
-    ).toHaveAttribute('href', `${BASE}/gazelle/aws-root?q=list&effect=reads`);
+    ).toHaveAttribute('href', `${BASE}/gazelle/aws-root?q=list`);
   });
 
   it('does not show a tool under a server that does not offer it', async () => {
@@ -216,16 +319,19 @@ describe('ToolPage', () => {
     expect(
       screen.getByRole('link', { name: 'Back to the tools of aws-root' }),
     ).toHaveAttribute('href', `${BASE}/gazelle/aws-root`);
+    // No tabs for a tool that is not there.
+    expect(screen.queryByRole('tab')).toBeNull();
     expect(api.describeTool).not.toHaveBeenCalled();
   });
 
   it('asks for a muster session before describing the tool', async () => {
     mockAuthenticated = false;
     const api = await renderAt(
-      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`,
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/run`,
     );
 
     expect(screen.getByText(/Tools need a muster session/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
     expect(api.describeTool).not.toHaveBeenCalled();
   });
 
@@ -262,61 +368,233 @@ describe('ToolPage', () => {
       'gazelle',
     );
   });
+
+  describe('while a run is in flight', () => {
+    /** Starts a run on Run it that does not return. */
+    async function startRun() {
+      const api = makeApi();
+      api.callTool.mockImplementation(() => new Promise(() => {}));
+      await renderAt(
+        `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/run`,
+        api,
+      );
+      const form = await screen.findByRole('region', { name: 'Try it' });
+      await userEvent.click(within(form).getByRole('button', { name: 'Run' }));
+      await within(form).findByRole('button', { name: /Running/ });
+      return api;
+    }
+
+    it('keeps the run and its result across a tab switch, without asking', async () => {
+      await startRun();
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+      expect(
+        await screen.findByRole('region', { name: 'What it’s for' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).toBeNull();
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Run it' }));
+      expect(
+        within(await screen.findByRole('region', { name: 'Try it' })).getByRole(
+          'button',
+          { name: /Running/ },
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('asks before following a link out of the page', async () => {
+      await startRun();
+
+      await userEvent.click(
+        within(
+          screen.getByRole('navigation', { name: 'Breadcrumb' }),
+        ).getByRole('link', { name: 'Connectors' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        within(dialog).getByText('Leave while the tool runs?'),
+      ).toBeInTheDocument();
+      expect(dialog).toHaveTextContent('shows only here');
+      // Still here, behind the modal dialog.
+      expect(
+        screen.getByRole('region', { name: 'Try it', hidden: true }),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Stay' }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(
+        within(screen.getByRole('region', { name: 'Try it' })).getByRole(
+          'button',
+          { name: /Running/ },
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('has the browser ask before a reload or a closed tab', async () => {
+      await startRun();
+
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    });
+  });
+
+  it('keeps what was typed and the last result across a tab switch', async () => {
+    await renderAt(
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/run`,
+    );
+    const form = await screen.findByRole('region', { name: 'Try it' });
+    await userEvent.click(within(form).getByRole('button', { name: 'Run' }));
+    await screen.findByRole('heading', { level: 2, name: 'Result' });
+    // Typed after the run, so not yet remembered as its last-used value.
+    await userEvent.type(
+      within(form).getByRole('textbox', { name: /region/i }),
+      'eu-west-1',
+    );
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    await screen.findByRole('region', { name: 'What it’s for' });
+    await userEvent.click(screen.getByRole('tab', { name: 'Run it' }));
+
+    expect(await screen.findByRole('textbox', { name: /region/i })).toHaveValue(
+      'eu-west-1',
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
+  });
+
+  it('lets the page go without asking once no run is in flight', async () => {
+    await renderAt(
+      `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/run`,
+    );
+    await screen.findByRole('region', { name: 'Try it' });
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    expect(
+      await screen.findByRole('region', { name: 'What it’s for' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
 
 describe('ToolPage usage', () => {
-  const usageSection = () =>
-    screen.findByRole('region', { name: 'Usage in the last 30 days' });
+  /** A tile's text, as the connector's Usage tab test reads it. */
+  const stat = (label: string) =>
+    screen.getByText(label).closest('[class*="root"]')?.textContent ?? '';
 
-  it("shows the tool's calls, errors and p95 from its connector's usage", async () => {
+  it('reads no usage until the Usage tab is open', async () => {
     const api = await renderAt(
       `${BASE}/gazelle/jira/tools/x_jira_search_issues`,
     );
 
-    const section = await usageSection();
-    expect(within(section).getByText('Calls')).toBeInTheDocument();
-    expect(within(section).getByText('1,250')).toBeInTheDocument();
-    expect(within(section).getByText('7')).toBeInTheDocument();
-    expect(within(section).getByText('420 ms')).toBeInTheDocument();
-    expect(
-      within(section).getByRole('link', { name: 'All usage of jira' }),
-    ).toHaveAttribute('href', '/customize/connectors/gazelle/jira/usage');
-    // The read its connector's Usage tab makes, so it is cached there.
+    await screen.findByRole('region', { name: 'What it’s for' });
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+    expect(await screen.findByText('Tool calls')).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the tool's own calls, errors and p95, read for the tool alone", async () => {
+    const api = await renderAt(
+      `${BASE}/gazelle/jira/tools/x_jira_search_issues/usage`,
+    );
+
+    expect(await screen.findByText('Tool calls')).toBeInTheDocument();
     expect(api.getMcpUsage).toHaveBeenCalledWith({
       installation: 'gazelle',
       hours: 720,
       servers: ['jira'],
+      tool: 'x_jira_search_issues',
     });
+    expect(stat('Tool calls')).toContain('1,250');
+    expect(stat('Error ratio')).toContain('1%');
+    expect(stat('p95 latency')).toContain('420 ms');
+    expect(
+      screen.getByRole('link', { name: 'All usage of jira' }),
+    ).toHaveAttribute('href', '/customize/connectors/gazelle/jira/usage');
   });
 
-  it('shows zeros for a tool nobody called', async () => {
-    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_add_comment`);
-
-    const section = await usageSection();
-    expect(within(section).getAllByText('0')).toHaveLength(2);
-    expect(within(section).getByText('—')).toBeInTheDocument();
-  });
-
-  it('reads no usage for a tool its connector does not offer', async () => {
-    const api = await renderAt(`${BASE}/gazelle/jira/tools/x_jira_gone`);
+  it('says so when nobody called the tool', async () => {
+    const api = makeApi();
+    api.getMcpUsage.mockImplementation(async () => ({
+      available: true,
+      range_hours: 720,
+      step_hours: 24,
+      buckets: [],
+      totals: {
+        calls: 0,
+        errors: 0,
+        error_ratio: null,
+        p95_seconds: null,
+        distinct_tools: 0,
+      },
+      top_tools: [],
+      servers: [],
+    }));
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_add_comment/usage`, api);
 
     expect(
-      await screen.findByText('No tool “x_jira_gone” on gazelle'),
+      await screen.findByText('No calls in the last 30 days'),
     ).toBeInTheDocument();
-    expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
 
-  it("has none for muster's own tools, which no connector counts", async () => {
+  it('says so where the environment has no usage metrics', async () => {
+    const api = makeApi();
+    api.getMcpUsage.mockImplementation(async () => ({
+      available: false,
+      reason: 'No prometheus MCP server is registered.',
+      range_hours: 720,
+      step_hours: 24,
+      buckets: [],
+      totals: {
+        calls: 0,
+        errors: 0,
+        error_ratio: null,
+        p95_seconds: null,
+        distinct_tools: 0,
+      },
+      top_tools: [],
+      servers: [],
+    }));
+    await renderAt(`${BASE}/gazelle/jira/tools/x_jira_add_comment/usage`, api);
+
+    expect(
+      await screen.findByText(/Usage metrics are not available/),
+    ).toBeInTheDocument();
+  });
+
+  it("draws muster's tool's tabs without Usage while the connectors are read", async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/gazelle/muster/tools/core_service_list`);
+
+    // Still reading: no tab has content yet.
+    expect(screen.queryByRole('region', { name: 'What it’s for' })).toBeNull();
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      'Overview',
+      'Run it',
+    ]);
+  });
+
+  it("has no Usage tab for muster's own tools, which no connector counts", async () => {
     const api = await renderAt(
-      `${BASE}/gazelle/muster/tools/core_service_list`,
+      `${BASE}/gazelle/muster/tools/core_service_list/usage`,
     );
 
+    // The address lands on Overview.
     expect(
-      await screen.findByRole('heading', { level: 1, name: /service_list/ }),
+      await screen.findByRole('region', { name: 'What it’s for' }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('region', { name: 'Usage in the last 30 days' }),
-    ).toBeNull();
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      'Overview',
+      'Run it',
+    ]);
     expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
 });
