@@ -7,6 +7,7 @@ import {
   MusterApi,
   musterApiRef,
   ServerSignInResult,
+  SignInTarget,
 } from '../../apis';
 import { useServerSignIn } from './useServerSignIn';
 
@@ -26,10 +27,10 @@ type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
 function makeApi(initial: AuthStatusResponse): jest.Mocked<Api> {
   return {
     getAuthStatus: jest.fn(() => Promise.resolve(initial)),
-    signInServer: jest.fn((_server: string, _installation?: string) =>
+    signInServer: jest.fn((_server: SignInTarget, _installation?: string) =>
       Promise.resolve(CHALLENGE),
     ),
-    signOutServer: jest.fn((_server: string, _installation?: string) =>
+    signOutServer: jest.fn((_server: SignInTarget, _installation?: string) =>
       Promise.resolve({
         status: 'signed_out' as const,
         message:
@@ -101,6 +102,35 @@ describe('useServerSignIn', () => {
    * Anything other than `connected` means the flow hasn't landed -- dropping the
    * link on a transient `disconnected` would strand the user with no affordance.
    */
+  it("grants a provider App through muster's app argument and its providerApps entry", async () => {
+    const api = makeApi({
+      // A server of the same name says nothing about the App.
+      servers: [{ name: 'github', status: 'connected' }],
+      providerApps: [{ name: 'github', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const { result } = renderHook(
+      () =>
+        useServerSignIn('github', 'gazelle', { pollIntervalMs: 20, app: true }),
+      { wrapper: wrapper(api, queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    expect(result.current.isConnected).toBe(false);
+
+    await act(async () => result.current.signIn());
+    expect(api.signInServer).toHaveBeenCalledWith({ app: 'github' }, 'gazelle');
+    await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'github', status: 'connected' }],
+      providerApps: [{ name: 'github', status: 'connected' }],
+    });
+
+    await waitFor(() => expect(result.current.isConnected).toBe(true));
+    expect(result.current.isWaiting).toBe(false);
+  });
+
   it('keeps waiting while the status is not connected', async () => {
     const api = makeApi({
       servers: [{ name: 'pro', status: 'auth_required' }],

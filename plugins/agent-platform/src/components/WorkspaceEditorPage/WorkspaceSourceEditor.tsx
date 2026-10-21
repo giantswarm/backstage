@@ -31,7 +31,6 @@ export type WorkspaceSourceEditorProps = {
   onChange: (source: SourceDraft) => void;
   /** Absent while it is the only source. */
   onRemove?: () => void;
-  onRecheckProviders: () => void;
   /** The problem shown on each of the source's fields, by field. */
   errorFor: (field: string) => string | undefined;
   /** Marks a field the person left, so its problem shows at once. */
@@ -147,7 +146,6 @@ export function WorkspaceSourceEditor({
   providers,
   onChange,
   onRemove,
-  onRecheckProviders,
   errorFor,
   touch,
   onExpand,
@@ -268,7 +266,6 @@ export function WorkspaceSourceEditor({
         <ProviderConnectPrompt
           installation={client.installation}
           provider={provider}
-          onRecheck={onRecheckProviders}
         />
       ) : (
         <>
