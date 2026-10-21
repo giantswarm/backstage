@@ -5,7 +5,12 @@ import {
   Routes,
   useNavigate,
   useParams,
+  useSearchParams,
 } from 'react-router-dom';
+import {
+  parseUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   toastApiRef,
@@ -250,8 +255,17 @@ function ConnectorPageContent({
   // those two tabs: Tools, where a connector opens, shows no usage, and
   // each connector's read repeats the installation-wide `data_start` query.
   const { '*': tabPath = '' } = useParams();
+  // The Usage tab's window follows the `?window=` Usage → Connectors links
+  // with, so a row's figures and the tab it opens agree. Details keeps its 30
+  // days, which its label names.
+  const [searchParams] = useSearchParams();
+  const usageDays =
+    tabPath === 'usage'
+      ? parseUsageWindowParam(searchParams.get(USAGE_WINDOW_PARAM))
+      : CONNECTOR_USAGE_DAYS;
   const usage = useConnectorUsage(row, installation, {
     enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
+    days: usageDays,
   });
   const calls = usage.usage ? callsLine(usage.usage) : undefined;
 
@@ -610,6 +624,7 @@ function ConnectorPageContent({
                     row={row}
                     server={name}
                     installation={installation}
+                    days={usageDays}
                     usage={usage}
                     tools={tools}
                     ownsTool={target.ownsTool}

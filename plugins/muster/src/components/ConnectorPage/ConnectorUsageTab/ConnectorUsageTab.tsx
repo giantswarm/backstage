@@ -1,7 +1,12 @@
 import { ReactNode, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Link } from '@backstage/ui';
-import { formatCount } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  formatCount,
+  formatUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+  type UsageWindowDays,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   INITIAL_ROWS,
   ShowMore,
@@ -102,6 +107,11 @@ export type ConnectorUsageTabProps = {
   /** The connector's key in the address, which its tools' pages sit under. */
   server: string;
   installation: string;
+  /**
+   * The window the figures cover: Usage → Connectors' when it linked here
+   * with one, else {@link CONNECTOR_USAGE_DAYS}.
+   */
+  days?: UsageWindowDays;
   usage: ConnectorUsage;
   tools: ServerTools;
   /** Whether a tool's name resolves to this connector, by its prefix. */
@@ -112,7 +122,8 @@ export type ConnectorUsageTabProps = {
 
 /**
  * A connector's Usage tab: every caller's tool calls to it over the last 30
- * days, from muster's dispatch metrics — how many, how many failed, how fast
+ * days (or the window Usage → Connectors linked here with), from muster's
+ * dispatch metrics — how many, how many failed, how fast
  * it answered, which of its tools were used and, for a family, on which
  * instance. Laid out as the model page's Usage tab: the window first, the
  * tiles, the chart, then the tables, and a way to the Usage page. The
@@ -122,6 +133,7 @@ export function ConnectorUsageTab({
   row,
   server,
   installation,
+  days = CONNECTOR_USAGE_DAYS,
   usage: read,
   tools,
   ownsTool,
@@ -130,7 +142,9 @@ export function ConnectorUsageTab({
   const links = useServerPageLinks();
   const usageRoute = useRouteRef(usageConnectorsExternalRouteRef);
   const usageHref = usageRoute
-    ? withInstallationQuery(usageRoute(), installation)
+    ? withInstallationQuery(usageRoute(), installation, {
+        [USAGE_WINDOW_PARAM]: formatUsageWindowParam(days),
+      })
     : undefined;
 
   const catalogue = useMemo<ToolCatalogue>(
@@ -158,7 +172,10 @@ export function ConnectorUsageTab({
     renderName: tool => {
       // Its own Usage tab: the figures this row sums up, over time.
       const href = tool.offered
-        ? links.tool(server, tool.id, installation, { tab: 'usage' })
+        ? links.tool(server, tool.id, installation, {
+            tab: 'usage',
+            usageWindow: days,
+          })
         : undefined;
       const name = tools.shortName(tool.id);
       return href ? <Link href={href}>{name}</Link> : name;
@@ -173,6 +190,7 @@ export function ConnectorUsageTab({
     <UsageFigures
       subject="connector"
       installation={installation}
+      days={days}
       read={read}
       // The tools too: a row's link and the "of 12" both wait for the list.
       waiting={tools.isLoading}
@@ -182,7 +200,7 @@ export function ConnectorUsageTab({
           label="Tools used"
           hint={toolsUsedHint(catalogue.complete, tools.truncated)}
           value={toolsUsedLine(toolRows, catalogue.complete)}
-          sub={`last ${CONNECTOR_USAGE_DAYS} days`}
+          sub={`last ${days} days`}
         />
       }
       instances={instances}
