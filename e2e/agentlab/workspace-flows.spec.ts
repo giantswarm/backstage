@@ -39,13 +39,34 @@ const REPOSITORIES = ['alpha', 'beta', 'gamma'].map(name => ({
   sizeKiB: 512,
 }));
 
-/** The provider's side of the editor, staged; every other call goes through. */
+/**
+ * The provider's side of the editor, staged, with the person signed in to
+ * workspace-manager; every other call goes through.
+ */
 async function stageProvider(page: Page): Promise<ToolCall[]> {
   const previews: ToolCall[] = [];
+  await page.route('**/api/muster/auth/status**', async (route: Route) => {
+    const answer = await (await route.fetch()).json();
+    const servers: Array<{ name: string }> = answer?.servers ?? [];
+    await route.fulfill({
+      json: {
+        ...answer,
+        servers: [
+          ...servers.filter(s => s.name !== 'workspace-manager'),
+          { name: 'workspace-manager', status: 'connected' },
+        ],
+      },
+    });
+  });
   await page.route('**/api/muster/call**', async (route: Route) => {
     const call = route.request().postDataJSON() as ToolCall;
     const args = call?.arguments ?? {};
     switch (call?.name) {
+      case `${TOOL}list_workspaces`:
+        await route.fulfill({
+          json: { workspaces: [], organizations: ['lab'] },
+        });
+        return;
       case `${TOOL}list_providers`:
         await route.fulfill({
           json: {
@@ -143,7 +164,10 @@ test('the repository picker names its columns, and a pick by name reaches the pr
     'Selection',
   ]);
 
-  await table.getByRole('checkbox', { name: 'beta' }).check();
+  // bui's react-aria input is visually hidden: a person clicks its label.
+  const beta = table.getByRole('checkbox', { name: 'beta' });
+  await beta.locator('xpath=ancestor::label[1]').click();
+  await expect(beta).toBeChecked();
   await expect(source.getByTestId('repository-summary')).toHaveText(
     '1 by name = 1 repository',
   );
