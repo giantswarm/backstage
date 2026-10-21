@@ -5,6 +5,7 @@ import {
   expectAgentRendered,
   test,
 } from './fixtures';
+import { KUBECONFIG, kubectl } from './kubectl';
 
 /**
  * A TLS service in an agent's Extra egress origins: the wizard refuses a
@@ -12,6 +13,7 @@ import {
  * agent agent-manager creates carries it in `spec.egress`, listed on its
  * Configuration card. The create is the lab's own: agent-manager's dry run and
  * `create_agent` through muster as the lab admin, the Agent rendered by Flux.
+ * With AGENTLAB_KUBECONFIG the Agent's `spec.egress` is read back too.
  */
 
 const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 12);
@@ -21,7 +23,7 @@ const TLS_ORIGIN = 'tls://db.example.com:5432';
 
 test('agent egress: a tls:// service needs a port and lands on the Configuration card', async ({
   admin,
-}) => {
+}, testInfo) => {
   test.setTimeout(10 * 60_000);
 
   const detailPath = await createAgentInWizard(admin, agentName, agentSlug, {
@@ -41,6 +43,12 @@ test('agent egress: a tls:// service needs a port and lands on the Configuration
             )
             .first(),
         ).toBeVisible();
+        await testInfo.attach('egress-refused', {
+          body: await egress
+            .locator('xpath=ancestor::*[.//label][1]')
+            .screenshot(),
+          contentType: 'image/png',
+        });
         await egress.fill(TLS_ORIGIN);
         await expect(egress).not.toHaveAttribute('aria-invalid', 'true');
       }
@@ -66,6 +74,25 @@ test('agent egress: a tls:// service needs a port and lands on the Configuration
       card.getByText(TLS_ORIGIN, { exact: true }),
       'the Configuration card lists the tls:// service under Extra egress',
     ).toBeVisible({ timeout: 60_000 });
+    await testInfo.attach('configuration-card', {
+      body: await card.screenshot(),
+      contentType: 'image/png',
+    });
+    if (KUBECONFIG) {
+      const namespace = detailPath.split('/').at(-2)!;
+      const { stdout } = await kubectl([
+        '-n',
+        namespace,
+        'get',
+        'agents.api.kagent.dev',
+        agentSlug,
+        '-o',
+        'jsonpath={.spec.egress}',
+      ]);
+      expect(JSON.parse(stdout), "the Agent's spec.egress").toEqual([
+        TLS_ORIGIN,
+      ]);
+    }
   } catch (error) {
     failure = error;
   }
