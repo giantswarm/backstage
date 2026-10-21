@@ -26,6 +26,7 @@ import {
   planChanges,
   pngSize,
   stateRows,
+  stateTsv,
   uploadsTsv,
 } from './layout.mjs';
 
@@ -631,4 +632,24 @@ test('a skipped reason stays until the node has a screenshot', () => {
     ids: new Map([[localId('profile/card'), 'c']]),
   });
   assert.equal(state.find(r => r.id === 'profile').skipped, 'no such state here');
+});
+
+test('writes the state without trailing whitespace, and reads it back', () => {
+  const rows = [
+    { id: 'customize', card: 'c1', label: 'n1' },
+    { id: '_title', label: 't1' },
+    { id: 'home', captured: CAPTURED, card: 'c2', image: 'i2', edge: '' },
+  ];
+  const text = stateTsv(rows);
+  assert.doesNotMatch(text, /[ \t]+$/m);
+  const parsed = parseTsv(text, STATE_COLUMNS);
+  assert.equal(parsed.length, 3);
+  assert.equal(parsed[0].label, 'n1');
+  assert.equal(parsed[2].image, 'i2');
+  assert.equal(parsed[2].skipped, '');
+});
+
+test('the committed state has no trailing whitespace', () => {
+  const text = readFileSync(join(HERE, 'sitemap.state.tsv'), 'utf8');
+  assert.doesNotMatch(text, /[ \t]+$/m);
 });

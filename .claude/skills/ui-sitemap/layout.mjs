@@ -1097,10 +1097,19 @@ export function stateRows({
   return out;
 }
 
+/**
+ * The state file's text. Trailing empty cells are left off, as
+ * `parseTsv` allows: the repo's trailing-whitespace hook would strip their
+ * tabs anyway.
+ */
 export function stateTsv(rows) {
   return `${[
     STATE_COLUMNS.join('\t'),
-    ...rows.map(row => STATE_COLUMNS.map(c => row[c] ?? '').join('\t')),
+    ...rows.map(row =>
+      STATE_COLUMNS.map(c => row[c] ?? '')
+        .join('\t')
+        .replace(/\t+$/, ''),
+    ),
   ].join('\n')}\n`;
 }
 
