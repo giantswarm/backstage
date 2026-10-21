@@ -240,6 +240,24 @@ function innerResultOf(
   return inner !== null && typeof inner === 'object' ? inner : undefined;
 }
 
+/** `<iss> <sub>` of a JWT, read without verifying it; undefined otherwise. */
+function subjectOf(token: string | undefined): string | undefined {
+  const payload = token?.split('.')[1];
+  if (!payload) {
+    return undefined;
+  }
+  try {
+    const { iss, sub } = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    ) as { iss?: unknown; sub?: unknown };
+    return typeof sub === 'string' && sub !== ''
+      ? `${typeof iss === 'string' ? iss : ''} ${sub}`
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The server an errored result is muster's auth_required answer for, and the
  * sign-in link it carries: `structuredContent: {status: "auth_required",
@@ -406,13 +424,22 @@ export class MusterMcpClient {
     call: () => Promise<T>,
   ): Promise<T> {
     const caller = this.callerOf(options);
+    const token = this.tokenOf(options);
     const pending = this.signIns.pendingFor(caller, toolName);
     if (pending) {
-      throw new MusterAuthRequiredError(
-        pending.server,
-        pending.authUrl,
-        pending.texts,
-      );
+      // The link and muster's text belong to the token muster answered;
+      // another token of the person (a reload, a second tab) learns only
+      // that a sign-in is pending, and takes its link from its own
+      // core_auth_login, the page's Sign in.
+      throw pending.token === token
+        ? new MusterAuthRequiredError(
+            pending.server,
+            pending.authUrl,
+            pending.texts,
+          )
+        : new MusterAuthRequiredError(pending.server, undefined, [
+            `auth_required: server '${pending.server}' requires authentication; a sign-in to it is pending for you, sign in to use its tools.`,
+          ]);
     }
     try {
       return await call();
@@ -422,14 +449,28 @@ export class MusterMcpClient {
           server: error.server,
           authUrl: error.authUrl,
           texts: [error.message, ...error.details],
+          token,
         });
       }
       throw error;
     }
   }
 
-  /** One muster session: this installation and the caller's token. */
+  /**
+   * The person a call is made as: the issuer and subject of their muster
+   * token, on this installation. Read, not verified: it only groups the
+   * person's tokens, and a hold is only made from muster's answer to a
+   * token muster accepted. A token that is no JWT is its own caller.
+   */
   private callerOf(options: { authToken?: string } | undefined): string {
+    const subject = subjectOf(options?.authToken);
+    return subject
+      ? McpClientCache.buildKey(`${this.installation.name}:person`, subject)
+      : this.tokenOf(options);
+  }
+
+  /** The caller's token, as a key (never the token itself). */
+  private tokenOf(options: { authToken?: string } | undefined): string {
     return McpClientCache.buildKey(this.installation.name, options?.authToken);
   }
 
@@ -454,7 +495,12 @@ export class MusterMcpClient {
     } else if (toolName === AUTH_LOGIN_TOOL) {
       const login = parseAuthLoginResult(result);
       if (login.status === 'auth_required' && login.authUrl) {
-        this.signIns.restarted(caller, server, login.authUrl);
+        this.signIns.restarted(
+          caller,
+          server,
+          login.authUrl,
+          this.tokenOf(options),
+        );
       } else if (login.status === 'connected') {
         this.signIns.forget(caller, server);
       }

@@ -39,6 +39,13 @@ function authRequired(authUrl: string | null = AUTH_URL) {
   });
 }
 
+/** A muster token of `sub` (unsigned: the client only reads it); `n` tells tokens apart. */
+function jwt(sub: string, n: number): string {
+  const part = (value: object) =>
+    Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${part({ alg: 'RS256' })}.${part({ iss: 'https://dex.lab', sub, n })}.sig`;
+}
+
 const listed = envelope({
   content: [{ type: 'text', text: '{"workspaces":[]}' }],
 });
@@ -298,5 +305,72 @@ describe('MusterMcpClient gated sign-ins', () => {
     ).rejects.toThrow();
 
     expect(calledTools(execute)).toEqual([LIST, 'core_auth_logout', LIST]);
+  });
+
+  it("holds a person's new token too (a reload), telling it no link", async () => {
+    const execute = jest.fn().mockResolvedValue(authRequired());
+    const client = buildClient(execute);
+
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
+    ).rejects.toMatchObject({ authUrl: AUTH_URL });
+    const reload = await client
+      .callTool(LIST, {}, { authToken: jwt('alice', 2) })
+      .catch(e => e);
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(reload).toBeInstanceOf(MusterAuthRequiredError);
+    expect(reload.authUrl).toBeUndefined();
+    expect(reload.message).toMatch(
+      /^auth_required: server 'workspace-manager'/,
+    );
+    expect(JSON.stringify(reload)).not.toContain('state=abc');
+    expect(reload.message).not.toContain('state=abc');
+  });
+
+  it("never holds one person's calls for another's sign-in", async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(authRequired())
+      .mockResolvedValue(listed);
+    const client = buildClient(execute);
+
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
+    ).rejects.toThrow(MusterAuthRequiredError);
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('bob', 1) }),
+    ).resolves.toEqual({ workspaces: [] });
+  });
+
+  it("gives the link of the person's own sign-in to the token that started it", async () => {
+    const restarted = 'https://muster/oauth/start?state=def';
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(authRequired())
+      .mockResolvedValueOnce(
+        envelope({
+          content: [{ type: 'text', text: 'Authentication Required' }],
+          structuredContent: { authUrl: restarted },
+        }),
+      );
+    const client = buildClient(execute);
+
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
+    ).rejects.toThrow();
+    await client.callToolWithStructured(
+      'core_auth_login',
+      { server: 'workspace-manager' },
+      { authToken: jwt('alice', 2) },
+    );
+
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 2) }),
+    ).rejects.toMatchObject({ authUrl: restarted });
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
+    ).rejects.toMatchObject({ authUrl: undefined });
+    expect(execute).toHaveBeenCalledTimes(2);
   });
 });

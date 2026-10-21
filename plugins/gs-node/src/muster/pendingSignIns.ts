@@ -19,6 +19,12 @@ export interface SignInChallenge {
   authUrl?: string;
   /** Muster's own text blocks: the message first. */
   texts: string[];
+  /**
+   * The token muster gave this answer to (a key of it, never the token):
+   * only that token's calls are told the link and muster's text, which
+   * belong to its muster session.
+   */
+  token: string;
 }
 
 interface Pending extends SignInChallenge {
@@ -40,7 +46,9 @@ interface Pending extends SignInChallenge {
  * muster; the caller's own sign-in (`core_auth_login`, `core_auth_logout`) and
  * an `auth://status` that reads the server connected end the wait at once.
  *
- * A caller is one muster session: an installation and a person's token.
+ * A caller is a person on an installation, not one token: a page reload or
+ * a second tab forwards a new token for the same person, and muster's limit
+ * counts the person's sign-ins.
  */
 export class PendingSignIns {
   private readonly callers = new Map<string, Map<string, Pending>>();
@@ -58,7 +66,8 @@ export class PendingSignIns {
       if (pending.until <= now) {
         servers.delete(server);
       } else if (pending.tools.has(tool) || tool.startsWith(`x_${server}_`)) {
-        return { server, authUrl: pending.authUrl, texts: pending.texts };
+        const { authUrl, texts, token } = pending;
+        return { server, authUrl, texts, token };
       }
     }
     if (servers.size === 0) {
@@ -87,13 +96,20 @@ export class PendingSignIns {
   }
 
   /**
-   * The caller started a sign-in of its own and got `authUrl`: the server's
-   * calls carry that link from now on, the one the person is completing.
+   * The caller started a sign-in of its own with `token` and got `authUrl`:
+   * the server's calls carry that link from now on, the one the person is
+   * completing.
    */
-  restarted(caller: string, server: string, authUrl: string): void {
+  restarted(
+    caller: string,
+    server: string,
+    authUrl: string,
+    token: string,
+  ): void {
     const pending = this.callers.get(caller)?.get(server);
     if (pending) {
       pending.authUrl = authUrl;
+      pending.token = token;
       pending.until = this.now() + SIGN_IN_REUSE_MS;
     }
   }
