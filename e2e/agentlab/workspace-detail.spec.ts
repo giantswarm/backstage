@@ -66,7 +66,7 @@ test('shows the workspace, its repositories with head commits and its Sessions w
   await expect(
     main.getByRole('region', { name: 'Synchronization status' }),
   ).toBeVisible();
-  await expect(main.getByRole('region', { name: 'Storage' })).toContainText(
+  await expect(main.getByRole('region', { name: 'Disk' })).toContainText(
     'Capacity',
   );
 });

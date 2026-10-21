@@ -130,7 +130,7 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(
       within(row).getByText(/4(\.0)? GiB of 15 GiB|4(\.0)? GB of 15 GiB/),
     ).toBeInTheDocument();
-    expect(within(row).getByText('Synced')).toBeInTheDocument();
+    expect(within(row).getByText('Synchronized')).toBeInTheDocument();
     expect(within(row).getByText('2')).toBeInTheDocument();
 
     const failed = screen.getByRole('row', { name: /infra/ });
@@ -376,12 +376,12 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(within(dialog).getByText('Delete docs?')).toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        'Its sync stops and no new Session can start on it.',
+        'Its synchronization stops and no new session can start on it.',
       ),
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        /2 Sessions still use it; each keeps its directory/,
+        /2 sessions still use it; each keeps its directory/,
       ),
     ).toBeInTheDocument();
     expect(within(dialog).getByText('Fix the flaky test')).toBeInTheDocument();

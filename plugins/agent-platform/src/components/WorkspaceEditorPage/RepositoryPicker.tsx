@@ -341,6 +341,7 @@ export function RepositoryPicker({
                 aria-label={`Repositories of ${owner}`}
                 style={{ width: '100%', borderCollapse: 'collapse' }}
               >
+                {rows.length > 0 && <RepositoryColumns />}
                 <tbody>
                   {rows.map(repository => (
                     <RepositoryRow
@@ -394,6 +395,31 @@ export function RepositoryPicker({
 }
 
 const CELL = { padding: '4px 8px 4px 0', verticalAlign: 'middle' } as const;
+
+/** The listing's column names, which a screen reader reads with each cell. */
+function RepositoryColumns() {
+  const columns = ['Repository', 'Language', 'Topics', 'Last push', 'Selection'];
+  return (
+    <thead>
+      <tr style={{ borderBottom: '1px solid var(--bui-border-1)' }}>
+        {columns.map((column, index) => (
+          <th
+            key={column}
+            scope="col"
+            style={{
+              ...CELL,
+              textAlign: index === columns.length - 1 ? 'right' : 'left',
+            }}
+          >
+            <Text variant="body-small" color="secondary" weight="bold">
+              {column}
+            </Text>
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+}
 
 function RepositoryRow({
   repository,

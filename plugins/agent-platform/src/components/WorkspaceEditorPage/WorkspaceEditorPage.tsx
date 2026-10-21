@@ -90,7 +90,7 @@ function saveProblem(
     case 'already_exists':
       return {
         field: 'name',
-        message: 'A workspace with this name exists on the installation.',
+        message: 'A workspace with this name exists in this environment.',
       };
     case 'not_member':
       return {
@@ -493,20 +493,20 @@ function diskLine({
   preview: WorkspacePreview | undefined;
 }): string {
   const lead =
-    'The disk holds the copies of the repositories, each session’s working folder, and room for the changes agents make. It is sized automatically, grows when more is needed and never shrinks.';
+    'The disk holds the copies of the repositories, each session’s directory, and room for the changes agents make. It is sized automatically, grows when more is needed and never shrinks.';
   if (isEdit && volumeSize && storage) {
     return `${lead} Right now it is ${formatQuantity(volumeSize)}: ${formatKiB(
       storage.mirrorsBytes / 1024,
     )} of repositories and ${formatKiB(
       storage.sessionsBytes / 1024,
-    )} of session folders, plus room to work, rounded up.`;
+    )} of session directories, plus room to work, rounded up.`;
   }
   if (preview) {
     return `${lead} It will start at about ${formatQuantity(
       preview.estimatedVolumeSize,
     )}: an estimated ${formatKiB(
       preview.providerSizeKiB,
-    )} for the repositories plus room to work. The exact size is known after the first sync.`;
+    )} for the repositories plus room to work. The exact size is known after the first synchronization.`;
   }
   return `${lead} Its first size is estimated once a source selects repositories.`;
 }
@@ -563,7 +563,7 @@ function EditorBody({
     return (
       <EmptyStateCard
         title="Workspaces are not available here"
-        description={`The installation ${installation} does not offer workspaces.`}
+        description={`Workspaces are not turned on for ${installation}. Ask your platform team to turn them on.`}
       />
     );
   }
@@ -604,7 +604,7 @@ function EditorBody({
       {Boolean(providersError) && (
         <Alert
           status="warning"
-          title="Could not read the provider instances"
+          title="Could not read the providers"
           description={classifyWorkspaceManagerError(providersError).message}
         />
       )}

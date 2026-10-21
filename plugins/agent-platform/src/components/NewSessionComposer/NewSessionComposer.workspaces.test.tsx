@@ -137,8 +137,8 @@ describe('NewSessionComposer workspaces', () => {
         .getAllByRole('option')
         .map(option => option.textContent),
     ).toEqual([
-      'platform-mcp1 repository · synced 4 h ago',
-      'platform-mix9 repositories · synced 4 h ago',
+      'platform-mcp1 repository · synchronized 4 h ago',
+      'platform-mix9 repositories · synchronized 4 h ago',
       'No workspace',
     ]);
   });

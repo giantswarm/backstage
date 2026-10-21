@@ -102,7 +102,7 @@ export function WorkspaceStartNotice({
               {count > 0
                 ? `The session was not started: its agent would read ${workspace} as you, and you have no access to ${error.repositories.join(
                     ', ',
-                  )}. Ask its owner for access, or start without the workspace.`
+                  )}. Ask an owner of these repositories for access, or start without the workspace.`
                 : `The session was not started. ${error.message}`}
             </Text>
             <div>
