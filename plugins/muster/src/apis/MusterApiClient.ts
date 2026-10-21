@@ -35,6 +35,7 @@ import {
   MusterInstallationsResponse,
   ServerSignInResult,
   ServerSignOutResult,
+  SignInTarget,
   MusterToolProgress,
   ToolDetail,
   WorkflowExecution,
@@ -408,23 +409,23 @@ export class MusterApiClient implements MusterApi {
   }
 
   async signInServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignInResult> {
     return this.post<ServerSignInResult>(
       '/auth/login',
-      { server },
+      typeof server === 'string' ? { server } : server,
       installation,
     );
   }
 
   async signOutServer(
-    server: string,
+    server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignOutResult> {
     return this.post<ServerSignOutResult>(
       '/auth/logout',
-      { server },
+      typeof server === 'string' ? { server } : server,
       installation,
     );
   }

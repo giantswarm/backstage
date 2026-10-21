@@ -46,10 +46,13 @@ jest.mock('../../hooks/useWorkspaceManager', () => ({
   ...jest.requireActual('../../hooks/useWorkspaceManager'),
   useWorkspaceManagerClient: () => undefined,
 }));
+/** `list_providers` as the test moves it along. */
+const mockProviders = {
+  data: [{ name: 'github', kind: 'github', connected: false }],
+  refetch: jest.fn(),
+};
 jest.mock('../../hooks/useWorkspaceEditor', () => ({
-  useWorkspaceProviders: () => ({
-    data: [{ name: 'github', kind: 'github', connected: false }],
-  }),
+  useWorkspaceProviders: () => mockProviders,
 }));
 
 /** muster's sign-in for the provider's App, as the test moves it along. */
@@ -114,6 +117,8 @@ beforeEach(() => {
   mockWorkspacesOf.mockReset();
   mockWorkspacesOf.mockReturnValue([]);
   Object.assign(mockSignIn, { isWaiting: false, isConnected: false });
+  mockProviders.data = [{ name: 'github', kind: 'github', connected: false }];
+  mockProviders.refetch.mockReset();
 });
 
 afterEach(() => {
@@ -294,7 +299,7 @@ describe('NewSessionComposer workspaces', () => {
     );
     rerenderWith({ error: notConnected });
 
-    const card = screen.getByTestId('workspace-connect-github');
+    const card = screen.getByTestId('provider-connect-github');
     expect(card).toHaveTextContent('Sign in to GitHub to use platform-mix');
     await userEvent.click(
       within(card).getByRole('button', { name: /Continue with GitHub/ }),
@@ -309,6 +314,13 @@ describe('NewSessionComposer workspaces', () => {
     );
     mockSignIn.isWaiting = false;
     mockSignIn.isConnected = true;
+    rerenderWith({ error: notConnected });
+    // muster holds the grant: list_providers is read again, and the start
+    // waits for it to say so.
+    expect(mockProviders.refetch).toHaveBeenCalled();
+    expect(onStart).not.toHaveBeenCalled();
+
+    mockProviders.data = [{ name: 'github', kind: 'github', connected: true }];
     rerenderWith({ error: notConnected });
 
     expect(onStart).toHaveBeenCalledTimes(1);

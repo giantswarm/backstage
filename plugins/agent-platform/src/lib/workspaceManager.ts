@@ -444,13 +444,17 @@ export function providerDisplayName(
 }
 
 /**
- * The muster server whose sign-in grants a provider's App, from the manager's
- * `signIn` sentence (`… core_auth_login server=<server>`); undefined for an
- * App grant (`app=<instance>`) or no grant, which the portal's sign-in does
- * not start.
+ * What muster signs the person in to for a provider, from the manager's
+ * `signIn` sentence: the provider instance's own App (`… core_auth_login
+ * app=<instance>`), or the server the manager is pinned to (`… core_auth_login
+ * server=<server>`); undefined where the sentence names no grant the portal's
+ * sign-in can start.
  */
-export function providerSignInServer(signIn?: string): string | undefined {
-  return signIn?.match(/\bcore_auth_login server=([\w.-]+)/)?.[1];
+export function providerSignInTarget(
+  signIn?: string,
+): { name: string; app: boolean } | undefined {
+  const match = signIn?.match(/\bcore_auth_login (app|server)=([\w.-]+)/);
+  return match ? { name: match[2], app: match[1] === 'app' } : undefined;
 }
 
 /** A provider whose App the person grants in muster before the workspace is theirs. */

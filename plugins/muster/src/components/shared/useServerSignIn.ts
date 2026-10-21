@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery, useQueryClient, QueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
-import { musterApiRef, ServerAuthStatus } from '../../apis';
+import { AuthStatusResponse, musterApiRef, ServerAuthStatus } from '../../apis';
 
 /** How often `auth://status` is re-read while a browser sign-in is pending. */
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
@@ -185,6 +185,27 @@ export interface UseServerSignInOptions {
   authUrlLifetimeMs?: number;
   /** What the hook's own notes call the server; main's "server" by default. */
   noun?: SignInNoun;
+  /**
+   * The name is a provider App muster keeps, not a server: the sign-in is
+   * `core_auth_login app=<name>` and the state its `providerApps` entry in
+   * `auth://status`.
+   */
+  app?: boolean;
+}
+
+/**
+ * The entry `auth://status` reports for the server, or for the provider App
+ * in the shape of a server's entry (an App has no SSO and no issuer).
+ */
+function findStatus(
+  data: AuthStatusResponse | undefined,
+  name: string,
+  app: boolean,
+): ServerAuthStatus | undefined {
+  if (!app) {
+    return data?.servers?.find(server => server.name === name);
+  }
+  return data?.providerApps?.find(entry => entry.name === name);
 }
 
 /**
@@ -214,23 +235,27 @@ export function useServerSignIn(
   const timeoutMs = options.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
   const authUrlLifetimeMs =
     options.authUrlLifetimeMs ?? DEFAULT_AUTH_URL_LIFETIME_MS;
+  const app = Boolean(options.app);
+  // An App and a server may share a name; their waits must not.
+  const pendingName = app ? `app:${serverName}` : serverName;
+  const target = app ? { app: serverName } : serverName;
 
   // Subscribing via useQuery (rather than reading the cache directly) is what
   // re-renders this row when the pending entry is written or cleared.
   const { data: pending } = useQuery<PendingSignIn | null>({
-    queryKey: pendingKey(installation, serverName),
+    queryKey: pendingKey(installation, pendingName),
     // Cache-only: nothing fetches this, the mutation and the effects below own
     // it.
-    queryFn: () => readPending(queryClient, installation, serverName),
+    queryFn: () => readPending(queryClient, installation, pendingName),
     staleTime: Infinity,
     gcTime: Infinity,
   });
 
   const setPending = useCallback(
     (value: PendingSignIn | null) => {
-      queryClient.setQueryData(pendingKey(installation, serverName), value);
+      queryClient.setQueryData(pendingKey(installation, pendingName), value);
     },
-    [queryClient, installation, serverName],
+    [queryClient, installation, pendingName],
   );
 
   const authUrl = pending?.authUrl;
@@ -259,7 +284,7 @@ export function useServerSignIn(
     retry: false,
   });
 
-  const status = data?.servers?.find(server => server.name === serverName);
+  const status = findStatus(data, serverName, app);
 
   // The proxy answers 200 with `unavailable` when it could not read
   // auth://status, so a waiting row can say the status is unreadable instead of
@@ -284,7 +309,7 @@ export function useServerSignIn(
   const signIn = useTrackedMutation({
     event: null,
     untrackedReason: 'An authentication step, not a portal action.',
-    mutationFn: () => musterApi.signInServer(serverName, installation),
+    mutationFn: () => musterApi.signInServer(target, installation),
     onSuccess: result => {
       const tab = signInTabRef.current;
       signInTabRef.current = null;
@@ -338,7 +363,7 @@ export function useServerSignIn(
   const signOut = useTrackedMutation({
     event: null,
     untrackedReason: 'An authentication step, not a portal action.',
-    mutationFn: () => musterApi.signOutServer(serverName, installation),
+    mutationFn: () => musterApi.signOutServer(target, installation),
     onSuccess: result => {
       if (result.status !== 'error') {
         queryClient.invalidateQueries({ queryKey: ['muster'] });

@@ -101,7 +101,7 @@ export function WorkspaceEditorGate({
                 <ProviderConnectAction
                   installation={installation}
                   provider={provider}
-                  onRecheck={onRecheckProviders}
+                  onConnected={onRecheckProviders}
                 />
               </div>
             ))

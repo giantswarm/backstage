@@ -939,6 +939,38 @@ describe('createRouter', () => {
       expect(callToolWithStructured).not.toHaveBeenCalled();
     });
 
+    it("starts the grant of a provider App with muster's app argument", async () => {
+      callToolWithStructured.mockResolvedValue({
+        text: "Authentication required for 'github'.",
+        structuredContent: {
+          app: 'github',
+          authUrl:
+            'https://muster.gazelle.example.io/oauth/proxy/start?state=app',
+        },
+      });
+
+      const response = await login({ app: 'github' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'auth_required',
+        authUrl:
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=app',
+      });
+      expect(callToolWithStructured).toHaveBeenCalledWith(
+        'core_auth_login',
+        { app: 'github' },
+        { authToken: TOKEN },
+      );
+    });
+
+    it('refuses a body naming both a server and an app', async () => {
+      const response = await login({ server: 'pro', app: 'github' });
+
+      expect(response.status).toBe(400);
+      expect(callToolWithStructured).not.toHaveBeenCalled();
+    });
+
     it('fails with 401 when the user token is missing', async () => {
       const response = await request(authApp)
         .post('/auth/login?installation=gazelle')

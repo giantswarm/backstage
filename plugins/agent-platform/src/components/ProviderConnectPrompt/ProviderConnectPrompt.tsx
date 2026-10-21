@@ -1,26 +1,38 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
+import { useWorkspaceProviders } from '../../hooks/useWorkspaceEditor';
+import { useWorkspaceManagerClient } from '../../hooks/useWorkspaceManager';
 import {
   providerDisplayName,
   providerKindName,
-  providerSignInServer,
+  providerSignInTarget,
   type WorkspaceProvider,
 } from '../../lib/workspaceManager';
 
-export type ProviderConnectPromptProps = {
+export type ProviderConnectActionProps = {
   /** The installation whose muster holds the person's grant. */
   installation: string;
   /** A provider instance the person has not granted, from `list_providers`. */
   provider: WorkspaceProvider;
   /**
-   * Reads `list_providers` again; called once muster reports the grant, so
-   * the host sees the new state and carries on with its draft.
+   * The provider instance now reads connected in `list_providers`, re-read
+   * when the person is back from the sign-in tab: the host carries on with
+   * its draft or prompt. Called once.
    */
-  onRecheck: () => void;
+  onConnected?: () => void;
   /** What happens once the person is back, said while muster waits. */
   waitingNote?: string;
+};
+
+export type ProviderConnectPromptProps = ProviderConnectActionProps & {
+  /** The host's own title; what granting means by default. */
+  title?: string;
+  /** The host's own explanation; what granting means by default. */
+  lead?: string;
+  /** The host's own actions beside the sign-in (start without, cancel). */
+  actions?: ReactNode;
 };
 
 /**
@@ -44,37 +56,49 @@ function signInCopy(provider: WorkspaceProvider) {
   }
   return {
     title: `Sign in to ${label}`,
-    lead: `Workspaces read your projects, and agents push to them, with your own ${kind} access. ${label} has its own accounts, so it asks you to sign in first.`,
+    lead: `Workspaces read your projects, and agents push to them, with your own ${kind || 'provider'} access. ${label} has its own accounts, so it asks you to sign in first.`,
     steps: [
-      `Sign in on ${label} with your ${kind} account.`,
+      `Sign in on ${label} with your ${kind || 'provider'} account.`,
       "Approve the Agent Platform's access. You come back here, signed in.",
     ],
-    cta: `Sign in to ${kind}`,
+    cta: kind ? `Sign in to ${kind}` : `Sign in to ${label}`,
   };
 }
 
 /**
- * The inline sign-in for a provider instance the person has not granted:
- * what granting means, and {@link ProviderConnectAction}.
+ * The inline sign-in for a provider instance the person has not granted,
+ * wherever a person first meets it (the workspace editor, the composer's
+ * workspace start): what granting means, and {@link ProviderConnectAction}.
+ * Several prompts, one per provider instance, connect independently.
  */
-export function ProviderConnectPrompt(props: ProviderConnectPromptProps) {
+export function ProviderConnectPrompt({
+  title,
+  lead,
+  actions,
+  ...props
+}: ProviderConnectPromptProps) {
   const copy = signInCopy(props.provider);
   return (
     <Alert
       status="info"
       data-testid={`provider-connect-${props.provider.name}`}
-      title={copy.title}
+      title={title ?? copy.title}
       description={
         <Flex direction="column" gap="2">
-          <Text variant="body-small">{copy.lead}</Text>
-          <ol style={{ margin: 0, paddingInlineStart: '1.25rem' }}>
-            {copy.steps.map(step => (
-              <li key={step}>
-                <Text variant="body-small">{step}</Text>
-              </li>
-            ))}
-          </ol>
-          <ProviderConnectAction {...props} />
+          <Text variant="body-small">{lead ?? copy.lead}</Text>
+          {!lead && (
+            <ol style={{ margin: 0, paddingInlineStart: '1.25rem' }}>
+              {copy.steps.map(step => (
+                <li key={step}>
+                  <Text variant="body-small">{step}</Text>
+                </li>
+              ))}
+            </ol>
+          )}
+          <Flex gap="2" align="start" style={{ flexWrap: 'wrap' }}>
+            <ProviderConnectAction {...props} />
+            {actions}
+          </Flex>
         </Flex>
       }
     />
@@ -83,66 +107,74 @@ export function ProviderConnectPrompt(props: ProviderConnectPromptProps) {
 
 /**
  * The grant itself, held by muster (workspace-manager reads the App token
- * muster attaches to each call): muster's sign-in for the server the
- * provider's `signIn` names, opened in a new tab. No token or code passes
- * through the portal. Where `signIn` names no server muster's portal sign-in
- * can start, its sentence is shown as the manager wrote it.
+ * muster attaches to each call): muster's sign-in for the provider instance's
+ * App, or for the server the manager is pinned to, opened in a new tab. No
+ * token or code passes through the portal. Where `signIn` names no grant
+ * muster's portal sign-in can start, its sentence is shown as the manager
+ * wrote it.
  */
-export function ProviderConnectAction({
-  installation,
-  provider,
-  onRecheck,
-  waitingNote,
-}: ProviderConnectPromptProps) {
-  const server = providerSignInServer(provider.signIn);
-  if (!server) {
+export function ProviderConnectAction(props: ProviderConnectActionProps) {
+  const target = providerSignInTarget(props.provider.signIn);
+  if (!target) {
     return (
       <Text variant="body-small" color="secondary">
-        {provider.signIn ??
+        {props.provider.signIn ??
           `Ask your platform team to let the Agent Platform use ${providerDisplayName(
-            provider,
+            props.provider,
           )}.`}
       </Text>
     );
   }
-  return (
-    <MusterGrant
-      installation={installation}
-      provider={provider}
-      server={server}
-      onRecheck={onRecheck}
-      waitingNote={waitingNote}
-    />
-  );
+  return <MusterGrant {...props} target={target} />;
 }
 
 function MusterGrant({
   installation,
   provider,
-  server,
-  onRecheck,
+  target,
+  onConnected,
   waitingNote = 'Finish in the other tab. The owners and repositories appear here as soon as you are back.',
-}: ProviderConnectPromptProps & { server: string }) {
-  const signIn = useServerSignIn(server, installation, { noun: 'connector' });
-  const kind = providerKindName(provider.kind);
+}: ProviderConnectActionProps & { target: { name: string; app: boolean } }) {
+  const signIn = useServerSignIn(target.name, installation, {
+    noun: 'connector',
+    app: target.app,
+  });
+  const client = useWorkspaceManagerClient(installation);
+  // Read again when the window regains focus (the person is back from the
+  // sign-in tab), and once muster reports the grant below.
+  const providers = useWorkspaceProviders(client);
+  const kind = providerKindName(provider.kind) || providerDisplayName(provider);
   const copy = signInCopy(provider);
 
   // A sign-in this prompt started and muster now reports done: the provider
-  // list is read again, once, and the prompt goes with the grant. A server
-  // already connected says nothing about this provider, so it alone shows
-  // the sign-in still.
+  // list is read again. A server already connected says nothing about this
+  // provider, so it alone shows the sign-in still.
   const started = useRef(false);
   if (signIn.isWaiting) {
     started.current = true;
   }
   const granted = started.current && signIn.isConnected;
+  const { refetch } = providers;
   useEffect(() => {
     if (granted) {
-      onRecheck();
+      void refetch();
     }
-  }, [granted, onRecheck]);
+  }, [granted, refetch]);
 
-  if (granted) {
+  // `list_providers` is the truth: once it reads the instance connected, the
+  // host hears it, once.
+  const connected = Boolean(
+    providers.data?.find(p => p.name === provider.name)?.connected,
+  );
+  const reported = useRef(false);
+  useEffect(() => {
+    if (connected && !reported.current) {
+      reported.current = true;
+      onConnected?.();
+    }
+  }, [connected, onConnected]);
+
+  if (granted || connected) {
     return (
       <Flex direction="column" gap="1">
         <Text variant="body-small" weight="bold">
@@ -203,7 +235,7 @@ function MusterGrant({
         </Button>
       </div>
       <Text variant="body-small" color="secondary">
-        Opens a new tab. This form keeps what you entered.
+        Opens a new tab. What you entered here stays.
       </Text>
     </Flex>
   );
