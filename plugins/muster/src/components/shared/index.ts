@@ -57,7 +57,11 @@ export {
   needsSignIn,
   useServerSignIn,
 } from './useServerSignIn';
-export type { ServerSignInState, SignInNoun } from './useServerSignIn';
+export type {
+  DeviceCode,
+  ServerSignInState,
+  SignInNoun,
+} from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';

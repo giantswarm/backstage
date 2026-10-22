@@ -26,6 +26,7 @@ import {
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import {
+  modelConfigNameOf,
   NEW_SESSION_STATE_KEY,
   stashHandoffImages,
 } from '../../hooks/useNewSessionHandoff';
@@ -349,6 +350,7 @@ function PaletteSessionComposer({
             text: prompt,
             agentNamespace: chosen.namespace,
             agentName: chosen.technicalName,
+            modelConfig: modelConfigNameOf(chosen),
             imagesKey: stashHandoffImages(images),
           },
         },

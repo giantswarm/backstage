@@ -11,6 +11,11 @@ import {
   Text,
 } from '@backstage/ui';
 import { ServerSignIn } from '../shared';
+import {
+  ProviderAppSignIn,
+  providerAppHint,
+  providerAppLabel,
+} from '../ProviderAppSignIn';
 import { useMcpServersAwaitingSignIn } from './useMcpServersAwaitingSignIn';
 import { useServerLabels } from './useServerLabels';
 
@@ -71,12 +76,18 @@ export type McpAuthDialogProps = {
    * Without it, every server that waits for the person's sign-in.
    */
   servers?: string[];
+  /**
+   * The provider Apps to offer, by name (`chatgpt` for the person's ChatGPT
+   * subscription). Without it, every App muster keeps a grant of.
+   */
+  apps?: string[];
 };
 
 /**
- * One place to sign in to the MCP servers that wait for the person: a row per
- * server with its state and muster's sign-in (`core_auth_login`, in a new
- * tab). The rows are the servers that waited when the dialog opened, so a
+ * One place to sign in to the MCP servers that wait for the person and to
+ * connect the person's provider Apps: a row per server with its state and
+ * muster's sign-in (`core_auth_login`, in a new tab), and a row per provider
+ * App muster keeps (connected or not, see {@link ProviderAppSignIn}). The rows are the servers that waited when the dialog opened, so a
  * finished sign-in turns its row *Connected* instead of making it vanish; the
  * servers that come with the portal sign-in are summarised in one line.
  */
@@ -85,12 +96,15 @@ export function McpAuthDialog({
   onOpenChange,
   installation,
   servers,
+  apps,
 }: McpAuthDialogProps) {
   const classes = useStyles();
-  const { statuses, waiting, isLoading } = useMcpServersAwaitingSignIn(
-    installation,
-    { servers, enabled: isOpen },
-  );
+  const { statuses, waiting, providerApps, isLoading } =
+    useMcpServersAwaitingSignIn(installation, {
+      servers,
+      apps,
+      enabled: isOpen,
+    });
 
   // The rows, fixed while the dialog is open: the servers waiting when it
   // opened, plus any that start to wait while it is.
@@ -120,8 +134,13 @@ export function McpAuthDialog({
       !rows.includes(status.name),
   ).length;
 
-  let summary: string;
-  if (rows.length === 0) {
+  // Only the Apps were asked for (a feature that needs the person's own
+  // subscription): nothing to say about servers.
+  const appsOnly = servers?.length === 0 && providerApps.length > 0;
+  let summary: string | undefined;
+  if (appsOnly) {
+    summary = undefined;
+  } else if (rows.length === 0) {
     summary = 'You are signed in to every MCP server here.';
   } else if (remaining === 0) {
     summary = 'Done: you are signed in to every server listed.';
@@ -138,7 +157,11 @@ export function McpAuthDialog({
       onOpenChange={onOpenChange}
       width="min(90vw, 560px)"
     >
-      <DialogHeader>Sign in to MCP servers</DialogHeader>
+      <DialogHeader>
+        {providerApps.length > 0
+          ? 'Sign in to your connections'
+          : 'Sign in to MCP servers'}
+      </DialogHeader>
       <DialogBody>
         <Flex direction="column" gap="3">
           {isLoading ? (
@@ -150,9 +173,33 @@ export function McpAuthDialog({
             </Flex>
           ) : (
             <>
-              <Text variant="body-medium" role="status">
-                {summary}
-              </Text>
+              {summary && (
+                <Text variant="body-medium" role="status">
+                  {summary}
+                </Text>
+              )}
+              {providerApps.length > 0 && (
+                <ul className={classes.list} aria-label="Connections">
+                  {providerApps.map(app => (
+                    <li key={app.name} className={classes.row}>
+                      <span className={classes.label}>
+                        <span className={classes.name}>
+                          {providerAppLabel(app.name)}
+                        </span>
+                        {providerAppHint(app.name) && (
+                          <Text variant="body-small" color="secondary">
+                            {providerAppHint(app.name)}
+                          </Text>
+                        )}
+                      </span>
+                      <ProviderAppSignIn
+                        app={app.name}
+                        installation={installation}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
               {rows.length > 0 && (
                 <ul className={classes.list} aria-label="MCP servers">
                   {rows.map(name => (

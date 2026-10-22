@@ -108,6 +108,7 @@ export type {
   ToolMarkersProps,
   ServerSignInProps,
   ServerSignInState,
+  DeviceCode,
   SignInNoun,
   Tone,
   ToneColors,
@@ -141,6 +142,14 @@ export type {
   McpAuthDialogProps,
   McpServersAwaitingSignIn,
 } from './components/McpAuthDialog';
+export {
+  ProviderAppSignIn,
+  providerAppLabel,
+} from './components/ProviderAppSignIn';
+export type {
+  ProviderAppRowState,
+  ProviderAppSignInProps,
+} from './components/ProviderAppSignIn';
 export {
   McpSignInProvider,
   useMcpSignIn,

@@ -469,9 +469,23 @@ export interface ServerAuthStatus {
  */
 export interface ProviderAppAuthStatus {
   name: string;
-  status: 'connected' | 'auth_required';
+  /**
+   * `pending` while a device-code sign-in waits for the person to enter
+   * `user_code` at `verification_url`.
+   */
+  status: 'connected' | 'auth_required' | 'pending';
   auth_tool?: string;
   error?: string;
+  /** The code a pending device-code sign-in waits for; the person's only. */
+  user_code?: string;
+  verification_url?: string;
+  /** RFC 3339: muster gives the code up then. */
+  code_expires_at?: string;
+  /**
+   * Why the person's last device-code sign-in ended without a grant (the code
+   * expired, the provider refused it); cleared by the next sign-in.
+   */
+  last_failure?: string;
 }
 
 export interface AuthStatusResponse {
@@ -495,8 +509,18 @@ export interface AuthStatusResponse {
  * muster answered something unrecognised and `auth://status` should be re-read.
  */
 export interface ServerSignInResult {
-  status: 'connected' | 'auth_required' | 'error' | 'unknown';
+  /**
+   * `pending`: a provider App's device-code sign-in waits for the person to
+   * enter `deviceCode.userCode` at `deviceCode.verificationUrl`.
+   */
+  status: 'connected' | 'auth_required' | 'pending' | 'error' | 'unknown';
   authUrl?: string;
+  /** The code to enter, when `status` is `pending`. */
+  deviceCode?: {
+    userCode: string;
+    verificationUrl: string;
+    expiresAt?: string;
+  };
   message: string;
   /**
    * How muster identifies itself to the server's authorization server, on

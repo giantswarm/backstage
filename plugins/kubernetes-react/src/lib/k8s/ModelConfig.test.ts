@@ -3,6 +3,7 @@ import {
   deriveModelConfigReadiness,
   ModelConfig,
   ModelConfigCondition,
+  PERSONAL_CHATGPT_MODEL_LABEL,
 } from './ModelConfig';
 
 const AT = '2026-07-31T10:00:00Z';
@@ -32,6 +33,52 @@ function makeModelConfig(
 }
 
 describe('ModelConfig', () => {
+  describe("a person's own ChatGPT login", () => {
+    const chatgpt = (
+      spec: Record<string, unknown>,
+      annotations?: Record<string, string>,
+    ) =>
+      new ModelConfig(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'ModelConfig',
+          metadata: { name: 'codex', namespace: 'kagent', annotations },
+          spec: { provider: 'OpenAI', model: 'gpt-5.5', ...spec },
+        } as unknown as ModelConfigInterface,
+        'gazelle',
+      );
+
+    it('is a chatgptOAuth model without a Secret, named for the person', () => {
+      const config = chatgpt({ openAI: { credentialType: 'chatgptOAuth' } });
+      expect(config.isPersonalChatGptLogin()).toBe(true);
+      expect(config.getDisplayName()).toBe(PERSONAL_CHATGPT_MODEL_LABEL);
+      expect(PERSONAL_CHATGPT_MODEL_LABEL).toBe('ChatGPT (your subscription)');
+    });
+
+    it('keeps that name over an annotation', () => {
+      const config = chatgpt(
+        { openAI: { credentialType: 'chatgptOAuth' } },
+        { 'ui.giantswarm.io/display-name': 'Codex login' },
+      );
+      expect(config.getDisplayName()).toBe(PERSONAL_CHATGPT_MODEL_LABEL);
+    });
+
+    it("is not the installation's login, which names a Secret", () => {
+      const config = chatgpt({
+        openAI: { credentialType: 'chatgptOAuth' },
+        apiKeySecret: 'kagent-chatgpt-login',
+      });
+      expect(config.isPersonalChatGptLogin()).toBe(false);
+      expect(config.getDisplayName()).toBe('codex');
+    });
+
+    it('is not an API-key model', () => {
+      const config = chatgpt({ apiKeySecret: 'openai-key' });
+      expect(config.isPersonalChatGptLogin()).toBe(false);
+      expect(config.getOpenAICredentialType()).toBeUndefined();
+    });
+  });
+
   describe('display name', () => {
     const withAnnotation = (value?: string) =>
       new ModelConfig(

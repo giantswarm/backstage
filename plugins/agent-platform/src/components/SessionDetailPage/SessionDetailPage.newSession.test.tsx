@@ -63,6 +63,15 @@ jest.mock('../../hooks/useMusterServers', () => ({
   }),
 }));
 
+// The agent's model is no ChatGPT login here; that gate has its own tests.
+jest.mock('../../hooks/useChatGptConnection', () => ({
+  useChatGptConnection: () => ({
+    isPersonalModel: false,
+    blocksTurn: false,
+    isLoading: false,
+  }),
+}));
+
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));

@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery, useQueryClient, QueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
-import { AuthStatusResponse, musterApiRef, ServerAuthStatus } from '../../apis';
+import {
+  AuthStatusResponse,
+  musterApiRef,
+  ProviderAppAuthStatus,
+  ServerAuthStatus,
+} from '../../apis';
 
 /** How often `auth://status` is re-read while a browser sign-in is pending. */
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
@@ -92,6 +97,19 @@ interface PendingSignIn {
    * means the popup was blocked, so the URL itself must be the affordance.
    */
   opened: boolean;
+  /**
+   * A provider App's device-code sign-in: the code the person enters at the
+   * provider's page (opened in the tab instead of a sign-in URL).
+   */
+  deviceCode?: DeviceCode;
+}
+
+/** The code a device-code sign-in waits for, and where to enter it. */
+export interface DeviceCode {
+  userCode: string;
+  verificationUrl: string;
+  /** Epoch ms after which muster gives the code up, when it said. */
+  expiresAt?: number;
 }
 
 function pendingKey(installation: string | undefined, serverName: string) {
@@ -115,8 +133,20 @@ function readPending(
 }
 
 export interface ServerSignInState {
-  /** This server's entry in `auth://status`, when muster reports one. */
+  /**
+   * This server's entry in `auth://status`, when muster reports one. A
+   * provider App's entry in the shape of a server's: its `pending` (a code
+   * outstanding) reads `auth_required` here, see `providerApp`.
+   */
   status?: ServerAuthStatus;
+  /** A provider App's own entry, with its code and last failure. */
+  providerApp?: ProviderAppAuthStatus;
+  /**
+   * The code a provider App's device-code sign-in waits for: the one this tab
+   * asked for, else the one muster reports outstanding (asked for elsewhere,
+   * or before a reload). The person enters it at `verificationUrl`.
+   */
+  deviceCode?: DeviceCode;
   /** True while `core_auth_login` is in flight. */
   isPending: boolean;
   /**
@@ -205,7 +235,43 @@ function findStatus(
   if (!app) {
     return data?.servers?.find(server => server.name === name);
   }
+  const entry = findProviderApp(data, name);
+  return (
+    entry && {
+      name: entry.name,
+      status: entry.status === 'pending' ? 'auth_required' : entry.status,
+      auth_tool: entry.auth_tool,
+      error: entry.error,
+    }
+  );
+}
+
+function findProviderApp(
+  data: AuthStatusResponse | undefined,
+  name: string,
+): ProviderAppAuthStatus | undefined {
   return data?.providerApps?.find(entry => entry.name === name);
+}
+
+/** The outstanding code muster reports for a provider App, if any. */
+function reportedDeviceCode(
+  entry: ProviderAppAuthStatus | undefined,
+): DeviceCode | undefined {
+  if (
+    entry?.status !== 'pending' ||
+    !entry.user_code ||
+    !entry.verification_url
+  ) {
+    return undefined;
+  }
+  const expiresAt = entry.code_expires_at
+    ? Date.parse(entry.code_expires_at)
+    : NaN;
+  return {
+    userCode: entry.user_code,
+    verificationUrl: entry.verification_url,
+    expiresAt: Number.isNaN(expiresAt) ? undefined : expiresAt,
+  };
 }
 
 /**
@@ -267,7 +333,14 @@ export function useServerSignIn(
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: Boolean(installation),
-    refetchInterval: isWaiting ? pollIntervalMs : false,
+    // A provider App's code outstanding is a wait too, also one this tab did
+    // not start (asked for before a reload, or in another tab).
+    refetchInterval: query =>
+      isWaiting ||
+      (app &&
+        findProviderApp(query.state.data, serverName)?.status === 'pending')
+        ? pollIntervalMs
+        : false,
     // The flow completes while the user is on the IdP's tab -- which is
     // precisely when react-query pauses interval refetches by default
     // (refetchIntervalInBackground: false). Poll through it, so the wait can
@@ -287,6 +360,7 @@ export function useServerSignIn(
   });
 
   const status = findStatus(data, serverName, app);
+  const providerApp = app ? findProviderApp(data, serverName) : undefined;
 
   // The proxy answers 200 with `unavailable` when it could not read
   // auth://status, so a waiting row can say the status is unreadable instead of
@@ -315,6 +389,32 @@ export function useServerSignIn(
     onSuccess: result => {
       const tab = signInTabRef.current;
       signInTabRef.current = null;
+      if (result.status === 'pending' && result.deviceCode) {
+        // A device-code sign-in: the tab shows the provider's page where the
+        // code is entered, and muster files the grant once it is.
+        const { userCode, verificationUrl } = result.deviceCode;
+        const opened = Boolean(tab && !tab.closed);
+        if (tab && !tab.closed) {
+          tab.location.href = verificationUrl;
+        }
+        const now = Date.now();
+        const parsed = result.deviceCode.expiresAt
+          ? Date.parse(result.deviceCode.expiresAt)
+          : NaN;
+        const expiresAt = Number.isNaN(parsed) ? undefined : parsed;
+        setPending({
+          authUrlExpiresAt: expiresAt ?? now + timeoutMs,
+          // muster gives the code up at its expiry; a little later, the wait
+          // ends here too and the row offers a new code.
+          deadline: (expiresAt ?? now + timeoutMs) + 30_000,
+          opened,
+          deviceCode: { userCode, verificationUrl, expiresAt },
+        });
+        queryClient.invalidateQueries({
+          queryKey: authStatusQueryKey(installation),
+        });
+        return;
+      }
       if (result.status === 'auth_required' && result.authUrl) {
         const opened = Boolean(tab && !tab.closed);
         if (tab && !tab.closed) {
@@ -445,6 +545,30 @@ export function useServerSignIn(
     queryClient.invalidateQueries({ queryKey: ['muster'] });
   }, [pending, status, queryClient, setPending]);
 
+  // A provider App's code that muster gave up (expired, refused by the
+  // provider) ends the wait at once: muster reads `auth_required` with the
+  // last failure, and only a new code can still connect. Keyed on the
+  // transition from `pending`, so a status read before muster issued this
+  // tab's code cannot end the wait it just started.
+  const lastAppStatusRef = useRef<ProviderAppAuthStatus['status'] | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    const current = providerApp?.status;
+    if (current === undefined) {
+      return;
+    }
+    const previous = lastAppStatusRef.current;
+    lastAppStatusRef.current = current;
+    if (
+      previous === 'pending' &&
+      current === 'auth_required' &&
+      pending?.deviceCode
+    ) {
+      setPending(null);
+    }
+  }, [providerApp, pending, setPending]);
+
   // Feedback (`note`/`error`) intentionally lives in the mutation rather than the
   // shared pending entry, and is intentionally NOT reset when the reported status
   // moves on:
@@ -469,6 +593,8 @@ export function useServerSignIn(
 
   return {
     status,
+    providerApp,
+    deviceCode: pending?.deviceCode ?? reportedDeviceCode(providerApp),
     isPending: signIn.isPending,
     authUrl,
     clientIdMethod,
