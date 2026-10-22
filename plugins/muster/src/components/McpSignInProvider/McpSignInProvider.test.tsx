@@ -161,6 +161,44 @@ describe('McpSignInProvider', () => {
     expect(api.getAuthStatus).toHaveBeenCalledWith('graveler');
   });
 
+  it.each([
+    [
+      'refused the sign-in',
+      {
+        status: 'reauth_required',
+        token_forwarding_enabled: true,
+        sso_attempt_failed: true,
+      },
+    ],
+    [
+      'is not connected yet',
+      { status: 'auth_required', token_exchange_enabled: true },
+    ],
+    ['says so by its kind alone', { status: 'auth_required', kind: 'sso' }],
+  ] as const)(
+    'never counts an SSO server as waiting, one that %s included',
+    async (_, entry) => {
+      const api = makeApi({
+        servers: [
+          waitingFor('workspace-manager'),
+          { name: 'devctl', ...entry },
+        ],
+      });
+      await renderProvider(api);
+
+      await waitFor(() =>
+        expect(status()).toEqual(
+          expect.objectContaining({
+            isRead: true,
+            waiting: [
+              { name: 'workspace-manager', label: 'workspace-manager' },
+            ],
+          }),
+        ),
+      );
+    },
+  );
+
   it('is not read until muster answers', async () => {
     const api = makeApi({ servers: [] });
     api.getAuthStatus.mockReturnValue(new Promise(() => {}));

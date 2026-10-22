@@ -106,6 +106,39 @@ describe('McpAuthDialog', () => {
     expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
   });
 
+  it('never counts an SSO server as needing a sign-in, even one that refused it', async () => {
+    await renderDialog(
+      makeApi({
+        servers: [
+          status('workspace-manager', 'auth_required'),
+          {
+            name: 'devctl',
+            status: 'reauth_required',
+            kind: 'sso',
+            token_forwarding_enabled: true,
+            sso_attempt_failed: true,
+          },
+          {
+            name: 'mcp-kubernetes',
+            status: 'connected',
+            token_forwarding_enabled: true,
+          },
+        ],
+      }),
+    );
+
+    const list = await screen.findByRole('list', { name: 'MCP servers' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(list).toHaveTextContent('workspace-manager');
+    expect(list).not.toHaveTextContent('devctl');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'One MCP server needs your sign-in',
+    );
+    expect(
+      screen.getByText('1 more server comes with your portal sign-in.'),
+    ).toBeInTheDocument();
+  });
+
   it('offers only the servers a feature asks for', async () => {
     await renderDialog(
       makeApi({

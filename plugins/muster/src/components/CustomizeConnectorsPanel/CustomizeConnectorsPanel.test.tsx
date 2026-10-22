@@ -139,24 +139,8 @@ function defaultAuthStatus(): AuthStatusResponse {
   };
 }
 
-/** muster's answer when it failed to connect the SSO connector for this person. */
+/** muster's answer when the SSO connector refused this person's sign-in. */
 function ssoFailedAuthStatus(): AuthStatusResponse {
-  return {
-    servers: [
-      { name: 'github', status: 'connected' },
-      {
-        name: 'kubernetes',
-        status: 'auth_required',
-        token_forwarding_enabled: true,
-        sso_attempt_failed: true,
-      },
-      { name: 'web-search', status: 'connected' },
-    ],
-  };
-}
-
-/** muster's answer when the SSO connector's sign-in has lapsed. */
-function ssoExpiredAuthStatus(): AuthStatusResponse {
   return {
     servers: [
       { name: 'github', status: 'connected' },
@@ -164,14 +148,27 @@ function ssoExpiredAuthStatus(): AuthStatusResponse {
         name: 'kubernetes',
         status: 'reauth_required',
         token_forwarding_enabled: true,
+        sso_attempt_failed: true,
+        error: 'ID token forwarding failed: 401 Unauthorized',
       },
       { name: 'web-search', status: 'connected' },
     ],
   };
 }
 
-const SSO_EXPLANATION =
-  "kubernetes authenticates through SSO from muster's own session, so there is nothing to sign in to here.";
+/** muster's answer for the SSO connector before it connected it. */
+function ssoNotConnectedAuthStatus(): AuthStatusResponse {
+  return {
+    servers: [
+      { name: 'github', status: 'connected' },
+      { name: 'kubernetes', status: 'auth_required', kind: 'sso' },
+      { name: 'web-search', status: 'connected' },
+    ],
+  };
+}
+
+const SSO_REFUSED =
+  "kubernetes uses your portal sign-in, so there is nothing to sign in to. It did not accept that sign-in, so you and your agents cannot use its tools yet. An administrator needs to add the portal sign-in's audience to the connector's trusted audiences.";
 
 let queryClient: QueryClient;
 
@@ -269,18 +266,37 @@ describe('CustomizeConnectorsPanel', () => {
     );
   });
 
-  it('says an SSO sign-in has expired in a few words, the reason in a tooltip', async () => {
-    api.getAuthStatus.mockImplementation(async () => ssoExpiredAuthStatus());
+  it('asks no sign-in of an SSO connector muster has not connected yet', async () => {
+    api.getAuthStatus.mockImplementation(async () =>
+      ssoNotConnectedAuthStatus(),
+    );
+    await renderPanel();
+
+    const kubernetes = rowOf('kubernetes');
+    // Its own state: nothing waits on this person.
+    expect(
+      await within(kubernetes).findByText('Connected'),
+    ).toBeInTheDocument();
+    expect(within(kubernetes).queryByText('Sign in needed')).toBeNull();
+    expect(within(kubernetes).queryByText('Cannot connect')).toBeNull();
+    expect(
+      within(kubernetes).queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says an SSO connector that refused the sign-in cannot connect, the reason in a tooltip (T104)', async () => {
+    api.getAuthStatus.mockImplementation(async () => ssoFailedAuthStatus());
     const user = userEvent.setup();
     await renderPanel();
 
     const kubernetes = rowOf('kubernetes');
+    // Not "Sign-in expired": there is nothing to sign in to.
     expect(
-      await within(kubernetes).findByText('Sign-in expired'),
+      await within(kubernetes).findByText('Cannot connect'),
     ).toBeInTheDocument();
-    // The sentence used to fill the cell and push the state out of sight.
-    expect(within(kubernetes).queryByText(SSO_EXPLANATION)).toBeNull();
-    // Nothing to sign in to: SSO comes from muster's own session.
+    expect(within(kubernetes).queryByText('Sign-in expired')).toBeNull();
+    // The sentence would fill the cell and push the state out of sight.
+    expect(within(kubernetes).queryByText(SSO_REFUSED)).toBeNull();
     expect(
       within(kubernetes).queryByRole('button', { name: 'Sign in' }),
     ).not.toBeInTheDocument();
@@ -293,41 +309,32 @@ describe('CustomizeConnectorsPanel', () => {
         name: 'About the state of kubernetes',
       }),
     );
-    expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      SSO_EXPLANATION,
-    );
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(SSO_REFUSED);
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('says a failed SSO connection in a few words, the paragraph in a tooltip (T104)', async () => {
-    api.getAuthStatus.mockImplementation(async () => ssoFailedAuthStatus());
-    const user = userEvent.setup();
+  it('says a connected SSO connector is connected, whatever failure muster kept from another session', async () => {
+    api.getAuthStatus.mockImplementation(async () => ({
+      servers: [
+        { name: 'github', status: 'connected' },
+        {
+          name: 'kubernetes',
+          status: 'connected',
+          token_forwarding_enabled: true,
+          sso_attempt_failed: true,
+        },
+        { name: 'web-search', status: 'connected' },
+      ],
+    }));
     await renderPanel();
 
     const kubernetes = rowOf('kubernetes');
-    // Not "Sign in needed": there is nothing to sign in to.
-    expect(
-      await within(kubernetes).findByText('Could not sign in'),
-    ).toBeInTheDocument();
-    expect(
-      within(kubernetes).queryByText('Sign in needed'),
-    ).not.toBeInTheDocument();
-    expect(
-      within(kubernetes).queryByText(/trusted audiences/),
-    ).not.toBeInTheDocument();
-    expect(
-      within(kubernetes).queryByRole('button', { name: 'Sign in' }),
-    ).not.toBeInTheDocument();
-
-    await user.hover(document.body);
-    await user.hover(
-      within(kubernetes).getByRole('button', {
-        name: 'About the state of kubernetes',
-      }),
+    await waitFor(() =>
+      expect(within(rowOf('github')).queryByText('Sign in needed')).toBeNull(),
     );
-    expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      `${SSO_EXPLANATION} muster tried and failed to establish it for your session — check the connector's trusted audiences with an administrator.`,
-    );
+    expect(within(kubernetes).getByText('Connected')).toBeInTheDocument();
+    expect(within(kubernetes).queryByText('Cannot connect')).toBeNull();
+    expect(within(kubernetes).queryByText('Could not sign in')).toBeNull();
   });
 
   it('says "Signing in…" while the sign-in page is open, the wait in a tooltip', async () => {
@@ -494,10 +501,11 @@ describe('CustomizeConnectorsPanel', () => {
       queryClient.invalidateQueries({ queryKey: ['muster', 'auth-status'] }),
     );
 
-    expect(
-      await within(github).findByText('Sign in needed'),
-    ).toBeInTheDocument();
-    expect(within(github).queryByText('Signing in…')).toBeNull();
+    // Not a sign-in either: nothing waits on this person.
+    await waitFor(() =>
+      expect(within(github).queryByText('Signing in…')).toBeNull(),
+    );
+    expect(within(github).queryByText('Sign in needed')).toBeNull();
     expect(
       within(github).queryByRole('button', { name: /sign-in page/ }),
     ).not.toBeInTheDocument();
@@ -1095,16 +1103,16 @@ describe('CustomizeConnectorsPanel', () => {
       open.mockRestore();
     });
 
-    it('keeps an expired SSO sign-in to its state on line 1, the reason in a hint', async () => {
-      api.getAuthStatus.mockImplementation(async () => ssoExpiredAuthStatus());
+    it('keeps a refused SSO sign-in to its state on line 1, the reason in a hint', async () => {
+      api.getAuthStatus.mockImplementation(async () => ssoFailedAuthStatus());
       await renderPanel();
 
-      await screen.findByText('Sign-in expired');
+      await screen.findByText('Cannot connect');
       const kubernetes = itemOf('kubernetes');
       expect(
-        within(kubernetes).getByText('Sign-in expired'),
+        within(kubernetes).getByText('Cannot connect'),
       ).toBeInTheDocument();
-      expect(within(kubernetes).queryByText(SSO_EXPLANATION)).toBeNull();
+      expect(within(kubernetes).queryByText(SSO_REFUSED)).toBeNull();
       // No sign-in, so no actions slot: just the tile and the body.
       expect(kubernetes.children).toHaveLength(2);
       const hint = within(kubernetes).getByRole('button', {

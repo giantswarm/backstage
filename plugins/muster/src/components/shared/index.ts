@@ -33,6 +33,8 @@ export {
   deactivatedSignInGate,
   ServerAuthActions,
   ServerSignIn,
+  SSO_REFUSED_STATUS,
+  ssoRefusedText,
 } from './ServerSignIn';
 export type { ServerAuthActionsProps, ServerSignInProps } from './ServerSignIn';
 export {
@@ -54,6 +56,8 @@ export type {
 } from './hooks';
 export {
   authStatusQueryKey,
+  isSsoRefused,
+  isSsoServer,
   needsSignIn,
   useServerSignIn,
 } from './useServerSignIn';

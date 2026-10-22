@@ -52,6 +52,37 @@ describe('connectorStatus', () => {
     });
   });
 
+  it('never asks a sign-in of an SSO server, and says when one refused it', () => {
+    const entry = single(server('grafana'));
+    const sso = { name: 'grafana', token_forwarding_enabled: true };
+    expect(
+      connectorStatus(entry, {
+        ...sso,
+        status: 'reauth_required',
+        sso_attempt_failed: true,
+      }),
+    ).toEqual({ label: 'Cannot connect', tone: 'danger' });
+    // Not connected yet: the server's own state.
+    expect(connectorStatus(entry, { ...sso, status: 'auth_required' })).toEqual(
+      { label: 'Connected', tone: 'success' },
+    );
+    expect(
+      connectorStatus(entry, {
+        name: 'grafana',
+        kind: 'sso',
+        status: 'auth_required',
+      }),
+    ).toEqual({ label: 'Connected', tone: 'success' });
+    // A failure muster kept from another session.
+    expect(
+      connectorStatus(entry, {
+        ...sso,
+        status: 'connected',
+        sso_attempt_failed: true,
+      }),
+    ).toEqual({ label: 'Connected', tone: 'success' });
+  });
+
   it('names a failing or deactivated server', () => {
     expect(connectorStatus(single(server('a', 'Failed')))).toEqual({
       label: 'Failed',
@@ -119,6 +150,20 @@ describe('connectorReach', () => {
         status: 'reauth_required',
       }),
     ).toBe('sign-in');
+  });
+
+  it('files an SSO server that refused the sign-in under not connected, never sign-in', () => {
+    const sso = { name: 'a', token_exchange_enabled: true };
+    expect(
+      connectorReach(single(server('a')), {
+        ...sso,
+        status: 'reauth_required',
+        sso_attempt_failed: true,
+      }),
+    ).toBe('not-connected');
+    expect(
+      connectorReach(single(server('a')), { ...sso, status: 'auth_required' }),
+    ).toBe('connected');
   });
 
   it('says whether all, some or none of a family answer', () => {

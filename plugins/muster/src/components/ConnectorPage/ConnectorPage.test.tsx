@@ -672,26 +672,108 @@ describe('ConnectorPage', () => {
     expect(headerButtons()).toEqual(signedOutHeader);
   });
 
-  it('says in full why muster could not connect an SSO connector (T104)', async () => {
-    // The Customize list keeps this to "Could not sign in" and a hint.
-    const api = makeApi();
-    api.getAuthStatus.mockResolvedValue({
-      servers: [
-        {
-          name: 'grafana',
-          status: 'connected',
-          token_forwarding_enabled: true,
-          sso_attempt_failed: true,
-        },
-      ],
-    } as never);
-    await renderAt(`${BASE}/grafana`, { api });
+  describe('an SSO connector', () => {
+    const REFUSAL =
+      "ID token forwarding failed: authentication required: server returned 401 Unauthorized (forwarded token iss=https://dex.example.test, aud=[portal]; the backend must trust this issuer's JWKS and one of these audiences to accept forwarded tokens)";
 
-    expect(
-      await screen.findByText(
-        "grafana authenticates through SSO from muster's own session, so there is nothing to sign in to here. muster tried and failed to establish it for your session — check the connector's trusted audiences with an administrator.",
-      ),
-    ).toBeInTheDocument();
+    function ssoApi(status: Record<string, unknown>) {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          { name: 'grafana', token_forwarding_enabled: true, ...status },
+        ],
+      } as never);
+      api.filterTools.mockResolvedValue({
+        total: 0,
+        filtered_count: 0,
+        truncated: false,
+        tools: [],
+      });
+      return api;
+    }
+
+    it('that refused the sign-in says it cannot connect, with muster’s reason under Details', async () => {
+      const api = ssoApi({
+        status: 'reauth_required',
+        sso_attempt_failed: true,
+        error: REFUSAL,
+      });
+      await renderAt(`${BASE}/grafana`, { api });
+
+      expect(
+        await screen.findByText('grafana cannot connect for you'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "grafana uses your portal sign-in, so there is nothing to sign in to. It did not accept that sign-in, so you and your agents cannot use its tools yet. An administrator needs to add the portal sign-in's audience to the connector's trusted audiences.",
+        ),
+      ).toBeInTheDocument();
+      // Not a sign-in: there is nothing to sign in to.
+      expect(
+        screen.queryByText('Sign in to this connector to see its tools.'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Sign in' }),
+      ).not.toBeInTheDocument();
+
+      // muster's own words, folded until asked for.
+      expect(screen.queryByText(REFUSAL)).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Details' }));
+      expect(screen.getByText(REFUSAL)).toBeInTheDocument();
+    });
+
+    it('that refused the sign-in without a reason offers no Details', async () => {
+      const api = ssoApi({
+        status: 'reauth_required',
+        sso_attempt_failed: true,
+      });
+      await renderAt(`${BASE}/grafana`, { api });
+
+      expect(
+        await screen.findByText('grafana cannot connect for you'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Details' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('connected in this session ignores a failure muster kept from another session', async () => {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'grafana',
+            status: 'connected',
+            token_forwarding_enabled: true,
+            sso_attempt_failed: true,
+          },
+        ],
+      } as never);
+      api.filterTools.mockResolvedValue({
+        total: 1,
+        filtered_count: 1,
+        truncated: false,
+        tools: [{ name: 'x_grafana_query', summary: 'Query a dashboard' }],
+      } as never);
+      await renderAt(`${BASE}/grafana`, { api });
+
+      expect(
+        await screen.findByRole('link', { name: /query/ }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/cannot connect/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/trusted audiences/)).not.toBeInTheDocument();
+    });
+
+    it('not connected yet asks for no sign-in', async () => {
+      const api = ssoApi({ status: 'auth_required' });
+      await renderAt(`${BASE}/grafana`, { api });
+
+      expect(await screen.findByText(/^No tools exposed/)).toBeInTheDocument();
+      expect(
+        screen.queryByText('Sign in to this connector to see its tools.'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/cannot connect/)).not.toBeInTheDocument();
+    });
   });
 
   it('offers reconnect, turn off and remove, and confirms a removal', async () => {

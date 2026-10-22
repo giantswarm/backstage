@@ -161,6 +161,20 @@ set on the MCPServer directly, for example in its GitOps source or with
 `kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
 an edit that does not change the name keeps it.
 
+A connector whose tools wait for the person's sign-in says so in the
+Connectors list ("Sign in needed", "Sign-in expired", with its Sign in) and on
+its Tools tab, which offers the sign-in in place of the hidden tools. A
+connector that comes with the portal sign-in (muster's `kind: sso`, token
+forwarding or exchange) never asks for one, since there is nothing to sign in
+to. One that refused that sign-in (muster's `sso_attempt_failed` while it is
+not connected in this session, `auth_required` or `reauth_required`) reads
+"Cannot connect" in the list, its reason in the hint, and its Tools tab says
+that the connector cannot connect for the person, that an administrator needs
+to add the portal sign-in's audience to its trusted audiences, and muster's
+own account of the attempt (the token's issuer and audiences) under
+**Details**, to copy. muster keeps that flag per person rather than per
+session, so a connector connected in this session ignores it.
+
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/customize/connectors/<installation>/<connector>/tools/<tool>`.
@@ -1403,8 +1417,13 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   the seen marks. No text of the conversation enters a row.
 - **MCP sign-in row.** One for the person's home installation while any of its
   MCP servers waits for their own sign-in or grant (`auth_required` or
-  `reauth_required` in muster's per-user `auth://status`): "2 MCP servers need
-  your sign-in", naming the servers by display name, above the session rows (it
+  `reauth_required` in muster's per-user `auth://status`). A server that comes
+  with the portal sign-in (`kind: sso`, token forwarding or exchange) never
+  waits, not even one that refused that sign-in, because signing in cannot fix
+  it: it is out of the row, the unread count, the toast, the desktop
+  notification and the sign-in dialog's count, and its connector page says
+  what is wrong (see [Connectors](#connectors)). The row reads "2 MCP servers
+  need your sign-in", naming the servers by display name, above the session rows (it
   has no time to sort by), with **Sign in**, which marks it read, closes the
   overlay and then opens muster's sign-in dialog over the page (loaded on the
   first sign-in). Muster's `McpSignInProvider` reads the status under the muster
