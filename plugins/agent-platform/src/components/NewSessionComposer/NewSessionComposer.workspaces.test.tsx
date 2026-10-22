@@ -165,6 +165,68 @@ describe('NewSessionComposer workspaces', () => {
     expect(screen.getByText('Last used with Claude Code')).toBeInTheDocument();
   });
 
+  describe('on an agent with a default workspace', () => {
+    const withDefault = agentRow({ defaultWorkspace: 'platform-mcp' });
+
+    it('presets the default when nothing was chosen with the agent, and starts in it', async () => {
+      mockWorkspacesOf.mockReturnValue([mcp, mix]);
+      renderComposer({ agents: [withDefault] });
+
+      expect(workspacePicker()).toHaveTextContent('platform-mcp');
+      expect(screen.getByText('Claude Code’s default')).toBeInTheDocument();
+      await userEvent.type(field(), 'List the repositories');
+      await userEvent.click(startButton());
+      expect(onStart).toHaveBeenCalledWith(
+        withDefault,
+        'List the repositories',
+        [],
+        'platform-mcp',
+      );
+    });
+
+    it('presets the last choice with the agent before the default', () => {
+      mockWorkspacesOf.mockReturnValue([mcp, mix]);
+      window.localStorage.setItem(
+        'gs-agent-platform-last-workspace',
+        JSON.stringify({ [withDefault.id]: 'platform-mix' }),
+      );
+      renderComposer({ agents: [withDefault] });
+      expect(workspacePicker()).toHaveTextContent('platform-mix');
+      expect(
+        screen.getByText('Last used with Claude Code'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps a last choice of "No workspace" over the default', async () => {
+      mockWorkspacesOf.mockReturnValue([mcp, mix]);
+      window.localStorage.setItem(
+        'gs-agent-platform-last-workspace',
+        JSON.stringify({ [withDefault.id]: '' }),
+      );
+      renderComposer({ agents: [withDefault] });
+      expect(workspacePicker()).toHaveTextContent('No workspace');
+      await userEvent.type(field(), 'Hello');
+      await userEvent.click(startButton());
+      expect(onStart).toHaveBeenCalledWith(withDefault, 'Hello', []);
+    });
+
+    it('falls back to the default when the last choice is no longer listed', () => {
+      mockWorkspacesOf.mockReturnValue([mcp]);
+      window.localStorage.setItem(
+        'gs-agent-platform-last-workspace',
+        JSON.stringify({ [withDefault.id]: 'gone' }),
+      );
+      renderComposer({ agents: [withDefault] });
+      expect(workspacePicker()).toHaveTextContent('platform-mcp');
+    });
+
+    it('presets none when the default is not listed for the person', () => {
+      mockWorkspacesOf.mockReturnValue([mix]);
+      renderComposer({ agents: [withDefault] });
+      expect(workspacePicker()).toHaveTextContent('No workspace');
+    });
+  });
+
   it('remembers "No workspace" too', async () => {
     mockWorkspacesOf.mockReturnValue([mix]);
     window.localStorage.setItem(

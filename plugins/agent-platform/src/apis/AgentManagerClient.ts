@@ -224,9 +224,11 @@ export class AgentManagerClient {
         ...(request.message ? { message: request.message } : {}),
         requestId: request.requestId,
         ...(request.sessionName ? { sessionName: request.sessionName } : {}),
+        // Without a grant the session starts without a workspace, said
+        // explicitly: a call naming neither starts in the agent's default.
         ...(request.workspaceGrant
           ? { workspaceGrant: request.workspaceGrant }
-          : {}),
+          : { noWorkspace: true }),
       },
     );
     // The id is where the person is taken next: an answer without one has

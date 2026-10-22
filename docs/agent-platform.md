@@ -2217,8 +2217,17 @@ Enter starts.
 **One way to start a session.** Every surface (the portal, Slack, any MCP
 client) starts sessions through `start_session`, the one place where an agent
 and, optionally, a workspace grant meet, so no surface can skip a workspace's
-access check. The portal sends no grant yet: an absent grant is the plain
-session. The backend has no create route; reads, sends, rename and delete stay
+access check. A start in a workspace passes the grant the workspace-manager's
+`authorize_workspace` returned for the person; every other start passes
+`noWorkspace: true`, since agent-manager starts a call that names neither in
+the agent's **default workspace**. The composer and the New session dialog
+preset their workspace select to the workspace the person last chose with the
+agent in this browser, else to the agent's default (its
+`agent-platform.giantswarm.io/default-workspace` annotation), else to "No
+workspace"; a last choice of "No workspace" counts. The agent form sets the
+default (`defaultWorkspace`, `<namespace>/<name>` in the agent's namespace)
+where agent-manager's `get_info` reports the `defaultWorkspace` capability.
+The backend has no create route; reads, sends, rename and delete stay
 on the kagent proxy. Refusals are agent-manager's, classified as its other
 tools' are (`AgentManagerError` with its code); a portal without the muster
 plugin cannot start a session.

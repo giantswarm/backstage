@@ -268,6 +268,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>
           {runtime && <PlainRow label="Runtime">{runtime}</PlainRow>}
+          {state.defaultWorkspace && (
+            <PlainRow label="Default workspace">
+              {state.defaultWorkspace}
+            </PlainRow>
+          )}
           {(hasRepositories || skillNames.length > 0) && (
             <PlainRow label="Skills">
               {skillNames.length === 0 ? 'None' : skillNames.join(', ')}

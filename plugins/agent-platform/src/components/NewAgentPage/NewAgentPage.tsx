@@ -20,6 +20,7 @@ import { InstallationSelect } from '../InstallationSelect';
 import { TenantPicker } from '../TenantPicker';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker } from '../HarnessPicker';
+import { DefaultWorkspacePicker } from '../DefaultWorkspacePicker';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
 import { harnessTitle } from '../../lib/harnesses';
@@ -74,8 +75,8 @@ function NewAgentPageContent() {
   // to the first one (the `forms` skill).
   const validation = useFieldValidation();
   const { errorFor, fieldProps, textFieldProps } = validation;
-  // "More options" holds the technical knobs (model, runtime, technical name,
-  // extra egress), collapsed: their defaults fit most agents. The shared
+  // "More options" holds the technical knobs (model, runtime, default
+  // workspace, technical name, extra egress), collapsed: their defaults fit most agents. The shared
   // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
   // model picker's preselection of the installation's default model runs
   // without the person ever opening it.
@@ -135,8 +136,10 @@ function NewAgentPageContent() {
         : state.harness.name;
   }
   const defaultsSummary = `${runtimeName} runtime${
-    state.slug && !edit ? `, technical name ${state.slug}` : ''
-  }`;
+    state.defaultWorkspace
+      ? `, default workspace ${state.defaultWorkspace}`
+      : ''
+  }${state.slug && !edit ? `, technical name ${state.slug}` : ''}`;
 
   // The plain view's one line about the model picked for the person (the
   // installation's default, see ModelConfigPicker), so it is never a surprise
@@ -286,6 +289,7 @@ function NewAgentPageContent() {
           </Text>
           <ModelConfigPicker error={errorFor('model', fieldErrors.model)} />
           <HarnessPicker />
+          <DefaultWorkspacePicker />
           {/* Creating only: an existing agent's technical name is shown,
               locked, under its name. */}
           {!edit && (

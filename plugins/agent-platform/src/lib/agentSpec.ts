@@ -2,6 +2,7 @@ import type { AgentSkillEntry, AgentSpec } from './agentManager';
 import type { DiscoveredSkill } from './skills';
 import { parseEgressText } from './egress';
 import { pluginEntryOf } from './plugins';
+import { qualifiedDefaultWorkspace } from './defaultWorkspace';
 import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**
@@ -59,6 +60,12 @@ export function agentSpecOf(
   const egress = parseEgressText(state.egressText);
   if (egress.length > 0) {
     spec.egress = egress;
+  }
+  if (state.defaultWorkspace) {
+    spec.defaultWorkspace = qualifiedDefaultWorkspace(
+      spec.namespace,
+      state.defaultWorkspace,
+    );
   }
   return spec;
 }

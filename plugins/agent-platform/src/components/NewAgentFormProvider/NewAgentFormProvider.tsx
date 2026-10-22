@@ -76,6 +76,12 @@ export type NewAgentFormState = {
    */
   egressText: string;
   /**
+   * The name of the workspace the agent's Sessions start in unless the person
+   * picks another or none (written as `<namespace>/<name>`, see
+   * `lib/defaultWorkspace`). `''` for none, the start.
+   */
+  defaultWorkspace: string;
+  /**
    * Skills the user picked, in selection order, each with the commit the
    * skills step showed — the pin agent-manager writes. Optional — may be empty.
    */
@@ -159,6 +165,8 @@ export type NewAgentFormContextValue = {
   selectHarness: (harness: HarnessChoice | undefined) => void;
   setSystemMessage: (systemMessage: string) => void;
   setEgressText: (egressText: string) => void;
+  /** `''` removes the default workspace. */
+  setDefaultWorkspace: (defaultWorkspace: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
   toggleSkill: (skill: DiscoveredSkill) => void;
   /** Editing only: drops one of the kept skills (see `keptSkills`). */
@@ -247,6 +255,7 @@ const initialState: NewAgentFormState = {
   // it (agentSpecOf), and agent-manager keeps the chart's default prompt.
   systemMessage: '',
   egressText: '',
+  defaultWorkspace: '',
   selectedSkills: [],
   keptSkills: [],
   selectedPlugins: [],
@@ -277,6 +286,7 @@ function hasCreateInput(state: NewAgentFormState): boolean {
       state.egressText,
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
+    state.defaultWorkspace !== '' ||
     state.selectedSkills.length > 0 ||
     state.selectedPlugins.length > 0 ||
     state.toolset.length > 0 ||
@@ -418,6 +428,7 @@ export function NewAgentFormProvider({
           installation,
           tenantChoices: undefined,
           tenant: undefined,
+          defaultWorkspace: '',
           modelConfigName: undefined,
           modelConfigNamespace: undefined,
           modelDisplayName: undefined,
@@ -465,6 +476,8 @@ export function NewAgentFormProvider({
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
       setEgressText: egressText => setState(prev => ({ ...prev, egressText })),
+      setDefaultWorkspace: defaultWorkspace =>
+        setState(prev => ({ ...prev, defaultWorkspace })),
       toggleToolsetSelector: selector =>
         setState(prev => ({
           ...prev,
