@@ -58,6 +58,7 @@ import { useUpdateAgent } from '../../hooks/useUpdateAgent';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import {
+  modelConfigNameOf,
   NEW_SESSION_STATE_KEY,
   stashHandoffImages,
 } from '../../hooks/useNewSessionHandoff';
@@ -665,6 +666,7 @@ function AgentDetailPageContent() {
             text: prompt,
             agentNamespace: target.namespace,
             agentName: target.technicalName,
+            modelConfig: modelConfigNameOf(target),
             imagesKey: stashHandoffImages(images),
           },
         },

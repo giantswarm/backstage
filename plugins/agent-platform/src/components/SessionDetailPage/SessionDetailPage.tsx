@@ -40,6 +40,7 @@ import {
   useAnswerConfirmation,
 } from '../../hooks/useAnswerConfirmation';
 import {
+  modelConfigNameOf,
   NEW_SESSION_STATE_KEY,
   stashHandoffImages,
   useNewSessionHandoff,
@@ -49,6 +50,7 @@ import {
   imagesUnsupportedReason,
 } from '../../lib/messageImages';
 import { useRenameSession } from '../../hooks/useRenameSession';
+import { useChatGptConnection } from '../../hooks/useChatGptConnection';
 import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -77,6 +79,11 @@ import { InstallationChip } from '../InstallationChip';
 import { SessionWorkspaceChip } from '../SessionWorkspace';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
+import {
+  ChatGptConnectDialog,
+  ChatGptConnectPrompt,
+  CHATGPT_CONNECT_REASON,
+} from '../ChatGptConnectPrompt';
 import {
   RUNTIME_LOST_LABEL,
   RUNTIME_LOST_TITLE,
@@ -571,6 +578,20 @@ export function SessionDetailPage() {
     [agentIndex, installation, detail?.session.agentId],
   );
 
+  // The agent's model may be the person's own ChatGPT subscription, which
+  // takes no turn until the person has connected it. The hand-off names the
+  // ModelConfig before the agent list has joined.
+  const chatGpt = useChatGptConnection(
+    installation,
+    agent && {
+      namespace: agent.namespace,
+      name: (agentRow && modelConfigNameOf(agentRow)) ?? handoff?.modelConfig,
+    },
+  );
+  // Kept here, not in the prompt: the dialog stays open, reading Connected,
+  // after the prompt has gone.
+  const [isChatGptDialogOpen, setChatGptDialogOpen] = useState(false);
+
   // The $/token to price this session's tokens at, and which observation it
   // came from. The **model** is what matters: pricing an Opus session at the
   // installation's Sonnet-derived blend halved a real session's figure, so a
@@ -635,12 +656,20 @@ export function SessionDetailPage() {
     if (!handoff || dispatched.current) {
       return;
     }
+    // An agent on the person's own ChatGPT subscription takes no turn until
+    // the person has connected it: the message waits, and goes once they have.
+    if (chatGpt.isLoading || chatGpt.blocksTurn) {
+      return;
+    }
     dispatched.current = true;
     // Errors surface through `send.error` and `send.failed`, exactly as they do
     // for a reply typed into the composer — which is also what hands the text
     // back so it is not lost.
     sendMessage(handoff.text, handoff.images).catch(() => {});
-  }, [handoff, sendMessage]);
+  }, [handoff, sendMessage, chatGpt.isLoading, chatGpt.blocksTurn]);
+  // A hand-off still undispatched is the first message waiting for the
+  // connection, said on the prompt.
+  const chatGptHoldsHandoff = Boolean(handoff) && chatGpt.blocksTurn;
 
   // The message the user just sent, shown as the newest turn before kagent's copy
   // of it has been read back — a turn can run for minutes, and a conversation that
@@ -1088,6 +1117,7 @@ export function SessionDetailPage() {
           text,
           agentNamespace: agentRow.namespace,
           agentName: agentRow.technicalName,
+          modelConfig: modelConfigNameOf(agentRow),
           imagesKey: stashHandoffImages(images),
         },
       },
@@ -1387,13 +1417,24 @@ export function SessionDetailPage() {
     // at the card attached just above the box. The box is disabled meanwhile,
     // because a plain message cannot answer the card: it would open a new
     // turn.
-    const composerDisabledReason = isConfirming
-      ? `${row.agentName || 'The agent'} is waiting for your ${
-          pendingConfirmation?.asks === 'input'
-            ? 'answer above.'
-            : 'decision above.'
-        }`
-      : undefined;
+    let composerDisabledReason: string | undefined;
+    if (isConfirming) {
+      composerDisabledReason = `${row.agentName || 'The agent'} is waiting for your ${
+        pendingConfirmation?.asks === 'input'
+          ? 'answer above.'
+          : 'decision above.'
+      }`;
+    } else if (chatGpt.blocksTurn) {
+      // The agent runs on the person's own ChatGPT subscription, which they
+      // have not connected: the prompt above the box is the way on.
+      composerDisabledReason = CHATGPT_CONNECT_REASON;
+    }
+    const chatGptPrompt = chatGpt.blocksTurn ? (
+      <ChatGptConnectPrompt
+        hasHeldMessage={chatGptHoldsHandoff}
+        onConnect={() => setChatGptDialogOpen(true)}
+      />
+    ) : undefined;
     const newSession = offersNewSession
       ? {
           onStart: () => {
@@ -1410,6 +1451,11 @@ export function SessionDetailPage() {
         className={classes.bottomDock}
         data-testid="session-dock"
       >
+        <ChatGptConnectDialog
+          installation={installation}
+          isOpen={isChatGptDialogOpen}
+          onOpenChange={setChatGptDialogOpen}
+        />
         {runtimeLoss && (runtimeLoss.reported || !answerNotTaken) && (
           <RuntimeLostNotice
             loss={runtimeLoss}
@@ -1484,7 +1530,9 @@ export function SessionDetailPage() {
                       .catch(() => {});
                   }}
                 />
-              ) : undefined
+              ) : (
+                chatGptPrompt
+              )
             }
             // Waiting on an answer is the opposite of busy; the caption is the
             // reason below either way. A stalled turn still withholds Send —

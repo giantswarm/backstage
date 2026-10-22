@@ -10,7 +10,10 @@ import {
   tasksMalformed,
   tasksV099 as tasksV0_9_9,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
-import { KagentApiClient } from './KagentApiClient';
+import {
+  KagentApiClient,
+  TURN_TOKEN_MIN_LIFETIME_LEFT,
+} from './KagentApiClient';
 import { KAGENT_AUTH_HEADER } from './types';
 
 describe('KagentApiClient', () => {
@@ -1445,5 +1448,168 @@ describe('KagentApiClient — streamMessage on a lost runtime', () => {
     ).resolves.toBeUndefined();
     expect(onEvent).toHaveBeenCalledTimes(2);
     expect(onEvent).toHaveBeenLastCalledWith(runtimeFailed);
+  });
+});
+
+describe('KagentApiClient — the token a turn goes out with', () => {
+  const MINUTE = 60_000;
+  const T0 = new Date('2026-10-19T06:30:00Z').getTime();
+  const AGENT = { namespace: 'kagent', name: 'repo-manager' };
+  const MESSAGE = { messageId: 'msg-1', text: 'watch the release' };
+  const ANSWER = {
+    messageId: 'msg-2',
+    taskId: 'task-1',
+    decision: 'approve' as const,
+  };
+
+  /** A 30-minute Dex ID token issued at `issuedAt`. */
+  function idToken(name: string, issuedAt: number): string {
+    const b64url = (value: object) =>
+      btoa(JSON.stringify(value))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+    const iat = Math.floor(issuedAt / 1000);
+    return `${b64url({ alg: 'RS256' })}.${b64url({
+      name,
+      iat,
+      exp: iat + 30 * 60,
+    })}.signature`;
+  }
+
+  function minutesLeft(token: string): number {
+    const exp = JSON.parse(atob(token.split('.')[1])).exp as number;
+    return (exp * 1000 - Date.now()) / MINUTE;
+  }
+
+  const fetchMock = jest.fn();
+  // The session's token, as Backstage caches it: issued at T0, kept until its
+  // last 3 minutes.
+  const cachedToken = idToken('cached', T0);
+  // The portal's auth providers: a request with `minLifetimeLeft` gets a
+  // token refreshed first when the cached one has less of its lifetime left.
+  const getCredentials = jest.fn(
+    async (_provider: string, options?: { minLifetimeLeft?: number }) => {
+      const left = (T0 + 30 * MINUTE - Date.now()) / (30 * MINUTE);
+      return options?.minLifetimeLeft && left < options.minLifetimeLeft
+        ? { token: idToken('refreshed', Date.now()) }
+        : { token: cachedToken };
+    },
+  );
+
+  function buildClient(
+    authProviders: Pick<KubernetesAuthProvidersApi, 'getCredentials'> = {
+      getCredentials,
+    },
+  ) {
+    return new KagentApiClient({
+      discoveryApi: {
+        getBaseUrl: async () => 'http://backend/api/agent-platform',
+      },
+      fetchApi: { fetch: fetchMock } as unknown as FetchApi,
+      kubernetesApi: {
+        getCluster: async () => ({
+          authProvider: 'oidc',
+          oidcTokenProvider: 'oidc-gazelle',
+        }),
+      } as unknown as KubernetesApi,
+      kubernetesAuthProvidersApi:
+        authProviders as unknown as KubernetesAuthProvidersApi,
+    });
+  }
+
+  function sentToken(): string {
+    const [, init] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    return init.headers[KAGENT_AUTH_HEADER];
+  }
+
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+    fetchMock.mockReset();
+    getCredentials.mockClear();
+    // 202: accepted and still running, for the unary and streaming routes
+    // alike, so no stream has to be faked.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 202,
+      headers: new Headers(),
+      json: async () => ({}),
+    } as Response);
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    // 24 of the cached token's 30 minutes left: Backstage would keep it for
+    // another 21.
+    jest.setSystemTime(T0 + 6 * MINUTE);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    warnSpy.mockRestore();
+  });
+
+  it.each([
+    [
+      'sendMessage',
+      (client: KagentApiClient) =>
+        client.sendMessage('gazelle', 's1', AGENT, MESSAGE),
+    ],
+    [
+      'streamMessage',
+      (client: KagentApiClient) =>
+        client.streamMessage('gazelle', 's1', AGENT, MESSAGE, () => {}),
+    ],
+    [
+      'streamAnswer',
+      (client: KagentApiClient) =>
+        client.streamAnswer('gazelle', 's1', AGENT, ANSWER, () => {}),
+    ],
+    [
+      'answerConfirmation',
+      (client: KagentApiClient) =>
+        client.answerConfirmation('gazelle', 's1', AGENT, ANSWER),
+    ],
+  ])(
+    '%s asks for a token with 25 of its 30 minutes left, and sends one',
+    async (_name, send) => {
+      await send(buildClient());
+
+      expect(getCredentials).toHaveBeenCalledWith('oidc.oidc-gazelle', {
+        minLifetimeLeft: TURN_TOKEN_MIN_LIFETIME_LEFT,
+      });
+      expect(sentToken()).not.toBe(cachedToken);
+      expect(minutesLeft(sentToken())).toBeGreaterThanOrEqual(25);
+      expect(warnSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps reads on the session's cached token", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => ({ data: [] }),
+    } as Response);
+
+    await buildClient().listSessions('gazelle');
+
+    expect(getCredentials).toHaveBeenCalledWith('oidc.oidc-gazelle');
+    expect(sentToken()).toBe(cachedToken);
+  });
+
+  it('still sends a turn whose token could not be refreshed, and says so', async () => {
+    // Auth providers that ignore the minimum (Backstage's own), or a refresh
+    // that failed: the cached token is all there is.
+    jest.setSystemTime(T0 + 20 * MINUTE);
+    await buildClient({
+      getCredentials: async () => ({ token: cachedToken }),
+    }).sendMessage('gazelle', 's1', AGENT, MESSAGE);
+
+    expect(sentToken()).toBe(cachedToken);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "kagent turn on installation 'gazelle' sent with a token that has 33% of its lifetime left",
+      ),
+    );
   });
 });
