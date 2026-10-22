@@ -7,7 +7,11 @@ import {
   type ProviderAppAuthStatus,
   type ServerAuthStatus,
 } from '../../apis';
-import { authStatusQueryKey, needsSignIn } from '../shared';
+import {
+  authStatusQueryKey,
+  connectingPollInterval,
+  needsSignIn,
+} from '../shared';
 
 /**
  * How often the status is re-read while nothing is happening: a server can
@@ -68,8 +72,11 @@ export function useMcpServersAwaitingSignIn(
     enabled,
     // The read never asks the person to sign in (`getAuthStatus`); once the
     // portal session is gone it stops until the person is back, on focus.
+    // While muster still connects a server it is re-read within seconds.
     refetchInterval: query =>
-      isSessionExpired(query.state.error) ? false : AUTH_STATUS_REFRESH_MS,
+      isSessionExpired(query.state.error)
+        ? false
+        : connectingPollInterval(query.state.data) || AUTH_STATUS_REFRESH_MS,
     // As the sign-in affordances read it: re-read on return from the IdP's
     // tab, and an unreadable status is an answer, not a retry.
     refetchOnWindowFocus: true,

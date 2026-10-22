@@ -8,6 +8,7 @@ import {
   startSessionOnReadyAgent,
   test,
 } from './fixtures';
+import { openDefaultModelWithContextWindows } from './context-windows.fixture';
 import { lab } from './lab';
 import { modelManagerUnavailable } from './model-manager.fixture';
 
@@ -147,6 +148,37 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
   await expect(
     admin.getByRole('tab', { name: 'Overview', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
+});
+
+test('a model’s Overview shows its context window, or a note when the table names none, and when it was created', async ({
+  admin,
+}) => {
+  // A table every model id matches: the window is a fact, with no note.
+  await openDefaultModelWithContextWindows(admin, { '*': 123456 });
+  const facts = admin.getByRole('region', {
+    name: 'Model details',
+    exact: true,
+  });
+  await expect(facts.getByText('123k tokens', { exact: true })).toBeVisible();
+  const note = admin.getByRole('note', { name: 'Context window', exact: true });
+  await expect(note).toHaveCount(0);
+
+  // Created reads relative, the full local timestamp in its title.
+  const created = facts.locator('time');
+  await expect(created).toHaveText(/ ago$/);
+  await expect(created).toHaveAttribute('title', /\d{4}/);
+
+  // A table that names no model the lab runs: the note, and no fact.
+  await openDefaultModelWithContextWindows(admin, { 'no-such-model-*': 1 });
+  await expect(note).toContainText(
+    'No context window is configured for this model',
+  );
+  await expect(
+    note.getByRole('link', { name: 'How to configure it', exact: true }),
+  ).toHaveAttribute('href', /agent-platform-configuration\.md#context-windows/);
+  await expect(facts.getByText('Context window', { exact: true })).toHaveCount(
+    0,
+  );
 });
 
 test('Model hosting’s Running models and GPU tabs render for the installation', async ({
