@@ -1,5 +1,6 @@
 id	parent	kind	name	path	reach	note
 home		page	Home	/
+home-agent-chosen	home	state	Agent chosen	/	click a recent agent under "Or pick one of your recent agents"	never send a message: Enter starts the session
 sessions	home	page	Sessions	/sessions
 session	sessions	page	Session	/sessions/:installation/:sessionId	open /sessions > click the first row	keep the 900 viewport (docked composer)
 customize	home	tabs	Customize	/customize		the bare path opens Agents
@@ -13,8 +14,8 @@ agent-tools	agent	tab	Tools	/customize/agents/:installation/:namespace/:name/too
 agent-usage	agent	tab	Usage	/customize/agents/:installation/:namespace/:name/usage
 new-agent	customize-agents	wizard	New agent	/customize/agents/new	open /customize/agents > click "New agent"	never click Create agent
 new-agent-details	new-agent	step	Details	/customize/agents/new
-new-agent-skills	new-agent	step	Skills	/customize/agents/new/skills	open /customize/agents/new > fill Name=demo > fill Instructions=demo > click Continue	only where skill repositories are configured; without them Continue goes to Tools
-new-agent-tools	new-agent	step	Tools	/customize/agents/new/tools	fill the Details step as for Skills > click Continue until the Tools step	a deep link without the Details fields goes back to Details
+new-agent-skills	new-agent	step	Skills	/customize/agents/new/skills	open /customize/agents/new > fill Name=demo > fill Instructions=demo > pick any Environment > click Continue	only where skill repositories are configured; without them Continue goes to Tools
+new-agent-tools	new-agent	step	Tools	/customize/agents/new/tools	fill the Details step as for Skills (Name, Instructions, Environment) > click Continue until the Tools step	a deep link without the Details fields goes back to Details
 new-agent-review	new-agent	step	Review	/customize/agents/new/review	from the Tools step > click Continue	never click Create agent
 customize-skills	customize	tab	Skills	/customize/skills
 skill	customize-skills	tabs	Skill	/customize/skills/:owner/:repo	open /customize/skills > click the first row	a skill in a directory adds its /:dir
@@ -24,23 +25,22 @@ skill-instructions	skill	tab	Instructions	/customize/skills/:owner/:repo/instruc
 skill-used-by	skill	tab	Used by	/customize/skills/:owner/:repo/used-by
 add-skill	customize-skills	page	Add skill	/customize/skills/new	open /customize/skills > click "Add skill"	never open the pull request
 customize-connectors	customize	tab	Connectors	/customize/connectors
-connector-groups	customize-connectors	tabs	Connectors	/customize/connectors
-connectors-yours	connector-groups	tab	Your connectors	/customize/connectors
-connectors-infrastructure	connector-groups	tab	Infrastructure	/customize/connectors/infrastructure
+connectors-infrastructure	customize-connectors	page	Infrastructure	/customize/connectors/infrastructure		a sub-tab of Connectors; its default sub-tab, Your connectors, is the Connectors tab card itself
 connector	connectors-infrastructure	tabs	Connector	/customize/connectors/:installation/:server	open /customize/connectors/infrastructure > row "Kubernetes"	a tab shows only where the connector has something for it
 connector-tools	connector	tab	Tools	/customize/connectors/:installation/:server
 tool	connector-tools	tabs	Tool	/customize/connectors/:installation/:server/tools/:tool	open the Kubernetes connector > click the first tool row	not a muster tool: those have no Usage tab
 tool-overview	tool	tab	Overview	/customize/connectors/:installation/:server/tools/:tool
 tool-run	tool	tab	Run it	/customize/connectors/:installation/:server/tools/:tool/run		never run the tool
 tool-usage	tool	tab	Usage	/customize/connectors/:installation/:server/tools/:tool/usage
-connector-edit	connector-tools	page	Edit connector	/customize/connectors/:installation/:server/edit	open a connector of yours > click "Edit"	the Add connector wizard's steps, filled in: capture Connect; never save
+connector-edit	connector-tools	page	Edit connector	/customize/connectors/:installation/:server/edit	open a connector of yours > click "Edit"	only for a connector added in the portal: the Add connector wizard's steps, filled in: capture Connect; never save. Where every connector is managed in Git, Edit is disabled: record the page as skipped and capture its Managed in Git state
+connector-edit-git	connector-edit	state	Managed in Git	/customize/connectors/:installation/:server/edit	open the edit address of a connector applied from GitOps	what Edit shows instead of the wizard; never follow its links
 connector-resources	connector	tab	Resources	/customize/connectors/:installation/:server/resources		only when the connector has resources; pick one that has
 connector-prompts	connector	tab	Prompts	/customize/connectors/:installation/:server/prompts		only when the connector has prompts; pick one that has
 connector-usage	connector	tab	Usage	/customize/connectors/:installation/:server/usage
 connector-used-by	connector	tab	Used by	/customize/connectors/:installation/:server/used-by
 connector-instances	connector	tab	Instances	/customize/connectors/:installation/:server/instances		only for a connector family, as Kubernetes is
 connector-details	connector	tab	Details	/customize/connectors/:installation/:server/details
-connectors-internal	connector-groups	tab	Internal	/customize/connectors/internal
+connectors-internal	customize-connectors	page	Internal	/customize/connectors/internal		a sub-tab of Connectors; its default sub-tab, Your connectors, is the Connectors tab card itself
 new-connector	customize-connectors	wizard	Add connector	/customize/connectors/new	open /customize/connectors > click "Add connector"	never click Add connector on the Sign-in step: it registers the connector
 new-connector-connect	new-connector	step	Connect	/customize/connectors/new
 new-connector-sign-in	new-connector	step	Sign-in	/customize/connectors/new/auth	fill Server address=https://example.com/mcp, Name=demo, What does it give access to?=demo > click Continue
@@ -48,7 +48,8 @@ new-connector-test	new-connector	step	Test	/customize/connectors/new/verify		rea
 customize-models	customize	tab	Models	/customize/models
 model	customize-models	tabs	Model	/customize/models/:installation/:namespace/:name	open /customize/models > click the first row
 model-overview	model	tab	Overview	/customize/models/:installation/:namespace/:name
-model-edit	model-overview	page	Edit model	/customize/models/:installation/:namespace/:name/edit	click "Edit"	never save
+model-edit	model-overview	page	Edit model	/customize/models/:installation/:namespace/:name/edit	click "Edit"	only for a model connected in the portal; never save. Where every model is managed by Helm, there is no Edit: record the page as skipped and capture its Managed by Helm state
+model-edit-helm	model-edit	state	Managed by Helm	/customize/models/:installation/:namespace/:name/edit	open the edit address of a model managed by Helm	what Edit shows instead of the form
 model-usage	model	tab	Usage	/customize/models/:installation/:namespace/:name/usage
 model-used-by	model	tab	Used by	/customize/models/:installation/:namespace/:name/used-by
 new-model	customize-models	page	Connect a model	/customize/models/new	open /customize/models > click "Connect a model"	never save
