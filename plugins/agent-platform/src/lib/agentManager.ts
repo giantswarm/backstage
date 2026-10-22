@@ -125,6 +125,12 @@ export type AgentSpec = {
    * (`Agent.spec.egress`), such as `https://github.com:443`.
    */
   egress?: string[];
+  /**
+   * The workspace, `<namespace>/<name>` in the agent's namespace, its
+   * Sessions start in unless the person picks another or none
+   * (`agent-platform.giantswarm.io/default-workspace`). Omitted, no default.
+   */
+  defaultWorkspace?: string;
 };
 
 export type AgentManagerChart = {
@@ -249,7 +255,9 @@ export type CreateAgentResult = {
  * idempotency key of the submission. Without `message` agent-manager only
  * creates the session, and the caller sends the first message itself; with
  * one, agent-manager sends it as the first turn. `workspaceGrant` starts the
- * session in a workspace; absent, it is the plain session.
+ * session in a workspace; absent, it is the plain session, which the client
+ * says with `noWorkspace`: agent-manager would otherwise start a call that
+ * names no workspace in the agent's default one.
  */
 export type StartSessionRequest = {
   namespace: string;
@@ -571,6 +579,8 @@ export type AgentManagerAgent = {
   harness?: string;
   /** The extra HTTP(S) origins the agent may reach (`spec.egress`). */
   egress?: string[];
+  /** The agent's default workspace, `<namespace>/<name>`; absent, none. */
+  defaultWorkspace?: string;
   status?: AgentObjectStatus;
   managed: AgentManagedBy;
   helmRelease?: AgentHelmReleaseRef;
@@ -610,6 +620,8 @@ export type AgentUpdate = {
   toolset?: string[];
   /** Replaces the whole list; an empty list clears it. */
   egress?: string[];
+  /** `<namespace>/<name>`; `""` removes the default. */
+  defaultWorkspace?: string;
   refreshSkills?: boolean;
   /**
    * Moves the agent to another Harness of its namespace after the checks a

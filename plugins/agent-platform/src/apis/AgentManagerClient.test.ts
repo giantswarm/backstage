@@ -37,6 +37,7 @@ describe('AgentManagerClient.startSession', () => {
         message: 'Summarise the open incidents',
         requestId: 'req-1',
         sessionName: 'Summarise the open incidents',
+        noWorkspace: true,
       },
       'inst-1',
     );
@@ -54,7 +55,7 @@ describe('AgentManagerClient.startSession', () => {
     expect(callTool.mock.calls[0][1]).not.toHaveProperty('message');
   });
 
-  it('sends no workspaceGrant when there is none: the plain session', async () => {
+  it('says noWorkspace when there is no grant: the plain session, never the agent default', async () => {
     const { api, callTool } = makeMusterApi(async () => ({
       session: { id: 'sess-1' },
     }));
@@ -64,6 +65,7 @@ describe('AgentManagerClient.startSession', () => {
     });
     const args = callTool.mock.calls[0][1];
     expect(args).not.toHaveProperty('workspaceGrant');
+    expect(args).toHaveProperty('noWorkspace', true);
     expect(args).not.toHaveProperty('sessionName');
   });
 
@@ -79,6 +81,7 @@ describe('AgentManagerClient.startSession', () => {
     expect(callTool.mock.calls[0][1]).toMatchObject({
       workspaceGrant: 'grant-token',
     });
+    expect(callTool.mock.calls[0][1]).not.toHaveProperty('noWorkspace');
     expect(result.workspace).toBe('team-a');
   });
 
