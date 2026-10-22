@@ -138,6 +138,18 @@ export function isStreamTransportError(error: unknown): boolean {
 }
 
 /**
+ * A streaming send the backend gave up on before kagent's first event: its
+ * request timeout ran out (`reason: "timeout"`). A transport failure like any
+ * other — whether the message landed is still for the caller to check.
+ */
+export function isFirstEventTimeout(error: unknown): boolean {
+  return (
+    isStreamTransportError(error) &&
+    (error as KagentRequestErrorFields).reason === 'timeout'
+  );
+}
+
+/**
  * A kagent envelope reporting a failure in-band on an otherwise successful
  * response.
  *
@@ -633,9 +645,20 @@ export class KagentApiClient implements KagentApi {
         // A 502/504 is the shape a gateway cut takes when it fires before the
         // stream opens. The backend's own 5xx looks identical from here. Either
         // way the send may or may not have reached kagent — verify, don't
-        // report.
-        throw streamTransportError(
-          `The streaming send failed with status ${response.status}.`,
+        // report. The backend's own says why: `reason: "timeout"` is its wait
+        // for kagent's first event running out, and several of those in a
+        // row read as a runtime that cannot start (`useSendMessage`).
+        const errorData = await response.json().catch(() => ({}));
+        const fields: KagentRequestErrorFields = {
+          status: response.status,
+          reason: (errorData as { error?: { reason?: string } })?.error?.reason,
+          requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+        };
+        throw Object.assign(
+          streamTransportError(
+            `The streaming send failed with status ${response.status}.`,
+          ),
+          fields,
         );
       }
       // 4xx: a decision — a malformed message, a rejected token, an unknown

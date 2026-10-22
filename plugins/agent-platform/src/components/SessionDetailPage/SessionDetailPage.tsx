@@ -67,6 +67,7 @@ import {
   AWAITING_INPUT_STATES,
   describeSessionState,
   isRuntimeLostFailureText,
+  readSendTimeoutRuntimeLoss,
   RuntimeLoss,
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -398,6 +399,7 @@ export function SessionDetailPage() {
     turnProgress,
     pendingConfirmation,
     runtimeLoss: conversationRuntimeLoss,
+    tasks,
     taskCount,
     hasConversation,
     isLoading,
@@ -473,6 +475,11 @@ export function SessionDetailPage() {
    * reported in-band before any event, or one the transport mapped, whose
    * message carries the same words. Either way the words are the runtime's
    * and are shown as the evidence, never as the explanation.
+   *
+   * Last, a runtime that leaves no words anywhere: sends that keep timing out
+   * before kagent's first event, none of them landing
+   * (`readSendTimeoutRuntimeLoss`). Each such failure re-reads the session, so
+   * a loss kagent has since reported reaches the first branch instead.
    */
   const runtimeLoss = useMemo<RuntimeLoss | undefined>(() => {
     if (conversationRuntimeLoss) {
@@ -481,8 +488,17 @@ export function SessionDetailPage() {
     const cause = [send.error?.message, confirmation.error?.message].find(
       isRuntimeLostFailureText,
     );
-    return cause ? { reported: false, cause, attempts: 1 } : undefined;
-  }, [conversationRuntimeLoss, send.error, confirmation.error]);
+    if (cause) {
+      return { reported: false, cause, attempts: 1 };
+    }
+    return readSendTimeoutRuntimeLoss(send.timeouts, tasks);
+  }, [
+    conversationRuntimeLoss,
+    send.error,
+    send.timeouts,
+    confirmation.error,
+    tasks,
+  ]);
 
   /**
    * The answer kagent did not take: the agent could not resume, and the

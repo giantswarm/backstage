@@ -1826,6 +1826,23 @@ on gazelle on 2026-09-15 (giantswarm/giantswarm#37795).
   runtime's texts, or the send's error carries one. The text match is narrow,
   so provider or tool failures keep rendering as themselves. `attempts` counts
   consecutive failures.
+- **Suspected from sends that keep timing out** (`source: 'send-timeouts'`,
+  `readSendTimeoutRuntimeLoss`). A runtime that crashes on every restore
+  (giantswarm/kagent-upstream#858, giantswarm/giantswarm#38771) leaves no trace
+  kagent shows: the session stays ready, and the sends never become turns. The
+  backend gives up on a send after its 10 s wait for the first event and
+  answers 500 `UpstreamError` with `reason: "timeout"`, which the client keeps
+  on the `StreamTransportError` (`isFirstEventTimeout`). `useSendMessage`
+  counts such sends whose message did not land, in a row (`countSendTimeout`):
+  a send that lands or fails otherwise ends the run, and so does a turn created
+  since the run began (the conversation's newest task changed). From the
+  second, while the newest turn is settled, the notice reads "This session may
+  not be able to continue". Each such failure re-reads the session and its
+  conversation, so a `RUNTIME_LOST` kagent records later (about a minute after
+  the first crash) takes the reported path. The count is page state: a reload
+  starts it over, and the second timeout after it shows the way out again.
+  Waiting longer for the first event is no fix: the gateway in front of the
+  portal cuts a silent stream at 15 s.
 
 `RuntimeLostNotice` explains the loss in the portal's words, with the runtime's
 text as evidence only; the failed-turn entry does the same.
@@ -1857,7 +1874,8 @@ Sessions table and the rail card); the suspected reading belongs to the notice.
 **Deleting** a lost session fails as `Unavailable: Failed to delete Session`,
 because kagent's delete suspends a runtime on a node that no longer exists.
 `describeSessionDeleteFailure` explains this; a kagent update that skips the
-suspend for lost runtimes fixes it.
+suspend for lost runtimes fixes it. A loss read from timed-out sends says
+nothing about the node, so a failed delete there keeps the backend's message.
 
 `e2e/agentlab/session-runtime-lost.spec.ts` proves this with kagent's answers
 for one session stubbed at the browser.

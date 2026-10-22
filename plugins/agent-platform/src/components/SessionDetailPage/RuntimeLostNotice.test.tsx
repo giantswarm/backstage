@@ -40,6 +40,50 @@ describe('RuntimeLostNotice', () => {
     expect(action.onStart).toHaveBeenCalled();
   });
 
+  it('words sends that keep timing out as a suspected loss, with the retry still open', async () => {
+    const action = newSession();
+    render(
+      <RuntimeLostNotice
+        loss={{ reported: false, attempts: 2, source: 'send-timeouts' }}
+        agentName="Grill master"
+        newSession={action}
+      />,
+    );
+
+    expect(
+      screen.getByText('This session may not be able to continue'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Neither of your last 2 messages reached the agent: each timed out before it started\. The session’s runtime may be failing to start\./,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Send again to retry\. If it fails again, continue in a new session with Grill master\./,
+      ),
+    ).toBeInTheDocument();
+    // No words from the runtime, and no second count of the attempts.
+    expect(screen.queryByText(/kagent reported:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/times in a row/)).not.toBeInTheDocument();
+
+    await userEvent.click(continueButton()!);
+    expect(action.onStart).toHaveBeenCalled();
+  });
+
+  it('counts more than two timed-out sends', () => {
+    render(
+      <RuntimeLostNotice
+        loss={{ reported: false, attempts: 3, source: 'send-timeouts' }}
+        newSession={newSession()}
+      />,
+    );
+
+    expect(
+      screen.getByText(/None of your last 3 messages reached the agent/),
+    ).toBeInTheDocument();
+  });
+
   it('shows the runtime’s words as the evidence, never as the whole text', () => {
     render(
       <RuntimeLostNotice

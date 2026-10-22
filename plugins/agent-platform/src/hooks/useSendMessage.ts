@@ -1,8 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/core-plugin-api';
-import { kagentApiRef } from '../apis';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  A2aTaskWire,
+  countSendTimeout,
+  SendTimeouts,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import { isFirstEventTimeout, kagentApiRef } from '../apis';
 import { useStreamedTurn } from './useStreamedTurn';
+import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
 import { ComposerImage, toMessageImages } from '../lib/messageImages';
 
 /** A message submitted locally, before kagent's copy of it has been read back. */
@@ -55,6 +62,14 @@ export type PendingMessage = {
  * a poll may well deliver kagent's copy first; recognising it by `messageId` and
  * dropping the stand-in is the caller's job, because only the caller can see the
  * timeline.
+ *
+ * **Sends that keep timing out are counted** ({@link SendTimeouts}): a send the
+ * backend gave up on before kagent's first event, whose message did not land,
+ * adds one; any other outcome ends the run. A runtime that crashes on every
+ * restore shows nowhere else — the session stays ready and the sends never
+ * become turns — so the page reads the run (`readSendTimeoutRuntimeLoss`).
+ * Each such failure also re-reads the session and its conversation, so a
+ * `RUNTIME_LOST` kagent has recorded since takes the reported path.
  */
 export function useSendMessage(
   installation: string,
@@ -62,9 +77,11 @@ export function useSendMessage(
   agent: { namespace: string; name: string } | undefined,
 ) {
   const kagentApi = useApi(kagentApiRef);
+  const queryClient = useQueryClient();
   const turn = useStreamedTurn(installation, sessionId);
   const [pending, setPending] = useState<PendingMessage | null>(null);
   const [failed, setFailed] = useState<PendingMessage | null>(null);
+  const [timeouts, setTimeouts] = useState<SendTimeouts | undefined>(undefined);
 
   const { run, clear } = turn;
   const mutation = useTrackedMutation({
@@ -100,6 +117,7 @@ export function useSendMessage(
     onSuccess: () => {
       setPending(null);
       setFailed(null);
+      setTimeouts(undefined);
       // The reconciled conversation is on screen by now; keeping the preview
       // would double whatever the turn produced.
       clear();
@@ -110,10 +128,26 @@ export function useSendMessage(
     // (of the images too).
     // Losing a pasted manifest to a 502 is exactly what the generous length limit
     // exists to permit.
-    onError: (_error, message) => {
+    onError: (error, message) => {
       setPending(null);
       setFailed(message);
       clear();
+      if (!isFirstEventTimeout(error)) {
+        setTimeouts(undefined);
+        return;
+      }
+      // Counted against the conversation as last read: a turn created since
+      // the run began ends it.
+      const tasks = queryClient.getQueryData<A2aTaskWire[]>(
+        sessionTasksQueryKey(installation, sessionId),
+      );
+      setTimeouts(previous => countSendTimeout(previous, tasks));
+      for (const queryKey of [
+        sessionQueryKey(installation, sessionId),
+        sessionTasksQueryKey(installation, sessionId),
+      ]) {
+        queryClient.invalidateQueries({ queryKey }).catch(() => {});
+      }
     },
   });
 
@@ -157,6 +191,11 @@ export function useSendMessage(
        */
       failed,
       error: mutation.error as Error | null,
+      /**
+       * The sends in a row that timed out before kagent's first event and did
+       * not land; undefined once one lands or fails otherwise.
+       */
+      timeouts,
       reset,
     }),
     [
@@ -167,6 +206,7 @@ export function useSendMessage(
       isStreamLost,
       failed,
       mutation.error,
+      timeouts,
       reset,
     ],
   );

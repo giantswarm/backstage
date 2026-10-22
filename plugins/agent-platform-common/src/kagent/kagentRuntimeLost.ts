@@ -2,7 +2,11 @@ import { a2aMessageWireSchema } from './kagentTaskSchema';
 import type { A2aTaskWire } from './kagentTaskSchema';
 import { readMessageText } from './kagentParts';
 import type { KagentSession } from './kagentSessions';
-import { describeSessionState, FAILED_STATES } from './kagentSessionState';
+import {
+  describeSessionState,
+  FAILED_STATES,
+  findNewestStatefulTaskIndex,
+} from './kagentSessionState';
 
 /**
  * A session whose **runtime** kagent cannot bring back.
@@ -33,6 +37,10 @@ import { describeSessionState, FAILED_STATES } from './kagentSessionState';
  *   nothing else distinguishes it from a slow turn. Read as a loss because the
  *   alternative is offering the same retry forever; the retry is still offered
  *   beside the way out, since a cold worker can produce the same text once.
+ *   One suspected shape shows nowhere in kagent's records: a runtime that
+ *   crashes on every restore leaves the session `READY` and the failed sends
+ *   never become turns, so the only sign is that sends keep timing out before
+ *   kagent's first event ({@link readSendTimeoutRuntimeLoss}).
  */
 export type RuntimeLoss = {
   /** kagent marked the session's runtime lost, rather than this reading the turn. */
@@ -43,8 +51,15 @@ export type RuntimeLoss = {
    * How many turns in a row ended this way, newest first. `1` for the first
    * failure; a reported loss counts what the conversation shows too, and `0`
    * when it shows nothing yet (the session was marked before any turn failed).
+   * Read from timed-out sends, how many sends in a row timed out.
    */
   attempts: number;
+  /**
+   * Set when the loss is read from sends that kept timing out before kagent's
+   * first event rather than from anything kagent recorded: the session and
+   * its conversation look healthy, and the runtime's own words are unknown.
+   */
+  source?: 'send-timeouts';
 };
 
 /**
@@ -213,4 +228,89 @@ export function readRuntimeLoss(
     };
   }
   return fromConversation;
+}
+
+/**
+ * Sends on one session that, in a row, timed out before kagent's first event
+ * and did not land — the backend's `UpstreamError` with `reason: "timeout"`,
+ * and a history read that does not hold the message.
+ *
+ * Kept by the page, not by kagent: nothing kagent records shows them (see
+ * {@link readSendTimeoutRuntimeLoss}). A reload starts over, which costs one
+ * more failed send before the way out shows again.
+ */
+export type SendTimeouts = {
+  /** How many sends in a row timed out. */
+  count: number;
+  /**
+   * The id of the conversation's newest task when the run began. A turn
+   * created since — the message landed late, or arrived from elsewhere —
+   * shows the runtime is up, and ends the run.
+   */
+  newestTaskId?: string;
+};
+
+/**
+ * How many sends in a row must time out before a loss is suspected. One is a
+ * slow cold start; two in a session that is otherwise idle are not.
+ */
+export const SEND_TIMEOUTS_BEFORE_LOSS = 2;
+
+function newestTaskIdOf(tasks: A2aTaskWire[] | undefined): string | undefined {
+  return tasks?.[tasks.length - 1]?.id;
+}
+
+/**
+ * The run of timed-out sends after one more, against the conversation as
+ * last read: counted on while the conversation's newest task is the one the
+ * run began with, else started over at one.
+ */
+export function countSendTimeout(
+  previous: SendTimeouts | undefined,
+  tasks: A2aTaskWire[] | undefined,
+): SendTimeouts {
+  const newestTaskId = newestTaskIdOf(tasks);
+  if (previous && previous.newestTaskId === newestTaskId) {
+    return { count: previous.count + 1, newestTaskId };
+  }
+  return { count: 1, newestTaskId };
+}
+
+/**
+ * The runtime loss that sends timing out show, when kagent shows nothing.
+ *
+ * A runtime that crashes on every restore (giantswarm/kagent-upstream#858)
+ * fails each send before kagent's first event: the portal gives up on that
+ * after its request timeout, the message never becomes a turn, and the
+ * session stays `READY` without a failure until kagent, a minute later,
+ * records `RUNTIME_LOST` — if it does. Waiting longer is no way to hear it:
+ * the gateway in front of the portal cuts a silent stream well before.
+ *
+ * So the repetition is the signal: {@link SEND_TIMEOUTS_BEFORE_LOSS} or more
+ * sends in a row, while the conversation has no turn newer than when the run
+ * began and its newest turn is settled — a turn still working would explain
+ * a slow start. Suspected, never reported: the retry stays on offer.
+ */
+export function readSendTimeoutRuntimeLoss(
+  timeouts: SendTimeouts | undefined,
+  tasks: A2aTaskWire[] | undefined,
+): RuntimeLoss | undefined {
+  if (!timeouts || timeouts.count < SEND_TIMEOUTS_BEFORE_LOSS || !tasks) {
+    return undefined;
+  }
+  if (newestTaskIdOf(tasks) !== timeouts.newestTaskId) {
+    return undefined;
+  }
+  const index = findNewestStatefulTaskIndex(tasks);
+  if (
+    index !== undefined &&
+    describeSessionState(tasks[index]?.status?.state)?.isActive
+  ) {
+    return undefined;
+  }
+  return {
+    reported: false,
+    attempts: timeouts.count,
+    source: 'send-timeouts',
+  };
 }
