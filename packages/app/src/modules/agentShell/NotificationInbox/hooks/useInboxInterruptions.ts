@@ -16,6 +16,7 @@ import {
   type DesktopNotifications,
 } from './useDesktopNotifications';
 import { NOTIFICATIONS_HASH } from './useToastLinkRouting';
+import { TOAST_CONTAINER } from '../../ShellMain/toastHeight';
 
 /**
  * The most rows one read announces one toast (or desktop notification) each.
@@ -23,6 +24,19 @@ import { NOTIFICATIONS_HASH } from './useToastLinkRouting';
  * nobody reads.
  */
 export const TOAST_BURST = 3;
+
+/**
+ * How long an inbox toast stays: a brief heads-up, the 6 s most of the
+ * portal's toasts take (their module-local `TOAST_TIMEOUT_MS`). The bell is
+ * where the row waits; the toast pauses while the pointer rests on it (or
+ * focus is in it), so one being read does not go. One raised while the
+ * window is not the one the person works in waits for them: its time starts
+ * when the window has the focus again.
+ */
+export const INBOX_TOAST_TIMEOUT_MS = 6000;
+
+/** How often a held toast (pointer or focus on it) is looked at again. */
+const HELD_RECHECK_MS = 1000;
 
 /**
  * How far before the tab's first read a row may have changed and still be
@@ -82,7 +96,10 @@ function writeTabMemory(memory: TabMemory) {
   }
 }
 
-/** A toast still up: the rows it speaks for, and what closes it. */
+/**
+ * A toast posted and maybe still up (it may have timed out): the rows it
+ * speaks for, and what closes it sooner.
+ */
 type OpenToast = {
   toast: ToastApiPostResult;
   ids: string[];
@@ -92,7 +109,21 @@ type OpenToast = {
   closeOnExactPath?: string;
   /** Opening the overlay answers it. */
   closeOnOverlay?: boolean;
+  /**
+   * Posted while the window did not have the focus, without a timeout: its
+   * time starts once the window has it.
+   */
+  awaitsFocus?: boolean;
 };
+
+/**
+ * Whether the person is on the toasts: the pointer rests on them or the focus
+ * is in them, which holds the upstream toasts' own timers too.
+ */
+function toastsHeld(): boolean {
+  const container = document.querySelector(TOAST_CONTAINER);
+  return Boolean(container?.matches(':hover, :focus-within'));
+}
 
 /** The kinds of row that are about one session each. */
 const SESSION_KINDS: ReadonlySet<InboxRow['kind']> = new Set([
@@ -131,8 +162,10 @@ function linkOf(row: InboxRow): string | undefined {
  * first read. A row that only narrows one the tab read (`narrows`) is not
  * news. A row that shows up later with neither (an installation
  * answering late with an old wait) is quietly unread. Nothing is raised for
- * the session on screen in the window the person works in. A toast closes
- * once its row goes or is read, or its page is opened.
+ * the session on screen in the window the person works in. A toast goes on
+ * its own after {@link INBOX_TOAST_TIMEOUT_MS} (counted from when the window
+ * has the focus), or sooner once its row goes or is read, or its page is
+ * opened.
  *
  * The first read is the tab's, not the inbox's mount: a return from a classic
  * page or a reload picks up where the tab was. Each tab decides on its own;
@@ -172,9 +205,12 @@ export function useInboxInterruptions({
 
   // What this tab has read: from an earlier mount, else nothing yet.
   const memory = useRef<TabMemory | undefined>(readTabMemory());
-  // Toasts still up, so they can be closed when they stop being true.
+  // Toasts posted (some may have timed out), so they can be closed sooner
+  // when they stop being true.
   const open = useRef(new Map<string, OpenToast>());
   const toastCount = useRef(0);
+  // The timers of toasts raised while the window did not have the focus.
+  const focusTimers = useRef(new Set<number>());
   // Read inside the rows effect without re-running it on every navigation.
   const latest = useRef({
     location,
@@ -193,14 +229,25 @@ export function useInboxInterruptions({
     hashActions,
   };
 
+  // A toast goes after its time, unless the window it shows in is not the one
+  // the person works in: a toast they could not have seen waits for them.
   const post = useCallback(
     (
       key: string,
       message: ToastApiMessage,
-      entry: Omit<OpenToast, 'toast'>,
+      entry: Omit<OpenToast, 'toast' | 'awaitsFocus'>,
     ) => {
       open.current.get(key)?.toast.close();
-      open.current.set(key, { ...entry, toast: toastApi.post(message) });
+      const awaitsFocus = !latest.current.attention.focused;
+      open.current.set(key, {
+        ...entry,
+        awaitsFocus,
+        toast: toastApi.post(
+          awaitsFocus
+            ? message
+            : { ...message, timeout: INBOX_TOAST_TIMEOUT_MS },
+        ),
+      });
     },
     [toastApi],
   );
@@ -375,12 +422,48 @@ export function useInboxInterruptions({
     }
   }, [location.pathname]);
 
+  // Back in the window: the toasts raised while away get their time now, held
+  // like the upstream timers while the person is on them.
+  useEffect(() => {
+    if (!attention.focused) {
+      return;
+    }
+    const timers = focusTimers.current;
+    const expire = (key: string, entry: OpenToast) => {
+      const timer = window.setTimeout(
+        () => {
+          timers.delete(timer);
+          if (open.current.get(key) !== entry) {
+            return;
+          }
+          if (toastsHeld()) {
+            expire(key, entry);
+            return;
+          }
+          entry.toast.close();
+          open.current.delete(key);
+        },
+        entry.awaitsFocus ? INBOX_TOAST_TIMEOUT_MS : HELD_RECHECK_MS,
+      );
+      timers.add(timer);
+      entry.awaitsFocus = false;
+    };
+    for (const [key, entry] of open.current) {
+      if (entry.awaitsFocus) {
+        expire(key, entry);
+      }
+    }
+  }, [attention.focused]);
+
   // Leaving the shell (the inbox unmounts) leaves nothing behind.
   useEffect(() => {
     const toasts = open.current;
+    const timers = focusTimers.current;
     return () => {
       toasts.forEach(entry => entry.toast.close());
       toasts.clear();
+      timers.forEach(timer => window.clearTimeout(timer));
+      timers.clear();
     };
   }, []);
 
