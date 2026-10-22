@@ -1028,6 +1028,36 @@ export async function startSessionOnReadyAgent(
 }
 
 /**
+ * Deletes the session on screen through its actions menu — the portal's own
+ * path — and resolves on the Sessions list the deletion lands on.
+ */
+export async function deleteCurrentSession(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Session actions' }).click();
+  await page.getByRole('menuitem', { name: /Delete session/ }).click();
+  const dialog = page.getByRole('dialog', { name: /Delete session/ });
+  await expect(dialog).toBeVisible();
+  // Right after a turn kagent refuses the delete until the runtime's cleanup
+  // settles ("not yet settled: precondition failed", shown in the dialog);
+  // a person tries again a little later, and so does this.
+  await expect
+    .poll(
+      async () => {
+        if (!(await dialog.isVisible())) {
+          return 'deleted';
+        }
+        await dialog
+          .getByRole('button', { name: 'Delete session' })
+          .click({ timeout: 5_000 })
+          .catch(() => undefined);
+        return 'refused';
+      },
+      { timeout: 120_000, intervals: [10_000] },
+    )
+    .toBe('deleted');
+  await expect(page).toHaveURL(/\/sessions$/, { timeout: 60_000 });
+}
+
+/**
  * The page does not scroll sideways: nothing reaches past the viewport's right
  * edge (the phone promise, T22). On a failure the message names the widest
  * offenders — the outermost elements past the edge, by tag, class and text —
