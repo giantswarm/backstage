@@ -42,6 +42,23 @@ connect a downstream server for everybody and let the next user call it under th
 first user's OAuth grant. Read-only discovery tolerates that shared session;
 per-user auth does not.
 
+## Unauthorized answers
+
+Every `401` of these routes (`/call` and `/call/progress` included) says why in
+`error.reason`, and is logged at info with the installation, the route and the
+reason. Neither the body nor the log carries the token, the person's identity or
+muster's own text.
+
+| `error.reason`            | When                                                                                                        | What the frontend does                            |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `server_sign_in_required` | muster answered `auth_required`: the person has not signed in to the server (`error.server`) the call needs | Offers that server's sign-in                      |
+| `token_missing`           | The request forwarded no token for an installation that needs one                                           | Refreshes the token and sends the call again once |
+| `token_expired`           | The forwarded token's `exp` has passed (checked before muster is called), or muster said it expired         | The same                                          |
+| `token_rejected`          | muster refused a forwarded token that has not expired                                                       | The same                                          |
+
+Each is refused before a tool runs, so sending a write again with a new token
+cannot run it twice. The frontend never retries a `401` with backoff.
+
 ## Configuration
 
 The installations the proxy can target are **derived from the fleet

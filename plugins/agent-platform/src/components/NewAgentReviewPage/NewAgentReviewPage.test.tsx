@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  MCPServer,
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
@@ -41,10 +42,18 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   }),
 }));
 
-// The MCPServer CRs the toolset section groups by list nothing.
+// The MCPServer CRs the toolset section groups by list nothing, unless a
+// test says otherwise.
+let mockServerCrs: unknown[] = [];
+/** Whether the MCPServer CRs are still being read. */
+let mockServersLoading = false;
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({ resources: [], isLoading: false, errors: [] }),
+  useResources: (_clusters: string[], resourceClass: { kind?: string }) => ({
+    resources: resourceClass?.kind === 'MCPServer' ? mockServerCrs : [],
+    isLoading: resourceClass?.kind === 'MCPServer' && mockServersLoading,
+    errors: [],
+  }),
 }));
 
 // The targeted ModelConfig read behind the fold-out's "Underlying model";
@@ -168,6 +177,8 @@ type Scenario = {
   validateError?: Error;
   /** The Harness picked on the details step; none is the platform Harness. */
   harness?: HarnessChoice;
+  /** The toolset picked on the Tools step; `preset:read-only` by default. */
+  toolset?: string[];
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -242,11 +253,13 @@ function Seed({
   withSkill = true,
   harness,
   egressText,
+  toolset = ['preset:read-only'],
 }: {
   children: ReactNode;
   withSkill?: boolean;
   harness?: HarnessChoice;
   egressText?: string;
+  toolset?: string[];
 }) {
   const {
     setName,
@@ -273,13 +286,17 @@ function Seed({
     if (withSkill) {
       toggleSkill(SKILL);
     }
-    setToolset(['preset:read-only']);
+    setToolset(toolset);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return isComplete ? <>{children}</> : null;
 }
 
-async function renderReview(scenario: Scenario = {}, withSkill = true) {
+async function renderReview(
+  scenario: Scenario = {},
+  withSkill = true,
+  persistDraft = false,
+) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -293,11 +310,12 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
         {/* The step's actions land in the wizard frame's footer through the
             page-header slot, which is what is driven. */}
         <PageHeaderActionsProvider>
-          <NewAgentFormProvider>
+          <NewAgentFormProvider persistDraft={persistDraft}>
             <Seed
               withSkill={withSkill}
               harness={scenario.harness}
               egressText={scenario.egressText}
+              toolset={scenario.toolset}
             >
               <NewAgentReviewPage />
             </Seed>
@@ -309,6 +327,11 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
   );
   return { callTool };
 }
+
+/** The drafts kept in the tab (its other entries are not the form's). */
+const draftCount = () =>
+  Object.keys(window.sessionStorage).filter(key => key.startsWith('gs-draft:'))
+    .length;
 
 const deployButton = () =>
   screen.getByRole('button', { name: /^(Create agent|Creating…)$/ });
@@ -326,7 +349,27 @@ function specSentTo(callTool: jest.Mock, tool: string): AgentSpec {
 beforeEach(() => {
   mockNavigate.mockReset();
   mockUseUnderlyingModel.mockReset();
+  mockServerCrs = [];
+  mockServersLoading = false;
+  window.sessionStorage.clear();
 });
+
+/** A connector muster signs in to per session, as `grafana-cloud` is. */
+function grafanaCloud() {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: {
+        name: 'grafana-cloud',
+        namespace: 'muster',
+        annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
+      },
+      spec: { type: 'streamable-http', auth: { type: 'oauth' } },
+    } as never,
+    'gazelle',
+  );
+}
 
 describe('NewAgentReviewPage', () => {
   it('leads with the plain summary and keeps the manifests under Technical details', async () => {
@@ -400,6 +443,57 @@ describe('NewAgentReviewPage', () => {
         'https://github.com:443, https://*.githubusercontent.com',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('creates an agent with a connector that needs a sign-in able to start it', async () => {
+    mockServerCrs = [grafanaCloud()];
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      toolset: ['server:grafana-cloud', 'tool:x_docs_search'],
+    });
+
+    expect(plainRow('Tools')).toHaveTextContent(
+      'Adds core_auth_login, which lets the agent start the sign-in to Grafana Cloud.',
+    );
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    expect(
+      specSentTo(callTool, 'x_agent-manager_validate_agent').toolset,
+    ).toEqual([
+      'server:grafana-cloud',
+      'tool:x_docs_search',
+      'tool:core_auth_login',
+    ]);
+
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_create_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    expect(
+      specSentTo(callTool, 'x_agent-manager_create_agent').toolset,
+    ).toEqual([
+      'server:grafana-cloud',
+      'tool:x_docs_search',
+      'tool:core_auth_login',
+    ]);
+  });
+
+  it('holds Create while it is still read whether a connector needs the sign-in tool', async () => {
+    mockServerCrs = [grafanaCloud()];
+    mockServersLoading = true;
+    const { callTool } = await renderReview({
+      toolset: ['server:grafana-cloud'],
+    });
+
+    expect(deployButton()).toBeDisabled();
+    expect(
+      callTool.mock.calls.filter(
+        ([name]) => name === 'x_agent-manager_validate_agent',
+      ),
+    ).toHaveLength(0);
   });
 
   it("renders agent-manager's dry run: the 1.x OCIRepository, the HelmRelease with the pinned skill, the chart and the Harness", async () => {
@@ -589,6 +683,35 @@ describe('NewAgentReviewPage', () => {
     );
   });
 
+  it('drops the kept draft once the agent is created', async () => {
+    const user = userEvent.setup();
+    await renderReview({}, true, true);
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(draftCount()).toBe(1));
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
+    expect(draftCount()).toBe(0);
+  });
+
+  it('keeps the draft when the create is refused', async () => {
+    const user = userEvent.setup();
+    await renderReview(
+      { createError: new Error('conflict: agent already exists') },
+      true,
+      true,
+    );
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+
+    expect(await screen.findByText('Refused')).toBeInTheDocument();
+    expect(draftCount()).toBe(1);
+  });
+
   it("shows a viewer's Forbidden in agent-manager's words and stays on the page", async () => {
     const user = userEvent.setup();
     await renderReview({
@@ -675,6 +798,29 @@ describe('NewAgentReviewPage', () => {
       screen.getByRole('link', { name: 'Review pull request ↗' }),
     ).toHaveAttribute('href', 'https://github.com/org/gitops/pull/7');
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('drops the kept draft once the pull request is open, and keeps showing the form', async () => {
+    const user = userEvent.setup();
+    await renderReview(
+      { info: { capabilities: { ...INFO.capabilities, commit: true } } },
+      true,
+      true,
+    );
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(draftCount()).toBe(1));
+    const commit = await screen.findByRole('button', {
+      name: 'Propose as pull request instead',
+    });
+    await waitFor(() => expect(commit).toBeEnabled());
+    await user.click(commit);
+
+    expect(
+      await screen.findByText(/Pull request #7 opened/),
+    ).toBeInTheDocument();
+    expect(draftCount()).toBe(0);
+    expect(plainRow('Name')).toHaveTextContent('Go service reviewer');
   });
 
   it('moves the pull-request alternative out of the footer at phone width', async () => {

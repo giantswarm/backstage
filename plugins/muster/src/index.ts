@@ -1,16 +1,21 @@
 export { musterPlugin as default } from './plugin';
 export {
+  isMusterAuthFailure,
   isSessionExpiredError,
   musterApiRef,
   musterAuthProvidersApiRef,
   MusterAnswerCutError,
   MusterAuthProviders,
   MusterTokenMintError,
+  MusterUnauthorizedError,
+  musterSignInRequiredOf,
+  musterUnauthorizedInfoOf,
   toolErrorDetails,
 } from './apis';
 export type {
   MusterApi,
   MusterAuthProvidersApi,
+  MusterUnauthorizedReason,
   McpServerRuntime,
   MusterToolProgress,
   FilterToolsOptions,
@@ -134,6 +139,15 @@ export { useWorkflowPageTarget } from './components/WorkflowPage';
 export type { WorkflowPageTarget } from './components/WorkflowPage';
 export { WORKFLOW_PAGE_TABS } from './components/WorkflowPage';
 export { toolPageTabs } from './components/ToolPage';
+export { shouldRetryMusterQuery } from './components/QueryClientProvider';
+export {
+  ConnectorSignInAlert,
+  splitConnectorSignIns,
+} from './components/ConnectorSignInAlert';
+export type {
+  ConnectorSignIn,
+  ConnectorSignInAlertProps,
+} from './components/ConnectorSignInAlert';
 export {
   McpAuthDialog,
   useMcpServersAwaitingSignIn,

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ShowMore } from '@giantswarm/backstage-plugin-ui-react';
@@ -113,6 +114,8 @@ export type SelectedRailProps = {
   onRemove: (selectors: string[]) => void;
   /** Opens the individual tools and scrolls to the resolved list. */
   onShowDetails?: () => void;
+  /** The sign-in tool the wizard adds, or the warning once it was removed. */
+  signInNote?: ReactNode;
 };
 
 /**
@@ -129,6 +132,7 @@ export function SelectedRail({
   problems,
   onRemove,
   onShowDetails,
+  signInNote,
 }: SelectedRailProps) {
   const classes = useStyles();
   const effect = toolsetEffect({ selectors, resolution, unsigned, problems });
@@ -198,6 +202,7 @@ export function SelectedRail({
           </ShowMore>
         </Flex>
       ))}
+      {signInNote}
       {onShowDetails && selectors.length > 0 && (
         <Button variant="tertiary" size="small" onPress={onShowDetails}>
           Show the resolved list

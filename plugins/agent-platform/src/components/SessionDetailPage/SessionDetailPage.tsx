@@ -81,6 +81,7 @@ import {
 import { InstallationChip } from '../InstallationChip';
 import { SessionWorkspaceChip } from '../SessionWorkspace';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
+import { ConnectorSignInLinks } from '../ConnectorSignInLinks';
 import { SessionComposer } from '../SessionComposer';
 import {
   ChatGptConnectDialog,
@@ -1381,6 +1382,15 @@ export function SessionDetailPage() {
    * Assembled here rather than as a ternary chain in the JSX — there are three
    * outcomes and two of them are multi-element.
    */
+  // Whether the question card is up: the agent waits on a question the page
+  // lets the person answer. Not while kagent has reported the runtime lost,
+  // nor once it did not take an answer (see below), nor where the composer is
+  // withheld.
+  const isConfirming =
+    !composerWithheldReason &&
+    Boolean(pendingConfirmation && agent) &&
+    !answerDispatched &&
+    !cannotContinue;
   let bottomControl: ReactNode;
   if (composerWithheldReason) {
     // The chip keeps the session's totals in reach even where there is no box
@@ -1419,10 +1429,6 @@ export function SessionDetailPage() {
     // Not while kagent has reported the runtime lost, nor once it did not take
     // an answer: another answer would go the same way, so the question is left
     // where it is and the notice, with the way out, takes the card's place.
-    const isConfirming =
-      Boolean(pendingConfirmation && agent) &&
-      !answerDispatched &&
-      !cannotContinue;
     // The way out, offered in the notice that explains it: beside the retry
     // while the loss is only suspected, the only way on once kagent has
     // reported it or did not take an answer. Needs the agent
@@ -1782,56 +1788,79 @@ export function SessionDetailPage() {
       }
       compactHeader
     >
-      <Flex
-        ref={setColumnElement}
-        direction="column"
-        gap="4"
-        className={classes.column}
+      {/* A connector sign-in the agent passes on reads as a sign-in action,
+          in its messages and its question alike, and answers the question
+          once done (giantswarm/giantswarm#38774). */}
+      <ConnectorSignInLinks
+        items={shownTimeline.items}
+        servers={musterServers}
+        labels={connectorLabelsOf}
+        // Only a question the card offers, with no answer under way: a
+        // finished sign-in never answers a second time, nor a session the
+        // page says cannot go on.
+        pending={
+          isConfirming && !confirmation.isAnswering && !confirmation.pending
+            ? pendingConfirmation
+            : undefined
+        }
+        onAnswer={answer => {
+          // Errors surface through the hook's `error`, as the card's own.
+          confirmation.answer(answer).catch(() => {});
+        }}
       >
-        {/* A refresh that failed after the page had loaded. Shown rather than
+        <Flex
+          ref={setColumnElement}
+          direction="column"
+          gap="4"
+          className={classes.column}
+        >
+          {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped
             keeping up, and the user needs to know which of the two it is. */}
-        {error && (
-          <Alert
-            status="warning"
-            title="This session may be out of date"
-            description={`The last refresh failed: ${error.message}`}
-          />
-        )}
+          {error && (
+            <Alert
+              status="warning"
+              title="This session may be out of date"
+              description={`The last refresh failed: ${error.message}`}
+            />
+          )}
 
-        {continuedFrom && <ContinuedSessionBanner continues={continuedFrom} />}
+          {continuedFrom && (
+            <ContinuedSessionBanner continues={continuedFrom} />
+          )}
 
-        {/* Held until the stored "Show tool activity" choice is read, so a
+          {/* Held until the stored "Show tool activity" choice is read, so a
             person who hides the work never sees it appear and vanish. */}
-        {!isToolActivityKnown ? (
-          <LoadingIndicator label="Reading the session…" />
-        ) : (
-          <SessionTimeline
-            timeline={shownTimeline}
-            agentName={row.agentName}
-            agentEgressHref={agentEgressHref}
-            agentAvatarUrl={avatarUrl}
-            isAgentWorking={showWorking}
-            streamLost={streamLost}
-            stalledSince={stalledSince}
-            onCancelTurn={isStalled ? stopTurn : undefined}
-            isCancellingTurn={cancellation.isCancelling}
-            // A hand-off's opener was written by the portal, not the person
-            // (UX review M20). Known only from the router state of the arrival:
-            // kagent stores no such flag, so a later visit shows it plain.
-            firstMessageCaption={
-              handoff?.prepared ? 'Prepared by the portal' : undefined
-            }
-            connectorOf={connectorOf}
-            showToolActivity={showToolActivity}
-            isAwaitingPerson={Boolean(
-              state && AWAITING_INPUT_STATES.has(state.key),
-            )}
-          />
-        )}
+          {!isToolActivityKnown ? (
+            <LoadingIndicator label="Reading the session…" />
+          ) : (
+            <SessionTimeline
+              timeline={shownTimeline}
+              agentName={row.agentName}
+              agentEgressHref={agentEgressHref}
+              agentAvatarUrl={avatarUrl}
+              isAgentWorking={showWorking}
+              streamLost={streamLost}
+              stalledSince={stalledSince}
+              onCancelTurn={isStalled ? stopTurn : undefined}
+              isCancellingTurn={cancellation.isCancelling}
+              // A hand-off's opener was written by the portal, not the person
+              // (UX review M20). Known only from the router state of the arrival:
+              // kagent stores no such flag, so a later visit shows it plain.
+              firstMessageCaption={
+                handoff?.prepared ? 'Prepared by the portal' : undefined
+              }
+              connectorOf={connectorOf}
+              showToolActivity={showToolActivity}
+              isAwaitingPerson={Boolean(
+                state && AWAITING_INPUT_STATES.has(state.key),
+              )}
+            />
+          )}
 
-        {bottomControl}
-      </Flex>
+          {bottomControl}
+        </Flex>
+      </ConnectorSignInLinks>
 
       {/* One dialog for both entry points, rendered here rather than inside the
           menu — react-aria unmounts the menu on selection, and the title could not

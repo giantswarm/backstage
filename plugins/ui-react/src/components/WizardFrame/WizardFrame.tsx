@@ -516,9 +516,16 @@ export interface WizardFrameProps {
    * strip's links do not ask: they stay inside the flow, whose state lives
    * above its steps. In-app navigation elsewhere — the shell's nav and rail,
    * the command palette, the browser's Back — is not intercepted, because the
-   * app's router has no navigation blocker.
+   * app's router has no navigation blocker. A flow that keeps its input
+   * across those keeps a draft instead (`useSessionDraft`), and clears it in
+   * {@link onDiscard}.
    */
   confirmDiscard?: boolean;
+  /**
+   * Called when the person confirms "Discard changes", before the frame
+   * leaves to `closeHref`: where a flow drops the draft it keeps.
+   */
+  onDiscard?: () => void;
   /** Shows a Back button in the footer. */
   onBack?: () => void;
   /** The centered column's width. The connector wizard's 640px is the default. */
@@ -560,6 +567,7 @@ export function WizardFrame({
   currentStep,
   closeHref,
   confirmDiscard = false,
+  onDiscard,
   onBack,
   width = 'narrow',
   rail,
@@ -797,6 +805,7 @@ export function WizardFrame({
         cancelLabel="Keep editing"
         onConfirm={() => {
           setDiscardOpen(false);
+          onDiscard?.();
           navigate(closeHref);
         }}
       >

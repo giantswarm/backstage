@@ -102,6 +102,7 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
     rows: [docs, infra],
     isLoading: false,
     failures: {},
+    signIns: [],
     retry: jest.fn(),
     ...overrides,
   };
@@ -303,6 +304,7 @@ describe('CustomizeWorkspacesPanel', () => {
         gazelle:
           "agent-platform: auth_required: server 'workspace-manager' requires authentication before its tools can be called",
       },
+      signIns: ['gazelle'],
     });
     await renderPanel();
 
@@ -361,7 +363,62 @@ describe('CustomizeWorkspacesPanel', () => {
     await userEvent.click(
       screen.getByRole('menuitem', { name: 'Synchronize…' }),
     );
-    expect(mockSync.mutate).toHaveBeenCalled();
+    // After the last synchronization the row shows.
+    expect(mockSync.mutate).toHaveBeenCalledWith(
+      { after: '2026-10-14T03:00:00Z' },
+      expect.anything(),
+    );
+  });
+
+  it('says Synchronizing and offers no Synchronize while a synchronization the person started is under way, as the workspace’s page does', async () => {
+    mockData = data({
+      rows: [
+        {
+          ...docs,
+          awaitedSync: {
+            cause: 'requested',
+            after: docs.lastSync!.time,
+            since: Date.now(),
+          },
+        },
+      ],
+    });
+    await renderPanel();
+
+    const row = screen.getByRole('row', { name: /docs/ });
+    expect(within(row).getByText('Synchronizing')).toBeInTheDocument();
+    expect(within(row).queryByText('Synchronized')).toBeNull();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Actions for docs' }),
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'Synchronize…' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('says Synchronizing after a saved change, and leaves Synchronize… to the person while the manager reports no sync', async () => {
+    mockData = data({
+      rows: [
+        {
+          ...docs,
+          awaitedSync: {
+            cause: 'changed',
+            after: docs.lastSync!.time,
+            since: Date.now(),
+          },
+        },
+      ],
+    });
+    await renderPanel();
+
+    const row = screen.getByRole('row', { name: /docs/ });
+    expect(within(row).getByText('Synchronizing')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Actions for docs' }),
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'Synchronize…' }),
+    ).not.toHaveAttribute('aria-disabled', 'true');
   });
 
   it('confirms a delete, naming the workspace and the Sessions still using it', async () => {

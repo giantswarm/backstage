@@ -37,6 +37,7 @@
     "@giantswarm/backstage-plugin-analytics-react": "workspace:^",
     "@giantswarm/backstage-plugin-flux-react": "workspace:^",
     "@giantswarm/backstage-plugin-gs": "workspace:^",
+    "@giantswarm/backstage-plugin-gs-common": "workspace:^",
     "@giantswarm/backstage-plugin-gs-react": "workspace:^",
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",

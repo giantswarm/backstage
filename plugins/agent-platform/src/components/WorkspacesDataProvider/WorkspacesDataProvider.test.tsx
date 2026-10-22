@@ -1,7 +1,20 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  MusterUnauthorizedError,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
+import { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
+import {
+  useAwaitedSync,
+  useWorkspaceDetail,
+} from '../../hooks/useWorkspaceActions';
+import { useSaveWorkspace } from '../../hooks/useWorkspaceEditor';
+import { emptySource } from '../../lib/workspaceDraft';
+import { SYNC_REFETCH_MS, syncState } from '../../lib/workspaceList';
 import type { Workspace } from '../../lib/workspaceManager';
 import { CustomizeWorkspacesPanel } from '../CustomizeWorkspacesPanel';
 import { WorkspaceOrganizationSelect } from '../WorkspaceOrganizationSelect';
@@ -42,6 +55,10 @@ let mockProbing: boolean;
 let mockUnreachable: string[];
 /** The installations whose muster has no per-user sign-in in this portal. */
 let mockSharedIdentity: string[];
+/** The installations where the person has not signed in to the workspace-manager. */
+let mockNotSignedIn: string[];
+/** The workspace-manager's other tools, by name, as the person calls them. */
+let mockTools: Record<string, (args: any) => unknown>;
 
 const mockMusterApi = {
   listInstallations: jest.fn(async () => ({
@@ -61,9 +78,23 @@ const mockMusterApi = {
     };
   }),
   callTool: jest.fn(
-    async (tool: string, _args: unknown, installation: string) => {
+    async (tool: string, args: unknown, installation: string) => {
+      const other = mockTools[tool.replace('x_workspace-manager_', '')];
+      if (other) {
+        return other(args);
+      }
       if (tool !== 'x_workspace-manager_list_workspaces') {
         throw new Error(`unexpected ${tool}`);
+      }
+      if (mockNotSignedIn.includes(installation)) {
+        // muster-backend's 401, as the muster client reads it: the reason
+        // says what is wanted, whatever the wording.
+        throw new MusterUnauthorizedError(
+          'workspace-manager needs your sign-in.',
+          'server_sign_in_required',
+          'workspace-manager',
+          installation,
+        );
       }
       return {
         workspaces: mockWorkspaces[installation] ?? [],
@@ -77,6 +108,11 @@ const mockMusterApi = {
 
 jest.mock('../../hooks/useMusterPluginApi', () => ({
   useMusterPluginApi: () => mockMusterApi,
+}));
+jest.mock('../WorkspaceManagerSignIn', () => ({
+  WorkspaceManagerSignIn: (props: { installation: string }) => (
+    <p>{`sign in on ${props.installation}`}</p>
+  ),
 }));
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   useInstallationInventory: () => ({
@@ -93,7 +129,54 @@ function Availability() {
   return <p>{`available: ${String(isAvailable)}`}</p>;
 }
 
-function renderWorkspaces() {
+/** Creates `platform-mcp`, or with `edit` saves a change to it, as the editor does. */
+function SaveButton({ edit }: { edit?: { resourceVersion: string } }) {
+  const save = useSaveWorkspace(
+    new WorkspaceManagerClient(
+      mockMusterApi as unknown as MusterApi,
+      'gazelle',
+    ),
+  );
+  return (
+    <button
+      onClick={() =>
+        save.mutate({
+          draft: {
+            name: 'platform-mcp',
+            sources: [{ ...emptySource('github'), owner: 'example-org' }],
+            minimumGiB: '',
+            headroom: '',
+          },
+          organization: 'alpha',
+          edit,
+        })
+      }
+    >
+      {edit ? 'Save changes' : 'Create workspace'}
+    </button>
+  );
+}
+
+/** What the workspace's page says of its sync, from its own read, once opened. */
+function PageSyncState({ name }: { name: string }) {
+  const [isOpen, setOpen] = useState(false);
+  return isOpen ? (
+    <OpenPageSyncState name={name} />
+  ) : (
+    <button onClick={() => setOpen(true)}>Open {name}</button>
+  );
+}
+
+function OpenPageSyncState({ name }: { name: string }) {
+  const detail = useWorkspaceDetail('gazelle', name, true, {
+    followSync: true,
+  });
+  const awaited = useAwaitedSync('gazelle', name);
+  const read = detail.data?.workspace;
+  return <p>{`page: ${read ? syncState(read, awaited).label : '…'}`}</p>;
+}
+
+function renderWorkspaces(extra: JSX.Element | null = null) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -103,10 +186,20 @@ function renderWorkspaces() {
         <Availability />
         <WorkspaceOrganizationSelect />
         <CustomizeWorkspacesPanel search="" />
+        {extra}
       </WorkspacesDataProvider>
     </QueryClientProvider>,
   );
 }
+
+/** The Last synchronization of a workspace's row. */
+const rowState = (name: string) =>
+  within(screen.getByRole('row', { name: new RegExp(name) }));
+
+const listReads = () =>
+  mockMusterApi.callTool.mock.calls.filter(
+    ([tool]) => tool === 'x_workspace-manager_list_workspaces',
+  ).length;
 
 const shownNames = () =>
   screen
@@ -124,7 +217,19 @@ describe('WorkspacesDataProvider', () => {
     mockProbing = false;
     mockUnreachable = [];
     mockSharedIdentity = [];
+    mockNotSignedIn = [];
+    mockTools = {};
     jest.clearAllMocks();
+  });
+
+  // giantswarm/backstage#3236 review: the sign-in follows the 401's reason,
+  // not the wording of its message.
+  it('offers the workspace-manager sign-in where the read asks for it, not the refusal', async () => {
+    mockNotSignedIn = ['gazelle'];
+    await renderWorkspaces();
+
+    expect(await screen.findByText('sign in on gazelle')).toBeInTheDocument();
+    expect(screen.queryByText('Your workspaces could not be read')).toBeNull();
   });
 
   it('is not available where no installation in scope has the workspace-manager', async () => {
@@ -214,5 +319,171 @@ describe('WorkspacesDataProvider', () => {
       option => option.textContent,
     );
     expect(options).toEqual(['alpha', 'beta']);
+  });
+
+  describe('following a synchronization', () => {
+    beforeEach(() => {
+      jest.useFakeTimers({ advanceTimers: true });
+      mockMemberOf = { gazelle: ['alpha'] };
+      mockWorkspaces = { gazelle: [workspace('docs', 'alpha')] };
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const tick = (ms: number) =>
+      act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+
+    it('shows a workspace just created as Synchronizing, reads again until it is Synchronized, then stops', async () => {
+      const created: Workspace = {
+        ...workspace('platform-mcp', 'alpha'),
+        createdAt: new Date().toISOString(),
+        lastSync: undefined,
+      };
+      mockTools.create_workspace = () => {
+        mockWorkspaces.gazelle = [...mockWorkspaces.gazelle, created];
+        return created;
+      };
+      await renderWorkspaces(<SaveButton />);
+      await waitFor(() => expect(shownNames()).toEqual(['docs']));
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Create workspace' }),
+      );
+
+      // The manager has not started its first synchronization yet.
+      await waitFor(() =>
+        expect(
+          rowState('platform-mcp').getByText('Synchronizing'),
+        ).toBeInTheDocument(),
+      );
+      expect(screen.queryByText('Not synchronized yet')).toBeNull();
+
+      // It runs…
+      created.activeSync = {
+        job: 'sync-1',
+        startedAt: new Date().toISOString(),
+      };
+      await tick(SYNC_REFETCH_MS);
+      expect(
+        rowState('platform-mcp').getByText('Synchronizing'),
+      ).toBeInTheDocument();
+
+      // …and ends.
+      delete created.activeSync;
+      created.lastSync = {
+        time: new Date().toISOString(),
+        result: 'Succeeded',
+      };
+      await tick(SYNC_REFETCH_MS);
+      await waitFor(() =>
+        expect(
+          rowState('platform-mcp').getByText('Synchronized'),
+        ).toBeInTheDocument(),
+      );
+
+      // Nothing syncs any more: the list is not read again.
+      const reads = listReads();
+      await tick(10 * SYNC_REFETCH_MS);
+      expect(listReads()).toBe(reads);
+    });
+
+    it('says Synchronizing after a saved change until the read shows its synchronization ended', async () => {
+      const docs = workspace('docs', 'alpha');
+      mockWorkspaces = { gazelle: [docs] };
+      mockTools.update_workspace = () => ({ ...docs, resourceVersion: '2' });
+      await renderWorkspaces(<SaveButton edit={{ resourceVersion: '1' }} />);
+      await waitFor(() =>
+        expect(rowState('docs').getByText('Synchronized')).toBeInTheDocument(),
+      );
+      const reads = listReads();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Save changes' }),
+      );
+
+      // The read after the save still shows the last synchronization before
+      // it, and nothing running.
+      await waitFor(() => expect(listReads()).toBeGreaterThan(reads));
+      expect(rowState('docs').getByText('Synchronizing')).toBeInTheDocument();
+
+      docs.lastSync = { time: new Date().toISOString(), result: 'Failed' };
+      docs.lastSync.message = 'owner not reachable';
+      await tick(SYNC_REFETCH_MS);
+      await waitFor(() =>
+        expect(rowState('docs').getByText('Failed')).toBeInTheDocument(),
+      );
+    });
+
+    it('waits out the synchronization that ran when a change was saved, for the change’s own', async () => {
+      const docs: Workspace = {
+        ...workspace('docs', 'alpha'),
+        activeSync: { job: 'sync-1', startedAt: new Date().toISOString() },
+      };
+      mockWorkspaces = { gazelle: [docs] };
+      mockTools.update_workspace = () => ({ ...docs, resourceVersion: '2' });
+      await renderWorkspaces(<SaveButton edit={{ resourceVersion: '1' }} />);
+      await waitFor(() =>
+        expect(rowState('docs').getByText('Synchronizing')).toBeInTheDocument(),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Save changes' }),
+      );
+
+      // The synchronization that ran at the save ends; the change's own has
+      // not started yet.
+      delete docs.activeSync;
+      docs.lastSync = {
+        time: new Date().toISOString(),
+        result: 'Succeeded',
+        job: 'sync-1',
+      };
+      await tick(SYNC_REFETCH_MS);
+      expect(rowState('docs').getByText('Synchronizing')).toBeInTheDocument();
+
+      // The change's own ends.
+      docs.lastSync = {
+        time: new Date(Date.now() + 1000).toISOString(),
+        result: 'Succeeded',
+        job: 'sync-2',
+      };
+      await tick(SYNC_REFETCH_MS);
+      await waitFor(() =>
+        expect(rowState('docs').getByText('Synchronized')).toBeInTheDocument(),
+      );
+    });
+
+    it('says Synchronizing in the row and on the page alike, from the page’s read on', async () => {
+      const docs = workspace('docs', 'alpha');
+      mockWorkspaces = { gazelle: [docs] };
+      mockTools.get_workspace = () => ({
+        workspace: {
+          ...docs,
+          activeSync: { job: 'sync-2', startedAt: new Date().toISOString() },
+        },
+        mirrors: [],
+        storage: { mirrorsBytes: 0, sessionsBytes: 0 },
+        sessionDirectories: [],
+      });
+      await renderWorkspaces(<PageSyncState name="docs" />);
+      await waitFor(() =>
+        expect(rowState('docs').getByText('Synchronized')).toBeInTheDocument(),
+      );
+      const reads = listReads();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Open docs' }));
+
+      expect(
+        await screen.findByText('page: Synchronizing'),
+      ).toBeInTheDocument();
+      // The list follows the page's read, not its own older one.
+      await waitFor(() =>
+        expect(rowState('docs').getByText('Synchronizing')).toBeInTheDocument(),
+      );
+      expect(screen.queryByText('Synchronized')).toBeNull();
+      expect(listReads()).toBe(reads);
+    });
   });
 });

@@ -164,6 +164,22 @@ export function musterToolCatalogueQueryKey(installation: string) {
   return ['muster', 'agent-platform', 'tool-catalogue', installation] as const;
 }
 
+/** Whether a toolset includes one tool, asked of muster by the tool's name. */
+export function musterToolsetIncludesQueryKey(
+  installation: string,
+  selectors: string[],
+  tool: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolset-includes',
+    installation,
+    selectors.join(','),
+    tool,
+  ] as const;
+}
+
 export function musterToolsetResolutionQueryKey(
   installation: string,
   selectors: string[],
@@ -387,6 +403,16 @@ export function musterWorkspacesQueryKey(installation: string) {
 
 export function musterWorkspaceQueryKey(installation: string, name: string) {
   return ['muster', 'agent-platform', 'workspace', installation, name] as const;
+}
+
+/**
+ * The syncs the person started on this page load (a create, an edit,
+ * Synchronize), by workspace row id: kept in the cache, written by the writes
+ * and read by the list and the workspace's page, so both say Synchronizing
+ * before the manager's reads do. Nothing fetches it.
+ */
+export function musterWorkspaceSyncsAwaitedQueryKey() {
+  return ['muster', 'agent-platform', 'workspace-syncs-awaited'] as const;
 }
 
 /**

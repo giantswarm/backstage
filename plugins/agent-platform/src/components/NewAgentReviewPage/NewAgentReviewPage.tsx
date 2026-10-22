@@ -18,6 +18,7 @@ import {
 } from '../../hooks/useCreateAgent';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
+import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { useValidateAgent } from '../../hooks/useValidateAgent';
@@ -49,6 +50,7 @@ import {
   Notes,
   PlainRow,
   SectionTitle,
+  SignInToolChange,
   SummaryItem,
   toolsetSummaryLabel,
   UnderlyingModelItem,
@@ -82,7 +84,8 @@ function CreateAgentReview() {
   const navigate = useNavigate();
   const { details: newAgentLink, tools: toolsLink } = useAgentWizardLinks();
   const agentDetailLink = useRouteRef(agentDetailRouteRef);
-  const { state, isComplete, isToolsetValid } = useNewAgentForm();
+  const { state, isComplete, isToolsetValid, discardDraft, clearSavedDraft } =
+    useNewAgentForm();
   // Only to number the steps: with no skill repositories configured the skills
   // step doesn't exist. Cached by the time this page renders.
   const { hasRepositories } = useSkillCatalog();
@@ -92,29 +95,28 @@ function CreateAgentReview() {
   // is applied, and the "selected without a sign-in" flag is repeated here.
   const toolCatalogue = useMusterToolCatalogue(state.installation);
   const { servers, labels } = useMusterServers(state.installation);
-  const resolution = useToolsetResolution(state.installation, state.toolset);
+  // The selection with the sign-in tool the Tools step adds.
+  const signIn = useSignInTool(
+    state.installation,
+    state.toolset,
+    Boolean(state.signInToolDeclined),
+  );
+  const toolset = signIn.toolset;
+  const resolution = useToolsetResolution(state.installation, toolset);
   const unsignedServers = useMemo(
     () =>
       unsignedServerSelectors(
-        state.toolset,
+        toolset,
         buildCatalogue(
           toolCatalogue.tools,
           servers,
           toolCatalogue.serversRequiringAuth,
         ),
       ),
-    [
-      state.toolset,
-      toolCatalogue.tools,
-      servers,
-      toolCatalogue.serversRequiringAuth,
-    ],
+    [toolset, toolCatalogue.tools, servers, toolCatalogue.serversRequiringAuth],
   );
   // What the release declares: the selection, or `preset:none` for none.
-  const declared = useMemo(
-    () => declaredToolset(state.toolset),
-    [state.toolset],
-  );
+  const declared = useMemo(() => declaredToolset(toolset), [toolset]);
   const shape = toolsetShape(declared);
 
   // Persist the same deterministic avatar the UI renders onto the resource, as
@@ -140,9 +142,10 @@ function CreateAgentReview() {
   const namespace = spec.namespace;
 
   const { info } = useAgentManagerInfo(state.installation);
+  // Not before the sign-in tool is decided: the spec would lack it.
   const validation = useValidateAgent(
     state.installation,
-    isComplete && isToolsetValid ? spec : undefined,
+    isComplete && isToolsetValid && !signIn.isLoading ? spec : undefined,
   );
   const creation = useCreateAgent(state.installation);
   const [commitResult, setCommitResult] = useState<
@@ -153,7 +156,10 @@ function CreateAgentReview() {
   const violations = dryRun?.errors ?? [];
   const notes = dryRun?.notes ?? [];
   const canWrite =
-    Boolean(dryRun) && violations.length === 0 && !validation.failure;
+    !signIn.isLoading &&
+    Boolean(dryRun) &&
+    violations.length === 0 &&
+    !validation.failure;
   const isBusy = creation.isDeploying || creation.isCommitting;
   // The button shows only when agent-manager reports the capability that lands
   // the manifests as a pull request (giantswarm/agent-manager#24).
@@ -187,6 +193,13 @@ function CreateAgentReview() {
           },
         },
       });
+      // Created: the draft has done its job, and the next agent starts
+      // empty.
+      discardDraft();
+    } else {
+      // Nowhere to go: the page stays, with the form under the outcome, and
+      // only the kept draft goes.
+      clearSavedDraft();
     }
   }, [
     creation,
@@ -195,17 +208,27 @@ function CreateAgentReview() {
     state.installation,
     namespace,
     navigate,
+    discardDraft,
+    clearSavedDraft,
   ]);
 
   const onCommit = useCallback(async () => {
     setCommitResult(undefined);
     creation.reset();
+    let result;
     try {
-      setCommitResult(await creation.commit(spec));
+      result = await creation.commit(spec);
     } catch {
       // Left to `creation.failure`.
+      return;
     }
-  }, [creation, spec]);
+    setCommitResult(result);
+    // The agent is in the pull request now (what `isProposed` says too); the
+    // page still shows the form and the outcome, so only the kept draft goes.
+    if (result.commit !== undefined) {
+      clearSavedDraft();
+    }
+  }, [creation, spec, clearSavedDraft]);
 
   const createLabel = creation.isDeploying ? 'Creating…' : 'Create agent';
   const proposeLabel = creation.isCommitting
@@ -330,6 +353,9 @@ function CreateAgentReview() {
               shape,
               declared,
               connector => labels.get(connector) ?? connector,
+            )}
+            {signIn.status === 'added' && (
+              <SignInToolChange change="added" signIn={signIn} />
             )}
           </PlainRow>
         </dl>

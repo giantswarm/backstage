@@ -119,11 +119,14 @@ jest.mock('../../hooks/useRenameSession', () => ({
   }),
 }));
 
+/** The installation's connectors, as `serverInfoOf` reads them; none unless set. */
+let mockMusterServers: unknown[] = [];
+let mockConnectorLabels = new Map<string, string>();
 jest.mock('../../hooks/useMusterServers', () => ({
   useMusterServers: () => ({
-    servers: [],
+    servers: mockMusterServers,
     resources: [],
-    labels: new Map(),
+    labels: mockConnectorLabels,
     isLoading: false,
     isUnavailable: false,
   }),
@@ -2154,6 +2157,87 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(screen.getByText('This turn was canceled')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('a connector sign-in the agent asks for', () => {
+    const LINK =
+      'https://muster.gazelle.example.com/oauth/proxy/start?state=xyz789';
+    afterEach(() => {
+      mockMusterServers = [];
+      mockConnectorLabels = new Map();
+    });
+
+    it('shows it as a sign-in to the connector, and answers the question once signed in', async () => {
+      mockMusterServers = [
+        {
+          name: 'grafana-cloud',
+          group: 'registered',
+          toolNamePrefix: 'x_grafana-cloud',
+          oauth: true,
+          signInTool: true,
+          displayName: 'Grafana Cloud',
+        },
+      ];
+      mockConnectorLabels = new Map([['grafana-cloud', 'Grafana Cloud']]);
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        timeline: {
+          ...loadedView.timeline,
+          items: [
+            ...loadedView.timeline.items,
+            {
+              kind: 'tool-call',
+              id: 'login',
+              taskIndex: 1,
+              toolName: 'core_auth_login',
+              via: 'Muster',
+              args: { server: 'grafana-cloud' },
+              result: {
+                content: [
+                  `Authentication Required\n\nServer: grafana-cloud\n\nPlease sign in to connect to this server:\n\n${LINK}`,
+                ],
+              },
+              isPending: false,
+            },
+          ],
+        },
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input',
+          toolName: 'ask_user',
+          questions: [
+            {
+              question: `Please sign in to Grafana Cloud: ${LINK}`,
+              choices: ["I've signed in", "I can't sign in right now"],
+              multiple: false,
+            },
+          ],
+        },
+      });
+      const user = userEvent.setup();
+      await render();
+
+      const card = screen.getByRole('form', {
+        name: 'Question from the agent',
+      });
+      const signIn = within(card).getByRole('link', {
+        name: 'Sign in to Grafana Cloud ↗',
+      });
+      expect(card).not.toHaveTextContent(LINK);
+      await user.click(signIn);
+      await user.click(
+        within(card).getByRole('button', { name: "I've signed in" }),
+      );
+
+      expect(mockAnswer).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        decision: 'approve',
+        answers: [["I've signed in"]],
+        text: "I've signed in",
       });
     });
   });

@@ -24,6 +24,7 @@ export * from './DataBar';
 export * from './DateComponent';
 export * from './DetailsPane';
 export * from './DisabledAction';
+export * from './DraftRestoredAlert';
 export * from './EmptyStateCard';
 export * from './ErrorStatus';
 export * from './ExternalLink';

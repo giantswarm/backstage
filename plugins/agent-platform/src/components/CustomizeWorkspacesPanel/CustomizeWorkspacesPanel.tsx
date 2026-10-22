@@ -89,10 +89,11 @@ function StoredCell({ row }: { row: WorkspaceRow }) {
 
 /**
  * The sync's state now, or the last cycle's result: the dot and its label,
- * and behind the info hint when it happened and the manager's words.
+ * and behind the info hint when it happened and the manager's words. The
+ * workspace's page and its Synchronize button say the same (`syncState`).
  */
 function LastSyncCell({ row }: { row: WorkspaceRow }) {
-  const state = syncState(row);
+  const state = syncState(row, row.awaitedSync);
   return (
     <Cell>
       <span
@@ -131,21 +132,28 @@ function RowActions({ row }: { row: WorkspaceRow }) {
   });
   const [isDeleteOpen, setDeleteOpen] = useState(false);
 
+  // As the page's Synchronize: it waits for a sync the manager reports, not
+  // for one only expected.
+  const { reported } = syncState(row, row.awaitedSync);
+
   const syncNow = () =>
-    sync.mutate(undefined, {
-      onSuccess: () =>
-        toastApi.post({
-          title: `Synchronization of ${row.name} requested`,
-          status: 'success',
-          timeout: TOAST_TIMEOUT_MS,
-        }),
-      onError: error =>
-        toastApi.post({
-          title: `${row.name} could not be synchronized`,
-          description: error.message,
-          status: 'danger',
-        }),
-    });
+    sync.mutate(
+      { after: row.lastSync?.time ?? '' },
+      {
+        onSuccess: () =>
+          toastApi.post({
+            title: `Synchronization of ${row.name} requested`,
+            status: 'success',
+            timeout: TOAST_TIMEOUT_MS,
+          }),
+        onError: error =>
+          toastApi.post({
+            title: `${row.name} could not be synchronized`,
+            description: error.message,
+            status: 'danger',
+          }),
+      },
+    );
 
   const confirmDelete = () =>
     remove.mutate(undefined, {
@@ -178,7 +186,7 @@ function RowActions({ row }: { row: WorkspaceRow }) {
           </MenuItem>
           <MenuItem
             iconStart={<SyncIcon />}
-            isDisabled={row.deleting || sync.isPending}
+            isDisabled={row.deleting || reported || sync.isPending}
             onAction={syncNow}
           >
             Synchronize…
@@ -207,9 +215,6 @@ function RowActions({ row }: { row: WorkspaceRow }) {
     </Cell>
   );
 }
-
-/** muster's refusal of a tool call before the person signed in to its server. */
-const AUTH_REQUIRED = /\bauth_required\b/;
 
 /** The installations whose workspaces could not be read, and why. */
 function ReadFailures({
@@ -294,6 +299,7 @@ export function CustomizeWorkspacesPanel({
     sharedIdentity,
     isLoading,
     failures,
+    signIns,
     retry,
   } = useWorkspacesData();
   const rows = useMemo(
@@ -389,10 +395,8 @@ export function CustomizeWorkspacesPanel({
   ]);
 
   // A read muster refused for want of the person's sign-in to
-  // workspace-manager offers that sign-in, not the refusal's text.
-  const signIns = Object.keys(failures).filter(installation =>
-    AUTH_REQUIRED.test(failures[installation]),
-  );
+  // workspace-manager (the 401's reason, `signIns`) offers that sign-in, not
+  // the refusal's text.
   const otherFailures = Object.fromEntries(
     Object.entries(failures).filter(
       ([installation]) => !signIns.includes(installation),

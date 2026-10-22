@@ -45,6 +45,7 @@ export const SHELL_SPECS = [
   'notification-inbox.spec.ts',
   'provider-connect.spec.ts',
   'muster-namespaced.spec.ts',
+  'new-agent-draft.spec.ts',
   'model-backends.spec.ts',
   'models.spec.ts',
   'serve-node-choice.spec.ts',

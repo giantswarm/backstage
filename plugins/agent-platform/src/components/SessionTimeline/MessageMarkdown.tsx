@@ -15,6 +15,10 @@ import {
 } from '@material-ui/core';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
+import {
+  ConnectorSignInAction,
+  useConnectorSignInLink,
+} from '../ConnectorSignInLinks';
 
 /**
  * Styling for agent prose, shared with the AI chat plugin's visual language so
@@ -136,7 +140,8 @@ const useStyles = makeStyles(theme => ({
  *
  * Same routing the AI chat makes: another origin opens externally with the
  * usual warning affordance, a catalog path becomes an entity link, and any
- * other same-origin path navigates within the app.
+ * other same-origin path navigates within the app. A connector sign-in muster
+ * issued in the session is the exception: a sign-in action.
  */
 function MarkdownLink({
   href,
@@ -145,6 +150,12 @@ function MarkdownLink({
   href?: string;
   children?: React.ReactNode;
 }) {
+  // A connector sign-in muster issued in this session is shown as the action
+  // it is, not as the opaque URL (giantswarm/giantswarm#38774).
+  const signIn = useConnectorSignInLink(href);
+  if (signIn) {
+    return <ConnectorSignInAction link={signIn} />;
+  }
   if (!href) {
     return <>{children}</>;
   }
