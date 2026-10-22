@@ -52,6 +52,7 @@ describe('editStateOf', () => {
       skills: [PR_REVIEW, OCI_SKILL],
       plugins: [],
       egressText: '',
+      egressPolicyRefs: [],
       defaultWorkspace: '',
     });
     // No runtime: every agent runs on the platform Harness.
@@ -126,6 +127,35 @@ describe('updateOf', () => {
       changedFields(withEgress, {
         ...editStateOf(withEgress),
         egressText: '  https://github.com:443  ',
+      }),
+    ).toEqual([]);
+  });
+
+  it('replaces the picked EgressPolicies, clears them with an empty list, and ignores their order', () => {
+    const picking = agent({ egressPolicyRefs: ['github'] });
+    expect(editStateOf(picking).egressPolicyRefs).toEqual(['github']);
+    expect(
+      updateOf(picking, {
+        ...editStateOf(picking),
+        egressPolicyRefs: ['github', 'go-modules'],
+      }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      egressPolicyRefs: ['github', 'go-modules'],
+    });
+    expect(
+      updateOf(picking, { ...editStateOf(picking), egressPolicyRefs: [] }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      egressPolicyRefs: [],
+    });
+    const two = agent({ egressPolicyRefs: ['github', 'go-modules'] });
+    expect(
+      changedFields(two, {
+        ...editStateOf(two),
+        egressPolicyRefs: ['go-modules', 'github'],
       }),
     ).toEqual([]);
   });
