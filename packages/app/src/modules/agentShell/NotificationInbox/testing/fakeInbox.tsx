@@ -31,6 +31,7 @@ type Store = {
     waiting: McpServerAwaitingSignIn[];
     connected: string[];
     isRead: boolean;
+    isSettled: boolean;
     isAvailable: boolean;
     isDialogOpen: boolean;
   };
@@ -50,6 +51,7 @@ function emptyStore(): Store {
       waiting: [],
       connected: [],
       isRead: true,
+      isSettled: true,
       isAvailable: true,
       isDialogOpen: false,
     },
@@ -197,6 +199,7 @@ export const fakeInbox = {
     options: {
       connected?: string[];
       isRead?: boolean;
+      isSettled?: boolean;
       isAvailable?: boolean;
     } = {},
   ) {
@@ -209,6 +212,7 @@ export const fakeInbox = {
       ),
       connected: options.connected ?? [],
       isRead: options.isRead ?? true,
+      isSettled: options.isSettled ?? true,
       isAvailable: options.isAvailable ?? true,
     };
     emit();
@@ -274,6 +278,7 @@ function useMcpSignIn() {
       waiting: store.mcp.waiting,
       connected: store.mcp.connected,
       isRead: store.mcp.isRead,
+      isSettled: store.mcp.isSettled,
       isAvailable: store.mcp.isAvailable,
       openSignIn,
     }),

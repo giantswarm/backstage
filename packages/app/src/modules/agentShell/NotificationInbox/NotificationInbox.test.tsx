@@ -723,6 +723,7 @@ describe('Notification inbox', () => {
         connected?: string[];
         isAvailable?: boolean;
         isRead?: boolean;
+        isSettled?: boolean;
       },
     ) {
       await act(async () => {
@@ -987,6 +988,20 @@ describe('Notification inbox', () => {
       ]);
       await renderShell();
 
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      expect(toastTitles()).toEqual(['2 notifications need your attention']);
+    });
+
+    it("holds the first read while muster's answer settles: a server waiting at load is in the summary toast", async () => {
+      // muster has answered, but its waiting servers settle on a later read.
+      fakeInbox.setMcpWaiting([], { isSettled: false });
+      fakeInbox.setSessions([
+        { sessionId: 's1', state: 'input-required', changedAt: 1000 },
+      ]);
+      await renderShell();
+      expect(post).not.toHaveBeenCalled();
+
+      await readMcp(['kubernetes']);
       await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
       expect(toastTitles()).toEqual(['2 notifications need your attention']);
     });

@@ -93,6 +93,10 @@ export function settleWaiting(
  * regular reads, which stop while the session is gone. Nor while muster
  * reports a server connecting: the read itself polls then
  * (`connectingPollInterval`).
+ *
+ * `isSettled` says the first settling is over, so `waiting` is what the load
+ * found: the inbox takes its first read then, and a server waiting at load is
+ * catch-up, with its toast. It stays true once it is.
  */
 export function useSettledWaiting({
   waiting,
@@ -111,8 +115,10 @@ export function useSettledWaiting({
   sessionExpired: boolean;
   /** Reads the status again; stable across renders. */
   refetch: () => void;
-}): string[] {
+}): { waiting: string[]; isSettled: boolean } {
   const [state, setState] = useState<SettleState>(UNSETTLED);
+  // The answer the settling last took in.
+  const [takenAt, setTakenAt] = useState(0);
   const key = waiting.join('\n');
 
   // Once per answer: the same answer read twice confirms nothing.
@@ -127,12 +133,37 @@ export function useSettledWaiting({
         at: readAt,
       }),
     );
+    setTakenAt(readAt);
     // `key` and `connecting` belong to the answer `readAt` names.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readAt]);
 
   const { unsettledSince } = state;
   const failing = answeredAt > readAt;
+
+  // Settled once a read was taken in and left nothing to confirm, or there is
+  // nothing more to read now: the reads fail, or the portal session is gone.
+  // It stays settled: a server that starts to wait later is news, not a load.
+  const [isSettled, setIsSettled] = useState(false);
+  const settledNow =
+    failing ||
+    sessionExpired ||
+    (takenAt > 0 && takenAt === readAt && unsettledSince === undefined);
+  useEffect(() => {
+    if (settledNow) {
+      setIsSettled(true);
+    }
+  }, [settledNow]);
+  // Nor is the inbox held back past the quick re-reads by a status that keeps
+  // changing: the regular reads take over then, and so does the inbox.
+  const hasRead = readAt > 0;
+  useEffect(() => {
+    if (!hasRead) {
+      return undefined;
+    }
+    const timer = setTimeout(() => setIsSettled(true), SETTLE_REREAD_UNTIL_MS);
+    return () => clearTimeout(timer);
+  }, [hasRead]);
   useEffect(() => {
     // While muster reports a server connecting, the status read polls every
     // CONNECTING_POLL_INTERVAL_MS on its own: a second timer here would only
@@ -157,5 +188,5 @@ export function useSettledWaiting({
     refetch,
   ]);
 
-  return state.settled;
+  return { waiting: state.settled, isSettled };
 }
