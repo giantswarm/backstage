@@ -25,6 +25,7 @@ const state: NewAgentFormState = {
   droppedHarness: undefined,
   systemMessage: 'You review pull requests.',
   egressText: '',
+  defaultWorkspace: '',
   selectedSkills: [skill],
   keptSkills: [],
   selectedPlugins: [],
@@ -48,6 +49,18 @@ describe('skillEntryOf', () => {
 });
 
 describe('agentSpecOf', () => {
+  it('sends the default workspace in the agent namespace, and none when unset', () => {
+    expect(
+      agentSpecOf(
+        { ...state, defaultWorkspace: 'platform' },
+        { toolset: ['preset:read-only'] },
+      ).defaultWorkspace,
+    ).toBe(`${state.modelConfigNamespace}/platform`);
+    expect(
+      agentSpecOf(state, { toolset: ['preset:read-only'] }),
+    ).not.toHaveProperty('defaultWorkspace');
+  });
+
   it('sends the extra egress origins as typed, one per line, and none when empty', () => {
     expect(
       agentSpecOf(

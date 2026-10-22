@@ -52,6 +52,7 @@ describe('editStateOf', () => {
       skills: [PR_REVIEW, OCI_SKILL],
       plugins: [],
       egressText: '',
+      defaultWorkspace: '',
     });
     // No runtime: every agent runs on the platform Harness.
     expect(Object.keys(editStateOf(agent()))).not.toContain('runtime');
@@ -81,6 +82,30 @@ describe('editStateOf', () => {
 });
 
 describe('updateOf', () => {
+  it('sets, changes and removes the default workspace, qualified with the agent namespace', () => {
+    const plain = agent();
+    expect(
+      updateOf(plain, { ...editStateOf(plain), defaultWorkspace: 'platform' }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      defaultWorkspace: 'kagent/platform',
+    });
+    const withDefault = agent({ defaultWorkspace: 'kagent/platform' });
+    expect(editStateOf(withDefault).defaultWorkspace).toBe('platform');
+    expect(changedFields(withDefault, editStateOf(withDefault))).toEqual([]);
+    expect(
+      updateOf(withDefault, {
+        ...editStateOf(withDefault),
+        defaultWorkspace: '',
+      }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      defaultWorkspace: '',
+    });
+  });
+
   it('replaces the whole egress list, and clears it with an empty list', () => {
     const withEgress = agent({ egress: ['https://github.com:443'] });
     expect(editStateOf(withEgress).egressText).toBe('https://github.com:443');

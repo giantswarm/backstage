@@ -7,6 +7,10 @@ import type {
 import { declaredToolset, normalizeSelection } from './toolset';
 import { egressTextOf, parseEgressText, sameEgress } from './egress';
 import { skillEntryOf } from './agentSpec';
+import {
+  defaultWorkspaceName,
+  qualifiedDefaultWorkspace,
+} from './defaultWorkspace';
 import { canonicalSkillId, type DiscoveredSkill } from './skills';
 import {
   pluginEntryKey,
@@ -42,6 +46,8 @@ export type AgentEditState = {
   plugins: AgentPluginEntry[];
   /** Extra HTTP(S) origins the agent may reach, one per line as typed. */
   egressText: string;
+  /** The default workspace's name; `''` for none. */
+  defaultWorkspace: string;
   /**
    * The Tools step's *Nothing outside the chat* was picked: an empty `toolset`
    * then declares `preset:none` even for an agent that declares no toolset
@@ -60,6 +66,7 @@ export const AGENT_EDIT_FIELDS = [
   'skills',
   'plugins',
   'egress',
+  'defaultWorkspace',
 ] as const;
 
 export type AgentEditField = (typeof AGENT_EDIT_FIELDS)[number];
@@ -75,6 +82,7 @@ export function editStateOf(agent: AgentManagerAgent): AgentEditState {
     skills: [...(agent.skills ?? [])],
     plugins: [...(agent.plugins ?? [])],
     egressText: egressTextOf(agent.egress),
+    defaultWorkspace: defaultWorkspaceName(agent.defaultWorkspace),
   };
 }
 
@@ -160,6 +168,9 @@ export function changedFields(
   if (!sameEgress(parseEgressText(edit.egressText), agent.egress ?? [])) {
     changed.push('egress');
   }
+  if (edit.defaultWorkspace !== baseline.defaultWorkspace) {
+    changed.push('defaultWorkspace');
+  }
   return changed;
 }
 
@@ -169,7 +180,8 @@ export function changedFields(
  * A string field the person emptied is sent as `""`, which agent-manager reads
  * as "back to the chart's default" (an omitted field would mean "unchanged").
  * `toolset`, `skills` and `egress` replace their whole list (an empty
- * `egress` clears it); the empty selection is sent
+ * `egress` clears it); an emptied default workspace is sent as `""`, which
+ * removes it; the empty selection is sent
  * as `preset:none`, never as an empty list (agent-manager refuses that).
  * Nothing else is ever sent — no `force`, no runtime.
  */
@@ -200,6 +212,12 @@ export function updateOf(
       case 'egress':
         update.egress = parseEgressText(edit.egressText);
         break;
+      case 'defaultWorkspace':
+        update.defaultWorkspace = qualifiedDefaultWorkspace(
+          agent.namespace,
+          edit.defaultWorkspace,
+        );
+        break;
       default:
         break;
     }
@@ -222,6 +240,7 @@ export const EDIT_FIELD_LABELS: Record<AgentEditField, string> = {
   skills: 'Skills',
   plugins: 'Plugins',
   egress: 'Extra egress origins',
+  defaultWorkspace: 'Default workspace',
 };
 
 /** Where a git skill entry lives, in the catalog's canonical shape. */
@@ -305,6 +324,7 @@ export function formStateOfAgent(
     droppedHarness: undefined,
     systemMessage: baseline.systemMessage,
     egressText: baseline.egressText,
+    defaultWorkspace: baseline.defaultWorkspace,
     selectedSkills,
     keptSkills,
     selectedPlugins,
@@ -406,6 +426,7 @@ export function editStateOfForm(
     skills: skillEntriesOfForm(agent, form),
     plugins: pluginEntriesOfForm(agent, form),
     egressText: form.egressText,
+    defaultWorkspace: form.defaultWorkspace,
     chatOnly: Boolean(form.toolsChatOnly),
   };
 }

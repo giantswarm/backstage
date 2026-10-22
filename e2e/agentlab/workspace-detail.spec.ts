@@ -1,5 +1,14 @@
 import type { Page } from '@playwright/test';
-import { expect, open, signIn, test } from './fixtures';
+import {
+  deleteCurrentSession,
+  expect,
+  open,
+  openReadyAgent,
+  signIn,
+  startSessionButton,
+  test,
+  type LabAgent,
+} from './fixtures';
 import { contextOptionsFor, lab } from './lab';
 
 /**
@@ -8,7 +17,8 @@ import { contextOptionsFor, lab } from './lab';
  * since a workspace reads a real GitHub owner with the person's own grant of
  * the lab's GitHub App, which only a person's browser sign-in gives. Name one
  * with `AGENTLAB_WORKSPACE=<organization>/<name>`, created by the admin in the
- * portal with at least one Session started on it; without it the spec skips.
+ * portal; without it the spec skips. The Sessions tab's test starts the
+ * Session it reads, with the worker's fixture agent, and deletes it.
  */
 const [organization, name] = (process.env.AGENTLAB_WORKSPACE ?? '').split('/');
 const path = `/customize/workspaces/${lab.installation}/${organization}/${name}`;
@@ -18,7 +28,13 @@ test.skip(
   'AGENTLAB_WORKSPACE=<organization>/<name> names no workspace of the lab',
 );
 
-/** Whether muster still waits for the person's sign-in to workspace-manager. */
+/**
+ * Whether muster still waits for the person's sign-in to workspace-manager.
+ * The GitHub grant is the person's, not the browser's (`grantScope: subject`):
+ * a run's fresh muster session adopts it, and the card a first read may show
+ * gives way once it has, or once its Sign in reuses the grant without a
+ * GitHub page. Only a person with no grant at all keeps the card.
+ */
 async function needsManagerSignIn(page: Page): Promise<boolean> {
   const card = page.getByTestId('workspaces-sign-in');
   // The heading shows above the sign-in card too: wait for what only a read
@@ -28,19 +44,81 @@ async function needsManagerSignIn(page: Page): Promise<boolean> {
     .getByText(/^Organization .+ · /)
     .or(main.getByText(/^You are not a member of /));
   await expect(card.or(read).first()).toBeVisible();
-  return card.isVisible();
+  if (!(await card.isVisible())) {
+    return false;
+  }
+  // A sign-in that needs GitHub opens its page in a window of its own, which
+  // no headless run completes: the card stays and the spec skips.
+  const popups: Page[] = [];
+  const keep = (popup: Page) => popups.push(popup);
+  page.on('popup', keep);
+  try {
+    await card.getByRole('button', { name: 'Sign in' }).click();
+    await expect(read.first()).toBeVisible({ timeout: 30_000 });
+    return false;
+  } catch {
+    return true;
+  } finally {
+    page.off('popup', keep);
+    await Promise.all(
+      popups.map(popup => popup.close().catch(() => undefined)),
+    );
+  }
 }
 
-test('shows the workspace, its repositories with head commits and its Sessions with cleanup dates', async ({
-  admin,
-}) => {
-  await open(admin, path);
-  test.skip(
-    await needsManagerSignIn(admin),
-    'the admin has not signed in to workspace-manager in muster (the GitHub App grant)',
-  );
+/**
+ * Synchronizes the workspace from its page and waits for the notification of
+ * the outcome: success, unchanged or with what was fetched, or the failure
+ * with the manager's reason.
+ */
+async function synchronize(page: Page): Promise<void> {
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: 'Synchronize' }).click();
+  await expect(
+    main.getByRole('button', { name: 'Synchronizing…' }),
+  ).toBeDisabled();
+  await expect(
+    page
+      .getByText(
+        /^Workspace synchronization successful$|^Synchronization of .* failed$/,
+      )
+      .first(),
+  ).toBeVisible({ timeout: 4 * 60_000 });
+  await expect(main.getByRole('button', { name: 'Synchronize' })).toBeEnabled();
+}
 
-  const main = admin.getByRole('main');
+/**
+ * Starts a session with `agent` on the workspace from the agent's page — the
+ * composer's workspace pick, `authorize_workspace` and `start_session` — and
+ * waits for its first turn, which gives its directory a last turn and so a
+ * cleanup date. Resolves on the session's page with its id.
+ */
+async function startSessionOnWorkspace(
+  page: Page,
+  agent: LabAgent,
+): Promise<string> {
+  await openReadyAgent(page, agent);
+  await startSessionButton(page).click();
+  const promptBox = page.getByRole('textbox', { name: 'Prompt' });
+  await expect(promptBox).toBeVisible();
+  await page.getByRole('button', { name: /Workspace/ }).click();
+  await page
+    .getByRole('option', { name: new RegExp(`^${name}(\\s|$)`) })
+    .click();
+  await promptBox.fill('Answer with the word ready.');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  const address = new RegExp(`/sessions/${lab.installation}/([^/]+)$`);
+  await expect(page).toHaveURL(address, { timeout: 60_000 });
+  await expect(
+    page.getByTestId('timeline-agent-message').first(),
+    'the first turn finished',
+  ).toBeVisible({ timeout: 180_000 });
+  return page.url().match(address)![1];
+}
+
+/** The page's header and tabs, the Sessions tab listing `session`. */
+async function expectWorkspaceTabs(page: Page, session: string): Promise<void> {
+  const main = page.getByRole('main');
   await expect(main.getByRole('heading', { level: 1, name })).toBeVisible();
   await expect(
     main.getByText(
@@ -58,14 +136,17 @@ test('shows the workspace, its repositories with head commits and its Sessions w
       .getByText(/^[0-9a-f]{7}$/),
   ).toBeVisible();
 
+  // A Session's directory shows once a sync has measured it.
+  await synchronize(page);
   await main.getByRole('tab', { name: /^Sessions/ }).click();
-  await expect(admin).toHaveURL(new RegExp(`${path}/sessions$`));
-  const sessions = main.locator('table');
-  await expect(sessions.getByRole('row').nth(1)).toContainText(/\d{4}/);
-  await expect(sessions.getByRole('link').first()).toHaveAttribute(
-    'href',
-    new RegExp(`/sessions/${lab.installation}/`),
+  await expect(page).toHaveURL(new RegExp(`${path}/sessions$`));
+  const link = page.locator(
+    `a[href$="/sessions/${lab.installation}/${session}"]`,
   );
+  const row = main.locator('table').getByRole('row').filter({ has: link });
+  await expect(row).toBeVisible();
+  // Its cleanup date, from the first turn.
+  await expect(row).toContainText(/\d{4}/);
 
   await main.getByRole('tab', { name: /^Details/ }).click();
   await expect(
@@ -74,6 +155,27 @@ test('shows the workspace, its repositories with head commits and its Sessions w
   await expect(main.getByRole('region', { name: 'Disk' })).toContainText(
     'Capacity',
   );
+}
+
+test('shows the workspace, its repositories with head commits and its Sessions with cleanup dates', async ({
+  admin,
+  labAgent,
+}) => {
+  test.setTimeout(15 * 60_000);
+  await open(admin, path);
+  test.skip(
+    await needsManagerSignIn(admin),
+    'the admin has not signed in to workspace-manager in muster (the GitHub App grant)',
+  );
+
+  const session = await startSessionOnWorkspace(admin, labAgent);
+  try {
+    await open(admin, path);
+    await expectWorkspaceTabs(admin, session);
+  } finally {
+    await open(admin, `/sessions/${lab.installation}/${session}`);
+    await deleteCurrentSession(admin);
+  }
 });
 
 test('Edit opens the editor on the sign-ins the page already holds', async ({
@@ -124,21 +226,7 @@ test('Synchronize shows the synchronization running and notifies its result when
     'the admin has not signed in to workspace-manager in muster (the GitHub App grant)',
   );
 
-  const main = admin.getByRole('main');
-  await main.getByRole('button', { name: 'Synchronize' }).click();
-  await expect(
-    main.getByRole('button', { name: 'Synchronizing…' }),
-  ).toBeDisabled();
-  // The outcome is a notification: success, unchanged or with what was
-  // fetched, or the failure with the manager's reason.
-  await expect(
-    admin
-      .getByText(
-        /^Workspace synchronization successful$|^Synchronization of .* failed$/,
-      )
-      .first(),
-  ).toBeVisible({ timeout: 4 * 60_000 });
-  await expect(main.getByRole('button', { name: 'Synchronize' })).toBeEnabled();
+  await synchronize(admin);
 });
 
 test('an address naming another Organization goes to the workspace’s own', async ({
