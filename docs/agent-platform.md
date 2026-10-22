@@ -80,8 +80,8 @@ it: coming back to the form fills it in again and says so ("Your draft is
 back") on the step it reopens on, with **Start over** to begin empty instead;
 the note closes once the person moves to another step. The draft is everything
 typed and picked on the four steps (name, description, instructions,
-environment, tenant, model, runtime, default workspace, technical name, egress
-origins, skills, plugins and tools); the form holds no secret or token, and the
+environment, tenant, model, runtime, default workspace, technical name,
+EgressPolicies, egress origins, skills, plugins and tools); the form holds no secret or token, and the
 helper's side chat is not part of it. It lives in the browser tab's session
 storage, per signed-in person, so another tab or another person on the same
 browser never sees it (a draft left by whoever used the tab before is removed
