@@ -373,14 +373,20 @@ a Technical details fold-out with the owning Helm release, the resource and
 the conditions with their reason and message), Usage (`…/usage`: the gateway's
 30-day figures and spend per day) and Used by (`…/used-by`, counted in the
 tab: the agents that use it with their spend on it). The former `…/details`
-address lands on Overview. A model agents cannot use yet says why at the top
-of Overview in plain words (`modelProblem`): what is wrong and what to do,
-from the reason kagent gives on the failed condition (a missing or incomplete
-key, an endpoint address it cannot find, settings it rejects, an unsupported
-provider, with a fallback per condition), offering Edit where the person may
-edit and naming whom to ask otherwise. Reasons, condition names and the
-controller's messages stay in Technical details, which open on arrival; the
-alert's Show conditions reopens them and scrolls them into view.
+address lands on Overview. The facts include the model's context window from
+`agentPlatform.models.contextWindows`, the window a session's context
+indicator uses; when the table names no window for the model, or only one
+whose value is not a number of tokens, an info note under the facts says so
+and whom to ask to set it. The note waits for the signed-in config, and a
+model without a model id gets none. A model agents cannot use
+yet says why at the top of Overview in plain words (`modelProblem`): what is
+wrong and what to do, from the reason kagent gives on the failed condition (a
+missing or incomplete key, an endpoint address it cannot find, settings it
+rejects, an unsupported provider, with a fallback per condition), offering
+Edit where the person may edit and naming whom to ask otherwise. Reasons,
+condition names and the controller's messages stay in Technical details,
+which open on arrival; the alert's Show conditions reopens them and scrolls
+them into view.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
 `EditModelPage` at `/customize/models/<installation>/<namespace>/<name>/edit`)
