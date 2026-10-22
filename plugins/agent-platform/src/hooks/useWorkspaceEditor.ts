@@ -7,6 +7,7 @@ import {
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import type { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
+import { awaitSync } from './useWorkspaceActions';
 import {
   previewableSources,
   toCreateInput,
@@ -243,7 +244,10 @@ export type SaveWorkspace = {
 /**
  * `create_workspace` or `update_workspace` as the person. The manager checks
  * the spec and the membership; its refusal is the mutation's error, a
- * `WorkspaceManagerError` of its kind.
+ * `WorkspaceManagerError` of its kind. The manager syncs a workspace after
+ * every change to it, so a save records that sync as awaited: the list and
+ * the page say Synchronizing until it ends. An update that changed nothing
+ * (the same `resourceVersion`) starts none.
  */
 export function useSaveWorkspace(client: WorkspaceManagerClient | undefined) {
   const queryClient = useQueryClient();
@@ -260,7 +264,13 @@ export function useSaveWorkspace(client: WorkspaceManagerClient | undefined) {
         ? client.updateWorkspace(toUpdateInput(draft, edit.resourceVersion))
         : client.createWorkspace(toCreateInput(draft, organization));
     },
-    onSuccess: (workspace: Workspace) => {
+    onSuccess: (workspace: Workspace, { edit }) => {
+      if (client && workspace.resourceVersion !== edit?.resourceVersion) {
+        awaitSync(queryClient, client.installation, workspace.name, {
+          after: workspace.lastSync?.time ?? '',
+          since: Date.now(),
+        });
+      }
       // The Workspaces tab's lists, and this editor's reading of the workspace.
       void queryClient.invalidateQueries({
         queryKey: ['muster', 'agent-platform', 'workspaces'],

@@ -9,6 +9,7 @@ import {
   type WorkspaceDetail,
   type WorkspaceProvider,
 } from '../../lib/workspaceManager';
+import type { AwaitedSync } from '../../lib/workspaceList';
 import { sessionsRouteRef, workspacesRouteRef } from '../../routes';
 import { WorkspaceDetailRoute } from './WorkspaceDetailPage';
 
@@ -56,6 +57,8 @@ const mockRemove = {
   isPending: false,
   error: null,
 };
+/** The sync the person started here, as `awaitSync` records it. */
+let mockAwaited: AwaitedSync | undefined;
 let mockProviders: WorkspaceProvider[] | undefined;
 jest.mock('../../hooks/useWorkspaceEditor', () => ({
   useWorkspaceProviders: () => ({ data: mockProviders }),
@@ -64,6 +67,7 @@ jest.mock('../../hooks/useWorkspaceActions', () => ({
   useWorkspaceDetail: (...args: unknown[]) => mockUseWorkspaceDetail(...args),
   useWorkspaceLastPushes: () => ({ data: mockPushes }),
   useWorkspaceActions: () => ({ sync: mockSync, remove: mockRemove }),
+  useAwaitedSync: () => mockAwaited,
 }));
 
 function docs(overrides: Partial<WorkspaceDetail['workspace']> = {}) {
@@ -165,6 +169,7 @@ describe('WorkspaceDetailPage', () => {
     mockDetail = { data: docs(), error: null, refetch: jest.fn() };
     mockPushes = undefined;
     mockProviders = undefined;
+    mockAwaited = undefined;
     mockMusterApi = {};
     mockPresence = 'available';
   });
@@ -333,30 +338,27 @@ describe('WorkspaceDetailPage', () => {
     expect(screen.getByText(/^Synchronizing, started/)).toBeInTheDocument();
   });
 
-  it('keeps reading, in a background tab too, until a requested synchronization shows ended', async () => {
-    mockSync.mutate.mockImplementation((_: unknown, options: any) =>
-      // The read after the request does not show the synchronization yet.
+  it('says Synchronizing on the badge and the button from the click on, until a read shows the synchronization ended', async () => {
+    mockSync.mutate.mockImplementation((variables: unknown, options: any) => {
+      // The request is recorded as it is made; the read after it does not
+      // show the synchronization yet.
+      mockAwaited = { ...(variables as { after: string }), since: Date.now() };
       options.onSuccess({
         workspace: 'ws-docs',
         requestedAt: '2026-10-21T08:00:00Z',
-      }),
-    );
+      });
+    });
     await renderPage();
-    expect(mockUseWorkspaceDetail).toHaveBeenLastCalledWith(
-      'gazelle',
-      'ws-docs',
-      true,
-      { followSync: true, awaitingSync: false },
-    );
+    expect(screen.getByText('Synchronized')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Synchronize' }));
 
-    expect(mockUseWorkspaceDetail).toHaveBeenLastCalledWith(
-      'gazelle',
-      'ws-docs',
-      true,
-      { followSync: true, awaitingSync: true },
+    expect(mockSync.mutate).toHaveBeenCalledWith(
+      { after: '2026-10-20T10:00:00Z' },
+      expect.anything(),
     );
+    expect(screen.getByText('Synchronizing')).toBeInTheDocument();
+    expect(screen.queryByText('Synchronized')).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Synchronizing…' }),
     ).toBeDisabled();
@@ -365,8 +367,37 @@ describe('WorkspaceDetailPage', () => {
     ).toBeNull();
   });
 
+  it('says Synchronizing on the badge, the button and Details alike for a new workspace the manager has not taken up yet', async () => {
+    mockDetail = {
+      ...mockDetail,
+      data: {
+        ...docs({
+          createdAt: new Date().toISOString(),
+          lastSync: undefined,
+        }),
+        mirrors: [],
+      },
+    };
+    await renderPage('/customize/workspaces/gazelle/lab/ws-docs/details');
+
+    expect(screen.getByText('Synchronizing')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Synchronizing…' }),
+    ).toBeDisabled();
+    const status = screen.getByRole('region', {
+      name: 'Synchronization status',
+    });
+    expect(
+      within(status).getByText(
+        'Synchronizing, waiting for the workspace-manager to start it',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/not synchronized yet/i)).toBeNull();
+  });
+
   it('runs Synchronize and notifies an unchanged result when it ends', async () => {
-    mockSync.mutate.mockImplementation((_: unknown, options: any) => {
+    mockSync.mutate.mockImplementation((variables: unknown, options: any) => {
+      mockAwaited = { ...(variables as { after: string }), since: Date.now() };
       // The read after the request finds the synchronization ended, unchanged.
       mockDetail = {
         ...mockDetail,

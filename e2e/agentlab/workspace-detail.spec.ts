@@ -74,9 +74,11 @@ async function needsManagerSignIn(page: Page): Promise<boolean> {
 async function synchronize(page: Page): Promise<void> {
   const main = page.getByRole('main');
   await main.getByRole('button', { name: 'Synchronize' }).click();
+  // The badge says what the button says, from the click on.
   await expect(
     main.getByRole('button', { name: 'Synchronizing…' }),
   ).toBeDisabled();
+  await expect(main.getByText('Synchronizing', { exact: true })).toBeVisible();
   await expect(
     page
       .getByText(
@@ -227,6 +229,33 @@ test('Synchronize shows the synchronization running and notifies its result when
   );
 
   await synchronize(admin);
+});
+
+test('the Workspaces tab says what the workspace’s page says of its synchronization', async ({
+  admin,
+}) => {
+  test.setTimeout(5 * 60_000);
+  await open(admin, path);
+  test.skip(
+    await needsManagerSignIn(admin),
+    'the admin has not signed in to workspace-manager in muster (the GitHub App grant)',
+  );
+
+  await synchronize(admin);
+  const state =
+    /^(Synchronized|Unchanged|Failed|Synchronizing|Not synchronized yet)$/;
+  const badge = await admin
+    .getByRole('main')
+    .getByText(state)
+    .first()
+    .textContent();
+
+  await open(admin, `/customize/workspaces?organization=${organization}`);
+  const row = admin
+    .getByRole('main')
+    .getByRole('row')
+    .filter({ has: admin.getByRole('link', { name, exact: true }) });
+  await expect(row.getByText(state)).toHaveText(badge!);
 });
 
 test('an address naming another Organization goes to the workspace’s own', async ({

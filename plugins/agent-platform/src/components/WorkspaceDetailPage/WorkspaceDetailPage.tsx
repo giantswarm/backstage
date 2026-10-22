@@ -54,6 +54,7 @@ import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import {
+  useAwaitedSync,
   useWorkspaceActions,
   useWorkspaceDetail,
   useWorkspaceLastPushes,
@@ -70,10 +71,8 @@ import {
 } from '../../lib/sharedIdentity';
 import { shortCommit } from '../../lib/skills';
 import {
-  isSyncing,
   lastSyncResult,
   pushedSinceSync,
-  requestedSyncEnded,
   searchDirectories,
   searchMirrors,
   sortedDirectories,
@@ -83,6 +82,7 @@ import {
 import {
   sizeLabel,
   sourcesLabel,
+  syncEnded,
   syncState,
   workspaceRowId,
   WORKSPACES_BLOCKED,
@@ -221,12 +221,13 @@ function WorkspaceDetailContent({
   const basePath = useSplatBasePath();
   const { search } = useLocation();
   const availability = useWorkspaceManagerAvailability(installation);
-  // The sync this person asked for, until its outcome has been shown.
-  const [requestedAt, setRequestedAt] = useState<string>();
+  // The last sync before the one this person asked for with Synchronize,
+  // until that one's outcome has been shown; `''` before the first.
+  const [notifyAfter, setNotifyAfter] = useState<string>();
   const detail = useWorkspaceDetail(installation, name, !needsManagerSignIn, {
     followSync: true,
-    awaitingSync: Boolean(requestedAt),
   });
+  const awaited = useAwaitedSync(installation, name);
   const { sync, remove } = useWorkspaceActions(installation, name);
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const workspace = detail.data?.workspace;
@@ -235,10 +236,10 @@ function WorkspaceDetailContent({
   useEffect(() => {
     if (
       workspace?.lastSync &&
-      requestedAt &&
-      requestedSyncEnded(workspace, requestedAt)
+      notifyAfter !== undefined &&
+      syncEnded(workspace, notifyAfter)
     ) {
-      setRequestedAt(undefined);
+      setNotifyAfter(undefined);
       const result = lastSyncResult(workspace.lastSync);
       toastApi.post(
         result.tone === 'danger'
@@ -255,25 +256,22 @@ function WorkspaceDetailContent({
             },
       );
     }
-  }, [workspace, requestedAt, toastApi, name]);
+  }, [workspace, notifyAfter, toastApi, name]);
 
   const syncNow = () => {
-    sync.mutate(undefined, {
-      // The manager's time, which the last sync's is compared with; without
-      // it, the last sync the page knows.
-      onSuccess: result =>
-        setRequestedAt(
-          result.requestedAt ||
-            workspace?.lastSync?.time ||
-            new Date(0).toISOString(),
-        ),
-      onError: error =>
-        toastApi.post({
-          title: `${name} could not be synchronized`,
-          description: error.message,
-          status: 'danger',
-        }),
-    });
+    const after = workspace?.lastSync?.time ?? '';
+    sync.mutate(
+      { after },
+      {
+        onSuccess: () => setNotifyAfter(after),
+        onError: error =>
+          toastApi.post({
+            title: `${name} could not be synchronized`,
+            description: error.message,
+            status: 'danger',
+          }),
+      },
+    );
   };
 
   const confirmDelete = () =>
@@ -366,8 +364,9 @@ function WorkspaceDetailContent({
     }
   }
 
-  const state = syncState(workspace);
-  const syncing = isSyncing(workspace) || Boolean(requestedAt);
+  // One state for the badge, the button and the Synchronization status, as
+  // the list's row says it.
+  const state = syncState(workspace, awaited);
   const row: WorkspaceRow = {
     ...workspace,
     installation,
@@ -388,10 +387,10 @@ function WorkspaceDetailContent({
       )}
       <Button
         variant="primary"
-        isDisabled={workspace.deleting || syncing || sync.isPending}
+        isDisabled={workspace.deleting || state.syncing || sync.isPending}
         onPress={syncNow}
       >
-        {syncing || sync.isPending ? 'Synchronizing…' : 'Synchronize'}
+        {state.syncing ? 'Synchronizing…' : 'Synchronize'}
       </Button>
     </>
   );
@@ -459,7 +458,7 @@ function WorkspaceDetailContent({
             path="details"
             element={
               <Flex direction="column" gap="6">
-                <SyncSection detail={detail.data} />
+                <SyncSection detail={detail.data} syncing={state.syncing} />
                 <StorageSection detail={detail.data} />
               </Flex>
             }
@@ -483,8 +482,18 @@ function WorkspaceDetailContent({
   );
 }
 
-/** The last sync, its result and what started it, and the sync running now. */
-function SyncSection({ detail }: { detail: WorkspaceDetail }) {
+/**
+ * The last sync, its result and what started it, and the sync under way:
+ * running, requested, or (`syncing` without either) due after a change the
+ * manager has not taken up yet.
+ */
+function SyncSection({
+  detail,
+  syncing,
+}: {
+  detail: WorkspaceDetail;
+  syncing: boolean;
+}) {
   const { workspace } = detail;
   const last = workspace.lastSync;
   const facts: Fact[] = [];
@@ -510,6 +519,11 @@ function SyncSection({ detail }: { detail: WorkspaceDetail }) {
         </>
       ),
     });
+  } else if (syncing) {
+    facts.push({
+      label: 'Now',
+      value: 'Synchronizing, waiting for the workspace-manager to start it',
+    });
   }
   if (last) {
     const result = lastSyncResult(last);
@@ -531,7 +545,7 @@ function SyncSection({ detail }: { detail: WorkspaceDetail }) {
     if (trigger) {
       facts.push({ label: 'Started by', value: trigger });
     }
-  } else if (!workspace.activeSync) {
+  } else if (!syncing) {
     facts.push({
       label: 'Last synchronization',
       value: 'Not synchronized yet',
