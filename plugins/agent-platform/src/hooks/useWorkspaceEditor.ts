@@ -7,6 +7,7 @@ import {
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import type { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
+import { awaitSync } from '../lib/awaitedSyncs';
 import {
   previewableSources,
   toCreateInput,
@@ -243,7 +244,12 @@ export type SaveWorkspace = {
 /**
  * `create_workspace` or `update_workspace` as the person. The manager checks
  * the spec and the membership; its refusal is the mutation's error, a
- * `WorkspaceManagerError` of its kind.
+ * `WorkspaceManagerError` of its kind. The manager syncs a workspace after
+ * every change to its spec, so a save records that sync as awaited: the list
+ * and the page say Synchronizing until it ends, behind a sync that already
+ * ran. `update_workspace` writes only the spec, against the version the
+ * editor read, so an answer with that same `resourceVersion` changed nothing
+ * and starts no sync; without a version read, none is expected either.
  */
 export function useSaveWorkspace(client: WorkspaceManagerClient | undefined) {
   const queryClient = useQueryClient();
@@ -260,7 +266,19 @@ export function useSaveWorkspace(client: WorkspaceManagerClient | undefined) {
         ? client.updateWorkspace(toUpdateInput(draft, edit.resourceVersion))
         : client.createWorkspace(toCreateInput(draft, organization));
     },
-    onSuccess: (workspace: Workspace) => {
+    onSuccess: (workspace: Workspace, { edit }) => {
+      const changed = edit
+        ? edit.resourceVersion !== undefined &&
+          workspace.resourceVersion !== edit.resourceVersion
+        : true;
+      if (client && changed) {
+        awaitSync(queryClient, client.installation, workspace.name, {
+          cause: edit ? 'changed' : 'created',
+          after: workspace.lastSync?.time ?? '',
+          behind: workspace.activeSync?.job,
+          since: Date.now(),
+        });
+      }
       // The Workspaces tab's lists, and this editor's reading of the workspace.
       void queryClient.invalidateQueries({
         queryKey: ['muster', 'agent-platform', 'workspaces'],
