@@ -158,7 +158,7 @@ test("an agent on the person's ChatGPT subscription holds the first message unti
       })
       .toBe(1);
     expect(turns[0].postData() ?? '').toContain(PROMPT);
-    await dialog.getByRole('button', { name: /^(Done|Close)$/ }).click();
+    await dialog.getByRole('button', { name: 'Done' }).click();
   } catch (error) {
     failure = error;
   } finally {
