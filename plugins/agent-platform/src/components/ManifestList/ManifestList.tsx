@@ -2,6 +2,7 @@ import { Button, Flex } from '@backstage/ui';
 import { dump } from 'js-yaml';
 
 import { manifestFilename, type Manifest } from '../../lib/clusterManager';
+import { saveFile } from '../../lib/saveFile';
 import { CodeBlock } from '../CodeBlock';
 
 /**
@@ -22,7 +23,7 @@ export function ManifestList({ manifests }: { manifests: Manifest[] }) {
               <Button
                 size="small"
                 variant="tertiary"
-                onPress={() => downloadText(filename, content)}
+                onPress={() => saveFile(content, filename, 'text/yaml')}
               >
                 Download
               </Button>
@@ -32,13 +33,4 @@ export function ManifestList({ manifests }: { manifests: Manifest[] }) {
       })}
     </>
   );
-}
-
-function downloadText(filename: string, content: string) {
-  const url = URL.createObjectURL(new Blob([content], { type: 'text/yaml' }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
