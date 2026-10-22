@@ -292,7 +292,11 @@ function Seed({
   return isComplete ? <>{children}</> : null;
 }
 
-async function renderReview(scenario: Scenario = {}, withSkill = true) {
+async function renderReview(
+  scenario: Scenario = {},
+  withSkill = true,
+  persistDraft = false,
+) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -306,7 +310,7 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
         {/* The step's actions land in the wizard frame's footer through the
             page-header slot, which is what is driven. */}
         <PageHeaderActionsProvider>
-          <NewAgentFormProvider>
+          <NewAgentFormProvider persistDraft={persistDraft}>
             <Seed
               withSkill={withSkill}
               harness={scenario.harness}
@@ -323,6 +327,11 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
   );
   return { callTool };
 }
+
+/** The drafts kept in the tab (its other entries are not the form's). */
+const draftCount = () =>
+  Object.keys(window.sessionStorage).filter(key => key.startsWith('gs-draft:'))
+    .length;
 
 const deployButton = () =>
   screen.getByRole('button', { name: /^(Create agent|Creating…)$/ });
@@ -342,6 +351,7 @@ beforeEach(() => {
   mockUseUnderlyingModel.mockReset();
   mockServerCrs = [];
   mockServersLoading = false;
+  window.sessionStorage.clear();
 });
 
 /** A connector muster signs in to per session, as `grafana-cloud` is. */
@@ -673,6 +683,35 @@ describe('NewAgentReviewPage', () => {
     );
   });
 
+  it('drops the kept draft once the agent is created', async () => {
+    const user = userEvent.setup();
+    await renderReview({}, true, true);
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(draftCount()).toBe(1));
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
+    expect(draftCount()).toBe(0);
+  });
+
+  it('keeps the draft when the create is refused', async () => {
+    const user = userEvent.setup();
+    await renderReview(
+      { createError: new Error('conflict: agent already exists') },
+      true,
+      true,
+    );
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+
+    expect(await screen.findByText('Refused')).toBeInTheDocument();
+    expect(draftCount()).toBe(1);
+  });
+
   it("shows a viewer's Forbidden in agent-manager's words and stays on the page", async () => {
     const user = userEvent.setup();
     await renderReview({
@@ -759,6 +798,29 @@ describe('NewAgentReviewPage', () => {
       screen.getByRole('link', { name: 'Review pull request ↗' }),
     ).toHaveAttribute('href', 'https://github.com/org/gitops/pull/7');
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('drops the kept draft once the pull request is open, and keeps showing the form', async () => {
+    const user = userEvent.setup();
+    await renderReview(
+      { info: { capabilities: { ...INFO.capabilities, commit: true } } },
+      true,
+      true,
+    );
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(draftCount()).toBe(1));
+    const commit = await screen.findByRole('button', {
+      name: 'Propose as pull request instead',
+    });
+    await waitFor(() => expect(commit).toBeEnabled());
+    await user.click(commit);
+
+    expect(
+      await screen.findByText(/Pull request #7 opened/),
+    ).toBeInTheDocument();
+    expect(draftCount()).toBe(0);
+    expect(plainRow('Name')).toHaveTextContent('Go service reviewer');
   });
 
   it('moves the pull-request alternative out of the footer at phone width', async () => {

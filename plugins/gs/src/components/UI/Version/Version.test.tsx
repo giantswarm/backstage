@@ -87,7 +87,9 @@ describe('<Version />', () => {
           truncate: false,
         });
         expect(
-          getByRole('link', { name: testCase.expectedText }),
+          getByRole('link', {
+            name: `${testCase.expectedText} (opens in a new tab)`,
+          }),
         ).toHaveAttribute('href', testCase.expectedLink);
       }
     });
@@ -125,7 +127,9 @@ describe('<Version />', () => {
           truncate: false,
         });
         expect(
-          getByRole('link', { name: testCase.expectedText }),
+          getByRole('link', {
+            name: `${testCase.expectedText} (opens in a new tab)`,
+          }),
         ).toHaveAttribute('href', testCase.expectedLink);
       }
     });

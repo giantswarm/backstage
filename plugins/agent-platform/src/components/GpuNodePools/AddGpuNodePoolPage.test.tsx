@@ -6,6 +6,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -137,6 +138,8 @@ type Scenario = {
   clusterCount?: number;
   /** The installations the page offers (default: inst-1 alone). */
   installations?: string[];
+  /** The person has not signed in to cluster-manager: its reads ask for it. */
+  notSignedIn?: boolean;
   /** The dry run judges this many presets: the two fixtures, then copies of the big one. */
   presetCount?: number;
 };
@@ -422,6 +425,14 @@ function makeMusterApi(scenario: Scenario = {}) {
             tools: [],
           };
         case 'x_cluster-manager_list_clusters':
+          if (scenario.notSignedIn) {
+            throw new MusterUnauthorizedError(
+              "auth_required: server 'cluster-manager' requires authentication; sign in to it to use its tools.",
+              'server_sign_in_required',
+              'cluster-manager',
+              'inst-1',
+            );
+          }
           if (scenario.noClusterApi) {
             return { clusters: [], clusterApi: NO_CLUSTER_API };
           }
@@ -506,7 +517,11 @@ function makeMusterApi(scenario: Scenario = {}) {
         }
       : { inputSchema: {} },
   );
-  return { api: { callTool, describeTool } as unknown as MusterApi, callTool };
+  const getAuthStatus = jest.fn(async () => ({ servers: [] }));
+  return {
+    api: { callTool, describeTool, getAuthStatus } as unknown as MusterApi,
+    callTool,
+  };
 }
 
 const analyticsApi = mockApis.analytics.mock();
@@ -1512,5 +1527,21 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
 
     await user.click(screen.getByRole('button', { name: /I want to serve/ }));
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+});
+
+describe('AddGpuNodePoolPage without a cluster-manager sign-in', () => {
+  it('offers the sign-in in place of the cluster list, not an error', async () => {
+    await renderPage({ notSignedIn: true });
+
+    expect(
+      await screen.findByText(
+        'Sign in to cluster-manager to list the clusters on inst-1',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    expect(
+      screen.queryByText('Could not read the clusters'),
+    ).not.toBeInTheDocument();
   });
 });

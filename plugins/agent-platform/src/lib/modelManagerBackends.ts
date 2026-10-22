@@ -270,8 +270,8 @@ export const MODEL_MANAGER_ERROR_NAMES: Readonly<Record<string, string>> = {
  */
 export class ModelManagerToolError extends Error {
   readonly code?: string;
-  constructor(message: string, code?: string) {
-    super(message);
+  constructor(message: string, code?: string, options?: ErrorOptions) {
+    super(message, options);
     this.code = code;
     this.name =
       (code !== undefined ? MODEL_MANAGER_ERROR_NAMES[code] : undefined) ??
@@ -304,10 +304,11 @@ export function classifyModelManagerToolError(error: unknown): Error {
   }
   const message = error instanceof Error ? error.message : String(error);
   if (looksNotConnected(message)) {
-    return new ModelManagerNotConnectedError(message);
+    return new ModelManagerNotConnectedError(message, { cause: error });
   }
   return new ModelManagerToolError(
     message,
     message.match(TOOL_ERROR_CODE)?.[1],
+    { cause: error },
   );
 }

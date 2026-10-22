@@ -173,7 +173,7 @@ describe('ConnectorSignInLinks', () => {
     const other = 'https://muster.example.com/oauth/proxy/start?state=other';
     await renderSession({ text: `Try [this](${other}) or ${LINK}.` });
 
-    expect(screen.getByRole('link', { name: 'this' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^this/ })).toHaveAttribute(
       'href',
       other,
     );

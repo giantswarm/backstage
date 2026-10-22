@@ -9,6 +9,18 @@ import {
   MusterAuthProvidersApi,
 } from './types';
 
+/**
+ * The portal's main auth API also hands out an ID token with a share of its
+ * lifetime still ahead (gs's `LastingAuthApi`), refreshing the session
+ * silently for it.
+ */
+type LastingIdTokenApi = {
+  getLastingIdToken(
+    minLifetimeLeft: number,
+    request?: { optional?: boolean },
+  ): Promise<string>;
+};
+
 export const musterAuthProvidersApiRef = createApiRef<MusterAuthProvidersApi>({
   id: 'plugin.muster.auth-providers',
 });
@@ -63,10 +75,14 @@ export class MusterAuthProviders implements MusterAuthProvidersApi {
       return {};
     }
 
+    const request = { optional: options.optional };
+    const lasting = this.mainAuthApi as OpenIdConnectApi &
+      Partial<LastingIdTokenApi>;
     try {
-      const token = await this.mainAuthApi.getIdToken({
-        optional: options.optional,
-      });
+      const token =
+        options.minLifetimeLeft !== undefined && lasting.getLastingIdToken
+          ? await lasting.getLastingIdToken(options.minLifetimeLeft, request)
+          : await this.mainAuthApi.getIdToken(request);
       return token ? { token } : {};
     } catch {
       return {};

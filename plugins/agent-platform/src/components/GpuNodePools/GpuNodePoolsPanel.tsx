@@ -33,7 +33,11 @@ import {
   useVisibleSort,
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
+import {
+  ConnectorSignInAlert,
+  installationErrorLine,
+  type ConnectorSignIn,
+} from '@giantswarm/backstage-plugin-muster';
 
 import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
 import type { NodeSizePrices } from '../../hooks/useNodeSizePrices';
@@ -58,6 +62,11 @@ export type GpuNodePoolsPanelProps = {
   /** Installations whose cluster-manager reports no Cluster API, with its note. */
   notes: { installation: string; note: string }[];
   errors: { installation: string; error: Error }[];
+  /**
+   * The connectors whose sign-in the reads asked for, and where: offered in
+   * place of the pools those installations could not list.
+   */
+  signIns?: ConnectorSignIn[];
   onRemove: (row: GpuNodePoolRow) => void;
   /** The pool whose lifecycle panel is open beneath the table, if any. */
   opened: OpenedPool | undefined;
@@ -395,6 +404,7 @@ export function GpuNodePoolsPanel({
   isLoading,
   notes,
   errors,
+  signIns = [],
   onRemove,
   opened,
   serve,
@@ -463,7 +473,7 @@ export function GpuNodePoolsPanel({
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading node pools…" />;
-  } else {
+  } else if (signIns.length === 0) {
     body = (
       <Text variant="body-medium" color="secondary">
         No GPU node pools yet.
@@ -482,6 +492,14 @@ export function GpuNodePoolsPanel({
             {prices &&
               " Costs are on-demand list prices for the pool's node sizes."}
           </Text>
+          {signIns.map(({ server, installations }) => (
+            <ConnectorSignInAlert
+              key={server}
+              server={server}
+              installations={installations}
+              purpose="see GPU node pools"
+            />
+          ))}
           {body}
           {opened && (
             <PoolLifecyclePanel

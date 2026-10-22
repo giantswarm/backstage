@@ -1,10 +1,12 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
+import { useSessionDraft } from '@giantswarm/backstage-plugin-ui-react';
 
 import type {
   AgentManagerAgent,
@@ -227,6 +229,38 @@ export type NewAgentFormContextValue = {
   toolsetProblems: string[];
   reset: () => void;
   /**
+   * The kept draft has been looked for (see `persistDraft`): until then the
+   * create steps wait, so a reload on a later step is not sent back to the
+   * first one before its draft is in. Always true without a draft.
+   */
+  isDraftLoaded: boolean;
+  /**
+   * The form came back with a kept draft and the person has neither started
+   * over nor closed the note that says so, nor moved on from the step it
+   * showed on.
+   */
+  isDraftRestored: boolean;
+  /**
+   * The wizard step the note about the restored draft showed on, once a step
+   * claimed it (`claimDraftNotice`): another step closes it instead.
+   */
+  draftNoticeStep: string | undefined;
+  /** Records the step the note shows on; the first claim stands. */
+  claimDraftNotice: (step: string) => void;
+  /** Closes the note about the restored draft; the draft stays. */
+  dismissDraftNotice: () => void;
+  /**
+   * Drops the kept draft and empties the form: "Start over", "Discard
+   * changes", and a created agent.
+   */
+  discardDraft: () => void;
+  /**
+   * Drops the kept draft but keeps the form as it is: a pull request was
+   * proposed, and the review step still shows it. A further change is kept
+   * again.
+   */
+  clearSavedDraft: () => void;
+  /**
    * Whether leaving now would lose the person's work, so the wizard's Close
    * and Cancel ask first. Editing: any change the review would save.
    * Creating: anything typed or chosen beyond the start — the environment
@@ -293,6 +327,23 @@ const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 function isValidSlug(slug: string): boolean {
   return slug.length <= 63 && DNS_LABEL_PATTERN.test(slug);
 }
+
+/**
+ * What a create draft keeps (`useSessionDraft`): everything entered and picked
+ * on the four steps, as plain data. The tenant choices are left out -- they are
+ * the installation's answer, read again -- and the form holds no secret or
+ * token to leave out.
+ */
+type NewAgentDraft = {
+  state: Omit<NewAgentFormState, 'tenantChoices'>;
+  slugEdited: boolean;
+};
+
+/** Bumped when {@link NewAgentDraft}'s shape changes: an older draft is dropped. */
+const DRAFT_VERSION = 1;
+
+/** The draft's name in the storage key, with the person's entity ref. */
+export const NEW_AGENT_DRAFT_NAME = 'agent-platform-new-agent';
 
 /** A new agent's form holds work of the person's own (see `isDirty`). */
 function hasCreateInput(state: NewAgentFormState): boolean {
@@ -361,20 +412,51 @@ const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
  * The wizard's state, shared by its steps. Creating starts empty; editing
  * (`edit` with `initialState`, see `EditAgentPage`) starts from the agent and
  * keeps its technical name fixed — renaming never re-derives it.
+ *
+ * With `persistDraft`, creating keeps a draft in the tab's `sessionStorage`
+ * per person (`useSessionDraft`), so a reload, a sign-in redirect, Back or a
+ * link followed in the same tab does not lose the input: the form comes back
+ * with it. Editing never keeps one; it starts from the agent each time.
  */
 export function NewAgentFormProvider({
   children,
   edit,
   initialState: seed = initialState,
+  persistDraft = false,
 }: {
   children: ReactNode;
   edit?: AgentWizardEdit;
   initialState?: NewAgentFormState;
+  persistDraft?: boolean;
 }) {
   const [state, setState] = useState<NewAgentFormState>(seed);
   // The slug auto-derives from the name until the user edits it by hand — and
   // never while editing: an existing agent's technical name cannot change.
   const [slugEdited, setSlugEdited] = useState(Boolean(edit));
+  const [draftNoticeStep, setDraftNoticeStep] = useState<string>();
+
+  const isDirtyCreate = !edit && hasCreateInput(state);
+  const draftValue = useMemo<NewAgentDraft>(() => {
+    const { tenantChoices: _choices, ...kept } = state;
+    return { state: kept, slugEdited };
+  }, [state, slugEdited]);
+  const onRestore = useCallback((draft: NewAgentDraft) => {
+    setState({ ...initialState, ...draft.state, tenantChoices: undefined });
+    setSlugEdited(draft.slugEdited);
+  }, []);
+  const draft = useSessionDraft<NewAgentDraft>({
+    name: persistDraft && !edit ? NEW_AGENT_DRAFT_NAME : undefined,
+    value: draftValue,
+    isDirty: isDirtyCreate,
+    version: DRAFT_VERSION,
+    onRestore,
+  });
+  const {
+    clear: clearDraft,
+    isLoaded: isDraftLoaded,
+    wasRestored: isDraftRestored,
+    dismissRestored: dismissDraftNotice,
+  } = draft;
 
   const value = useMemo<NewAgentFormContextValue>(() => {
     // An empty system prompt is valid: the chart ships a default
@@ -438,7 +520,11 @@ export function NewAgentFormProvider({
           baselineOf(edit.agent),
           editStateOfForm(edit.agent, state),
         ).length > 0
-      : hasCreateInput(state);
+      : isDirtyCreate;
+    const reset = () => {
+      setSlugEdited(Boolean(edit));
+      setState(seed);
+    };
 
     return {
       state,
@@ -627,16 +713,35 @@ export function NewAgentFormProvider({
             kept => pluginEntryKey(kept) !== pluginEntryKey(plugin),
           ),
         })),
-      reset: () => {
-        setSlugEdited(Boolean(edit));
-        setState(seed);
+      reset,
+      isDraftLoaded,
+      isDraftRestored,
+      draftNoticeStep,
+      claimDraftNotice: step =>
+        setDraftNoticeStep(prev => (prev === undefined ? step : prev)),
+      dismissDraftNotice,
+      discardDraft: () => {
+        clearDraft();
+        reset();
       },
+      clearSavedDraft: clearDraft,
       isDirty,
       isComplete,
       validationErrors,
       fieldErrors,
     };
-  }, [state, slugEdited, edit, seed]);
+  }, [
+    state,
+    slugEdited,
+    edit,
+    seed,
+    isDirtyCreate,
+    isDraftLoaded,
+    isDraftRestored,
+    draftNoticeStep,
+    dismissDraftNotice,
+    clearDraft,
+  ]);
 
   return (
     <NewAgentFormContext.Provider value={value}>

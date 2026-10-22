@@ -691,6 +691,12 @@ export interface MusterAuthCredentialsOptions {
    * and never ask the person to sign in. No token when there is no session.
    */
   optional?: boolean;
+  /**
+   * The share of its lifetime (`exp` − `iat`, from 0 to 1) the token must
+   * still have: the session is refreshed silently for it where the provider
+   * can, and its token as it is answers where it cannot.
+   */
+  minLifetimeLeft?: number;
 }
 
 /**

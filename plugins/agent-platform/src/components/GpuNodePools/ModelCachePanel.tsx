@@ -28,6 +28,11 @@ import {
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import {
+  ConnectorSignInAlert,
+  type ConnectorSignIn,
+} from '@giantswarm/backstage-plugin-muster';
+
 import type { ModelCacheRow } from '../../hooks/useClusterManager';
 import {
   cacheKeptByCluster,
@@ -51,6 +56,11 @@ export type ModelCachePanelProps = {
   onRemove: (row: ModelCacheRow) => void;
   /** Columns to leave out: the page drops Installation where it would repeat. */
   hideColumns?: ReadonlyArray<'installation'>;
+  /**
+   * The connectors whose sign-in the reads asked for, and where: offered in
+   * place of the caches those installations could not list.
+   */
+  signIns?: ConnectorSignIn[];
 };
 
 /** The empty state: no claim stands, nothing is billed. */
@@ -371,6 +381,7 @@ export function ModelCachePanel({
   removable,
   onRemove,
   hideColumns,
+  signIns = [],
 }: ModelCachePanelProps) {
   const isPhone = usePhoneLayout();
   const columnConfig = useMemo(
@@ -436,7 +447,7 @@ export function ModelCachePanel({
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading model caches…" />;
-  } else {
+  } else if (signIns.length === 0) {
     body = (
       <Text variant="body-medium" color="secondary">
         {NO_MODEL_CACHE}
@@ -456,6 +467,14 @@ export function ModelCachePanel({
             here.
             {total ? ` Standing: ${total}.` : ''}
           </Text>
+          {signIns.map(({ server, installations }) => (
+            <ConnectorSignInAlert
+              key={server}
+              server={server}
+              installations={installations}
+              purpose="see the model cache"
+            />
+          ))}
           {body}
           {readOnly.length > 0 && (
             <Alert

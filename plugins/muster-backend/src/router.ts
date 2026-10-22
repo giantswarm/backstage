@@ -4,7 +4,6 @@ import {
 } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import {
-  AuthenticationError,
   InputError,
   NotAllowedError,
   ServiceUnavailableError,
@@ -16,6 +15,10 @@ import {
   AUTH_LOGOUT_TOOL,
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
+  isTokenExpired,
+  musterTokenExpiredError,
+  musterTokenMissingError,
+  toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
 } from '@giantswarm/backstage-plugin-gs-node';
@@ -366,12 +369,18 @@ export async function createRouter(
   const hasPerUserSession = (installation: MusterInstallationConfig) =>
     musterInstallationRequiresAuth(installation);
 
+  /** The token the request forwards for its installation, if any. */
+  const forwardedToken = (req: express.Request): string | undefined => {
+    const headerValue = req.headers[MUSTER_AUTH_HEADER];
+    return Array.isArray(headerValue) ? headerValue[0] : headerValue;
+  };
+
   /**
    * When the target installation requires per-user auth (a configured entry
    * with an `authProvider`, or any derived entry -- every muster gates), the
-   * frontend must forward the person's token; without it the muster server
-   * would reject the connection anyway, so fail fast with a 401 the frontend
-   * can act on.
+   * frontend must forward the person's token; without it, or with one whose
+   * `exp` has passed, the muster server would reject the connection anyway,
+   * so fail fast with a 401 whose reason the frontend can act on.
    */
   const readCallOptions = (
     req: express.Request,
@@ -380,15 +389,15 @@ export async function createRouter(
     if (!musterInstallationRequiresAuth(installation)) {
       return {};
     }
-    const headerValue = req.headers[MUSTER_AUTH_HEADER];
-    const authToken = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+    const authToken = forwardedToken(req);
     if (!authToken) {
       const why = installation.authProvider
         ? `for auth provider '${installation.authProvider}'`
         : 'for its muster (the endpoint is derived from the installation base domain)';
-      throw new AuthenticationError(
-        `The muster installation '${installation.name}' requires a user token ${why}, but the request did not include one.`,
-      );
+      throw musterTokenMissingError(installation.name, why);
+    }
+    if (isTokenExpired(authToken)) {
+      throw musterTokenExpiredError(installation.name);
     }
     return { authToken };
   };
@@ -1011,6 +1020,53 @@ export async function createRouter(
     );
     res.json(result);
   });
+
+  /**
+   * Every 401 a route answers says why, in `error.reason` (and the server
+   * that needs the person's sign-in, in `error.server`), so the frontend can
+   * pick its action: offer the sign-in, or refresh the token and send the
+   * call once more. Logged at info: each is an expected state of the
+   * person's session that the page acts on, not a fault. Neither the body nor
+   * the log carries the token, the person's identity or muster's own text.
+   */
+  router.use(
+    (
+      error: unknown,
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      const requested = req.query.installation;
+      const installation =
+        typeof requested === 'string'
+          ? requested
+          : ([...installations.keys()][0] ?? '');
+      const unauthorized = toMusterUnauthorizedError(error, {
+        installation,
+        authToken: forwardedToken(req),
+      });
+      if (!unauthorized || res.headersSent) {
+        next(error);
+        return;
+      }
+      logger.info('Muster request answered 401', {
+        installation,
+        route: req.path,
+        reason: unauthorized.reason,
+        ...(unauthorized.server ? { server: unauthorized.server } : {}),
+      });
+      res.status(401).json({
+        error: {
+          name: unauthorized.name,
+          message: unauthorized.message,
+          reason: unauthorized.reason,
+          ...(unauthorized.server ? { server: unauthorized.server } : {}),
+        },
+        request: { method: req.method, url: req.url },
+        response: { statusCode: 401 },
+      });
+    },
+  );
 
   return router;
 }
