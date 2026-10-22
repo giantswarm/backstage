@@ -122,6 +122,9 @@ test('Connect shows OpenAI’s code with its link, and Cancel ends it', async ({
 test('a connected person sees Connected, and Not connected after Disconnect', async ({
   admin,
 }) => {
+  // Skips on a lab whose muster keeps no chatgpt App, before the staging
+  // below would list one.
+  await chatGptRow(admin);
   const staging = await stageConnected(admin);
   try {
     const row = await chatGptRow(admin);
