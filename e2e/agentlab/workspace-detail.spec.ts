@@ -140,14 +140,13 @@ async function expectWorkspaceTabs(page: Page, session: string): Promise<void> {
   await synchronize(page);
   await main.getByRole('tab', { name: /^Sessions/ }).click();
   await expect(page).toHaveURL(new RegExp(`${path}/sessions$`));
-  const link = main
-    .locator('table')
-    .locator(`a[href$="/sessions/${lab.installation}/${session}"]`);
-  await expect(link).toBeVisible();
+  const link = page.locator(
+    `a[href$="/sessions/${lab.installation}/${session}"]`,
+  );
+  const row = main.locator('table').getByRole('row').filter({ has: link });
+  await expect(row).toBeVisible();
   // Its cleanup date, from the first turn.
-  await expect(
-    main.locator('table').getByRole('row').filter({ has: link }),
-  ).toContainText(/\d{4}/);
+  await expect(row).toContainText(/\d{4}/);
 
   await main.getByRole('tab', { name: /^Details/ }).click();
   await expect(
