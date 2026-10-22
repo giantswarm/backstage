@@ -3,6 +3,9 @@ import {
   deleteAgentInPortal,
   expect,
   expectAgentRendered,
+  expectWizardStep,
+  open,
+  openWizardMoreOptions,
   test,
 } from './fixtures';
 import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
@@ -13,7 +16,8 @@ import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
  * More options with its origins and the header its credential is sent in,
  * picked by name, shown on the review and on the agent's Configuration card,
  * and the Agent agent-manager creates carries it in `spec.egressPolicyRefs`.
- * An unpicked policy is listed but not carried.
+ * An unpicked policy is listed but not carried until the Edit wizard picks it
+ * too: the review names the change, and the Agent then carries both.
  */
 
 const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 12);
@@ -72,9 +76,13 @@ test('agent egress: an EgressPolicy picked in the wizard lands in spec.egressPol
             'the credential header is named, never the Secret',
           ).toBeVisible();
           await expect(group.getByText(`${UNPICKED}-credential`)).toBeHidden();
-          await group
-            .getByRole('checkbox', { name: new RegExp(PICKED) })
-            .check();
+          // The react-aria input is visually hidden: a person clicks its
+          // label.
+          const picked = group.getByRole('checkbox', {
+            name: new RegExp(PICKED),
+          });
+          await picked.locator('xpath=ancestor::label[1]').click();
+          await expect(picked).toBeChecked();
           await testInfo.attach('egress-policy-picker', {
             body: await group.screenshot(),
             contentType: 'image/png',
@@ -104,17 +112,89 @@ test('agent egress: an EgressPolicy picked in the wizard lands in spec.egressPol
       contentType: 'image/png',
     });
 
-    const { stdout } = await kubectl([
+    const refs = async () => {
+      const { stdout } = await kubectl([
+        '-n',
+        NAMESPACE,
+        'get',
+        'agents.api.kagent.dev',
+        agentSlug,
+        '-o',
+        'jsonpath={.spec.egressPolicyRefs}',
+      ]);
+      return stdout ? JSON.parse(stdout) : [];
+    };
+    expect(await refs(), "the Agent's spec.egressPolicyRefs").toEqual([
+      { name: PICKED },
+    ]);
+
+    // Edit: the pick is pre-filled, the second policy is added, the review
+    // names the change and the Agent carries both.
+    await open(admin, `${detailPath}/edit`);
+    await expectWizardStep(admin, 'Details');
+    await openWizardMoreOptions(admin);
+    const group = admin.getByRole('group', { name: /^EgressPolicies/ });
+    const picked = group.getByRole('checkbox', { name: new RegExp(PICKED) });
+    const unpicked = group.getByRole('checkbox', {
+      name: new RegExp(UNPICKED),
+    });
+    await expect(picked, 'the edit starts from get_agent').toBeChecked({
+      timeout: 60_000,
+    });
+    await unpicked.locator('xpath=ancestor::label[1]').click();
+    await expect(unpicked).toBeChecked();
+    for (const step of ['Details', 'Skills', 'Tools']) {
+      await expectWizardStep(admin, step);
+      await admin.getByRole('button', { name: 'Continue' }).first().click();
+    }
+    await expectWizardStep(admin, 'Review');
+    await expect(
+      admin
+        .getByRole('list', { name: 'Changed fields' })
+        .getByText('EgressPolicies'),
+    ).toBeVisible();
+    const save = admin.getByRole('button', { name: /^Save changes$/ }).last();
+    await expect(save).toBeEnabled({ timeout: 60_000 });
+    await save.click();
+    await expect
+      .poll(refs, {
+        message: "the edited Agent's spec.egressPolicyRefs",
+        timeout: 180_000,
+      })
+      .toEqual([{ name: PICKED }, { name: UNPICKED }]);
+
+    // The second policy names a credential Secret nobody wrote: the agent's
+    // page shows the Agent's status error, then the Secret makes it Ready.
+    await open(admin, detailPath);
+    await expect(
+      admin
+        .getByText(`Secret "${UNPICKED}-credential" not found`, {
+          exact: false,
+        })
+        .first(),
+      "the agent's page shows the picked policy's resolution error",
+    ).toBeVisible({ timeout: 180_000 });
+    await testInfo.attach('policy-status-error', {
+      body: await admin.screenshot(),
+      contentType: 'image/png',
+    });
+    await kubectl([
       '-n',
       NAMESPACE,
-      'get',
+      'create',
+      'secret',
+      'generic',
+      `${UNPICKED}-credential`,
+      '--from-literal=token=e2e-fixture',
+    ]);
+    await kubectl([
+      '-n',
+      NAMESPACE,
+      'wait',
       'agents.api.kagent.dev',
       agentSlug,
-      '-o',
-      'jsonpath={.spec.egressPolicyRefs}',
-    ]);
-    expect(JSON.parse(stdout), "the Agent's spec.egressPolicyRefs").toEqual([
-      { name: PICKED },
+      '--for=condition=Ready',
+      '--timeout=300s',
     ]);
   } catch (error) {
     failure = error;
@@ -129,6 +209,14 @@ test('agent egress: an EgressPolicy picked in the wizard lands in spec.egressPol
     'egresspolicies.api.kagent.dev',
     PICKED,
     UNPICKED,
+    '--ignore-not-found',
+  ]);
+  await kubectl([
+    '-n',
+    NAMESPACE,
+    'delete',
+    'secret',
+    `${UNPICKED}-credential`,
     '--ignore-not-found',
   ]);
   if (failure !== undefined) {
