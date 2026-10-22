@@ -345,6 +345,14 @@ export class Agent extends KubeObject<AgentInterface> {
     return [...(this.jsonData.spec?.egress ?? [])];
   }
 
+  /**
+   * The names of the EgressPolicies of its namespace the agent picks
+   * (`spec.egressPolicyRefs`): their origins it may reach too.
+   */
+  getEgressPolicyRefs(): string[] {
+    return (this.jsonData.spec?.egressPolicyRefs ?? []).map(ref => ref.name);
+  }
+
   getDescription() {
     return this.getTemplate()?.description;
   }
