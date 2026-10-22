@@ -32,7 +32,8 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@backstage/config": "backstage:^"
+    "@backstage/config": "backstage:^",
+    "@giantswarm/backstage-plugin-gs-common": "workspace:^"
   },
   "peerDependencies": {
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"

@@ -28,9 +28,9 @@ const discoveryApi = {
 } as unknown as DiscoveryApiClient;
 
 function createConnector(
-  clusterTokenProvider?: () => Promise<
-    { token: string; expiresInSeconds?: number } | undefined
-  >,
+  clusterTokenProvider?: (request?: {
+    minLifetimeLeft?: number;
+  }) => Promise<{ token: string; expiresInSeconds?: number } | undefined>,
 ) {
   return new DefaultAuthConnector({
     configApi,
@@ -85,6 +85,21 @@ describe('DefaultAuthConnector', () => {
           scope: 'openid groups',
           expiresInSeconds: 1740,
         },
+      });
+    });
+
+    it('asks the broker for the share of lifetime the refresh needs', async () => {
+      const clusterTokenProvider = jest
+        .fn()
+        .mockResolvedValue({ token: 'mc-token', expiresInSeconds: 1800 });
+
+      await createConnector(clusterTokenProvider).refreshSession({
+        scopes: new Set(['openid']),
+        minLifetimeLeft: 0.8,
+      });
+
+      expect(clusterTokenProvider).toHaveBeenCalledWith({
+        minLifetimeLeft: 0.8,
       });
     });
 

@@ -36,6 +36,25 @@ describe('getInstallationOidcToken', () => {
     });
   });
 
+  it('passes a minimum lifetime on to the auth providers', async () => {
+    getCluster.mockResolvedValue({
+      authProvider: 'oidc',
+      oidcTokenProvider: 'oidc-gazelle',
+    });
+    getCredentials.mockResolvedValue({ token: 'dex-token' });
+
+    await getInstallationOidcToken(
+      kubernetesApi,
+      kubernetesAuthProvidersApi,
+      'gazelle',
+      { minLifetimeLeft: 0.8 },
+    );
+
+    expect(getCredentials).toHaveBeenCalledWith('oidc.oidc-gazelle', {
+      minLifetimeLeft: 0.8,
+    });
+  });
+
   it('passes a non-oidc auth provider through verbatim', async () => {
     getCluster.mockResolvedValue({ authProvider: 'serviceAccount' });
     getCredentials.mockResolvedValue({ token: 'sa-token' });
