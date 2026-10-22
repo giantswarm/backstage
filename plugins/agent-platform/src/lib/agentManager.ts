@@ -490,6 +490,17 @@ export function looksNotConnected(message: string): boolean {
 }
 
 /**
+ * `wrapped`, with the error a tool call threw as its `cause`: what
+ * muster-backend answered stays readable through the plugin's own error --
+ * a 401's reason for the sign-in a page offers, and for the query client,
+ * which never retries one (`isMusterAuthFailure`).
+ */
+export function causedBy<T extends Error>(wrapped: T, cause: unknown): T {
+  wrapped.cause = cause;
+  return wrapped;
+}
+
+/**
  * Classifies what a tool call threw. agent-manager's refusals become
  * {@link AgentManagerError} with their code; muster's "not connected" answers
  * become {@link AgentManagerNotConnectedError}; anything else is passed on.
@@ -504,13 +515,16 @@ export function classifyAgentManagerError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error);
   const match = message.match(/^([a-z_]+):\s*([\s\S]*)$/);
   if (match && (ERROR_CODES as readonly string[]).includes(match[1])) {
-    return new AgentManagerError(
-      match[1] as AgentManagerErrorCode,
-      match[2] || message,
+    return causedBy(
+      new AgentManagerError(
+        match[1] as AgentManagerErrorCode,
+        match[2] || message,
+      ),
+      error,
     );
   }
   if (looksNotConnected(message)) {
-    return new AgentManagerNotConnectedError(message);
+    return causedBy(new AgentManagerNotConnectedError(message), error);
   }
   return error instanceof Error ? error : new Error(message);
 }

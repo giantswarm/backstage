@@ -6,6 +6,7 @@ import {
   createPluginQueryPersister,
   shouldPersistQuery,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { isMusterAuthFailure } from '@giantswarm/backstage-plugin-muster';
 
 // Keep entries in cache for an hour and persist them to localStorage, mirroring
 // the gs fleet-list client (Clusters/Deployments). Together with a non-zero
@@ -124,6 +125,30 @@ export function shouldDehydrateAgentPlatformQuery(queryKey: QueryKey): boolean {
   return !isUserScopedQueryKey(queryKey);
 }
 
+/**
+ * Whether a failed read is tried again (up to three times, with the backoff
+ * below). Not a refusal, a missing object or an unavailable dependency, and
+ * never a muster auth failure: a 401 from muster means "sign in" (the page
+ * offers it) or a token the muster client has already refreshed and sent
+ * once more, and a token that could not be had would re-run the re-login.
+ * The plugins' own errors keep muster's as their `cause`, which
+ * `isMusterAuthFailure` reads through (giantswarm/giantswarm#38779).
+ */
+export function shouldRetryQuery(failureCount: number, error: unknown) {
+  const name = (error as Error | null)?.name;
+  if (
+    isMusterAuthFailure(error) ||
+    name === 'RejectedError' ||
+    name === 'NotFoundError' ||
+    name === 'UnauthorizedError' ||
+    name === 'ForbiddenError' ||
+    name === 'ServiceUnavailableError'
+  ) {
+    return false;
+  }
+  return failureCount <= 2;
+}
+
 const queryClientConfig: QueryClientConfig = {
   defaultOptions: {
     queries: {
@@ -133,19 +158,7 @@ const queryClientConfig: QueryClientConfig = {
       // or remounting reuses it without an immediate background refetch (the
       // refetch is what could error on a single cluster and drop its rows).
       staleTime: 60_000,
-      retry: (failureCount, error) => {
-        const name = (error as Error).name;
-        if (
-          name === 'RejectedError' ||
-          name === 'NotFoundError' ||
-          name === 'UnauthorizedError' ||
-          name === 'ForbiddenError' ||
-          name === 'ServiceUnavailableError'
-        ) {
-          return false;
-        }
-        return failureCount <= 2;
-      },
+      retry: shouldRetryQuery,
       // Capped exponential backoff so a persistently failing cluster (e.g. an
       // unreachable MC) is retried with increasing spacing instead of
       // hammered, and never waits longer than 30s between attempts.

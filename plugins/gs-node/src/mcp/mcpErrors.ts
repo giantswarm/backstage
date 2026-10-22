@@ -94,11 +94,18 @@ function connectionFailureCode(error: unknown): string | undefined {
 }
 
 /**
+ * Whether the MCP endpoint answered the request 401: it refused the bearer
+ * the request carried (expired, or not one it accepts) before any tool ran.
+ */
+export function isUnauthorizedTransportError(error: unknown): boolean {
+  return isTransportError(error) && statusCodeOf(error) === 401;
+}
+
+/**
  * The plain words for a failed MCP request, or `undefined` when `error` is not
  * the transport's (a tool-level error, a Backstage error, ...) and must reach
- * the caller unchanged. A 401 is also left alone: the frontend recognises the
- * transport's `HTTP 401` text as "sign in to muster" (its `isMusterAuthError`),
- * and that path stays as it is.
+ * the caller unchanged. A 401 is also left alone: the proxies answer it as a
+ * 401 with its reason (muster-backend's `musterUnauthorizedOf`).
  */
 export function describeMcpFailure(error: unknown): string | undefined {
   if (!isTransportError(error)) {

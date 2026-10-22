@@ -44,6 +44,10 @@ import {
   type NodePoolWriteResult,
 } from '../../lib/clusterManager';
 import type { ServeChoice } from '../../lib/serveIntent';
+import {
+  ConnectorSignInAlert,
+  musterSignInRequiredOf,
+} from '@giantswarm/backstage-plugin-muster';
 import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';
@@ -189,6 +193,9 @@ export function AddGpuNodePoolPage({
     isLoading: clustersLoading,
     error: clustersError,
   } = useManagedClusters(installation, 'environment');
+  // The clusters are read with the person's own cluster-manager sign-in: a
+  // read that asks for it offers it, and the list fills in once it lands.
+  const clustersSignIn = musterSignInRequiredOf(clustersError);
   const { info } = useClusterManagerInfo(installation);
   const { schema, isLoading: schemaLoading } =
     useCreateNodePoolSchema(installation);
@@ -619,7 +626,14 @@ export function AddGpuNodePoolPage({
                 data-testid="cluster-api-note"
               />
             )}
-            {clustersError && (
+            {clustersSignIn && installation && (
+              <ConnectorSignInAlert
+                server={clustersSignIn.server}
+                installations={[installation]}
+                purpose={`list the clusters on ${installation}`}
+              />
+            )}
+            {clustersError && !clustersSignIn && (
               <Alert
                 status="warning"
                 title="Could not read the clusters"

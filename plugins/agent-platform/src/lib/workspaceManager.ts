@@ -14,7 +14,7 @@
  * The shapes here mirror `internal/api` of giantswarm/workspace-manager.
  */
 
-import { looksNotConnected } from './agentManager';
+import { causedBy, looksNotConnected } from './agentManager';
 
 /** The MCPServer name muster registers workspace-manager under. */
 export const WORKSPACE_MANAGER_SERVER = 'workspace-manager';
@@ -578,12 +578,12 @@ export function classifyWorkspaceManagerError(
   const message = error instanceof Error ? error.message : String(error);
   const match = ERROR_PATTERNS.find(([, pattern]) => pattern.test(message));
   if (match) {
-    return new WorkspaceManagerError(match[0], message);
+    return causedBy(new WorkspaceManagerError(match[0], message), error);
   }
   if (looksNotConnected(message)) {
-    return new WorkspaceManagerError('unavailable', message);
+    return causedBy(new WorkspaceManagerError('unavailable', message), error);
   }
-  return new WorkspaceManagerError('failed', message);
+  return causedBy(new WorkspaceManagerError('failed', message), error);
 }
 
 /**

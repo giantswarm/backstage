@@ -16,7 +16,11 @@
  * MCPServer its muster registers, never as a URL.
  */
 
-import { looksNotConnected, type CommitAgentResult } from './agentManager';
+import {
+  causedBy,
+  looksNotConnected,
+  type CommitAgentResult,
+} from './agentManager';
 
 /** The MCPServer name muster registers model-manager under. */
 export const MODEL_MANAGER_SERVER = 'model-manager';
@@ -304,10 +308,10 @@ export function classifyModelManagerToolError(error: unknown): Error {
   }
   const message = error instanceof Error ? error.message : String(error);
   if (looksNotConnected(message)) {
-    return new ModelManagerNotConnectedError(message);
+    return causedBy(new ModelManagerNotConnectedError(message), error);
   }
-  return new ModelManagerToolError(
-    message,
-    message.match(TOOL_ERROR_CODE)?.[1],
+  return causedBy(
+    new ModelManagerToolError(message, message.match(TOOL_ERROR_CODE)?.[1]),
+    error,
   );
 }

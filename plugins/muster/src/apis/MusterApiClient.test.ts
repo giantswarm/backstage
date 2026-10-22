@@ -13,6 +13,11 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MusterApiClient, toolErrorDetails } from './MusterApiClient';
 import { MusterAuthProviders } from './MusterAuthProviders';
+import {
+  isMusterAuthFailure,
+  musterSignInRequiredOf,
+  MusterUnauthorizedError,
+} from './musterUnauthorized';
 import { MusterAnswerCutError, MusterAuthProvidersApi } from './types';
 
 const HEADER = 'backstage-muster-authorization';
@@ -820,5 +825,240 @@ describe('MusterApiClient.filterTools toolset arguments', () => {
     const url = new URL(String(t.fetchMock.mock.calls[0][0]));
     expect(url.searchParams.has('toolset')).toBe(false);
     expect(url.searchParams.has('include_presets')).toBe(false);
+  });
+});
+
+/** An unsigned JWT issued at `iat` that expires at `exp` (seconds since the epoch). */
+function lifetimeToken(iat: number, exp: number, jti = 'a'): string {
+  const b64url = (value: object) =>
+    btoa(JSON.stringify(value))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  return `${b64url({ alg: 'RS256' })}.${b64url({
+    iat: Math.floor(iat),
+    exp: Math.floor(exp),
+    jti,
+  })}.sig`;
+}
+
+/** The token each request carried, in order. */
+function sentTokens(fetchMock: jest.Mock): (string | undefined)[] {
+  return fetchMock.mock.calls
+    .map(([, init]) => (init as RequestInit).headers as Record<string, string>)
+    .map(headers => headers[HEADER]);
+}
+
+/**
+ * giantswarm/giantswarm#38779: a 401 from muster-backend says why. A token a
+ * refresh can fix is refreshed and the call sent once more; a server's
+ * sign-in goes back to the page; nothing is retried twice.
+ */
+describe('MusterApiClient 401 answers', () => {
+  const now = () => Date.now() / 1000;
+
+  it('hands a sign-in a server needs back to the page, without retrying', async () => {
+    const t = setup();
+    t.fetchMock.mockResolvedValue(
+      errorResponse(401, {
+        error: {
+          name: 'MusterUnauthorizedError',
+          message:
+            "'cluster-manager' requires authentication: sign in to it to use its tools.",
+          reason: 'server_sign_in_required',
+          server: 'cluster-manager',
+        },
+      }),
+    );
+
+    const error: unknown = await t.client
+      .callTool('x_cluster-manager_list_clusters', {}, 'gazelle')
+      .catch(e => e);
+
+    expect(error).toBeInstanceOf(MusterUnauthorizedError);
+    expect(error).toMatchObject({
+      name: 'UnauthorizedError',
+      reason: 'server_sign_in_required',
+      server: 'cluster-manager',
+      installation: 'gazelle',
+    });
+    expect(musterSignInRequiredOf(error)).toEqual({
+      server: 'cluster-manager',
+      installation: 'gazelle',
+    });
+    expect(t.fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes an expired token and sends the call once more with the new one', async () => {
+    const old = lifetimeToken(now() - 1700, now() + 100, 'old');
+    const fresh = lifetimeToken(now(), now() + 1800, 'fresh');
+    const t = setup();
+    t.getMainCredentials.mockImplementation(
+      async (_provider: string, options?: { minLifetimeLeft?: number }) => ({
+        token: options?.minLifetimeLeft === 1 ? fresh : old,
+      }),
+    );
+    t.fetchMock
+      .mockResolvedValueOnce(
+        errorResponse(401, {
+          error: { message: 'expired', reason: 'token_expired' },
+        }),
+      )
+      .mockResolvedValueOnce(okResponse({ clusters: [] }));
+
+    await expect(
+      t.client.callTool('x_cluster-manager_list_clusters', {}, 'gazelle'),
+    ).resolves.toEqual({ clusters: [] });
+
+    expect(sentTokens(t.fetchMock)).toEqual([old, fresh]);
+    expect(t.getMainCredentials).toHaveBeenCalledWith('mcp-muster', {
+      minLifetimeLeft: 1,
+    });
+  });
+
+  it('refreshes a token muster rejected through the broker for another installation', async () => {
+    const t = setup({
+      broker: async () => ({ token: 'brokered-token' }),
+    });
+    t.getBrokeredCredentials
+      .mockResolvedValueOnce({ token: 'brokered-token' })
+      .mockResolvedValueOnce({ token: 'brokered-token-2' });
+    t.fetchMock
+      .mockResolvedValueOnce(
+        errorResponse(401, {
+          error: { message: 'rejected', reason: 'token_rejected' },
+        }),
+      )
+      .mockResolvedValueOnce(okResponse({ tools: [] }));
+
+    await t.client.filterTools({ installation: 'golem', limit: 1 });
+
+    expect(sentTokens(t.fetchMock)).toEqual([
+      'brokered-token',
+      'brokered-token-2',
+    ]);
+    expect(t.getBrokeredCredentials).toHaveBeenLastCalledWith(
+      'oidc.oidc-golem',
+      {
+        minLifetimeLeft: 1,
+      },
+    );
+  });
+
+  it('sends the call once more at most', async () => {
+    const t = setup();
+    let issued = 0;
+    t.getMainCredentials.mockImplementation(async () => ({
+      token: `main-id-token-${issued++}`,
+    }));
+    t.fetchMock.mockResolvedValue(
+      errorResponse(401, {
+        error: { message: 'rejected', reason: 'token_rejected' },
+      }),
+    );
+
+    const error: unknown = await t.client
+      .callTool('x_cluster-manager_list_clusters', {}, 'gazelle')
+      .catch(e => e);
+
+    expect(error).toMatchObject({
+      name: 'UnauthorizedError',
+      reason: 'token_rejected',
+    });
+    expect(t.fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not send the refused token again: the session is gone', async () => {
+    const t = setup();
+    t.fetchMock.mockResolvedValue(
+      errorResponse(401, {
+        error: { message: 'expired', reason: 'token_expired' },
+      }),
+    );
+
+    await expect(
+      t.client.callTool('x_cluster-manager_list_clusters', {}, 'gazelle'),
+    ).rejects.toMatchObject({
+      name: 'MusterTokenMintError',
+      reason: 'session-expired',
+    });
+    expect(t.fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes a token close to its expiry before sending it', async () => {
+    const closing = lifetimeToken(now() - 1600, now() + 200, 'closing');
+    const fresh = lifetimeToken(now(), now() + 1800, 'fresh');
+    const t = setup();
+    t.getMainCredentials.mockImplementation(
+      async (_provider: string, options?: { minLifetimeLeft?: number }) => ({
+        token: options?.minLifetimeLeft === undefined ? closing : fresh,
+      }),
+    );
+
+    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+
+    expect(sentTokens(t.fetchMock)).toEqual([fresh]);
+    expect(t.getMainCredentials).toHaveBeenCalledWith('mcp-muster', {
+      minLifetimeLeft: 0.5,
+    });
+  });
+
+  it('asks for a refresh ahead of expiry at most every 30 seconds', async () => {
+    // A broker that keeps handing out the token it cached.
+    const closing = lifetimeToken(now() - 1600, now() + 200, 'closing');
+    const t = setup({ main: { token: closing } });
+
+    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+
+    expect(sentTokens(t.fetchMock)).toEqual([closing, closing]);
+    const refreshes = t.getMainCredentials.mock.calls.filter(
+      ([, options]) => options?.minLifetimeLeft !== undefined,
+    );
+    expect(refreshes).toHaveLength(1);
+  });
+
+  it('never sends a brokered token past its exp', async () => {
+    const t = setup({
+      broker: async () => ({
+        token: lifetimeToken(now() - 1900, now() - 100),
+      }),
+    });
+
+    await expect(
+      t.client.filterTools({ installation: 'golem', limit: 1 }),
+    ).rejects.toMatchObject({
+      name: 'MusterTokenMintError',
+      reason: 'session-expired',
+    });
+    expect(t.fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('isMusterAuthFailure', () => {
+  it('finds a 401 or a missing token through the errors that wrap it', () => {
+    const unauthorized = new MusterUnauthorizedError(
+      'sign in',
+      'server_sign_in_required',
+      'cluster-manager',
+    );
+    const wrapped = new Error('cluster-manager refused', {
+      cause: unauthorized,
+    });
+
+    expect(isMusterAuthFailure(wrapped)).toBe(true);
+    expect(musterSignInRequiredOf(wrapped)).toEqual({
+      server: 'cluster-manager',
+      installation: undefined,
+    });
+    expect(
+      isMusterAuthFailure(
+        Object.assign(new Error('expired'), { name: 'MusterTokenMintError' }),
+      ),
+    ).toBe(true);
+    expect(isMusterAuthFailure(new Error('node pool not found'))).toBe(false);
+    expect(
+      musterSignInRequiredOf(new MusterUnauthorizedError('x', 'token_expired')),
+    ).toBeUndefined();
   });
 });

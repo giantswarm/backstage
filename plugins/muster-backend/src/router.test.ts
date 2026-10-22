@@ -5,6 +5,7 @@ import express from 'express';
 import request from 'supertest';
 import {
   EndpointProbeResult,
+  MusterAuthRequiredError,
   MusterMcpClient,
   ReachabilityCache,
   MusterToolError,
@@ -1491,6 +1492,179 @@ describe('createRouter', () => {
       expect(response.status).toBe(401);
       expect(response.body.error.message).toContain('mcp-muster');
       expect(callTool).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * giantswarm/giantswarm#38779: a 401 with an empty body left the page and
+   * the logs guessing. Every 401 now names its reason, which the frontend
+   * picks its action from, and is logged with it -- never with the token.
+   */
+  describe('every 401 says why', () => {
+    /** An unsigned JWT that expires at `exp` (seconds since the epoch). */
+    function jwt(exp: number): string {
+      const b64url = (value: object) =>
+        Buffer.from(JSON.stringify(value)).toString('base64url');
+      return `${b64url({ alg: 'RS256' })}.${b64url({
+        sub: 'person-subject',
+        exp: Math.floor(exp),
+      })}.sig`;
+    }
+    const LIVE = jwt(Date.now() / 1000 + 600);
+    const EXPIRED = jwt(Date.now() / 1000 - 60);
+
+    async function buildCallApp() {
+      const logger = mockServices.logger.mock();
+      const config = mockServices.rootConfig({
+        data: {
+          muster: {
+            installations: [
+              {
+                name: 'gazelle',
+                url: 'https://muster.gazelle.example.io/mcp',
+                authProvider: 'mcp-muster',
+              },
+            ],
+          },
+        },
+      });
+      const router = await createRouter({
+        logger,
+        config,
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+      const callApp = expressApp();
+      callApp.use(router);
+      callApp.use(MiddlewareFactory.create({ logger, config }).error());
+      return { callApp, logger };
+    }
+
+    const call = (callApp: express.Express, token?: string) => {
+      const pending = request(callApp)
+        .post('/call?installation=gazelle')
+        .send({ name: 'x_cluster-manager_list_clusters', arguments: {} });
+      return token ? pending.set(MUSTER_AUTH_HEADER, token) : pending;
+    };
+
+    /** Everything the 401 put in the log, as one string. */
+    const logged = (logger: ReturnType<typeof mockServices.logger.mock>) =>
+      JSON.stringify(
+        [logger.info, logger.warn, logger.error].flatMap(fn => fn.mock.calls),
+      );
+
+    it('says a server needs the person sign-in, and names the server', async () => {
+      const { callApp, logger } = await buildCallApp();
+      callTool.mockRejectedValue(
+        new MusterAuthRequiredError(
+          'cluster-manager',
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+          ["auth_required: server 'cluster-manager' requires authentication"],
+        ),
+      );
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toEqual({
+        name: 'MusterUnauthorizedError',
+        message:
+          "'cluster-manager' requires authentication: sign in to it to use its tools.",
+        reason: 'server_sign_in_required',
+        server: 'cluster-manager',
+      });
+      expect(logger.info).toHaveBeenCalledWith('Muster request answered 401', {
+        installation: 'gazelle',
+        route: '/call',
+        reason: 'server_sign_in_required',
+        server: 'cluster-manager',
+      });
+      // The sign-in link is the person's: the page asks for its own.
+      expect(JSON.stringify(response.body)).not.toContain('state=abc');
+    });
+
+    it('says the token is missing', async () => {
+      const { callApp, logger } = await buildCallApp();
+
+      const response = await call(callApp);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_missing');
+      expect(response.body.error.message).toContain(
+        "installation 'gazelle' requires a user token",
+      );
+      expect(callTool).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(
+        'Muster request answered 401',
+        expect.objectContaining({ reason: 'token_missing' }),
+      );
+    });
+
+    it('says the token expired, without asking muster', async () => {
+      const { callApp, logger } = await buildCallApp();
+
+      const response = await call(callApp, EXPIRED);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_expired');
+      expect(callTool).not.toHaveBeenCalled();
+      expect(logged(logger)).not.toContain(EXPIRED);
+    });
+
+    it("says muster's expired-token answer is an expired token", async () => {
+      const { callApp } = await buildCallApp();
+      callTool.mockRejectedValue(
+        new MusterToolError(
+          'token has expired for cluster-manager, re-authenticate to refresh: token is expired',
+        ),
+      );
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_expired');
+    });
+
+    it('says muster refused a token that has not expired', async () => {
+      const { callApp, logger } = await buildCallApp();
+      callTool.mockRejectedValue(
+        Object.assign(
+          new Error(
+            'MCP HTTP Transport Error: POSTing to endpoint (HTTP 401): invalid_token for person@example.com',
+          ),
+          { name: 'MCPClientError', statusCode: 401 },
+        ),
+      );
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_rejected');
+      // muster's own text may name the person: it stays out of both.
+      expect(JSON.stringify(response.body)).not.toContain('person@');
+      expect(logged(logger)).not.toContain('person@');
+      expect(logged(logger)).not.toContain(LIVE);
+    });
+
+    it('says why on the streamed call too, before its first line', async () => {
+      const { callApp } = await buildCallApp();
+
+      const response = await request(callApp)
+        .post('/call/progress?installation=gazelle')
+        .send({ name: 'x_cluster-manager_create_node_pool', arguments: {} });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.reason).toBe('token_missing');
+    });
+
+    it('leaves every other failure to the error middleware', async () => {
+      const { callApp } = await buildCallApp();
+      callTool.mockRejectedValue(new MusterToolError('node pool not found'));
+
+      const response = await call(callApp, LIVE);
+
+      expect(response.status).toBe(500);
+      expect(response.body.error.reason).toBeUndefined();
     });
   });
 });
