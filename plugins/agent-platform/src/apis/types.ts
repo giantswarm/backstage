@@ -39,6 +39,14 @@ export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 export const REQUEST_ID_HEADER = 'x-request-id';
 
 /** The answer to a confirmation, as the answer routes take it. */
+/**
+ * How a stream that delivered events ended. `error` is the message of the
+ * in-band `{error}` frame it ended with, when it ended with one — a controller
+ * shutting down, a gateway cut, a runtime that could not be reached — and
+ * undefined for a stream that simply closed.
+ */
+export type StreamEnd = { error?: string };
+
 export type ConfirmationAnswerRequest = {
   messageId: string;
   taskId: string;
@@ -273,6 +281,10 @@ export interface KagentApi {
    * when the conversation poll shows the turn over while the stream is still
    * open, which is how a stream that hangs without ending is recognised; the
    * abort then surfaces exactly like any other cut.
+   *
+   * Resolves with how the stream ended ({@link StreamEnd}): the words of an
+   * in-band error after events, which is what tells a lost runtime from a cut
+   * that the turn survived.
    */
   streamMessage(
     installation: string,
@@ -281,7 +293,7 @@ export interface KagentApi {
     message: OutboundMessage,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<StreamEnd>;
 
   /**
    * Answer the confirmation a session is suspended on, resuming the same task.
@@ -327,7 +339,29 @@ export interface KagentApi {
     answer: ConfirmationAnswerRequest,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<StreamEnd>;
+
+  /**
+   * Follow a running turn again: A2A `SubscribeToTask` on the turn's task,
+   * relayed as {@link streamMessage} relays a turn — the task's snapshot
+   * first, then its events from now on, or the final event of a task already
+   * over. What a page does when a turn's stream ended before the turn did: a
+   * controller rollout cuts every stream in flight, and the turns run on.
+   *
+   * Rejects as {@link streamMessage} does, and a retry is worth it exactly
+   * when it rejects with a `StreamTransportError` or an `UpstreamError` (the
+   * controller unavailable or slow while it rolls, said in-band); any other
+   * error is a decision — not the person's turn, no such turn, one already
+   * over — that no retry changes.
+   */
+  subscribeToTask(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    taskId: string,
+    onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
+  ): Promise<StreamEnd>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
   getIdentity(installation: string): Promise<KagentIdentity>;

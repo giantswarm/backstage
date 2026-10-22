@@ -43,6 +43,8 @@ import {
   httpStatusOf,
   isTransportFailure,
   isTurnPendingError,
+  isSocketFailure,
+  isUnsupportedOperation,
   isUpstreamError,
   mapConnectError,
   turnPendingError,
@@ -188,6 +190,29 @@ const MAX_SHARE_PAGES = 5;
  * the gateway's and the controller's logs.
  */
 export const REQUEST_ID_HEADER = 'x-request-id';
+
+const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
+
+/** One SSE event carrying `payload` as its JSON `data:`. */
+function sseFrame(payload: unknown): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+/**
+ * The codes on which a task subscription that failed to open is a decision no
+ * retry changes: the person may not read the task, it does not exist (or is
+ * somebody else's), the request is malformed, the controller predates the
+ * call or refuses it for the task's state. Everything else — unavailable,
+ * timed out, cancelled, internal — is what a rollout looks like.
+ */
+const SUBSCRIBE_DECISION_CODES = new Set<Code>([
+  Code.Unauthenticated,
+  Code.PermissionDenied,
+  Code.NotFound,
+  Code.InvalidArgument,
+  Code.Unimplemented,
+  Code.FailedPrecondition,
+]);
 
 /** Longest upstream message carried into a failed-read log line. */
 const MAX_LOGGED_ERROR = 300;
@@ -751,25 +776,128 @@ export class KagentClient {
       throw this.mapError(error, this.sendContext(true));
     }
 
-    const encoder = new TextEncoder();
-    const frame = (payload: unknown) =>
-      encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+    return this.relayAsSse(stream, first, signal);
+  }
+
+  /**
+   * Follow a turn already running, **resubscribing** to its task: what the
+   * page asks for when the stream of the turn ended before the turn did — a
+   * controller rollout cuts every stream in flight, while the turn itself runs
+   * on.
+   *
+   * `A2AService/SubscribeToTask`, addressed and authorized like the stream it
+   * stands in for: to the session's Agent (`tenant`), as the person (their
+   * token, with HITL requested so a question the turn reaches arrives typed).
+   * The controller answers the task's current snapshot first and the turn's
+   * events from then on, relayed exactly as {@link streamMessage} relays them;
+   * a task already over yields its final event.
+   *
+   * **The subscription failing to open is answered in-band, not thrown**,
+   * whenever a retry could succeed — the controller unavailable, slow or gone
+   * mid-rollout: one `{error}` frame, the same frame a stream that dies
+   * mid-turn ends with. The page retries that with a short backoff and then
+   * falls back to the poll, so it is an expected, handled outcome, and as a
+   * 5xx it would reach Sentry once per running turn per rollout. A **decision**
+   * — the person may not read the task, it does not exist, the controller
+   * predates the call — is thrown and mapped as on every other route, because
+   * no retry changes it.
+   */
+  async subscribeToTask(
+    sessionId: string,
+    agent: AgentRef,
+    taskId: string,
+    options: KagentRequestOptions,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const { tenant } = this.targetOf(sessionId, agent);
+    const stream = this.a2aService
+      .subscribeToTask(
+        { tenant, id: taskId },
+        { headers: this.turnHeaders(options), signal },
+      )
+      [Symbol.asyncIterator]();
+
+    let first: IteratorResult<StreamResponse>;
+    try {
+      first = await this.withTimeout(stream.next(), this.timeoutMs, signal);
+    } catch (error) {
+      if (signal.aborted) {
+        throw error;
+      }
+      const connectError = ConnectError.from(error);
+      const isDecision =
+        (SUBSCRIBE_DECISION_CODES.has(connectError.code) ||
+          isUnsupportedOperation(connectError.rawMessage)) &&
+        !isSocketFailure(connectError);
+      if (isDecision) {
+        throw this.mapError(error, {
+          endpoint: 'task subscription',
+          missingResource: `That turn does not exist on installation '${this.installation.name}'.`,
+          invalidArgument: reason =>
+            new InputError(
+              `kagent on installation '${this.installation.name}' did not accept the subscription: ${reason}`,
+            ),
+          // A task already over: there is nothing left to follow.
+          unsupportedOperation: reason =>
+            new ConflictError(
+              `That turn on installation '${this.installation.name}' cannot be followed any more: ${reason}`,
+            ),
+        });
+      }
+      // `info`, not `warn`: the page retries and then follows the poll.
+      this.logger.info(
+        'A kagent task subscription could not be opened; the client retries or falls back to polling',
+        {
+          installation: this.installation.name,
+          code: Code[connectError.code],
+        },
+      );
+      return new Response(
+        sseFrame({
+          error: {
+            code: Code[connectError.code],
+            message: connectError.rawMessage,
+          },
+        }),
+        { status: 200, headers: { 'content-type': SSE_CONTENT_TYPE } },
+      );
+    }
+    return this.relayAsSse(stream, first, signal);
+  }
+
+  /**
+   * Relay an opened A2A stream as an SSE {@link Response}: each
+   * `StreamResponse` as one `data:` frame of its JSON, and a stream that dies
+   * mid-turn ended with one `{error}` frame. Shared by every streamed call, so
+   * a turn's stream reads the same whatever opened it.
+   */
+  private relayAsSse(
+    stream: AsyncIterator<StreamResponse>,
+    first: IteratorResult<StreamResponse>,
+    signal: AbortSignal,
+  ): Response {
     const logger = this.logger;
     const installationName = this.installation.name;
+    const encoder = new TextEncoder();
 
     const body = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
           let next = first;
           while (!next.done) {
-            controller.enqueue(frame(toJson(StreamResponseSchema, next.value)));
+            controller.enqueue(
+              encoder.encode(
+                sseFrame(toJson(StreamResponseSchema, next.value)),
+              ),
+            );
             next = await stream.next();
           }
         } catch (error) {
           // The stream died mid-turn (a gateway's request timeout, an Envoy
-          // drain, a runtime failure the gateway reports in-band). One error
-          // frame says so; the turn keeps running regardless, and an
-          // unterminated stream is the frontend's cue to fall back to the poll.
+          // drain, a controller rollout, a runtime failure the gateway reports
+          // in-band). One error frame says so; the turn keeps running
+          // regardless, and an unterminated stream is the frontend's cue to
+          // resubscribe, then to fall back to the poll.
           const connectError = ConnectError.from(error);
           logger.debug(
             `A kagent event stream for installation '${installationName}' ended before the turn did`,
@@ -777,12 +905,14 @@ export class KagentClient {
           );
           if (!signal.aborted) {
             controller.enqueue(
-              frame({
-                error: {
-                  code: Code[connectError.code],
-                  message: connectError.rawMessage,
-                },
-              }),
+              encoder.encode(
+                sseFrame({
+                  error: {
+                    code: Code[connectError.code],
+                    message: connectError.rawMessage,
+                  },
+                }),
+              ),
             );
           }
         } finally {
@@ -796,7 +926,7 @@ export class KagentClient {
 
     return new Response(body, {
       status: 200,
-      headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+      headers: { 'content-type': SSE_CONTENT_TYPE },
     });
   }
 

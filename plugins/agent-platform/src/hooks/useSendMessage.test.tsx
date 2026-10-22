@@ -10,11 +10,17 @@ import {
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
 import { useSendMessage } from './useSendMessage';
+import { StreamTurn } from '../lib/kagentStreamTurn';
 
 const streamMessage = jest.fn();
 const listSessionTasks = jest.fn();
+const subscribeToTask = jest.fn();
 
-const kagentApi = { streamMessage, listSessionTasks } as unknown as KagentApi;
+const kagentApi = {
+  streamMessage,
+  listSessionTasks,
+  subscribeToTask,
+} as unknown as KagentApi;
 const analyticsApi = mockApis.analytics.mock();
 
 const AGENT = { namespace: 'kagent', name: 'issue-tracker' };
@@ -102,7 +108,18 @@ beforeEach(() => {
   streamMessage.mockResolvedValue(undefined);
   listSessionTasks.mockReset();
   listSessionTasks.mockResolvedValue([]);
+  // A decision by default — the turn cannot be followed again — so a test
+  // about what follows a lost stream need not wait out the retries.
+  subscribeToTask.mockReset();
+  subscribeToTask.mockRejectedValue(notFound('That turn does not exist.'));
 });
+
+/** A decision, named as the client names a 404. */
+function notFound(message: string): Error {
+  const error = new Error(message);
+  error.name = 'NotFoundError';
+  return error;
+}
 
 /** An error carrying the name `streamMessage` uses for transport failures. */
 function transportError(message: string): Error {
@@ -934,6 +951,206 @@ describe('useSendMessage', () => {
 
       await act(async () => {
         release();
+      });
+    });
+
+    describe('a stream cut mid-turn', () => {
+      // A kagent controller rollout ends every stream in flight — the gateway
+      // relays `closed pool` and closes — while the turn itself runs on.
+      const working = {
+        kind: 'task',
+        id: 'task-1',
+        status: { state: 'working' },
+      };
+      const said = (text: string, messageId: string, final = false) => ({
+        kind: 'status-update',
+        taskId: 'task-1',
+        final,
+        status: {
+          state: final ? 'completed' : 'working',
+          message: {
+            kind: 'message',
+            messageId,
+            role: 'agent',
+            parts: [{ kind: 'text', text }],
+          },
+        },
+      });
+      const cutByRollout = async (
+        _i: string,
+        _s: string,
+        _a: unknown,
+        _m: unknown,
+        onEvent: (event: unknown) => void,
+      ) => {
+        onEvent(working);
+        onEvent(said('Checking the nodes.', 'm-1'));
+        return { error: 'Failed to get Session: closed pool' };
+      };
+      /** The texts the preview shows, completed items then the open run. */
+      const previewTexts = (stream: StreamTurn | null) => [
+        ...(stream?.items ?? []).map(item =>
+          'text' in item ? item.text : item.kind,
+        ),
+        ...(stream?.live ? [stream.live.text] : []),
+      ];
+
+      it('resubscribes to the turn and continues the live view where it stopped, repeating nothing', async () => {
+        streamMessage.mockImplementation(cutByRollout);
+        let reopen: () => void = () => {};
+        let finish: () => void = () => {};
+        subscribeToTask.mockImplementation(
+          async (_i, _s, _a, _t, onEvent: (event: unknown) => void) => {
+            await new Promise<void>(resolve => (reopen = resolve));
+            // The snapshot repeats the task's history; it is not shown again.
+            onEvent({
+              ...working,
+              history: [said('Checking the nodes.', 'm-1').status.message],
+            });
+            onEvent(said('Seven nodes are ready.', 'm-2'));
+            await new Promise<void>(resolve => (finish = resolve));
+            onEvent(said('Seven nodes are ready.', 'm-2', true));
+            return {};
+          },
+        );
+        const { result } = renderWith();
+
+        let sending: Promise<void> = Promise.resolve();
+        act(() => {
+          sending = result.current.sendMessage('how are the nodes?');
+        });
+
+        // Between the cut and the resubscription: reconnecting, the preview
+        // kept, and nothing said about a lost stream.
+        await waitFor(() => expect(result.current.isReconnecting).toBe(true));
+        expect(previewTexts(result.current.stream)).toEqual([
+          'Checking the nodes.',
+        ]);
+        expect(result.current.isStreamLost).toBe(false);
+        expect(subscribeToTask).toHaveBeenCalledWith(
+          'gazelle',
+          'abc',
+          AGENT,
+          'task-1',
+          expect.any(Function),
+          expect.any(AbortSignal),
+        );
+
+        act(() => reopen());
+
+        await waitFor(() =>
+          expect(previewTexts(result.current.stream)).toEqual([
+            'Checking the nodes.',
+            'Seven nodes are ready.',
+          ]),
+        );
+        expect(result.current.isReconnecting).toBe(false);
+        expect(result.current.isSending).toBe(true);
+
+        await act(async () => {
+          finish();
+          await sending;
+        });
+
+        expect(result.current.isStreamLost).toBe(false);
+        expect(result.current.isReconnecting).toBe(false);
+        expect(result.current.error).toBeNull();
+        expect(subscribeToTask).toHaveBeenCalledTimes(1);
+      });
+
+      it('falls back to the poll when resubscribing keeps failing, and shows the result once the turn completes', async () => {
+        jest.useFakeTimers();
+        try {
+          streamMessage.mockImplementation(cutByRollout);
+          // The controller is not back within the backoff.
+          subscribeToTask.mockRejectedValue(
+            transportError('The streaming send failed with status 503.'),
+          );
+          const { result, queryClient } = renderWith();
+
+          let sending: Promise<void> = Promise.resolve();
+          act(() => {
+            sending = result.current.sendMessage('how are the nodes?');
+          });
+          await waitFor(() => expect(result.current.isReconnecting).toBe(true));
+
+          await act(async () => {
+            await jest.advanceTimersByTimeAsync(10_000);
+            await sending;
+          });
+
+          // Bounded: one try at once and three more, backing off.
+          expect(subscribeToTask).toHaveBeenCalledTimes(4);
+          expect(result.current.isReconnecting).toBe(false);
+          expect(result.current.isStreamLost).toBe(true);
+          expect(result.current.error).toBeNull();
+
+          // The turn completes; the poll brings its result, and nothing is
+          // lost any more.
+          act(() => {
+            queryClient.setQueryData(TASKS_KEY, [
+              taskHolding(sentMessageId(), 'completed'),
+            ]);
+          });
+          await waitFor(() => expect(result.current.isStreamLost).toBe(false));
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
+      it('stops at a decision without retrying, and follows the poll', async () => {
+        streamMessage.mockImplementation(cutByRollout);
+        const { result } = renderWith();
+
+        await act(async () => {
+          await result.current.sendMessage('how are the nodes?');
+        });
+
+        expect(subscribeToTask).toHaveBeenCalledTimes(1);
+        expect(result.current.isStreamLost).toBe(true);
+      });
+
+      it('does not resubscribe a turn that paused for the person', async () => {
+        // A v1 pause ends the stream with no final flag; the answer panel is
+        // what moves the turn on, not a subscription.
+        streamMessage.mockImplementation(
+          async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+            onEvent(working);
+            onEvent({
+              kind: 'status-update',
+              taskId: 'task-1',
+              status: { state: 'input-required' },
+            });
+          },
+        );
+        const { result } = renderWith();
+
+        await act(async () => {
+          await result.current.sendMessage('how are the nodes?');
+        });
+
+        expect(subscribeToTask).not.toHaveBeenCalled();
+      });
+
+      it('does not resubscribe a stream that ended with a lost runtime, nor call it a lost stream', async () => {
+        // The turn failed with the runtime: the re-read shows the runtime
+        // loss, which the page tells apart from a stream that went away.
+        streamMessage.mockImplementation(
+          async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+            onEvent(working);
+            return {
+              error: 'runtime lost: local snapshot on node ip-10-0-1-2 is gone',
+            };
+          },
+        );
+        const { result } = renderWith();
+
+        await act(async () => {
+          await result.current.sendMessage('how are the nodes?');
+        });
+
+        expect(subscribeToTask).not.toHaveBeenCalled();
+        expect(result.current.isStreamLost).toBe(false);
       });
     });
 

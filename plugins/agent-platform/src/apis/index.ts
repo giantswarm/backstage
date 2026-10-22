@@ -3,6 +3,7 @@ export {
   kagentApiRef,
   isConflictError,
   isFirstEventTimeout,
+  isResubscribeRetryable,
   isStreamTransportError,
   isUnauthorizedError,
   CONFLICT_ERROR_NAME,
@@ -16,6 +17,7 @@ export type {
   KagentIdentity,
   KagentInstallation,
   RawSessionBodies,
+  StreamEnd,
 } from './types';
 export {
   SERVED_MODEL_AUTH_HEADER,

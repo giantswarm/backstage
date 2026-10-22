@@ -165,6 +165,37 @@ export function isStreamTurnOver(turn: StreamTurn): boolean {
 }
 
 /**
+ * The turn as it stands where its stream was cut, ready to take the events of
+ * a resubscription to its task.
+ *
+ * Everything already shown stays: a resubscription delivers the task's
+ * snapshot (whose history is not ingested) and the events from then on, so
+ * nothing on screen arrives twice, and a complete message that repeats one is
+ * recognised by its `messageId`. Only an open run of **artifact chunks** goes —
+ * one with no `messageId`, the Go executor's partial reply. The chunks sent
+ * while no stream was open are gone, so the next ones would be glued onto it
+ * with a hole in the middle; the complete artifact supersedes the run anyway,
+ * from the resubscription or from the poll. A run a message opened is that
+ * message's text as sent and keeps its place.
+ */
+export function resumeStreamTurn(turn: StreamTurn): StreamTurn {
+  if (!turn.live || turn.live.messageId !== undefined) {
+    return turn;
+  }
+  return { ...turn, live: undefined, revision: turn.revision + 1 };
+}
+
+/**
+ * Whether an event is a task snapshot — the first thing a resubscription
+ * answers, before any of the turn's own events. Says nothing about progress:
+ * a subscription that delivered only that has not shown the turn moving.
+ */
+export function isTaskSnapshotEvent(data: unknown): boolean {
+  const parsed = a2aStreamEventWireSchema.safeParse(normalizeStreamEvent(data));
+  return parsed.success && parsed.data.kind === 'task';
+}
+
+/**
  * Fold one stream event into the turn. Pure: returns a new state, never throws
  * — an unreadable event returns the previous state with only `dispatched` set,
  * because even an event we cannot parse proves kagent is running the turn.
@@ -204,6 +235,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     }
 
     case 'status-update': {
+      next.taskId ??= event.taskId;
       const state = event.status?.state?.toLowerCase();
       if (state) {
         next.stateKey = state;
@@ -265,6 +297,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     }
 
     case 'artifact-update': {
+      next.taskId ??= event.taskId;
       const parts = Array.isArray(event.artifact?.parts)
         ? event.artifact.parts
         : [];

@@ -3,7 +3,9 @@ import {
   createSseDataDecoder,
   createStreamTurn,
   isStreamTurnOver,
+  isTaskSnapshotEvent,
   readStreamFrame,
+  resumeStreamTurn,
   StreamTurn,
 } from './kagentStreamTurn';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -1193,5 +1195,99 @@ describe('carriesFile', () => {
         },
       ),
     ).toBe(true);
+  });
+});
+
+describe('resuming a cut stream', () => {
+  const fold = (turn: StreamTurn, events: unknown[]) =>
+    events.reduce<StreamTurn>(applyStreamEvent, turn);
+  const said = (text: string, messageId: string, final = false) => ({
+    kind: 'status-update',
+    taskId: 'task-1',
+    final,
+    status: {
+      state: final ? 'completed' : 'working',
+      message: {
+        kind: 'message',
+        messageId,
+        role: 'agent',
+        parts: [{ kind: 'text', text }],
+      },
+    },
+  });
+  const chunk = (text: string) => ({
+    kind: 'artifact-update',
+    taskId: 'task-1',
+    artifact: { artifactId: 'a-1', parts: [{ kind: 'text', text }] },
+    metadata: { kagent_partial: true },
+  });
+  const snapshot = {
+    kind: 'task',
+    id: 'task-1',
+    status: { state: 'working' },
+    // A resumed task's snapshot repeats its history; none of it is ingested.
+    history: [
+      {
+        kind: 'message',
+        messageId: 'm-1',
+        role: 'agent',
+        parts: [{ kind: 'text', text: 'Checking the nodes.' }],
+      },
+    ],
+  };
+
+  it('continues where the stream stopped, showing nothing twice', () => {
+    const cut = fold(createStreamTurn('sent-1'), [
+      { kind: 'task', id: 'task-1', status: { state: 'working' } },
+      said('Checking the nodes.', 'm-1'),
+    ]);
+
+    const resumed = fold(resumeStreamTurn(cut), [
+      snapshot,
+      said('Seven are ready.', 'm-2'),
+      said('Seven are ready.', 'm-2', true),
+    ]);
+
+    const texts = [
+      ...resumed.items.map(item => ('text' in item ? item.text : item.kind)),
+      ...(resumed.live ? [resumed.live.text] : []),
+    ];
+    expect(texts).toEqual(['Checking the nodes.', 'Seven are ready.']);
+    expect(isStreamTurnOver(resumed)).toBe(true);
+  });
+
+  it('drops a half-received reply of artifact chunks, which the complete artifact supersedes', () => {
+    // The chunks sent while no stream was open are gone: the next ones would
+    // be glued onto these with a hole in the middle.
+    const cut = fold(createStreamTurn('sent-1'), [
+      { kind: 'task', id: 'task-1', status: { state: 'working' } },
+      chunk('Seven nodes are '),
+    ]);
+    expect(cut.live?.text).toBe('Seven nodes are ');
+
+    const resumed = resumeStreamTurn(cut);
+
+    expect(resumed.live).toBeUndefined();
+    expect(resumed.revision).toBeGreaterThan(cut.revision);
+  });
+
+  it('keeps the text a message opened, which is that message as sent', () => {
+    const cut = fold(createStreamTurn('sent-1'), [said('Checking.', 'm-1')]);
+
+    expect(resumeStreamTurn(cut)).toBe(cut);
+  });
+
+  it('knows its task from an update event when no snapshot named it', () => {
+    // A stream cut before its snapshot was read can still be resubscribed.
+    const turn = fold(createStreamTurn('sent-1'), [said('Checking.', 'm-1')]);
+
+    expect(turn.taskId).toBe('task-1');
+  });
+
+  it('tells the snapshot a resubscription opens with from the turn’s own events', () => {
+    expect(isTaskSnapshotEvent(snapshot)).toBe(true);
+    expect(isTaskSnapshotEvent({ task: { id: 'task-1' } })).toBe(true);
+    expect(isTaskSnapshotEvent(said('Checking.', 'm-1'))).toBe(false);
+    expect(isTaskSnapshotEvent('garbage')).toBe(false);
   });
 });

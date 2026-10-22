@@ -70,6 +70,7 @@ describe('createRouter', () => {
   const answerConfirmation = jest.fn();
   const streamAnswer = jest.fn();
   const cancelTask = jest.fn();
+  const subscribeToTask = jest.fn();
   const readSessionImageUsage = jest.fn();
 
   const mockClient = {
@@ -88,6 +89,7 @@ describe('createRouter', () => {
     answerConfirmation,
     streamAnswer,
     cancelTask,
+    subscribeToTask,
     readSessionImageUsage,
   } as unknown as KagentClient;
 
@@ -2059,6 +2061,74 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(200);
       expect(response.text).toBe('data: {"jsonrpc":"2.0","result":{}}\n\n');
+    });
+  });
+
+  describe('POST /kagent/sessions/:sessionId/tasks/:taskId/subscribe', () => {
+    const agentBody = { agentNamespace: 'kagent', agentName: 'issue-tracker' };
+
+    function post(
+      body: unknown = agentBody,
+      { sessionId = 'abc', taskId = 'task-1' } = {},
+    ) {
+      return request(app)
+        .post(`/kagent/sessions/${sessionId}/tasks/${taskId}/subscribe`)
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    beforeEach(() => subscribeToTask.mockReset());
+
+    it('relays the subscription as the person, to the Agent the body names', async () => {
+      const frame = 'data: {"statusUpdate":{"taskId":"task-1"}}\n\n';
+      subscribeToTask.mockResolvedValue(
+        new Response(frame, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+      );
+
+      const response = await post(agentBody, {
+        sessionId: 'a%2Fb',
+        taskId: '01a086cf-7f84-761d-980a-48f485eded5e',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/event-stream');
+      expect(response.text).toBe(frame);
+      expect(subscribeToTask).toHaveBeenCalledWith(
+        'a/b',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        '01a086cf-7f84-761d-980a-48f485eded5e',
+        { userToken: 'user-token' },
+        expect.any(AbortSignal),
+      );
+    });
+
+    it('requires the forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/tasks/task-1/subscribe')
+        .query({ installation: 'gazelle' })
+        .send(agentBody);
+
+      expect(response.status).toBe(401);
+      expect(subscribeToTask).not.toHaveBeenCalled();
+    });
+
+    it('requires the Agent', async () => {
+      const response = await post({ agentNamespace: 'kagent' });
+
+      expect(response.status).toBe(400);
+      expect(subscribeToTask).not.toHaveBeenCalled();
+    });
+
+    it('answers a decision as its 4xx', async () => {
+      subscribeToTask.mockRejectedValue(new NotFoundError('no such turn'));
+
+      const response = await post();
+
+      expect(response.status).toBe(404);
     });
   });
 

@@ -5,12 +5,20 @@ import {
   A2aTaskWire,
   AWAITING_INPUT_STATES,
   describeSessionState,
+  isRuntimeLostFailureText,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { isStreamTransportError, kagentApiRef } from '../apis';
+import {
+  isResubscribeRetryable,
+  isStreamTransportError,
+  kagentApiRef,
+  StreamEnd,
+} from '../apis';
 import {
   applyStreamEvent,
   createStreamTurn,
   isStreamTurnOver,
+  isTaskSnapshotEvent,
+  resumeStreamTurn,
   StreamTurn,
 } from '../lib/kagentStreamTurn';
 import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
@@ -24,7 +32,41 @@ import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
 export type OpenTurnStream = (
   onEvent: (result: unknown) => void,
   signal: AbortSignal,
-) => Promise<void>;
+) => Promise<StreamEnd | void>;
+
+/**
+ * How long to wait before each resubscription to a turn whose stream ended
+ * before it did: at once, then backing off to 7 s in all, after which the poll
+ * takes over. Short, because a controller rollout has its new pod serving
+ * before the old one is cut and the reader is watching; bounded, because a
+ * controller that is not coming back must not keep the page saying
+ * "Reconnecting…". A subscription that delivered the turn's own events starts
+ * the count again, so a turn cut twice is picked up twice.
+ */
+export const RESUBSCRIBE_DELAYS_MS = [0, 1000, 2000, 4000];
+
+/**
+ * The most resubscriptions one turn makes, however many delivered events: a
+ * guard against a stream that opens, says one thing and is cut, forever.
+ */
+export const MAX_RESUBSCRIBES = 30;
+
+/** Resolve after `ms`, or at once when `signal` aborts. */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    // The timer outliving an abort only resolves a settled promise again.
+    const onAbort = () => resolve();
+    signal.addEventListener('abort', onAbort, { once: true });
+    setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+  });
+}
 
 /**
  * Called when a send failed before any event, the session history was read to
@@ -78,6 +120,16 @@ function isTaskWorking(task: A2aTaskWire): boolean {
 }
 
 /**
+ * Whether the stream left the turn waiting on the person: a v1 pause ends the
+ * stream with no final flag, and the answer panel, not a resubscription, is
+ * what moves the turn on.
+ */
+function awaitsPerson(turn: StreamTurn): boolean {
+  const key = describeSessionState(turn.stateKey)?.key;
+  return key !== undefined && AWAITING_INPUT_STATES.has(key);
+}
+
+/**
  * The part of a streamed turn that is the same whatever opened it.
  *
  * A plain message and an answer to a confirmation are different acts — one
@@ -100,13 +152,27 @@ function isTaskWorking(task: A2aTaskWire): boolean {
  * unknown agent, a session still busy with the previous turn, an in-band A2A
  * error before anything ran) is reported as made, never verified away.
  *
- * **Losing the stream is not "still working" either.** A stream that ends —
- * cleanly, by a cut, or by an in-band error — before it has delivered the end
- * of the turn is reported as **lost** ({@link isStreamLost}), from the moment
- * it ends until a conversation read from after that moment shows the turn no
- * longer working. The page says so in place of "Working…": the preview stopped
- * mid-sentence, and a spinner alone would promise a continuation that is not
- * coming through the stream. The finished reply arrives through the poll.
+ * **A cut stream is picked up again.** A stream that ends — cleanly, by a
+ * cut, or by an in-band error — before it has delivered the end of the turn
+ * is followed again by resubscribing to the turn's task (A2A
+ * `SubscribeToTask`, `KagentApi.subscribeToTask`): a kagent controller
+ * rollout cuts every stream in flight while the turns run on. The
+ * resubscription's events fold into the same {@link StreamTurn}, so the
+ * preview continues where it stopped, and the conversation is re-read as it
+ * opens to bring in what was said while no stream was open. Meanwhile
+ * {@link isReconnecting} is true, with a short bounded backoff
+ * ({@link RESUBSCRIBE_DELAYS_MS}). A decision (not the person's turn, a turn
+ * already over) ends the retries at once, and a stream that ended with a lost
+ * runtime's words is not resubscribed at all: the turn failed with it, and
+ * the re-read shows the runtime loss, not a lost stream.
+ *
+ * **Losing the stream is not "still working" either.** A stream that could
+ * not be picked up again is reported as **lost** ({@link isStreamLost}), from
+ * the moment the last attempt ends until a conversation read from after that
+ * moment shows the turn no longer working. The page says so in place of
+ * "Working…": the preview stopped mid-sentence, and a spinner alone would
+ * promise a continuation that is not coming through the stream. The finished
+ * reply arrives through the poll.
  *
  * **A stream that hangs is ended from here.** The conversation poll keeps
  * running beside the stream, and while the stream is open every successful read
@@ -116,9 +182,23 @@ function isTaskWorking(task: A2aTaskWire): boolean {
  * lived. A turn that is genuinely running is never touched: its task reads as
  * working, and the stream stays.
  */
-export function useStreamedTurn(installation: string, sessionId: string) {
+export function useStreamedTurn(
+  installation: string,
+  sessionId: string,
+  /**
+   * The session's Agent, which a resubscription is addressed to, as the
+   * stream was. Without it a cut stream is not picked up again.
+   */
+  agent?: { namespace: string; name: string },
+) {
   const kagentApi = useApi(kagentApiRef);
   const queryClient = useQueryClient();
+  // Read at the cut rather than captured by `run`, which keeps its identity.
+  const agentRef = useRef(agent);
+  agentRef.current = agent;
+  // A cut stream is being picked up again: between the cut and the
+  // resubscription's first event.
+  const [isReconnecting, setReconnecting] = useState(false);
   // The in-flight turn as streamed so far, or null outside a send. State for
   // the page to render; the ref lets the async run read the latest fold without
   // re-subscribing.
@@ -219,8 +299,8 @@ export function useStreamedTurn(installation: string, sessionId: string) {
   );
 
   /**
-   * Run one streamed turn to the end of its stream, then re-read the
-   * conversation. Rejects only with a failure that is known to be one.
+   * Run one streamed turn to the end of its stream — picked up again as long
+   * as it is cut before the turn ends — then re-read the conversation. Rejects only with a failure that is known to be one.
    * Resolves with the turn as streamed, so a caller can tell a stream that
    * said nothing at all (`dispatched` false) from one that carried the turn.
    * `onMissing` hears a failure the history confirmed did not land.
@@ -238,43 +318,116 @@ export function useStreamedTurn(installation: string, sessionId: string) {
       const control = new AbortController();
       abortRef.current = control;
 
-      try {
-        await open(result => {
-          const carriedFile = turn.carriesFile;
-          turn = applyStreamEvent(turn, result);
-          if (unmountedRef.current) {
-            // Left before the first event: dispatched now, so the stream can
-            // go without taking the message with it.
-            control.abort();
+      // How the last stream of the turn ended.
+      let end: StreamEnd = {};
+      const fold = (result: unknown) => {
+        const carriedFile = turn.carriesFile;
+        turn = applyStreamEvent(turn, result);
+        if (unmountedRef.current) {
+          // Left before the first event: dispatched now, so the stream can
+          // go without taking the message with it.
+          control.abort();
+          return;
+        }
+        setStreamTurn(turn);
+        if (turn.carriesFile && !carriedFile) {
+          // Not awaited: the stream keeps flowing while the poll catches up.
+          void queryClient.invalidateQueries({
+            queryKey: sessionTasksQueryKey(installation, sessionId),
+          });
+        }
+      };
+
+      /**
+       * Follow the turn again for as long as its stream keeps ending before
+       * it does — see "A cut stream is picked up again" above. Leaves `turn`
+       * and `end` as the last stream left them.
+       */
+      const followAgain = async () => {
+        let failures = 0;
+        for (let attempt = 0; attempt < MAX_RESUBSCRIBES; attempt += 1) {
+          const target = agentRef.current;
+          const taskId = turn.taskId;
+          if (
+            !target ||
+            !taskId ||
+            !turn.dispatched ||
+            isStreamTurnOver(turn) ||
+            awaitsPerson(turn) ||
+            isRuntimeLostFailureText(end.error) ||
+            control.signal.aborted ||
+            unmountedRef.current ||
+            failures >= RESUBSCRIBE_DELAYS_MS.length ||
+            pollShowsTurnOver(turn)
+          ) {
             return;
           }
+          setReconnecting(true);
+          await pause(RESUBSCRIBE_DELAYS_MS[failures], control.signal);
+          if (control.signal.aborted || unmountedRef.current) {
+            return;
+          }
+          turn = resumeStreamTurn(turn);
           setStreamTurn(turn);
-          if (turn.carriesFile && !carriedFile) {
-            // Not awaited: the stream keeps flowing while the poll catches up.
-            void queryClient.invalidateQueries({
-              queryKey: sessionTasksQueryKey(installation, sessionId),
-            });
+          let opened = false;
+          let progressed = false;
+          try {
+            end =
+              (await kagentApi.subscribeToTask(
+                installation,
+                sessionId,
+                target,
+                taskId,
+                result => {
+                  if (!opened) {
+                    opened = true;
+                    setReconnecting(false);
+                    // What the turn said while no stream was open is in its
+                    // history: the poll brings it in, the preview goes on.
+                    void queryClient.invalidateQueries({
+                      queryKey: sessionTasksQueryKey(installation, sessionId),
+                    });
+                  }
+                  progressed ||= !isTaskSnapshotEvent(result);
+                  fold(result);
+                },
+                control.signal,
+              )) ?? {};
+          } catch (error) {
+            if (!isResubscribeRetryable(error)) {
+              return;
+            }
+            end = {};
           }
-        }, control.signal);
-      } catch (error) {
-        // Any event at all means the turn exists — a later failure only cut
-        // the preview short, and the poll finishes the job (an abort because
-        // the page went away comes only after one). A failure before any
-        // event is reported even after the page went away: it is not ours.
-        if (!turn.dispatched) {
-          if (!isStreamTransportError(error)) {
-            throw error;
-          }
-          const landing = await readLanding(messageId);
-          if (landing.kind === 'missing') {
-            onMissing?.(landing.tasks);
-          }
-          if (landing.kind !== 'landed') {
-            throw error;
+          failures = progressed ? 0 : failures + 1;
+        }
+      };
+
+      try {
+        try {
+          end = (await open(fold, control.signal)) ?? {};
+        } catch (error) {
+          // Any event at all means the turn exists — a later failure only cut
+          // the preview short, and the poll finishes the job (an abort because
+          // the page went away comes only after one). A failure before any
+          // event is reported even after the page went away: it is not ours.
+          if (!turn.dispatched) {
+            if (!isStreamTransportError(error)) {
+              throw error;
+            }
+            const landing = await readLanding(messageId);
+            if (landing.kind === 'missing') {
+              onMissing?.(landing.tasks);
+            }
+            if (landing.kind !== 'landed') {
+              throw error;
+            }
           }
         }
+        await followAgain();
       } finally {
         abortRef.current = null;
+        setReconnecting(false);
       }
 
       // Gone from the page: nothing here renders the outcome. The turn is
@@ -289,8 +442,13 @@ export function useStreamedTurn(installation: string, sessionId: string) {
       // below, so the page can say "checking" for exactly as long as it runs —
       // unless the conversation in hand already shows the turn over, which is
       // how a stream ended from here (see the subscription below) arrives: the
-      // outcome is known, and there is nothing to check.
-      if (!isStreamTurnOver(turn) && !pollShowsTurnOver(turn)) {
+      // outcome is known, and there is nothing to check. Nor is a lost runtime
+      // a lost stream: the turn failed with it, and the re-read shows how.
+      if (
+        !isStreamTurnOver(turn) &&
+        !isRuntimeLostFailureText(end.error) &&
+        !pollShowsTurnOver(turn)
+      ) {
         setLostStream({ turn, at: Date.now() });
       }
 
@@ -314,6 +472,7 @@ export function useStreamedTurn(installation: string, sessionId: string) {
     [
       installation,
       sessionId,
+      kagentApi,
       readLanding,
       pollShowsTurnOver,
       queryClient,
@@ -374,7 +533,7 @@ export function useStreamedTurn(installation: string, sessionId: string) {
   const clear = useCallback(() => setStreamTurn(null), [setStreamTurn]);
 
   return useMemo(
-    () => ({ stream, isStreamLost: isLost, run, clear }),
-    [stream, isLost, run, clear],
+    () => ({ stream, isReconnecting, isStreamLost: isLost, run, clear }),
+    [stream, isReconnecting, isLost, run, clear],
   );
 }

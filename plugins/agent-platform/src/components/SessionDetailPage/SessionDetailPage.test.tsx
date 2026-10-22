@@ -284,6 +284,7 @@ function idleConfirmation(
     isAnswering: false,
     pending: null,
     stream: null,
+    isReconnecting: false,
     isStreamLost: false,
     failed: null,
     error: null,
@@ -361,6 +362,7 @@ function idleSend(
     isSending: false,
     pending: null,
     stream: null,
+    isReconnecting: false,
     isStreamLost: false,
     failed: null,
     error: null,
@@ -1389,6 +1391,32 @@ describe('SessionDetailPage', () => {
         taskId: 'task-new',
       };
 
+      it('says the stream is being picked up again, keeping the preview', async () => {
+        // A controller rollout cut the stream; the send resubscribes to the
+        // turn. What was streamed so far stays on screen meanwhile.
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            isReconnecting: true,
+            stream: {
+              ...cutStream,
+              live: { kind: 'agent-message', text: 'Checking the nodes' },
+            },
+          }),
+        );
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText('The live view was interrupted. Reconnecting…'),
+        ).toBeInTheDocument();
+        expect(screen.getByText('Checking the nodes')).toBeInTheDocument();
+        expect(
+          screen.queryByText(/restore the live view/),
+        ).not.toBeInTheDocument();
+      });
+
       it('says the result is being checked while the send re-reads the conversation', async () => {
         // The stream is gone and the send is awaiting the conversation; the
         // poll's copy still shows the previous, finished turn.
@@ -1400,7 +1428,9 @@ describe('SessionDetailPage', () => {
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
         expect(
-          screen.getByText('The live stream was lost. Checking the result…'),
+          screen.getByText(
+            'Could not restore the live view. Checking the result…',
+          ),
         ).toBeInTheDocument();
       });
 
@@ -1431,7 +1461,9 @@ describe('SessionDetailPage', () => {
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
         expect(
-          screen.getByText(/The live stream was lost. Still working/),
+          screen.getByText(
+            /Could not restore the live view. The agent is still working/,
+          ),
         ).toBeInTheDocument();
         // Still a running turn: the composer withholds Send and offers Stop.
         expect(
@@ -1450,9 +1482,7 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.queryByText(/live stream was lost/),
-        ).not.toBeInTheDocument();
+        expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
         expect(screen.getByText('Idle')).toBeInTheDocument();
         expect(
           screen.getByRole('button', { name: 'Send' }),
@@ -1471,7 +1501,9 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(
-          screen.getByText('The live stream was lost. Checking the result…'),
+          screen.getByText(
+            'Could not restore the live view. Checking the result…',
+          ),
         ).toBeInTheDocument();
       });
     });

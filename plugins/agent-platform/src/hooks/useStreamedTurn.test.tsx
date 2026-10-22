@@ -12,9 +12,10 @@ import { sessionTasksQueryKey } from './useSessionDetail';
 import { type OpenTurnStream, useStreamedTurn } from './useStreamedTurn';
 
 const listSessionTasks = jest.fn();
-const kagentApi = { listSessionTasks } as unknown as KagentApi;
+const subscribeToTask = jest.fn();
+const kagentApi = { listSessionTasks, subscribeToTask } as unknown as KagentApi;
 
-function renderTurn() {
+function renderTurn(agent?: { namespace: string; name: string }) {
   const queryClient = new QueryClient();
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
@@ -23,7 +24,9 @@ function renderTurn() {
     </TestApiProvider>
   );
   return {
-    ...renderHook(() => useStreamedTurn('gazelle', 'abc'), { wrapper }),
+    ...renderHook(() => useStreamedTurn('gazelle', 'abc', agent), {
+      wrapper,
+    }),
     invalidateQueries,
   };
 }
@@ -56,9 +59,42 @@ function hangingStream() {
 beforeEach(() => {
   listSessionTasks.mockReset();
   listSessionTasks.mockResolvedValue([]);
+  subscribeToTask.mockReset();
 });
 
 describe('useStreamedTurn', () => {
+  it('ends a resubscription in flight when its page unmounts, and tries no more', async () => {
+    let subscription: AbortSignal | undefined;
+    subscribeToTask.mockImplementation(
+      (_i, _s, _a, _t, _onEvent, signal: AbortSignal) =>
+        new Promise((_, reject) => {
+          subscription = signal;
+          signal.addEventListener('abort', () =>
+            reject(transportError('aborted')),
+          );
+        }),
+    );
+    const { result, unmount } = renderTurn({
+      namespace: 'kagent',
+      name: 'issue-tracker',
+    });
+
+    let outcome: Promise<unknown> = Promise.resolve();
+    act(() => {
+      outcome = result.current.run('message-1', async onEvent => {
+        onEvent({ kind: 'task', id: 'task-1', status: { state: 'working' } });
+      });
+    });
+    await waitFor(() => expect(subscription).toBeDefined());
+    expect(result.current.isReconnecting).toBe(true);
+
+    unmount();
+
+    expect(subscription?.aborted).toBe(true);
+    await expect(outcome).resolves.toMatchObject({ dispatched: true });
+    expect(subscribeToTask).toHaveBeenCalledTimes(1);
+  });
+
   it('aborts the stream in flight when its page unmounts, and reports nothing', async () => {
     const { handle, open } = hangingStream();
     const { result, unmount, invalidateQueries } = renderTurn();
