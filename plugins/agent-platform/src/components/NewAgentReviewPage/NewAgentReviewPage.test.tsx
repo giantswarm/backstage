@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  MCPServer,
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
@@ -41,10 +42,16 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   }),
 }));
 
-// The MCPServer CRs the toolset section groups by list nothing.
+// The MCPServer CRs the toolset section groups by list nothing, unless a
+// test says otherwise.
+let mockServerCrs: unknown[] = [];
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({ resources: [], isLoading: false, errors: [] }),
+  useResources: (_clusters: string[], resourceClass: { kind?: string }) => ({
+    resources: resourceClass?.kind === 'MCPServer' ? mockServerCrs : [],
+    isLoading: false,
+    errors: [],
+  }),
 }));
 
 // The targeted ModelConfig read behind the fold-out's "Underlying model";
@@ -168,6 +175,8 @@ type Scenario = {
   validateError?: Error;
   /** The Harness picked on the details step; none is the platform Harness. */
   harness?: HarnessChoice;
+  /** The toolset picked on the Tools step; `preset:read-only` by default. */
+  toolset?: string[];
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -242,11 +251,13 @@ function Seed({
   withSkill = true,
   harness,
   egressText,
+  toolset = ['preset:read-only'],
 }: {
   children: ReactNode;
   withSkill?: boolean;
   harness?: HarnessChoice;
   egressText?: string;
+  toolset?: string[];
 }) {
   const {
     setName,
@@ -273,7 +284,7 @@ function Seed({
     if (withSkill) {
       toggleSkill(SKILL);
     }
-    setToolset(['preset:read-only']);
+    setToolset(toolset);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return isComplete ? <>{children}</> : null;
@@ -298,6 +309,7 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
               withSkill={withSkill}
               harness={scenario.harness}
               egressText={scenario.egressText}
+              toolset={scenario.toolset}
             >
               <NewAgentReviewPage />
             </Seed>
@@ -326,7 +338,25 @@ function specSentTo(callTool: jest.Mock, tool: string): AgentSpec {
 beforeEach(() => {
   mockNavigate.mockReset();
   mockUseUnderlyingModel.mockReset();
+  mockServerCrs = [];
 });
+
+/** A connector muster signs in to per session, as `grafana-cloud` is. */
+function grafanaCloud() {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: {
+        name: 'grafana-cloud',
+        namespace: 'muster',
+        annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
+      },
+      spec: { type: 'streamable-http', auth: { type: 'oauth' } },
+    } as never,
+    'gazelle',
+  );
+}
 
 describe('NewAgentReviewPage', () => {
   it('leads with the plain summary and keeps the manifests under Technical details', async () => {
@@ -400,6 +430,42 @@ describe('NewAgentReviewPage', () => {
         'https://github.com:443, https://*.githubusercontent.com',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('creates an agent with a connector that needs a sign-in able to start it', async () => {
+    mockServerCrs = [grafanaCloud()];
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      toolset: ['server:grafana-cloud', 'tool:x_docs_search'],
+    });
+
+    expect(plainRow('Tools')).toHaveTextContent(
+      'Adds core_auth_login, which lets the agent start the sign-in to Grafana Cloud.',
+    );
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    expect(
+      specSentTo(callTool, 'x_agent-manager_validate_agent').toolset,
+    ).toEqual([
+      'server:grafana-cloud',
+      'tool:x_docs_search',
+      'tool:core_auth_login',
+    ]);
+
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_create_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    expect(
+      specSentTo(callTool, 'x_agent-manager_create_agent').toolset,
+    ).toEqual([
+      'server:grafana-cloud',
+      'tool:x_docs_search',
+      'tool:core_auth_login',
+    ]);
   });
 
   it("renders agent-manager's dry run: the 1.x OCIRepository, the HelmRelease with the pinned skill, the chart and the Harness", async () => {

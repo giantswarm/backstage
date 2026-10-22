@@ -423,12 +423,18 @@ async function renderStep(
     /** The wizard's state when it opens, for the edit-mode round trip. */
     toolset?: string[];
     chatOnly?: boolean;
+    /** The installation's MCPServer CRs, when not {@link SERVER_CRS}. */
+    servers?: MCPServer[];
   } = {},
 ) {
   mockUseResources.mockImplementation(
     (_clusters: string[], ResourceClass: unknown) => {
       if (ResourceClass === MCPServer) {
-        return { resources: SERVER_CRS, isLoading: false, errors: [] };
+        return {
+          resources: options.servers ?? SERVER_CRS,
+          isLoading: false,
+          errors: [],
+        };
       }
       if (ResourceClass === Agent) {
         return {
@@ -1583,6 +1589,131 @@ describe('NewAgentToolsPage', () => {
       expect(
         screen.getByRole('heading', { name: 'Toolset' }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the sign-in tool', () => {
+    /** The rail's and the bar's entry for the sign-in tool the step added. */
+    const addedForSignIn = () =>
+      within(summaryBar()).queryByRole('group', { name: 'Added for sign-in' });
+    const resolvedWith = (filterTools: jest.Mock, toolset: string[]) =>
+      waitFor(() =>
+        expect(filterTools).toHaveBeenCalledWith(
+          expect.objectContaining({ toolset }),
+        ),
+      );
+
+    it('adds core_auth_login with a connector that needs a sign-in, and drops it with the last one', async () => {
+      const { api, filterTools } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+
+      await user.click(access('pro', 'All'));
+      // The person's selection stays theirs; the step adds the tool.
+      expect(toolsetOutput()).toBe('server:pro');
+      await waitFor(() => expect(addedForSignIn()).toBeInTheDocument());
+      expect(addedForSignIn()).toHaveTextContent('core_auth_login');
+      expect(addedForSignIn()).toHaveTextContent(
+        'Lets the agent start the sign-in to pro.',
+      );
+      await resolvedWith(filterTools, ['server:pro', 'tool:core_auth_login']);
+
+      // A connector without a sign-in of its own needs nothing more.
+      await user.click(access('kubernetes', 'All'));
+      expect(addedForSignIn()).toBeInTheDocument();
+
+      await user.click(access('pro', 'All'));
+      expect(toolsetOutput()).toBe('server:kubernetes');
+      expect(addedForSignIn()).not.toBeInTheDocument();
+      await resolvedWith(filterTools, ['server:kubernetes']);
+    });
+
+    it('warns once it is removed while a connector still needs it, and puts it back', async () => {
+      const { api, filterTools } = makeMusterApi({
+        signedIn: true,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api, toolset: ['tool:x_pro_list_boards'] });
+      const user = userEvent.setup();
+      await connectorsListed();
+
+      // A tool of the connector needs it as much as the whole connector.
+      await waitFor(() => expect(addedForSignIn()).toBeInTheDocument());
+      await user.click(
+        within(addedForSignIn()!).getByRole('button', {
+          name: 'Remove core_auth_login',
+        }),
+      );
+      expect(addedForSignIn()).not.toBeInTheDocument();
+      expect(summaryBar()).toHaveTextContent(
+        "Without core_auth_login the agent won't be able to sign in to pro.",
+      );
+      await resolvedWith(filterTools, ['tool:x_pro_list_boards']);
+
+      await user.click(
+        within(summaryBar()).getByRole('button', {
+          name: 'Add core_auth_login back',
+        }),
+      );
+      expect(addedForSignIn()).toBeInTheDocument();
+      expect(summaryBar()).not.toHaveTextContent("won't be able to sign in");
+    });
+
+    it('adds nothing where a preset carries it already or the selection names it', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      const first = await renderStep({
+        api,
+        toolset: ['preset:read-only', 'server:pro'],
+      });
+      await connectorsListed();
+      expect(addedForSignIn()).not.toBeInTheDocument();
+      first.unmount();
+
+      await renderStep({
+        api,
+        toolset: ['server:pro', 'tool:core_auth_login'],
+      });
+      await connectorsListed();
+      expect(addedForSignIn()).not.toBeInTheDocument();
+      expect(
+        within(summaryBar()).getByTitle('tool:core_auth_login'),
+      ).toBeInTheDocument();
+    });
+
+    it('adds nothing for a connector muster signs in to with the caller’s own token', async () => {
+      const { api, filterTools } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({
+        api,
+        toolset: ['server:pro', 'server:sso'],
+        servers: [
+          ...SERVER_CRS.filter(server => server.getName() !== 'pro'),
+          mcpServer('pro', { auth: { type: 'oauth', forwardToken: true } }),
+          mcpServer('sso', {
+            auth: {
+              type: 'oauth',
+              tokenExchange: {
+                enabled: true,
+                dexTokenEndpoint: 'https://dex.example.com/token',
+                connectorId: 'example',
+              },
+            },
+          }),
+        ],
+      });
+      await connectorsListed();
+      await resolvedWith(filterTools, ['server:pro', 'server:sso']);
+      expect(addedForSignIn()).not.toBeInTheDocument();
     });
   });
 

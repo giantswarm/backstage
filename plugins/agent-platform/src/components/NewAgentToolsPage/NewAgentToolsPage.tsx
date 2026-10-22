@@ -24,10 +24,12 @@ import {
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
+import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetPresets } from '../../hooks/useToolsetPresets';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { filterCatalogue } from '../../lib/filterCatalogue';
+import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
 import {
   buildCatalogue,
   catalogueInventory,
@@ -76,6 +78,7 @@ import {
 } from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
 import { SelectedRail, type SelectedRailProps } from './SelectedRail';
+import { SignInToolNote } from './SignInToolNote';
 import { ToolCatalogue } from './ToolCatalogue';
 import { ToolsetSummaryBar } from './ToolsetSummaryBar';
 
@@ -183,6 +186,7 @@ function NarrowSelection({
       unsigned={props.unsigned}
       problems={props.problems}
       onShowDetails={props.onShowDetails ?? (() => {})}
+      signInNote={props.signInNote}
     />
   );
 }
@@ -213,6 +217,7 @@ export function NewAgentToolsPage() {
     setToolset,
     setToolsChatOnly,
     setToolsetBase: setKeptBase,
+    setSignInToolDeclined,
     isComplete,
     isToolsetValid,
     toolsetProblems,
@@ -226,7 +231,25 @@ export function NewAgentToolsPage() {
   const catalogue = useMusterToolCatalogue(installation);
   const { servers, isLoading: isLoadingServers } =
     useMusterServers(installation);
-  const resolution = useToolsetResolution(installation, state.toolset);
+  // A connector muster signs in to per session or per person needs muster's
+  // sign-in tool in the toolset, or the agent cannot start that sign-in
+  // (giantswarm/giantswarm#38774): the step adds it, and what is resolved
+  // and saved is the selection with it.
+  const signIn = useSignInTool(
+    installation,
+    state.toolset,
+    Boolean(state.signInToolDeclined),
+  );
+  const resolution = useToolsetResolution(installation, signIn.toolset);
+  // A removal stands while a connector needs the tool; once none does, the
+  // next one that does gets it again.
+  const signInNeeded = signIn.isLoading || signIn.connectors.length > 0;
+  useEffect(() => {
+    if (!signInNeeded && state.signInToolDeclined) {
+      setSignInToolDeclined(false);
+    }
+  }, [signInNeeded, state.signInToolDeclined, setSignInToolDeclined]);
+  const isSignInToolAdded = signIn.status === 'added';
 
   const isCatalogueLoading =
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
@@ -314,7 +337,11 @@ export function NewAgentToolsPage() {
   // What every change below starts from: the selection as it shows, or as it
   // is when there is no preset to write out.
   const base = expanded ?? state.toolset;
-  const selected = useMemo(() => new Set(base), [base]);
+  // The added sign-in tool shows as picked in the catalogue too.
+  const selected = useMemo(
+    () => new Set(isSignInToolAdded ? [...base, SIGN_IN_TOOL_SELECTOR] : base),
+    [base, isSignInToolAdded],
+  );
   // Every change is stored as compactly as selectors allow (B1): the preset
   // plus what was added while everything it covers is still chosen — against
   // the kept base, so restoring what a change took away collapses back to it.
@@ -522,8 +549,14 @@ export function NewAgentToolsPage() {
     [commit, base],
   );
   const toggleSelected = useCallback(
-    (selector: string) => commit(toggleSelector(base, selector)),
-    [commit, base],
+    (selector: string) => {
+      if (selector === SIGN_IN_TOOL_SELECTOR && isSignInToolAdded) {
+        setSignInToolDeclined(true);
+        return;
+      }
+      commit(toggleSelector(base, selector));
+    },
+    [commit, base, isSignInToolAdded, setSignInToolDeclined],
   );
   // The rail and the bar list the toolset's own selectors (the preset among
   // them) beside the preset's part: removing one of its own takes just that
@@ -616,6 +649,13 @@ export function NewAgentToolsPage() {
     problems,
     onRemove: removeSelectors,
     onShowDetails: selectionOff ? undefined : showResolvedList,
+    signInNote: (
+      <SignInToolNote
+        signIn={signIn}
+        onRemove={() => setSignInToolDeclined(true)}
+        onAddBack={() => setSignInToolDeclined(false)}
+      />
+    ),
   };
 
   const inventoryLine = !isNarrowed

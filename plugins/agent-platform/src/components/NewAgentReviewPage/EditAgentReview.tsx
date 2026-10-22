@@ -11,6 +11,7 @@ import {
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useMusterServers } from '../../hooks/useMusterServers';
+import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
@@ -40,6 +41,7 @@ import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import {
   Notes,
   PlainRow,
+  SignInToolAdded,
   SectionTitle,
   SummaryItem,
   toolsetSummaryLabel,
@@ -96,9 +98,17 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const { info } = useAgentManagerInfo(installation);
   const viaPullRequest = writeMode === 'commit';
 
+  // The selection with the sign-in tool the Tools step adds: an agent whose
+  // connector needs it and whose toolset lacks it gets it with this save.
+  const signIn = useSignInTool(
+    installation,
+    state.toolset,
+    Boolean(state.signInToolDeclined),
+  );
+  const toolset = signIn.toolset;
   const editState = useMemo(
-    () => editStateOfForm(agent, state),
-    [agent, state],
+    () => editStateOfForm(agent, { ...state, toolset }),
+    [agent, state, toolset],
   );
   const changed = useMemo(
     () => changedFields(agent, editState),
@@ -126,11 +136,8 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
 
   // What the agent will declare. An agent from before toolsets declares none
   // and keeps its implicit full access while nothing is selected.
-  const keepsImplicitAccess = !agent.toolset && state.toolset.length === 0;
-  const declared = useMemo(
-    () => declaredToolset(state.toolset),
-    [state.toolset],
-  );
+  const keepsImplicitAccess = !agent.toolset && toolset.length === 0;
+  const declared = useMemo(() => declaredToolset(toolset), [toolset]);
   const shape = toolsetShape(declared);
   const { servers, labels } = useMusterServers(installation);
   const resolution = useToolsetResolution(installation, declared);
@@ -305,6 +312,9 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
               {changed.map(field => (
                 <li key={field}>
                   <Text variant="body-small">{EDIT_FIELD_LABELS[field]}</Text>
+                  {field === 'toolset' && signIn.status === 'added' && (
+                    <SignInToolAdded labels={signIn.labels} />
+                  )}
                 </li>
               ))}
             </ul>

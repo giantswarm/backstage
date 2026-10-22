@@ -2,9 +2,11 @@ import type { ReactNode } from 'react';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
+import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useUnderlyingModel } from '../../hooks/useUnderlyingModel';
 import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
+import { SIGN_IN_TOOL } from '../../lib/signInTool';
 import { countNoun, parseSelector } from '../../lib/toolset';
 import { presetPhrase } from '../../lib/toolsetReach';
 
@@ -140,6 +142,20 @@ export function toolsetSummaryLabel(
   }
   const text = parts.filter(Boolean).join('; ');
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'No tools';
+}
+
+/**
+ * Under the toolset, when the Tools step added muster's sign-in tool for a
+ * connector that needs it: what it is there for.
+ */
+export function SignInToolAdded({ labels }: { labels: string[] }) {
+  const classes = useReviewStyles();
+  return (
+    <Text as="p" variant="body-x-small" color="secondary">
+      Adds <span className={classes.code}>{SIGN_IN_TOOL}</span>, which lets the
+      agent start the sign-in to {joinNames(labels)}.
+    </Text>
+  );
 }
 
 export function SummaryItem({

@@ -18,6 +18,7 @@ import {
 } from '../../hooks/useCreateAgent';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
+import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { useValidateAgent } from '../../hooks/useValidateAgent';
@@ -48,6 +49,7 @@ import {
   Notes,
   PlainRow,
   SectionTitle,
+  SignInToolAdded,
   SummaryItem,
   toolsetSummaryLabel,
   UnderlyingModelItem,
@@ -91,29 +93,28 @@ function CreateAgentReview() {
   // is applied, and the "selected without a sign-in" flag is repeated here.
   const toolCatalogue = useMusterToolCatalogue(state.installation);
   const { servers, labels } = useMusterServers(state.installation);
-  const resolution = useToolsetResolution(state.installation, state.toolset);
+  // The selection with the sign-in tool the Tools step adds.
+  const signIn = useSignInTool(
+    state.installation,
+    state.toolset,
+    Boolean(state.signInToolDeclined),
+  );
+  const toolset = signIn.toolset;
+  const resolution = useToolsetResolution(state.installation, toolset);
   const unsignedServers = useMemo(
     () =>
       unsignedServerSelectors(
-        state.toolset,
+        toolset,
         buildCatalogue(
           toolCatalogue.tools,
           servers,
           toolCatalogue.serversRequiringAuth,
         ),
       ),
-    [
-      state.toolset,
-      toolCatalogue.tools,
-      servers,
-      toolCatalogue.serversRequiringAuth,
-    ],
+    [toolset, toolCatalogue.tools, servers, toolCatalogue.serversRequiringAuth],
   );
   // What the release declares: the selection, or `preset:none` for none.
-  const declared = useMemo(
-    () => declaredToolset(state.toolset),
-    [state.toolset],
-  );
+  const declared = useMemo(() => declaredToolset(toolset), [toolset]);
   const shape = toolsetShape(declared);
 
   // Persist the same deterministic avatar the UI renders onto the resource, as
@@ -329,6 +330,9 @@ function CreateAgentReview() {
               shape,
               declared,
               connector => labels.get(connector) ?? connector,
+            )}
+            {signIn.status === 'added' && (
+              <SignInToolAdded labels={signIn.labels} />
             )}
           </PlainRow>
         </dl>

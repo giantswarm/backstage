@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  MCPServer,
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
@@ -127,12 +128,19 @@ jest.mock('../../hooks/useToolsetResolution', () => ({
 }));
 /** The HelmRelease verbs the person may not use on the agent's release. */
 let mockDeniedVerbs = new Set<string>();
+/** The installation's MCPServer CRs; none unless a test says otherwise. */
+let mockServerCrs: unknown[] = [];
 afterEach(() => {
   mockDeniedVerbs = new Set();
+  mockServerCrs = [];
 });
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({ resources: [], isLoading: false, errors: [] }),
+  useResources: (_clusters: string[], resourceClass: { kind?: string }) => ({
+    resources: resourceClass?.kind === 'MCPServer' ? mockServerCrs : [],
+    isLoading: false,
+    errors: [],
+  }),
   useSelfSubjectAccessReview: (
     _cluster: string,
     attributes: { verb: string },
@@ -343,6 +351,23 @@ function callsOf(callTool: jest.Mock, tool: string) {
   return callTool.mock.calls.filter(([name]) => name === tool);
 }
 
+/** A connector muster signs in to per session, as `grafana-cloud` is. */
+function grafanaCloud() {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: {
+        name: 'grafana-cloud',
+        namespace: 'muster',
+        annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
+      },
+      spec: { type: 'streamable-http', auth: { type: 'oauth' } },
+    } as never,
+    'gazelle',
+  );
+}
+
 describe('EditAgentPage', () => {
   it('opens the create wizard prefilled from the agent, its fixed parts shown, not offered', async () => {
     await renderEdit(BASE);
@@ -510,6 +535,61 @@ describe('EditAgentPage', () => {
       name: 'pr-reviewer',
       description: 'Reviews every pull request.',
     } satisfies AgentUpdate);
+  });
+
+  it('gives an agent whose connector needs a sign-in the tool to start it, shown in the review', async () => {
+    mockServerCrs = [grafanaCloud()];
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: { ...AGENT, toolset: ['server:grafana-cloud'] },
+    });
+
+    await changeDescriptionAndReview(user);
+
+    const changes = await screen.findByRole('list', { name: 'Changed fields' });
+    expect(within(changes).getAllByRole('listitem')).toHaveLength(2);
+    const tools = within(changes).getByText('Tools').closest('li');
+    expect(tools).toHaveTextContent(
+      'Adds core_auth_login, which lets the agent start the sign-in to Grafana Cloud.',
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    ).at(-1)!;
+    expect(dryRunArgs).toMatchObject({
+      toolset: ['server:grafana-cloud', 'tool:core_auth_login'],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(
+      await screen.findByText('agent detail after updated'),
+    ).toBeInTheDocument();
+    const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+    expect(written).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      description: 'Reviews every pull request.',
+      toolset: ['server:grafana-cloud', 'tool:core_auth_login'],
+    } satisfies AgentUpdate);
+  });
+
+  it('opens an agent whose connector needs a sign-in without counting the added tool as the person’s change', async () => {
+    mockServerCrs = [grafanaCloud()];
+    const user = userEvent.setup();
+    await renderEdit(BASE, {
+      agent: { ...AGENT, toolset: ['server:grafana-cloud'] },
+    });
+
+    await screen.findByLabelText(/^What is it for\?/);
+    await user.click(screen.getByRole('link', { name: 'Cancel' }));
+
+    expect(await screen.findByText('agent detail')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   describe('the default workspace', () => {

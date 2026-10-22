@@ -28,6 +28,7 @@ import {
   pluginId,
   SelectedPlugin,
 } from '../../lib/plugins';
+import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
 import {
   normalizeSelection,
   toggleSelector,
@@ -125,6 +126,12 @@ export type NewAgentFormState = {
    * of the agent: nothing saves it.
    */
   toolsetBase?: string;
+  /**
+   * The person removed the sign-in tool the wizard adds for a connector that
+   * needs it (`lib/signInTool`), so it is not added again. Adding it back, or
+   * *Nothing outside the chat*, clears it.
+   */
+  signInToolDeclined?: boolean;
 };
 
 /**
@@ -199,6 +206,8 @@ export type NewAgentFormContextValue = {
   setToolsChatOnly: () => void;
   /** Sets or clears {@link NewAgentFormState.toolsetBase}. */
   setToolsetBase: (base: string | undefined) => void;
+  /** Sets {@link NewAgentFormState.signInToolDeclined}. */
+  setSignInToolDeclined: (declined: boolean) => void;
   /**
    * True when the toolset can be applied: none of the selectors malformed and
    * no more than the inline cap. The empty selection is valid — it is no tools.
@@ -318,6 +327,24 @@ function withTenant(
     harness: undefined,
     droppedHarness: state.harness?.name ?? state.droppedHarness,
   };
+}
+
+/**
+ * The state with its toolset replaced: the selection's own sign-in tool
+ * removed counts as declining it, so the wizard does not add it back; added,
+ * as taking it again.
+ */
+function withToolset(
+  state: NewAgentFormState,
+  toolset: string[],
+): NewAgentFormState {
+  let signInToolDeclined = state.signInToolDeclined;
+  if (toolset.includes(SIGN_IN_TOOL_SELECTOR)) {
+    signInToolDeclined = undefined;
+  } else if (state.toolset.includes(SIGN_IN_TOOL_SELECTOR)) {
+    signInToolDeclined = true;
+  }
+  return { ...state, toolset, toolsChatOnly: false, signInToolDeclined };
 }
 
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
@@ -479,22 +506,27 @@ export function NewAgentFormProvider({
       setDefaultWorkspace: defaultWorkspace =>
         setState(prev => ({ ...prev, defaultWorkspace })),
       toggleToolsetSelector: selector =>
-        setState(prev => ({
-          ...prev,
-          toolset: toggleSelector(prev.toolset, selector),
-          toolsChatOnly: false,
-        })),
+        setState(prev =>
+          withToolset(prev, toggleSelector(prev.toolset, selector)),
+        ),
       setToolset: selectors =>
+        setState(prev => withToolset(prev, normalizeSelection(selectors))),
+      setToolsChatOnly: () =>
         setState(prev => ({
           ...prev,
-          toolset: normalizeSelection(selectors),
-          toolsChatOnly: false,
+          toolset: [],
+          toolsChatOnly: true,
+          signInToolDeclined: undefined,
         })),
-      setToolsChatOnly: () =>
-        setState(prev => ({ ...prev, toolset: [], toolsChatOnly: true })),
       setToolsetBase: toolsetBase =>
         setState(prev =>
           prev.toolsetBase === toolsetBase ? prev : { ...prev, toolsetBase },
+        ),
+      setSignInToolDeclined: declined =>
+        setState(prev =>
+          Boolean(prev.signInToolDeclined) === declined
+            ? prev
+            : { ...prev, signInToolDeclined: declined || undefined },
         ),
       isToolsetValid,
       toolsetProblems: problems,
