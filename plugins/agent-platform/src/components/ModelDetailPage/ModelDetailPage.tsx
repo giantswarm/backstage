@@ -372,6 +372,7 @@ function ModelDetailPageContent() {
               modelConfig={modelConfig}
               installation={installation}
               facts={facts}
+              hasContextWindow={contextWindow !== undefined}
               servedBy={servedBy}
               owner={owner}
               isUnsupportedProvider={isUnsupportedProvider}

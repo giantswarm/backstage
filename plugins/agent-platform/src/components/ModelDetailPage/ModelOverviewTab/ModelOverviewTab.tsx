@@ -15,6 +15,7 @@ import type { ModelProblem } from '../../../lib/modelProblem';
 import { ModelServingStatus } from '../../ModelServingStatus';
 import { ModelTechnicalDetails } from '../../ModelTechnicalDetails';
 import type { ModelServedBy } from '../../ModelsTable';
+import { ContextWindowNote } from '../ContextWindowNote';
 import { ModelReadinessAlert } from '../ModelReadinessAlert';
 
 export type ModelOverviewTabProps = {
@@ -22,6 +23,11 @@ export type ModelOverviewTabProps = {
   installation: string;
   /** The plain facts: what it calls, where, and since when. */
   facts: Fact[];
+  /**
+   * Whether the context-window table names the model. When it does not, a
+   * note under the facts says so, where the Context window fact would be.
+   */
+  hasContextWindow: boolean;
   /** The serving layer's word on the model behind the config, where it has one. */
   servedBy: ModelServedBy | undefined;
   /** The tool that asserts the model, which would revert portal edits. */
@@ -35,7 +41,8 @@ export type ModelOverviewTabProps = {
 /**
  * The model page's Overview tab, the page's own address: why agents cannot
  * use the model yet, where they cannot, whether it is served, why it cannot be edited here where that is not just the reader's
- * permissions, then what it calls, where and since when, and last the
+ * permissions, then what it calls, where and since when (and that no context
+ * window is configured for it, when none is), and last the
  * ModelConfig resource and the controller's conditions in a "Technical
  * details" fold-out, as the agent, connector and workflow pages keep theirs.
  */
@@ -43,6 +50,7 @@ export function ModelOverviewTab({
   modelConfig,
   installation,
   facts,
+  hasContextWindow,
   servedBy,
   owner,
   isUnsupportedProvider,
@@ -96,6 +104,9 @@ export function ModelOverviewTab({
       <FoldOutAlignedSection aria-label="Model details">
         <FactList facts={facts} labelWidth={160} />
       </FoldOutAlignedSection>
+      {!hasContextWindow && (
+        <ContextWindowNote model={modelConfig.getModel()} />
+      )}
       {/* Open on arrival while the controller has not accepted the model, as
           the agent page does for an agent that is not ready: the conditions
           there say why. It follows a fresh read that turns the model

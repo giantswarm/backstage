@@ -17,6 +17,7 @@ import {
   modelsRouteRef,
 } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
+import { CONTEXT_WINDOWS_DOCS_URL } from './ContextWindowNote';
 import { ModelDetailPage } from './ModelDetailPage';
 
 const mockUseResource = jest.fn();
@@ -440,9 +441,11 @@ describe('ModelDetailPage', () => {
     });
     await renderPage();
 
-    expect(screen.getByRole('note')).toHaveTextContent(
-      'The LLM gateway does not meter Vertex AI models yet, so this model’s spend and tokens are not on the Usage tab.',
-    );
+    expect(
+      screen.getByText(
+        'The LLM gateway does not meter Vertex AI models yet, so this model’s spend and tokens are not on the Usage tab.',
+      ),
+    ).toBeInTheDocument();
     // The form speaks Vertex AI: no "not editable here".
     expect(screen.queryByText(/is not editable here/)).toBeNull();
   });
@@ -737,10 +740,57 @@ describe('ModelDetailPage', () => {
     expect(within(facts).queryByText('kagent/sonnet')).toBeNull();
   });
 
-  it('leaves the context window out when the table does not name the model', async () => {
+  it('shows the window configured for the model by its exact name, without the note', async () => {
+    mockContextWindows = { 'claude-sonnet-4-5': 1_000_000 };
+    await renderPage();
+
+    const facts = screen.getByRole('region', { name: 'Model details' });
+    expect(within(facts).getByText('Context window')).toBeInTheDocument();
+    expect(within(facts).getByText('1M tokens')).toBeInTheDocument();
+    expect(
+      screen.queryByText('No context window is configured for this model'),
+    ).toBeNull();
+  });
+
+  it('shows the window of the most specific matching pattern', async () => {
+    mockContextWindows = {
+      '*claude-*': 100_000,
+      '*claude-sonnet-4-5*': 200_000,
+      'gpt-*': 400_000,
+    };
+    await renderPage();
+
+    const facts = screen.getByRole('region', { name: 'Model details' });
+    expect(within(facts).getByText('200k tokens')).toBeInTheDocument();
+  });
+
+  it('says no context window is configured when the table does not name the model, and where to set one', async () => {
+    mockContextWindows = { 'gpt-*': 400_000 };
     await renderPage();
 
     expect(screen.queryByText('Context window')).toBeNull();
+    const note = screen.getByRole('note', { name: 'Context window' });
+    expect(note).toHaveTextContent(
+      'No context window is configured for this model',
+    );
+    expect(note).toHaveTextContent(
+      'Configure one so a session can show how full its context is.',
+    );
+    expect(note).toHaveTextContent(
+      'Add a pattern matching claude-sonnet-4-5 to agentPlatform.models.contextWindows in the portal’s app-config.',
+    );
+    expect(
+      within(note).getByRole('link', { name: 'How to configure it' }),
+    ).toHaveAttribute('href', CONTEXT_WINDOWS_DOCS_URL);
+  });
+
+  it('says no context window is configured when there is no table at all', async () => {
+    await renderPage();
+
+    expect(screen.queryByText('Context window')).toBeNull();
+    expect(
+      screen.getByText('No context window is configured for this model'),
+    ).toBeInTheDocument();
   });
 
   it.each([
