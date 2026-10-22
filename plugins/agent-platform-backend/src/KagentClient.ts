@@ -566,6 +566,8 @@ export class KagentClient {
   /**
    * `A2AService/ListTasks` for one session — the conversation, its state and
    * per-message token usage — walked to the end, as `{tasks: […], totalSize}`.
+   * A read cut by the page or request bound keeps the `nextPageToken` it did
+   * not follow, so a caller that needs every task (a Session export) can tell.
    *
    * The call is addressed to the session's Agent (`tenant`) and filtered by
    * the session's A2A context, which the gateway scopes the listing to. Tasks
@@ -576,14 +578,14 @@ export class KagentClient {
     options: KagentRequestOptions,
     extra: ListSessionTasksOptions = {},
   ): Promise<unknown> {
-    const { tasks, totalSize } = await this.readTasks(
+    const { tasks, totalSize, nextPageToken } = await this.readTasks(
       await this.target(sessionId, options),
       options,
       extra,
     );
     return toJson(
       ListTasksResponseSchema,
-      create(ListTasksResponseSchema, { tasks, totalSize }),
+      create(ListTasksResponseSchema, { tasks, totalSize, nextPageToken }),
     );
   }
 
@@ -1302,7 +1304,7 @@ export class KagentClient {
     target: Target,
     options: KagentRequestOptions,
     extra: ListSessionTasksOptions,
-  ): Promise<{ tasks: Task[]; totalSize: number }> {
+  ): Promise<{ tasks: Task[]; totalSize: number; nextPageToken: string }> {
     const context: ErrorContext = {
       endpoint: 'task list',
       missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
@@ -1343,7 +1345,13 @@ export class KagentClient {
         break;
       }
     }
-    return { tasks, totalSize: Math.max(totalSize, tasks.length) };
+    // The token not followed, when a bound cut the read: the one sign of a
+    // cut that does not depend on the controller filling `total_size`.
+    return {
+      tasks,
+      totalSize: Math.max(totalSize, tasks.length),
+      nextPageToken: pageToken,
+    };
   }
 
   /**

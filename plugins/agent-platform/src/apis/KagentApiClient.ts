@@ -39,6 +39,7 @@ import {
   KagentApi,
   KagentIdentity,
   OutboundMessage,
+  RawSessionBodies,
   REQUEST_ID_HEADER,
 } from './types';
 
@@ -398,6 +399,18 @@ export class KagentApiClient implements KagentApi {
     // A session with no tasks is ordinary — created but never run — so an empty
     // list is a success, not a drift.
     return tasks;
+  }
+
+  async getRawSession(
+    installation: string,
+    sessionId: string,
+  ): Promise<RawSessionBodies> {
+    const path = `/kagent/sessions/${encodeURIComponent(sessionId)}`;
+    // One after the other, not together: see `KagentApi.getRawSession`. A
+    // read, so the cached token will do; only a turn needs one that lasts.
+    const sessionBody = await this.get<unknown>(path, installation);
+    const tasksBody = await this.get<unknown>(`${path}/tasks`, installation);
+    return { sessionBody, tasksBody };
   }
 
   async deleteSession(installation: string, sessionId: string): Promise<void> {

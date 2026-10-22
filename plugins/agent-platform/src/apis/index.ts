@@ -14,6 +14,7 @@ export type {
   KagentApi,
   KagentIdentity,
   KagentInstallation,
+  RawSessionBodies,
 } from './types';
 export {
   SERVED_MODEL_AUTH_HEADER,
