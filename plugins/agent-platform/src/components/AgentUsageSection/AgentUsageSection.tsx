@@ -15,6 +15,7 @@ import { describeCostBasis } from '../../lib/costBasis';
 import { isConvertedCurrency, useCurrency } from '../../lib/formatNumbers';
 import {
   describeActualCost,
+  describeActualCostByAgent,
   describeModelCostFallback,
 } from '../../lib/modelCostCopy';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
@@ -434,7 +435,15 @@ export function AgentUsageSection() {
             tableCost.state === 'actual' ? tableCost.byAgent : undefined
           }
           isActualCostLoading={tableCost.state === 'loading'}
-          actualCostDays={windowDays}
+          actualCostNote={
+            tableCost.state === 'actual'
+              ? describeActualCostByAgent({
+                  days: windowDays,
+                  partial: tableCost.partial,
+                  converted: isConvertedCurrency(currency),
+                })
+              : undefined
+          }
           fallbackReason={
             tableCost.state === 'fallback'
               ? describeModelCostFallback(

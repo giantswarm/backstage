@@ -179,7 +179,7 @@ export function TotalsStrip({
         <Stat
           label="Reported cost"
           value={formatUsd(spend.reportedUsd)}
-          hint="Sums what the agents' runtimes reported per turn. Most runtimes report none, so it usually covers fewer turns than the estimate."
+          hint="Sums what the agents' runtimes reported per turn. Most runtimes report none, so it usually covers fewer turns than the cost beside it."
         />
       )}
     </div>

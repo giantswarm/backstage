@@ -60,9 +60,18 @@ export function sessionUsageQueryKey(installation: string) {
   return ['agent-platform', 'kagent', 'session-usage', installation] as const;
 }
 
-/** The caller's own model cost on one installation, per window. */
+/**
+ * The caller's own model cost on one installation, per window. Under `kagent`
+ * with the per-user reads, so `QueryClientProvider` keeps it off the disk.
+ */
 export function modelCostQueryKey(installation: string, days: number) {
-  return ['agent-platform', 'usage', 'model-cost', installation, days] as const;
+  return [
+    'agent-platform',
+    'kagent',
+    'model-cost',
+    installation,
+    days,
+  ] as const;
 }
 
 /**

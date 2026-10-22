@@ -11,6 +11,7 @@ import {
   markRestoredListsStale,
   shouldDehydrateAgentPlatformQuery,
 } from './QueryClientProvider';
+import { modelCostQueryKey } from '../lib/queryKeys';
 
 describe('AGENT_PLATFORM_PERSISTER_KEY', () => {
   it("is this plugin's own localStorage key, not the shared library default", () => {
@@ -33,6 +34,11 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
       // enough that nothing but this rule keeps it off the disk.
       'the usage summary',
       ['agent-platform', 'kagent', 'session-usage', 'gazelle'],
+    ],
+    [
+      // One person's model spend; the backend answers it `no-store`.
+      'the model cost',
+      modelCostQueryKey('gazelle', 30),
     ],
     [
       // `musterToolsetResolutionQueryKey`: toolset ∩ the caller's own session

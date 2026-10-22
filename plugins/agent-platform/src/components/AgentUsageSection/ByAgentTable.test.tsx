@@ -5,6 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describeActualCostByAgent } from '../../lib/modelCostCopy';
 import { ByAgentTable } from './ByAgentTable';
 import type { ByAgentRow } from './helpers';
 
@@ -113,7 +114,11 @@ describe('ByAgentTable', () => {
               ['b', 0.75],
             ])
           }
-          actualCostDays={30}
+          actualCostNote={describeActualCostByAgent({
+            days: 30,
+            partial: true,
+            converted: false,
+          })}
         />,
       );
 
@@ -129,11 +134,12 @@ describe('ByAgentTable', () => {
       expect(screen.getByText('—')).toBeInTheDocument();
       // The estimate's $22.59 for row a is not shown.
       expect(screen.queryByText('$22.59')).toBeNull();
+      // The strip's caveats travel to the table too.
       expect(
         screen.getByText(
           /made as you in the last 30 days, in these sessions or not/,
         ),
-      ).toBeInTheDocument();
+      ).toHaveTextContent(/so these may be low/);
       expect(screen.queryByText(/Cost is estimated/)).toBeNull();
     });
 

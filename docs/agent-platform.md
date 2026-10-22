@@ -2762,7 +2762,8 @@ client sends only the installation and the window (1 to 90 days):
    `MimirService` (now in `gs-node`, shared with the gs backend).
 3. It answers the total, the split by `agent_namespace`/`agent` (in kagent's
    encoded agent id, so rows join the session usage directly), and `partial`
-   when some cost series in the window carry no `user`.
+   when some cost series in the window name no one (no `user`, or
+   `unknown`).
 
 So no parameter, header or PromQL fragment can point it at another person. The
 generic `GET /api/gs/mimir/query` proxy takes PromQL from the browser, so it
@@ -2772,20 +2773,33 @@ can still query every user's cost there, or in Grafana.
 The figure covers every call made as the person, including calls outside kagent
 sessions, so it can exceed what the token counts beside it would cost; the
 strip says "All your model calls" and both tooltips explain it. A call from
-outside any agent's pod (`agent="unknown"`) counts in the total but in no row.
+outside any agent's pod (`agent="unknown"`), or through an agent with no session
+in the window, counts in the total but has no row. With the window narrowed,
+the strip's total covers the selected days and the rows kagent's full window,
+so the table's note does not compare the two.
 
 Where there is no actual cost the page falls back to the estimate, labelled
 **Est. cost**, with the reason first in its tooltip and table footnote:
 
-| `reason`       | when                                                            |
-| -------------- | --------------------------------------------------------------- |
-| `no-identity`  | kagent names no person (no email, or the shared user)           |
-| `not-recorded` | no cost series in the window carries a `user` (older gateway)   |
-| `no-spend`     | the gateway priced none of the person's calls in the window     |
-| `unreadable`   | Mimir did not answer (logged at `info`, answered 200)           |
-| _404_          | no Mimir for the installation; the estimate's own line says why |
+| `reason`              | when                                                                         |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `identity-unreadable` | kagent could not be asked who the caller is                                  |
+| `no-identity`         | kagent names no person (no email, or the shared user)                        |
+| `no-mimir`            | no Mimir for the installation; the estimate's own line says so, so no reason |
+| `not-recorded`        | no cost series in the window names a person (no `user`, or only `unknown`)   |
+| `no-spend`            | none of the person's series grew in the window                               |
+| `unreadable`          | Mimir did not answer                                                         |
 
-None of these is a 5xx, so none reaches Sentry.
+Each is a 200, logged at `info` where something failed, so none reaches
+Sentry; only a token kagent or Mimir refused is a 401. A request that fails
+outright in the browser falls back the same way, with "could not be read just
+now". A failed refetch keeps the figure already shown. The response is
+`no-store` and its query key is kept out of the persisted query cache.
+
+The two installation-wide series counts behind `not-recorded` and `partial`
+scan every cost series over the window, so `not-recorded`'s is only asked when
+the person has no series. The query names the person, so `MimirService` leaves
+it out of its debug log (`redactQuery`).
 
 ### The daily charts: one row per day of the window, and today comes from its own query
 

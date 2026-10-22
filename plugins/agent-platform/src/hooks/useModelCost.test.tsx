@@ -24,9 +24,12 @@ function renderWith(
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
-  return renderHook(() => useModelCost(installation, days, options), {
-    wrapper,
-  });
+  return {
+    queryClient,
+    ...renderHook(() => useModelCost(installation, days, options), {
+      wrapper,
+    }),
+  };
 }
 
 beforeEach(() => {
@@ -73,16 +76,45 @@ describe('useModelCost', () => {
     );
   });
 
-  it.each([
-    [new NotFoundError('no Mimir'), 'no-mimir'],
-    [new AuthenticationError('refused'), 'error'],
-  ])('falls back on %p as %p', async (error, reason) => {
-    getModelCost.mockRejectedValue(error);
-    const { result } = renderWith('gazelle');
+  it.each([new NotFoundError('gone'), new AuthenticationError('refused')])(
+    'falls back on %p with a reason of its own',
+    async error => {
+      getModelCost.mockRejectedValue(error);
+      const { result } = renderWith('gazelle');
 
+      await waitFor(() =>
+        expect(result.current).toEqual({ state: 'fallback', reason: 'error' }),
+      );
+    },
+  );
+
+  it('keeps the figure it showed when a refetch fails', async () => {
+    getModelCost.mockResolvedValueOnce({
+      status: 'actual',
+      windowDays: 30,
+      totalUsd: 3.5,
+      byAgent: [],
+      partial: false,
+      evaluatedAt: 0,
+    });
+    const { result, queryClient } = renderWith('gazelle');
+    await waitFor(() => expect(result.current.state).toBe('actual'));
+
+    getModelCost.mockRejectedValueOnce(new Error('kagent hiccup'));
+    await queryClient.refetchQueries();
     await waitFor(() =>
-      expect(result.current).toEqual({ state: 'fallback', reason }),
+      expect(
+        queryClient.getQueryState([
+          'agent-platform',
+          'kagent',
+          'model-cost',
+          'gazelle',
+          30,
+        ])?.status,
+      ).toBe('error'),
     );
+
+    expect(result.current).toMatchObject({ state: 'actual', totalUsd: 3.5 });
   });
 
   it('waits rather than falling back while it is held', () => {

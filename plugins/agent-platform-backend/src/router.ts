@@ -6,7 +6,6 @@ import { Config } from '@backstage/config';
 import {
   AuthenticationError,
   InputError,
-  NotFoundError,
   ServiceUnavailableError,
 } from '@backstage/errors';
 import { randomUUID } from 'crypto';
@@ -66,8 +65,8 @@ export interface RouterOptions {
   /**
    * The installations' Mimir, queried with the person's token, for their own
    * model cost. The plugin always passes the shared `mimirServiceRef`; tests
-   * of other routes leave it out, and the cost route then answers 404 as for
-   * an installation without Mimir.
+   * of other routes leave it out, and the cost route then answers `no-mimir`
+   * as for an installation without one.
    */
   mimir?: MimirQuerier;
 }
@@ -820,16 +819,13 @@ export async function createRouter(
    * why this is its own route.
    *
    * Every fallback the page acts on is a 200 with `status: 'unavailable'` and
-   * a reason (see `readModelCost`); only "no Mimir here" (404) and a token
-   * Mimir refused (401) are errors.
+   * a reason (see `readModelCost`), "no Mimir here" included; only a token
+   * kagent or Mimir refused (401) is an error.
    */
   router.get('/usage/model-cost', async (req, res) => {
     const { config: installationConfig, client } = resolveInstallation(req);
     const days = readCostWindowDays(req);
     const userToken = readUserToken(req, { required: true })!;
-    if (!options.mimir) {
-      throw new NotFoundError('No Mimir query service is configured');
-    }
     const result = await readModelCost({
       identity: client,
       mimir: options.mimir,

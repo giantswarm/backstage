@@ -16,17 +16,25 @@ export const MODEL_COST_MAX_DAYS = 90;
  * Why there is no actual cost to show, each a different thing for the page to
  * say beside the estimate it falls back to:
  *
+ * - `identity-unreadable`: kagent could not be asked who the caller is just
+ *   now.
  * - `no-identity`: kagent named no person for the caller — no email in its
  *   claims, or the shared built-in user of its `unsecure` mode.
- * - `not-recorded`: the gateway here records no `user` on its cost series in
- *   the window, so no call is attributable to anyone (a gateway from before
- *   the label).
+ * - `no-mimir`: the installation has no Mimir this portal can query.
+ * - `not-recorded`: no cost series in the window names a person (no `user`,
+ *   or only `unknown`): a gateway from before the label, or one that resolves
+ *   no identity on the call.
  * - `no-spend`: the gateway records users, but priced none of this person's
  *   calls in the window — no calls through it, or only unpriced models.
  * - `unreadable`: Mimir did not answer just now.
  */
 export type ModelCostUnavailableReason =
-  'no-identity' | 'not-recorded' | 'no-spend' | 'unreadable';
+  | 'identity-unreadable'
+  | 'no-identity'
+  | 'no-mimir'
+  | 'not-recorded'
+  | 'no-spend'
+  | 'unreadable';
 
 /** One agent's share of the person's cost. */
 export type ModelCostAgentEntry = {
@@ -50,8 +58,8 @@ export type ModelCostResponse =
       totalUsd: number;
       byAgent: ModelCostAgentEntry[];
       /**
-       * Some cost series in the window carry no `user` label (recorded before
-       * the gateway set one), so the person's total may be a lower bound.
+       * Some cost series in the window name no person (no `user` label, or
+       * `unknown`), so the person's total may be a lower bound.
        */
       partial: boolean;
       /** Epoch milliseconds the figures were read at. */

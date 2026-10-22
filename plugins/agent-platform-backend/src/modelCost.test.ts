@@ -33,21 +33,21 @@ function vector(
  */
 function fakeMimir(answers: {
   byAgent?: MimirQueryResponse;
-  labelled?: string;
-  unlabelled?: string;
+  attributed?: string;
+  unattributed?: string;
 }) {
   const query = jest.fn(async ({ query: promql }: { query: string }) => {
     if (promql.startsWith('sum by (agent_namespace, agent)')) {
       return answers.byAgent ?? vector([]);
     }
-    if (promql.includes('{user!=""}')) {
-      return answers.labelled === undefined
+    if (promql.includes('{user!~"|unknown"}')) {
+      return answers.attributed === undefined
         ? vector([])
-        : vector([{ value: answers.labelled }]);
+        : vector([{ value: answers.attributed }]);
     }
-    return answers.unlabelled === undefined
+    return answers.unattributed === undefined
       ? vector([])
-      : vector([{ value: answers.unlabelled }]);
+      : vector([{ value: answers.unattributed }]);
   });
   return { query } as unknown as MimirQuerier & { query: jest.Mock };
 }
@@ -101,7 +101,7 @@ describe('modelCostQueries', () => {
 describe('readModelCost', () => {
   it('asks kagent who the caller is with their own token, and queries Mimir as them', async () => {
     const identity = identityOf({ sub: 'me@example.com' });
-    const mimir = fakeMimir({ labelled: '3' });
+    const mimir = fakeMimir({ attributed: '3' });
     await read({ identity, mimir });
 
     expect(identity.getMe).toHaveBeenCalledWith({ userToken: 'my-token' });
@@ -122,8 +122,8 @@ describe('readModelCost', () => {
 
   it('totals every priced call and splits it by agent in kagent’s encoding', async () => {
     const mimir = fakeMimir({
-      labelled: '5',
-      unlabelled: '0',
+      attributed: '5',
+      unattributed: '0',
       byAgent: vector([
         {
           metric: { agent_namespace: 'org-acme', agent: 'sre-agent' },
@@ -154,8 +154,8 @@ describe('readModelCost', () => {
 
   it('flags a window that holds series recorded without a user', async () => {
     const mimir = fakeMimir({
-      labelled: '5',
-      unlabelled: '2',
+      attributed: '5',
+      unattributed: '2',
       byAgent: vector([
         { metric: { agent_namespace: 'kagent', agent: 'a' }, value: '1' },
       ]),
@@ -178,20 +178,64 @@ describe('readModelCost', () => {
     expect(mimir.query).not.toHaveBeenCalled();
   });
 
-  it('says so when the gateway records no user on any cost series', async () => {
-    const mimir = fakeMimir({ unlabelled: '4' });
+  it('says so when no cost series names a person — unknown counts as no one', async () => {
+    // A gateway that resolves no identity labels every call `unknown`: the
+    // person's query finds nothing, and that is "not recorded", not "you
+    // spent nothing".
+    const mimir = fakeMimir({ unattributed: '4' });
     await expect(read({ mimir })).resolves.toMatchObject({
       status: 'unavailable',
       reason: 'not-recorded',
     });
+    expect(modelCostQueries('me@example.com', 30).attributed).toContain(
+      '{user!~"|unknown"}',
+    );
+    expect(modelCostQueries('me@example.com', 30).unattributed).toContain(
+      '{user=~"|unknown"}',
+    );
   });
 
   it('reports no spend rather than $0 when none of the person’s calls was priced', async () => {
-    const mimir = fakeMimir({ labelled: '4' });
+    const mimir = fakeMimir({ attributed: '4' });
     await expect(read({ mimir })).resolves.toMatchObject({
       status: 'unavailable',
       reason: 'no-spend',
     });
+  });
+
+  it('treats series that did not grow in the window as no spend, not $0.00', async () => {
+    const mimir = fakeMimir({
+      attributed: '4',
+      byAgent: vector([
+        { metric: { agent_namespace: 'kagent', agent: 'a' }, value: '0' },
+      ]),
+    });
+    await expect(read({ mimir })).resolves.toMatchObject({
+      status: 'unavailable',
+      reason: 'no-spend',
+    });
+  });
+
+  it('asks for the installation-wide attribution count only when the person has no series', async () => {
+    const mimir = fakeMimir({
+      byAgent: vector([
+        { metric: { agent_namespace: 'kagent', agent: 'a' }, value: '1' },
+      ]),
+    });
+    await read({ mimir });
+
+    const queries = mimir.query.mock.calls.map(([args]) => args.query);
+    expect(queries).toHaveLength(2);
+    expect(queries.join('\n')).not.toContain('user!~');
+  });
+
+  it('keeps the query, which names the person, out of the debug log', async () => {
+    const mimir = fakeMimir({ attributed: '1' });
+    await read({ mimir });
+
+    for (const [args] of mimir.query.mock.calls) {
+      expect(args.redactQuery).toBe(true);
+    }
   });
 
   it('answers unreadable for a Mimir that is down, and logs it below warn', async () => {
@@ -207,11 +251,40 @@ describe('readModelCost', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it.each([
-    new NotFoundError('no Mimir here'),
-    new AuthenticationError('token refused'),
-  ])('lets %p through, so the page can tell it apart', async error => {
-    const mimir = { query: jest.fn().mockRejectedValue(error) };
-    await expect(read({ mimir })).rejects.toBe(error);
+  it('answers no-mimir, not an error, where the installation has none', async () => {
+    for (const mimir of [
+      { query: jest.fn().mockRejectedValue(new NotFoundError('no Mimir')) },
+      undefined,
+    ]) {
+      await expect(read({ mimir })).resolves.toMatchObject({
+        status: 'unavailable',
+        reason: 'no-mimir',
+      });
+    }
+  });
+
+  it('answers identity-unreadable, not a 5xx, when kagent is down', async () => {
+    const logger = mockServices.logger.mock();
+    const mimir = fakeMimir({});
+    const identity = {
+      getMe: jest.fn().mockRejectedValue(new ServiceUnavailableError('down')),
+    };
+    await expect(read({ identity, mimir, logger })).resolves.toMatchObject({
+      status: 'unavailable',
+      reason: 'identity-unreadable',
+    });
+    expect(mimir.query).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('lets a refused token through from kagent or Mimir, so the person can sign in again', async () => {
+    const refused = new AuthenticationError('token refused');
+    await expect(
+      read({ identity: { getMe: jest.fn().mockRejectedValue(refused) } }),
+    ).rejects.toBe(refused);
+    await expect(
+      read({ mimir: { query: jest.fn().mockRejectedValue(refused) } }),
+    ).rejects.toBe(refused);
   });
 });

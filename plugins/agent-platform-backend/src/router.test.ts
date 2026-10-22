@@ -1,6 +1,10 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
-import { ConflictError, NotFoundError } from '@backstage/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
 import {
@@ -2433,13 +2437,29 @@ describe('createRouter', () => {
       },
     );
 
-    it('answers 404 where no Mimir is wired in, as for an installation without one', async () => {
+    it('answers no-mimir where no Mimir is wired in, as for an installation without one', async () => {
       const response = await request(app)
         .get('/usage/model-cost')
         .query({ installation: 'gazelle', days: '7' })
         .set(KAGENT_AUTH_HEADER, 'user-token');
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        status: 'unavailable',
+        windowDays: 7,
+        reason: 'no-mimir',
+      });
+    });
+
+    it('answers 200, not a 5xx for Sentry, when kagent is down', async () => {
+      getMe.mockRejectedValue(new ServiceUnavailableError('kagent is down'));
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body.reason).toBe('identity-unreadable');
     });
   });
 

@@ -8,15 +8,12 @@ import { modelCostQueryKey } from '../lib/queryKeys';
 
 /**
  * Why the page shows the estimate instead: the backend's own reasons, plus
- * the two it signals with a status rather than a body.
- *
- * - `no-mimir`: the installation has no Mimir this portal can query (404).
- * - `error`: the read failed outright, a refused token included.
+ * `error` for a read that failed outright (a refused token, a failed token
+ * mint, a backend that did not answer) — every expected outcome, a missing
+ * Mimir included, arrives as a reason in a 200.
  */
 export type ModelCostFallbackReason =
-  | Extract<ModelCostResponse, { status: 'unavailable' }>['reason']
-  | 'no-mimir'
-  | 'error';
+  Extract<ModelCostResponse, { status: 'unavailable' }>['reason'] | 'error';
 
 export type ModelCostView =
   | { state: 'loading' }
@@ -57,21 +54,17 @@ export function useModelCost(
   });
 
   const awaiting = !enabled || isAwaitingData(query);
-  const { isError, error, data: body } = query;
+  const { data: body } = query;
   // Memoised so the per-agent map keeps its identity across renders, for the
   // table's memoised column maxima.
+  //
+  // The body before the error: a refetch that fails keeps the last good
+  // `data` while `isError` turns true, and one transient failure must not
+  // swap a figure the person has seen for an estimate — the rule
+  // `useSessionUsage` follows beside it.
   return useMemo((): ModelCostView => {
     if (awaiting) {
       return { state: 'loading' };
-    }
-    if (isError) {
-      return {
-        state: 'fallback',
-        reason:
-          (error as Error | null)?.name === 'NotFoundError'
-            ? 'no-mimir'
-            : 'error',
-      };
     }
     if (body?.status === 'actual' && Number.isFinite(body.totalUsd)) {
       return {
@@ -87,5 +80,5 @@ export function useModelCost(
       state: 'fallback',
       reason: body?.status === 'unavailable' ? body.reason : 'error',
     };
-  }, [awaiting, isError, error, body]);
+  }, [awaiting, body]);
 }

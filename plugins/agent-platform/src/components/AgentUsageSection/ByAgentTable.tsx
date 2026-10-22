@@ -78,8 +78,11 @@ export type ByAgentTableProps = {
   actualCost?: ReadonlyMap<string, number>;
   /** Whether there is an actual cost is not known yet. */
   isActualCostLoading?: boolean;
-  /** The window the actual cost covers, in days, named in the note. */
-  actualCostDays?: number;
+  /**
+   * What the actual cost covers, with its caveats, from
+   * `describeActualCostByAgent`; the note under the table when it shows.
+   */
+  actualCostNote?: string;
   /** Why there is no actual cost, leading the estimate's note when set. */
   fallbackReason?: string;
 };
@@ -115,7 +118,7 @@ export function ByAgentTable({
   currency = USD,
   actualCost,
   isActualCostLoading,
-  actualCostDays,
+  actualCostNote,
   fallbackReason,
 }: ByAgentTableProps) {
   const classes = useStyles();
@@ -360,15 +363,7 @@ export function ByAgentTable({
           installation with no Mimir, or after a failed query, that is a claim
           about a measurement that never ran. */}
       <div className={classes.note}>
-        {actualCost && (
-          <>
-            Cost is the gateway&apos;s price for every model call each agent
-            made as you
-            {actualCostDays ? ` in the last ${actualCostDays} days` : ''}, in
-            these sessions or not, so it need not match the tokens beside it.
-            Calls made outside any agent count in the total above but in no row.
-          </>
-        )}
+        {actualCost && actualCostNote}
         {showsEstimate && fallbackReason && <>{fallbackReason} </>}
         {showsEstimate && hasRate && (
           <>
