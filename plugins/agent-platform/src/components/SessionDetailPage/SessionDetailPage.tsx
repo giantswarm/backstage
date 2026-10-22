@@ -59,6 +59,7 @@ import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
 import { useShowToolActivity } from '../../hooks/useShowToolActivity';
+import { useStickToEnd } from '../../hooks/useStickToEnd';
 import { useWorkspaceNames } from '../../hooks/useWorkspaceNames';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
@@ -115,7 +116,6 @@ import {
   DOCK_HEIGHT_VAR,
   useDockedComposerLayout,
 } from './useDockedComposerLayout';
-import { useStickToEnd } from './useStickToEnd';
 import {
   SESSION_TITLE_FALLBACK,
   toSessionRow,
@@ -901,12 +901,31 @@ export function SessionDetailPage() {
     isKnown: isToolActivityKnown,
     setShowToolActivity,
   } = useShowToolActivity();
+
+  // The conversation column and the chat bar docked at its end, held as state
+  // through callback refs: both exist only on the loaded path (and the dock
+  // only while a composer is offered), and the layout hook re-measures when
+  // either comes or goes.
+  const [columnElement, setColumnElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
+  useDockedComposerLayout(columnElement, dockElement);
+
+  // Stick to the end: the page follows the reply as it streams in while the
+  // reader is at the end, and leaves them alone once they scroll away — up
+  // through the history, mid-stream included — until they come back to it.
+  const { stickToEnd, markReaderChange } = useStickToEnd(columnElement);
+
   // Adding or removing the work summaries around the place being read must
   // not move it: from the compact header the switch is pressed mid-session.
   const captureReadingAnchor = useReadingAnchor(showToolActivity);
   const changeToolActivity = useCallback(
     (show: boolean) => {
       captureReadingAnchor();
+      // The summaries it adds or removes are the reader's change: they keep
+      // their place, and follow the end only if it is still in view.
+      markReaderChange();
       // A failed write puts the switch and the conversation back to the
       // stored choice, so say why rather than let it snap back.
       setShowToolActivity(show).catch((failure: Error) => {
@@ -920,7 +939,7 @@ export function SessionDetailPage() {
         });
       });
     },
-    [captureReadingAnchor, setShowToolActivity, toastApi],
+    [captureReadingAnchor, markReaderChange, setShowToolActivity, toastApi],
   );
 
   // The menu's Export session: the file is named after the agent, by its
@@ -1186,21 +1205,6 @@ export function SessionDetailPage() {
     }
     return state;
   }, [showWorking, isStalled, state]);
-
-  // The conversation column and the chat bar docked at its end, held as state
-  // through callback refs: both exist only on the loaded path (and the dock
-  // only while a composer is offered), and the layout hook re-measures when
-  // either comes or goes.
-  const [columnElement, setColumnElement] = useState<HTMLDivElement | null>(
-    null,
-  );
-  const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
-  useDockedComposerLayout(columnElement, dockElement);
-
-  // Stick to the end: the page follows the reply as it streams in while the
-  // reader is at the end, and leaves them alone once they scroll away — up
-  // through the history, mid-stream included — until they come back to it.
-  const stickToEnd = useStickToEnd(columnElement);
 
   // A session opens at its newest turn, the way a desktop chat app does (live
   // round 2, R8: a long session opened at its top). Once per session, when its

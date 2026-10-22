@@ -2,6 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react';
 import { useState } from 'react';
 import {
   AT_END_THRESHOLD_PX,
+  SCROLLBAR_HOLD_MS,
   followsAfterScroll,
   isAtEnd,
   onHeightChange,
@@ -39,6 +40,14 @@ describe('followsAfterScroll', () => {
     expect(
       followsAfterScroll(true, { top: 1200, height: 2000 }, at(1160, 1960)),
     ).toBe(true);
+  });
+
+  it('leaves the end when the reader moved up in the frame a chunk landed', () => {
+    // The page grew by 60 and the reader moved up by 200 at once: more than
+    // any shrinking could explain.
+    expect(
+      followsAfterScroll(true, { top: 1200, height: 2000 }, at(1000, 2060)),
+    ).toBe(false);
   });
 
   it('follows again once the reader is back at the end', () => {
@@ -113,14 +122,17 @@ function fakePage(view = 800) {
   };
 }
 
-let resize: () => void = () => {};
+let resizes: (() => void)[] = [];
 class FakeResizeObserver {
-  constructor(callback: () => void) {
-    resize = callback;
+  constructor(private readonly callback: () => void) {
+    resizes.push(callback);
   }
   observe() {}
-  disconnect() {}
+  disconnect() {
+    resizes = resizes.filter(callback => callback !== this.callback);
+  }
 }
+const resize = () => resizes.forEach(callback => callback());
 
 /** The conversation grows by `by` pixels, the way a streamed chunk does. */
 function grow(page: ReturnType<typeof fakePage>, by: number) {
@@ -130,30 +142,44 @@ function grow(page: ReturnType<typeof fakePage>, by: number) {
   });
 }
 
-function Harness({ onReady }: { onReady: (stick: () => void) => void }) {
+type Api = ReturnType<typeof useStickToEnd>;
+
+function Harness({ onReady }: { onReady: (api: Api) => void }) {
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
-  const stickToEnd = useStickToEnd(column);
-  onReady(stickToEnd);
+  const [replyKey, setReplyKey] = useState(0);
+  const api = useStickToEnd(column);
+  onReady(api);
   return (
-    <div ref={setColumn}>
+    <>
       <button type="button" aria-expanded={false}>
-        Show more
+        Session actions
       </button>
-      <button type="button">Copy</button>
-      <textarea aria-label="Message" />
-    </div>
+      <div ref={setColumn}>
+        <button type="button" aria-expanded={false}>
+          Show more
+        </button>
+        <button type="button">Copy</button>
+        <p key={replyKey}>Streaming reply</p>
+        <button type="button" onClick={() => setReplyKey(key => key + 1)}>
+          Re-mount reply
+        </button>
+        <textarea aria-label="Message" />
+      </div>
+    </>
   );
 }
 
 describe('useStickToEnd', () => {
   let page: ReturnType<typeof fakePage>;
-  let stickToEnd: () => void;
+  let api: Api;
+  const stickToEnd = () => api.stickToEnd();
   const original = window.ResizeObserver;
 
   beforeEach(() => {
     window.ResizeObserver =
       FakeResizeObserver as unknown as typeof ResizeObserver;
     page = fakePage();
+    resizes = [];
   });
   afterEach(() => {
     page.restore();
@@ -161,7 +187,7 @@ describe('useStickToEnd', () => {
   });
 
   function renderAtEnd() {
-    const view = render(<Harness onReady={stick => (stickToEnd = stick)} />);
+    const view = render(<Harness onReady={ready => (api = ready)} />);
     act(() => stickToEnd());
     expect(page.state.top).toBe(1200);
     return view;
@@ -321,5 +347,159 @@ describe('useStickToEnd', () => {
     grow(page, 60);
 
     expect(page.state.top).toBe(1260);
+  });
+  it('does not take a menu opened outside the conversation for the reader changing it', () => {
+    const { getByRole } = renderAtEnd();
+
+    fireEvent.click(getByRole('button', { name: 'Session actions' }));
+    grow(page, 400);
+
+    expect(page.state.top).toBe(1600);
+  });
+
+  it('counts a change announced with markReaderChange as the reader’s', () => {
+    renderAtEnd();
+
+    // The tool activity switch, in the header, adds summaries.
+    act(() => api.markReaderChange());
+    grow(page, 400);
+    expect(page.state.top).toBe(1200);
+    grow(page, 60);
+    expect(page.state.top).toBe(1200);
+  });
+
+  it('lets go when the touched node leaves the document mid-gesture', () => {
+    const { getByText, getByRole } = renderAtEnd();
+
+    const reply = getByText('Streaming reply');
+    fireEvent.touchStart(reply, { touches: [{ clientY: 400 }] });
+    // The text run closes and re-mounts under the finger; the finger lifts
+    // on the detached node.
+    fireEvent.click(getByRole('button', { name: 'Re-mount reply' }));
+    expect(reply.isConnected).toBe(false);
+    fireEvent.touchEnd(reply, { touches: [] });
+    grow(page, 60);
+
+    expect(page.state.top).toBe(1260);
+  });
+
+  it('does not leave on input that cannot move the page up', () => {
+    renderAtEnd();
+
+    // A pinch zoom.
+    fireEvent.wheel(window, { deltaY: -100, ctrlKey: true });
+    grow(page, 60);
+    expect(page.state.top).toBe(1260);
+
+    // Locked behind a dialog.
+    document.documentElement.style.overflowY = 'hidden';
+    fireEvent.wheel(window, { deltaY: -100 });
+    document.documentElement.style.removeProperty('overflow-y');
+    grow(page, 60);
+    expect(page.state.top).toBe(1320);
+  });
+
+  it('does not leave a conversation that fits the view on a wheel up', () => {
+    render(<Harness onReady={ready => (api = ready)} />);
+    page.state.height = 600;
+    act(() => stickToEnd());
+    expect(page.state.top).toBe(0);
+
+    fireEvent.wheel(window, { deltaY: -100 });
+    grow(page, 600);
+
+    expect(page.state.top).toBe(400);
+  });
+
+  it('follows on End with the focus left on a toggle', () => {
+    const { getByRole } = renderAtEnd();
+    page.scrollTo(400);
+
+    fireEvent.keyDown(getByRole('button', { name: 'Show more' }), {
+      key: 'End',
+    });
+    grow(page, 60);
+
+    expect(page.state.top).toBe(2060 - 800);
+  });
+
+  it('holds the position while the scrollbar is pressed, and lets go without a mouseup', () => {
+    jest.useFakeTimers();
+    try {
+      renderAtEnd();
+
+      fireEvent.mouseDown(document.documentElement);
+      grow(page, 60);
+      expect(page.state.top).toBe(1200);
+
+      // Chromium sends no mouseup after a scrollbar drag.
+      act(() => {
+        jest.advanceTimersByTime(SCROLLBAR_HOLD_MS);
+      });
+      grow(page, 60);
+      expect(page.state.top).toBe(1320);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+/** A scroll box of its own, like the Create agent assist panel. */
+function BoxHarness({ onReady }: { onReady: (api: Api) => void }) {
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const [content, setContent] = useState<HTMLDivElement | null>(null);
+  onReady(useStickToEnd(content, scroller));
+  return (
+    <div ref={setScroller} data-testid="box">
+      <div ref={setContent}>
+        <p>Reply</p>
+      </div>
+    </div>
+  );
+}
+
+describe('useStickToEnd in a scroll box', () => {
+  const original = window.ResizeObserver;
+  beforeEach(() => {
+    window.ResizeObserver =
+      FakeResizeObserver as unknown as typeof ResizeObserver;
+    resizes = [];
+  });
+  afterEach(() => {
+    window.ResizeObserver = original;
+  });
+
+  it('follows in the box, and leaves the end on a wheel up inside it only', () => {
+    let api: Api | undefined;
+    const { getByTestId, getByText } = render(
+      <BoxHarness onReady={ready => (api = ready)} />,
+    );
+    const box = getByTestId('box');
+    const state = { top: 0, height: 1000 };
+    jest
+      .spyOn(box, 'scrollHeight', 'get')
+      .mockImplementation(() => state.height);
+    jest.spyOn(box, 'clientHeight', 'get').mockReturnValue(400);
+    jest.spyOn(box, 'scrollTop', 'get').mockImplementation(() => state.top);
+    jest.spyOn(box, 'scrollTop', 'set').mockImplementation(value => {
+      state.top = Math.max(0, Math.min(value, state.height - 400));
+    });
+    act(() => api!.stickToEnd());
+    expect(state.top).toBe(600);
+
+    const growBy = (by: number) =>
+      act(() => {
+        state.height += by;
+        resize();
+      });
+
+    // The page behind the panel scrolling is not the reader leaving it.
+    fireEvent.wheel(document.body, { deltaY: -100 });
+    growBy(100);
+    expect(state.top).toBe(700);
+
+    fireEvent.wheel(getByText('Reply'), { deltaY: -100 });
+    growBy(100);
+    expect(state.top).toBe(700);
   });
 });

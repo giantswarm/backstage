@@ -206,6 +206,7 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
   );
 
   let failure: unknown;
+  let cdp: CDPSession | undefined;
   try {
     // --- The reply streams in, longer than the view: the page follows it ---
     await expect(
@@ -242,9 +243,21 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
       'the page stays where the reader scrolled to',
     ).toBeLessThanOrEqual(1);
 
-    // A nudge of one line up, near the end, leaves the end just the same.
+    // --- End: back to the end, followed again --------------------------
+    // The composer has the focus (the session was just started), where End
+    // only moves the caret; the page takes the key once the focus is off it.
+    await admin.evaluate(() =>
+      (document.activeElement as HTMLElement | null)?.blur(),
+    );
     await admin.keyboard.press('End');
-    await admin.waitForTimeout(500);
+    await whileItStreams(admin);
+    expect(
+      (await metrics(admin)).distance,
+      'End goes back to the end and follows the reply',
+    ).toBeLessThanOrEqual(AT_END_PX);
+
+    // A nudge of one line up, from the end, leaves the end just the same:
+    // the old follow pulled back anything within 240px.
     await admin.mouse.wheel(0, -40);
     await admin.waitForTimeout(300);
     const nudged = await metrics(admin);
@@ -268,7 +281,7 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
 
     // --- A phone, by touch -------------------------------------------------
     await admin.setViewportSize({ width: 375, height: 812 });
-    const cdp = await admin.context().newCDPSession(admin);
+    cdp = await admin.context().newCDPSession(admin);
     await cdp.send('Emulation.setTouchEmulationEnabled', {
       enabled: true,
       maxTouchPoints: 1,
@@ -301,23 +314,36 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
       (await metrics(admin)).distance,
       'swiped back to the end, the reply is followed again',
     ).toBeLessThanOrEqual(AT_END_PX);
-
-    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
-    await cdp.detach();
-    await admin.setViewportSize({ width: 1440, height: 900 });
   } catch (error) {
     failure = error;
+  } finally {
+    // Back to the desktop before cleaning up, whichever step failed.
+    if (cdp) {
+      await cdp
+        .send('Emulation.setTouchEmulationEnabled', { enabled: false })
+        .catch(() => {});
+      await cdp.detach().catch(() => {});
+    }
+    await admin.setViewportSize({ width: 1440, height: 900 });
   }
 
   // --- Clean up: end the stubbed reply, delete the session -----------------
-  await admin
-    .evaluate(() =>
+  // A failed cleanup is reported, but never in place of the test's own
+  // failure.
+  try {
+    await admin.evaluate(() =>
       (
         window as unknown as { __e2eStream?: { finish: () => void } }
       ).__e2eStream?.finish(),
-    )
-    .catch(() => {});
-  await deleteCurrentSession(admin);
+    );
+    await deleteCurrentSession(admin);
+  } catch (cleanup) {
+    if (!failure) {
+      throw cleanup;
+    }
+    // eslint-disable-next-line no-console
+    console.warn(`agentlab e2e: cleanup failed after a failure: ${cleanup}`);
+  }
   if (failure) {
     throw failure;
   }
