@@ -20,6 +20,7 @@ import UnfoldLessIcon from '@material-ui/icons/UnfoldLess';
 import UnfoldMoreIcon from '@material-ui/icons/UnfoldMore';
 import {
   CopyButton,
+  saveFile,
   ShowMore,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -132,15 +133,8 @@ export function ToolResultViewer({
     [rows, table, needle],
   );
 
-  const download = () => {
-    const blob = new Blob([pretty], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'tool-result.json';
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
+  const download = () =>
+    saveFile(pretty, 'tool-result.json', 'application/json');
 
   const onModeChange = (keys: Set<Key>) => {
     const next = [...keys][0];

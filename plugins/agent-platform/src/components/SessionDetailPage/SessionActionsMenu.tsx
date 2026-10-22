@@ -16,6 +16,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import CheckIcon from '@material-ui/icons/Check';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
+import GetAppOutlinedIcon from '@material-ui/icons/GetAppOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import NotificationsNoneOutlinedIcon from '@material-ui/icons/NotificationsNoneOutlined';
 import {
@@ -93,6 +94,7 @@ export function SessionActionsMenu({
   onDeleted,
   pin,
   notifications,
+  onExport,
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
@@ -127,6 +129,12 @@ export function SessionActionsMenu({
    * Absent: no Notifications item.
    */
   notifications?: SessionNotificationsControl;
+  /**
+   * Exports the session to a file (`useExportSession`), always offered: also
+   * mid-turn and while the session waits on the person. Absent: no Export
+   * session item, as in a list's row.
+   */
+  onExport?: () => void;
 }) {
   const classes = useStyles();
   const isPhone = usePhoneLayout();
@@ -267,6 +275,11 @@ export function SessionActionsMenu({
                 ))}
               </Menu>
             </SubmenuTrigger>
+          )}
+          {onExport && (
+            <MenuItem iconStart={<GetAppOutlinedIcon />} onAction={onExport}>
+              Export session
+            </MenuItem>
           )}
           <MenuItem
             color="danger"

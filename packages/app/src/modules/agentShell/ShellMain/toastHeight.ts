@@ -9,7 +9,7 @@ import { useEffect } from 'react';
 export const TOAST_HEIGHT_VAR = '--agent-shell-toast-height';
 
 /** The app's toasts, matched by their module classes' stable prefixes. */
-const TOAST_CONTAINER = "[class*='Toast_container']";
+export const TOAST_CONTAINER = "[class*='Toast_container']";
 const TOAST = "[class*='Toast_toast']";
 
 /**

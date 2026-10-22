@@ -131,7 +131,7 @@ Every per-installation endpoint is derived from it:
 | ----------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------- |
 | `https://agentgateway.<baseDomain>` (gRPC)      | Sessions, chat, the kagent-derived Usage figures                      | `plugins/agent-platform-backend/src/KagentClient.ts` |
 | `https://muster.<baseDomain>/mcp`               | Agents (agent-manager), models (model-manager), connectors, workflows | `plugins/muster-backend/config.d.ts`                 |
-| `https://observability.<baseDomain>/prometheus` | Usage metrics (Mimir)                                                 | `plugins/gs-backend/src/services/MimirService.ts`    |
+| `https://observability.<baseDomain>/prometheus` | Usage metrics (Mimir)                                                 | `plugins/gs-node/src/mimir/MimirService.ts`          |
 
 Agent avatars need it too (`plugins/agent-platform-backend/src/installationDomain.ts`).
 An installation without `baseDomain` has none of the above.
@@ -142,7 +142,10 @@ Default `true`. Usage's token, cost, latency and error figures come from the
 agentgateway's metrics in the installation's Mimir. gs-backend proxies
 `GET /api/gs/mimir/query` and `/mimir/query_range` to
 `https://observability.<baseDomain>/prometheus/api/v1/…` with the person's OIDC
-token for that installation and `X-Scope-OrgID: giantswarm`.
+token for that installation and `X-Scope-OrgID: giantswarm`. The person's own
+cost on Your sessions goes through agent-platform-backend instead
+(`GET /api/agent-platform/usage/model-cost`), which builds its query from the
+caller kagent identifies, with the same token and tenant.
 
 Set `mimirEnabled: false` where the Giant Swarm observability stack does not
 run (a standalone installation): the backend answers 404 instead of calling a
@@ -150,8 +153,9 @@ missing Mimir, and the metrics-backed UI reads "unavailable" rather than
 erroring.
 
 Required in Mimir (the metric registry is
-`plugins/gs/src/apis/mimir/metrics.ts`; the queries are
-`plugins/agent-platform/src/lib/llmUsageQueries.ts`):
+`plugins/gs-common/src/mimirMetrics.ts`; the queries are
+`plugins/agent-platform/src/lib/llmUsageQueries.ts` and
+`plugins/agent-platform-backend/src/modelCost.ts`):
 
 | Metric                                             | Gives                                                      |
 | -------------------------------------------------- | ---------------------------------------------------------- |
@@ -163,7 +167,8 @@ Required in Mimir (the metric registry is
 | `agentgateway_requests_total`                      | Error rate, filtered to the `llm` listener                 |
 
 Grouping labels: `agent_namespace`, `agent`, `gen_ai_response_model`,
-`gen_ai_token_type`. LLM traffic must therefore go **through the agentgateway's
+`gen_ai_token_type`, and `user` (the caller's email) for Your sessions' cost;
+without `user` on the cost series that view falls back to an estimate. LLM traffic must therefore go **through the agentgateway's
 `llm` listener**, which exports these metrics with the agent labels, scraped
 into the installation's Mimir. A model the gateway's catalogue does not price
 contributes tokens but no cost.
@@ -397,7 +402,12 @@ agentPlatform:
 ```
 
 A model the table does not name, such as a Claude release newer than the
-table, shows its raw count with a line saying no window is configured for it.
+table, shows its raw count with a line saying no window is configured for it,
+and its model page (Customize → Models) says so on Overview, where a named
+model lists its window among the facts. A model only entries without a
+positive number of tokens match (`'200k'`, a quoted `"200000"`, `0`) gets a
+note naming the most specific such pattern to fix. The window is always this
+table's: model-manager's context length for a self-hosted model is not used.
 When a session's context is larger than the configured window, the popover
 shows the raw count and says the setting may be too small (or that the turn
 ran on another model), instead of a share.

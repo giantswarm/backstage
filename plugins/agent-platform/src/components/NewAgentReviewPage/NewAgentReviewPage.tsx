@@ -305,6 +305,11 @@ function CreateAgentReview() {
               ? harnessTitle(state.harness)
               : 'Standard (platform default)'}
           </PlainRow>
+          {state.defaultWorkspace && (
+            <PlainRow label="Default workspace">
+              {state.defaultWorkspace}
+            </PlainRow>
+          )}
           {hasRepositories && (
             <PlainRow label="Skills">
               {state.selectedSkills.length === 0

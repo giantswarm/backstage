@@ -26,6 +26,7 @@ export const SHELL_SPECS = [
   'chatgpt-chat-gate.spec.ts',
   'chatgpt-connect.spec.ts',
   'connector-display-name.spec.ts',
+  'default-workspace.spec.ts',
   'definition-editor.spec.ts',
   'first-agent.spec.ts',
   'form-validation.spec.ts',
@@ -55,6 +56,7 @@ export const SHELL_SPECS = [
   'serving-order.spec.ts',
   'serving-state.spec.ts',
   'session-expiry.spec.ts',
+  'session-export.spec.ts',
   'session-images.spec.ts',
   'session-runtime-lost.spec.ts',
   'session-state-column.spec.ts',
@@ -80,6 +82,7 @@ export const SHELL_SPECS = [
  */
 export const MOBILE_SPECS = [
   'mobile-hosting.spec.ts',
+  'mobile-model-page.spec.ts',
   'mobile-navigation.spec.ts',
   'mobile-notification-inbox.spec.ts',
   'mobile-sessions.spec.ts',

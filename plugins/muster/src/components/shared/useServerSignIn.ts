@@ -35,15 +35,78 @@ const DEFAULT_POLL_TIMEOUT_MS = 15 * 60 * 1_000;
 const MUSTER_STATE_TTL_MS = 10 * 60 * 1_000;
 const DEFAULT_AUTH_URL_LIFETIME_MS = MUSTER_STATE_TTL_MS - 60 * 1_000;
 
+/** How long a status read counts as fresh for a row that mounts after it. */
+const STATUS_FRESH_MS = 2_000;
+
 /** Statuses that mean the user themselves can still act (sign in). */
 const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
   'auth_required',
   'reauth_required',
 ];
 
-/** Whether muster reports a server as waiting for this user's sign-in. */
+/**
+ * Whether the server comes with the person's muster sign-in (token forwarding
+ * or exchange): there is nothing of its own to sign in to. muster's `kind`
+ * decides where it is sent; an older muster without it says so through the
+ * two flags.
+ */
+export function isSsoServer(status: ServerAuthStatus): boolean {
+  if (status.kind !== undefined) {
+    return status.kind === 'sso';
+  }
+  return Boolean(
+    status.token_forwarding_enabled || status.token_exchange_enabled,
+  );
+}
+
+/**
+ * Whether muster reports a server as waiting for this user's sign-in. Never an
+ * SSO server: muster reports one `auth_required` before it connects it and
+ * `reauth_required` once the server refused the person's sign-in, and neither
+ * is fixed by signing in to it.
+ */
 export function needsSignIn(status: ServerAuthStatus): boolean {
-  return NEEDS_LOGIN.includes(status.status);
+  return NEEDS_LOGIN.includes(status.status) && !isSsoServer(status);
+}
+
+/**
+ * Whether an SSO server refused the person's sign-in: muster's attempt failed
+ * and the server is not connected in this session. The flag alone is not
+ * enough, since muster keeps it per person and another session's failure
+ * stands on a server this one is connected to; a server muster cannot reach
+ * (`unreachable`) or is still retrying (`sso_pending`) did not refuse anything.
+ */
+export function isSsoRefused(status: ServerAuthStatus): boolean {
+  return (
+    isSsoServer(status) &&
+    Boolean(status.sso_attempt_failed) &&
+    NEEDS_LOGIN.includes(status.status)
+  );
+}
+
+/**
+ * Whether muster is still connecting the server with the person's portal
+ * sign-in (`sso_pending`): its connect after a sign-in runs in the background
+ * and settles within seconds, nothing waits for the person.
+ */
+export function isConnecting(status: ServerAuthStatus): boolean {
+  return status.status === 'sso_pending';
+}
+
+/** How often `auth://status` is re-read while a server is connecting. */
+export const CONNECTING_POLL_INTERVAL_MS = 2_000;
+
+/**
+ * The re-read interval while muster still connects one of the person's
+ * servers, else false: a status read in the seconds after a sign-in settles
+ * without a reload.
+ */
+export function connectingPollInterval(
+  data: AuthStatusResponse | undefined,
+): number | false {
+  return data?.servers?.some(isConnecting)
+    ? CONNECTING_POLL_INTERVAL_MS
+    : false;
 }
 
 /** The per-installation `auth://status` read every sign-in affordance shares. */
@@ -189,7 +252,15 @@ export interface ServerSignInState {
    * established from muster's own session, so a user sign-in cannot fix it.
    */
   isSsoManaged: boolean;
-  /** Whether muster reports this server as needing a user sign-in. */
+  /**
+   * The SSO server refused the person's sign-in and is not connected for this
+   * session ({@link isSsoRefused}): only an administrator can fix it.
+   */
+  isSsoRefused: boolean;
+  /**
+   * Whether muster reports this server as needing a user sign-in
+   * ({@link needsSignIn}); never for an SSO server.
+   */
   needsLogin: boolean;
   /** Whether muster reports this server as connected for this session. */
   isConnected: boolean;
@@ -333,6 +404,10 @@ export function useServerSignIn(
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: Boolean(installation),
+    // A row that mounts right after a read (the sign-in dialog's rows, drawn
+    // from the read it made on opening) does not read it again; polling,
+    // focus and invalidation re-read regardless.
+    staleTime: STATUS_FRESH_MS,
     // A provider App's code outstanding is a wait too, also one this tab did
     // not start (asked for before a reload, or in another tab).
     refetchInterval: query =>
@@ -630,10 +705,9 @@ export function useServerSignIn(
       (signOutResult?.status === 'signed_out'
         ? signedOutNote(options.noun)
         : undefined),
-    isSsoManaged: Boolean(
-      status?.token_forwarding_enabled || status?.token_exchange_enabled,
-    ),
-    needsLogin: status ? NEEDS_LOGIN.includes(status.status) : false,
+    isSsoManaged: status ? isSsoServer(status) : false,
+    isSsoRefused: status ? isSsoRefused(status) : false,
+    needsLogin: status ? needsSignIn(status) : false,
     isConnected: status?.status === 'connected',
     isSigningOut: signOut.isPending,
     // Each action resets the other's feedback: after a sign-out, a lingering

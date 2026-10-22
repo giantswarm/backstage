@@ -56,6 +56,16 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   }),
 }));
 
+/** The workspaces the person's Organizations have on the installation. */
+const mockWorkspaceNames = jest.fn<string[], []>(() => []);
+jest.mock('../../hooks/useSessionWorkspaces', () => ({
+  ...jest.requireActual('../../hooks/useSessionWorkspaces'),
+  useSessionWorkspaces: () => ({
+    workspaces: mockWorkspaceNames().map(name => ({ name })),
+    isLoading: false,
+  }),
+}));
+
 // The model list as kagent reads it: two in the agent's namespace and one in
 // another, which an edit cannot move the agent to.
 function modelConfig(name: string, namespace: string, displayName: string) {
@@ -500,6 +510,97 @@ describe('EditAgentPage', () => {
       name: 'pr-reviewer',
       description: 'Reviews every pull request.',
     } satisfies AgentUpdate);
+  });
+
+  describe('the default workspace', () => {
+    afterEach(() => mockWorkspaceNames.mockReturnValue([]));
+
+    async function pickDefault(
+      user: ReturnType<typeof userEvent.setup>,
+      option: RegExp,
+    ) {
+      await screen.findByLabelText(/^What is it for\?/);
+      await user.click(screen.getByText('More options'));
+      await user.click(
+        await screen.findByRole('button', { name: /Default workspace/ }),
+      );
+      await user.click(await screen.findByRole('option', { name: option }));
+      await user.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByRole('checkbox', { name: 'Skill PR review' });
+      await user.click(screen.getByRole('button', { name: 'Continue' }));
+      await user.click(
+        await screen.findByRole('button', { name: 'To review' }),
+      );
+      await screen.findByRole('heading', { name: 'Check and save' });
+    }
+
+    it('sets one of the environment’s workspaces, in the agent’s namespace', async () => {
+      mockWorkspaceNames.mockReturnValue(['platform-mcp', 'platform-mix']);
+      const user = userEvent.setup();
+      const { callTool } = await renderEdit(BASE, {
+        info: { ...INFO, capabilities: { defaultWorkspace: true } },
+      });
+
+      await pickDefault(user, /^platform-mix$/);
+
+      const changes = await screen.findByRole('list', {
+        name: 'Changed fields',
+      });
+      expect(
+        within(changes).getByText('Default workspace'),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Save changes' }),
+        ).toBeEnabled(),
+      );
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
+      await screen.findByText('agent detail after updated');
+      const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+      expect(written).toEqual({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        defaultWorkspace: 'kagent/platform-mix',
+      } satisfies AgentUpdate);
+    });
+
+    it('removes the default, offered even when it is no longer listed', async () => {
+      mockWorkspaceNames.mockReturnValue(['platform-mcp']);
+      const user = userEvent.setup();
+      const { callTool } = await renderEdit(BASE, {
+        agent: { ...AGENT, defaultWorkspace: 'kagent/gone' },
+        info: { ...INFO, capabilities: { defaultWorkspace: true } },
+      });
+
+      await screen.findByLabelText(/^What is it for\?/);
+      expect(
+        screen.getByText('More options').closest('summary'),
+      ).toHaveTextContent(/default workspace gone/);
+      await pickDefault(user, /^No default workspace$/);
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Save changes' }),
+        ).toBeEnabled(),
+      );
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
+      await screen.findByText('agent detail after updated');
+      const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+      expect(written).toEqual({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        defaultWorkspace: '',
+      } satisfies AgentUpdate);
+    });
+
+    it('is not offered where agent-manager does not start sessions in a default', async () => {
+      mockWorkspaceNames.mockReturnValue(['platform-mcp']);
+      await renderEdit(BASE);
+      await screen.findByLabelText(/^What is it for\?/);
+      expect(
+        screen.queryByRole('button', { name: /Default workspace/ }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('leaves an untouched edit without asking', async () => {

@@ -4,6 +4,7 @@ import {
   KagentSession,
   KagentSessionDetail,
   MessageImage,
+  ModelCostResponse,
   SessionStatesResponse,
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -53,6 +54,14 @@ export type KagentIdentity = {
   sub?: string;
   /** The token's `email` claim, when kagent reported one. */
   email?: string;
+};
+
+/** {@link KagentApi.getRawSession}'s answer: two route bodies, as they came. */
+export type RawSessionBodies = {
+  /** `GET /kagent/sessions/:id`: kagent's `GetSessionResponse`, `{session}`. */
+  sessionBody: unknown;
+  /** `GET /kagent/sessions/:id/tasks`: `{tasks, totalSize}`. */
+  tasksBody: unknown;
 };
 
 export interface KagentApi {
@@ -117,6 +126,20 @@ export interface KagentApi {
   ): Promise<A2aTaskWire[]>;
 
   /**
+   * The session route's and the tasks route's bodies, untouched, for a
+   * Session export: nothing normalized, no row dropped, `totalSize` kept.
+   *
+   * The session is read first and the tasks only once it answered, so a
+   * session that is not the caller's, or no longer exists, fails as the
+   * session read's `NotFoundError` — never as the `ForbiddenError` kagent's
+   * task listing answers for the same cases.
+   */
+  getRawSession(
+    installation: string,
+    sessionId: string,
+  ): Promise<RawSessionBodies>;
+
+  /**
    * Derived state for this installation's sessions — what the session lists
    * group by. Computed by the backend, because a session's state lives in its
    * whole conversation and reading every one of them in the browser is not
@@ -139,6 +162,13 @@ export interface KagentApi {
    * claim ownership it cannot support.
    */
   getSessionUsage(installation: string): Promise<SessionUsageResponse>;
+
+  /**
+   * The caller's own model cost on one installation over the last `days`
+   * days, as the gateway priced it. The backend takes the person from kagent
+   * and builds the query itself, so nothing here names whose cost it is.
+   */
+  getModelCost(installation: string, days: number): Promise<ModelCostResponse>;
 
   /**
    * Stop the turn a session is running: cancel its task on the server.

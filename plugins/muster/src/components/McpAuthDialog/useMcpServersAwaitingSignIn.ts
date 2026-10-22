@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -7,7 +7,11 @@ import {
   type ProviderAppAuthStatus,
   type ServerAuthStatus,
 } from '../../apis';
-import { authStatusQueryKey, needsSignIn } from '../shared';
+import {
+  authStatusQueryKey,
+  connectingPollInterval,
+  needsSignIn,
+} from '../shared';
 
 /**
  * How often the status is re-read while nothing is happening: a server can
@@ -41,6 +45,24 @@ export type McpServersAwaitingSignIn = {
    * back, and nothing reading in the background should ask for the sign-in.
    */
   sessionExpired: boolean;
+  /**
+   * muster is still connecting a server for this session (`sso_pending`): the
+   * session's start has not finished, so the other servers' states may not
+   * have settled either.
+   */
+  connecting: boolean;
+  /** When muster last answered with a status (ms since the epoch); 0 before. */
+  readAt: number;
+  /**
+   * When the last read ended, with a status or a failure (ms since the
+   * epoch); 0 before the first.
+   */
+  answeredAt: number;
+  /**
+   * Reads the status again now, or joins the read already under way. Stable
+   * across renders.
+   */
+  refetch: () => void;
 };
 
 function isSessionExpired(error: unknown): boolean {
@@ -57,24 +79,41 @@ function isSessionExpired(error: unknown): boolean {
  */
 export function useMcpServersAwaitingSignIn(
   installation: string | undefined,
-  options: { servers?: string[]; apps?: string[]; enabled?: boolean } = {},
+  options: {
+    servers?: string[];
+    apps?: string[];
+    enabled?: boolean;
+    /**
+     * Read when the caller mounts, as react-query does by default; off for a
+     * caller that reads at a moment of its own (the dialog, when it opens).
+     */
+    refetchOnMount?: boolean;
+  } = {},
 ): McpServersAwaitingSignIn {
-  const { servers, apps, enabled = true } = options;
+  const { servers, apps, enabled = true, refetchOnMount = true } = options;
   const musterApi = useApi(musterApiRef);
 
-  const { data, error, isPending } = useQuery({
-    queryKey: authStatusQueryKey(installation),
-    queryFn: () => musterApi.getAuthStatus(installation),
-    enabled,
-    // The read never asks the person to sign in (`getAuthStatus`); once the
-    // portal session is gone it stops until the person is back, on focus.
-    refetchInterval: query =>
-      isSessionExpired(query.state.error) ? false : AUTH_STATUS_REFRESH_MS,
-    // As the sign-in affordances read it: re-read on return from the IdP's
-    // tab, and an unreadable status is an answer, not a retry.
-    refetchOnWindowFocus: true,
-    retry: false,
-  });
+  const { data, error, isPending, dataUpdatedAt, errorUpdatedAt, refetch } =
+    useQuery({
+      queryKey: authStatusQueryKey(installation),
+      queryFn: () => musterApi.getAuthStatus(installation),
+      enabled,
+      // The read never asks the person to sign in (`getAuthStatus`); once the
+      // portal session is gone it stops until the person is back, on focus.
+      // While muster still connects a server it is re-read within seconds.
+      refetchInterval: query =>
+        isSessionExpired(query.state.error)
+          ? false
+          : connectingPollInterval(query.state.data) || AUTH_STATUS_REFRESH_MS,
+      // As the sign-in affordances read it: re-read on return from the IdP's
+      // tab, and an unreadable status is an answer, not a retry.
+      refetchOnWindowFocus: true,
+      refetchOnMount,
+      retry: false,
+    });
+  const reread = useCallback(() => {
+    void refetch({ cancelRefetch: false });
+  }, [refetch]);
 
   const serversKey = servers?.join('\n');
   const appsKey = apps?.join('\n');
@@ -95,6 +134,20 @@ export function useMcpServersAwaitingSignIn(
       isLoading: enabled && isPending,
       isAvailable: Boolean(data) && !data?.unavailable,
       sessionExpired: isSessionExpired(error),
+      connecting: statuses.some(status => status.status === 'sso_pending'),
+      readAt: dataUpdatedAt,
+      answeredAt: Math.max(dataUpdatedAt, errorUpdatedAt),
+      refetch: reread,
     };
-  }, [data, error, serversKey, appsKey, enabled, isPending]);
+  }, [
+    data,
+    error,
+    serversKey,
+    appsKey,
+    enabled,
+    isPending,
+    dataUpdatedAt,
+    errorUpdatedAt,
+    reread,
+  ]);
 }

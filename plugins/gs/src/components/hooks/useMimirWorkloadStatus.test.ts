@@ -6,7 +6,7 @@ import {
   KubeStatefulsetStatusReplicasReady,
   KubeDaemonsetStatusDesiredNumberScheduled,
   KubeDaemonsetStatusNumberReady,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { buildWorkloads, buildOrQuery } from './useMimirWorkloadStatus';
 
 function makeSample(

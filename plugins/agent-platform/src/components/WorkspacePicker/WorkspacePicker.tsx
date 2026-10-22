@@ -61,12 +61,41 @@ export type WorkspacePickerProps = {
   showLabel?: boolean;
 };
 
+/** Where a preset came from, as the line beside the select says. */
+type PresetSource = 'last' | 'default';
+
+/**
+ * The workspace a new session with `agent` starts preset to: the one last
+ * chosen with the agent in this browser, else the agent's default workspace,
+ * else none ("Last choice first"). A last choice of "No workspace" is a
+ * choice and presets none; a remembered or default workspace that is not
+ * listed (gone, or not the person's) is passed over.
+ */
+export function presetWorkspace(
+  remembered: string | null | undefined,
+  agentDefault: string | undefined,
+  workspaces: Workspace[],
+): { workspace: Workspace; source: PresetSource } | undefined {
+  if (remembered === null) {
+    return undefined;
+  }
+  const listed = (name: string | undefined) =>
+    name ? workspaces.find(workspace => workspace.name === name) : undefined;
+  const last = listed(remembered);
+  if (last) {
+    return { workspace: last, source: 'last' };
+  }
+  const fallback = listed(agentDefault);
+  return fallback ? { workspace: fallback, source: 'default' } : undefined;
+}
+
 /**
  * The composer's optional workspace, beside the agent picker: the workspaces
  * of the chosen agent's installation across the person's Organizations, and
- * "No workspace". Preset to the one last chosen with this agent here, else
- * none; a choice is remembered for the agent. Renders nothing where the
- * installation offers no workspace, so the composer reads as before.
+ * "No workspace". Preset by {@link presetWorkspace}: the one last chosen with
+ * this agent here, else the agent's default workspace, else none; a choice is
+ * remembered for the agent. Renders nothing where the installation offers no
+ * workspace, so the composer reads as before.
  *
  * Keyed by the agent by its caller: another agent is another preset.
  */
@@ -82,21 +111,28 @@ export function WorkspacePicker({
   const { lastWorkspaceOf, rememberWorkspace } = useLastWorkspace();
   const [searchText, setSearchText] = useState('');
 
-  // The remembered workspace is adopted once it is listed, unless the person
-  // chose meanwhile; it is gone when it is no longer listed.
+  // The preset is adopted once the workspaces are listed, unless the person
+  // chose meanwhile.
   const touched = useRef(false);
-  const [preset, setPreset] = useState<string>();
+  const [preset, setPreset] = useState<{
+    name: string;
+    source: PresetSource;
+  }>();
   const remembered = lastWorkspaceOf(agent.id);
   useEffect(() => {
-    if (touched.current || preset || !remembered) {
+    if (touched.current || preset) {
       return;
     }
-    const found = workspaces.find(workspace => workspace.name === remembered);
+    const found = presetWorkspace(
+      remembered,
+      agent.defaultWorkspace,
+      workspaces,
+    );
     if (found) {
-      setPreset(found.name);
-      onChange(found);
+      setPreset({ name: found.workspace.name, source: found.source });
+      onChange(found.workspace);
     }
-  }, [workspaces, remembered, preset, onChange]);
+  }, [workspaces, remembered, agent.defaultWorkspace, preset, onChange]);
 
   const multipleOrganizations =
     new Set(workspaces.map(workspace => workspace.organization)).size > 1;
@@ -158,9 +194,11 @@ export function WorkspacePicker({
         })}
         isDisabled={isDisabled}
       />
-      {preset && value?.name === preset && !touched.current && (
+      {preset && value?.name === preset.name && !touched.current && (
         <Text as="span" variant="body-small" color="secondary">
-          Last used with {agent.name}
+          {preset.source === 'last'
+            ? `Last used with ${agent.name}`
+            : `${agent.name}’s default`}
         </Text>
       )}
     </>

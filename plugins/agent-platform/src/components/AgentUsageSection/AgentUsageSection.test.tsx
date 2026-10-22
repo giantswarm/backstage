@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SessionUsageResponse } from '@giantswarm/backstage-plugin-agent-platform-common';
+import type { ModelCostView } from '../../hooks/useModelCost';
 import { AgentUsageSection } from './AgentUsageSection';
 
 const state = {
@@ -69,6 +70,18 @@ jest.mock('../../hooks/useTokenRates', () => ({
     isAvailable: true,
     window: '7d',
   }),
+}));
+
+// The person's actual cost. Defaults to a failed read, so every test that is
+// not about it sees the estimate the page fell back to before; `modelCostCalls`
+// records the windows it was asked for.
+let mockModelCost: ModelCostView;
+const modelCostCalls: Array<{ installation?: string; days: number }> = [];
+jest.mock('../../hooks/useModelCost', () => ({
+  useModelCost: (installation: string | undefined, days: number) => {
+    modelCostCalls.push({ installation, days });
+    return mockModelCost;
+  },
 }));
 
 // The screen's time-window control is URL state; mocking it keeps the test
@@ -145,16 +158,18 @@ function usage(overrides: Partial<SessionUsageResponse> = {}) {
 beforeEach(() => {
   Object.assign(state, DEFAULTS);
   mockPricedRate = undefined;
+  mockModelCost = { state: 'fallback', reason: 'error' };
+  modelCostCalls.length = 0;
 });
 
-/** The text of the hint behind the Est. cost stat, once its tooltip opens. */
-async function costBasisText() {
+/** The text of the hint behind a cost stat, once its tooltip opens. */
+async function costBasisText(label = 'Est. cost') {
   const user = userEvent.setup();
   // react-aria opens a tooltip on hover only once it has seen the pointer
   // move, so the pointer enters the page before it reaches the button.
   await user.hover(document.body);
   await user.hover(
-    screen.getByRole('button', { name: 'How Est. cost is calculated' }),
+    screen.getByRole('button', { name: `How ${label} is calculated` }),
   );
   return (await screen.findByRole('tooltip')).textContent ?? '';
 }
@@ -189,6 +204,88 @@ describe('AgentUsageSection', () => {
       'applied to the 8.4M input and 104.0k output tokens',
     );
     expect(basis).toContain('kagent also counted 20.0k other tokens');
+  });
+
+  it('no longer claims the other tabs cover every user', () => {
+    state.usage = usage();
+    render(<AgentUsageSection />);
+
+    expect(
+      screen.getByText(/from kagent's stored conversations — Slack included\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/every user's model calls/),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('cost', () => {
+    it('shows the actual cost, and says it covers every call made as you', async () => {
+      mockPricedRate = 0.000003;
+      mockModelCost = {
+        state: 'actual',
+        totalUsd: 12.5,
+        byAgent: new Map(),
+        partial: false,
+      };
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('$12.50')).toBeInTheDocument();
+      expect(screen.getByText('All your model calls')).toBeInTheDocument();
+      expect(screen.queryByText('Est. cost')).not.toBeInTheDocument();
+      const hint = await costBasisText('Cost');
+      expect(hint).toContain('every model call made as you on gazelle');
+      expect(hint).toContain('includes calls outside these sessions');
+      expect(hint).not.toContain('may be low');
+    });
+
+    it('says a window partly recorded without users may be low', async () => {
+      mockModelCost = {
+        state: 'actual',
+        totalUsd: 1,
+        byAgent: new Map(),
+        partial: true,
+      };
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(await costBasisText('Cost')).toContain('may be low');
+    });
+
+    it('falls back to the labelled estimate, led by why', async () => {
+      mockPricedRate = 0.000003;
+      mockModelCost = { state: 'fallback', reason: 'not-recorded' };
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('Est. cost')).toBeInTheDocument();
+      const basis = await costBasisText();
+      expect(basis).toMatch(
+        /^No actual cost: the gateway on gazelle does not record who made each model call\. Estimated:/,
+      );
+    });
+
+    it('holds a skeleton, not a fallback, while the actual cost is in flight', () => {
+      mockPricedRate = 0.000003;
+      mockModelCost = { state: 'loading' };
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('Cost')).toBeInTheDocument();
+      expect(screen.queryByText('Est. cost')).not.toBeInTheDocument();
+    });
+
+    it('reads the strip’s window and the table’s full window', () => {
+      state.selectedDays = 7;
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      const days = new Set(modelCostCalls.map(call => call.days));
+      expect(days).toEqual(new Set([7, 30]));
+      for (const call of modelCostCalls) {
+        expect(call.installation).toBe('gazelle');
+      }
+    });
   });
 
   it('says so when the window is empty, rather than showing zeros', () => {

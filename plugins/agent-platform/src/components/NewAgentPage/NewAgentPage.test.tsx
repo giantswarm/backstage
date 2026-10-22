@@ -71,6 +71,9 @@ jest.mock('../TenantPicker', () => ({
 jest.mock('../HarnessPicker', () => ({
   HarnessPicker: () => <p>runtime picker</p>,
 }));
+jest.mock('../DefaultWorkspacePicker', () => ({
+  DefaultWorkspacePicker: () => <p>default workspace picker</p>,
+}));
 jest.mock('../CreateAgentAssist', () => ({ CreateAgentAssist: () => null }));
 jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
 

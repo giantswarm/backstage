@@ -455,9 +455,27 @@ export interface ServerAuthStatus {
    * SSO-managed servers, where only an administrator can fix the connection.
    */
   auth_tool?: string;
+  /**
+   * Why the server is not connected for this session, when muster knows. For
+   * an SSO server whose attempt failed it is that attempt's own account: the
+   * connect error and the forwarded token's issuer and audiences. Never a
+   * token; shown verbatim.
+   */
   error?: string;
+  /**
+   * How the person comes to use the server: a grant of their own (`grant`,
+   * `core_auth_login`), their muster sign-in forwarded or exchanged (`sso`),
+   * or no credential (`none`). Absent from older musters, which say `sso`
+   * through the two flags below.
+   */
+  kind?: 'grant' | 'sso' | 'none';
   token_forwarding_enabled?: boolean;
   token_exchange_enabled?: boolean;
+  /**
+   * muster tried to connect the SSO server with the person's sign-in and it
+   * failed. muster records it per person, not per session, so it can stand
+   * on a server that is connected in this session.
+   */
   sso_attempt_failed?: boolean;
 }
 

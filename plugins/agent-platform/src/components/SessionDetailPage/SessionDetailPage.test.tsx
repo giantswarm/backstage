@@ -223,6 +223,17 @@ jest.mock('../../hooks/useAnswerConfirmation', () => ({
   useAnswerConfirmation: () => mockUseAnswerConfirmation(),
 }));
 
+// Stubbed: it reads `kagentApiRef`, and this test mounts no APIs. The export
+// itself is covered by SessionActionsMenu.test.tsx.
+const mockExportSession = jest.fn();
+const mockUseExportSession = jest.fn();
+jest.mock('../../hooks/useExportSession', () => ({
+  useExportSession: (target: unknown) => {
+    mockUseExportSession(target);
+    return mockExportSession;
+  },
+}));
+
 // Stubbed like the other write hooks: it reads `kagentApiRef`, and this test mounts
 // no APIs and no query client.
 const mockCancelTask = jest.fn();
@@ -515,6 +526,17 @@ describe('SessionDetailPage', () => {
     await render();
 
     expect(lastProvidedActions()).not.toBeNull();
+  });
+
+  it('hands the menu an export of this session, named after its agent', async () => {
+    await render();
+
+    expect(lastProvidedActions().props.onExport).toBe(mockExportSession);
+    expect(mockUseExportSession).toHaveBeenLastCalledWith({
+      installation: 'gazelle',
+      sessionId: 'abc',
+      agentName: 'issue-tracker',
+    });
   });
 
   it.each([

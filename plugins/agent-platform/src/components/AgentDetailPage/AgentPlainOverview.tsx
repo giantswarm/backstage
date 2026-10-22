@@ -37,6 +37,10 @@ import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
 import { CREATED_BY_ANNOTATION, tenantOf } from '../../lib/tenants';
 import {
+  DEFAULT_WORKSPACE_ANNOTATION,
+  defaultWorkspaceName,
+} from '../../lib/defaultWorkspace';
+import {
   describeToolScope,
   isGatewayServerBinding,
   skillLabel,
@@ -540,6 +544,12 @@ export function agentFacts({
     { label: 'Environment', value: installation },
     { label: 'Tenant', value: tenantOf(agent.getNamespace() ?? '') },
   ];
+  const defaultWorkspace = defaultWorkspaceName(
+    agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],
+  );
+  if (defaultWorkspace) {
+    facts.push({ label: 'Default workspace', value: defaultWorkspace });
+  }
   const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
   if (createdBy) {
     facts.push({ label: 'Created by', value: createdBy });

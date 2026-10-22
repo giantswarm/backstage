@@ -457,13 +457,15 @@ html[data-agent-shell] body {
  * docked composer's own height (not counting the bar), which the session page
  * publishes on the document while its composer is docked, and
  * `--wizard-footer-height` a WizardFrame's footer (Continue, Create), which
- * the frame publishes while it is mounted; unset, each is 0. The inbox's
- * lasting toasts (a catch-up summary, an MCP sign-in) so never take the
- * click of a page's primary action. A wizard step leaves room for the toast
- * at its end (`--agent-shell-toast-height`, ShellMain's `useToastHeight`), so
- * the toast never sits on the step's last control either. Matched by the module class's stable
- * prefix, since the hash changes with every release; theme.test.ts checks
- * the upstream class still carries it.
+ * the frame publishes while it is mounted; unset, each is 0. A toast (the
+ * inbox's heads-ups, a write's confirmation) so never takes the click of a
+ * page's primary action for the seconds it shows, nor for as long as the
+ * pointer rests on it, which holds it. A wizard step leaves room for the
+ * toast at its end (`--agent-shell-toast-height`, ShellMain's
+ * `useToastHeight`), so the toast never sits on the step's last control
+ * either. Matched by the module class's stable prefix, since the hash changes
+ * with every release; theme.test.ts checks the upstream class still carries
+ * it.
  */
 html[data-agent-shell] [class*='Toast_container'] {
   bottom: calc(

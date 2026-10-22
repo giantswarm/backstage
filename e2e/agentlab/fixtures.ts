@@ -550,14 +550,16 @@ export async function openHome(admin: Page): Promise<void> {
 }
 
 /**
- * The Notification inbox's toasts that stay until answered: the one summary of
- * what was unread at the tab's first read ("2 notifications need your
- * attention") and a new MCP sign-in row's ("1 MCP server needs your
- * sign-in"). While a connector waits for the person's sign-in (the lab's
- * `lab-oauth-fixture` does), a fresh tab raises one at the foot of the page.
- * It stands clear of the bottom bar, a docked composer and a wizard's footer,
- * but covers the foot of the content: on a phone, Technical details at the
- * foot of Review.
+ * The Notification inbox's toasts a fresh tab meets: the one summary of what
+ * was unread at the tab's first read ("2 notifications need your attention")
+ * and a new MCP sign-in row's ("1 MCP server needs your sign-in"). While a
+ * connector waits for the person's sign-in (the lab's `lab-oauth-fixture`
+ * does), a fresh tab raises one at the foot of the page. It stands clear of
+ * the bottom bar, a docked composer and a wizard's footer, but covers the foot
+ * of the content: on a phone, Technical details at the foot of Review. It goes
+ * on its own after 6 s, but not while the pointer rests on it: an action on a
+ * control it covers moves the pointer onto it and holds it there, and on a
+ * page whose clock the test installed its time does not pass either.
  */
 function inboxToast(page: Page): Locator {
   return page
@@ -566,10 +568,10 @@ function inboxToast(page: Page): Locator {
 }
 
 /**
- * Closes the inbox's lasting toasts ({@link inboxToast}) whenever one shows,
- * as a person does who has no use for it. An open select's underlay takes
- * every click outside its listbox, so the listbox is closed first. The
- * worker's shared page is restored by its fixtures
+ * Closes the inbox's toasts ({@link inboxToast}) whenever one shows in the
+ * way of an action, as a person does who does not wait for it to go. An open
+ * select's underlay takes every click outside its listbox, so the listbox is
+ * closed first. The worker's shared page is restored by its fixtures
  * ({@link restoreInboxToasts}).
  */
 export async function dismissInboxToasts(page: Page): Promise<void> {
@@ -577,7 +579,12 @@ export async function dismissInboxToasts(page: Page): Promise<void> {
     if (await page.getByRole('listbox').isVisible()) {
       await page.keyboard.press('Escape');
     }
-    await toast.getByRole('button', { name: 'Close' }).click();
+    // The toast may go on its own between being seen and the click: then
+    // there is nothing left to close.
+    await toast
+      .getByRole('button', { name: 'Close' })
+      .click({ timeout: 2_000 })
+      .catch(() => undefined);
   });
 }
 

@@ -5,6 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describeActualCostByAgent } from '../../lib/modelCostCopy';
 import { ByAgentTable } from './ByAgentTable';
 import type { ByAgentRow } from './helpers';
 
@@ -98,6 +99,83 @@ describe('ByAgentTable', () => {
     expect(container.querySelectorAll('.bui-Skeleton').length).toBe(0);
     // 7.5M input + 28.8k output at $3/1M.
     expect(screen.getByText('$22.59')).toBeInTheDocument();
+  });
+
+  describe('with the actual cost', () => {
+    it('shows each agent’s actual cost instead of the estimate', () => {
+      render(
+        <ByAgentTable
+          rows={ROWS}
+          emptyMessage="none"
+          rates={{ blended: 3 / 1_000_000 }}
+          actualCost={
+            new Map([
+              ['a', 4.2],
+              ['b', 0.75],
+            ])
+          }
+          actualCostNote={describeActualCostByAgent({
+            days: 30,
+            partial: true,
+            converted: false,
+          })}
+        />,
+      );
+
+      expect(
+        screen.getByRole('columnheader', { name: /^Cost/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('columnheader', { name: /Est\. cost/ }),
+      ).toBeNull();
+      expect(screen.getByText('$4.20')).toBeInTheDocument();
+      expect(screen.getByText('$0.750')).toBeInTheDocument();
+      // No priced call through it is not $0.
+      expect(screen.getByText('—')).toBeInTheDocument();
+      // The estimate's $22.59 for row a is not shown.
+      expect(screen.queryByText('$22.59')).toBeNull();
+      // The strip's caveats travel to the table too.
+      expect(
+        screen.getByText(
+          /made as you in the last 30 days, in these sessions or not/,
+        ),
+      ).toHaveTextContent(/so these may be low/);
+      expect(screen.queryByText(/Cost is estimated/)).toBeNull();
+    });
+
+    it('leads the estimate’s note with why there is no actual cost', () => {
+      render(
+        <ByAgentTable
+          rows={ROWS}
+          emptyMessage="none"
+          rates={{ blended: 3 / 1_000_000 }}
+          fallbackReason="No actual cost: the gateway on gazelle does not record who made each model call."
+        />,
+      );
+
+      expect(
+        screen.getByRole('columnheader', { name: /Est\. cost/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/^No actual cost: the gateway on gazelle/),
+      ).toHaveTextContent(/Cost is estimated/);
+    });
+
+    it('holds a skeleton while it is not known whether there is one', () => {
+      const { container } = render(
+        <ByAgentTable
+          rows={ROWS}
+          emptyMessage="none"
+          rates={{ blended: 3 / 1_000_000 }}
+          isActualCostLoading
+        />,
+      );
+
+      expect(container.querySelectorAll('.bui-Skeleton').length).toBe(
+        ROWS.length,
+      );
+      expect(screen.queryByText(/Cost is estimated/)).toBeNull();
+    });
   });
 
   it('renders the empty message with no rows', () => {
@@ -232,6 +310,21 @@ describe('ByAgentTable at phone width', () => {
 
     expect(headers()).toEqual(['Agent', 'Sessions', 'Est. cost']);
     expect(screen.getByText('$3.25 reported by its runtime')).toBeVisible();
+  });
+
+  it('keeps the actual cost as the third column', () => {
+    layout = mockPhoneLayout();
+    render(
+      <ByAgentTable
+        rows={ROWS}
+        rates={RATES}
+        actualCost={new Map([['a', 4.2]])}
+        emptyMessage="none"
+      />,
+    );
+
+    expect(headers()).toEqual(['Agent', 'Sessions', 'Cost']);
+    expect(screen.getByText('$4.20')).toBeVisible();
   });
 
   it('keeps every column, the reported one too, on a desktop', () => {

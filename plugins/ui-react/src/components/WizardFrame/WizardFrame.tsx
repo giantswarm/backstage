@@ -77,7 +77,9 @@ const FOOTER_HEIGHT_VAR = WIZARD_FOOTER_HEIGHT_VAR;
  * (agent-shell.css): `--agent-shell-toast-height` is its height (the shell's
  * `useToastHeight`; classic chrome never defines it). The step leaves that
  * much room at its end, so its last control can be scrolled clear of it, and
- * a field scrolled into view keeps clear of it too.
+ * a field scrolled into view keeps clear of it too. The room eases in and out
+ * as a toast comes and goes on its own, so a step scrolled to its end slides
+ * rather than jumps.
  */
 const TOAST_ROOM = 'var(--agent-shell-toast-height, 0px)';
 
@@ -312,6 +314,10 @@ const useStyles = makeStyles({
     margin: '0 auto',
     padding: '24px 16px',
     paddingBottom: `calc(24px + ${TOAST_ROOM})`,
+    transition: 'padding-bottom 200ms ease-out',
+    '@media (prefers-reduced-motion: reduce)': {
+      transition: 'none',
+    },
     display: 'flex',
     flexDirection: 'column',
     gap: 24,

@@ -3,3 +3,4 @@ export * from './isStableVersion';
 export * from './parseChartRef';
 export * from './managementClusterVersions';
 export * from './jwtClaims';
+export * from './mimirMetrics';
