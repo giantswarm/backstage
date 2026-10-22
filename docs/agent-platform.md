@@ -1430,7 +1430,18 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   plugin's query client, every five minutes and when the tab regains focus, and
   quietly: the read never asks for the portal sign-in, stops while the portal
   session is gone (a focus checks again), and the servers' display names are
-  read once. A sign-in finished in the dialog or on a muster page removes the
+  read once. A server joins the row only once the status has settled, so a
+  fresh portal load, while muster is still connecting the session's servers,
+  raises nothing for servers that connect a moment later: not while muster
+  reports a server still connecting (`sso_pending`), for at most a minute
+  (`SETTLE_WINDOW_MS`), and only when a second read about five seconds later
+  (`SETTLE_REREAD_MS`) still has the same servers waiting; the reads follow each
+  other that quickly only while the status is unsettled. A server that stops
+  waiting leaves at once. The dialog reads the status again when it opens and
+  counts from that read. It lists a provider App (the person's GitHub or
+  ChatGPT grant) only while it needs a sign-in, with its Sign in, and counts it
+  with the servers; a connected App is disconnected on the Profile page's
+  Connections. A sign-in finished in the dialog or on a muster page removes the
   row through the same read. Only the home installation is read, and the dialog
   opens only for it: another installation's muster needs a brokered token, and
   its servers are signed in to where they are used. The row replaces muster's

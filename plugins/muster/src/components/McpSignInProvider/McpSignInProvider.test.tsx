@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
@@ -12,6 +12,7 @@ import {
 } from '../../apis';
 import { McpSignInProvider, useMcpSignIn } from './McpSignInProvider';
 import type { SignInInstallation } from './useSignInInstallation';
+import { SETTLE_REREAD_MS } from './useSettledWaiting';
 import { MCPServer } from '../../lib/k8s';
 
 /** The installation's MCPServers, per test; none by default. */
@@ -65,7 +66,13 @@ function annotated(name: string, displayName: string): MCPServer {
   );
 }
 
+// The waiting servers settle on a second read a few seconds after the first.
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+
 afterEach(() => {
+  jest.useRealTimers();
   mockServers = [];
   mockServerReadOptions.length = 0;
   mockInstallation = { installation: 'graveler', isLoading: false };
@@ -119,6 +126,22 @@ function status() {
   return JSON.parse(screen.getByTestId('status').textContent!);
 }
 
+/** The re-read a few seconds later, and react-query's notice of its answer. */
+async function reread() {
+  await act(() => jest.advanceTimersByTimeAsync(SETTLE_REREAD_MS));
+  await act(() => jest.advanceTimersByTimeAsync(10));
+}
+
+/** The first read, then the re-read a few seconds later that settles it. */
+async function settle() {
+  await waitFor(() => expect(status().isRead).toBe(true));
+  await reread();
+}
+
+function user() {
+  return userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+}
+
 async function renderProvider(api: Api) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -145,6 +168,7 @@ describe('McpSignInProvider', () => {
       ],
     });
     await renderProvider(api);
+    await settle();
 
     await waitFor(() =>
       expect(status()).toEqual({
@@ -185,6 +209,7 @@ describe('McpSignInProvider', () => {
         ],
       });
       await renderProvider(api);
+      await settle();
 
       await waitFor(() =>
         expect(status()).toEqual(
@@ -198,6 +223,104 @@ describe('McpSignInProvider', () => {
       );
     },
   );
+
+  describe('on a fresh portal load', () => {
+    const pending = (name: string): ServerAuthStatus => ({
+      name,
+      status: 'sso_pending',
+      token_forwarding_enabled: true,
+    });
+
+    /** muster's answers, one per read; the last one repeats. */
+    function readsOf(...answers: AuthStatusResponse[]) {
+      const api = makeApi({ servers: [] });
+      api.getAuthStatus.mockImplementation(() =>
+        Promise.resolve(answers.length > 1 ? answers.shift()! : answers[0]),
+      );
+      return api;
+    }
+
+    it('raises nothing while muster is still connecting the session, nor once it has', async () => {
+      // The session's start: its SSO servers connecting, a subject-scoped
+      // grant not adopted yet.
+      const api = readsOf(
+        {
+          servers: [
+            waitingFor('workspace-manager'),
+            pending('mcp-kubernetes'),
+            pending('mcp-prometheus'),
+          ],
+        },
+        {
+          servers: [
+            { ...waitingFor('workspace-manager'), status: 'connected' },
+            sso('mcp-kubernetes'),
+            sso('mcp-prometheus'),
+          ],
+        },
+      );
+      await renderProvider(api);
+
+      await waitFor(() => expect(status().isRead).toBe(true));
+      expect(status().waiting).toEqual([]);
+      await settle();
+      expect(api.getAuthStatus).toHaveBeenCalledTimes(2);
+      expect(status()).toEqual(
+        expect.objectContaining({
+          waiting: [],
+          connected: ['mcp-kubernetes', 'mcp-prometheus', 'workspace-manager'],
+        }),
+      );
+    });
+
+    it('raises nothing for a server that waits on one read and is connected on the next', async () => {
+      const api = readsOf(
+        { servers: [waitingFor('workspace-manager')] },
+        {
+          servers: [
+            { ...waitingFor('workspace-manager'), status: 'connected' },
+          ],
+        },
+      );
+      await renderProvider(api);
+
+      await waitFor(() => expect(status().isRead).toBe(true));
+      expect(status().waiting).toEqual([]);
+      await settle();
+      expect(status().connected).toEqual(['workspace-manager']);
+      expect(status().waiting).toEqual([]);
+    });
+
+    it('raises a server once a read a few seconds later still has it waiting', async () => {
+      const api = readsOf({ servers: [waitingFor('workspace-manager')] });
+      await renderProvider(api);
+
+      await waitFor(() => expect(status().isRead).toBe(true));
+      expect(status().waiting).toEqual([]);
+      await settle();
+      expect(status().waiting).toEqual([
+        { name: 'workspace-manager', label: 'workspace-manager' },
+      ]);
+    });
+
+    it('raises the waiting servers once muster has finished connecting', async () => {
+      const api = readsOf(
+        {
+          servers: [waitingFor('workspace-manager'), pending('mcp-kubernetes')],
+        },
+        { servers: [waitingFor('workspace-manager'), sso('mcp-kubernetes')] },
+      );
+      await renderProvider(api);
+
+      await settle();
+      // Settled now, but seen once only since muster finished.
+      expect(status().waiting).toEqual([]);
+      await reread();
+      expect(status().waiting).toEqual([
+        { name: 'workspace-manager', label: 'workspace-manager' },
+      ]);
+    });
+  });
 
   it('is not read until muster answers', async () => {
     const api = makeApi({ servers: [] });
@@ -214,6 +337,7 @@ describe('McpSignInProvider', () => {
     await renderProvider(
       makeApi({ servers: [waitingFor('workspace-manager')] }),
     );
+    await settle();
 
     await waitFor(() =>
       expect(status().waiting).toEqual([
@@ -227,6 +351,7 @@ describe('McpSignInProvider', () => {
     await renderProvider(
       makeApi({ servers: [waitingFor('workspace-manager')] }),
     );
+    await settle();
 
     await waitFor(() =>
       expect(status().waiting).toEqual([
@@ -295,6 +420,7 @@ describe('McpSignInProvider', () => {
       servers: [waitingFor('workspace-manager'), waitingFor('cluster-manager')],
     };
     const queryClient = await renderProvider(makeApi(response));
+    await settle();
     await waitFor(() => expect(status().waiting).toHaveLength(2));
 
     // A sign-in on a muster page invalidates the shared status read.
@@ -316,9 +442,10 @@ describe('McpSignInProvider', () => {
         servers: [waitingFor('workspace-manager'), sso('mcp-kubernetes')],
       }),
     );
+    await settle();
     await waitFor(() => expect(status().waiting).toHaveLength(1));
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open sign-in' }));
+    await user().click(screen.getByRole('button', { name: 'Open sign-in' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Sign in to MCP servers');
@@ -334,7 +461,7 @@ describe('McpSignInProvider', () => {
     await renderProvider(api);
     await waitFor(() => expect(status().isRead).toBe(true));
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open sign-in' }));
+    await user().click(screen.getByRole('button', { name: 'Open sign-in' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(api.getAuthStatus).not.toHaveBeenCalled();
   });
@@ -342,6 +469,7 @@ describe('McpSignInProvider', () => {
   it('reads the display names once, and not while the portal session is gone', async () => {
     const api = makeApi({ servers: [waitingFor('workspace-manager')] });
     const queryClient = await renderProvider(api);
+    await settle();
     await waitFor(() => expect(status().waiting).toHaveLength(1));
     // No discovery and no refetch of its own that could ask for the cluster
     // token in the background.

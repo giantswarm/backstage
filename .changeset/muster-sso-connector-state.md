@@ -13,3 +13,11 @@ the attempt under Details. muster's `sso_attempt_failed` counts only while the
 connector is not connected in this session, so a failure muster kept from
 another session no longer marks a connected connector. `ServerAuthStatus`
 carries muster's `kind`.
+
+The MCP sign-in list settles before it raises a server: not while muster
+reports a server still connecting for the session, and only when a second
+read a few seconds later still has it waiting, so a fresh portal load no
+longer announces servers that connect a moment later. The sign-in dialog
+reads the status again when it opens, lists a provider App only while it
+needs a sign-in (connected ones are disconnected on the Profile page), and
+counts the Apps it lists with the servers.

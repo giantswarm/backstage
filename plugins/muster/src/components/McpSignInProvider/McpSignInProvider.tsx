@@ -13,6 +13,7 @@ import { QueryClientProvider } from '../QueryClientProvider';
 import { useMcpServersAwaitingSignIn } from '../McpAuthDialog/useMcpServersAwaitingSignIn';
 import { useServerLabels } from '../McpAuthDialog/useServerLabels';
 import { useSignInInstallation } from './useSignInInstallation';
+import { useSettledWaiting } from './useSettledWaiting';
 
 // Loaded on the first sign-in only: the provider is mounted on every shell
 // page, the dialog (and its per-server sign-in) is rarely opened.
@@ -37,7 +38,11 @@ export type McpSignInStatus = {
    * (`undefined` while unknown, and when its muster cannot be reached).
    */
   installation?: string;
-  /** The servers waiting for the person's sign-in or grant, by name. */
+  /**
+   * The servers waiting for the person's sign-in or grant, by name, once
+   * muster's status has settled (`useSettledWaiting`): never one muster is
+   * still connecting for a fresh session.
+   */
   waiting: McpServerAwaitingSignIn[];
   /**
    * The servers muster reports connected for the person, by name: signed in
@@ -92,10 +97,26 @@ function StatusReader({
   // Silent, as a reader in the background must be: the status read never
   // asks for the sign-in and stops while the portal session is gone, and the
   // display names are read once and not while the session is gone (#3058).
-  const { waiting, statuses, isLoading, isAvailable, sessionExpired } =
-    useMcpServersAwaitingSignIn(installation, {
-      enabled: Boolean(installation),
-    });
+  const {
+    waiting: reported,
+    statuses,
+    isLoading,
+    isAvailable,
+    sessionExpired,
+    connecting,
+    readAt,
+    refetch,
+  } = useMcpServersAwaitingSignIn(installation, {
+    enabled: Boolean(installation),
+  });
+  // Only what has settled: a fresh load reads servers muster is still
+  // connecting for the session.
+  const waiting = useSettledWaiting({
+    waiting: reported,
+    connecting,
+    readAt,
+    refetch,
+  });
   const labelOf = useServerLabels(installation, waiting, {
     enabled: !sessionExpired,
   });
@@ -140,8 +161,9 @@ function StatusReader({
  * The person's MCP sign-in status, for the Agent Platform shell's
  * Notification inbox: which MCP servers of the person's home installation
  * wait for their own sign-in or grant (muster's per-user `auth://status`,
- * `auth_required` or `reauth_required`), and muster's sign-in dialog to sign
- * in to them.
+ * `auth_required` or `reauth_required`, never an SSO server), once that has
+ * settled (`useSettledWaiting`), and muster's sign-in dialog to sign in to
+ * them.
  *
  * The status is read under the muster plugin's query client, every five
  * minutes and when the tab regains focus, so a sign-in finished in the

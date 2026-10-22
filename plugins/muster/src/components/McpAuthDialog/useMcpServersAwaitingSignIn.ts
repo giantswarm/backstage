@@ -41,6 +41,21 @@ export type McpServersAwaitingSignIn = {
    * back, and nothing reading in the background should ask for the sign-in.
    */
   sessionExpired: boolean;
+  /**
+   * muster is still connecting a server for this session (`sso_pending`): the
+   * session's start has not finished, so the other servers' states may not
+   * have settled either.
+   */
+  connecting: boolean;
+  /** When muster last answered with a status (ms since the epoch); 0 before. */
+  readAt: number;
+  /**
+   * When the last read ended, with a status or a failure (ms since the
+   * epoch); 0 before the first.
+   */
+  answeredAt: number;
+  /** Reads the status again now. */
+  refetch: () => void;
 };
 
 function isSessionExpired(error: unknown): boolean {
@@ -62,19 +77,20 @@ export function useMcpServersAwaitingSignIn(
   const { servers, apps, enabled = true } = options;
   const musterApi = useApi(musterApiRef);
 
-  const { data, error, isPending } = useQuery({
-    queryKey: authStatusQueryKey(installation),
-    queryFn: () => musterApi.getAuthStatus(installation),
-    enabled,
-    // The read never asks the person to sign in (`getAuthStatus`); once the
-    // portal session is gone it stops until the person is back, on focus.
-    refetchInterval: query =>
-      isSessionExpired(query.state.error) ? false : AUTH_STATUS_REFRESH_MS,
-    // As the sign-in affordances read it: re-read on return from the IdP's
-    // tab, and an unreadable status is an answer, not a retry.
-    refetchOnWindowFocus: true,
-    retry: false,
-  });
+  const { data, error, isPending, dataUpdatedAt, errorUpdatedAt, refetch } =
+    useQuery({
+      queryKey: authStatusQueryKey(installation),
+      queryFn: () => musterApi.getAuthStatus(installation),
+      enabled,
+      // The read never asks the person to sign in (`getAuthStatus`); once the
+      // portal session is gone it stops until the person is back, on focus.
+      refetchInterval: query =>
+        isSessionExpired(query.state.error) ? false : AUTH_STATUS_REFRESH_MS,
+      // As the sign-in affordances read it: re-read on return from the IdP's
+      // tab, and an unreadable status is an answer, not a retry.
+      refetchOnWindowFocus: true,
+      retry: false,
+    });
 
   const serversKey = servers?.join('\n');
   const appsKey = apps?.join('\n');
@@ -95,6 +111,22 @@ export function useMcpServersAwaitingSignIn(
       isLoading: enabled && isPending,
       isAvailable: Boolean(data) && !data?.unavailable,
       sessionExpired: isSessionExpired(error),
+      connecting: statuses.some(status => status.status === 'sso_pending'),
+      readAt: dataUpdatedAt,
+      answeredAt: Math.max(dataUpdatedAt, errorUpdatedAt),
+      refetch: () => {
+        void refetch();
+      },
     };
-  }, [data, error, serversKey, appsKey, enabled, isPending]);
+  }, [
+    data,
+    error,
+    serversKey,
+    appsKey,
+    enabled,
+    isPending,
+    dataUpdatedAt,
+    errorUpdatedAt,
+    refetch,
+  ]);
 }
