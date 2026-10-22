@@ -1,5 +1,11 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, openHome, openReadyAgent, test } from './fixtures';
+import {
+  deleteCurrentSession,
+  expect,
+  openHome,
+  openReadyAgent,
+  test,
+} from './fixtures';
 
 /**
  * Images in a session message: the home composer attaches a pasted image as a
@@ -132,30 +138,6 @@ async function withImageInFirstMessage(page: Page): Promise<void> {
       await route.fulfill({ response, json: body });
     },
   );
-}
-
-async function deleteCurrentSession(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Session actions' }).click();
-  await page.getByRole('menuitem', { name: /Delete session/ }).click();
-  const dialog = page.getByRole('dialog', { name: /Delete session/ });
-  await expect(dialog).toBeVisible();
-  // Right after a turn kagent refuses the delete until the runtime's cleanup
-  // settles; a person tries again a little later, and so does this.
-  await expect
-    .poll(
-      async () => {
-        if (!(await dialog.isVisible())) {
-          return 'deleted';
-        }
-        await dialog
-          .getByRole('button', { name: 'Delete session' })
-          .click({ timeout: 5_000 })
-          .catch(() => undefined);
-        return 'refused';
-      },
-      { timeout: 120_000, intervals: [10_000] },
-    )
-    .toBe('deleted');
 }
 
 test('the home composer attaches pasted images and refuses other files', async ({

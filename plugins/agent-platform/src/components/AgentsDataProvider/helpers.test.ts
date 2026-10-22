@@ -300,6 +300,17 @@ describe('toAgentRow', () => {
     });
   });
 
+  it('carries the default workspace by its name, for the session pickers', () => {
+    const agent = makeAgent({ name: 'triager', namespace: 'kagent' });
+    agent.jsonData.metadata.annotations = {
+      'agent-platform.giantswarm.io/default-workspace': 'kagent/platform-mix',
+    };
+    expect(toAgentRow(agent, []).defaultWorkspace).toBe('platform-mix');
+    expect(toAgentRow(makeAgent({ name: 'plain' }), [])).not.toHaveProperty(
+      'defaultWorkspace',
+    );
+  });
+
   it('identifies git skills as the catalog does and leaves the others out', () => {
     const agent = makeAgent({ name: 'triager' });
     agent.jsonData.spec!.template!.skills = [

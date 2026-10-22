@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import {
+  deleteCurrentSession,
   expect,
   expectClearOfBottomBar,
   expectNoHorizontalScroll,
@@ -108,34 +109,6 @@ function documentTop(locator: Locator): Promise<number> {
   return locator.evaluate(
     element => element.getBoundingClientRect().top + window.scrollY,
   );
-}
-
-async function deleteCurrentSession(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Session actions' }).click();
-  await page.getByRole('menuitem', { name: /Delete session/ }).click();
-  const dialog = page.getByRole('dialog', { name: /Delete session/ });
-  await expect(dialog).toBeVisible();
-  // Right after a turn kagent refuses the delete until the runtime's cleanup
-  // settles ("not yet settled: precondition failed", shown in the dialog);
-  // a person tries again a little later, and so does this.
-  await expect
-    .poll(
-      async () => {
-        if (!(await dialog.isVisible())) {
-          return 'deleted';
-        }
-        await dialog
-          .getByRole('button', { name: 'Delete session' })
-          .click({ timeout: 5_000 })
-          .catch(() => undefined);
-        return 'refused';
-      },
-      { timeout: 120_000, intervals: [10_000] },
-    )
-    .toBe('deleted');
-  await expect(page).toHaveURL(/\/sessions$/, {
-    timeout: 60_000,
-  });
 }
 
 test('a session starts from the home screen with a two-line message, its composer clear of the bar', async ({
