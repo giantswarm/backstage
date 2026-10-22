@@ -46,6 +46,31 @@ export function needsSignIn(status: ServerAuthStatus): boolean {
   return NEEDS_LOGIN.includes(status.status);
 }
 
+/**
+ * Whether muster is still connecting the server with the person's portal
+ * sign-in (`sso_pending`): its connect after a sign-in runs in the background
+ * and settles within seconds, nothing waits for the person.
+ */
+export function isConnecting(status: ServerAuthStatus): boolean {
+  return status.status === 'sso_pending';
+}
+
+/** How often `auth://status` is re-read while a server is connecting. */
+export const CONNECTING_POLL_INTERVAL_MS = 2_000;
+
+/**
+ * The re-read interval while muster still connects one of the person's
+ * servers, else false: a status read in the seconds after a sign-in settles
+ * without a reload.
+ */
+export function connectingPollInterval(
+  data: AuthStatusResponse | undefined,
+): number | false {
+  return data?.servers?.some(isConnecting)
+    ? CONNECTING_POLL_INTERVAL_MS
+    : false;
+}
+
 /** The per-installation `auth://status` read every sign-in affordance shares. */
 export function authStatusQueryKey(installation?: string) {
   return ['muster', 'auth-status', installation] as const;
