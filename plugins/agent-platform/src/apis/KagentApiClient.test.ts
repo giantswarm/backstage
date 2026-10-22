@@ -11,6 +11,7 @@ import {
   tasksV099 as tasksV0_9_9,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 import {
+  isResubscribeRetryable,
   KagentApiClient,
   TURN_TOKEN_MIN_LIFETIME_LEFT,
 } from './KagentApiClient';
@@ -1160,8 +1161,120 @@ describe('KagentApiClient', () => {
           answer,
           event => events.push(event),
         ),
-      ).resolves.toBeUndefined();
+      ).resolves.toEqual({});
       expect(events).toEqual([]);
+    });
+  });
+
+  describe('subscribeToTask', () => {
+    const agent = { namespace: 'kagent', name: 'issue-tracker' };
+
+    /** The backend's relay: SSE `data:` frames, one read each. */
+    function sseResponse(frames: unknown[]) {
+      const chunks = frames.map(frame =>
+        Uint8Array.from(Buffer.from(`data: ${JSON.stringify(frame)}\n\n`)),
+      );
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: {
+          getReader: () => ({
+            read: async () => {
+              const value = chunks.shift();
+              return value ? { done: false, value } : { done: true };
+            },
+          }),
+        },
+      } as unknown as Response;
+    }
+
+    it('POSTs the Agent to the task’s subscribe route as the person, and relays the events', async () => {
+      const snapshot = { task: { id: 'task/1', status: { state: 'WORKING' } } };
+      fetchMock.mockResolvedValue(sseResponse([snapshot]));
+      const events: unknown[] = [];
+
+      await expect(
+        buildClient().subscribeToTask(
+          'gazelle',
+          'abc123',
+          agent,
+          'task/1',
+          event => events.push(event),
+        ),
+      ).resolves.toEqual({});
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc123/tasks/task%2F1/subscribe?installation=gazelle',
+      );
+      expect(init.method).toBe('POST');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      expect(JSON.parse(init.body)).toEqual({
+        agentNamespace: 'kagent',
+        agentName: 'issue-tracker',
+      });
+      expect(events).toEqual([snapshot]);
+    });
+
+    it('says how a subscription that delivered events ended', async () => {
+      fetchMock.mockResolvedValue(
+        sseResponse([
+          { task: { id: 'task-1' } },
+          { error: { code: 'Canceled', message: 'closed pool' } },
+        ]),
+      );
+
+      await expect(
+        buildClient().subscribeToTask(
+          'gazelle',
+          'abc123',
+          agent,
+          'task-1',
+          () => {},
+        ),
+      ).resolves.toEqual({ error: 'closed pool' });
+    });
+
+    it('rejects a subscription the controller could not open yet as one worth retrying', async () => {
+      // The backend's in-band answer for a controller mid-rollout.
+      fetchMock.mockResolvedValue(
+        sseResponse([
+          { error: { code: 'Unavailable', message: 'no healthy upstream' } },
+        ]),
+      );
+
+      const failure = await buildClient()
+        .subscribeToTask('gazelle', 'abc123', agent, 'task-1', () => {})
+        .catch(error => error);
+
+      expect(failure).toMatchObject({ name: 'UpstreamError' });
+      expect(isResubscribeRetryable(failure)).toBe(true);
+    });
+
+    it('rejects a decision as one no retry changes', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'That turn does not exist.' } }, 404),
+      );
+
+      const failure = await buildClient()
+        .subscribeToTask('gazelle', 'abc123', agent, 'task-1', () => {})
+        .catch(error => error);
+
+      expect(isResubscribeRetryable(failure)).toBe(false);
+    });
+
+    it('rejects a 5xx before the stream opens as one worth retrying, naming the subscription', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}, 502));
+
+      const failure = await buildClient()
+        .subscribeToTask('gazelle', 'abc123', agent, 'task-1', () => {})
+        .catch(error => error);
+
+      expect(isResubscribeRetryable(failure)).toBe(true);
+      expect(failure.message).toBe(
+        'The subscription to the running turn failed with status 502.',
+      );
     });
   });
 
@@ -1236,7 +1349,7 @@ describe('KagentApiClient', () => {
 
       control.abort();
 
-      await expect(streaming).resolves.toBeUndefined();
+      await expect(streaming).resolves.toEqual({});
     });
 
     it('reports an abort before any event as a transport failure to verify', async () => {
@@ -1593,9 +1706,11 @@ describe('KagentApiClient — streamMessage on a lost runtime', () => {
       ]),
     );
 
+    // How it ended goes back too: a lost runtime's words are what keep the
+    // caller from resubscribing to a turn that failed with them.
     await expect(
       client().streamMessage('gazelle', 'abc123', AGENT, MESSAGE, onEvent),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ error: ATENET });
     expect(onEvent).toHaveBeenCalledTimes(2);
     expect(onEvent).toHaveBeenLastCalledWith(runtimeFailed);
   });

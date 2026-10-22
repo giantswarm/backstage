@@ -43,8 +43,10 @@ export type PendingMessage = {
  *
  * How a lost stream is classified — verified against the history, or reported
  * as a decision — is `useStreamedTurn`'s, shared with the answer path. So is
- * noticing that the stream ended before the turn did (`isStreamLost`), which the
- * page says in place of "Working…" while the poll takes over.
+ * picking a cut stream up again by resubscribing to the turn
+ * (`isReconnecting` meanwhile), and noticing that it could not be
+ * (`isStreamLost`), which the page says in place of "Working…" while the poll
+ * takes over.
  *
  * Shaped like `useRenameSession` beyond that — the mutation does its own
  * invalidation so `isPending` covers it — with the message the user just sent
@@ -79,7 +81,7 @@ export function useSendMessage(
 ) {
   const kagentApi = useApi(kagentApiRef);
   const queryClient = useQueryClient();
-  const turn = useStreamedTurn(installation, sessionId);
+  const turn = useStreamedTurn(installation, sessionId, agent);
   const [pending, setPending] = useState<PendingMessage | null>(null);
   const [failed, setFailed] = useState<PendingMessage | null>(null);
   const [timeouts, setTimeouts] = useState<SendTimeouts | undefined>(undefined);
@@ -192,7 +194,7 @@ export function useSendMessage(
     [mutateAsync],
   );
 
-  const { stream, isStreamLost } = turn;
+  const { stream, isReconnecting, isStreamLost } = turn;
   return useMemo(
     () => ({
       sendMessage,
@@ -205,8 +207,14 @@ export function useSendMessage(
        */
       stream,
       /**
-       * The stream ended before the turn did, and the poll has not yet shown
-       * that turn over. What the page says instead of "Working…" meanwhile.
+       * The stream ended before the turn did and is being picked up again:
+       * between the cut and the resubscription's first event.
+       */
+      isReconnecting,
+      /**
+       * The stream ended before the turn did, could not be picked up again,
+       * and the poll has not yet shown that turn over. What the page says
+       * instead of "Working…" meanwhile.
        */
       isStreamLost,
       /**
@@ -230,6 +238,7 @@ export function useSendMessage(
       mutation.isPending,
       pending,
       stream,
+      isReconnecting,
       isStreamLost,
       failed,
       mutation.error,

@@ -103,18 +103,23 @@ const useStyles = makeStyles(theme => ({
 /**
  * How a turn is being followed once its live stream ended before the turn did.
  *
- * - `checking`: the stream is gone and the conversation is being re-read to
- *   find out how far the turn got — the moment the streamed text stopped
- *   mid-sentence, before anything says whether the turn finished.
+ * - `reconnecting`: the stream was cut — a kagent controller rollout cuts
+ *   every stream in flight — and the page is resubscribing to the turn. The
+ *   preview stays on screen and continues where it stopped once it is back.
+ * - `checking`: the stream could not be picked up again, and the
+ *   conversation is being re-read to find out how far the turn got — the
+ *   moment the streamed text stopped mid-sentence, before anything says
+ *   whether the turn finished.
  * - `following`: that read came back and the turn is still running. Its preview
  *   is gone for good; the poll delivers the reply when the turn ends.
  */
-export type StreamLossPhase = 'checking' | 'following';
+export type StreamLossPhase = 'reconnecting' | 'checking' | 'following';
 
 const STREAM_LOST_LABELS: Record<StreamLossPhase, string> = {
-  checking: 'The live stream was lost. Checking the result…',
+  reconnecting: 'The live view was interrupted. Reconnecting…',
+  checking: 'Could not restore the live view. Checking the result…',
   following:
-    'The live stream was lost. Still working; the reply appears when the turn finishes.',
+    'Could not restore the live view. The agent is still working, and its reply appears when the turn finishes.',
 };
 
 /**

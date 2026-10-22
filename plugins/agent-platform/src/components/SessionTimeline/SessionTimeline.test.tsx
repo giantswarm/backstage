@@ -919,6 +919,22 @@ describe('SessionTimeline — with tool activity hidden (S9)', () => {
 });
 
 describe('a lost stream', () => {
+  it('says the stream is being picked up again, in place of Working…', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        isAgentWorking
+        streamLost="reconnecting"
+      />,
+    );
+
+    expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('The live view was interrupted. Reconnecting…'),
+    ).toBeInTheDocument();
+  });
+
   it('says the result is being checked, in place of Working…', async () => {
     await renderInTestApp(
       <SessionTimeline
@@ -931,7 +947,7 @@ describe('a lost stream', () => {
 
     expect(screen.queryByText('Working…')).not.toBeInTheDocument();
     expect(
-      screen.getByText('The live stream was lost. Checking the result…'),
+      screen.getByText('Could not restore the live view. Checking the result…'),
     ).toBeInTheDocument();
   });
 
@@ -947,7 +963,9 @@ describe('a lost stream', () => {
 
     expect(screen.queryByText('Working…')).not.toBeInTheDocument();
     expect(
-      screen.getByText(/The live stream was lost. Still working/),
+      screen.getByText(
+        /Could not restore the live view. The agent is still working/,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -962,7 +980,7 @@ describe('a lost stream', () => {
       />,
     );
 
-    expect(screen.queryByText(/live stream was lost/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
   });
 
   it('yields to a stall', async () => {
@@ -978,7 +996,7 @@ describe('a lost stream', () => {
       />,
     );
 
-    expect(screen.queryByText(/live stream was lost/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
     expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
   });
 });

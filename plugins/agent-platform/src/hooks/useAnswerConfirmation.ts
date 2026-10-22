@@ -143,7 +143,7 @@ export function useAnswerConfirmation(
 ) {
   const kagentApi = useApi(kagentApiRef);
   const queryClient = useQueryClient();
-  const turn = useStreamedTurn(installation, sessionId);
+  const turn = useStreamedTurn(installation, sessionId, agent);
 
   // The check below outlives a page the person left: it stops there, since
   // nothing would show its verdict.
@@ -251,7 +251,7 @@ export function useAnswerConfirmation(
     [mutateAsync],
   );
 
-  const { stream, isStreamLost } = turn;
+  const { stream, isReconnecting, isStreamLost } = turn;
   return useMemo(
     () => ({
       answer,
@@ -265,6 +265,8 @@ export function useAnswerConfirmation(
        * page renders both previews through one path.
        */
       stream,
+      /** The cut stream is being picked up again — see `useSendMessage`. */
+      isReconnecting,
       /** The stream ended before the resumed turn did — see `useSendMessage`. */
       isStreamLost,
       failed,
@@ -276,6 +278,7 @@ export function useAnswerConfirmation(
       mutation.isPending,
       pending,
       stream,
+      isReconnecting,
       isStreamLost,
       failed,
       mutation.error,

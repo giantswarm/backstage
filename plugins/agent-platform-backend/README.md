@@ -52,22 +52,23 @@ confirmation that arrives on a turn is a typed request the panel can render.
 
 All routes are under `/api/agent-platform` and require `?installation=<name>`.
 
-| Route                                            | Token    | RPC                            | Purpose                                                            |
-| ------------------------------------------------ | -------- | ------------------------------ | ------------------------------------------------------------------ |
-| `GET /health`                                    | —        | —                              | `{ status, configured }` — how many installations resolved         |
-| `GET /kagent/installations`                      | —        | `GetVersion` (unauthenticated) | Installations kagent is configured for, with reachability          |
-| `GET /kagent/session-states`                     | required | `ListSessions`, `ListTasks`    | Derived state per session for the session lists and the shell rail |
-| `GET /kagent/session-usage`                      | required | `ListSessions`, `ListTasks`    | The caller's token/turn/tool usage for the Usage tab               |
-| `GET /kagent/sessions`                           | required | `ListSessions`                 | The caller's sessions, proto3 JSON (`{sessions: […]}`)             |
-| `GET /kagent/sessions/:id`                       | required | `GetSession`                   | One session (`{session}`)                                          |
-| `PUT /kagent/sessions/:id`                       | required | `UpdateSessionName`            | Rename (`{name}`, ≤ 200 characters)                                |
-| `DELETE /kagent/sessions/:id`                    | required | `DeleteSession`                | Delete                                                             |
-| `GET /kagent/sessions/:id/tasks`                 | required | `ListTasks` (all pages)        | The conversation, its state and token usage (`{tasks: […]}`)       |
-| `POST /kagent/sessions/:id/messages`             | required | `SendMessage`                  | One turn, waited out up to `turnTimeoutMs`; 202 when still running |
-| `POST /kagent/sessions/:id/messages/stream`      | required | `SendStreamingMessage`         | One turn, relayed as SSE frames of `StreamResponse` JSON           |
-| `POST /kagent/sessions/:id/answer`               | required | `GetTask`, `SendMessage`       | Answer the confirmation a task is suspended on, resuming it        |
-| `POST /kagent/sessions/:id/tasks/:taskId/cancel` | required | `CancelTask`                   | Stop the turn server-side                                          |
-| `GET /kagent/me`                                 | optional | `GetCurrentUser`               | Identity probe: the claims the controller resolved                 |
+| Route                                               | Token    | RPC                            | Purpose                                                                              |
+| --------------------------------------------------- | -------- | ------------------------------ | ------------------------------------------------------------------------------------ |
+| `GET /health`                                       | —        | —                              | `{ status, configured }` — how many installations resolved                           |
+| `GET /kagent/installations`                         | —        | `GetVersion` (unauthenticated) | Installations kagent is configured for, with reachability                            |
+| `GET /kagent/session-states`                        | required | `ListSessions`, `ListTasks`    | Derived state per session for the session lists and the shell rail                   |
+| `GET /kagent/session-usage`                         | required | `ListSessions`, `ListTasks`    | The caller's token/turn/tool usage for the Usage tab                                 |
+| `GET /kagent/sessions`                              | required | `ListSessions`                 | The caller's sessions, proto3 JSON (`{sessions: […]}`)                               |
+| `GET /kagent/sessions/:id`                          | required | `GetSession`                   | One session (`{session}`)                                                            |
+| `PUT /kagent/sessions/:id`                          | required | `UpdateSessionName`            | Rename (`{name}`, ≤ 200 characters)                                                  |
+| `DELETE /kagent/sessions/:id`                       | required | `DeleteSession`                | Delete                                                                               |
+| `GET /kagent/sessions/:id/tasks`                    | required | `ListTasks` (all pages)        | The conversation, its state and token usage (`{tasks: […]}`)                         |
+| `POST /kagent/sessions/:id/messages`                | required | `SendMessage`                  | One turn, waited out up to `turnTimeoutMs`; 202 when still running                   |
+| `POST /kagent/sessions/:id/messages/stream`         | required | `SendStreamingMessage`         | One turn, relayed as SSE frames of `StreamResponse` JSON                             |
+| `POST /kagent/sessions/:id/answer`                  | required | `GetTask`, `SendMessage`       | Answer the confirmation a task is suspended on, resuming it                          |
+| `POST /kagent/sessions/:id/tasks/:taskId/cancel`    | required | `CancelTask`                   | Stop the turn server-side                                                            |
+| `POST /kagent/sessions/:id/tasks/:taskId/subscribe` | required | `SubscribeToTask`              | Follow a running turn again after its stream was cut, relayed as SSE like the stream |
+| `GET /kagent/me`                                    | optional | `GetCurrentUser`               | Identity probe: the claims the controller resolved                                   |
 
 The user token is read from the `backstage-kagent-authorization` header, which
 must match `KAGENT_AUTH_HEADER` in `plugins/agent-platform`.

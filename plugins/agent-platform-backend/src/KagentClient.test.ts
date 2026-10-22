@@ -772,6 +772,207 @@ describe('KagentClient against a fake controller', () => {
     });
   });
 
+  describe('following a running turn again', () => {
+    /** Start a long turn and return its task id once the controller has it. */
+    async function longTurn(fake: FakeController, client: KagentClient) {
+      const id = created(fake);
+      const streaming = client.streamMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'take your time' },
+        USER,
+        new AbortController().signal,
+      );
+      let taskId: string | undefined;
+      for (let attempt = 0; attempt < 50 && !taskId; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+        taskId = fake.tasks.get(id)?.[0]?.task.id;
+      }
+      expect(taskId).toBeDefined();
+      return { id, taskId: taskId!, streaming };
+    }
+
+    it('relays the task’s snapshot and then its events, as the person, routed and typed like the stream', async () => {
+      const { fake, client } = build({ turn: () => ({ kind: 'long' }) });
+      const { id, taskId, streaming } = await longTurn(fake, client);
+
+      // Not awaited, for the same reason as the stream: the in-memory
+      // transport hands it over once the handler returns, on the cancel.
+      const following = client.subscribeToTask(
+        id,
+        AGENT,
+        taskId,
+        USER,
+        new AbortController().signal,
+      );
+      await new Promise(resolve => setTimeout(resolve, 10));
+      await client.cancelTask(id, taskId, USER);
+
+      const events = (await frames(await following)) as Record<
+        string,
+        unknown
+      >[];
+      expect(events[0]).toEqual({
+        task: expect.objectContaining({
+          id: taskId,
+          status: expect.objectContaining({ state: 'TASK_STATE_WORKING' }),
+        }),
+      });
+      expect(JSON.stringify(events.at(-1))).toContain('TASK_STATE_CANCELED');
+      const call = fake.calls.find(c => c.method === 'SubscribeToTask')!;
+      expect(call.tenant).toBe('kagent/sre-agent');
+      expect(call.headers.authorization).toBe('Bearer user-token');
+      expect(call.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
+      await streaming;
+    });
+
+    it('answers the final event of a turn already over', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      const sent = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      const events = await frames(
+        await client.subscribeToTask(
+          id,
+          AGENT,
+          sent.task.id,
+          USER,
+          new AbortController().signal,
+        ),
+      );
+
+      expect(events).toEqual([
+        {
+          statusUpdate: expect.objectContaining({
+            status: expect.objectContaining({ state: 'TASK_STATE_COMPLETED' }),
+          }),
+        },
+      ]);
+    });
+
+    it('never takes the Agent the caller names as the session’s', async () => {
+      // A subscription carries no context the gateway checks; remembering the
+      // body's Agent would send every later agent-less call on the session to
+      // whatever tenant the last subscribe named.
+      const { fake, client } = build();
+      const id = created(fake);
+      const sent = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      await client
+        .subscribeToTask(
+          id,
+          { namespace: 'kagent', name: 'orphan' },
+          sent.task.id,
+          USER,
+          new AbortController().signal,
+        )
+        .catch(() => undefined);
+      await client.listSessionTasks(id, USER);
+
+      expect(fake.calls.at(-1)?.method).toBe('ListTasks');
+      expect(fake.calls.at(-1)?.tenant).toBe('kagent/sre-agent');
+    });
+
+    it('refuses a turn of another session as one this session does not have', async () => {
+      const { fake, client } = build();
+      const mine = created(fake, 'req-1');
+      const other = created(fake, 'req-2');
+      const sent = (await client.sendMessage(
+        other,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      await expect(
+        client.subscribeToTask(
+          mine,
+          AGENT,
+          sent.task.id,
+          USER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'NotFoundError' });
+    });
+
+    it('refuses somebody else’s turn as a 404 decision', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      const sent = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      await expect(
+        client.subscribeToTask(
+          id,
+          AGENT,
+          sent.task.id,
+          OTHER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'NotFoundError' });
+    });
+
+    it('answers a controller that is not there yet in-band, for the page to retry, without a warning', async () => {
+      // Mid-rollout: a 5xx here would reach Sentry once per running turn.
+      const { client } = build({
+        subscribeError: new ConnectError(
+          'no healthy upstream',
+          Code.Unavailable,
+        ),
+      });
+      logger.warn.mockClear();
+      logger.error.mockClear();
+
+      const response = await client.subscribeToTask(
+        'any-session',
+        AGENT,
+        'task-1',
+        USER,
+        new AbortController().signal,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await frames(response)).toEqual([
+        { error: { code: 'Unavailable', message: 'no healthy upstream' } },
+      ]);
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it('throws a turn kagent will not follow any more as a 409', async () => {
+      const { client } = build({
+        subscribeError: new ConnectError(
+          'unsupported operation: task is in a terminal state',
+          Code.Unknown,
+        ),
+      });
+
+      await expect(
+        client.subscribeToTask(
+          'any-session',
+          AGENT,
+          'task-1',
+          USER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'ConflictError' });
+    });
+  });
+
   describe('human in the loop', () => {
     const approval: TurnScript = {
       kind: 'hitl',

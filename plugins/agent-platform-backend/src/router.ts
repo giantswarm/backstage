@@ -11,7 +11,10 @@ import {
 import { randomUUID } from 'crypto';
 import express from 'express';
 import Router from 'express-promise-router';
-import { MODEL_COST_MAX_DAYS } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  MODEL_COST_MAX_DAYS,
+  STREAM_MAX_DURATION_MS,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   ReachabilityCache,
   reachabilityFields,
@@ -342,21 +345,10 @@ function readAnswerBody(req: express.Request): {
 }
 
 /**
- * Upper bound on how long the streaming routes hold their relay open.
- *
- * Not a turn timeout — cutting the stream does not stop the turn, and the
- * frontend reconciles through the poll exactly as if a gateway had cut it. This
- * exists only so an agent that never writes a terminal state cannot pin a socket
- * (and its upstream connection) open for as long as a tab stays on the page.
- * Generous on purpose: a legitimate turn with many tool calls runs many minutes,
- * and every gateway we know of gives up long before this does.
- */
-const STREAM_MAX_DURATION_MS = 30 * 60_000;
-
-/**
  * Relay one upstream event stream to the browser as SSE.
  *
- * Shared by the streaming routes (a message, an answer): `open` opens the
+ * Shared by the streaming routes (a message, an answer, a resubscription to a
+ * running turn): `open` opens the
  * upstream stream under the relay's abort signal, and everything after the
  * headers is the same for both. Failure semantics split at the headers, which
  * is inherent to streaming:
@@ -370,8 +362,15 @@ const STREAM_MAX_DURATION_MS = 30 * 60_000;
  *   or stop. A relay that ends without a terminal event — kagent cut off by a
  *   gateway, this response cut off by the browser's own door, the duration
  *   bound — is not reported as anything, because the turn survives it: the
- *   frontend treats an unterminated stream as "still running" and follows the
- *   poll, the same contract as the unary routes' 202.
+ *   frontend treats an unterminated stream as "still running", resubscribes
+ *   to the turn, and follows the poll when that fails too — the same contract
+ *   as the unary routes' 202.
+ *
+ * The duration bound (`STREAM_MAX_DURATION_MS`, shared with the page) keeps an
+ * agent that never writes a terminal state from pinning a socket open. Each
+ * relay holds it, and the page holds it across a turn's resubscriptions: it
+ * stops resubscribing once it has followed the turn that long, so a chain of
+ * fresh relays cannot get around it.
  *
  * The relay is flush-wrapped because Backstage's root router applies
  * `compression()` globally, which buffers `res.write()` until `res.end()` —
@@ -1135,6 +1134,39 @@ export async function createRouter(
           { userToken },
           signal,
         ),
+      );
+    },
+  );
+
+  /**
+   * Follow a running turn again, streaming its events from now on: the page's
+   * way back into a turn whose stream ended before the turn did (a controller
+   * rollout cuts every stream in flight; the turns run on).
+   *
+   * `A2AService/SubscribeToTask` as the person — their token, required, and
+   * the controller decides as it does for the stream itself — addressed to the
+   * Agent the body names, like the send routes. Relayed by
+   * {@link relayEventStream}; a subscription that could not open for a reason
+   * a retry may fix answers 200 with one `{error}` frame rather than a 5xx (see
+   * `KagentClient.subscribeToTask`), while a decision — not the person's, no
+   * such task, a task already over — is its 4xx.
+   */
+  router.post(
+    '/kagent/sessions/:sessionId/tasks/:taskId/subscribe',
+    async (req, res) => {
+      const { client } = resolveInstallation(req);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const agent = {
+        namespace: readRequiredString(body, 'agentNamespace'),
+        name: readRequiredString(body, 'agentName'),
+      };
+      const sessionId = readSessionId(req);
+      const rawTaskId = req.params.taskId;
+      const taskId = typeof rawTaskId === 'string' ? rawTaskId : '';
+      const userToken = readUserToken(req, { required: true });
+
+      await relayEventStream(res, logger, signal =>
+        client.subscribeToTask(sessionId, agent, taskId, { userToken }, signal),
       );
     },
   );
