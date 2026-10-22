@@ -66,6 +66,19 @@ Favorites follow the person across browsers. A `generalInformation` meta-agent
 adds a helper banner. Each agent's Harness, and a Harness filter, appear only
 when the agents run on more than one Harness.
 
+Every agent belongs to the platform or to one organization, shown under the
+label **Organization**: "Platform" for the installation's `kagent` namespace,
+the organization's plain name (`acme`) for its `org-acme` namespace. (The code
+and agent-manager call this the agent's tenant; the UI never does.) Where the
+agents belong to more than one, each row names its organization and the filter
+bar filters by it; the agent's page names it beside the overview. The New
+agent form asks for it on Details from the places agent-manager lets the person
+create in (`get_info.namespaces.managed`): the only one is picked and named;
+with the platform among several, a **Platform** / **Organization** choice, where
+Organization shows a dropdown of the organizations by name; organizations alone
+show the dropdown only. Nothing is chosen for the person, and editing an agent
+never moves it.
+
 **New agent** (`/customize/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
 configured; every skill is pinned to a commit. An `agentManagement` meta-agent
@@ -80,7 +93,7 @@ it: coming back to the form fills it in again and says so ("Your draft is
 back") on the step it reopens on, with **Start over** to begin empty instead;
 the note closes once the person moves to another step. The draft is everything
 typed and picked on the four steps (name, description, instructions,
-environment, tenant, model, runtime, default workspace, technical name,
+environment, organization, model, runtime, default workspace, technical name,
 EgressPolicies, egress origins, skills, plugins and tools); the form holds no secret or token, and the
 helper's side chat is not part of it. It lives in the browser tab's session
 storage, per signed-in person, so another tab or another person on the same

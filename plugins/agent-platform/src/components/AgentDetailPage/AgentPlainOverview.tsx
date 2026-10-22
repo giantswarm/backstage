@@ -512,7 +512,7 @@ function ModelFact({
 }
 
 /**
- * The facts beside the overview: the model, where it runs, the tenant it
+ * The facts beside the overview: the model, where it runs, the organization it
  * belongs to, who created it and since when.
  */
 export function agentFacts({
@@ -542,7 +542,7 @@ export function agentFacts({
       ),
     },
     { label: 'Environment', value: installation },
-    { label: 'Tenant', value: tenantOf(agent.getNamespace() ?? '') },
+    { label: 'Organization', value: tenantOf(agent.getNamespace() ?? '') },
   ];
   const defaultWorkspace = defaultWorkspaceName(
     agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],

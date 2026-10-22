@@ -231,7 +231,7 @@ export function agentFacets(
       ? [
           {
             id: 'tenant',
-            label: 'Tenant',
+            label: 'Organization',
             value: (row: AgentRow) => row.tenant,
           },
         ]
@@ -328,7 +328,7 @@ function AgentListItem({
       : []),
     { key: 'parts', text: parts, label: 'Skills and connectors' },
     ...(showTenant && row.tenant
-      ? [{ key: 'tenant', text: row.tenant, label: 'Tenant' }]
+      ? [{ key: 'tenant', text: row.tenant, label: 'Organization' }]
       : []),
     ...(showInstallation
       ? [{ key: 'installation', text: row.installation, label: 'Environment' }]
@@ -637,7 +637,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       body = (
         <EmptyStateCard
           title="No agents for you yet"
-          description={`You have access to no tenant’s agents on ${joinNames(
+          description={`You have access to no agents on ${joinNames(
             noAccessInstallations,
           )}. ${ACCESS_GRANT_HINT}`}
         />

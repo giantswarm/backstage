@@ -20,6 +20,7 @@ import {
   skillEntryKey,
 } from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
+import { PLATFORM_TENANT_NAMESPACE } from '../../lib/tenants';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
 import { isCodingRuntime, type HarnessChoice } from '../../lib/harnesses';
@@ -162,8 +163,11 @@ export type NewAgentFormContextValue = {
    * stays when it is still a choice; otherwise the only choice is picked.
    */
   setTenantChoices: (choices: string[]) => void;
-  /** Picks the tenant; a model of another namespace is dropped. */
-  selectTenant: (tenant: string) => void;
+  /**
+   * Picks the tenant, or none (Organization chosen over the platform before
+   * an organization is); a model of another namespace is dropped.
+   */
+  selectTenant: (tenant: string | undefined) => void;
   selectModelConfig: (
     name: string,
     namespace: string,
@@ -463,9 +467,13 @@ export function NewAgentFormProvider({
     }
     if (!edit && state.installation && state.tenantChoices) {
       if (state.tenantChoices.length === 0) {
-        fieldErrors.tenant = `You may create agents in no tenant on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
+        fieldErrors.tenant = `You may not create agents on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
       } else if (!state.tenant) {
-        fieldErrors.tenant = 'Choose a tenant.';
+        fieldErrors.tenant = state.tenantChoices.includes(
+          PLATFORM_TENANT_NAMESPACE,
+        )
+          ? 'Choose Platform or Organization.'
+          : 'Choose an organization.';
       }
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {

@@ -140,8 +140,8 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
         {label}
         <Alert
           status="info"
-          title="Choose a tenant first"
-          description="Models are provisioned per tenant."
+          title="Choose the agent’s organization first"
+          description="The platform and each organization have models of their own."
         />
       </Flex>
     );

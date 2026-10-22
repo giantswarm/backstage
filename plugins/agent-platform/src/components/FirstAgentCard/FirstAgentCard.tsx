@@ -33,7 +33,7 @@ export function FirstAgentCard({ installations }: { installations: string[] }) {
     return (
       <EmptyStateCard
         title="No agents for you yet"
-        description={`No tenant you can use holds an agent, and you may create agents in none. ${ACCESS_GRANT_HINT}`}
+        description={`There is no agent you can use yet, and you may not create one. ${ACCESS_GRANT_HINT}`}
       />
     );
   }

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { focusFirstInvalidField } from '@giantswarm/backstage-plugin-ui-react';
 
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { TenantPicker } from './TenantPicker';
@@ -48,50 +49,136 @@ function FormProbe() {
   );
 }
 
+/** The picker with the form's own problem shown, as a blocked Continue does. */
+function ShownPicker() {
+  const { fieldErrors } = useNewAgentForm();
+  return <TenantPicker error={fieldErrors.tenant} />;
+}
+
 async function renderPicker() {
   await renderInTestApp(
     <NewAgentFormProvider>
       <FormProbe />
-      <TenantPicker />
+      <ShownPicker />
     </NewAgentFormProvider>,
   );
 }
 
 const form = () => screen.getByRole('status', { name: 'form' });
+const kinds = () =>
+  screen.getByRole('radiogroup', { name: 'Platform or organization' });
+const organizationSelect = () =>
+  screen.getByRole('button', { name: /Organization$/ });
 
 describe('TenantPicker', () => {
-  it('names and picks the only tenant the person may create in', async () => {
+  it('names and picks the only organization the person may create in', async () => {
     mockManaged = ['org-acme'];
     await renderPicker();
 
     expect(
-      await screen.findByText(/the only tenant you may create agents in/),
-    ).toHaveTextContent('Created in organization acme');
+      await screen.findByText(/you may create agents only there/),
+    ).toHaveTextContent(
+      'The agent belongs to the acme organization: on gazelle, you may create agents only there.',
+    );
     // The platform tenant's model is not the new agent's: the picker
-    // preselects the tenant's own instead.
+    // preselects the organization's own instead.
     expect(form()).toHaveTextContent('tenant=org-acme model=/ error=');
-    expect(screen.queryByRole('button', { name: /Tenant/ })).toBeNull();
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Organization/ })).toBeNull();
+    // The probe prints `tenant=`; the picker never says tenant.
+    expect(screen.queryByText(/Tenant|tenant /)).toBeNull();
   });
 
-  it('offers only the tenants the person may create in, and asks for one', async () => {
-    mockManaged = ['kagent', 'org-acme'];
+  it('names the platform where the person may create only there', async () => {
+    mockManaged = ['kagent'];
     await renderPicker();
 
     expect(
-      await screen.findByText(/tenant= .*error=Choose a tenant\./),
-    ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /Tenant/ }));
-    expect(
-      screen.getAllByRole('option').map(option => option.textContent),
-    ).toEqual(['platform', 'organization acme']);
-
-    await userEvent.click(
-      screen.getByRole('option', { name: 'organization acme' }),
-    );
-    expect(form()).toHaveTextContent('tenant=org-acme');
+      await screen.findByText(/you may create agents only there/),
+    ).toHaveTextContent('The agent belongs to the platform');
+    expect(form()).toHaveTextContent('tenant=kagent');
   });
 
-  it('says who grants access where the person may create in no tenant, and blocks the form', async () => {
+  it('offers Platform beside the organizations, and Organization the organizations by name', async () => {
+    mockManaged = ['kagent', 'org-acme', 'org-beta'];
+    await renderPicker();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Organization' }),
+    ).toBeInTheDocument();
+    // The probe prints `tenant=`; the picker never says tenant.
+    expect(screen.queryByText(/Tenant|tenant /)).toBeNull();
+    // Nothing is chosen for the person, and the form says what to choose,
+    // on the radio group.
+    expect(form()).toHaveTextContent('error=Choose Platform or Organization.');
+    expect(kinds()).toHaveAttribute('data-invalid');
+    expect(kinds()).toHaveAccessibleDescription(
+      'Choose Platform or Organization.',
+    );
+    // A blocked Continue lands on the group's first choice.
+    expect(focusFirstInvalidField()).toBe(true);
+    expect(
+      within(kinds()).getByRole('radio', { name: /^Platform/ }),
+    ).toHaveFocus();
+    // The organizations wait for Organization.
+    expect(screen.queryByRole('button', { name: /Organization$/ })).toBeNull();
+
+    await userEvent.click(
+      within(kinds()).getByRole('radio', { name: /^Platform/ }),
+    );
+    expect(form()).toHaveTextContent('tenant=kagent');
+    expect(screen.queryByRole('button', { name: /Organization$/ })).toBeNull();
+
+    await userEvent.click(
+      within(kinds()).getByRole('radio', { name: /^Organization/ }),
+    );
+    // Organization over Platform: no organization is picked for the person.
+    expect(form()).toHaveTextContent(
+      /^tenant= .*error=Choose Platform or Organization\.$/,
+    );
+    expect(screen.getByText('Choose an organization.')).toBeInTheDocument();
+    await userEvent.click(organizationSelect());
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual(['acme', 'beta']);
+
+    await userEvent.click(screen.getByRole('option', { name: 'beta' }));
+    expect(form()).toHaveTextContent('tenant=org-beta model=/ error=');
+    // The selected value reads as the plain name too.
+    expect(organizationSelect()).toHaveTextContent(/^beta/);
+    expect(screen.queryByText(/organization beta/)).toBeNull();
+    expect(screen.queryByText('Choose an organization.')).toBeNull();
+  });
+
+  it('picks the one organization beside the platform once Organization is chosen', async () => {
+    mockManaged = ['kagent', 'org-acme'];
+    await renderPicker();
+
+    await userEvent.click(
+      within(await screen.findByRole('radiogroup')).getByRole('radio', {
+        name: /^Organization/,
+      }),
+    );
+    expect(form()).toHaveTextContent('tenant=org-acme');
+    expect(organizationSelect()).toHaveTextContent(/^acme/);
+  });
+
+  it('offers organizations only, without Platform, where the platform is not the person’s', async () => {
+    mockManaged = ['org-acme', 'org-beta'];
+    await renderPicker();
+
+    expect(
+      await screen.findByText('Choose an organization.'),
+    ).toBeInTheDocument();
+    expect(form()).toHaveTextContent('error=Choose an organization.');
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+    await userEvent.click(organizationSelect());
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual(['acme', 'beta']);
+  });
+
+  it('says who grants access where the person may create in no organization, and blocks the form', async () => {
     mockManaged = [];
     await renderPicker();
 
@@ -100,11 +187,36 @@ describe('TenantPicker', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /no tenant on gazelle\. Access to agents .*agent-platform:editor/,
+        /On gazelle, you may create agents neither for the platform nor for an organization\. Access to agents is granted per organization: .*agent-platform:editor/,
       ),
     ).toBeInTheDocument();
     expect(form()).toHaveTextContent(
-      'error=You may create agents in no tenant on gazelle.',
+      'error=You may not create agents on gazelle.',
     );
+  });
+
+  it('offers nothing while editing: the agent stays in its organization', async () => {
+    mockManaged = ['kagent', 'org-acme'];
+    await renderInTestApp(
+      <NewAgentFormProvider
+        edit={{
+          agent: {
+            name: 'billing',
+            namespace: 'org-acme',
+            exists: true,
+            ready: true,
+            managed: 'helmrelease',
+          },
+          installation: 'gazelle',
+          writeMode: 'apply',
+          detailHref: undefined,
+        }}
+      >
+        <TenantPicker />
+      </NewAgentFormProvider>,
+    );
+
+    expect(screen.queryByRole('heading', { name: 'Organization' })).toBeNull();
+    expect(screen.queryByRole('radiogroup')).toBeNull();
   });
 });

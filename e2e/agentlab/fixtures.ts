@@ -631,10 +631,10 @@ async function restoreInboxToasts(page: Page): Promise<void> {
  * detail page and returns its path; from then on the agent exists and the
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
  *
- * Where the person may create agents in several tenants (agent-manager's
+ * Where the person may create agents in several places (agent-manager's
  * `get_info` `namespaces.managed`), the wizard offers no model until one is
- * picked: `options.tenant` (default the platform tenant, `platform`). The only
- * tenant is picked by the wizard itself.
+ * picked: `options.organization`, by its name, or else Platform. The only
+ * place is picked by the wizard itself.
  *
  * `options.harness` picks that Runtime card under More options instead of the
  * platform Harness; `options.onStep` runs on Details (once the pick is made),
@@ -648,7 +648,7 @@ export async function createAgentInWizard(
   options: {
     harness?: RegExp;
     model?: string | RegExp;
-    tenant?: string;
+    organization?: string;
     /**
      * Runs on a step before its Continue; on Skills or Tools, it may pick
      * some.
@@ -683,18 +683,39 @@ export async function createAgentInWizard(
   const model = page
     .getByRole('radiogroup', { name: 'Model' })
     .getByRole('radio', { name: options.model ?? /default-model-config/ });
-  // The Select's name is its value and its label: "Select an option Tenant".
-  const tenantPicker = page.getByRole('button', { name: /\bTenant$/ });
-  await expect(model.or(tenantPicker).first()).toBeVisible({ timeout: 60_000 });
+  // Platform beside the organizations, or the organizations alone.
+  const kinds = page.getByRole('radiogroup', {
+    name: 'Platform or organization',
+  });
+  // The Select's name is its value and its label: "Select an option
+  // Organization".
+  const organizationPicker = page.getByRole('button', {
+    name: /\bOrganization$/,
+  });
+  await expect(model.or(kinds).or(organizationPicker).first()).toBeVisible({
+    timeout: 60_000,
+  });
   // Until agent-manager's get_info answers, the models are offered before the
-  // tenants are known: decide on the tenant only once they are.
+  // places are known: decide on the place only once they are.
   await expect(
     page.getByText('Reading where you may create agents…'),
   ).toBeHidden({ timeout: 60_000 });
-  if (await tenantPicker.isVisible()) {
-    await tenantPicker.click();
+  if (await kinds.isVisible()) {
+    await kinds
+      .getByRole('radio', {
+        name: options.organization ? /^Organization/ : /^Platform/,
+      })
+      .check();
+  }
+  if (await organizationPicker.isVisible()) {
+    if (!options.organization) {
+      throw new Error(
+        'the wizard offers organizations only, no Platform: pass options.organization',
+      );
+    }
+    await organizationPicker.click();
     await page
-      .getByRole('option', { name: options.tenant ?? 'platform', exact: true })
+      .getByRole('option', { name: options.organization, exact: true })
       .click();
   }
   await model.check();

@@ -788,7 +788,7 @@ describe('EditAgentPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Changing the agents of platform needs the agent-platform:editor role/,
+        /Changing the agents of the platform needs the agent-platform:editor role/,
       ),
     ).toBeInTheDocument();
     expect(

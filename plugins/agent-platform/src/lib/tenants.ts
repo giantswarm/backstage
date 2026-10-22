@@ -5,17 +5,14 @@
  * platform tenant, the platform's agents for everyone, and an Organization's
  * `org-<name>` namespace is that organization's tenant. Kubernetes RBAC in the
  * namespace decides who sees and changes its agents; the portal only names the
- * tenant. The labels are the ones Slack names a tenant by (klaus-gateway's
- * `Tenant`), so a person reads the same name on both surfaces.
+ * tenant. The portal never says "tenant": a person reads "Platform" or the
+ * organization's name, under the label "Organization".
  */
 
 import { DEFAULT_MODEL_CONFIG_NAMESPACE } from '../components/ModelConfigPicker/helpers';
 
 /** The platform tenant's namespace: the installation's `kagent` namespace. */
 export const PLATFORM_TENANT_NAMESPACE = DEFAULT_MODEL_CONFIG_NAMESPACE;
-
-/** What the platform tenant is called. */
-export const PLATFORM_TENANT = 'platform';
 
 /** The start of an Organization's namespace name. */
 export const ORGANIZATION_PREFIX = 'org-';
@@ -27,22 +24,55 @@ export const ORGANIZATION_PREFIX = 'org-';
  */
 export const CREATED_BY_ANNOTATION = 'agent-platform.giantswarm.io/created-by';
 
+/** The Organization an `org-<name>` namespace is; none for any other. */
+export function organizationOf(namespace: string): string | undefined {
+  if (!namespace.startsWith(ORGANIZATION_PREFIX)) {
+    return undefined;
+  }
+  return namespace.slice(ORGANIZATION_PREFIX.length) || undefined;
+}
+
 /**
- * The tenant a namespace is: `platform` for the platform tenant,
- * `organization <name>` for an Organization's `org-<name>` namespace, and
- * `namespace <name>` for any other namespace agents live in.
+ * The tenant a namespace is, as a value under the label "Organization":
+ * `Platform` for the platform tenant, the organization's plain name for an
+ * Organization's `org-<name>` namespace, and `namespace <name>` for any other
+ * namespace agents live in, which is no organization.
  */
 export function tenantOf(namespace: string): string {
   if (namespace === PLATFORM_TENANT_NAMESPACE) {
-    return PLATFORM_TENANT;
+    return 'Platform';
   }
-  if (namespace.startsWith(ORGANIZATION_PREFIX)) {
-    const organization = namespace.slice(ORGANIZATION_PREFIX.length);
-    if (organization) {
-      return `organization ${organization}`;
-    }
+  const organization = organizationOf(namespace);
+  return organization ?? `namespace ${namespace}`;
+}
+
+/**
+ * The tenant a namespace is, inside a sentence: `the platform`, `the <name>
+ * organization`, or `namespace <name>`.
+ */
+export function tenantInSentence(namespace: string): string {
+  if (namespace === PLATFORM_TENANT_NAMESPACE) {
+    return 'the platform';
   }
-  return `namespace ${namespace}`;
+  const organization = organizationOf(namespace);
+  return organization
+    ? `the ${organization} organization`
+    : `namespace ${namespace}`;
+}
+
+/**
+ * Who keeps what is shared in a tenant's namespace (its EgressPolicies), inside
+ * a sentence: `your platform team` for the platform, `the <name>
+ * organization’s admins` for an organization, `the namespace’s admins` else.
+ */
+export function tenantAdminsOf(namespace: string): string {
+  if (namespace === PLATFORM_TENANT_NAMESPACE) {
+    return 'your platform team';
+  }
+  const organization = organizationOf(namespace);
+  return organization
+    ? `the ${organization} organization’s admins`
+    : 'the namespace’s admins';
 }
 
 /**
@@ -51,4 +81,4 @@ export function tenantOf(namespace: string): string {
  * installation binds, so it names the roles and who binds them.
  */
 export const ACCESS_GRANT_HINT =
-  'Access to agents is granted per tenant: your platform team binds your group to agent-platform:user (use the agents) or agent-platform:editor (also create, change and delete them) in the organization’s namespace.';
+  'Access to agents is granted per organization: your platform team binds your group to agent-platform:user (use the agents) or agent-platform:editor (also create, change and delete them) in the organization’s namespace.';

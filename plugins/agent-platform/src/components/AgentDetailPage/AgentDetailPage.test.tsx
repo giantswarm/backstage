@@ -2111,7 +2111,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
 });
 
 describe('AgentDetailPage: the frame and the plain Overview', () => {
-  const renderShell = (tab: string = '') =>
+  const renderShell = (tab: string = '', path: string = AGENT_PATH) =>
     renderInTestApp(<AgentDetailPage />, {
       mountedRoutes: {
         '/customize/agents': agentsRouteRef,
@@ -2121,7 +2121,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         '/usage': usageRouteRef,
       },
       mountPath: '/customize/agents/:installation/:namespace/:name/*',
-      initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
+      initialRouteEntries: [tab ? `${path}/${tab}` : path],
     });
 
   beforeEach(() => {
@@ -2265,7 +2265,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeInTheDocument();
     });
 
-    it('offers a tenant’s user no Edit, and says whose editors may change the agent', async () => {
+    it('offers a user of the agent’s namespace no Edit, and says whose editors may change the agent', async () => {
       withAgentManager();
       mockDeniedVerbs = new Set(['update', 'delete']);
       stubResources({ resource: makeAgent() });
@@ -2458,7 +2458,57 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(within(facts).getByText('gazelle')).toBeInTheDocument();
     });
 
-    it('names the agent’s tenant and its creator beside the overview', async () => {
+    it.each([
+      ['kagent', 'Platform'],
+      ['org-acme', 'acme'],
+    ])(
+      'names the organization of an agent in %s as %s, under Organization',
+      async (namespace, organization) => {
+        stubResources(
+          {
+            resource: makeAgent({
+              metadata: { name: 'pr-reviewer', namespace },
+            }),
+          },
+          { resource: makeModelConfig() },
+        );
+
+        await renderShell();
+
+        const facts = screen.getByRole('complementary', {
+          name: 'About this agent',
+        });
+        expect(within(facts).getByText('Organization')).toBeInTheDocument();
+        expect(within(facts).queryByText('Tenant')).toBeNull();
+        expect(within(facts).getByText(organization)).toBeInTheDocument();
+        expect(
+          within(facts).queryByText(`organization ${organization}`),
+        ).toBeNull();
+      },
+    );
+
+    it('offers an organization’s user no Edit, and names the organization whose editors may change the agent', async () => {
+      withAgentManager();
+      mockDeniedVerbs = new Set(['update', 'delete']);
+      stubResources({
+        resource: makeAgent({
+          metadata: { name: 'pr-reviewer', namespace: 'org-acme' },
+        }),
+      });
+
+      await renderShell(
+        '',
+        AGENT_PATH.replace('/agent-platform/', '/org-acme/'),
+      );
+
+      expect(
+        await screen.findByText(
+          /Editing and deleting the agents of the acme organization needs the agent-platform:editor role/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('names the agent’s organization and its creator beside the overview', async () => {
       const agent = makeAgent();
       agent.jsonData.metadata.annotations = {
         ...agent.jsonData.metadata.annotations,
