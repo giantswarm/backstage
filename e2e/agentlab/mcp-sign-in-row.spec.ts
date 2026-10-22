@@ -154,8 +154,8 @@ test("the inbox's toasts stand clear of the wizard footer: Continue takes the cl
   await admin.setViewportSize({ width: 1440, height: 900 });
   await signOutOfFixture(admin);
 
-  // Nothing seen yet, in a fresh tab: the waiting fixture is catch-up, and
-  // its summary toast stays until answered.
+  // Nothing seen yet, in a fresh tab: the waiting fixture is catch-up, with
+  // one summary toast.
   await admin.route('**/api/user-settings/**/notificationSeenMarks', route =>
     route.request().method() === 'GET'
       ? route.fulfill({ status: 404 })
@@ -170,6 +170,9 @@ test("the inbox's toasts stand clear of the wizard footer: Continue takes the cl
     .getByRole('alertdialog')
     .filter({ hasText: /needs? your attention/ });
   await expect(toast).toBeVisible({ timeout: 60_000 });
+  // It goes on its own after a few seconds, but not while the pointer rests
+  // on it: held there while the details are filled (a fill moves no pointer).
+  await toast.hover();
 
   await fillAgentDetails(admin, {
     name: 'Toast clearance probe',
@@ -189,7 +192,9 @@ test("the inbox's toasts stand clear of the wizard footer: Continue takes the cl
   ).toBeLessThanOrEqual(footerBox!.y + 0.5);
 
   // Not forced: Playwright's own actionability check fails a click that
-  // another element (the toast) would receive.
+  // another element (the toast) would receive. The pointer leaving the toast
+  // for Continue starts its time again; the click comes first.
+  await expect(toast).toBeVisible();
   await footer.getByRole('button', { name: 'Continue' }).click();
   await expectWizardStep(admin, 'Skills');
 });

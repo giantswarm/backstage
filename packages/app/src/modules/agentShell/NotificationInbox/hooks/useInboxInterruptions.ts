@@ -25,6 +25,14 @@ import { NOTIFICATIONS_HASH } from './useToastLinkRouting';
 export const TOAST_BURST = 3;
 
 /**
+ * How long an inbox toast stays: a brief heads-up, the app's usual toast
+ * timeout (docs/ui.md, Toasts). The bell is where the row waits; the toast
+ * pauses while the pointer rests on it (or focus is in it), so one being read
+ * does not go.
+ */
+export const INBOX_TOAST_TIMEOUT_MS = 6000;
+
+/**
  * How far before the tab's first read a row may have changed and still be
  * news when its subject was not read before (an installation answering
  * late): the row's time comes from the server's clock, the first read's from
@@ -82,7 +90,10 @@ function writeTabMemory(memory: TabMemory) {
   }
 }
 
-/** A toast still up: the rows it speaks for, and what closes it. */
+/**
+ * A toast posted and maybe still up (it may have timed out): the rows it
+ * speaks for, and what closes it sooner.
+ */
 type OpenToast = {
   toast: ToastApiPostResult;
   ids: string[];
@@ -131,8 +142,9 @@ function linkOf(row: InboxRow): string | undefined {
  * first read. A row that only narrows one the tab read (`narrows`) is not
  * news. A row that shows up later with neither (an installation
  * answering late with an old wait) is quietly unread. Nothing is raised for
- * the session on screen in the window the person works in. A toast closes
- * once its row goes or is read, or its page is opened.
+ * the session on screen in the window the person works in. A toast goes on
+ * its own after {@link INBOX_TOAST_TIMEOUT_MS}, or sooner once its row goes
+ * or is read, or its page is opened.
  *
  * The first read is the tab's, not the inbox's mount: a return from a classic
  * page or a reload picks up where the tab was. Each tab decides on its own;
@@ -172,7 +184,8 @@ export function useInboxInterruptions({
 
   // What this tab has read: from an earlier mount, else nothing yet.
   const memory = useRef<TabMemory | undefined>(readTabMemory());
-  // Toasts still up, so they can be closed when they stop being true.
+  // Toasts posted (some may have timed out), so they can be closed sooner
+  // when they stop being true.
   const open = useRef(new Map<string, OpenToast>());
   const toastCount = useRef(0);
   // Read inside the rows effect without re-running it on every navigation.
@@ -200,7 +213,10 @@ export function useInboxInterruptions({
       entry: Omit<OpenToast, 'toast'>,
     ) => {
       open.current.get(key)?.toast.close();
-      open.current.set(key, { ...entry, toast: toastApi.post(message) });
+      open.current.set(key, {
+        ...entry,
+        toast: toastApi.post({ ...message, timeout: INBOX_TOAST_TIMEOUT_MS }),
+      });
     },
     [toastApi],
   );

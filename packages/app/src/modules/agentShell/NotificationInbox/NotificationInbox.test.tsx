@@ -15,7 +15,10 @@ import { homeRouteRef } from '../routes';
 import { DESKTOP_NOTIFICATIONS_STORAGE_KEY } from './hooks/useDesktopNotifications';
 import { inboxQueryClient } from './hooks/inboxQueryClient';
 import { fakeInbox, type FakeSession } from './testing/fakeInbox';
-import { TOAST_BURST } from './hooks/useInboxInterruptions';
+import {
+  INBOX_TOAST_TIMEOUT_MS,
+  TOAST_BURST,
+} from './hooks/useInboxInterruptions';
 import { NARROW_RETRY_MS } from './hooks/useMcpSignInRowSource';
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
@@ -421,6 +424,7 @@ describe('Notification inbox', () => {
         expect.objectContaining({
           title: '2 sessions need your attention',
           links: [{ label: 'Open notifications', href: '#notifications' }],
+          timeout: INBOX_TOAST_TIMEOUT_MS,
         }),
       );
 
@@ -473,11 +477,53 @@ describe('Notification inbox', () => {
         description: 'Debug ingress',
         status: 'warning',
         links: [{ label: 'Open session', href: `${SESSION_PATH}/s1` }],
+        timeout: INBOX_TOAST_TIMEOUT_MS,
       });
 
       // Answered from anywhere: the row goes, and its toast with it.
       await read([{ sessionId: 's1', state: 'working', changedAt: now() }]);
       expect(close).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets the toast of a failed or finished turn go on its own, like every inbox toast', async () => {
+      fakeInbox.setSessions([
+        { sessionId: 's1', state: 'working', portalStarted: true },
+        { sessionId: 's2', state: 'working', portalStarted: true },
+      ]);
+      await renderShell();
+
+      await read([
+        {
+          sessionId: 's1',
+          agentName: 'Kube Assistant',
+          state: 'failed',
+          portalStarted: true,
+          changedAt: now(),
+        },
+        {
+          sessionId: 's2',
+          agentName: 'Docs Writer',
+          state: 'completed',
+          portalStarted: true,
+          level: 'all',
+          changedAt: now(),
+        },
+      ]);
+      expect(post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Kube Assistant: turn failed',
+          status: 'danger',
+          timeout: INBOX_TOAST_TIMEOUT_MS,
+        }),
+      );
+      expect(post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Docs Writer finished its turn',
+          status: 'success',
+          timeout: INBOX_TOAST_TIMEOUT_MS,
+        }),
+      );
+      expect(post).toHaveBeenCalledTimes(2);
     });
 
     it('closes a toast once its session is opened', async () => {
@@ -526,6 +572,7 @@ describe('Notification inbox', () => {
               href: '/sessions?state=waiting',
             },
           ],
+          timeout: INBOX_TOAST_TIMEOUT_MS,
         }),
       );
     });
@@ -937,6 +984,7 @@ describe('Notification inbox', () => {
         description: 'Kubernetes',
         status: 'warning',
         links: [{ label: 'Sign in', href: '#mcp-sign-in' }],
+        timeout: INBOX_TOAST_TIMEOUT_MS,
       });
 
       // The toast's Sign in: the dialog where the person is, the row read.
