@@ -66,18 +66,24 @@ export class MimirService {
     private readonly logger: LoggerService,
   ) {}
 
+  /**
+   * `redactQuery` keeps the PromQL out of the debug log, for a query that
+   * names a person (a `user` matcher built from the caller's identity).
+   */
   async query(options: {
     installationName: string;
     query: string;
     oidcToken: string;
+    redactQuery?: boolean;
   }): Promise<MimirQueryResponse> {
-    const { installationName, query, oidcToken } = options;
+    const { installationName, query, oidcToken, redactQuery } = options;
 
     return this.fetchPrometheus<MimirQueryResponse>({
       installationName,
       path: 'query',
       params: { query },
       oidcToken,
+      redactQuery,
     });
   }
 
@@ -122,8 +128,9 @@ export class MimirService {
     path: 'query' | 'query_range';
     params: Record<string, string>;
     oidcToken: string;
+    redactQuery?: boolean;
   }): Promise<T> {
-    const { installationName, path, params, oidcToken } = options;
+    const { installationName, path, params, oidcToken, redactQuery } = options;
 
     // `mimirEnabled: false` opts an installation out of the observability
     // integration entirely (standalone installations have no Mimir at
@@ -156,7 +163,9 @@ export class MimirService {
     }
 
     this.logger.debug(
-      `Proxying Mimir ${path} for installation "${installationName}": ${params.query}`,
+      `Proxying Mimir ${path} for installation "${installationName}": ${
+        redactQuery ? '(query redacted)' : params.query
+      }`,
     );
 
     const controller = new AbortController();

@@ -79,6 +79,24 @@ function Messages({ state }: { state: ServerSignInState }) {
 }
 
 /**
+ * The state a list shows for an SSO server that refused the person's sign-in:
+ * not a sign-in state, since there is nothing to sign in to.
+ */
+export const SSO_REFUSED_STATUS = {
+  label: 'Cannot connect',
+  tone: 'danger',
+} as const;
+
+/**
+ * Why an SSO server that refused the person's sign-in cannot be fixed by
+ * them: it takes the portal sign-in, which it did not accept, so only its
+ * trusted audiences can change that.
+ */
+export function ssoRefusedText(serverName: string, noun: SignInNoun): string {
+  return `${serverName} uses your portal sign-in, so there is nothing to sign in to. It did not accept that sign-in, so you and your agents cannot use its tools yet. An administrator needs to add the portal sign-in's audience to the ${noun}'s trusted audiences.`;
+}
+
+/**
  * Why an SSO-managed server (token forwarding/exchange) has no sign-in: its
  * connection comes from muster's own session, so there is nothing for the
  * user to sign in to (and muster refuses a manual logout).
@@ -88,11 +106,9 @@ function ssoExplanationText(
   state: ServerSignInState,
   noun: SignInNoun,
 ): string {
-  return `${serverName} authenticates through SSO from muster's own session, so there is nothing to sign in to here.${
-    state.status?.sso_attempt_failed
-      ? ` muster tried and failed to establish it for your session — check the ${noun}'s trusted audiences with an administrator.`
-      : ''
-  }`;
+  return state.isSsoRefused
+    ? ssoRefusedText(serverName, noun)
+    : `${serverName} authenticates through SSO from muster's own session, so there is nothing to sign in to here.`;
 }
 
 /** What a row says while the sign-in page is open somewhere. */
@@ -178,8 +194,8 @@ function signInWait(
  * layout of it (inline sentences, or a status with a tooltip) follows the
  * same rules:
  *
- * - `sso`: an SSO-managed server (token forwarding/exchange) muster asks to
- *   act on, or whose automatic connection failed: an explanation, no button.
+ * - `sso`: an SSO-managed server (token forwarding/exchange) that refused the
+ *   person's sign-in: an explanation, no button.
  *   It never waits on a sign-in, since there is nothing to sign in to.
  * - `sign-in`: muster reports a sign-in is needed, or one this tab started is
  *   outstanding. `gate` withholds it with a reason; `wait` is the outstanding
@@ -210,10 +226,11 @@ export function authActionParts(
 ): AuthActionParts {
   const { noun, oauthConfigured, signInGate, alwaysOffer } = options;
   if (state.isSsoManaged) {
-    // `sso_attempt_failed` names a concrete misconfiguration; a healthy (or
-    // merely pending) SSO server explains itself only when muster asks the
-    // user to act, which for SSO it normally never does.
-    return alwaysOffer || state.needsLogin || state.status?.sso_attempt_failed
+    // A refused sign-in names a concrete misconfiguration; a healthy, pending
+    // or not yet connected SSO server asks nothing of the person, and a
+    // failure muster recorded for another of their sessions is not this
+    // session's (`isSsoRefused`).
+    return alwaysOffer || state.isSsoRefused
       ? {
           kind: 'sso',
           explanation: ssoExplanationText(serverName, state, noun),

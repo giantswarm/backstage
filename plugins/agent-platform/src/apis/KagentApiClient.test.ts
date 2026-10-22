@@ -1341,6 +1341,27 @@ describe('KagentApiClient', () => {
     });
   });
 
+  describe('getModelCost', () => {
+    it('asks for the installation and window only, with the person’s token', async () => {
+      const body = {
+        status: 'unavailable',
+        windowDays: 7,
+        reason: 'no-spend',
+      };
+      fetchMock.mockResolvedValue(jsonResponse(body));
+
+      await expect(buildClient().getModelCost('gazelle', 7)).resolves.toEqual(
+        body,
+      );
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/usage/model-cost?days=7&installation=gazelle',
+      );
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBeDefined();
+    });
+  });
+
   describe('getSessionUsage', () => {
     const usageBody = {
       evaluatedAt: 1_757_000_000_000,

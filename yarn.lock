@@ -8385,6 +8385,7 @@ __metadata:
     "@connectrpc/connect": "npm:2.2.0"
     "@connectrpc/connect-node": "npm:2.2.0"
     "@giantswarm/backstage-plugin-agent-platform-common": "workspace:^"
+    "@giantswarm/backstage-plugin-gs-common": "workspace:^"
     "@giantswarm/backstage-plugin-gs-node": "workspace:^"
     "@types/express": "npm:^5.0.0"
     "@types/supertest": "npm:^7.0.0"

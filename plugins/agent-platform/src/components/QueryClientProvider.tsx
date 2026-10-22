@@ -91,6 +91,10 @@ const USER_SCOPED_RESOURCES = new Set([
   // sharpest reason to hold it: it is a behavioural profile, and small enough
   // that nothing but the rule keeps it off the disk.
   'session-usage',
+  // One person's model spend, in total and per agent: the backend answers it
+  // `no-store`, and a shared workstation must not rehydrate it for the next
+  // person.
+  'model-cost',
   // The namespaces of the Agents one person may list: their tenants.
   'agent-namespaces',
 ]);

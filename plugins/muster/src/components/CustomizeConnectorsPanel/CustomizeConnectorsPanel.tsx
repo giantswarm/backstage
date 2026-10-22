@@ -51,6 +51,8 @@ import {
   authStatusQueryKey,
   connectingPollInterval,
   deactivatedSignInGate,
+  isSsoRefused,
+  needsSignIn,
   ServerSignInStatus,
   SessionGate,
   SignInStatusActions,
@@ -429,9 +431,11 @@ function ConnectorsTable({
         entry.row.kind === 'server'
           ? authStatus.data?.servers.find(s => s.name === entry.id)
           : undefined;
-      const asksSignIn =
-        status?.status === 'auth_required' ||
-        status?.status === 'reauth_required';
+      // An SSO server that refused the sign-in has no button, but its hint
+      // says why, so it takes the sign-in row too.
+      const asksSignIn = Boolean(
+        status && (needsSignIn(status) || isSsoRefused(status)),
+      );
       const reach = connectorReach(entry, status);
       return {
         id: entry.key,

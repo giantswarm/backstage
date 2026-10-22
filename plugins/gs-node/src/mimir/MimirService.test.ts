@@ -86,6 +86,30 @@ describe('MimirService.query', () => {
     expect(result.status).toBe('success');
   });
 
+  it('keeps a redacted query out of the debug log', async () => {
+    const logger = makeLogger();
+    const s = MimirService.create({
+      config: makeConfig('alba.example.io'),
+      logger,
+    });
+    mockFetch.mockResolvedValue(
+      makeResponse(200, JSON.stringify({ status: 'success', data: {} })),
+    );
+
+    await s.query({
+      installationName: 'alba',
+      query: 'cost{user="me@example.com"}',
+      oidcToken: 'tok',
+      redactQuery: true,
+    });
+    await s.query({ installationName: 'alba', query: 'up', oidcToken: 'tok' });
+
+    const logged = logger.debug.mock.calls.map(([message]) => message);
+    expect(logged.join('\n')).not.toContain('me@example.com');
+    expect(logged[0]).toContain('(query redacted)');
+    expect(logged[1]).toContain(': up');
+  });
+
   it('throws NotFoundError when baseDomain is not configured', async () => {
     const s = MimirService.create({
       config: makeConfig(''),

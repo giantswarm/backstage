@@ -29,6 +29,7 @@ import {
   normalizeSessionUsage,
   SessionStatesResponse,
   SessionUsageResponse,
+  ModelCostResponse,
   normalizeTaskList,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { createSseDataDecoder, readStreamFrame } from '../lib/kagentStreamTurn';
@@ -361,6 +362,16 @@ export class KagentApiClient implements KagentApi {
   async getSessionUsage(installation: string): Promise<SessionUsageResponse> {
     const body = await this.get<unknown>('/kagent/session-usage', installation);
     return normalizeSessionUsage(body);
+  }
+
+  async getModelCost(
+    installation: string,
+    days: number,
+  ): Promise<ModelCostResponse> {
+    return this.get<ModelCostResponse>(
+      `/usage/model-cost?days=${encodeURIComponent(String(days))}`,
+      installation,
+    );
   }
 
   async listSessionTasks(
