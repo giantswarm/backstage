@@ -115,6 +115,28 @@ function upstreamError(message: string): Error {
 }
 
 /**
+ * What a failed response's body and headers say: the backend's message, and
+ * the fields `describeReadFailure` turns into the page's words — the status,
+ * the backend's failure reason and the request id it sent toward kagent.
+ */
+async function readRequestError(
+  response: Response,
+): Promise<{ message?: string; fields: KagentRequestErrorFields }> {
+  const errorData = await response.json().catch(() => ({}));
+  const { message, reason } =
+    (errorData as { error?: { message?: string; reason?: string } })?.error ??
+    {};
+  return {
+    message,
+    fields: {
+      status: response.status,
+      reason,
+      requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+    },
+  };
+}
+
+/**
  * A streaming send failed in a way that says nothing about whether the message
  * reached kagent: the connection died, a gateway answered in kagent's stead, a
  * 5xx swallowed the outcome.
@@ -135,6 +157,18 @@ function streamTransportError(message: string): Error {
 
 export function isStreamTransportError(error: unknown): boolean {
   return (error as Error | undefined)?.name === STREAM_TRANSPORT_ERROR_NAME;
+}
+
+/**
+ * A streaming send the backend gave up on before kagent's first event: its
+ * request timeout ran out (`reason: "timeout"`). A transport failure like any
+ * other — whether the message landed is still for the caller to check.
+ */
+export function isFirstEventTimeout(error: unknown): boolean {
+  return (
+    isStreamTransportError(error) &&
+    (error as KagentRequestErrorFields).reason === 'timeout'
+  );
 }
 
 /**
@@ -633,9 +667,15 @@ export class KagentApiClient implements KagentApi {
         // A 502/504 is the shape a gateway cut takes when it fires before the
         // stream opens. The backend's own 5xx looks identical from here. Either
         // way the send may or may not have reached kagent — verify, don't
-        // report.
-        throw streamTransportError(
-          `The streaming send failed with status ${response.status}.`,
+        // report. The backend's own says why: `reason: "timeout"` is its wait
+        // for kagent's first event running out, and several of those in a
+        // row read as a runtime that cannot start (`useSendMessage`).
+        const { fields } = await readRequestError(response);
+        throw Object.assign(
+          streamTransportError(
+            `The streaming send failed with status ${response.status}.`,
+          ),
+          fields,
         );
       }
       // 4xx: a decision — a malformed message, a rejected token, an unknown
@@ -894,19 +934,9 @@ export class KagentApiClient implements KagentApi {
   ): Promise<void> {
     const { badRequestIsMissing = true } = options;
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const { message: bodyMessage, reason } =
-        (errorData as { error?: { message?: string; reason?: string } })
-          ?.error ?? {};
+      const { message: bodyMessage, fields } = await readRequestError(response);
       const message =
         bodyMessage ?? `kagent request failed with status ${response.status}`;
-      // What `describeReadFailure` turns into the page's words: the status,
-      // the backend's failure reason and the request id it sent toward kagent.
-      const fields: KagentRequestErrorFields = {
-        status: response.status,
-        reason,
-        requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
-      };
       const error = Object.assign(new Error(message), fields);
       // A 400 from this proxy means the backend has no kagent endpoint
       // configured for the requested installation (its `resolveInstallation`
