@@ -40,6 +40,7 @@ import {
   useAnswerConfirmation,
 } from '../../hooks/useAnswerConfirmation';
 import {
+  modelConfigNameOf,
   NEW_SESSION_STATE_KEY,
   stashHandoffImages,
   useNewSessionHandoff,
@@ -584,9 +585,7 @@ export function SessionDetailPage() {
     installation,
     agent && {
       namespace: agent.namespace,
-      name:
-        (agentRow?.modelConfigId?.split('/')[2] || undefined) ??
-        handoff?.modelConfig,
+      name: (agentRow && modelConfigNameOf(agentRow)) ?? handoff?.modelConfig,
     },
   );
   // Kept here, not in the prompt: the dialog stays open, reading Connected,
@@ -1118,6 +1117,7 @@ export function SessionDetailPage() {
           text,
           agentNamespace: agentRow.namespace,
           agentName: agentRow.technicalName,
+          modelConfig: modelConfigNameOf(agentRow),
           imagesKey: stashHandoffImages(images),
         },
       },

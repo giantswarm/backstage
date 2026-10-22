@@ -43,9 +43,21 @@ async function chatGptRow(page: Page): Promise<Locator> {
   return row;
 }
 
-/** Answers `auth://status` with the person's `chatgpt` App connected. */
-async function stageConnected(page: Page): Promise<() => Promise<void>> {
+const AUTH_STATUS = '**/api/muster/auth/status**';
+
+/**
+ * Answers `auth://status` with the person's `chatgpt` App connected until the
+ * returned function ends the staging; reads after that pass through. The
+ * route stays until `unroute`, after the test: a read in flight while it is
+ * removed would be handled twice.
+ */
+async function stageConnected(page: Page) {
+  let staged = true;
   const handler = async (route: Route) => {
+    if (!staged) {
+      await route.fallback();
+      return;
+    }
     const answer = await (await route.fetch()).json();
     const apps: Array<{ name: string; status: string }> =
       answer?.providerApps ?? [];
@@ -59,8 +71,13 @@ async function stageConnected(page: Page): Promise<() => Promise<void>> {
       },
     });
   };
-  await page.route('**/api/muster/auth/status**', handler);
-  return () => page.unroute('**/api/muster/auth/status**', handler);
+  await page.route(AUTH_STATUS, handler);
+  return {
+    stop: () => {
+      staged = false;
+    },
+    unroute: () => page.unroute(AUTH_STATUS, handler),
+  };
 }
 
 test('Connect shows OpenAI’s code with its link, and Cancel ends it', async ({
@@ -75,10 +92,12 @@ test('Connect shows OpenAI’s code with its link, and Cancel ends it', async ({
   await expect(row.getByText(/^Not connected/)).toBeVisible({
     timeout: ROW_TIMEOUT,
   });
-  // The provider's page opens in a tab of its own; this run reads the code.
-  admin.context().on('page', tab => void tab.close());
+  // The provider's page opens in a tab of its own; this run reads the code
+  // and closes that one tab (the admin's context outlives this file).
+  const providerTab = admin.context().waitForEvent('page');
 
   await row.getByRole('button', { name: /^(Connect|Try again)$/ }).click();
+  await (await providerTab).close();
 
   await expect(row.getByText('Waiting for your code')).toBeVisible({
     timeout: ROW_TIMEOUT,
@@ -103,17 +122,22 @@ test('Connect shows OpenAI’s code with its link, and Cancel ends it', async ({
 test('a connected person sees Connected, and Not connected after Disconnect', async ({
   admin,
 }) => {
-  const unstage = await stageConnected(admin);
-  const row = await chatGptRow(admin);
-  await expect(row.getByText('✓ Connected')).toBeVisible({
-    timeout: ROW_TIMEOUT,
-  });
+  const staging = await stageConnected(admin);
+  try {
+    const row = await chatGptRow(admin);
+    await expect(row.getByText('✓ Connected')).toBeVisible({
+      timeout: ROW_TIMEOUT,
+    });
 
-  await unstage();
-  await row.getByRole('button', { name: 'Disconnect' }).click();
+    staging.stop();
+    await row.getByRole('button', { name: 'Disconnect' }).click();
 
-  await expect(row.getByText(/^Not connected$/)).toBeVisible({
-    timeout: ROW_TIMEOUT,
-  });
-  await expect(row.getByRole('button', { name: 'Connect' })).toBeEnabled();
+    await expect(row.getByText(/^Not connected$/)).toBeVisible({
+      timeout: ROW_TIMEOUT,
+    });
+    await expect(row.getByRole('button', { name: 'Connect' })).toBeEnabled();
+  } finally {
+    staging.stop();
+    await staging.unroute();
+  }
 });
