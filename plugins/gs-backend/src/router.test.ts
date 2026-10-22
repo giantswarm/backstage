@@ -52,8 +52,10 @@ import {
   discoverAgentSkillsFromGit,
   GitFetchError,
 } from './agentSkills/discoverAgentSkillsFromGit';
-import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
-import { mimirServiceRef } from './services/MimirService';
+import {
+  containerRegistryServiceRef,
+  mimirServiceRef,
+} from '@giantswarm/backstage-plugin-gs-node';
 import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
 
 const containerRegistry = {} as unknown as typeof containerRegistryServiceRef.T;

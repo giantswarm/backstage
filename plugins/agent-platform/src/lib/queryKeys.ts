@@ -60,6 +60,11 @@ export function sessionUsageQueryKey(installation: string) {
   return ['agent-platform', 'kagent', 'session-usage', installation] as const;
 }
 
+/** The caller's own model cost on one installation, per window. */
+export function modelCostQueryKey(installation: string, days: number) {
+  return ['agent-platform', 'usage', 'model-cost', installation, days] as const;
+}
+
 /**
  * The model-manager reads, per installation — through muster as the person,
  * but about the installation: its inventory, backend descriptors and pull

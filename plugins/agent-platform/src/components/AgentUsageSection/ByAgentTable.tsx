@@ -70,16 +70,32 @@ export type ByAgentTableProps = {
   hasRate?: boolean;
   /** The installation's display currency, for the estimate; USD when none. */
   currency?: Currency;
+  /**
+   * The gateway's price for the person's own calls, per agent (keyed by the
+   * row id, kagent's encoded agent id), when it could be read. Present, the
+   * column shows it instead of the estimate.
+   */
+  actualCost?: ReadonlyMap<string, number>;
+  /** Whether there is an actual cost is not known yet. */
+  isActualCostLoading?: boolean;
+  /** The window the actual cost covers, in days, named in the note. */
+  actualCostDays?: number;
+  /** Why there is no actual cost, leading the estimate's note when set. */
+  fallbackReason?: string;
 };
 
 /**
  * Usage split by the agent that ran it.
  *
- * The cost column is an estimate, and the only one on this page whose inputs
- * come from two different systems: kagent's token counts priced at the
- * gateway's observed rate. The Cost tab has the gateway's own per-agent spend,
- * which is exact but covers every user — these two figures answer different
- * questions and will not match.
+ * The cost column is the gateway's own price for the person's calls through
+ * each agent when the backend can read it (`actualCost`) — every call the
+ * agent made as them, sessions or not, so it need not match the tokens beside
+ * it. Where it cannot, the column falls back to an estimate, the only figure
+ * on this page whose inputs come from two different systems: kagent's token
+ * counts priced at the gateway's observed rate. The Cost tab has the
+ * gateway's per-agent spend for every user, a different question again.
+ *
+ * What follows is about that fallback.
  *
  * **The rate here is the installation's blend across every model**, one rate
  * for the whole table, because the table is one query and its rows span
@@ -97,26 +113,44 @@ export function ByAgentTable({
   isRateLoading,
   hasRate = true,
   currency = USD,
+  actualCost,
+  isActualCostLoading,
+  actualCostDays,
+  fallbackReason,
 }: ByAgentTableProps) {
   const classes = useStyles();
   const colorFor = useMeasureColor();
   const isPhone = usePhoneLayout();
 
+  // The figure a cost cell shows: the gateway's for the row when it was read
+  // (no entry means none of the person's calls through it was priced, which
+  // is `—`, not $0), else the estimate from the row's tokens.
+  const costOf = useMemo(
+    () =>
+      actualCost
+        ? (row: ByAgentRow) => actualCost.get(row.id)
+        : (row: ByAgentRow) =>
+            estimateCost(row.inputTokens, row.outputTokens, rates),
+    [actualCost, rates],
+  );
+  const isCostLoading = Boolean(
+    !actualCost && (isActualCostLoading || isRateLoading),
+  );
+  // Settled on the estimate: the note then explains it, and why.
+  const showsEstimate = !actualCost && !isActualCostLoading;
+
   // One maximum per column, and the cost column's is derived the same way its
-  // cells are — from the row's tokens and the shared rate — so the longest bar
-  // is the row that actually costs most.
+  // cells are, so the longest bar is the row that actually costs most.
   const max = useMemo(
     () => ({
       sessions: columnMax(rows, row => row.sessions),
       turns: columnMax(rows, row => row.turns),
       inputTokens: columnMax(rows, row => row.inputTokens),
       outputTokens: columnMax(rows, row => row.outputTokens),
-      cost: columnMax(rows, row =>
-        estimateCost(row.inputTokens, row.outputTokens, rates),
-      ),
+      cost: columnMax(rows, costOf),
       costUsd: columnMax(rows, row => row.costUsd),
     }),
-    [rows, rates],
+    [rows, costOf],
   );
   const anyReported = rows.some(row => row.costUsd !== undefined);
 
@@ -202,28 +236,28 @@ export function ByAgentTable({
     },
     {
       id: 'estCostUsd',
-      label: 'Est. cost',
+      label: actualCost || isActualCostLoading ? 'Cost' : 'Est. cost',
       // Not sortable: `sortUsageRows` compares the row's own numeric fields,
-      // and this one is computed at render. Sorting it would need the estimate
-      // materialised onto the row, which is work for a column nobody ranks by
-      // — the table is already ordered by the input tokens that drive it.
+      // and this one is looked up or computed at render. Sorting it would need
+      // it materialised onto the row, which is work for a column nobody ranks
+      // by — the table is already ordered by the input tokens.
       cell: row => {
-        const estimate = estimateCost(row.inputTokens, row.outputTokens, rates);
+        const cost = isCostLoading ? undefined : costOf(row);
         return (
           <Cell>
-            {/* A skeleton in place of the figure while the rate is in
-                flight, for the reason `TotalsStrip` documents: an em dash here
-                is a finding, and "not yet" is not one. The bar stays empty
-                either way — `value` is undefined until there is a rate. */}
+            {/* A skeleton in place of the figure while it is in flight, for
+                the reason `TotalsStrip` documents: an em dash here is a
+                finding, and "not yet" is not one. The bar stays empty either
+                way — `value` is undefined until there is a figure. */}
             <DataBar
               label={
-                isRateLoading ? (
+                isCostLoading ? (
                   <Skeleton width={52} height={16} rounded />
                 ) : (
-                  formatMoney(estimate, currency)
+                  formatMoney(cost, currency)
                 )
               }
-              value={estimate}
+              value={cost}
               max={max.cost}
               color={colorFor('cost')}
             />
@@ -326,7 +360,17 @@ export function ByAgentTable({
           installation with no Mimir, or after a failed query, that is a claim
           about a measurement that never ran. */}
       <div className={classes.note}>
-        {hasRate ? (
+        {actualCost && (
+          <>
+            Cost is the gateway&apos;s price for every model call each agent
+            made as you
+            {actualCostDays ? ` in the last ${actualCostDays} days` : ''}, in
+            these sessions or not, so it need not match the tokens beside it.
+            Calls made outside any agent count in the total above but in no row.
+          </>
+        )}
+        {showsEstimate && fallbackReason && <>{fallbackReason} </>}
+        {showsEstimate && hasRate && (
           <>
             Cost is estimated: your token counts priced at{' '}
             {rateWindow ? `the last ${rateWindow} of ` : ''}
@@ -335,7 +379,8 @@ export function ByAgentTable({
             own. Session pages use each session&apos;s own model rate, so the
             figures differ. It is not a billed figure.
           </>
-        ) : (
+        )}
+        {showsEstimate && !hasRate && (
           <>
             No cost estimate: {installation ?? 'this environment'}&apos;s
             gateway metrics yield no rate. Token counts are unaffected.

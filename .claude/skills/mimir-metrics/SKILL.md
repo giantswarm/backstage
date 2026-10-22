@@ -8,8 +8,12 @@ description: Querying Prometheus/Mimir metrics and registering new metrics in th
 All Prometheus/Mimir metrics the application queries are registered in a central file:
 
 ```
-plugins/gs/src/apis/mimir/metrics.ts
+plugins/gs-common/src/mimirMetrics.ts
 ```
+
+It lives in the common library so a backend that builds its own PromQL
+(agent-platform-backend's per-user model cost) uses the same constants; the gs
+plugin re-exports them.
 
 Every metric used in a PromQL query **must** be defined here. This ensures a single place to see which metrics the application depends on.
 
@@ -33,7 +37,7 @@ Then add it to the `MetricsRegistry` array in the same file.
 Import the metric constant and reference its `.name` property in PromQL strings:
 
 ```typescript
-import { MyNewMetric } from '../../apis/mimir/metrics';
+import { MyNewMetric } from '@giantswarm/backstage-plugin-gs-common';
 
 const query = `sum(rate(${MyNewMetric.name}{namespace="${ns}"}[5m]))`;
 ```
@@ -54,8 +58,8 @@ Never use raw metric name strings in queries — always go through the registry.
 
 ### Backend
 
-- **`MimirService`** (`plugins/gs-backend/src/services/MimirService.ts`) — `query()` and `queryRange()`, both over one private `fetchPrometheus()`: it looks up the installation's `baseDomain` from config, constructs the Mimir URL (`https://observability.${baseDomain}/prometheus/api/v1/<query|query_range>`), forwards the OIDC token as `Authorization: Bearer`, and sets `X-Scope-OrgID: giantswarm`. Refuses an installation with `mimirEnabled: false` (`NotFoundError`) or no `baseDomain`; maps 401/403 and a `400 + text/html` gateway rejection to `AuthenticationError`, everything else to `ServiceUnavailableError`.
-- **Routes** (`plugins/gs-backend/src/router.ts`) — `GET /mimir/query` and `GET /mimir/query_range` validate their parameters and the `X-Mimir-Token` header via Zod, then delegate. Both raise `InputError` (400) on a bad request rather than a 5xx, because `MiddlewareFactory.error()` forwards anything >= 500 to Sentry.
+- **`MimirService`** (`plugins/gs-node/src/mimir/MimirService.ts`, with `mimirServiceRef`; shared by gs-backend and agent-platform-backend) — `query()` and `queryRange()`, both over one private `fetchPrometheus()`: it looks up the installation's `baseDomain` from config, constructs the Mimir URL (`https://observability.${baseDomain}/prometheus/api/v1/<query|query_range>`), forwards the OIDC token as `Authorization: Bearer`, and sets `X-Scope-OrgID: giantswarm`. Refuses an installation with `mimirEnabled: false` (`NotFoundError`) or no `baseDomain`; maps 401/403 and a `400 + text/html` gateway rejection to `AuthenticationError`, everything else to `ServiceUnavailableError`.
+- **Routes** (`plugins/gs-backend/src/router.ts`) — `GET /mimir/query` and `GET /mimir/query_range` validate their parameters and the `X-Mimir-Token` header via Zod, then delegate. They forward PromQL from the browser, so they must never be the way to read one person's figures: a query filtered by a label naming a person (the gateway's `user`) is built server-side from the authenticated caller, as `GET /api/agent-platform/usage/model-cost` does. Both raise `InputError` (400) on a bad request rather than a 5xx, because `MiddlewareFactory.error()` forwards anything >= 500 to Sentry.
 
 Range queries pass `start`/`end`/`step` through to Mimir verbatim — it owns what a legal timestamp and step are, and duplicating its grammar in the Zod schema would only reject ranges it accepts. Mimir refuses a range exceeding its point limit (11k per series by default); that surfaces as `ServiceUnavailableError` carrying its message.
 

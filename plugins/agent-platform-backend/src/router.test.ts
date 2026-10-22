@@ -2341,6 +2341,108 @@ describe('createRouter', () => {
     });
   });
 
+  describe('GET /usage/model-cost', () => {
+    const mimirQuery = jest.fn();
+    const costApp = () =>
+      buildApp(twoInstallations, { mimir: { query: mimirQuery } });
+
+    beforeEach(() => {
+      mimirQuery.mockReset();
+      mimirQuery.mockImplementation(async ({ query }: { query: string }) => ({
+        status: 'success',
+        data: {
+          resultType: 'vector',
+          result: [
+            {
+              metric: query.startsWith('sum by')
+                ? { agent_namespace: 'kagent', agent: 'sre-agent' }
+                : {},
+              value: [0, query.startsWith('sum by') ? '1.25' : '1'],
+            },
+          ],
+        },
+      }));
+      getMe.mockResolvedValue({ sub: 'me@example.com' });
+    });
+
+    it('answers the caller’s own cost, with no-store', async () => {
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toMatchObject({
+        status: 'actual',
+        windowDays: 7,
+        totalUsd: 1.25,
+        byAgent: [{ agentId: 'kagent__NS__sre_agent', costUsd: 1.25 }],
+      });
+      expect(getMe).toHaveBeenCalledWith({ userToken: 'user-token' });
+    });
+
+    it('takes the person from kagent, never from the request', async () => {
+      // Every way a caller might try to name someone else: a parameter, a
+      // PromQL fragment, a header. None reaches the query.
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({
+          installation: 'gazelle',
+          days: '7',
+          user: 'someone-else@example.com',
+          email: 'someone-else@example.com',
+          query: 'sum by (user) (agentgateway_gen_ai_client_cost_usd_total)',
+        })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .set('X-Forwarded-User', 'someone-else@example.com');
+
+      expect(response.status).toBe(200);
+      const queries = mimirQuery.mock.calls.map(([args]) => args.query);
+      expect(queries.join('\n')).not.toContain('someone-else');
+      // Every matcher naming a person names the one kagent vouched for.
+      const personal = queries.filter((query: string) =>
+        /user="[^"]/.test(query),
+      );
+      expect(personal).not.toHaveLength(0);
+      for (const query of personal) {
+        expect(query).toContain('user="me@example.com"');
+      }
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(await costApp())
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' });
+
+      expect(response.status).toBe(401);
+      expect(getMe).not.toHaveBeenCalled();
+      expect(mimirQuery).not.toHaveBeenCalled();
+    });
+
+    it.each(['0', '91', '7.5', 'seven', ''])(
+      'refuses days=%p with a 400',
+      async days => {
+        const response = await request(await costApp())
+          .get('/usage/model-cost')
+          .query({ installation: 'gazelle', days })
+          .set(KAGENT_AUTH_HEADER, 'user-token');
+
+        expect(response.status).toBe(400);
+        expect(mimirQuery).not.toHaveBeenCalled();
+      },
+    );
+
+    it('answers 404 where no Mimir is wired in, as for an installation without one', async () => {
+      const response = await request(app)
+        .get('/usage/model-cost')
+        .query({ installation: 'gazelle', days: '7' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
+    });
+  });
+
   describe('with an explicit installations allowlist', () => {
     it('restricts the fan-out to the listed installations', async () => {
       const restricted = await buildApp({
