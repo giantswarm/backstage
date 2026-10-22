@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
+import { awaitedSyncs } from '../lib/awaitedSyncs';
 import { emptySource, type WorkspaceDraft } from '../lib/workspaceDraft';
 import { WorkspaceManagerError } from '../lib/workspaceManager';
 import { useSaveWorkspace } from './useWorkspaceEditor';
@@ -33,7 +34,10 @@ function renderSave() {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
-  return renderHook(() => useSaveWorkspace(client), { wrapper });
+  return {
+    queryClient,
+    ...renderHook(() => useSaveWorkspace(client), { wrapper }),
+  };
 }
 
 beforeEach(() => {
@@ -112,5 +116,59 @@ describe('useSaveWorkspace', () => {
     expect(error).toBeInstanceOf(WorkspaceManagerError);
     expect((error as WorkspaceManagerError).kind).toBe('invalid');
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('expects the synchronization a save starts: after a create, or a change behind the one running', async () => {
+    const { result, queryClient } = renderSave();
+    await act(async () => {
+      await result.current.mutateAsync({ draft, organization: 'acme' });
+    });
+    expect(awaitedSyncs(queryClient)['lab/platform-mcp']).toMatchObject({
+      cause: 'created',
+      after: '',
+    });
+
+    callTool.mockImplementation(async (_tool: string, args: any) => ({
+      ...args,
+      resourceVersion: '8',
+      lastSync: { time: '2026-10-20T10:00:00Z', result: 'Succeeded' },
+      activeSync: { job: 'sync-1', startedAt: '2026-10-20T11:00:00Z' },
+    }));
+    await act(async () => {
+      await result.current.mutateAsync({
+        draft,
+        organization: 'acme',
+        edit: { resourceVersion: '7' },
+      });
+    });
+    expect(awaitedSyncs(queryClient)['lab/platform-mcp']).toMatchObject({
+      cause: 'changed',
+      after: '2026-10-20T10:00:00Z',
+      behind: 'sync-1',
+    });
+  });
+
+  it('expects no synchronization from a save that changed nothing, or against no version read', async () => {
+    callTool.mockImplementation(async (_tool: string, args: any) => ({
+      ...args,
+      resourceVersion: '7',
+    }));
+    const { result, queryClient } = renderSave();
+    await act(async () => {
+      await result.current.mutateAsync({
+        draft,
+        organization: 'acme',
+        edit: { resourceVersion: '7' },
+      });
+    });
+    await act(async () => {
+      await result.current.mutateAsync({
+        draft,
+        organization: 'acme',
+        edit: {},
+      });
+    });
+
+    expect(awaitedSyncs(queryClient)).toEqual({});
   });
 });
