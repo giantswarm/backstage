@@ -10,7 +10,7 @@ import { selectRepresentative } from '../../lib/serverGrouping';
 import type { ServerListEntry } from '../../lib/serverList';
 import { serverAuthMode, type ServerAuthMode } from '../../lib/serverAuthMode';
 import type { ServerAuthStatus } from '../../apis/types';
-import type { StatusText } from '../shared';
+import { isConnecting, type StatusText } from '../shared';
 
 /** How a person gets into a server, in the shell's words. */
 export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
@@ -60,7 +60,8 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
 
 /**
  * A row's state: for one server, this person's sign-in when muster reports one
- * that asks something of them, else the server's own state; for a family, how
+ * that asks something of them or a connect with their portal sign-in still
+ * under way, else the server's own state; for a family, how
  * many of its instances are healthy.
  */
 export function connectorStatus(
@@ -96,6 +97,9 @@ export function connectorStatus(
   }
   if (authStatus?.status === 'auth_required') {
     return { label: 'Sign in needed', tone: 'warning' };
+  }
+  if (authStatus && isConnecting(authStatus)) {
+    return { label: 'Connecting', tone: 'neutral' };
   }
   const state = server.getState();
   const severity = mcpServerStateSeverity(state);
@@ -156,6 +160,9 @@ export function connectorReach(
     authStatus?.status === 'auth_required'
   ) {
     return 'sign-in';
+  }
+  if (authStatus && isConnecting(authStatus)) {
+    return 'not-connected';
   }
   return mcpServerStateSeverity(server.getState()) === 'ok'
     ? 'connected'
