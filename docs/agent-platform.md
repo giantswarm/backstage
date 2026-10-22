@@ -373,14 +373,20 @@ a Technical details fold-out with the owning Helm release, the resource and
 the conditions with their reason and message), Usage (`…/usage`: the gateway's
 30-day figures and spend per day) and Used by (`…/used-by`, counted in the
 tab: the agents that use it with their spend on it). The former `…/details`
-address lands on Overview. A model agents cannot use yet says why at the top
-of Overview in plain words (`modelProblem`): what is wrong and what to do,
-from the reason kagent gives on the failed condition (a missing or incomplete
-key, an endpoint address it cannot find, settings it rejects, an unsupported
-provider, with a fallback per condition), offering Edit where the person may
-edit and naming whom to ask otherwise. Reasons, condition names and the
-controller's messages stay in Technical details, which open on arrival; the
-alert's Show conditions reopens them and scrolls them into view.
+address lands on Overview. The facts include the model's context window from
+`agentPlatform.models.contextWindows`, the window a session's context
+indicator uses; when the table names no window for the model, or only one
+whose value is not a number of tokens, an info note under the facts says so
+and whom to ask to set it. The note waits for the signed-in config, and a
+model without a model id gets none. A model agents cannot use
+yet says why at the top of Overview in plain words (`modelProblem`): what is
+wrong and what to do, from the reason kagent gives on the failed condition (a
+missing or incomplete key, an endpoint address it cannot find, settings it
+rejects, an unsupported provider, with a fallback per condition), offering
+Edit where the person may edit and naming whom to ask otherwise. Reasons,
+condition names and the controller's messages stay in Technical details,
+which open on arrival; the alert's Show conditions reopens them and scrolls
+them into view.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
 `EditModelPage` at `/customize/models/<installation>/<namespace>/<name>/edit`)
@@ -1487,7 +1493,12 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   installation reports late stays quietly unread. News raises a toast in the
   visible tab ("Open session"), none for the session on screen, and more than
   three at once are one toast (the Sessions list on its Waiting filter when they
-  all wait). A toast closes once its row goes or is read, or its page is opened.
+  all wait). Every inbox toast is a brief heads-up, not something to dismiss:
+  it goes on its own after 6 s (`INBOX_TOAST_TIMEOUT_MS`, what most of the
+  portal's toasts take; a failed turn's too), held while the pointer rests on
+  it, and sooner once its row goes or is read, or its page is opened. One
+  raised while the window is visible but not focused counts its 6 s from when
+  the window has the focus again. The bell keeps the row.
   The MCP sign-in row is news when a server starts to wait; fewer servers
   waiting only narrows it and raises nothing. Its toast's **Sign in**
   (`#mcp-sign-in`) opens it in place like its button, and so does its desktop

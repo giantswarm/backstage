@@ -1,4 +1,8 @@
-import { contextWindowFor, contextUsage } from './contextWindows';
+import {
+  contextWindowFor,
+  contextUsage,
+  lookUpContextWindow,
+} from './contextWindows';
 
 describe('contextWindowFor', () => {
   const table = {
@@ -46,6 +50,39 @@ describe('contextWindowFor', () => {
     // A dot in a pattern is a dot, not "any character".
     expect(contextWindowFor('gpt-4x1', { 'gpt-4.1': 1047576 })).toBeUndefined();
     expect(contextWindowFor('gpt-4.1', { 'gpt-4.1': 1047576 })).toBe(1047576);
+  });
+});
+
+describe('lookUpContextWindow', () => {
+  it('finds the window of the most specific usable pattern', () => {
+    expect(
+      lookUpContextWindow('claude-sonnet-4-5', {
+        'claude-*': 200000,
+        'claude-sonnet-*': '1M',
+      }),
+    ).toEqual({ kind: 'window', tokens: 200000 });
+  });
+
+  it('names the most specific pattern when only unusable entries match', () => {
+    expect(
+      lookUpContextWindow('claude-sonnet-4-5', {
+        'claude-*': 0,
+        'claude-sonnet-4-5': '200000',
+        'gpt-*': 400000,
+      }),
+    ).toEqual({ kind: 'invalid', pattern: 'claude-sonnet-4-5' });
+  });
+
+  it('finds nothing for a model no entry matches, or without a model or a table', () => {
+    expect(lookUpContextWindow('qwen3:0.6b', { 'claude-*': 1 })).toEqual({
+      kind: 'none',
+    });
+    expect(lookUpContextWindow(undefined, { '*': 1 })).toEqual({
+      kind: 'none',
+    });
+    expect(lookUpContextWindow('qwen3:0.6b', undefined)).toEqual({
+      kind: 'none',
+    });
   });
 });
 

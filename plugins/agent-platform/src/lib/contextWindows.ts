@@ -25,37 +25,68 @@ function matches(pattern: string, model: string): boolean {
 }
 
 /**
- * The configured context window for `model`, in tokens, or `undefined` when
- * the table does not name it.
+ * What the context-window table says about a model: its window; that only
+ * entries with an unusable value name it (`pattern` is the most specific of
+ * them), so the setting needs fixing rather than adding; or nothing.
+ */
+export type ContextWindowLookup =
+  | { kind: 'window'; tokens: number }
+  | { kind: 'invalid'; pattern: string }
+  | { kind: 'none' };
+
+/**
+ * Looks `model` up in the context-window table.
  *
  * When several patterns match, the most specific one wins — the one with the
  * most literal (non-`*`) characters — so `claude-sonnet-4-5*` beats `claude-*`
  * whatever order the config lists them in. Entries whose value is not a
  * positive finite number are ignored rather than trusted: the table is plain
- * config, and a typo must not produce a negative or `NaN` percentage.
+ * config, and a typo must not produce a negative or `NaN` percentage. A model
+ * only such entries match is `invalid`, so the page can say which to fix.
+ */
+export function lookUpContextWindow(
+  model: string | undefined,
+  windows: Record<string, unknown> | undefined,
+): ContextWindowLookup {
+  if (!model || !windows) {
+    return { kind: 'none' };
+  }
+
+  let best: { literals: number; tokens: number } | undefined;
+  let invalid: { literals: number; pattern: string } | undefined;
+  for (const [pattern, value] of Object.entries(windows)) {
+    if (!pattern || !matches(pattern, model)) {
+      continue;
+    }
+    const literals = pattern.replace(/\*/g, '').length;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      if (!invalid || literals > invalid.literals) {
+        invalid = { literals, pattern };
+      }
+      continue;
+    }
+    if (!best || literals > best.literals) {
+      best = { literals, tokens: value };
+    }
+  }
+  if (best) {
+    return { kind: 'window', tokens: best.tokens };
+  }
+  return invalid
+    ? { kind: 'invalid', pattern: invalid.pattern }
+    : { kind: 'none' };
+}
+
+/**
+ * The configured context window for `model`, in tokens, or `undefined` when
+ * the table does not name it with a usable value (`lookUpContextWindow`).
  */
 export function contextWindowFor(
   model: string | undefined,
   windows: Record<string, unknown> | undefined,
 ): number | undefined {
-  if (!model || !windows) {
-    return undefined;
-  }
-
-  let best: { literals: number; tokens: number } | undefined;
-  for (const [pattern, value] of Object.entries(windows)) {
-    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-      continue;
-    }
-    if (!pattern || !matches(pattern, model)) {
-      continue;
-    }
-    const literals = pattern.replace(/\*/g, '').length;
-    if (!best || literals > best.literals) {
-      best = { literals, tokens: value };
-    }
-  }
-  return best?.tokens;
+  const lookup = lookUpContextWindow(model, windows);
+  return lookup.kind === 'window' ? lookup.tokens : undefined;
 }
 
 /**
