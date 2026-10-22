@@ -9,7 +9,9 @@ from the
 to them as the signed-in person.
 
 What a deployment configures is in
-**[Agent Platform configuration](agent-platform-configuration.md)**.
+**[Agent Platform configuration](agent-platform-configuration.md)**. The file a
+session's Export session saves is described in
+**[Session export format](agent-platform-session-export.md)**.
 
 The first part of this page summarises the product. The second part, from
 "Overview of the create flow" on, is the implementation reference.
@@ -1692,6 +1694,26 @@ own reads are invalidated with **`refetchType: 'none'`** and disabled, because
 a refetch would race the navigation and flash "Session not found". Success
 returns to the list with a toast; failure keeps the dialog open with the
 message.
+
+### Exporting a session
+
+`useExportSession`, the actions menu's **Export session** item, with a notice
+that the file holds everything the agent saw and is customer data. Always
+offered, also mid-turn and while the session waits on the person. The file and
+its caveats: [Session export format](agent-platform-session-export.md).
+
+No backend route of its own. `KagentApi.getRawSession` reads
+`GET /kagent/sessions/:sessionId` and then `GET /kagent/sessions/:sessionId/tasks`
+with the session's ordinary read token and returns both bodies untouched
+(`totalSize` and rows the timeline's normalizer would drop included). The
+session goes first: kagent's task listing answers 403 for a session that is
+not the caller's, the session read 404, and the person is told "not found".
+
+**Complete or nothing.** A `totalSize` larger than the tasks returned (the
+route reads at most 1,000) saves no file and points to agent-manager's
+`get_session`; any failed read saves no file. The file is saved with
+`saveFile` (`lib/saveFile.ts`), the helper the manifest review's Download uses
+too.
 
 ### Continuing a session
 
