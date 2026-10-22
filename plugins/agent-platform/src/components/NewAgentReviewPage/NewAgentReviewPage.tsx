@@ -187,9 +187,14 @@ function CreateAgentReview() {
           },
         },
       });
+      // Created: the draft has done its job, and the next agent starts
+      // empty.
+      discardDraft();
+    } else {
+      // Nowhere to go: the page stays, with the form under the outcome, and
+      // only the kept draft goes.
+      clearSavedDraft();
     }
-    // Created: the draft has done its job, and the next agent starts empty.
-    discardDraft();
   }, [
     creation,
     spec,
@@ -198,6 +203,7 @@ function CreateAgentReview() {
     namespace,
     navigate,
     discardDraft,
+    clearSavedDraft,
   ]);
 
   const onCommit = useCallback(async () => {

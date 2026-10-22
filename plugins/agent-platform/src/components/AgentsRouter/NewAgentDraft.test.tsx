@@ -47,6 +47,10 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     isLoading: false,
   }),
 }));
+let mockAgentManagerInfo: {
+  info?: { namespaces: { managed: string[] } };
+  isLoading: boolean;
+} = { isLoading: false };
 // alpha is offered; beta's muster could not be read, so the card says so and
 // links to signing in there.
 jest.mock('../../hooks/useAgentManager', () => ({
@@ -59,6 +63,8 @@ jest.mock('../../hooks/useAgentManager', () => ({
     isUnavailable: false,
     recheck: () => Promise.resolve(),
   }),
+  // By default agent-manager does not answer: no tenant to check.
+  useAgentManagerInfo: () => mockAgentManagerInfo,
 }));
 jest.mock('../ModelConfigPicker', () => ({ ModelConfigPicker: () => null }));
 jest.mock('../TenantPicker', () => ({ TenantPicker: () => null }));
@@ -73,9 +79,16 @@ jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
 let toolsStepNames: string[] = [];
 jest.mock('../NewAgentToolsPage', () => ({
   NewAgentToolsPage: function MockToolsStep() {
+    const { AgentWizardFrame } = jest.requireActual('../AgentWizardFrame');
     const { state } = useNewAgentForm();
     toolsStepNames.push(state.name);
-    return <p>{`tools step for "${state.name}"`}</p>;
+    return (
+      <AgentWizardFrame step="tools">
+        <p>{`tools step for "${state.name}" in ${
+          state.tenant ?? 'no tenant'
+        }`}</p>
+      </AgentWizardFrame>
+    );
   },
 }));
 
@@ -106,7 +119,39 @@ const nameField = () => screen.findByLabelText(/^Name/);
 beforeEach(() => {
   window.sessionStorage.clear();
   toolsStepNames = [];
+  mockAgentManagerInfo = { isLoading: false };
 });
+
+/** A draft of a complete form in tenant `team-a`, as an earlier visit kept it. */
+function keepCompleteDraft() {
+  window.sessionStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      version: 1,
+      value: {
+        state: {
+          name: 'Support triage',
+          slug: 'support-triage',
+          description: '',
+          installation: 'alpha',
+          tenant: 'team-a',
+          modelConfigName: 'default',
+          modelConfigNamespace: 'team-a',
+          systemMessage: '',
+          egressText: '',
+          defaultWorkspace: '',
+          selectedSkills: [],
+          keptSkills: [],
+          selectedPlugins: [],
+          keptPlugins: [],
+          toolset: [],
+          toolsChatOnly: true,
+        },
+        slugEdited: false,
+      },
+    }),
+  );
+}
 
 describe('the new-agent draft', () => {
   it('keeps the input when a link in the environment card is followed', async () => {
@@ -161,13 +206,30 @@ describe('the new-agent draft', () => {
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
+  it('closes the note once the person moves on to another step', async () => {
+    keepCompleteDraft();
+    await renderFlow('/customize/agents/new/tools');
+    expect(await screen.findByText('Your draft is back')).toBeInTheDocument();
+
+    await userEvent.click(
+      within(screen.getByRole('list', { name: 'Steps' })).getByRole('link', {
+        name: /Details/,
+      }),
+    );
+
+    expect(await nameField()).toHaveValue('Support triage');
+    expect(screen.queryByText('Your draft is back')).not.toBeInTheDocument();
+  });
+
   it('keeps the draft when its note is closed', async () => {
     const { unmount } = await renderFlow();
     await userEvent.type(await nameField(), 'Support triage');
     unmount();
 
     await renderFlow();
-    await userEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Close draft note' }),
+    );
 
     expect(screen.queryByText('Your draft is back')).not.toBeInTheDocument();
     expect(await nameField()).toHaveValue('Support triage');
@@ -184,9 +246,32 @@ describe('the new-agent draft', () => {
     await renderFlow('/customize/agents/new/tools');
 
     expect(
-      await screen.findByText('tools step for "Support triage"'),
+      await screen.findByText(/^tools step for "Support triage"/),
     ).toBeInTheDocument();
     expect(toolsStepNames).not.toContain('');
+  });
+
+  it('checks a restored tenant again on a later step, and waits for the answer', async () => {
+    keepCompleteDraft();
+    mockAgentManagerInfo = { isLoading: true };
+    const { unmount } = await renderFlow('/customize/agents/new/tools');
+
+    expect(
+      await screen.findByRole('progressbar', { name: 'Loading your draft…' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^tools step/)).not.toBeInTheDocument();
+    unmount();
+
+    // team-a is no longer one the person may create in: the tenant goes, so
+    // the form is incomplete again (the real step then sends them to Details).
+    mockAgentManagerInfo = {
+      isLoading: false,
+      info: { namespaces: { managed: ['team-b', 'team-c'] } },
+    };
+    await renderFlow('/customize/agents/new/tools');
+    expect(
+      await screen.findByText('tools step for "Support triage" in no tenant'),
+    ).toBeInTheDocument();
   });
 
   it('drops the draft when the person discards their changes', async () => {

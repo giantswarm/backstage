@@ -45,7 +45,6 @@ export * from './MoreActionsMenu';
 export * from './MoreOptions';
 export * from './MultiplePicker';
 export * from './MultipleSelect';
-export * from './NewTabLink';
 export * from './NotAvailable';
 export * from './PageHeaderActions';
 export * from './PageSection';

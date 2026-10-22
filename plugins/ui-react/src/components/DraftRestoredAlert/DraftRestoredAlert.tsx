@@ -65,7 +65,8 @@ export function DraftRestoredAlert({
             variant="tertiary"
             size="small"
             icon={<CloseIcon fontSize="small" />}
-            aria-label="Close"
+            // Not just "Close": the wizard frame's own Close leaves the form.
+            aria-label="Close draft note"
             onPress={onDismiss}
           />
         }

@@ -1,15 +1,12 @@
-import { MemoryRouter } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
-import { NewTabLink } from './NewTabLink';
+import { ExternalLink } from './ExternalLink';
 
-describe('NewTabLink', () => {
+describe('ExternalLink', () => {
   it('opens in a new tab and says so to a screen reader', () => {
     render(
-      <MemoryRouter>
-        <NewTabLink href="/customize/connectors?installation=beta">
-          Sign in to muster
-        </NewTabLink>
-      </MemoryRouter>,
+      <ExternalLink href="/customize/connectors?installation=beta">
+        Sign in to muster
+      </ExternalLink>,
     );
 
     const link = screen.getByRole('link', {

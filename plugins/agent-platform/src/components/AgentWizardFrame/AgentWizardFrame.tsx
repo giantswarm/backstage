@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   DraftRestoredAlert,
@@ -97,8 +97,9 @@ export function useAgentWizardLinks(): AgentWizardLinks {
  * or a link followed in the same tab is not asked about (blocking in-app
  * navigation needs a router blocker, which the app does not have, R2-6):
  * creating keeps a draft instead (`NewAgentFormProvider`'s `persistDraft`),
- * and the form comes back with it, saying so on the step it reopens on, with
- * a way to start over. Discarding drops the draft.
+ * and the form comes back with it, saying so on the step it reopens on (the
+ * note closes once the person moves to another step), with a way to start
+ * over. Discarding drops the draft.
  */
 export function AgentWizardFrame({
   step,
@@ -120,8 +121,34 @@ export function AgentWizardFrame({
   children: ReactNode;
 }) {
   const links = useAgentWizardLinks();
-  const { edit, isDirty, isDraftRestored, dismissDraftNotice, discardDraft } =
-    useNewAgentForm();
+  const {
+    edit,
+    isDirty,
+    isDraftRestored,
+    draftNoticeStep,
+    claimDraftNotice,
+    dismissDraftNotice,
+    discardDraft,
+  } = useNewAgentForm();
+  // The note about a restored draft belongs to the step the form reopened on:
+  // moving on to another one closes it.
+  useEffect(() => {
+    if (!isDraftRestored) {
+      return;
+    }
+    if (draftNoticeStep === undefined) {
+      claimDraftNotice(step);
+    } else if (draftNoticeStep !== step) {
+      dismissDraftNotice();
+    }
+  }, [
+    isDraftRestored,
+    draftNoticeStep,
+    step,
+    claimDraftNotice,
+    dismissDraftNotice,
+  ]);
+  const showDraftNotice = isDraftRestored && (draftNoticeStep ?? step) === step;
   const createCloseHref = useAgentWizardCloseHref();
   const closeHref = edit
     ? (edit.detailHref ?? createCloseHref)
@@ -159,9 +186,9 @@ export function AgentWizardFrame({
       width="wide"
       rail={rail}
     >
-      {isDraftRestored && (
+      {showDraftNotice && (
         <DraftRestoredAlert
-          keptUntil="It is kept in this browser tab until you create the agent or discard it."
+          keptUntil="It is kept in this browser tab until you create the agent, propose it as a pull request, or discard it."
           onStartOver={discardDraft}
           onDismiss={dismissDraftNotice}
         />

@@ -40,7 +40,9 @@ jest.mock('../NewAgentFormProvider', () => ({
   NewAgentFormProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
-  useNewAgentForm: () => ({ isDraftLoaded: true }),
+}));
+jest.mock('../NewAgentStep', () => ({
+  NewAgentStep: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 function LocationProbe() {

@@ -50,7 +50,10 @@ function render(name: string | null = NAME, user: string = ALICE) {
       {children}
     </TestApiProvider>
   );
-  return renderHook(() => useForm(name ?? undefined), { wrapper });
+  return renderHook(
+    (props: { name: string | undefined }) => useForm(props.name),
+    { wrapper, initialProps: { name: name ?? undefined } },
+  );
 }
 
 function stored(user = ALICE) {
@@ -93,7 +96,7 @@ describe('useSessionDraft', () => {
     expect(stored()).toEqual({ version: 1, value: { text: 'half a form' } });
   });
 
-  it("keeps people apart: another person's draft is not restored", async () => {
+  it("keeps people apart: another person's draft is neither restored nor kept", async () => {
     window.sessionStorage.setItem(
       sessionDraftStorageKey(NAME, ALICE),
       JSON.stringify({ version: 1, value: { text: "alice's" } }),
@@ -104,7 +107,8 @@ describe('useSessionDraft', () => {
 
     expect(result.current.text).toBe('');
     expect(result.current.wasRestored).toBe(false);
-    expect(stored(ALICE)).toEqual({ version: 1, value: { text: "alice's" } });
+    // Left in the tab by whoever used it before: not Bob's to read.
+    expect(stored(ALICE)).toBeNull();
   });
 
   it('drops a draft of another version instead of restoring it', async () => {
@@ -121,15 +125,57 @@ describe('useSessionDraft', () => {
   });
 
   it('clears the stored draft and stores the next change again', async () => {
-    const { result } = render();
+    const { result, rerender } = render();
     await waitFor(() => expect(result.current.isLoaded).toBe(true));
     act(() => result.current.setText('sent'));
 
     act(() => result.current.clear());
     expect(stored()).toBeNull();
+    // The form still holds the sent value, as an inline object each render:
+    // a render does not store it again.
+    rerender({ name: NAME });
+    expect(stored()).toBeNull();
 
     act(() => result.current.setText('sent, then changed'));
     expect(stored()?.value).toEqual({ text: 'sent, then changed' });
+  });
+
+  it('says it restored a draft until the note is closed or the draft cleared', async () => {
+    window.sessionStorage.setItem(
+      sessionDraftStorageKey(NAME, ALICE),
+      JSON.stringify({ version: 1, value: { text: 'kept' } }),
+    );
+    const first = render();
+    await waitFor(() => expect(first.result.current.wasRestored).toBe(true));
+    act(() => first.result.current.dismissRestored());
+    expect(first.result.current.wasRestored).toBe(false);
+    expect(stored()?.value).toEqual({ text: 'kept' });
+    first.unmount();
+
+    const second = render();
+    await waitFor(() => expect(second.result.current.wasRestored).toBe(true));
+    act(() => second.result.current.clear());
+    expect(second.result.current.wasRestored).toBe(false);
+  });
+
+  it('never writes one draft under the key of another', async () => {
+    const { result, rerender } = render();
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    rerender({ name: 'other-form' });
+    // Not loaded until the other draft is looked for.
+    expect(result.current.isLoaded).toBe(false);
+    act(() => result.current.setText('for the other form'));
+    expect(stored()).toBeNull();
+
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+    expect(
+      JSON.parse(
+        window.sessionStorage.getItem(
+          sessionDraftStorageKey('other-form', ALICE),
+        )!,
+      ).value,
+    ).toEqual({ text: 'for the other form' });
   });
 
   it('keeps nothing without a name', async () => {

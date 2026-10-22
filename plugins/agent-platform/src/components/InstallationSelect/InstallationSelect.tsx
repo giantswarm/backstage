@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   Alert,
   Button,
@@ -12,14 +19,14 @@ import { CircularProgress } from '@material-ui/core';
 import {
   joinNames,
   NAMED_IN_SENTENCE,
-  NewTabLink,
+  ExternalLink,
   searchableIf,
   SectionHeader,
   ShowMore,
   useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
-import { withInstallationQuery } from '@giantswarm/backstage-plugin-muster';
+import { withQuery } from '@giantswarm/backstage-plugin-muster';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
@@ -88,26 +95,23 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
  */
 function AgentManagerUnknownNote({
   installations,
+  isChecking,
   onRecheck,
 }: {
   installations: string[];
-  onRecheck: () => Promise<void>;
+  /** A Check again is reading the lists: the note stays, its button busy. */
+  isChecking: boolean;
+  onRecheck: () => void;
 }) {
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
-  const [isChecking, setChecking] = useState(false);
   const signInHref = serversRoute
-    ? (installation: string) =>
-        withInstallationQuery(serversRoute(), installation) ?? serversRoute()
+    ? (installation: string) => withQuery(serversRoute(), { installation })
     : undefined;
   if (installations.length === 0) {
     return null;
   }
   const list = joinNames(installations);
   const isOne = installations.length === 1;
-  const recheck = () => {
-    setChecking(true);
-    onRecheck().finally(() => setChecking(false));
-  };
   // `info`, not `warning`: not being signed in to some installations' muster
   // is an expected state, not something broken.
   return (
@@ -140,15 +144,14 @@ function AgentManagerUnknownNote({
               {visible => (
                 <Flex gap="3" style={{ flexWrap: 'wrap' }}>
                   {visible.map(installation => (
-                    <NewTabLink
+                    <ExternalLink
                       key={installation}
                       href={signInHref(installation)}
-                      variant="body-small"
                     >
                       {isOne
                         ? 'Sign in to muster'
                         : `Sign in to muster on ${installation}`}
-                    </NewTabLink>
+                    </ExternalLink>
                   ))}
                 </Flex>
               )}
@@ -158,7 +161,7 @@ function AgentManagerUnknownNote({
             size="small"
             variant="secondary"
             isPending={isChecking}
-            onPress={recheck}
+            onPress={onRecheck}
           >
             Check again
           </Button>
@@ -235,7 +238,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   // Installations whose server list read failed: no answer either way, so they
   // are neither offered nor covered by the no-agent-manager note. Only known
   // once the reads have settled (a read in flight is `unknown` too).
-  const agentManagerUnknown = useMemo(
+  const settledUnknown = useMemo(
     () =>
       agentManager.isLoading || agentManager.isUnavailable
         ? []
@@ -244,6 +247,17 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
           ),
     [availableInstallations, agentManager],
   );
+  // The installations a Check again is reading anew. A failed read refetched
+  // is pending again (it has no data to keep), so without this the note --
+  // with the button just pressed -- and the card's settled state would drop
+  // out until the reads answer; the note stays as it was instead.
+  const [rechecking, setRechecking] = useState<string[]>();
+  const agentManagerUnknown = rechecking ?? settledUnknown;
+  const { recheck } = agentManager;
+  const recheckUnknown = useCallback(() => {
+    setRechecking(settledUnknown);
+    recheck().finally(() => setRechecking(undefined));
+  }, [recheck, settledUnknown]);
 
   // The sole installation on a single-management-cluster instance: there is
   // nothing to choose, so pick it for the user instead of offering a one-option
@@ -253,7 +267,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
     !isLoadingInstallations && installations.length === 1
       ? installations[0].name
       : undefined;
-  const isSettling = isLoading || agentManager.isLoading;
+  const isSettling = isLoading || (agentManager.isLoading && !rechecking);
   // Latched: `isLoading` includes the inventory's probing, which turns true
   // again on a cluster-access reconnect, and the sole-option line must not
   // flip back to a dropdown and forth each time.
@@ -363,7 +377,8 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
       />
       <AgentManagerUnknownNote
         installations={agentManagerUnknown}
-        onRecheck={agentManager.recheck}
+        isChecking={rechecking !== undefined}
+        onRecheck={recheckUnknown}
       />
     </>
   );

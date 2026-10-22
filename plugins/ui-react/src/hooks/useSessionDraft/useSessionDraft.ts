@@ -36,12 +36,9 @@ function readDraft(key: string, version: number): unknown {
   return undefined;
 }
 
-function writeDraft(key: string, version: number, value: unknown): void {
+function writeDraft(key: string, serialized: string): void {
   try {
-    window.sessionStorage.setItem(
-      key,
-      JSON.stringify({ version, value } satisfies StoredDraft),
-    );
+    window.sessionStorage.setItem(key, serialized);
   } catch {
     // Storage blocked or full: the form works on, without a draft.
   }
@@ -50,6 +47,22 @@ function writeDraft(key: string, version: number, value: unknown): void {
 function removeDraft(key: string): void {
   try {
     window.sessionStorage.removeItem(key);
+  } catch {
+    // Storage blocked: there is nothing stored either.
+  }
+}
+
+/**
+ * Removes every draft but `person`'s: one left by whoever used this tab
+ * before (a sign-out does not clear the tab's storage) is not theirs to read.
+ */
+function removeOthersDrafts(person: string): void {
+  try {
+    Object.keys(window.sessionStorage)
+      .filter(
+        key => key.startsWith(`${KEY_PREFIX}:`) && !key.endsWith(`:${person}`),
+      )
+      .forEach(key => window.sessionStorage.removeItem(key));
   } catch {
     // Storage blocked: there is nothing stored either.
   }
@@ -64,7 +77,8 @@ export type UseSessionDraftOptions<T> = {
   name: string | undefined;
   /**
    * What to keep: plain JSON data only, and never a secret or a token. It is
-   * written on every change while {@link isDirty}.
+   * compared serialized, so an inline object is fine: storage is written only
+   * when the content changes while {@link isDirty}.
    */
   value: T;
   /**
@@ -92,29 +106,44 @@ export type SessionDraft = {
    * waits for this, so a reload on a later step stays there.
    */
   isLoaded: boolean;
-  /** A stored draft was found and handed to `onRestore`. */
-  wasRestored: boolean;
   /**
-   * Removes the stored draft (after a successful submit, or a discard). The
-   * next change of the value is kept again, as new work.
+   * A stored draft was found and handed to `onRestore`, and neither `clear`
+   * nor `dismissRestored` has run since: while true, show
+   * `DraftRestoredAlert`.
+   */
+  wasRestored: boolean;
+  /** The person closed the note about the restored draft; the draft stays. */
+  dismissRestored: () => void;
+  /**
+   * Removes the stored draft (after a successful submit, or a discard) and
+   * ends `wasRestored`. The value as it is now is not stored again; its next
+   * change is, as new work.
    */
   clear: () => void;
 };
 
-type Loaded = { key: string | undefined; restored: boolean };
+type Loaded = {
+  /** The `name` and `version` it was loaded for (see `draftTag`). */
+  tag: string;
+  key: string | undefined;
+  restored: boolean;
+};
 
-const NO_DRAFT: Loaded = { key: undefined, restored: false };
+const draftTag = (name: string, version: number) => `${name}@${version}`;
 
 /**
  * Keeps a form's draft in the tab's `sessionStorage`, per person, and hands
  * it back when the form mounts again: after a reload, a sign-in redirect, the
  * browser's Back, or a link followed in the same tab. `sessionStorage` is the
  * tab's own, so two tabs never share a draft, and it goes with the tab; the
- * person's entity ref in the key keeps two people on one browser apart.
+ * person's entity ref in the key keeps two people on one browser apart, and a
+ * draft of anyone else's is removed when one loads.
  *
- * The form owns its state and passes it in; this hook only stores and
- * restores it. It does not tell the person: show `DraftRestoredAlert` while
- * `wasRestored`, with a way to start over that calls `clear`.
+ * The form owns its state and passes it in; this hook stores and restores it
+ * and says whether it restored one. It does not tell the person: show
+ * `DraftRestoredAlert` while `wasRestored`, its close calling
+ * `dismissRestored` and its Start over calling `clear` (and emptying the
+ * form).
  */
 export function useSessionDraft<T>({
   name,
@@ -124,15 +153,14 @@ export function useSessionDraft<T>({
   onRestore,
 }: UseSessionDraftOptions<T>): SessionDraft {
   const identityApi = useApi(identityApiRef);
-  const [loaded, setLoaded] = useState<Loaded | undefined>(
-    name ? undefined : NO_DRAFT,
-  );
+  const [loaded, setLoaded] = useState<Loaded>();
+  const [isRestoredShown, setRestoredShown] = useState(false);
   const onRestoreRef = useRef(onRestore);
   onRestoreRef.current = onRestore;
+  const tag = name ? draftTag(name, version) : undefined;
 
   useEffect(() => {
-    if (!name) {
-      setLoaded(NO_DRAFT);
+    if (!name || !tag) {
       return undefined;
     }
     let cancelled = false;
@@ -147,43 +175,67 @@ export function useSessionDraft<T>({
           return;
         }
         // Without a person there is no key that keeps people apart: no draft.
-        const key = userEntityRef
-          ? sessionDraftStorageKey(name, userEntityRef)
-          : undefined;
-        const stored = key ? readDraft(key, version) : undefined;
+        let key: string | undefined;
+        let stored: unknown;
+        if (userEntityRef) {
+          removeOthersDrafts(userEntityRef);
+          key = sessionDraftStorageKey(name, userEntityRef);
+          stored = readDraft(key, version);
+        }
         if (stored !== undefined) {
           onRestoreRef.current(stored as T);
         }
-        setLoaded({ key, restored: stored !== undefined });
+        setLoaded({ tag, key, restored: stored !== undefined });
+        setRestoredShown(stored !== undefined);
       });
     return () => {
       cancelled = true;
     };
-  }, [identityApi, name, version]);
+  }, [identityApi, name, version, tag]);
 
-  const key = loaded?.key;
+  // Only what was loaded for this name and version: after a change of either,
+  // the old key is neither written nor counted as loaded.
+  const current = tag && loaded?.tag === tag ? loaded : undefined;
+  const key = current?.key;
+  const serialized = isDirty ? JSON.stringify({ version, value }) : '';
+  // What storage holds for `key` as far as this hook knows, so an unchanged
+  // value is not written again: not on every render, and not after `clear`.
+  const lastWritten = useRef<{ key: string; serialized: string }>();
+  const serializedRef = useRef(serialized);
+  serializedRef.current = serialized;
+
   // Not before the stored draft is read: the form's first, empty value would
   // remove it.
   useEffect(() => {
     if (!key) {
       return;
     }
-    if (isDirty) {
-      writeDraft(key, version, value);
+    const last = lastWritten.current;
+    if (last?.key === key && last.serialized === serialized) {
+      return;
+    }
+    lastWritten.current = { key, serialized };
+    if (serialized) {
+      writeDraft(key, serialized);
     } else {
       removeDraft(key);
     }
-  }, [key, version, value, isDirty]);
+  }, [key, serialized]);
 
   const clear = useCallback(() => {
     if (key) {
       removeDraft(key);
+      // The value as it is now counts as handled; its next change is stored.
+      lastWritten.current = { key, serialized: serializedRef.current };
     }
+    setRestoredShown(false);
   }, [key]);
+  const dismissRestored = useCallback(() => setRestoredShown(false), []);
 
   return {
-    isLoaded: loaded !== undefined,
-    wasRestored: loaded?.restored ?? false,
+    isLoaded: !name || current !== undefined,
+    wasRestored: Boolean(current) && isRestoredShown,
+    dismissRestored,
     clear,
   };
 }

@@ -49,7 +49,9 @@ describe('DraftRestoredAlert', () => {
   it('closes without discarding', async () => {
     const { onStartOver, onDismiss } = renderAlert();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Close draft note' }),
+    );
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
     expect(onStartOver).not.toHaveBeenCalled();

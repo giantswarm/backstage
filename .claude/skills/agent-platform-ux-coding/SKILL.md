@@ -261,7 +261,7 @@ them and never invent a palette.
   `sessionStorage`; never a secret or a token), shows `DraftRestoredAlert`
   when it comes back with one, and drops it on submit and in `WizardFrame`'s
   `onDiscard`. The new-agent wizard does; see `NewAgentFormProvider`.
-- A link inside a form opens in a new tab and says so: `NewTabLink`.
+- A link inside a form opens in a new tab and says so: `ExternalLink`.
 - Hand-off naming contract (`MetaAgentBanner`):
   - "Let X help" opens a side chat and keeps the form; nothing is sent.
   - "Ask X …" opens New session with X preselected; nothing starts.

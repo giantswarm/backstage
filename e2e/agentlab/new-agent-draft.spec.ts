@@ -3,6 +3,7 @@ import {
   expect,
   expectWizardStep,
   open,
+  openWizardMoreOptions,
   reloadAccepting,
   test,
 } from './fixtures';
@@ -40,8 +41,15 @@ test('the New agent form comes back with its draft, and starts over on request',
   await expect(field(admin, 'What is it for?')).toHaveValue(DESCRIPTION);
   await expect(draftNote(admin)).toBeVisible();
 
-  // Leaving through the shell's own navigation, then the browser's Back.
-  await open(admin, '/sessions');
+  // Leaving through the shell's own navigation -- the app routes away in the
+  // same document, so the wizard and its form unmount -- then the browser's
+  // Back, which routes to the form again.
+  await admin
+    .getByRole('navigation', { name: 'Main', exact: true })
+    .getByRole('link', { name: 'Usage', exact: true })
+    .click();
+  await expect(admin).toHaveURL(/\/usage/);
+  await expect(field(admin, 'Name')).toHaveCount(0);
   await admin.goBack();
   await expectWizardStep(admin, 'Details');
   await expect(field(admin, 'Name')).toHaveValue(NAME);
@@ -66,10 +74,7 @@ test('every link inside the New agent form opens in a new tab', async ({
 }) => {
   await open(admin, '/customize/agents/new');
   await expectWizardStep(admin, 'Details');
-  await admin
-    .locator('summary')
-    .filter({ hasText: /^More options/ })
-    .click();
+  await openWizardMoreOptions(admin);
 
   // The step's own content: the frame's Close, step strip and Cancel stay
   // inside the flow (or ask before leaving it), so they are not counted.

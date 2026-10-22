@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InstallationSelect } from './InstallationSelect';
 
@@ -415,8 +415,17 @@ describe('InstallationSelect', () => {
       expect(mockSetInstallation).not.toHaveBeenCalled();
     });
 
-    it('reads the server lists again on Check again, once signed in elsewhere', async () => {
+    it('reads the server lists again on Check again, keeping the note while it does', async () => {
       mockPresence = { alpha: 'available', beta: 'unknown' };
+      // The refetched read has no data: it is pending again, so the hook
+      // reports loading until it answers.
+      let settle = () => {};
+      mockRecheck.mockImplementationOnce(() => {
+        mockAgentManagerLoading = true;
+        return new Promise<void>(resolve => {
+          settle = resolve;
+        });
+      });
 
       render(<InstallationSelect />);
       await userEvent.click(
@@ -424,6 +433,22 @@ describe('InstallationSelect', () => {
       );
 
       expect(mockRecheck).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByText('Could not check beta for agent-manager'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Check again/ })).toHaveFocus();
+      expect(
+        screen.queryByText('Still checking the remaining environments…'),
+      ).not.toBeInTheDocument();
+
+      // Signed in meanwhile: beta answers with agent-manager.
+      mockAgentManagerLoading = false;
+      mockPresence = { alpha: 'available', beta: 'available' };
+      await act(async () => settle());
+
+      expect(
+        screen.queryByText('Could not check beta for agent-manager'),
+      ).not.toBeInTheDocument();
     });
 
     it('keeps the picker while the server lists are still being read', () => {

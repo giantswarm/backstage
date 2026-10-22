@@ -218,9 +218,17 @@ export type NewAgentFormContextValue = {
   isDraftLoaded: boolean;
   /**
    * The form came back with a kept draft and the person has neither started
-   * over nor closed the note that says so.
+   * over nor closed the note that says so, nor moved on from the step it
+   * showed on.
    */
   isDraftRestored: boolean;
+  /**
+   * The wizard step the note about the restored draft showed on, once a step
+   * claimed it (`claimDraftNotice`): another step closes it instead.
+   */
+  draftNoticeStep: string | undefined;
+  /** Records the step the note shows on; the first claim stands. */
+  claimDraftNotice: (step: string) => void;
   /** Closes the note about the restored draft; the draft stays. */
   dismissDraftNotice: () => void;
   /**
@@ -392,7 +400,7 @@ export function NewAgentFormProvider({
   // The slug auto-derives from the name until the user edits it by hand — and
   // never while editing: an existing agent's technical name cannot change.
   const [slugEdited, setSlugEdited] = useState(Boolean(edit));
-  const [isDraftNoticeOpen, setDraftNoticeOpen] = useState(false);
+  const [draftNoticeStep, setDraftNoticeStep] = useState<string>();
 
   const isDirtyCreate = !edit && hasCreateInput(state);
   const draftValue = useMemo<NewAgentDraft>(() => {
@@ -402,7 +410,6 @@ export function NewAgentFormProvider({
   const onRestore = useCallback((draft: NewAgentDraft) => {
     setState({ ...initialState, ...draft.state, tenantChoices: undefined });
     setSlugEdited(draft.slugEdited);
-    setDraftNoticeOpen(true);
   }, []);
   const draft = useSessionDraft<NewAgentDraft>({
     name: persistDraft && !edit ? NEW_AGENT_DRAFT_NAME : undefined,
@@ -411,7 +418,12 @@ export function NewAgentFormProvider({
     version: DRAFT_VERSION,
     onRestore,
   });
-  const { clear: clearDraft, isLoaded: isDraftLoaded } = draft;
+  const {
+    clear: clearDraft,
+    isLoaded: isDraftLoaded,
+    wasRestored: isDraftRestored,
+    dismissRestored: dismissDraftNotice,
+  } = draft;
 
   const value = useMemo<NewAgentFormContextValue>(() => {
     // An empty system prompt is valid: the chart ships a default
@@ -643,11 +655,13 @@ export function NewAgentFormProvider({
         })),
       reset,
       isDraftLoaded,
-      isDraftRestored: isDraftNoticeOpen,
-      dismissDraftNotice: () => setDraftNoticeOpen(false),
+      isDraftRestored,
+      draftNoticeStep,
+      claimDraftNotice: step =>
+        setDraftNoticeStep(prev => (prev === undefined ? step : prev)),
+      dismissDraftNotice,
       discardDraft: () => {
         clearDraft();
-        setDraftNoticeOpen(false);
         reset();
       },
       clearSavedDraft: clearDraft,
@@ -663,7 +677,9 @@ export function NewAgentFormProvider({
     seed,
     isDirtyCreate,
     isDraftLoaded,
-    isDraftNoticeOpen,
+    isDraftRestored,
+    draftNoticeStep,
+    dismissDraftNotice,
     clearDraft,
   ]);
 

@@ -3,7 +3,7 @@ import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   FieldErrorText,
-  NewTabLink,
+  ExternalLink,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { newModelRouteRef } from '../../routes';
@@ -182,10 +182,8 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
           {newModelLink && (
             <Text variant="body-small" color="secondary">
               Platform admins can{' '}
-              <NewTabLink href={newModelLink()} variant="body-small">
-                add a model
-              </NewTabLink>{' '}
-              in the Models tab.
+              <ExternalLink href={newModelLink()}>add a model</ExternalLink> in
+              the Models tab.
             </Text>
           )}
         </>

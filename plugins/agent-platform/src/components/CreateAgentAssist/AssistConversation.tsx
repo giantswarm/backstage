@@ -4,7 +4,7 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { AWAITING_INPUT_STATES } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { NewTabLink } from '@giantswarm/backstage-plugin-ui-react';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
@@ -279,9 +279,9 @@ export function AssistConversation({
           <Text variant="body-small" color="secondary">
             Everything here is an ordinary session —{' '}
             {/* A new tab, like every link in the form: it stays as it is. */}
-            <NewTabLink href={fullSessionHref} variant="body-small">
+            <ExternalLink href={fullSessionHref}>
               open it in full
-            </NewTabLink>{' '}
+            </ExternalLink>{' '}
             for details and history.
           </Text>
         )}

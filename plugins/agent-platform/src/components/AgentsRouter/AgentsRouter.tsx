@@ -3,7 +3,8 @@ import { Navigate, Routes, Route, useParams } from 'react-router-dom';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
-import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
+import { NewAgentFormProvider } from '../NewAgentFormProvider';
+import { NewAgentStep } from '../NewAgentStep';
 import { AgentDetailPage } from '../AgentDetailPage';
 import { EditAgentPage } from '../EditAgentPage';
 import { NewAgentPage } from '../NewAgentPage';
@@ -26,15 +27,6 @@ function AgentRoute({ children }: { children: ReactNode }) {
     return <RouteRefRedirect routeRef={newAgentRouteRef} />;
   }
   return <>{children}</>;
-}
-
-/**
- * A create step, once the kept draft is in: a reload on a later step would
- * otherwise meet an empty form and be sent back to the first one.
- */
-function CreateStep({ children }: { children: ReactNode }) {
-  const { isDraftLoaded } = useNewAgentForm();
-  return isDraftLoaded ? <>{children}</> : null;
 }
 
 // Content of the Customize screen's Agents tab below its list: one agent's
@@ -71,33 +63,33 @@ export const AgentsRouter = () => {
           <Route
             path="new"
             element={
-              <CreateStep>
+              <NewAgentStep>
                 <NewAgentPage />
-              </CreateStep>
+              </NewAgentStep>
             }
           />
           <Route
             path="new/skills"
             element={
-              <CreateStep>
+              <NewAgentStep>
                 <NewAgentSkillsPage />
-              </CreateStep>
+              </NewAgentStep>
             }
           />
           <Route
             path="new/tools"
             element={
-              <CreateStep>
+              <NewAgentStep>
                 <NewAgentToolsPage />
-              </CreateStep>
+              </NewAgentStep>
             }
           />
           <Route
             path="new/review"
             element={
-              <CreateStep>
+              <NewAgentStep>
                 <NewAgentReviewPage />
-              </CreateStep>
+              </NewAgentStep>
             }
           />
           <Route path="new/*" element={<Navigate to="." replace />} />

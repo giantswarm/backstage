@@ -14,5 +14,6 @@ environment it could not check means for the agent being created, and **Check
 again** reads it anew after signing in to muster there.
 
 ui-react adds `useSessionDraft`, which keeps a form's draft in the tab's
-`sessionStorage` per person, `DraftRestoredAlert`, `NewTabLink`, and
-`WizardFrame`'s `onDiscard`.
+`sessionStorage` per person, `DraftRestoredAlert` and `WizardFrame`'s
+`onDiscard`. `ExternalLink` now tells screen readers that it opens in a new
+tab.
