@@ -156,6 +156,56 @@ jest.mock('../../hooks/useSessionEgressRefusals', () => ({
   useSessionEgressRefusals: () => [],
 }));
 
+// The person's ChatGPT connection: it reads a ModelConfig and muster, neither
+// mounted here. Idle (no ChatGPT model) unless a test says otherwise.
+// A store, so a test can connect the person while the page is mounted.
+const mockUseChatGptConnection = jest.fn();
+const mockChatGptListeners = new Set<() => void>();
+function setChatGpt(value: unknown) {
+  mockUseChatGptConnection.mockReturnValue(value);
+  act(() => mockChatGptListeners.forEach(listener => listener()));
+}
+jest.mock('../../hooks/useChatGptConnection', () => {
+  const { useSyncExternalStore } = jest.requireActual('react');
+  return {
+    ...jest.requireActual('../../hooks/useChatGptConnection'),
+    useChatGptConnection: () =>
+      useSyncExternalStore(
+        (listener: () => void) => {
+          mockChatGptListeners.add(listener);
+          return () => mockChatGptListeners.delete(listener);
+        },
+        () => mockUseChatGptConnection(),
+      ),
+  };
+});
+const NO_CHATGPT = {
+  isPersonalModel: false,
+  blocksTurn: false,
+  isLoading: false,
+};
+const CHATGPT_NOT_CONNECTED = {
+  isPersonalModel: true,
+  blocksTurn: true,
+  isLoading: false,
+};
+const CHATGPT_CONNECTED = {
+  isPersonalModel: true,
+  blocksTurn: false,
+  isLoading: false,
+};
+
+// The ChatGPT row's dialog reads muster, which is not mounted: its props are
+// what matters here.
+const mockChatGptDialog = jest.fn();
+jest.mock('../ChatGptConnectPrompt', () => ({
+  ...jest.requireActual('../ChatGptConnectPrompt'),
+  ChatGptConnectDialog: (props: unknown) => {
+    mockChatGptDialog(props);
+    return null;
+  },
+}));
+
 // Stubbed for the same reason as the mutations above: no query client is mounted.
 const mockSendMessage = jest.fn();
 const mockUseSendMessage = jest.fn<UseSendMessageResult, []>();
@@ -379,6 +429,7 @@ describe('SessionDetailPage', () => {
     mockSendMessage.mockResolvedValue(undefined);
     mockUseSendMessage.mockReturnValue(idleSend());
     mockUseNewSessionHandoff.mockReturnValue(undefined);
+    mockUseChatGptConnection.mockReturnValue(NO_CHATGPT);
     mockStashHandoffImages.mockReset();
     mockAnswer.mockReset();
     mockAnswer.mockResolvedValue(undefined);
@@ -2049,6 +2100,115 @@ describe('SessionDetailPage', () => {
 
         expect(screen.getByText('This turn was canceled')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("an agent on the person's own ChatGPT subscription", () => {
+    const composer = () => screen.queryByRole('textbox', { name: 'Message' });
+    const settledView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: {
+        raw: 'completed',
+        key: 'completed',
+        label: 'Idle',
+        tone: 'success' as const,
+        isActive: false,
+      },
+    };
+
+    it('sends no turn while the person is not connected, and shows the connect prompt', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseChatGptConnection.mockReturnValue(CHATGPT_NOT_CONNECTED);
+      await render();
+
+      expect(screen.getByTestId('chatgpt-connect-prompt')).toBeInTheDocument();
+      expect(
+        screen.getAllByText(
+          'Connect your ChatGPT subscription to talk to this agent.',
+        ).length,
+      ).toBeGreaterThan(0);
+      expect(screen.getByRole('button', { name: 'Connect' })).toBeEnabled();
+      expect(composer()).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps the sign-in dialog open once the person has connected', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseChatGptConnection.mockReturnValue(CHATGPT_NOT_CONNECTED);
+      await render();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      expect(mockChatGptDialog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ isOpen: true, installation: 'gazelle' }),
+      );
+
+      setChatGpt(CHATGPT_CONNECTED);
+
+      expect(
+        screen.queryByTestId('chatgpt-connect-prompt'),
+      ).not.toBeInTheDocument();
+      expect(mockChatGptDialog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ isOpen: true }),
+      );
+    });
+
+    it('sends what was typed once the person is connected', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseChatGptConnection.mockReturnValue(CHATGPT_CONNECTED);
+      await render();
+
+      expect(
+        screen.queryByTestId('chatgpt-connect-prompt'),
+      ).not.toBeInTheDocument();
+      await userEvent.type(composer()!, 'hello');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(mockSendMessage).toHaveBeenCalledWith('hello', []);
+    });
+
+    it('holds the first message of a new session until the person connects, then sends it once', async () => {
+      mockUseNewSessionHandoff.mockReturnValue({
+        text: 'why is the ingress failing?',
+        agentNamespace: 'kagent',
+        agentName: 'issue-tracker',
+        modelConfig: 'chatgpt-personal',
+      });
+      mockUseChatGptConnection.mockReturnValue(CHATGPT_NOT_CONNECTED);
+      await render();
+
+      expect(
+        await screen.findByText(
+          /Your message is sent as soon as you have connected it/,
+        ),
+      ).toBeInTheDocument();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+
+      setChatGpt(CHATGPT_CONNECTED);
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+      });
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'why is the ingress failing?',
+        undefined,
+      );
+    });
+
+    it('holds the first message while the connection is still being read', async () => {
+      mockUseNewSessionHandoff.mockReturnValue({
+        text: 'why is the ingress failing?',
+        agentNamespace: 'kagent',
+        agentName: 'issue-tracker',
+      });
+      mockUseChatGptConnection.mockReturnValue({
+        ...NO_CHATGPT,
+        isLoading: true,
+      });
+      await render();
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
   });
 

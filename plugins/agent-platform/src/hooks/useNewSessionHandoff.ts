@@ -17,6 +17,12 @@ export type NewSessionHandoff = {
   agentNamespace: string;
   agentName: string;
   /**
+   * The agent's `spec.modelConfig`, so the page knows before the agent list
+   * has joined whether the first message waits for the person's ChatGPT
+   * connection (`useChatGptConnection`).
+   */
+  modelConfig?: string;
+  /**
    * The portal wrote `text`, not the person: a meta-agent hand-off
    * (`useMetaAgentHandoff`). The session page captions that first message so
    * it does not read as the person's own words (UX review M20).
@@ -28,6 +34,16 @@ export type NewSessionHandoff = {
    */
   images?: ComposerImage[];
 };
+
+/**
+ * The name of the agent's `spec.modelConfig` an agent row carries (its
+ * `modelConfigId`, `<installation>/<namespace>/<name>`), for a hand-off.
+ */
+export function modelConfigNameOf(agent: {
+  modelConfigId?: string;
+}): string | undefined {
+  return agent.modelConfigId?.split('/')[2] || undefined;
+}
 
 /** The router-state key the composers write and this hook reads. */
 export const NEW_SESSION_STATE_KEY = 'newSession';
@@ -65,7 +81,7 @@ function readHandoff(state: unknown): NewSessionHandoff | undefined {
     return undefined;
   }
 
-  const { text, agentNamespace, agentName, prepared, imagesKey } =
+  const { text, agentNamespace, agentName, modelConfig, prepared, imagesKey } =
     candidate as Record<string, unknown>;
   if (
     typeof text !== 'string' ||
@@ -82,6 +98,7 @@ function readHandoff(state: unknown): NewSessionHandoff | undefined {
     text,
     agentNamespace,
     agentName,
+    ...(typeof modelConfig === 'string' && modelConfig ? { modelConfig } : {}),
     ...(prepared === true ? { prepared: true } : {}),
     // Left in the slot rather than taken: React may run this initialiser
     // twice, and the second run must find them too.

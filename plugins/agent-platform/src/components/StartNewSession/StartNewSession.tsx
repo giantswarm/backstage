@@ -14,6 +14,7 @@ import {
 } from '../../hooks/useCreateSession';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import {
+  modelConfigNameOf,
   NEW_SESSION_STATE_KEY,
   stashHandoffImages,
 } from '../../hooks/useNewSessionHandoff';
@@ -158,6 +159,7 @@ export function StartNewSession({
             // The technical name: it is what addresses the agent's A2A
             // endpoint. The display name is an annotation.
             agentName: agent.technicalName,
+            modelConfig: modelConfigNameOf(agent),
             imagesKey: stashHandoffImages(images),
           },
         },

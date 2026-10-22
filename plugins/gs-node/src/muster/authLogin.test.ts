@@ -32,6 +32,38 @@ describe('parseAuthLoginResult', () => {
     });
   });
 
+  it('takes a device code from a provider App with a device-code sign-in', () => {
+    expect(
+      parseAuthLoginResult({
+        text: "Connect provider App 'chatgpt'",
+        structuredContent: {
+          status: 'pending',
+          app: 'chatgpt',
+          userCode: 'ABCD-EFGH',
+          verificationUrl: 'https://auth.openai.com/codex/device',
+          expiresAt: '2026-10-22T10:15:00Z',
+        },
+      }),
+    ).toEqual({
+      status: 'pending',
+      message: "Connect provider App 'chatgpt'",
+      deviceCode: {
+        userCode: 'ABCD-EFGH',
+        verificationUrl: 'https://auth.openai.com/codex/device',
+        expiresAt: '2026-10-22T10:15:00Z',
+      },
+    });
+  });
+
+  it('reads a pending answer without a code as unknown', () => {
+    expect(
+      parseAuthLoginResult({
+        text: 'pending',
+        structuredContent: { status: 'pending', app: 'chatgpt' },
+      }).status,
+    ).toBe('unknown');
+  });
+
   // muster#1083: the challenge says how muster identifies itself to the
   // authorization server, so the UI can warn when the AS supports neither
   // CIMD nor DCR.

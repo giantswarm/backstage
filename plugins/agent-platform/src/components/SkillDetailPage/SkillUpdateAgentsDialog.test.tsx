@@ -21,6 +21,8 @@ const HEAD = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
 const OLD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 const PR = 'https://github.com/giantswarm/gitops/pull/42';
 
+/** A portal without the muster plugin, when true. */
+let mockIsUnavailable = false;
 jest.mock('../../hooks/useAgentManager', () => ({
   ...jest.requireActual('../../hooks/useAgentManager'),
   useAgentManagerAvailability: () => ({
@@ -28,7 +30,7 @@ jest.mock('../../hooks/useAgentManager', () => ({
     missing: [],
     presenceOf: () => 'available',
     isLoading: false,
-    isUnavailable: false,
+    isUnavailable: mockIsUnavailable,
   }),
 }));
 
@@ -65,15 +67,22 @@ type Scenario = {
   /** Technical names of agents applied from git. */
   gitops?: string[];
   canCommit?: boolean;
+  /** Holds every agent read until it settles, to see the rows still checked. */
+  heldReads?: Promise<void>;
 };
 
-function makeMusterApi({ gitops = [], canCommit = true }: Scenario = {}) {
+function makeMusterApi({
+  gitops = [],
+  canCommit = true,
+  heldReads,
+}: Scenario = {}) {
   const callTool = jest.fn(
     async (tool: string, args: Record<string, unknown>) => {
       switch (tool) {
         case 'x_agent-manager_get_info':
           return { capabilities: { commit: canCommit } };
         case 'x_agent-manager_get_agent': {
+          await heldReads;
           const name = String(args.name);
           return {
             name,
@@ -148,6 +157,7 @@ async function confirmButton(name: RegExp | string) {
 
 beforeEach(() => {
   mockDeniedNamespaces = new Set();
+  mockIsUnavailable = false;
   onOpenChange.mockReset();
   jest.mocked(analyticsApi.captureEvent).mockClear();
 });
@@ -188,6 +198,87 @@ describe('SkillUpdateAgentsDialog', () => {
     expect(
       screen.queryByRole('button', { name: /Update \d agent/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('lays a row still being checked out as the updatable row it becomes', async () => {
+    let release = () => {};
+    const heldReads = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    await renderDialog(behind(row('alpha-bot'), row('beta-bot')), {
+      heldReads,
+    });
+
+    // No visible note under a row being checked — the box says it to screen
+    // readers — and the select-all box is there from the start, so neither
+    // moves the list when the verdicts arrive.
+    const line = screen.getByTestId('behind-agent-gazelle/kagent/alpha-bot');
+    const box = within(line).getByRole('checkbox', { name: 'alpha-bot' });
+    expect(box).toBeDisabled();
+    expect(box).toHaveAccessibleDescription(
+      'Checking whether you can update it…',
+    );
+    const shownText = (element: HTMLElement) =>
+      within(element)
+        .queryAllByText(/./)
+        .filter(text => !text.closest('.bui-VisuallyHidden'))
+        .map(text => text.textContent)
+        .join('|');
+    const checkingText = shownText(line);
+    expect(
+      screen.getByRole('checkbox', { name: 'All agents you can update (0)' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText('Checking which agents you can update…'),
+    ).toBeInTheDocument();
+
+    release();
+    await confirmButton('Update 2 agents');
+    expect(shownText(line)).toBe(checkingText);
+    expect(box).toBeEnabled();
+    expect(box).not.toHaveAccessibleDescription();
+    expect(
+      screen.getByRole('checkbox', { name: 'All agents you can update (2)' }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByText('Checking which agents you can update…'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a row blocked for want of agent-manager with its reason from the first render', async () => {
+    mockIsUnavailable = true;
+    // Every change to the page while it renders and settles: a row that gains
+    // or loses content, or anything taken away, would be a jump.
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver(batch => records.push(...batch));
+    observer.observe(document.body, { childList: true, subtree: true });
+    await renderDialog(behind(row('alpha-bot'), row('beta-bot')));
+    await screen.findAllByText(/this portal has no muster plugin/);
+    records.push(...observer.takeRecords());
+    observer.disconnect();
+
+    const isInRow = (node: Node) =>
+      node instanceof Element &&
+      node.closest('[data-testid^="behind-agent-"]') !== null;
+    expect(records.filter(record => isInRow(record.target))).toEqual([]);
+    const removedText = records
+      .flatMap(record => [...record.removedNodes])
+      .map(node => node.textContent ?? '')
+      .join('|');
+    expect(removedText).not.toMatch(/All agents you can update/);
+    expect(
+      screen.queryByRole('checkbox', { name: /All agents you can update/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the select-all box once shown when the checks leave one agent to update', async () => {
+    mockDeniedNamespaces = new Set(['locked']);
+    await renderDialog(behind(row('alpha-bot'), row('beta-bot', 'locked')));
+
+    await confirmButton('Update 1 agent');
+    expect(
+      screen.getByRole('checkbox', { name: 'All agents you can update (1)' }),
+    ).toBeEnabled();
   });
 
   it('updates only the agents left selected', async () => {

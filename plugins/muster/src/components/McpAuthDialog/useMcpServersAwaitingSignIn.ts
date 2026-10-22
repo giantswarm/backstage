@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   isMusterTokenMintError,
   musterApiRef,
+  type ProviderAppAuthStatus,
   type ServerAuthStatus,
 } from '../../apis';
 import { authStatusQueryKey, needsSignIn } from '../shared';
@@ -21,6 +22,12 @@ export type McpServersAwaitingSignIn = {
   waiting: string[];
   /** muster's `auth://status` entries, sorted by name (empty until read). */
   statuses: ServerAuthStatus[];
+  /**
+   * The provider Apps muster keeps a grant of per person (`providerApps`),
+   * sorted by name, optionally narrowed to `apps`; empty until read and on a
+   * muster without Apps.
+   */
+  providerApps: ProviderAppAuthStatus[];
   /** True until the first answer. */
   isLoading: boolean;
   /**
@@ -50,9 +57,9 @@ function isSessionExpired(error: unknown): boolean {
  */
 export function useMcpServersAwaitingSignIn(
   installation: string | undefined,
-  options: { servers?: string[]; enabled?: boolean } = {},
+  options: { servers?: string[]; apps?: string[]; enabled?: boolean } = {},
 ): McpServersAwaitingSignIn {
-  const { servers, enabled = true } = options;
+  const { servers, apps, enabled = true } = options;
   const musterApi = useApi(musterApiRef);
 
   const { data, error, isPending } = useQuery({
@@ -70,18 +77,24 @@ export function useMcpServersAwaitingSignIn(
   });
 
   const serversKey = servers?.join('\n');
+  const appsKey = apps?.join('\n');
   return useMemo(() => {
     const wanted =
       serversKey === undefined ? undefined : serversKey.split('\n');
+    const wantedApps = appsKey === undefined ? undefined : appsKey.split('\n');
+    const providerApps = (data?.unavailable ? [] : (data?.providerApps ?? []))
+      .filter(app => !wantedApps || wantedApps.includes(app.name))
+      .sort((a, b) => a.name.localeCompare(b.name));
     const statuses = (data?.unavailable ? [] : (data?.servers ?? []))
       .filter(status => !wanted || wanted.includes(status.name))
       .sort((a, b) => a.name.localeCompare(b.name));
     return {
       statuses,
+      providerApps,
       waiting: statuses.filter(needsSignIn).map(status => status.name),
       isLoading: enabled && isPending,
       isAvailable: Boolean(data) && !data?.unavailable,
       sessionExpired: isSessionExpired(error),
     };
-  }, [data, error, serversKey, enabled, isPending]);
+  }, [data, error, serversKey, appsKey, enabled, isPending]);
 }

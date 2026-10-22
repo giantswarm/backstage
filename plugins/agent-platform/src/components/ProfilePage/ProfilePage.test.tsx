@@ -14,6 +14,17 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   }),
 }));
 
+// muster's own component, tested in the muster plugin: here it lists the
+// person's connections when muster keeps any App.
+let mockHasApps = false;
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  ProviderAppConnections: ({
+    children,
+  }: {
+    children: (list: unknown) => unknown;
+  }) => (mockHasApps ? children(<div>the person's connections</div>) : null),
+}));
+
 const signOut = jest.fn().mockResolvedValue(undefined);
 
 async function renderPage(
@@ -49,11 +60,29 @@ async function renderPage(
 }
 
 beforeEach(() => {
+  mockHasApps = false;
   signOut.mockClear();
   mockInstallations = [{ name: 'gazelle', pipeline: 'testing' }];
 });
 
 describe('ProfilePage', () => {
+  it("lists the person's connections", async () => {
+    mockHasApps = true;
+    await renderPage();
+
+    const section = screen.getByRole('region', { name: 'Connections' });
+    expect(section).toHaveTextContent("the person's connections");
+    expect(section).toHaveTextContent(/your ChatGPT subscription/);
+  });
+
+  it('shows no Connections section while muster keeps no App', async () => {
+    await renderPage();
+
+    expect(
+      screen.queryByRole('region', { name: 'Connections' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('heads the page and shows the signed-in identity', async () => {
     await renderPage();
 
