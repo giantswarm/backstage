@@ -1,8 +1,8 @@
 import { Button, Flex } from '@backstage/ui';
+import { saveFile } from '@giantswarm/backstage-plugin-ui-react';
 import { dump } from 'js-yaml';
 
 import { manifestFilename, type Manifest } from '../../lib/clusterManager';
-import { saveFile } from '../../lib/saveFile';
 import { CodeBlock } from '../CodeBlock';
 
 /**

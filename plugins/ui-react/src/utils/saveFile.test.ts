@@ -4,17 +4,23 @@ describe('saveFile', () => {
   const createObjectURL = jest.fn();
   const revokeObjectURL = jest.fn();
   let click: jest.SpyInstance;
+  let attachedOnClick: boolean[];
 
   beforeEach(() => {
+    jest.useFakeTimers();
     // jsdom has neither; the helper needs both.
     URL.createObjectURL = createObjectURL.mockReturnValue('blob:file');
     URL.revokeObjectURL = revokeObjectURL;
+    attachedOnClick = [];
     click = jest
       .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(() => {});
+      .mockImplementation(function record(this: HTMLAnchorElement) {
+        attachedOnClick.push(document.body.contains(this));
+      });
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     click.mockRestore();
     createObjectURL.mockReset();
     revokeObjectURL.mockReset();
@@ -33,9 +39,18 @@ describe('saveFile', () => {
     expect(anchor.href).toBe('blob:file');
   });
 
-  it('lets go of the object URL once the file is handed over', () => {
+  it('clicks an anchor in the document and takes it out again', () => {
     saveFile('x', 'x.txt', 'text/plain');
 
+    expect(attachedOnClick).toEqual([true]);
+    expect(document.querySelector('a[download]')).toBeNull();
+  });
+
+  it('lets go of the object URL only once the browser has had time to take the file', () => {
+    saveFile('x', 'x.txt', 'text/plain');
+
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    jest.runAllTimers();
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:file');
   });
 });

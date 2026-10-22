@@ -1,14 +1,18 @@
 import { useState } from 'react';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
+import { MENU_WIDTH, saveFile } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionsRouteRef } from '../../routes';
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
 import type { NotificationLevel } from '../../lib/notificationRecord';
 import type { RawSessionBodies } from '../../apis/types';
-import { useExportSession } from '../../hooks/useExportSession';
-import { saveFile } from '../../lib/saveFile';
+import {
+  exportedTasksBucket,
+  useExportSession,
+} from '../../hooks/useExportSession';
 import { SessionActionsMenu } from './SessionActionsMenu';
 
 // The delete state arrives as a prop — the menu renders in the shared plugin
@@ -46,7 +50,10 @@ jest.mock('@backstage/frontend-plugin-api', () => {
 });
 
 // The file is what the export is about: captured here rather than saved.
-jest.mock('../../lib/saveFile', () => ({ saveFile: jest.fn() }));
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  saveFile: jest.fn(),
+}));
 const mockSaveFile = saveFile as jest.MockedFunction<typeof saveFile>;
 
 const deleteSession = jest.fn();
@@ -690,10 +697,21 @@ describe('SessionActionsMenu — Export session', () => {
     );
   }
 
+  const analyticsApi = mockApis.analytics.mock();
+
+  // No QueryClientProvider, as in the shared header: the export runs on a
+  // client of its own.
   const renderWithExport = () =>
-    renderInTestApp(<Harness />, {
-      mountedRoutes: { '/sessions': sessionsRouteRef },
-    });
+    renderInTestApp(
+      <TestApiProvider apis={[[analyticsApiRef, analyticsApi]]}>
+        <Harness />
+      </TestApiProvider>,
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
+    );
+
+  beforeEach(() => {
+    jest.mocked(analyticsApi.captureEvent).mockClear();
+  });
 
   async function exportSession() {
     await openMenu();
@@ -766,6 +784,28 @@ describe('SessionActionsMenu — Export session', () => {
     expect(saved.tasks).toEqual(tasks);
 
     expect(toastTitles()).toContain('Session exported');
+    // Counted with the size of the session in a coarse bucket, and nothing
+    // that names the session, its agent or its installation.
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionExported',
+        attributes: { tasks: '1-9' },
+      }),
+    );
+  });
+
+  it.each`
+    count   | bucket
+    ${0}    | ${'0'}
+    ${1}    | ${'1-9'}
+    ${9}    | ${'1-9'}
+    ${10}   | ${'10-99'}
+    ${99}   | ${'10-99'}
+    ${100}  | ${'100+'}
+    ${1000} | ${'100+'}
+  `('counts $count tasks as $bucket', ({ count, bucket }) => {
+    expect(exportedTasksBucket(count)).toBe(bucket);
   });
 
   it('exports a session that has never run, with no tasks', async () => {
@@ -781,7 +821,32 @@ describe('SessionActionsMenu — Export session', () => {
     expect(JSON.parse(mockSaveFile.mock.calls[0][0]).tasks).toEqual([]);
   });
 
-  it('saves nothing and points to get_session when the session is too long to read whole', async () => {
+  /** The failure toast's description, once the export has given up. */
+  async function failureDescription() {
+    await waitFor(() =>
+      expect(mockToastPost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Could not export the session',
+          status: 'danger',
+        }),
+      ),
+    );
+    expect(mockSaveFile).not.toHaveBeenCalled();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+    return mockToastPost.mock.calls.find(
+      ([toast]) => toast.status === 'danger',
+    )![0].description;
+  }
+
+  /** A failed request, as the kagent client throws it. */
+  const requestError = (status: number, name = 'Error') =>
+    Object.assign(new Error(`kagent request failed with status ${status}`), {
+      name,
+      status,
+      requestId: 'req-9',
+    });
+
+  it('saves nothing and points to get_session when kagent counts more tasks than came back', async () => {
     mockGetRawSession.mockResolvedValue({
       sessionBody: { session },
       tasksBody: { tasks, totalSize: 1204 },
@@ -789,66 +854,85 @@ describe('SessionActionsMenu — Export session', () => {
     await renderWithExport();
     await exportSession();
 
-    await waitFor(() =>
-      expect(mockToastPost).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Could not export the session',
-          status: 'danger',
-        }),
-      ),
+    const description = await failureDescription();
+    expect(description).toMatch(
+      /1,204 turns, more than the portal can export at once/,
     );
-    const failure = mockToastPost.mock.calls.find(
-      ([toast]) => toast.status === 'danger',
-    )![0];
-    expect(failure.description).toMatch(/1,204 turns, too many to export here/);
-    expect(failure.description).toMatch(/get_session/);
-    expect(mockSaveFile).not.toHaveBeenCalled();
+    expect(description).toMatch(/get_session tool with detail: full/);
   });
 
-  it.each([
-    ['not found', Object.assign(new Error('gone'), { name: 'NotFoundError' })],
-    [
-      'forbidden by the task listing',
-      Object.assign(new Error('forbidden'), { name: 'ForbiddenError' }),
-    ],
-  ])(
-    'saves nothing and says not found when the read is %s',
-    async (_label, error) => {
+  it('saves nothing when the read was cut short, even with no count from kagent', async () => {
+    // The route kept the page token it did not follow; the controller left
+    // `total_size` unset, so the count alone would read as complete.
+    mockGetRawSession.mockResolvedValue({
+      sessionBody: { session },
+      tasksBody: { tasks, nextPageToken: 'p10' },
+    });
+    await renderWithExport();
+    await exportSession();
+
+    const description = await failureDescription();
+    expect(description).toMatch(
+      /This session has more turns than the portal can export at once/,
+    );
+    expect(description).toMatch(/get_session/);
+  });
+
+  it('saves nothing for a session whose turns it cannot read', async () => {
+    // Recorded by an older controller: the tasks route lists by the session
+    // id, which is not this session's context, and would find no tasks.
+    mockGetRawSession.mockResolvedValue({
+      sessionBody: { session: { ...session, contextId: 'older-context' } },
+      tasksBody: {},
+    });
+    await renderWithExport();
+    await exportSession();
+
+    expect(await failureDescription()).toBe(
+      'This session was recorded by an older version of kagent, and the portal cannot read its turns.',
+    );
+  });
+
+  it('says not found, never forbidden, for a session that is gone or someone else’s', async () => {
+    // The session read goes first, and kagent answers it 404 for both.
+    mockGetRawSession.mockRejectedValue(requestError(404, 'NotFoundError'));
+    await renderWithExport();
+    await exportSession();
+
+    expect(await failureDescription()).toBe(
+      'The session no longer exists, or it belongs to someone else.',
+    );
+  });
+
+  it.each`
+    read                                  | error                                      | description
+    ${'denied by the gateway'}            | ${requestError(403, 'ForbiddenError')}     | ${'The session could not be read: permission denied, request id req-9.'}
+    ${'a 400 the client calls not found'} | ${requestError(400, 'NotFoundError')}      | ${'The session could not be read: request failed, request id req-9.'}
+    ${'a failed tasks read'}              | ${requestError(502)}                       | ${'The session could not be read: server error, request id req-9.'}
+    ${'signed out'}                       | ${requestError(401)}                       | ${'The session could not be read: authentication failed, request id req-9.'}
+    ${'not JSON'}                         | ${new SyntaxError("Unexpected token '<'")} | ${'The session could not be read: request failed.'}
+  `(
+    'saves nothing and says why, in its own words, for $read',
+    async ({ error, description }) => {
       mockGetRawSession.mockRejectedValue(error);
       await renderWithExport();
       await exportSession();
 
-      await waitFor(() =>
-        expect(mockToastPost).toHaveBeenCalledWith(
-          expect.objectContaining({
-            title: 'Could not export the session',
-            description:
-              'The session no longer exists, or it belongs to someone else.',
-            status: 'danger',
-          }),
-        ),
-      );
-      expect(mockSaveFile).not.toHaveBeenCalled();
+      expect(await failureDescription()).toBe(description);
     },
   );
 
-  it('saves nothing when the tasks read fails', async () => {
-    mockGetRawSession.mockRejectedValue(
-      new Error('kagent request failed with status 502'),
-    );
+  it('passes on kagent’s own words for an error it reported in the body', async () => {
+    mockGetRawSession.mockResolvedValue({
+      sessionBody: { error: true, message: 'database down' },
+      tasksBody: {},
+    });
     await renderWithExport();
     await exportSession();
 
-    await waitFor(() =>
-      expect(mockToastPost).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Could not export the session',
-          description: 'kagent request failed with status 502',
-          status: 'danger',
-        }),
-      ),
+    expect(await failureDescription()).toBe(
+      'kagent reported an error: database down',
     );
-    expect(mockSaveFile).not.toHaveBeenCalled();
   });
 
   it('saves nothing when the tasks come back in a form it does not know', async () => {
@@ -859,12 +943,20 @@ describe('SessionActionsMenu — Export session', () => {
     await renderWithExport();
     await exportSession();
 
-    await waitFor(() =>
-      expect(mockToastPost).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'danger' }),
-      ),
+    expect(await failureDescription()).toBe(
+      'The session’s tasks came back in a form the portal does not recognize.',
     );
-    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  it('still exports when the tasks body carries a field it does not know', async () => {
+    mockGetRawSession.mockResolvedValue({
+      sessionBody: { session },
+      tasksBody: { tasks, totalSize: tasks.length, aFieldAddedLater: 1 },
+    });
+    await renderWithExport();
+    await exportSession();
+
+    await waitFor(() => expect(mockSaveFile).toHaveBeenCalledTimes(1));
   });
 
   it('closes its progress toast once the export settles', async () => {

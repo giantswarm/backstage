@@ -1,4 +1,11 @@
 /**
+ * How long the saved file's object URL is kept. Safari and older Firefox
+ * start the download after `click()` returns, and a URL revoked under them
+ * fails it; FileSaver.js waits the same 40 s.
+ */
+const REVOKE_DELAY_MS = 40_000;
+
+/**
  * Hand `content` to the browser as a file to save, under `fileName`.
  *
  * The browser saves it as a download; what the person sees calls the action by
@@ -13,6 +20,10 @@ export function saveFile(
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = fileName;
+  anchor.style.display = 'none';
+  // Attached for the click: older Firefox ignores one on a detached anchor.
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }

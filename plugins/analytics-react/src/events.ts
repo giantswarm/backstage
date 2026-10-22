@@ -77,6 +77,11 @@ export const portalEvents = defineEvents({
     description: 'A session was deleted.',
     attributes: {},
   },
+  'AgentPlatform.sessionExported': {
+    description:
+      'A session was exported to a file, whole, from its actions menu; the number of its tasks is given in coarse buckets.',
+    attributes: { tasks: ['0', '1-9', '10-99', '100+'] },
+  },
   'AgentPlatform.sessionPinChanged': {
     description:
       "A session was pinned to, or unpinned from, the top of the person's session lists.",

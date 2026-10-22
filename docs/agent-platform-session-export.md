@@ -60,10 +60,11 @@ the revision it last ran on.
 ## Complete or nothing
 
 The portal saves a file only when it read the whole session. The tasks route
-reads at most 1,000 tasks; a longer session is not exported from the portal,
-and the person is pointed to agent-manager's `get_session` with
-`detail: full` and a large `maxBytes`, which returns the whole session. A
-failed read saves no file.
+reads up to 1,000 tasks, fewer for a session with large messages (it reads
+those in smaller pages, and a read stops after 100 calls). A session it could
+not read to the end is not exported from the portal, and the person is
+pointed to agent-manager's `get_session` with `detail: full` and a large
+`maxBytes`, which returns the whole session. A failed read saves no file.
 
 Only the session's owner can export it: both reads go to kagent with the
 person's own token, and a session that is someone else's, or deleted, answers
@@ -72,9 +73,11 @@ person's own token, and a session that is someone else's, or deleted, answers
 ## Caveats
 
 - **Older sessions' context id.** Some sessions recorded by older controllers
-  have an A2A context id (`tasks[].contextId`) that differs from the session
-  id. The tasks route already resolves this, so their tasks are exported, but
-  do not join tasks to the session on `contextId == session.id`.
+  have an A2A context id (`session.contextId`) that differs from the session
+  id. The tasks route lists tasks by the session id, so it would find none of
+  theirs: the portal refuses to export such a session rather than save it
+  without its tasks. In an export, `contextId` (where present) equals
+  `session.id`.
 - **"Verbatim" as far as the generated client goes.** The Backstage backend
   decodes kagent's answers with its generated kagent client and re-encodes
   them as proto3 JSON. A field kagent added after the client was last

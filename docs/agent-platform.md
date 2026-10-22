@@ -1705,15 +1705,20 @@ its caveats: [Session export format](agent-platform-session-export.md).
 No backend route of its own. `KagentApi.getRawSession` reads
 `GET /kagent/sessions/:sessionId` and then `GET /kagent/sessions/:sessionId/tasks`
 with the session's ordinary read token and returns both bodies untouched
-(`totalSize` and rows the timeline's normalizer would drop included). The
-session goes first: kagent's task listing answers 403 for a session that is
-not the caller's, the session read 404, and the person is told "not found".
+(`totalSize`, `nextPageToken` and rows the timeline's normalizer would drop
+included). The session goes first: kagent's task listing answers 403 for a
+session that is not the caller's, the session read 404, and only a 404 tells
+the person "not found"; any other failed read says why, with the request id.
 
-**Complete or nothing.** A `totalSize` larger than the tasks returned (the
-route reads at most 1,000) saves no file and points to agent-manager's
-`get_session`; any failed read saves no file. The file is saved with
-`saveFile` (`lib/saveFile.ts`), the helper the manifest review's Download uses
-too.
+**Complete or nothing.** The tasks route reads up to 1,000 tasks, fewer for a
+session with large messages. When it stopped early it answers with the
+`nextPageToken` it did not follow; that token, or a `totalSize` larger than
+the tasks returned, saves no file and points to agent-manager's
+`get_session`. A session whose context id differs from its id (an older
+controller's) is refused too, since its tasks cannot be listed. The file is
+written unindented with `saveFile` (`ui-react`), which the manifest review's
+Download and muster's tool result use too. A saved export reports
+`AgentPlatform.sessionExported` with its task count in coarse buckets.
 
 ### Continuing a session
 
