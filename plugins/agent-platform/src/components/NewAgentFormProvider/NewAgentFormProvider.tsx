@@ -37,6 +37,7 @@ import {
   pluginId,
   SelectedPlugin,
 } from '../../lib/plugins';
+import { withoutSignInTool } from '../../lib/signInTool';
 import {
   normalizeSelection,
   toggleSelector,
@@ -146,6 +147,13 @@ export type NewAgentFormState = {
    * of the agent: nothing saves it.
    */
   toolsetBase?: string;
+  /**
+   * The person removed the sign-in tool the wizard adds for a connector that
+   * needs it (`lib/signInTool`), so it is not added again. Set only by that
+   * removal on the Tools step; *Add it back*, the last such connector going,
+   * or *Nothing outside the chat* clears it.
+   */
+  signInToolDeclined?: boolean;
 };
 
 /**
@@ -227,6 +235,8 @@ export type NewAgentFormContextValue = {
   setToolsChatOnly: () => void;
   /** Sets or clears {@link NewAgentFormState.toolsetBase}. */
   setToolsetBase: (base: string | undefined) => void;
+  /** Sets {@link NewAgentFormState.signInToolDeclined}. */
+  setSignInToolDeclined: (declined: boolean) => void;
   /**
    * True when the toolset can be applied: none of the selectors malformed and
    * no more than the inline cap. The empty selection is valid — it is no tools.
@@ -422,6 +432,17 @@ function withTenant(
   };
 }
 
+/**
+ * The agent as the form compares an edit with: without the sign-in tool,
+ * which the form leaves to the Tools step (`formStateOfAgent`), so opening the
+ * editor is not a change of the person's.
+ */
+function baselineOf(agent: AgentManagerAgent): AgentManagerAgent {
+  return agent.toolset
+    ? { ...agent, toolset: withoutSignInTool(agent.toolset) }
+    : agent;
+}
+
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
 );
@@ -543,7 +564,10 @@ export function NewAgentFormProvider({
     const isToolsetValid = problems.length === 0;
 
     const isDirty = edit
-      ? changedFields(edit.agent, editStateOfForm(edit.agent, state)).length > 0
+      ? changedFields(
+          baselineOf(edit.agent),
+          editStateOfForm(edit.agent, state),
+        ).length > 0
       : isDirtyCreate;
     const reset = () => {
       setSlugEdited(Boolean(edit));
@@ -674,10 +698,21 @@ export function NewAgentFormProvider({
           toolsChatOnly: false,
         })),
       setToolsChatOnly: () =>
-        setState(prev => ({ ...prev, toolset: [], toolsChatOnly: true })),
+        setState(prev => ({
+          ...prev,
+          toolset: [],
+          toolsChatOnly: true,
+          signInToolDeclined: undefined,
+        })),
       setToolsetBase: toolsetBase =>
         setState(prev =>
           prev.toolsetBase === toolsetBase ? prev : { ...prev, toolsetBase },
+        ),
+      setSignInToolDeclined: declined =>
+        setState(prev =>
+          Boolean(prev.signInToolDeclined) === declined
+            ? prev
+            : { ...prev, signInToolDeclined: declined || undefined },
         ),
       isToolsetValid,
       toolsetProblems: problems,
