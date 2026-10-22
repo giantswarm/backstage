@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
   Button,
@@ -10,10 +10,12 @@ import {
   Skeleton,
   Text,
 } from '@backstage/ui';
-import { ServerSignIn } from '../shared';
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
+import { isSsoServer, ServerSignIn } from '../shared';
 import { ProviderAppList } from '../ProviderAppSignIn/ProviderAppList';
 import { useMcpServersAwaitingSignIn } from './useMcpServersAwaitingSignIn';
 import { useServerLabels } from './useServerLabels';
+import { useOpenRows } from './hooks';
 
 const useStyles = makeStyles((theme: Theme) => ({
   list: {
@@ -62,6 +64,27 @@ const SIGN_IN_HINTS: Record<string, string> = {
     'Connects your GitHub or GitLab account, whichever this installation uses. Workspaces read and push repositories as you; no separate GitHub connection is needed.',
 };
 
+/**
+ * The dialog's count of what still needs a sign-in: the MCP servers and the
+ * connections (provider Apps) listed, in one sentence.
+ */
+function waitingSummary(servers: number, connections: number): string {
+  if (connections === 0) {
+    return servers === 1
+      ? 'One MCP server needs your sign-in before agents and portal features can use its tools.'
+      : `${servers} MCP servers need your sign-in before agents and portal features can use their tools.`;
+  }
+  if (servers === 0) {
+    return connections === 1
+      ? 'One connection needs your sign-in before your agents can use it.'
+      : `${connections} connections need your sign-in before your agents can use them.`;
+  }
+  return `${countNoun(servers, 'MCP server')} and ${countNoun(
+    connections,
+    'connection',
+  )} need your sign-in before agents and portal features can use them.`;
+}
+
 export type McpAuthDialogProps = {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
@@ -74,7 +97,8 @@ export type McpAuthDialogProps = {
   servers?: string[];
   /**
    * The provider Apps to offer, by name (`chatgpt` for the person's ChatGPT
-   * subscription). Without it, every App muster keeps a grant of.
+   * subscription), each while it needs a sign-in. Without it, every App
+   * muster keeps a grant of that needs one.
    */
   apps?: string[];
 };
@@ -83,9 +107,12 @@ export type McpAuthDialogProps = {
  * One place to sign in to the MCP servers that wait for the person and to
  * connect the person's provider Apps: a row per server with its state and
  * muster's sign-in (`core_auth_login`, in a new tab), and a row per provider
- * App muster keeps (connected or not, see {@link ProviderAppSignIn}). The rows are the servers that waited when the dialog opened, so a
- * finished sign-in turns its row *Connected* instead of making it vanish; the
- * servers that come with the portal sign-in are summarised in one line.
+ * App that needs a sign-in, with its Connect (see {@link ProviderAppSignIn});
+ * a connected App is disconnected on the Profile page, not here. The rows and
+ * the count come from a read when the dialog opens, and are what waited
+ * then, so a finished sign-in turns its row *Connected* instead of making it
+ * vanish; the servers that come with the portal sign-in are summarised in one
+ * line.
  */
 export function McpAuthDialog({
   isOpen,
@@ -95,56 +122,96 @@ export function McpAuthDialog({
   apps,
 }: McpAuthDialogProps) {
   const classes = useStyles();
-  const { statuses, waiting, providerApps, isLoading } =
-    useMcpServersAwaitingSignIn(installation, {
-      servers,
-      apps,
-      enabled: isOpen,
-    });
+  const {
+    statuses,
+    waiting: reported,
+    providerApps,
+    isLoading: isFirstRead,
+    answeredAt,
+    refetch,
+  } = useMcpServersAwaitingSignIn(installation, {
+    servers,
+    apps,
+    enabled: isOpen,
+    // Read once per opening, below, not once more when it mounts.
+    refetchOnMount: false,
+  });
 
-  // The rows, fixed while the dialog is open: the servers waiting when it
-  // opened, plus any that start to wait while it is.
-  const [rows, setRows] = useState<string[]>([]);
-  const waitingKey = waiting.join('\n');
+  // The count is the status as it is now, not the one the inbox raised its
+  // row from: a read when the dialog opens, and the rows wait for it. The
+  // opening is noted while rendering, so the first render of a new opening
+  // never takes the previous one's answer for fresh.
+  const [opening, setOpening] = useState(() => ({
+    isOpen,
+    at: isOpen ? Date.now() : Infinity,
+  }));
+  if (opening.isOpen !== isOpen) {
+    setOpening({ isOpen, at: isOpen ? Date.now() : Infinity });
+  }
+  const openedAt = opening.at;
   useEffect(() => {
-    if (!isOpen) {
-      setRows([]);
-      return;
+    if (openedAt !== Infinity) {
+      refetch();
     }
-    const now = waitingKey ? waitingKey.split('\n') : [];
-    setRows(previous =>
-      now.every(name => previous.includes(name))
-        ? previous
-        : [...previous, ...now.filter(name => !previous.includes(name))].sort(),
-    );
-  }, [isOpen, waitingKey]);
+  }, [openedAt, refetch]);
+  const isFresh = isOpen && answeredAt >= openedAt;
+  const isLoading = isFirstRead || !isFresh;
+  const waiting = useMemo(() => (isFresh ? reported : []), [isFresh, reported]);
+  // A provider App is listed while it needs a sign-in; one already connected
+  // is disconnected on the Profile page's Connections, not here.
+  const appsWaiting = useMemo(
+    () =>
+      isFresh
+        ? providerApps
+            .filter(app => app.status !== 'connected')
+            .map(app => app.name)
+        : [],
+    [isFresh, providerApps],
+  );
+
+  // The rows, fixed while the dialog is open: the servers and Apps waiting
+  // when it opened, plus any that start to wait while it is, so a finished
+  // sign-in turns its row connected instead of making it vanish.
+  const rows = useOpenRows(isOpen, waiting);
+  const appRows = useOpenRows(isOpen, appsWaiting);
 
   const labelOf = useServerLabels(installation, rows);
   const remaining = rows.filter(name => waiting.includes(name)).length;
+  const appsRemaining = appRows.filter(name =>
+    appsWaiting.includes(name),
+  ).length;
+  const listedApps = providerApps.filter(app => appRows.includes(app.name));
   // Servers muster connects from the portal sign-in itself (token forwarding
   // or exchange): nothing to do, said in one line.
   const withSignIn = statuses.filter(
     status =>
       status.status === 'connected' &&
-      (status.token_forwarding_enabled || status.token_exchange_enabled) &&
+      isSsoServer(status) &&
       !rows.includes(status.name),
   ).length;
 
   // Only the Apps were asked for (a feature that needs the person's own
   // subscription): nothing to say about servers.
   const appsOnly = servers?.length === 0 && providerApps.length > 0;
+  const listed = rows.length + appRows.length;
+  const pending = remaining + appsRemaining;
   let summary: string | undefined;
   if (appsOnly) {
-    summary = undefined;
-  } else if (rows.length === 0) {
-    summary = 'You are signed in to every MCP server here.';
-  } else if (remaining === 0) {
-    summary = 'Done: you are signed in to every server listed.';
-  } else {
+    // The feature's own prompt says why; only an App that turned out to be
+    // connected already needs a word, or the dialog would be empty.
     summary =
-      remaining === 1
-        ? 'One MCP server needs your sign-in before agents and portal features can use its tools.'
-        : `${remaining} MCP servers need your sign-in before agents and portal features can use their tools.`;
+      !isLoading && listed === 0
+        ? 'You are signed in to everything here.'
+        : undefined;
+  } else if (listed === 0) {
+    summary = 'You are signed in to every MCP server here.';
+  } else if (pending === 0) {
+    summary =
+      appRows.length === 0
+        ? 'Done: you are signed in to every server listed.'
+        : 'Done: you are signed in to everything listed.';
+  } else {
+    summary = waitingSummary(remaining, appsRemaining);
   }
 
   return (
@@ -172,10 +239,11 @@ export function McpAuthDialog({
                   {summary}
                 </Text>
               )}
-              {providerApps.length > 0 && (
+              {listedApps.length > 0 && (
                 <ProviderAppList
-                  apps={providerApps}
+                  apps={listedApps}
                   installation={installation}
+                  canDisconnect={false}
                 />
               )}
               {rows.length > 0 && (
@@ -224,10 +292,10 @@ export function McpAuthDialog({
       </DialogBody>
       <DialogFooter>
         <Button
-          variant={remaining === 0 && !isLoading ? 'primary' : 'secondary'}
+          variant={pending === 0 && !isLoading ? 'primary' : 'secondary'}
           onPress={() => onOpenChange(false)}
         >
-          {remaining === 0 && !isLoading ? 'Done' : 'Close'}
+          {pending === 0 && !isLoading ? 'Done' : 'Close'}
         </Button>
       </DialogFooter>
     </Dialog>

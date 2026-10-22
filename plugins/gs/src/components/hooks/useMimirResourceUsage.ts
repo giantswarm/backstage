@@ -6,7 +6,7 @@ import {
   ContainerMemoryWorkingSetBytes,
   KubePodContainerResourceRequests,
   KubePodContainerResourceLimits,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 
 function extractScalar(
   response: MimirQueryResponse | undefined,

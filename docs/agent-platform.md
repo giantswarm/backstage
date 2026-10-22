@@ -9,7 +9,9 @@ from the
 to them as the signed-in person.
 
 What a deployment configures is in
-**[Agent Platform configuration](agent-platform-configuration.md)**.
+**[Agent Platform configuration](agent-platform-configuration.md)**. The file a
+session's Export session saves is described in
+**[Session export format](agent-platform-session-export.md)**.
 
 The first part of this page summarises the product. The second part, from
 "Overview of the create flow" on, is the implementation reference.
@@ -161,6 +163,23 @@ set on the MCPServer directly, for example in its GitOps source or with
 `kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
 an edit that does not change the name keeps it.
 
+A connector whose tools wait for the person's sign-in says so in the
+Connectors list ("Sign in needed", "Sign-in expired", with its Sign in) and on
+its Tools tab, which offers the sign-in in place of the hidden tools. A
+connector that comes with the portal sign-in (muster's `kind: sso`, token
+forwarding or exchange) never asks for one, since there is nothing to sign in
+to. While muster still connects it (`sso_pending`) it reads "Connecting" and
+counts as not connected, and the sign-in status is re-read every 2 seconds
+(`connectingPollInterval`) until the connect settles. One that refused that
+sign-in (muster's `sso_attempt_failed` while it is
+not connected in this session, `auth_required` or `reauth_required`) reads
+"Cannot connect" in the list, its reason in the hint, and its Tools tab says
+that the connector cannot connect for the person, that an administrator needs
+to add the portal sign-in's audience to its trusted audiences, and muster's
+own account of the attempt (the token's issuer and audiences) under
+**Details**, to copy. muster keeps that flag per person rather than per
+session, so a connector connected in this session ignores it.
+
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/customize/connectors/<installation>/<connector>/tools/<tool>`.
@@ -278,9 +297,12 @@ not held: the app's router has no navigation blocker.
   no connector page shows (one since removed) is not linked.
 - **Your sessions** — the person's own usage from their kagent sessions,
   limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
-  30 days by default); wider ranges are disabled there.
+  30 days by default); wider ranges are disabled there. Its cost is the
+  gateway's price for the person's own model calls, in total and per agent —
+  every call made as them, in these sessions or not. Where that cannot be read,
+  it shows an estimate labelled **Est. cost**, and its tooltip says why.
 
-Gateway figures cover everyone's traffic and need the installation's metrics
+Overview and Cost cover everyone's traffic and need the installation's metrics
 (see the configuration page); without them, Overview and Cost say so and still
 show the person's own session figures.
 
@@ -1409,15 +1431,33 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   the seen marks. No text of the conversation enters a row.
 - **MCP sign-in row.** One for the person's home installation while any of its
   MCP servers waits for their own sign-in or grant (`auth_required` or
-  `reauth_required` in muster's per-user `auth://status`): "2 MCP servers need
-  your sign-in", naming the servers by display name, above the session rows (it
+  `reauth_required` in muster's per-user `auth://status`). A server that comes
+  with the portal sign-in (`kind: sso`, token forwarding or exchange) never
+  waits, not even one that refused that sign-in, because signing in cannot fix
+  it: it is out of the row, the unread count, the toast, the desktop
+  notification and the sign-in dialog's count, and its connector page says
+  what is wrong (see [Connectors](#connectors)). The row reads "2 MCP servers
+  need your sign-in", naming the servers by display name, above the session rows (it
   has no time to sort by), with **Sign in**, which marks it read, closes the
   overlay and then opens muster's sign-in dialog over the page (loaded on the
   first sign-in). Muster's `McpSignInProvider` reads the status under the muster
   plugin's query client, every five minutes and when the tab regains focus, and
   quietly: the read never asks for the portal sign-in, stops while the portal
   session is gone (a focus checks again), and the servers' display names are
-  read once. A sign-in finished in the dialog or on a muster page removes the
+  read once. A server joins the row only once the status has settled, so a
+  fresh portal load, while muster is still connecting the session's servers,
+  raises nothing for servers that connect a moment later: not while muster
+  reports a server still connecting (`sso_pending`), for at most a minute
+  (`SETTLE_WINDOW_MS`), and only when a read at least three seconds after the
+  first to report the same servers waiting still does. While a server is
+  connecting the status read itself polls every 2 seconds; otherwise, while the
+  status is unsettled, it is re-read every five seconds (`SETTLE_REREAD_MS`),
+  never while the reads fail or the portal session is gone. A server that stops
+  waiting leaves at once. The dialog reads the status once when it opens and
+  counts from that read. It lists a provider App (the person's GitHub or
+  ChatGPT grant) only while it needs a sign-in, with its Connect, and counts it
+  with the servers; an App connected there reads Connected without Disconnect,
+  which is on the Profile page's Connections. A sign-in finished in the dialog or on a muster page removes the
   row through the same read. Only the home installation is read, and the dialog
   opens only for it: another installation's muster needs a brokered token, and
   its servers are signed in to where they are used. The row replaces muster's
@@ -1698,6 +1738,30 @@ own reads are invalidated with **`refetchType: 'none'`** and disabled, because
 a refetch would race the navigation and flash "Session not found". Success
 returns to the list with a toast; failure keeps the dialog open with the
 message.
+
+### Exporting a session
+
+`useExportSession`, the actions menu's **Export session** item. Always
+offered, also mid-turn and while the session waits on the person. The file and
+its caveats: [Session export format](agent-platform-session-export.md).
+
+No backend route of its own. `KagentApi.getRawSession` reads
+`GET /kagent/sessions/:sessionId` and then `GET /kagent/sessions/:sessionId/tasks`
+with the session's ordinary read token and returns both bodies untouched
+(`totalSize`, `nextPageToken` and rows the timeline's normalizer would drop
+included). The session goes first: kagent's task listing answers 403 for a
+session that is not the caller's, the session read 404, and only a 404 tells
+the person "not found"; any other failed read says why, with the request id.
+
+**Complete or nothing.** The tasks route reads up to 1,000 tasks, fewer for a
+session with large messages. When it stopped early it answers with the
+`nextPageToken` it did not follow; that token, or a `totalSize` larger than
+the tasks returned, saves no file and points to agent-manager's
+`get_session`. A session whose context id differs from its id (an older
+controller's) is refused too, since its tasks cannot be listed. The file is
+written indented by two spaces with `saveFile` (`ui-react`), which the manifest review's
+Download and muster's tool result use too. A saved export reports
+`AgentPlatform.sessionExported` with its task count in coarse buckets.
 
 ### Continuing a session
 
@@ -2654,7 +2718,7 @@ view (see [It can only ever be personal](#it-can-only-ever-be-personal)).
 | tokens, cost, models, latency, errors | exact, all users                    | tokens only, caller only |
 | per agent                             | exact                               | yes                      |
 | per model                             | exact — the model that _answered_   | no (see below)           |
-| **per user**                          | possible — `user` label, unread yet | implicitly, one user     |
+| **per user**                          | the caller's own, read server-side  | implicitly, one user     |
 | **per session**                       | **impossible** — no `session` label | yes                      |
 | sessions, turns, tool calls           | not a concept                       | yes                      |
 
@@ -2704,9 +2768,12 @@ token.
 - **Per session** (the cost popover): **Est. cost**, kagent's tokens times
   a gateway-derived $/token over 7 days, so the rate reflects the current model
   mix. See the tier chain below.
-- **Per agent on Your sessions**: **Est. cost** at one rate, the installation's
-  blend across all models, because the table is one query. Its footnote points
-  to the session page.
+- **Your sessions, total and per agent**: **Cost**, the gateway's price for the
+  caller's own calls (see
+  [Your sessions' cost is the caller's own](#your-sessions-cost-is-the-callers-own-read-server-side)).
+  Where it cannot be read, **Est. cost** at one rate, the installation's blend
+  across all models, because the table is one query; the footnote then names
+  why and points to the session page.
 - **Per session, reported** (the cost popover): **Reported cost**, the runtime's
   own per-turn figure, summed. Only the claude Harness reports one.
 
@@ -2753,7 +2820,62 @@ table. `deriveTokenRates` returns no rate for zero cost, so the UI shows `—`,
 never `$0.00`.
 
 **The two per-agent cost figures differ by design**: the Cost tab sums
-everyone's calls; Your sessions prices only the reader's tokens.
+everyone's calls; Your sessions sums only the reader's.
+
+### Your sessions' cost is the caller's own, read server-side
+
+`GET /api/agent-platform/usage/model-cost?installation=…&days=…`
+(`agent-platform-backend/src/modelCost.ts`) answers the caller's cost from
+`agentgateway_gen_ai_client_cost_usd_total`, filtered by its `user` label. The
+client sends only the installation and the window (1 to 90 days):
+
+1. The backend asks kagent who the forwarded token belongs to
+   (`SystemService/GetCurrentUser`, as `/kagent/me` does). The claims' `email`,
+   else an email-shaped `sub`, is the person; that is the address agentgateway
+   puts in `user`. kagent's shared `unsecure` user is no one.
+2. It builds the PromQL itself, with that address escaped
+   (`promqlString`), and queries Mimir with the same token through
+   `MimirService` (now in `gs-node`, shared with the gs backend).
+3. It answers the total, the split by `agent_namespace`/`agent` (in kagent's
+   encoded agent id, so rows join the session usage directly), and `partial`
+   when some cost series in the window name no one (no `user`, or
+   `unknown`).
+
+So no parameter, header or PromQL fragment can point it at another person. The
+generic `GET /api/gs/mimir/query` proxy takes PromQL from the browser, so it
+cannot give that guarantee: anyone whose token that installation's Mimir accepts
+can still query every user's cost there, or in Grafana.
+
+The figure covers every call made as the person, including calls outside kagent
+sessions, so it can exceed what the token counts beside it would cost; the
+strip says "All your model calls" and both tooltips explain it. A call from
+outside any agent's pod (`agent="unknown"`), or through an agent with no session
+in the window, counts in the total but has no row. With the window narrowed,
+the strip's total covers the selected days and the rows kagent's full window,
+so the table's note does not compare the two.
+
+Where there is no actual cost the page falls back to the estimate, labelled
+**Est. cost**, with the reason first in its tooltip and table footnote:
+
+| `reason`              | when                                                                         |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `identity-unreadable` | kagent could not be asked who the caller is                                  |
+| `no-identity`         | kagent names no person (no email, or the shared user)                        |
+| `no-mimir`            | no Mimir for the installation; the estimate's own line says so, so no reason |
+| `not-recorded`        | no cost series in the window names a person (no `user`, or only `unknown`)   |
+| `no-spend`            | none of the person's series grew in the window                               |
+| `unreadable`          | Mimir did not answer                                                         |
+
+Each is a 200, logged at `info` where something failed, so none reaches
+Sentry; only a token kagent or Mimir refused is a 401. A request that fails
+outright in the browser falls back the same way, with "could not be read just
+now". A failed refetch keeps the figure already shown. The response is
+`no-store` and its query key is kept out of the persisted query cache.
+
+The two installation-wide series counts behind `not-recorded` and `partial`
+scan every cost series over the window, so `not-recorded`'s is only asked when
+the person has no series. The query names the person, so `MimirService` leaves
+it out of its debug log (`redactQuery`).
 
 ### The daily charts: one row per day of the window, and today comes from its own query
 

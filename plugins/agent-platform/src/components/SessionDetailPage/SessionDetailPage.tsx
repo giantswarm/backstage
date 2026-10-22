@@ -34,6 +34,7 @@ import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useDeleteSession } from '../../hooks/useDeleteSession';
+import { useExportSession } from '../../hooks/useExportSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import {
   isAnswerNotTakenError,
@@ -921,6 +922,14 @@ export function SessionDetailPage() {
     [captureReadingAnchor, setShowToolActivity, toastApi],
   );
 
+  // The menu's Export session: the file is named after the agent, by its
+  // technical name where an Agent matched and its display name otherwise.
+  const exportSession = useExportSession({
+    installation,
+    sessionId,
+    agentName: agent?.name ?? row?.agentName,
+  });
+
   const actions = useMemo(
     () =>
       row ? (
@@ -932,6 +941,7 @@ export function SessionDetailPage() {
           runtimeLoss={runtimeLoss}
           pin={pin}
           notifications={notifications}
+          onExport={exportSession}
         />
       ) : null,
     [
@@ -943,6 +953,7 @@ export function SessionDetailPage() {
       runtimeLoss,
       pin,
       notifications,
+      exportSession,
     ],
   );
   useProvidePageHeaderActions(actions);

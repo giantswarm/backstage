@@ -11,6 +11,7 @@ import {
 import { randomUUID } from 'crypto';
 import express from 'express';
 import Router from 'express-promise-router';
+import { MODEL_COST_MAX_DAYS } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   ReachabilityCache,
   reachabilityFields,
@@ -37,6 +38,7 @@ import {
 } from './messageImages';
 import { SessionStateReader } from './sessionStates';
 import { SessionUsageReader } from './sessionUsage';
+import { MimirQuerier, readModelCost } from './modelCost';
 import { createAvatarRouter } from './avatarRouter';
 import { createTryRouter } from './tryRouter';
 
@@ -60,6 +62,13 @@ export interface RouterOptions {
    * an answer in time. Tests leave it out and get an immediate warm-up.
    */
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
+  /**
+   * The installations' Mimir, queried with the person's token, for their own
+   * model cost. The plugin always passes the shared `mimirServiceRef`; tests
+   * of other routes leave it out, and the cost route then answers `no-mimir`
+   * as for an installation without one.
+   */
+  mimir?: MimirQuerier;
 }
 
 /**
@@ -82,6 +91,26 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
     throw new InputError(`${name} must be provided at most once`);
   }
   return value;
+}
+
+/**
+ * The cost route's `?days=`: a whole number of days up to the Usage screen's
+ * widest window. Required, so the window is always the one the page names.
+ */
+function readCostWindowDays(req: express.Request): number {
+  const raw = singleQueryValue(req.query.days, 'days');
+  const days = Number(raw);
+  if (
+    !raw ||
+    !Number.isInteger(days) ||
+    days < 1 ||
+    days > MODEL_COST_MAX_DAYS
+  ) {
+    throw new InputError(
+      `days must be a whole number from 1 to ${MODEL_COST_MAX_DAYS}`,
+    );
+  }
+  return days;
 }
 
 /**
@@ -773,6 +802,39 @@ export async function createRouter(
     );
     // A per-user breakdown of what someone ran and which tools they reached
     // for; never store it anywhere shared.
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  });
+
+  /**
+   * The caller's own model cost on one installation over the last `days`
+   * days, as the gateway priced it — what "Your sessions" shows in place of
+   * an estimate.
+   *
+   * **Whose cost is never a parameter.** The person is whoever kagent's
+   * `SystemService/GetCurrentUser` says the forwarded token belongs to, and
+   * the PromQL is built here from that identity, so no query string or header
+   * can point it at someone else. The generic `/api/gs/mimir/query` proxy
+   * takes PromQL from the browser and so cannot make this promise; that is
+   * why this is its own route.
+   *
+   * Every fallback the page acts on is a 200 with `status: 'unavailable'` and
+   * a reason (see `readModelCost`), "no Mimir here" included; only a token
+   * kagent or Mimir refused (401) is an error.
+   */
+  router.get('/usage/model-cost', async (req, res) => {
+    const { config: installationConfig, client } = resolveInstallation(req);
+    const days = readCostWindowDays(req);
+    const userToken = readUserToken(req, { required: true })!;
+    const result = await readModelCost({
+      identity: client,
+      mimir: options.mimir,
+      installation: installationConfig.name,
+      userToken,
+      days,
+      logger,
+    });
+    // One person's spend; never store it anywhere shared.
     res.setHeader('Cache-Control', 'no-store');
     res.json(result);
   });

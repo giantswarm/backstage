@@ -383,6 +383,61 @@ describe('KagentClient against a fake controller', () => {
       expect(user.parts[1].filename).toBe('shot.png');
     });
 
+    it('keeps the token it did not follow when a task read is cut short', async () => {
+      const { SessionService } =
+        require('./kagent/gen/kagent/api/v1alpha1/sessions_pb') as typeof import('./kagent/gen/kagent/api/v1alpha1/sessions_pb');
+      const { A2AService } =
+        require('./kagent/gen/a2a_pb') as typeof import('./kagent/gen/a2a_pb');
+      let pages = 0;
+      const client = new KagentClient(
+        installation,
+        logger,
+        createRouterTransport(router => {
+          router.service(SessionService, {
+            getSession: request => ({
+              session: { id: request.sessionId, agent: AGENT },
+            }),
+          });
+          router.service(A2AService, {
+            listTasks() {
+              pages += 1;
+              // Always another page, and no `total_size`: the count alone
+              // would claim the read is complete.
+              return { tasks: [], nextPageToken: `p${pages}` };
+            },
+          });
+        }),
+        500,
+        500,
+      );
+
+      const listed = (await client.listSessionTasks('s1', USER)) as {
+        totalSize?: number;
+        nextPageToken?: string;
+      };
+
+      expect(pages).toBe(10);
+      expect(listed.nextPageToken).toBe('p10');
+      expect(listed.totalSize).toBeUndefined();
+    });
+
+    it('sends no page token once a task read has reached the end', async () => {
+      const { fake, client } = build();
+      const id = created(fake);
+      await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'one' },
+        USER,
+      );
+
+      const listed = (await client.listSessionTasks(id, USER)) as {
+        nextPageToken?: string;
+      };
+
+      expect(listed.nextPageToken).toBeUndefined();
+    });
+
     it('reads a conversation too large for one answer in smaller pages', async () => {
       // A task with an image is large: two of these overflow the cap, one fits.
       const { fake, client } = build({ maxListTasksBytes: 2_500 });

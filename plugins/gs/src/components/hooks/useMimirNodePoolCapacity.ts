@@ -10,7 +10,7 @@ import {
   KubeNodeLabels,
   KubeNodeStatusCapacity,
   KubeNodeStatusCondition,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { NodePoolMetrics } from '../clusters/nodePools';
 import { mimirQueryRetry } from './mimirRetry';
 import { sanitizePromQLValue } from './promql';
