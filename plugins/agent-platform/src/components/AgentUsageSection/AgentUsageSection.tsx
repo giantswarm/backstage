@@ -9,9 +9,15 @@ import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorName } from '../../lib/toolset';
 import { useTokenRates } from '../../hooks/useTokenRates';
+import { useModelCost, type ModelCostView } from '../../hooks/useModelCost';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { describeCostBasis } from '../../lib/costBasis';
-import { useCurrency } from '../../lib/formatNumbers';
+import { isConvertedCurrency, useCurrency } from '../../lib/formatNumbers';
+import {
+  describeActualCost,
+  describeActualCostByAgent,
+  describeModelCostFallback,
+} from '../../lib/modelCostCopy';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useAgents } from '../AgentsDataProvider';
@@ -52,12 +58,11 @@ const PERSONAL_COPY = {
   description: (days: number, installation: string) => (
     <>
       Your agent sessions on <strong>{installation}</strong> over the last{' '}
-      {days} days, from kagent's stored conversations — Slack included. Overview
-      and Cost cover every user's model calls.
+      {days} days, from kagent's stored conversations — Slack included.
     </>
   ),
   descriptionWithoutInstallation: (days: number) =>
-    `Your agent sessions over the last ${days} days, from kagent's stored conversations — Slack included. Overview and Cost cover every user's model calls.`,
+    `Your agent sessions over the last ${days} days, from kagent's stored conversations — Slack included.`,
   topTools: 'Your top tools',
   topServers: 'Your top connectors',
   empty: (days: number, installation: string) =>
@@ -85,13 +90,34 @@ const SHARED_COPY = {
 };
 
 /**
+ * The estimate's basis line, led by why there is no actual cost when the
+ * fallback has a reason of its own to give.
+ */
+function withFallbackReason(
+  cost: ModelCostView,
+  installation: string,
+  days: number,
+  basis: string,
+): string {
+  const reason =
+    cost.state === 'fallback'
+      ? describeModelCostFallback(cost.reason, installation, days)
+      : undefined;
+  return reason ? `${reason} ${basis}` : basis;
+}
+
+/**
  * The "Your sessions" view of the Usage tab, and every state it can be in.
  *
  * Its session-level counts are the ones no gateway metric can give — kagent is
- * the only thing that knows what a session or a turn is — and its costs are the
- * ones no gateway metric can give *exactly*, because those metrics carry no
- * session label. So the estimated cost here is this installation's observed
- * $/token applied to kagent's token counts, and every place it appears says so.
+ * the only thing that knows what a session or a turn is. Its cost is the
+ * gateway's own price for the person's model calls (`useModelCost`: the
+ * backend filters the cost counter by the identity kagent vouches for), which
+ * covers every call made as them, in these sessions or not — the copy says
+ * so, because it can exceed what the tokens beside it would cost. Where that
+ * cannot be read, the cost falls back to this installation's observed $/token
+ * applied to kagent's token counts, and every place it appears says it is an
+ * estimate and why.
  *
  * The one state worth reading carefully is `unsecure` mode: kagent there
  * resolves every caller to a shared built-in user, so its session list is
@@ -186,6 +212,17 @@ export function AgentUsageSection() {
   // the backend's window with a note saying so — never silently either way.
   const { days: selectedDays } = useUsageWindow();
   const appliedDays = Math.min(selectedDays, windowDays);
+
+  // The person's actual cost: the strip's for the window it shows, the
+  // table's for kagent's full window (the same query when nothing is
+  // narrowed). Held until the session usage lands, so the window is the one
+  // the response reports rather than the fallback's.
+  const stripCost = useModelCost(installation, appliedDays, {
+    enabled: Boolean(usage),
+  });
+  const tableCost = useModelCost(installation, windowDays, {
+    enabled: Boolean(usage),
+  });
   const narrowed = useMemo(() => {
     if (appliedDays >= windowDays) {
       return undefined;
@@ -331,21 +368,40 @@ export function AgentUsageSection() {
           rates={rates}
           currency={currency}
           isRateLoading={isRateLoading}
-          costBasis={describeCostBasis({
-            tier: rateTier,
-            model: undefined,
-            installation: installation ?? '',
-            window: rateWindow,
-            inputTokens: stripTotals.inputTokens,
-            outputTokens: stripTotals.outputTokens,
-            // The daily buckets carry no reported total, so a narrowed window
-            // cannot say what it holds beyond the two parts.
-            unpricedTokens: narrowed
-              ? undefined
-              : stripTotals.totalTokens -
-                stripTotals.inputTokens -
-                stripTotals.outputTokens,
-          })}
+          actualCostUsd={
+            stripCost.state === 'actual' ? stripCost.totalUsd : undefined
+          }
+          actualCostHint={
+            stripCost.state === 'actual'
+              ? describeActualCost({
+                  installation: installation ?? '',
+                  days: appliedDays,
+                  partial: stripCost.partial,
+                  converted: isConvertedCurrency(currency),
+                })
+              : undefined
+          }
+          isActualCostLoading={stripCost.state === 'loading'}
+          costBasis={withFallbackReason(
+            stripCost,
+            installation ?? '',
+            appliedDays,
+            describeCostBasis({
+              tier: rateTier,
+              model: undefined,
+              installation: installation ?? '',
+              window: rateWindow,
+              inputTokens: stripTotals.inputTokens,
+              outputTokens: stripTotals.outputTokens,
+              // The daily buckets carry no reported total, so a narrowed window
+              // cannot say what it holds beyond the two parts.
+              unpricedTokens: narrowed
+                ? undefined
+                : stripTotals.totalTokens -
+                  stripTotals.inputTokens -
+                  stripTotals.outputTokens,
+            }),
+          )}
         />
         <div className={classes.row}>
           <TokensPerDayCard
@@ -375,6 +431,28 @@ export function AgentUsageSection() {
           isRateLoading={isRateLoading}
           hasRate={hasRate}
           currency={currency}
+          actualCost={
+            tableCost.state === 'actual' ? tableCost.byAgent : undefined
+          }
+          isActualCostLoading={tableCost.state === 'loading'}
+          actualCostNote={
+            tableCost.state === 'actual'
+              ? describeActualCostByAgent({
+                  days: windowDays,
+                  partial: tableCost.partial,
+                  converted: isConvertedCurrency(currency),
+                })
+              : undefined
+          }
+          fallbackReason={
+            tableCost.state === 'fallback'
+              ? describeModelCostFallback(
+                  tableCost.reason,
+                  installation ?? '',
+                  windowDays,
+                )
+              : undefined
+          }
           emptyMessage="kagent recorded no agent for these sessions."
         />
         <div className={classes.row}>

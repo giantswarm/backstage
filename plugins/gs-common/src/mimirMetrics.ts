@@ -4,6 +4,10 @@
  * Every metric the application queries should be defined here.
  * This provides a single place to see which metrics we depend on,
  * and exports constants for use in PromQL query construction.
+ *
+ * In gs-common rather than the gs frontend plugin so that a backend building
+ * its own PromQL (agent-platform-backend's per-user model cost) queries from
+ * the same constants as the frontend.
  */
 
 export interface PrometheusMetric {

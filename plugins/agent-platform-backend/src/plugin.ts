@@ -2,6 +2,7 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
+import { mimirServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { createRouter } from './router';
 
 /**
@@ -13,7 +14,8 @@ import { createRouter } from './router';
  * and the A2A v1 `A2AService`), plus one try of a served model against the
  * installation's models Gateway (everything else about models goes through
  * muster as the person), plus the agents' avatars proxied from each
- * installation's avatars host so the browser loads them same-origin.
+ * installation's avatars host so the browser loads them same-origin, plus the
+ * person's own model cost from the installation's Mimir.
  *
  * It exists because the browser cannot reach `agentgateway.<baseDomain>`
  * cross-origin, because gRPC over HTTP/2 wants a server-side client, and
@@ -32,8 +34,9 @@ export const agentPlatformPlugin = createBackendPlugin({
         logger: coreServices.logger,
         config: coreServices.rootConfig,
         lifecycle: coreServices.rootLifecycle,
+        mimir: mimirServiceRef,
       },
-      async init({ httpRouter, logger, config, lifecycle }) {
+      async init({ httpRouter, logger, config, lifecycle, mimir }) {
         // Agent avatars are `<img>` loads, which carry no bearer token: this
         // path alone accepts the plugin's user cookie (issued to the browser
         // at `/.backstage/auth/v1/cookie` by the frontend's
@@ -45,6 +48,7 @@ export const agentPlatformPlugin = createBackendPlugin({
             logger,
             config,
             lifecycle,
+            mimir,
           }),
         );
       },

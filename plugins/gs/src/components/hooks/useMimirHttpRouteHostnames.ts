@@ -7,7 +7,7 @@ import {
   GatewayApiGatewayListenerInfo,
   GatewayApiHttprouteHostnameInfo,
   GatewayApiHttprouteParentInfo,
-} from '../../apis/mimir/metrics';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { HostnameCertInfo, resolveHostnameCert } from './resolveHostnameCert';
 
 export interface HttpRouteHostname {
