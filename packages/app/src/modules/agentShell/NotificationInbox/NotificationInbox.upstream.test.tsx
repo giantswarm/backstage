@@ -15,7 +15,10 @@ import { AgentShellNav } from '../AgentShellNav';
 import { RailWidthProvider } from '../RailWidthProvider';
 import { homeRouteRef } from '../routes';
 import { DESKTOP_NOTIFICATIONS_STORAGE_KEY } from './hooks/useDesktopNotifications';
-import { TAB_MEMORY_KEY } from './hooks/useInboxInterruptions';
+import {
+  INBOX_TOAST_TIMEOUT_MS,
+  TAB_MEMORY_KEY,
+} from './hooks/useInboxInterruptions';
 import {
   NOTIFICATIONS_SIGNAL_CHANNEL,
   UPSTREAM_NOTIFICATIONS_LIMIT,
@@ -710,6 +713,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
           description: 'Create a Go service',
           status: 'warning',
           links: [{ label: 'Open', href: '/create/tasks/abc' }],
+          timeout: INBOX_TOAST_TIMEOUT_MS,
         }),
       );
     });
@@ -729,6 +733,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
           title: 'Pipeline failed',
           status: 'info',
           links: [{ label: 'Open notifications', href: '#notifications' }],
+          timeout: INBOX_TOAST_TIMEOUT_MS,
         }),
       );
       await openOverlay();
@@ -778,6 +783,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
           title: '5 notifications need your attention',
           status: 'info',
           links: [{ label: 'Open notifications', href: '#notifications' }],
+          timeout: INBOX_TOAST_TIMEOUT_MS,
         }),
       );
       expect(post).toHaveBeenCalledTimes(1);
