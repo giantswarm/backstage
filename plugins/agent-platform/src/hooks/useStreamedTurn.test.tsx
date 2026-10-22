@@ -133,6 +133,55 @@ describe('useStreamedTurn', () => {
     expect(listSessionTasks).toHaveBeenCalledTimes(1);
   });
 
+  it('reads the conversation afresh after the turn even while the first read is still in flight', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+    // A new session's page asks for its conversation as the first message
+    // goes; that read is answered from before the turn, and only after a turn
+    // that ended at once.
+    let answerFirstRead: (tasks: unknown[]) => void = () => {};
+    listSessionTasks.mockImplementationOnce(
+      () => new Promise(resolve => (answerFirstRead = resolve)),
+    );
+    const turnTask = { id: 'task-1', status: { state: 'failed' } };
+    listSessionTasks.mockResolvedValue([turnTask]);
+    const page = renderHook(
+      () => ({
+        turn: useStreamedTurn('gazelle', 'abc'),
+        tasks: useQuery({
+          queryKey: sessionTasksQueryKey('gazelle', 'abc'),
+          queryFn: () => kagentApi.listSessionTasks('gazelle', 'abc'),
+        }),
+      }),
+      { wrapper },
+    );
+    await waitFor(() => expect(listSessionTasks).toHaveBeenCalledTimes(1));
+
+    let outcome: Promise<unknown> = Promise.resolve();
+    act(() => {
+      outcome = page.result.current.turn.run('message-1', async onEvent => {
+        onEvent({ kind: 'task', id: 'task-1', status: { state: 'failed' } });
+      });
+    });
+    await act(async () => {
+      answerFirstRead([]);
+      await outcome;
+    });
+
+    await waitFor(() =>
+      expect(page.result.current.tasks.data).toEqual([turnTask]),
+    );
+    expect(listSessionTasks).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps a stream left before its first event open until that event, so the message is dispatched (R2-3)', async () => {
     const { handle, open } = hangingStream();
     const { result, unmount, invalidateQueries } = renderTurn();

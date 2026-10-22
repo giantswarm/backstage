@@ -95,6 +95,7 @@ export {
   MODEL_CONFIG_CONDITION_ORDER,
   ModelConfig,
   ModelConfigConditionType,
+  PERSONAL_CHATGPT_MODEL_LABEL,
 } from './ModelConfig';
 export type { ModelConfigCondition, ModelConfigReadiness } from './ModelConfig';
 export { OCIRepository } from './OCIRepository';

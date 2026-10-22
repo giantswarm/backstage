@@ -39,7 +39,7 @@ function makeApi(response: AuthStatusResponse): jest.Mocked<Api> {
   };
 }
 
-async function renderDialog(api: Api, servers?: string[]) {
+async function renderDialog(api: Api, servers?: string[], apps?: string[]) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -51,6 +51,7 @@ async function renderDialog(api: Api, servers?: string[]) {
           onOpenChange={() => {}}
           installation="graveler"
           servers={servers}
+          apps={apps}
         />
       </QueryClientProvider>
     </TestApiProvider>,
@@ -134,5 +135,59 @@ describe('McpAuthDialog', () => {
     expect(
       await screen.findByText('You are signed in to every MCP server here.'),
     ).toBeInTheDocument();
+  });
+
+  it('lists a row per provider App beside the servers, with its state', async () => {
+    const api = makeApi({
+      servers: [status('workspace-manager', 'auth_required')],
+      providerApps: [
+        { name: 'chatgpt', status: 'auth_required' },
+        { name: 'github', status: 'connected' },
+      ],
+    });
+    await renderDialog(api);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Sign in to MCP servers' }),
+    ).toBeInTheDocument();
+    const apps = await screen.findByRole('list', { name: 'Connections' });
+    const rows = within(apps).getAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('ChatGPT');
+    expect(rows[0]).toHaveTextContent(
+      'Your codex agents run on your own ChatGPT subscription.',
+    );
+    expect(
+      within(rows[0]).getByRole('button', { name: 'Connect' }),
+    ).toBeEnabled();
+    expect(rows[1]).toHaveTextContent('github');
+    expect(rows[1]).toHaveTextContent('✓ Connected');
+    expect(
+      screen.getByRole('list', { name: 'MCP servers' }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers only the App a feature asks for, without the servers', async () => {
+    const api = makeApi({
+      servers: [status('workspace-manager', 'auth_required')],
+      providerApps: [
+        { name: 'chatgpt', status: 'auth_required' },
+        { name: 'github', status: 'auth_required' },
+      ],
+    });
+    await renderDialog(api, [], ['chatgpt']);
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Sign in to your connections',
+      }),
+    ).toBeInTheDocument();
+    const apps = await screen.findByRole('list', { name: 'Connections' });
+    expect(within(apps).getAllByRole('listitem')).toHaveLength(1);
+    expect(apps).toHaveTextContent('ChatGPT');
+    expect(
+      screen.queryByRole('list', { name: 'MCP servers' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });

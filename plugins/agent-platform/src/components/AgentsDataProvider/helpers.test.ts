@@ -713,6 +713,29 @@ describe('toAgentRow with a serving resolver', () => {
 });
 
 describe('toAgentRow model fields', () => {
+  it('names a person\'s own ChatGPT login "ChatGPT (your subscription)"', () => {
+    const chatgpt = new ModelConfig(
+      {
+        apiVersion: 'api.kagent.dev/v1alpha3',
+        kind: 'ModelConfig',
+        metadata: { name: 'codex-personal', namespace: 'team-a' },
+        spec: {
+          provider: 'OpenAI',
+          model: 'gpt-5.5',
+          openAI: { credentialType: 'chatgptOAuth' },
+        },
+      } as unknown as ModelConfigInterface,
+      'installation-1',
+    );
+    const row = toAgentRow(
+      makeAgent({ name: 'coder', modelConfig: 'codex-personal' }),
+      [chatgpt],
+    );
+
+    expect(row.model).toBe('ChatGPT (your subscription)');
+    expect(row.modelName).toBe('gpt-5.5');
+  });
+
   it('keeps the display label and the model string apart', () => {
     // `model` is for a reader; `modelName` is `spec.model` verbatim, because it
     // has to match the gateway's `gen_ai_response_model` to price anything.

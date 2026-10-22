@@ -268,17 +268,20 @@ export function useStreamedTurn(installation: string, sessionId: string) {
       }
 
       // The conversation, which now holds the turn (finished or still
-      // running). Awaited here so the caller's stand-in — and the stream
-      // preview — are only dropped once the real content is readable.
-      await queryClient.invalidateQueries({
-        queryKey: sessionTasksQueryKey(installation, sessionId),
-      });
-
-      // The session object too: a turn can change its lifecycle `state` and
-      // `failure`, which is how kagent reports a lost runtime.
-      await queryClient.invalidateQueries({
-        queryKey: sessionQueryKey(installation, sessionId),
-      });
+      // running), and the session object too: a turn can change its lifecycle
+      // `state` and `failure`, which is how kagent reports a lost runtime.
+      // Awaited here so the caller's stand-in — and the stream preview — are
+      // only dropped once the real content is readable. A read still in flight
+      // began before the turn ended — a new session's first read, against a
+      // turn that ended at once — and an invalidation would join it rather
+      // than read again, so it is called off first.
+      for (const queryKey of [
+        sessionTasksQueryKey(installation, sessionId),
+        sessionQueryKey(installation, sessionId),
+      ]) {
+        await queryClient.cancelQueries({ queryKey });
+        await queryClient.invalidateQueries({ queryKey });
+      }
       return turn;
     },
     [
