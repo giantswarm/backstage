@@ -16,7 +16,7 @@
 import { toolErrorDetails } from '@giantswarm/backstage-plugin-muster';
 import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
-import { causedBy, looksNotConnected, type GitOpsCommit } from './agentManager';
+import { looksNotConnected, type GitOpsCommit } from './agentManager';
 
 /** The MCPServer name muster registers cluster-manager under. */
 export const CLUSTER_MANAGER_SERVER = 'cluster-manager';
@@ -1001,8 +1001,13 @@ export class ClusterManagerError extends Error {
   /** The structured not-found answer, when the answer carried one. */
   readonly notFound?: NotFound;
 
-  constructor(message: string, refused?: Refusal, notFound?: NotFound) {
-    super(message);
+  constructor(
+    message: string,
+    refused?: Refusal,
+    notFound?: NotFound,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.refused = refused;
     this.notFound = notFound;
   }
@@ -1031,16 +1036,14 @@ export function classifyClusterManagerError(error: unknown): Error {
   }
   const message = error instanceof Error ? error.message : String(error);
   if (looksNotConnected(message)) {
-    return causedBy(new ClusterManagerNotConnectedError(message), error);
+    return new ClusterManagerNotConnectedError(message, { cause: error });
   }
   const details = toolErrorDetails(error);
-  return causedBy(
-    new ClusterManagerError(
-      message,
-      parseRefusal(details),
-      parseNotFound(details),
-    ),
-    error,
+  return new ClusterManagerError(
+    message,
+    parseRefusal(details),
+    parseNotFound(details),
+    { cause: error },
   );
 }
 

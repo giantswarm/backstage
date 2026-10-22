@@ -9,7 +9,7 @@ export {
   MusterTokenMintError,
   MusterUnauthorizedError,
   musterSignInRequiredOf,
-  musterUnauthorizedOf,
+  musterUnauthorizedInfoOf,
   toolErrorDetails,
 } from './apis';
 export type {
@@ -139,6 +139,7 @@ export { useWorkflowPageTarget } from './components/WorkflowPage';
 export type { WorkflowPageTarget } from './components/WorkflowPage';
 export { WORKFLOW_PAGE_TABS } from './components/WorkflowPage';
 export { toolPageTabs } from './components/ToolPage';
+export { shouldRetryMusterQuery } from './components/QueryClientProvider';
 export {
   ConnectorSignInAlert,
   splitConnectorSignIns,

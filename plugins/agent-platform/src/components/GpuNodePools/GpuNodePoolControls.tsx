@@ -135,8 +135,17 @@ export function useGpuNodePoolControls(
   const availability = useClusterManagerAvailability(installations);
   const pools = useGpuNodePools(availability.available);
   // Reads that ask for the person's sign-in to cluster-manager are offered
-  // that sign-in; the rest are reported as failures.
-  const { signIns, others: poolErrors } = splitConnectorSignIns(pools.errors);
+  // that sign-in; the rest are reported as failures. Split again only when an
+  // installation's failure changes: the pools read refetches every 10 to 60
+  // seconds, each time with a fresh `errors` array.
+  const errorsKey = pools.errors
+    .map(({ installation, error }) => `${installation}:${error.message}`)
+    .join('|');
+  const { signIns, others: poolErrors } = useMemo(
+    () => splitConnectorSignIns(pools.errors),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [errorsKey],
+  );
   // What each pool's nodes cost per hour, from cluster-manager's list prices.
   const prices = useNodeSizePrices(pools.rows);
   const [removing, setRemoving] = useState<GpuNodePoolRow>();

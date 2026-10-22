@@ -1,34 +1,10 @@
+import {
+  isMusterUnauthorizedReason,
+  type MusterUnauthorizedReason,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { isMusterTokenMintError } from './installationToken';
 
-/**
- * Why muster-backend answered 401, from the body's `error.reason`. Must
- * match `MusterUnauthorizedReason` in plugins/gs-node:
- *
- * - `server_sign_in_required` -- the person has not signed in to the server
- *   (`server`) the call needs: the page offers that sign-in.
- * - `token_missing`, `token_expired`, `token_rejected` -- the token the
- *   portal forwarded did not do: the client refreshes it and sends the call
- *   once more.
- */
-export type MusterUnauthorizedReason =
-  | 'server_sign_in_required'
-  | 'token_missing'
-  | 'token_expired'
-  | 'token_rejected';
-
-const REASONS: readonly MusterUnauthorizedReason[] = [
-  'server_sign_in_required',
-  'token_missing',
-  'token_expired',
-  'token_rejected',
-];
-
-/** The reasons a fresh token can fix. */
-export const TOKEN_REASONS: readonly MusterUnauthorizedReason[] = [
-  'token_missing',
-  'token_expired',
-  'token_rejected',
-];
+export type { MusterUnauthorizedReason } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
  * A 401 of muster-backend. `name` stays `UnauthorizedError`, the name every
@@ -58,9 +34,7 @@ export function unauthorizedBodyOf(body: unknown): {
     (body as { error?: { reason?: unknown; server?: unknown } } | null)
       ?.error ?? {};
   return {
-    reason: REASONS.includes(reason as MusterUnauthorizedReason)
-      ? (reason as MusterUnauthorizedReason)
-      : undefined,
+    reason: isMusterUnauthorizedReason(reason) ? reason : undefined,
     server: typeof server === 'string' && server !== '' ? server : undefined,
   };
 }
@@ -78,8 +52,12 @@ function* causeChain(error: unknown): Generator<unknown> {
   }
 }
 
-/** The muster-backend 401 in `error`'s cause chain, if any. */
-export function musterUnauthorizedOf(error: unknown):
+/**
+ * What the muster-backend 401 in `error`'s cause chain says, if there is one:
+ * its reason, the server and the installation (none of them from an answer
+ * without a reason).
+ */
+export function musterUnauthorizedInfoOf(error: unknown):
   | {
       reason?: MusterUnauthorizedReason;
       server?: string;
@@ -110,7 +88,7 @@ export function musterUnauthorizedOf(error: unknown):
 export function musterSignInRequiredOf(
   error: unknown,
 ): { server: string; installation?: string } | undefined {
-  const unauthorized = musterUnauthorizedOf(error);
+  const unauthorized = musterUnauthorizedInfoOf(error);
   return unauthorized?.reason === 'server_sign_in_required' &&
     unauthorized.server
     ? { server: unauthorized.server, installation: unauthorized.installation }
@@ -118,15 +96,18 @@ export function musterSignInRequiredOf(
 }
 
 /**
- * Whether a failed muster read must not be retried: a 401, or a token that
- * could not be had. Neither is transient. A retry only delays the sign-in
- * the page offers, or re-runs the re-login for a session that is gone; the
- * client already sent the call once more after refreshing the token.
+ * Whether a failed muster read must not be retried: a 401, or a portal
+ * session that is gone. Neither is transient. A retry only delays the sign-in
+ * the page offers (the client already sent the call once more after
+ * refreshing the token), or re-runs the re-login for a session that is gone.
+ * A mint that failed otherwise (`mint-failed`: the broker unreachable, an
+ * exchange that failed) may well work the next time, and is not one.
  */
 export function isMusterAuthFailure(error: unknown): boolean {
   for (const candidate of causeChain(error)) {
     if (
-      isMusterTokenMintError(candidate) ||
+      (isMusterTokenMintError(candidate) &&
+        candidate.reason === 'session-expired') ||
       (candidate as { name?: unknown }).name === 'UnauthorizedError' ||
       (candidate as { status?: unknown }).status === 401
     ) {

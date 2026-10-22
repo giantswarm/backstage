@@ -13,6 +13,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MusterApiClient, toolErrorDetails } from './MusterApiClient';
 import { MusterAuthProviders } from './MusterAuthProviders';
+import { MusterTokenMintError } from './installationToken';
 import {
   isMusterAuthFailure,
   musterSignInRequiredOf,
@@ -828,14 +829,24 @@ describe('MusterApiClient.filterTools toolset arguments', () => {
   });
 });
 
-/** An unsigned JWT issued at `iat` that expires at `exp` (seconds since the epoch). */
-function lifetimeToken(iat: number, exp: number, jti = 'a'): string {
+/**
+ * An unsigned JWT issued at `iat` that expires at `exp` (seconds since the
+ * epoch), to `sub` by one issuer.
+ */
+function lifetimeToken(
+  iat: number,
+  exp: number,
+  jti = 'a',
+  sub = 'person',
+): string {
   const b64url = (value: object) =>
     btoa(JSON.stringify(value))
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '');
   return `${b64url({ alg: 'RS256' })}.${b64url({
+    iss: 'https://dex.gazelle.example.io',
+    sub,
     iat: Math.floor(iat),
     exp: Math.floor(exp),
     jti,
@@ -864,7 +875,7 @@ describe('MusterApiClient 401 answers', () => {
         error: {
           name: 'MusterUnauthorizedError',
           message:
-            "'cluster-manager' requires authentication: sign in to it to use its tools.",
+            "auth_required: server 'cluster-manager' requires authentication; sign in to it to use its tools.",
           reason: 'server_sign_in_required',
           server: 'cluster-manager',
         },
@@ -1003,7 +1014,29 @@ describe('MusterApiClient 401 answers', () => {
     });
   });
 
-  it('asks for a refresh ahead of expiry at most every 30 seconds', async () => {
+  it('sends the refreshed token with every call while it lasts, asking once', async () => {
+    const closing = lifetimeToken(now() - 1600, now() + 200, 'closing');
+    const fresh = lifetimeToken(now(), now() + 1800, 'fresh');
+    const t = setup();
+    // The session keeps handing out its own token; the refresh is kept apart.
+    t.getMainCredentials.mockImplementation(
+      async (_provider: string, options?: { minLifetimeLeft?: number }) => ({
+        token: options?.minLifetimeLeft === undefined ? closing : fresh,
+      }),
+    );
+
+    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.listServers('gazelle');
+
+    expect(sentTokens(t.fetchMock)).toEqual([fresh, fresh, fresh]);
+    const refreshes = t.getMainCredentials.mock.calls.filter(
+      ([, options]) => options?.minLifetimeLeft !== undefined,
+    );
+    expect(refreshes).toHaveLength(1);
+  });
+
+  it('does not ask again for 30 seconds after a refresh that came back no better', async () => {
     // A broker that keeps handing out the token it cached.
     const closing = lifetimeToken(now() - 1600, now() + 200, 'closing');
     const t = setup({ main: { token: closing } });
@@ -1016,6 +1049,32 @@ describe('MusterApiClient 401 answers', () => {
       ([, options]) => options?.minLifetimeLeft !== undefined,
     );
     expect(refreshes).toHaveLength(1);
+  });
+
+  it("never sends one person's kept token for another's", async () => {
+    const fresh = lifetimeToken(now(), now() + 1800, 'fresh', 'first');
+    const other = lifetimeToken(now() - 1600, now() + 200, 'other', 'second');
+    const otherFresh = lifetimeToken(
+      now(),
+      now() + 1800,
+      'other-fresh',
+      'second',
+    );
+    const t = setup();
+    t.getMainCredentials
+      // The first person's closing token, then its refresh.
+      .mockResolvedValueOnce({
+        token: lifetimeToken(now() - 1600, now() + 200, 'closing', 'first'),
+      })
+      .mockResolvedValueOnce({ token: fresh })
+      // Signed in as someone else, whose token is closing too.
+      .mockResolvedValueOnce({ token: other })
+      .mockResolvedValueOnce({ token: otherFresh });
+
+    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+
+    expect(sentTokens(t.fetchMock)).toEqual([fresh, otherFresh]);
   });
 
   it('never sends a brokered token past its exp', async () => {
@@ -1053,9 +1112,15 @@ describe('isMusterAuthFailure', () => {
     });
     expect(
       isMusterAuthFailure(
-        Object.assign(new Error('expired'), { name: 'MusterTokenMintError' }),
+        new MusterTokenMintError('gazelle', 'session-expired', 'expired'),
       ),
     ).toBe(true);
+    // A broker hiccup may well pass the next time.
+    expect(
+      isMusterAuthFailure(
+        new MusterTokenMintError('golem', 'mint-failed', 'unreachable'),
+      ),
+    ).toBe(false);
     expect(isMusterAuthFailure(new Error('node pool not found'))).toBe(false);
     expect(
       musterSignInRequiredOf(new MusterUnauthorizedError('x', 'token_expired')),

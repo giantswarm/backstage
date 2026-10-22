@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MusterUnauthorizedError } from '@giantswarm/backstage-plugin-muster';
 import type { Workspace } from '../../lib/workspaceManager';
 import { CustomizeWorkspacesPanel } from '../CustomizeWorkspacesPanel';
 import { WorkspaceOrganizationSelect } from '../WorkspaceOrganizationSelect';
@@ -42,6 +43,8 @@ let mockProbing: boolean;
 let mockUnreachable: string[];
 /** The installations whose muster has no per-user sign-in in this portal. */
 let mockSharedIdentity: string[];
+/** The installations where the person has not signed in to the workspace-manager. */
+let mockNotSignedIn: string[];
 
 const mockMusterApi = {
   listInstallations: jest.fn(async () => ({
@@ -65,6 +68,16 @@ const mockMusterApi = {
       if (tool !== 'x_workspace-manager_list_workspaces') {
         throw new Error(`unexpected ${tool}`);
       }
+      if (mockNotSignedIn.includes(installation)) {
+        // muster-backend's 401, as the muster client reads it: the reason
+        // says what is wanted, whatever the wording.
+        throw new MusterUnauthorizedError(
+          'workspace-manager needs your sign-in.',
+          'server_sign_in_required',
+          'workspace-manager',
+          installation,
+        );
+      }
       return {
         workspaces: mockWorkspaces[installation] ?? [],
         ...(mockMemberOf
@@ -77,6 +90,11 @@ const mockMusterApi = {
 
 jest.mock('../../hooks/useMusterPluginApi', () => ({
   useMusterPluginApi: () => mockMusterApi,
+}));
+jest.mock('../WorkspaceManagerSignIn', () => ({
+  WorkspaceManagerSignIn: (props: { installation: string }) => (
+    <p>{`sign in on ${props.installation}`}</p>
+  ),
 }));
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   useInstallationInventory: () => ({
@@ -124,7 +142,18 @@ describe('WorkspacesDataProvider', () => {
     mockProbing = false;
     mockUnreachable = [];
     mockSharedIdentity = [];
+    mockNotSignedIn = [];
     jest.clearAllMocks();
+  });
+
+  // giantswarm/backstage#3236 review: the sign-in follows the 401's reason,
+  // not the wording of its message.
+  it('offers the workspace-manager sign-in where the read asks for it, not the refusal', async () => {
+    mockNotSignedIn = ['gazelle'];
+    await renderWorkspaces();
+
+    expect(await screen.findByText('sign in on gazelle')).toBeInTheDocument();
+    expect(screen.queryByText('Your workspaces could not be read')).toBeNull();
   });
 
   it('is not available where no installation in scope has the workspace-manager', async () => {

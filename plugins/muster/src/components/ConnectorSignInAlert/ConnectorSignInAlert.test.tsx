@@ -25,8 +25,9 @@ function status(value: 'auth_required' | 'connected'): AuthStatusResponse {
 
 async function renderAlert(
   props: Partial<Parameters<typeof ConnectorSignInAlert>[0]> = {},
+  initial: AuthStatusResponse = status('auth_required'),
 ) {
-  let current = status('auth_required');
+  let current = initial;
   const api: Api = {
     getAuthStatus: jest.fn(async () => current),
     signInServer: jest.fn(async () => ({
@@ -103,6 +104,32 @@ describe('ConnectorSignInAlert', () => {
 
     await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] });
+  });
+
+  // giantswarm/backstage#3236 review: an SSO connector has nothing to sign in
+  // to, so the alert does not ask for a sign-in.
+  it('says an SSO connector could not connect, without asking for a sign-in', async () => {
+    await renderAlert(
+      {},
+      {
+        servers: [
+          {
+            name: 'cluster-manager',
+            status: 'auth_required',
+            kind: 'sso',
+            auth_tool: 'core_auth_login',
+          },
+        ],
+      },
+    );
+
+    expect(
+      await screen.findByText('Could not connect to cluster-manager'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Sign in to cluster-manager to see GPU node pools'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
   });
 
   it('names each environment that needs the sign-in', async () => {

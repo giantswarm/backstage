@@ -427,7 +427,7 @@ function makeMusterApi(scenario: Scenario = {}) {
         case 'x_cluster-manager_list_clusters':
           if (scenario.notSignedIn) {
             throw new MusterUnauthorizedError(
-              "'cluster-manager' requires authentication: sign in to it to use its tools.",
+              "auth_required: server 'cluster-manager' requires authentication; sign in to it to use its tools.",
               'server_sign_in_required',
               'cluster-manager',
               'inst-1',

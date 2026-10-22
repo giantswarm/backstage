@@ -2,6 +2,7 @@
 '@giantswarm/backstage-plugin-muster': minor
 '@giantswarm/backstage-plugin-muster-backend': patch
 '@giantswarm/backstage-plugin-gs-node': minor
+'@giantswarm/backstage-plugin-gs-common': minor
 '@giantswarm/backstage-plugin-agent-platform': patch
 ---
 
@@ -15,5 +16,10 @@ authentication error, and the view fills in once the sign-in lands. Every
 forwarded token ahead of its expiry, sends a call once more after a refresh
 for a refused token, and no query retries a muster `401` with backoff. New
 exports: `ConnectorSignInAlert`, `splitConnectorSignIns`,
-`musterSignInRequiredOf`, `isMusterAuthFailure` and `MusterUnauthorizedError`
-(muster); `MusterUnauthorizedError` and `musterUnauthorizedOf` (gs-node).
+`musterSignInRequiredOf`, `musterUnauthorizedInfoOf`, `isMusterAuthFailure`,
+`shouldRetryMusterQuery`, `MusterUnauthorizedError` and the
+`MusterUnauthorizedReason` type (muster); `MusterUnauthorizedError` and
+`toMusterUnauthorizedError` (gs-node); `MUSTER_UNAUTHORIZED_REASONS`,
+`MUSTER_TOKEN_REASONS`, `isMusterUnauthorizedReason`,
+`MUSTER_TOKEN_EXPIRED_TEXT` and `MusterUnauthorizedReason` (gs-common, the
+contract both sides share).

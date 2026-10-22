@@ -18,7 +18,7 @@ import {
   isTokenExpired,
   musterTokenExpiredError,
   musterTokenMissingError,
-  musterUnauthorizedOf,
+  toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
 } from '@giantswarm/backstage-plugin-gs-node';
@@ -1041,7 +1041,7 @@ export async function createRouter(
         typeof requested === 'string'
           ? requested
           : ([...installations.keys()][0] ?? '');
-      const unauthorized = musterUnauthorizedOf(error, {
+      const unauthorized = toMusterUnauthorizedError(error, {
         installation,
         authToken: forwardedToken(req),
       });

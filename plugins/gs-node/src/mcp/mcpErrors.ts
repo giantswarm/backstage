@@ -105,7 +105,7 @@ export function isUnauthorizedTransportError(error: unknown): boolean {
  * The plain words for a failed MCP request, or `undefined` when `error` is not
  * the transport's (a tool-level error, a Backstage error, ...) and must reach
  * the caller unchanged. A 401 is also left alone: the proxies answer it as a
- * 401 with its reason (muster-backend's `musterUnauthorizedOf`).
+ * 401 with its reason (`toMusterUnauthorizedError`).
  */
 export function describeMcpFailure(error: unknown): string | undefined {
   if (!isTransportError(error)) {

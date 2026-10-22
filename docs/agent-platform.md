@@ -590,12 +590,21 @@ plugin: `splitConnectorSignIns` on their per-installation failures and
 `ConnectorSignInAlert` for each connector it returns (`onSignedIn` re-reads
 queries outside the `muster` prefix).
 
+A connector that comes with the portal sign-in (SSO) has nothing to sign in
+to: the alert then reads "Could not connect to <connector>" and fills in once
+muster connects it.
+
 The muster client refreshes the forwarded installation token once less than a
-quarter of its lifetime is left, and never sends one past its `exp`. A `401`
-for a missing, expired or rejected token is refreshed and sent once more; no
-query retries a muster `401` with backoff (`isMusterAuthFailure`, which reads
+quarter of its lifetime is left and sends the refreshed token with every call
+to that installation while it lasts (a refresh that came back no better is not
+asked again for 30 s). It never sends a token past its `exp`. A `401` for a
+missing, expired or rejected token is refreshed and sent once more. No query
+retries a muster `401` or a gone portal session with backoff
+(`shouldRetryMusterQuery`, which agent-platform's query client builds on, reads
 through the `cause` the cluster-manager, model-manager, agent-manager and
-workspace-manager errors keep).
+workspace-manager errors keep); a token mint that failed otherwise is retried.
+The Workspaces tab offers the workspace-manager sign-in from the same `401`
+reason.
 
 **Try it** is the one model call the portal's backend makes itself
 (`POST /served-models/try`, `tryRouter.ts`), because the browser cannot post to

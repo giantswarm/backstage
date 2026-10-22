@@ -1,42 +1,27 @@
-import { readJwtLifetimeClaims } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  MUSTER_TOKEN_EXPIRED_TEXT,
+  readJwtLifetimeClaims,
+  type MusterUnauthorizedReason,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { isUnauthorizedTransportError } from '../mcp';
 import { MusterAuthRequiredError, MusterToolError } from './MusterMcpClient';
 
-/**
- * Why a muster proxy answers 401, in the body's `error.reason`. The frontend
- * picks its action from it (must match `MusterUnauthorizedReason` in
- * plugins/muster):
- *
- * - `server_sign_in_required` -- the person's muster session holds no grant
- *   for the server (`error.server`) the call needs: they sign in to it once.
- * - `token_missing` -- the request carried no token for an installation
- *   that needs the person's.
- * - `token_expired` -- the forwarded token has expired: the portal
- *   refreshes it and sends the call again.
- * - `token_rejected` -- muster refused a forwarded token that has not
- *   expired by its `exp`.
- *
- * Each is refused before a tool runs, so sending the call again with a new
- * token is safe even for a write.
- */
-export type MusterUnauthorizedReason =
-  | 'server_sign_in_required'
-  | 'token_missing'
-  | 'token_expired'
-  | 'token_rejected';
+export type { MusterUnauthorizedReason } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
- * A 401 of a muster proxy, with its reason. The proxy answers it with the
- * reason and the server in the body; the message never carries a token, an
- * identity or muster's own text, which may name the person.
+ * A 401 of a muster proxy, with its reason (`MusterUnauthorizedReason`). The
+ * proxy answers it with the reason and the server in the body; the message
+ * never carries a token, an identity or muster's own text, which may name the
+ * person. Arguments in the order of the muster frontend's error of the same
+ * name.
  */
 export class MusterUnauthorizedError extends Error {
   override readonly name = 'MusterUnauthorizedError';
   readonly status = 401;
 
   constructor(
-    readonly reason: MusterUnauthorizedReason,
     message: string,
+    readonly reason: MusterUnauthorizedReason,
     readonly server?: string,
   ) {
     super(message);
@@ -52,18 +37,12 @@ export function isTokenExpired(
   return exp !== undefined && exp * 1000 <= now;
 }
 
-/**
- * muster's answer when the bearer it forwards to a server has lapsed, e.g.
- * `token has expired for workspace-manager, re-authenticate to refresh: …`.
- */
-const MUSTER_TOKEN_EXPIRED = /token has expired\b.*\bre-authenticate/i;
-
 export function musterTokenExpiredError(
   installation: string,
 ): MusterUnauthorizedError {
   return new MusterUnauthorizedError(
-    'token_expired',
     `The token forwarded to the muster installation '${installation}' has expired.`,
+    'token_expired',
   );
 }
 
@@ -72,8 +51,8 @@ export function musterTokenMissingError(
   why: string,
 ): MusterUnauthorizedError {
   return new MusterUnauthorizedError(
-    'token_missing',
     `The muster installation '${installation}' requires a user token ${why}, but the request did not include one.`,
+    'token_missing',
   );
 }
 
@@ -83,7 +62,7 @@ export function musterTokenMissingError(
  * bearer at its transport, or muster reporting that bearer expired. A
  * refused bearer counts as expired when its `exp` says so.
  */
-export function musterUnauthorizedOf(
+export function toMusterUnauthorizedError(
   error: unknown,
   context: { installation: string; authToken?: string; now?: number },
 ): MusterUnauthorizedError | undefined {
@@ -92,14 +71,16 @@ export function musterUnauthorizedOf(
   }
   if (error instanceof MusterAuthRequiredError) {
     return new MusterUnauthorizedError(
+      // muster's own wording, which frontends from before `reason` match
+      // on (a tab left open across a deploy runs one).
+      `auth_required: server '${error.server}' requires authentication; sign in to it to use its tools.`,
       'server_sign_in_required',
-      `'${error.server}' requires authentication: sign in to it to use its tools.`,
       error.server,
     );
   }
   const expiredText =
     error instanceof MusterToolError &&
-    MUSTER_TOKEN_EXPIRED.test(error.message);
+    MUSTER_TOKEN_EXPIRED_TEXT.test(error.message);
   if (expiredText) {
     return musterTokenExpiredError(context.installation);
   }
@@ -110,7 +91,7 @@ export function musterUnauthorizedOf(
     return musterTokenExpiredError(context.installation);
   }
   return new MusterUnauthorizedError(
-    'token_rejected',
     `The muster installation '${context.installation}' did not accept the forwarded token.`,
+    'token_rejected',
   );
 }

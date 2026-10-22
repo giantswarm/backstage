@@ -11,6 +11,7 @@ import {
 import {
   getSignedInConfig,
   hasIdTokenLifetimeLeft,
+  idTokenExpiresAt,
   isIdTokenExpired,
 } from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationOidcToken } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -20,8 +21,12 @@ import {
   sessionExpiredError,
 } from './installationToken';
 import {
+  MUSTER_TOKEN_EXPIRED_TEXT,
+  MUSTER_TOKEN_REASONS,
+  readJwtClaims,
+} from '@giantswarm/backstage-plugin-gs-common';
+import {
   MusterUnauthorizedError,
-  TOKEN_REASONS,
   unauthorizedBodyOf,
 } from './musterUnauthorized';
 import {
@@ -96,12 +101,6 @@ const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
 const MAIN_LOGIN_PROVIDER = 'main';
 
 /**
- * muster's answer when the bearer the portal forwarded has lapsed: e.g.
- * `token has expired for workspace-manager, re-authenticate to refresh: …`.
- */
-const MUSTER_TOKEN_EXPIRED = /token has expired\b.*\bre-authenticate/i;
-
-/**
  * A token with less than this share of its lifetime (`exp` − `iat`) left is
  * refreshed before it is sent: about 7 of a 30-minute Dex token's minutes.
  * muster ends the person's session when the bearer it was opened with
@@ -121,9 +120,9 @@ const MUSTER_TOKEN_MIN_LIFETIME_LEFT = 0.5;
 const MUSTER_TOKEN_FRESH = 1;
 
 /**
- * How long after a refresh ahead of expiry the next one waits. A refresh can
- * come back no better (a broker handing out a token it cached), and then
- * every call would ask again; a refused token is refreshed regardless.
+ * How long after a refresh that came back no better the next one waits. A
+ * broker can hand out a token it cached, and then every call would ask
+ * again; a refused token is refreshed regardless.
  */
 const MUSTER_TOKEN_REFRESH_INTERVAL_MS = 30_000;
 
@@ -131,9 +130,42 @@ const MUSTER_TOKEN_REFRESH_INTERVAL_MS = 30_000;
 type TokenOptions = {
   /** A background read: never asks the person to sign in. */
   silent?: boolean;
-  /** muster-backend refused the token just sent: get a newer one. */
-  refused?: boolean;
+  /**
+   * muster-backend refused the token just sent (none, when it was missing):
+   * get a newer one.
+   */
+  refused?: { token?: string };
 };
+
+/**
+ * The token an installation's calls are sent with after a refresh, while it
+ * lasts. The auth APIs keep a refreshed token apart from the session's, which
+ * stays what a plain read hands out until its last minutes, so the client
+ * keeps it for every call rather than one in each refresh interval.
+ */
+type KeptToken = { token: string; refreshedAt: number };
+
+/** Whichever of two JWTs expires later; the first when neither says. */
+function laterExpiring(a: string, b: string): string {
+  const aExpiresAt = idTokenExpiresAt(a)?.getTime() ?? Infinity;
+  const bExpiresAt = idTokenExpiresAt(b)?.getTime() ?? -Infinity;
+  return aExpiresAt >= bExpiresAt ? a : b;
+}
+
+/**
+ * Whether two JWTs were issued to the same person by the same issuer: a kept
+ * token stands in only for its own holder's, never across a sign-out and a
+ * sign-in as someone else.
+ */
+function sameHolder(a: string, b: string): boolean {
+  const aClaims = readJwtClaims(a);
+  const bClaims = readJwtClaims(b);
+  return (
+    typeof aClaims?.sub === 'string' &&
+    aClaims.sub === bClaims?.sub &&
+    aClaims.iss === bClaims?.iss
+  );
+}
 
 /** A muster-backend answer; a failed one with its body, read once. */
 type Answer = { response: Response; errorData?: unknown };
@@ -169,8 +201,8 @@ export class MusterApiClient implements MusterApi {
    * not change while the page lives; a failed read is not kept.
    */
   private installationsPromise?: Promise<MusterInstallationsResponse>;
-  /** When each installation's token was last refreshed ahead of its expiry. */
-  private readonly refreshedAt = new Map<string, number>();
+  /** The refreshed token of each installation, while it lasts. */
+  private readonly keptTokens = new Map<string, KeptToken>();
 
   /**
    * `kubernetesApi` + `kubernetesAuthProvidersApi` mint the per-installation
@@ -424,7 +456,7 @@ export class MusterApiClient implements MusterApi {
             return event.result;
           case 'error': {
             await reader.cancel();
-            if (MUSTER_TOKEN_EXPIRED.test(event.error.message)) {
+            if (MUSTER_TOKEN_EXPIRED_TEXT.test(event.error.message)) {
               throw sessionExpiredError(options.installation);
             }
             const error = new Error(event.error.message);
@@ -590,9 +622,9 @@ export class MusterApiClient implements MusterApi {
    *   beyond "requires a token".
    *
    * A token with less than {@link MUSTER_TOKEN_REFRESH_BELOW} of its lifetime
-   * left is refreshed first (at most every
-   * {@link MUSTER_TOKEN_REFRESH_INTERVAL_MS} per installation), and with
-   * `refused` -- muster-backend refused the token just sent -- it always is.
+   * left is refreshed first, and with `refused` -- muster-backend refused the
+   * token just sent -- it always is. The refreshed token is kept and sent with
+   * every call to the installation while it lasts (see {@link lastingToken}).
    * A refresh never asks the person to sign in.
    *
    * No token is ever sent past its `exp`: the auth API refreshes the session
@@ -626,22 +658,31 @@ export class MusterApiClient implements MusterApi {
         throw sessionExpiredError(installation);
       }
     }
-    let token = await this.currentToken(
-      installation,
-      required.authProvider,
-      options.refused ? MUSTER_TOKEN_FRESH : undefined,
-    );
-    const minLifetimeLeft =
-      token === undefined || options.refused
-        ? undefined
-        : this.refreshTarget(installation, token);
-    if (minLifetimeLeft !== undefined) {
-      token =
-        (await this.currentToken(
+    let token: string | undefined;
+    if (options.refused) {
+      token = await this.currentToken(
+        installation,
+        required.authProvider,
+        MUSTER_TOKEN_FRESH,
+      );
+      // A refused token is never kept; a newer one stands in for it.
+      if (token === undefined || token === options.refused.token) {
+        this.keptTokens.delete(installation ?? '');
+      } else {
+        this.keptTokens.set(installation ?? '', {
+          token,
+          refreshedAt: Date.now(),
+        });
+      }
+    } else {
+      token = await this.currentToken(installation, required.authProvider);
+      if (token !== undefined) {
+        token = await this.lastingToken(
           installation,
           required.authProvider,
-          minLifetimeLeft,
-        )) ?? token;
+          token,
+        );
+      }
     }
     if (token !== undefined && isIdTokenExpired(token)) {
       throw sessionExpiredError(installation);
@@ -650,26 +691,47 @@ export class MusterApiClient implements MusterApi {
   }
 
   /**
-   * The lifetime share to refresh `token` to before it is sent, or undefined
-   * to send it as it is (see {@link resolveToken}).
+   * `token`, or one that lasts longer when it has less than
+   * {@link MUSTER_TOKEN_REFRESH_BELOW} of its lifetime left: the token kept
+   * from the last refresh while it has more, else a refresh to
+   * {@link MUSTER_TOKEN_MIN_LIFETIME_LEFT}. A refresh that came back no
+   * better is not asked again for {@link MUSTER_TOKEN_REFRESH_INTERVAL_MS};
+   * meanwhile the later-expiring of the two is sent.
    */
-  private refreshTarget(
+  private async lastingToken(
     installation: string | undefined,
+    authProvider: string,
     token: string,
-  ): number | undefined {
+  ): Promise<string> {
     if (hasIdTokenLifetimeLeft(token, MUSTER_TOKEN_REFRESH_BELOW)) {
-      return undefined;
+      return token;
     }
     const key = installation ?? '';
-    const now = Date.now();
+    const kept = this.keptTokens.get(key);
+    const keptToken =
+      kept && sameHolder(kept.token, token) ? kept.token : undefined;
     if (
-      now - (this.refreshedAt.get(key) ?? 0) <
-      MUSTER_TOKEN_REFRESH_INTERVAL_MS
+      keptToken &&
+      hasIdTokenLifetimeLeft(keptToken, MUSTER_TOKEN_REFRESH_BELOW)
     ) {
-      return undefined;
+      return keptToken;
     }
-    this.refreshedAt.set(key, now);
-    return MUSTER_TOKEN_MIN_LIFETIME_LEFT;
+    if (
+      kept &&
+      keptToken &&
+      Date.now() - kept.refreshedAt < MUSTER_TOKEN_REFRESH_INTERVAL_MS
+    ) {
+      return laterExpiring(keptToken, token);
+    }
+    const refreshed =
+      (await this.currentToken(
+        installation,
+        authProvider,
+        MUSTER_TOKEN_MIN_LIFETIME_LEFT,
+      )) ?? token;
+    const best = laterExpiring(refreshed, token);
+    this.keptTokens.set(key, { token: best, refreshedAt: Date.now() });
+    return best;
   }
 
   /**
@@ -822,12 +884,12 @@ export class MusterApiClient implements MusterApi {
       return first;
     }
     const { reason } = unauthorizedBodyOf(first.errorData);
-    if (!reason || !TOKEN_REASONS.includes(reason)) {
+    if (!reason || !MUSTER_TOKEN_REASONS.includes(reason)) {
       return first;
     }
     const refreshed = await this.resolveToken(installation, {
       ...options,
-      refused: true,
+      refused: { token },
     });
     if (refreshed === undefined || refreshed === token) {
       return first;
@@ -855,7 +917,7 @@ export class MusterApiClient implements MusterApi {
       const { reason, server } = unauthorizedBodyOf(errorData);
       if (
         reason === 'token_expired' ||
-        (message && MUSTER_TOKEN_EXPIRED.test(message))
+        (message && MUSTER_TOKEN_EXPIRED_TEXT.test(message))
       ) {
         throw sessionExpiredError(installation);
       }

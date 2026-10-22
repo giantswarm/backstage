@@ -1569,7 +1569,7 @@ describe('createRouter', () => {
       expect(response.body.error).toEqual({
         name: 'MusterUnauthorizedError',
         message:
-          "'cluster-manager' requires authentication: sign in to it to use its tools.",
+          "auth_required: server 'cluster-manager' requires authentication; sign in to it to use its tools.",
         reason: 'server_sign_in_required',
         server: 'cluster-manager',
       });
