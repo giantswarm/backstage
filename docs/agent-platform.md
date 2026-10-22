@@ -1930,12 +1930,14 @@ details are load-bearing:
   `A2AService/SubscribeToTask` the same way, as the person and addressed to the
   Agent the body names, like the stream it stands in for. The controller
   answers the task's snapshot first, then the turn's events; a task already
-  over yields its final event. A subscription that could not open for a reason
-  a retry may fix (unavailable, slow, cancelled, as during a controller
-  rollout) answers 200 with one `{error}` frame and logs at `info`, so a
-  rollout does not reach Sentry once per running turn. A decision (401, 403,
-  no such task, a task already over, a controller without the call) is its
-  4xx.
+  over yields its final event. The Agent in the body addresses this call only
+  and is never remembered as the session's, and a first event whose context is
+  another session's is refused as a 404. A subscription that could not open for
+  a reason a retry may fix (unavailable, slow, cancelled, as during a
+  controller rollout) answers 200 with one `{error}` frame and logs at `info`,
+  so a rollout does not reach Sentry once per running turn. A decision (401,
+  403, no such task, a task already over, a controller without the call) is
+  its 4xx.
 
 ### Stopping a turn
 
@@ -1988,21 +1990,32 @@ events into the same preview, so it continues where it stopped. Nothing shows
 twice: the snapshot's history is not ingested, and a complete message that
 repeats one is recognised by its `messageId`. Only a half-received reply of
 Go-executor artifact chunks is dropped at the cut, because the chunks sent in
-between are gone and the complete artifact supersedes it. As the subscription
-opens, the conversation is re-read for what the turn said in between.
+between are gone and the complete artifact supersedes it; later chunks are
+skipped until the next complete artifact, so the preview never starts
+mid-word. As the subscription opens, the conversation is re-read for what the
+turn said in between. A stream cut before its first event is followed too
+once the history read finds the message, since that read names the task.
 
 - The working row says "The live view was interrupted. Reconnecting…" from the
-  cut until the subscription's first event. The first try is immediate, then
-  1, 2 and 4 s later (`RESUBSCRIBE_DELAYS_MS`); a subscription that delivered
-  the turn's own events starts the count again, up to `MAX_RESUBSCRIBES` per
-  turn.
+  cut until the subscription's first event. The first try follows the cut at
+  once; every later one waits at least 1 s, backing off to 2 and 4 s
+  (`RESUBSCRIBE_DELAYS_MS`) while subscriptions keep failing to open or keep
+  being cut within 15 s of opening (`STEADY_SUBSCRIPTION_MS`).
+- Four subscriptions in a row that fail to open hand the turn to the poll. One
+  that opened starts that count again however quiet the turn is, so a route
+  that cuts every stream at 60 s is followed through a long, silent tool call.
+- A turn is followed over streams for at most `STREAM_MAX_DURATION_MS`
+  (30 minutes, shared with the backend's relay) and `MAX_RESUBSCRIBES`
+  subscriptions in all, so a chain of fresh relays cannot get around the
+  relay's own bound.
 - A retry follows only a transport failure or the backend's in-band `{error}`
   (`isResubscribeRetryable`); a decision ends the retries. A turn whose stream
   left it waiting on the person (a v1 pause ends the stream with no final flag)
   is not resubscribed: the answer panel moves it on.
-- A stream that ended with a lost runtime's words (`isRuntimeLostFailureText`)
-  is not resubscribed: the turn failed with it, and the re-read shows the
-  runtime loss (see "A session whose runtime is lost"), not a lost stream.
+- A stream that ended, or a subscription refused, with a lost runtime's words
+  (`isRuntimeLostFailureText`) is not resubscribed: the turn failed with it,
+  and the re-read shows the runtime loss (see "A session whose runtime is
+  lost"), not a lost stream.
 - When the stream cannot be picked up again, the poll takes over: "Could not
   restore the live view. Checking the result…" while the send re-reads the
   conversation, then "Could not restore the live view. The agent is still

@@ -109,10 +109,16 @@ const reportedDrift = new Set<string>();
  * `ServiceUnavailableError` as "kagent isn't deployed here" and stays silent, so
  * a read that genuinely failed must not borrow either name.
  */
+export const UPSTREAM_ERROR_NAME = 'UpstreamError';
+
 function upstreamError(message: string): Error {
   const error = new Error(message);
-  error.name = 'UpstreamError';
+  error.name = UPSTREAM_ERROR_NAME;
   return error;
+}
+
+export function isUpstreamError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === UPSTREAM_ERROR_NAME;
 }
 
 /**
@@ -136,6 +142,28 @@ async function readRequestError(
     },
   };
 }
+
+/** How `relayStream`'s errors name the request they are about. */
+type StreamWording = {
+  /** What an in-band refusal refused. */
+  what: string;
+  /** What was under way when the connection failed. */
+  request: string;
+  /** The stream itself. */
+  stream: string;
+};
+
+const SEND_WORDING: StreamWording = {
+  what: 'the message',
+  request: 'sending the message',
+  stream: 'streaming send',
+};
+
+const SUBSCRIBE_WORDING: StreamWording = {
+  what: 'the subscription to the running turn',
+  request: 'subscribing to the running turn',
+  stream: 'subscription to the running turn',
+};
 
 /**
  * A streaming send failed in a way that says nothing about whether the message
@@ -168,10 +196,7 @@ export function isStreamTransportError(error: unknown): boolean {
  * no retry changes.
  */
 export function isResubscribeRetryable(error: unknown): boolean {
-  return (
-    isStreamTransportError(error) ||
-    (error as Error | undefined)?.name === 'UpstreamError'
-  );
+  return isStreamTransportError(error) || isUpstreamError(error);
 }
 
 /**
@@ -655,7 +680,7 @@ export class KagentApiClient implements KagentApi {
       { agentNamespace: agent.namespace, agentName: agent.name },
       onEvent,
       signal,
-      'the subscription to the running turn',
+      SUBSCRIBE_WORDING,
     );
   }
 
@@ -664,8 +689,8 @@ export class KagentApiClient implements KagentApi {
    * frame to `onEvent` — the shared half of {@link streamMessage},
    * {@link streamAnswer} and {@link subscribeToTask}, so a message, an answer
    * and a resubscription classify a broken stream identically. See
-   * {@link KagentApi.streamMessage} for the contract. `act` names what an
-   * in-band refusal before any event refused.
+   * {@link KagentApi.streamMessage} for the contract. `wording` names the
+   * request in the errors it rejects with.
    *
    * `signal` reaches the fetch, so an abort ends the body read as well as a
    * request still waiting for its headers; both land in the same classification
@@ -677,7 +702,7 @@ export class KagentApiClient implements KagentApi {
     body: unknown,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-    act = 'the message',
+    wording: StreamWording = SEND_WORDING,
   ): Promise<StreamEnd> {
     const { url, headers } = await this.prepare(path, installation, {
       turn: true,
@@ -696,7 +721,7 @@ export class KagentApiClient implements KagentApi {
       // reset it. Whether the message was dispatched is unknowable from here,
       // which is exactly what this name tells the caller to go and check.
       throw streamTransportError(
-        `The connection failed while sending the message: ${String(error)}`,
+        `The connection failed while ${wording.request}: ${String(error)}`,
       );
     }
 
@@ -711,7 +736,7 @@ export class KagentApiClient implements KagentApi {
         const { fields } = await readRequestError(response);
         throw Object.assign(
           streamTransportError(
-            `The streaming send failed with status ${response.status}.`,
+            `The ${wording.stream} failed with status ${response.status}.`,
           ),
           fields,
         );
@@ -761,7 +786,7 @@ export class KagentApiClient implements KagentApi {
         // preview short.
         if (!sawEvent) {
           throw upstreamError(
-            `The agent on ${installation} did not accept ${act}: ${frame.message}`,
+            `The agent on ${installation} did not accept ${wording.what}: ${frame.message}`,
           );
         }
         end.error = frame.message;
@@ -784,7 +809,7 @@ export class KagentApiClient implements KagentApi {
         consumeFrame(data);
       }
     } catch (error) {
-      if ((error as Error)?.name === 'UpstreamError') {
+      if (isUpstreamError(error)) {
         throw error;
       }
       // The stream died mid-read — the gateway's request timeout is the routine
@@ -792,7 +817,7 @@ export class KagentApiClient implements KagentApi {
       // finishes the job; without any, the caller verifies.
       if (!sawEvent) {
         throw streamTransportError(
-          `The event stream ended before the agent produced anything: ${String(error)}`,
+          `The ${wording.stream} ended before the agent produced anything: ${String(error)}`,
         );
       }
     }

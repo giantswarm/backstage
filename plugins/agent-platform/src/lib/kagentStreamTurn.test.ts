@@ -3,7 +3,6 @@ import {
   createSseDataDecoder,
   createStreamTurn,
   isStreamTurnOver,
-  isTaskSnapshotEvent,
   readStreamFrame,
   resumeStreamTurn,
   StreamTurn,
@@ -1271,10 +1270,37 @@ describe('resuming a cut stream', () => {
     expect(resumed.revision).toBeGreaterThan(cut.revision);
   });
 
+  it('shows a reply of artifact chunks only once whole after the cut, never from mid-word', () => {
+    const cut = fold(createStreamTurn('sent-1'), [chunk('Seven nodes are ')]);
+
+    const midway = fold(resumeStreamTurn(cut), [chunk('ady, and the ')]);
+    expect(midway.live).toBeUndefined();
+
+    const whole = fold(midway, [
+      {
+        kind: 'artifact-update',
+        taskId: 'task-1',
+        artifact: {
+          artifactId: 'a-1',
+          parts: [
+            { kind: 'text', text: 'Seven nodes are ready, and the rest.' },
+          ],
+        },
+        metadata: { kagent_partial: false },
+      },
+      chunk('Next reply '),
+    ]);
+    expect(whole.items.map(item => ('text' in item ? item.text : ''))).toEqual([
+      'Seven nodes are ready, and the rest.',
+    ]);
+    // The next reply streams as usual again.
+    expect(whole.live?.text).toBe('Next reply ');
+  });
+
   it('keeps the text a message opened, which is that message as sent', () => {
     const cut = fold(createStreamTurn('sent-1'), [said('Checking.', 'm-1')]);
 
-    expect(resumeStreamTurn(cut)).toBe(cut);
+    expect(resumeStreamTurn(cut).live).toEqual(cut.live);
   });
 
   it('knows its task from an update event when no snapshot named it', () => {
@@ -1282,12 +1308,5 @@ describe('resuming a cut stream', () => {
     const turn = fold(createStreamTurn('sent-1'), [said('Checking.', 'm-1')]);
 
     expect(turn.taskId).toBe('task-1');
-  });
-
-  it('tells the snapshot a resubscription opens with from the turn’s own events', () => {
-    expect(isTaskSnapshotEvent(snapshot)).toBe(true);
-    expect(isTaskSnapshotEvent({ task: { id: 'task-1' } })).toBe(true);
-    expect(isTaskSnapshotEvent(said('Checking.', 'm-1'))).toBe(false);
-    expect(isTaskSnapshotEvent('garbage')).toBe(false);
   });
 });

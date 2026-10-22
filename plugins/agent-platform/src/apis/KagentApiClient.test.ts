@@ -1264,7 +1264,7 @@ describe('KagentApiClient', () => {
       expect(isResubscribeRetryable(failure)).toBe(false);
     });
 
-    it('rejects a 5xx before the stream opens as one worth retrying', async () => {
+    it('rejects a 5xx before the stream opens as one worth retrying, naming the subscription', async () => {
       fetchMock.mockResolvedValue(jsonResponse({}, 502));
 
       const failure = await buildClient()
@@ -1272,6 +1272,9 @@ describe('KagentApiClient', () => {
         .catch(error => error);
 
       expect(isResubscribeRetryable(failure)).toBe(true);
+      expect(failure.message).toBe(
+        'The subscription to the running turn failed with status 502.',
+      );
     });
   });
 

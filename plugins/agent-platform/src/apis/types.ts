@@ -38,7 +38,6 @@ export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
  */
 export const REQUEST_ID_HEADER = 'x-request-id';
 
-/** The answer to a confirmation, as the answer routes take it. */
 /**
  * How a stream that delivered events ended. `error` is the message of the
  * in-band `{error}` frame it ended with, when it ended with one — a controller
@@ -47,6 +46,7 @@ export const REQUEST_ID_HEADER = 'x-request-id';
  */
 export type StreamEnd = { error?: string };
 
+/** The answer to a confirmation, as the answer routes take it. */
 export type ConfirmationAnswerRequest = {
   messageId: string;
   taskId: string;

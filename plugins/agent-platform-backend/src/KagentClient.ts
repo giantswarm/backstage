@@ -1,6 +1,6 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
-import { ConflictError, InputError } from '@backstage/errors';
+import { ConflictError, InputError, NotFoundError } from '@backstage/errors';
 import { create, toJson, type JsonObject } from '@bufbuild/protobuf';
 import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { MessageImagePart } from './messageImages';
@@ -196,6 +196,34 @@ const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
 /** One SSE event carrying `payload` as its JSON `data:`. */
 function sseFrame(payload: unknown): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+/**
+ * The in-band `{error}` frame a relayed stream ends with, or a subscription
+ * that could not open answers: the gRPC code and the controller's words.
+ */
+function errorFrame(error: ConnectError) {
+  return { error: { code: Code[error.code], message: error.rawMessage } };
+}
+
+/** An A2A server stream opened as far as its first event. */
+type OpenedStream = {
+  iterator: AsyncIterator<StreamResponse>;
+  first: IteratorResult<StreamResponse>;
+};
+
+/** The A2A context (the session) one stream event names, when it names one. */
+function streamContextId(event: StreamResponse): string | undefined {
+  const { payload } = event;
+  switch (payload.case) {
+    case 'task':
+    case 'statusUpdate':
+    case 'artifactUpdate':
+    case 'message':
+      return payload.value.contextId || undefined;
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -755,18 +783,15 @@ export class KagentClient {
     signal: AbortSignal,
   ): Promise<Response> {
     const request = this.buildRequest(target, message);
-    const stream = this.a2aService
-      .sendStreamingMessage(request, {
-        headers: this.turnHeaders(options),
-        signal,
-      })
-      [Symbol.asyncIterator]();
-
-    // The first event is awaited under the ordinary request timeout: a slow
-    // start means kagent is unwell, not that the agent is thinking.
-    let first: IteratorResult<StreamResponse>;
+    let opened: OpenedStream;
     try {
-      first = await this.withTimeout(stream.next(), this.timeoutMs, signal);
+      opened = await this.openFirst(
+        this.a2aService.sendStreamingMessage(request, {
+          headers: this.turnHeaders(options),
+          signal,
+        }),
+        signal,
+      );
     } catch (error) {
       if (signal.aborted) {
         // The caller hung up before kagent answered. Nothing to report to
@@ -776,7 +801,7 @@ export class KagentClient {
       throw this.mapError(error, this.sendContext(true));
     }
 
-    return this.relayAsSse(stream, first, signal);
+    return this.relayAsSse(opened, signal);
   }
 
   /**
@@ -788,6 +813,11 @@ export class KagentClient {
    * `A2AService/SubscribeToTask`, addressed and authorized like the stream it
    * stands in for: to the session's Agent (`tenant`), as the person (their
    * token, with HITL requested so a question the turn reaches arrives typed).
+   * The Agent the caller names is used for this call only and never
+   * remembered as the session's: unlike a send, a subscription carries no
+   * context the gateway checks, so the caller's word for it proves nothing.
+   * What does is the task itself: a first event whose context is another
+   * session's is refused as a turn this session does not have.
    * The controller answers the task's current snapshot first and the turn's
    * events from then on, relayed exactly as {@link streamMessage} relays them;
    * a task already over yields its final event.
@@ -809,17 +839,16 @@ export class KagentClient {
     options: KagentRequestOptions,
     signal: AbortSignal,
   ): Promise<Response> {
-    const { tenant } = this.targetOf(sessionId, agent);
-    const stream = this.a2aService
-      .subscribeToTask(
-        { tenant, id: taskId },
-        { headers: this.turnHeaders(options), signal },
-      )
-      [Symbol.asyncIterator]();
-
-    let first: IteratorResult<StreamResponse>;
+    const missingResource = `That turn does not exist in this session on installation '${this.installation.name}'.`;
+    let opened: OpenedStream;
     try {
-      first = await this.withTimeout(stream.next(), this.timeoutMs, signal);
+      opened = await this.openFirst(
+        this.a2aService.subscribeToTask(
+          { tenant: agentTenant(agent), id: taskId },
+          { headers: this.turnHeaders(options), signal },
+        ),
+        signal,
+      );
     } catch (error) {
       if (signal.aborted) {
         throw error;
@@ -832,7 +861,7 @@ export class KagentClient {
       if (isDecision) {
         throw this.mapError(error, {
           endpoint: 'task subscription',
-          missingResource: `That turn does not exist on installation '${this.installation.name}'.`,
+          missingResource,
           invalidArgument: reason =>
             new InputError(
               `kagent on installation '${this.installation.name}' did not accept the subscription: ${reason}`,
@@ -852,17 +881,39 @@ export class KagentClient {
           code: Code[connectError.code],
         },
       );
-      return new Response(
-        sseFrame({
-          error: {
-            code: Code[connectError.code],
-            message: connectError.rawMessage,
-          },
-        }),
-        { status: 200, headers: { 'content-type': SSE_CONTENT_TYPE } },
-      );
+      return new Response(sseFrame(errorFrame(connectError)), {
+        status: 200,
+        headers: { 'content-type': SSE_CONTENT_TYPE },
+      });
     }
-    return this.relayAsSse(stream, first, signal);
+
+    const contextId = opened.first.done
+      ? undefined
+      : streamContextId(opened.first.value);
+    if (contextId && contextId !== sessionId) {
+      void opened.iterator.return?.(undefined);
+      throw new NotFoundError(missingResource);
+    }
+    return this.relayAsSse(opened, signal);
+  }
+
+  /**
+   * Open an A2A server stream as far as its first event, awaited under the
+   * ordinary request timeout: a slow start means kagent is unwell, not that
+   * the agent is thinking. Rejects as the stream does; each caller reads the
+   * failure its own way.
+   */
+  private async openFirst(
+    stream: AsyncIterable<StreamResponse>,
+    signal: AbortSignal,
+  ): Promise<OpenedStream> {
+    const iterator = stream[Symbol.asyncIterator]();
+    const first = await this.withTimeout(
+      iterator.next(),
+      this.timeoutMs,
+      signal,
+    );
+    return { iterator, first };
   }
 
   /**
@@ -872,8 +923,7 @@ export class KagentClient {
    * a turn's stream reads the same whatever opened it.
    */
   private relayAsSse(
-    stream: AsyncIterator<StreamResponse>,
-    first: IteratorResult<StreamResponse>,
+    { iterator: stream, first }: OpenedStream,
     signal: AbortSignal,
   ): Response {
     const logger = this.logger;
@@ -905,14 +955,7 @@ export class KagentClient {
           );
           if (!signal.aborted) {
             controller.enqueue(
-              encoder.encode(
-                sseFrame({
-                  error: {
-                    code: Code[connectError.code],
-                    message: connectError.rawMessage,
-                  },
-                }),
-              ),
+              encoder.encode(sseFrame(errorFrame(connectError))),
             );
           }
         } finally {

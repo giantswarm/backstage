@@ -1098,6 +1098,162 @@ describe('useSendMessage', () => {
         }
       });
 
+      /** Resolve after `ms` of (fake) time. */
+      const after = (ms: number) =>
+        new Promise<void>(resolve => setTimeout(resolve, ms));
+      /** Run `body` with fake timers and clock, restoring real ones after. */
+      const withFakeTime = async (body: () => Promise<void>) => {
+        jest.useFakeTimers();
+        try {
+          await body();
+        } finally {
+          jest.useRealTimers();
+        }
+      };
+
+      it('keeps following a quiet turn whose route cuts every stream at 60 s', async () => {
+        await withFakeTime(async () => {
+          streamMessage.mockImplementation(cutByRollout);
+          // Each subscription opens (the snapshot) and says nothing more
+          // before the route cuts it.
+          subscribeToTask.mockImplementation(
+            async (_i, _s, _a, _t, onEvent: (event: unknown) => void) => {
+              onEvent(working);
+              await after(60_000);
+              return {};
+            },
+          );
+          const { result } = renderWith();
+
+          let sending: Promise<void> = Promise.resolve();
+          act(() => {
+            sending = result.current.sendMessage('how are the nodes?');
+          });
+          await act(async () => {
+            await jest.advanceTimersByTimeAsync(6 * 61_000);
+          });
+
+          expect(subscribeToTask.mock.calls.length).toBeGreaterThanOrEqual(6);
+          expect(result.current.isStreamLost).toBe(false);
+
+          subscribeToTask.mockImplementation(
+            async (_i, _s, _a, _t, onEvent: (event: unknown) => void) => {
+              onEvent(said('Seven nodes are ready.', 'm-2', true));
+              return {};
+            },
+          );
+          await act(async () => {
+            await jest.advanceTimersByTimeAsync(61_000);
+            await sending;
+          });
+          expect(result.current.isStreamLost).toBe(false);
+          expect(result.current.error).toBeNull();
+        });
+      });
+
+      it('backs a stream that keeps dropping right after it opens off, never resubscribing back to back', async () => {
+        await withFakeTime(async () => {
+          streamMessage.mockImplementation(cutByRollout);
+          const at: number[] = [];
+          subscribeToTask.mockImplementation(
+            async (_i, _s, _a, _t, onEvent: (event: unknown) => void) => {
+              at.push(Date.now());
+              onEvent(working);
+              onEvent(said('Still checking.', `m-${at.length + 1}`));
+              return { error: 'upstream connect error' };
+            },
+          );
+          const { result } = renderWith();
+
+          act(() => {
+            void result.current.sendMessage('how are the nodes?');
+          });
+          await act(async () => {
+            await jest.advanceTimersByTimeAsync(12_000);
+          });
+
+          const gaps = at.slice(1).map((time, i) => time - at[i]);
+          expect(gaps.slice(0, 4)).toEqual([1000, 2000, 4000, 4000]);
+          expect(at.length).toBeLessThan(6);
+        });
+      });
+
+      it('stops resubscribing once the turn has been followed for the streams’ bound', async () => {
+        await withFakeTime(async () => {
+          streamMessage.mockImplementation(cutByRollout);
+          // Steady subscriptions, each cut after 10 minutes.
+          subscribeToTask.mockImplementation(
+            async (_i, _s, _a, _t, onEvent: (event: unknown) => void) => {
+              onEvent(working);
+              onEvent(said('Still working.', 'm-2'));
+              await after(10 * 60_000);
+              return {};
+            },
+          );
+          const { result } = renderWith();
+
+          let sending: Promise<void> = Promise.resolve();
+          act(() => {
+            sending = result.current.sendMessage('how are the nodes?');
+          });
+          await act(async () => {
+            await jest.advanceTimersByTimeAsync(40 * 60_000);
+            await sending;
+          });
+
+          expect(subscribeToTask).toHaveBeenCalledTimes(3);
+          expect(result.current.isStreamLost).toBe(true);
+        });
+      });
+
+      it('leaves a subscription refused in a lost runtime’s words to the runtime-loss notice', async () => {
+        streamMessage.mockImplementation(cutByRollout);
+        const refusal = new Error(
+          'The agent on gazelle did not accept the subscription to the running turn: failed to connect to Session runtime',
+        );
+        refusal.name = 'UpstreamError';
+        subscribeToTask.mockRejectedValue(refusal);
+        const { result } = renderWith();
+
+        await act(async () => {
+          await result.current.sendMessage('how are the nodes?');
+        });
+
+        expect(subscribeToTask).toHaveBeenCalledTimes(1);
+        expect(result.current.isStreamLost).toBe(false);
+      });
+
+      it('follows a turn whose stream was cut before its first event, once the history shows where it went', async () => {
+        streamMessage.mockRejectedValue(
+          transportError('The connection failed while sending the message.'),
+        );
+        listSessionTasks.mockImplementation(async () => [
+          taskHolding(sentMessageId(), 'working'),
+        ]);
+        subscribeToTask.mockImplementation(
+          async (_i, _s, _a, _t, onEvent: (event: unknown) => void) => {
+            onEvent(said('Seven nodes are ready.', 'm-2', true));
+            return {};
+          },
+        );
+        const { result } = renderWith();
+
+        await act(async () => {
+          await result.current.sendMessage('how are the nodes?');
+        });
+
+        expect(subscribeToTask).toHaveBeenCalledWith(
+          'gazelle',
+          'abc',
+          AGENT,
+          'task-1',
+          expect.any(Function),
+          expect.any(AbortSignal),
+        );
+        expect(result.current.isStreamLost).toBe(false);
+        expect(result.current.error).toBeNull();
+      });
+
       it('stops at a decision without retrying, and follows the poll', async () => {
         streamMessage.mockImplementation(cutByRollout);
         const { result } = renderWith();

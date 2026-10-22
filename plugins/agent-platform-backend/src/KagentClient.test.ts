@@ -855,6 +855,56 @@ describe('KagentClient against a fake controller', () => {
       ]);
     });
 
+    it('never takes the Agent the caller names as the session’s', async () => {
+      // A subscription carries no context the gateway checks; remembering the
+      // body's Agent would send every later agent-less call on the session to
+      // whatever tenant the last subscribe named.
+      const { fake, client } = build();
+      const id = created(fake);
+      const sent = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      await client
+        .subscribeToTask(
+          id,
+          { namespace: 'kagent', name: 'orphan' },
+          sent.task.id,
+          USER,
+          new AbortController().signal,
+        )
+        .catch(() => undefined);
+      await client.listSessionTasks(id, USER);
+
+      expect(fake.calls.at(-1)?.method).toBe('ListTasks');
+      expect(fake.calls.at(-1)?.tenant).toBe('kagent/sre-agent');
+    });
+
+    it('refuses a turn of another session as one this session does not have', async () => {
+      const { fake, client } = build();
+      const mine = created(fake, 'req-1');
+      const other = created(fake, 'req-2');
+      const sent = (await client.sendMessage(
+        other,
+        AGENT,
+        { messageId: 'm1', text: 'hello' },
+        USER,
+      )) as { task: { id: string } };
+
+      await expect(
+        client.subscribeToTask(
+          mine,
+          AGENT,
+          sent.task.id,
+          USER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'NotFoundError' });
+    });
+
     it('refuses somebody else’s turn as a 404 decision', async () => {
       const { fake, client } = build();
       const id = created(fake);

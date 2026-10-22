@@ -125,6 +125,12 @@ export type StreamTurn = {
    * hide it from an effect watching for one.
    */
   revision: number;
+  /**
+   * Partial artifact chunks are being skipped: the stream was resumed after a
+   * cut (see {@link resumeStreamTurn}), and a reply of chunks that began before
+   * it would show from mid-word. Cleared by the next complete artifact.
+   */
+  skipPartialArtifacts?: boolean;
   /** Calls awaiting their response, by function-call id. Internal. */
   openCalls: { callId: string; itemIndex: number }[];
   /** Monotonic id source for {@link items}. Internal. */
@@ -177,22 +183,20 @@ export function isStreamTurnOver(turn: StreamTurn): boolean {
  * with a hole in the middle; the complete artifact supersedes the run anyway,
  * from the resubscription or from the poll. A run a message opened is that
  * message's text as sent and keeps its place.
+ *
+ * Partial chunks are skipped from here until the next complete artifact: the
+ * first one the resubscription delivers may be the middle of a reply, and a
+ * preview starting mid-word reads as broken. The reply shows whole once its
+ * complete artifact arrives.
  */
 export function resumeStreamTurn(turn: StreamTurn): StreamTurn {
-  if (!turn.live || turn.live.messageId !== undefined) {
-    return turn;
-  }
-  return { ...turn, live: undefined, revision: turn.revision + 1 };
-}
-
-/**
- * Whether an event is a task snapshot — the first thing a resubscription
- * answers, before any of the turn's own events. Says nothing about progress:
- * a subscription that delivered only that has not shown the turn moving.
- */
-export function isTaskSnapshotEvent(data: unknown): boolean {
-  const parsed = a2aStreamEventWireSchema.safeParse(normalizeStreamEvent(data));
-  return parsed.success && parsed.data.kind === 'task';
+  const dropsRun = turn.live !== undefined && turn.live.messageId === undefined;
+  return {
+    ...turn,
+    live: dropsRun ? undefined : turn.live,
+    skipPartialArtifacts: true,
+    revision: turn.revision + 1,
+  };
 }
 
 /**
@@ -336,6 +340,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
        * adjacent repeat.
        */
       const emitComplete = () => {
+        next.skipPartialArtifacts = false;
         const live = next.live;
         if (!live || live.messageId !== undefined) {
           flushLiveRun(next);
@@ -365,7 +370,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         const partText = readPartText(part);
         if (partText !== undefined) {
           text += partText;
-          if (partial === true) {
+          if (partial === true && !next.skipPartialArtifacts) {
             // Appended as the parts are read rather than after the loop: a
             // `function_call` later in this same event must not take its item
             // slot ahead of the text that came before it.

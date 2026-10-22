@@ -11,7 +11,10 @@ import {
 import { randomUUID } from 'crypto';
 import express from 'express';
 import Router from 'express-promise-router';
-import { MODEL_COST_MAX_DAYS } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  MODEL_COST_MAX_DAYS,
+  STREAM_MAX_DURATION_MS,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   ReachabilityCache,
   reachabilityFields,
@@ -342,18 +345,6 @@ function readAnswerBody(req: express.Request): {
 }
 
 /**
- * Upper bound on how long the streaming routes hold their relay open.
- *
- * Not a turn timeout — cutting the stream does not stop the turn, and the
- * frontend reconciles through the poll exactly as if a gateway had cut it. This
- * exists only so an agent that never writes a terminal state cannot pin a socket
- * (and its upstream connection) open for as long as a tab stays on the page.
- * Generous on purpose: a legitimate turn with many tool calls runs many minutes,
- * and every gateway we know of gives up long before this does.
- */
-const STREAM_MAX_DURATION_MS = 30 * 60_000;
-
-/**
  * Relay one upstream event stream to the browser as SSE.
  *
  * Shared by the streaming routes (a message, an answer, a resubscription to a
@@ -374,6 +365,12 @@ const STREAM_MAX_DURATION_MS = 30 * 60_000;
  *   frontend treats an unterminated stream as "still running", resubscribes
  *   to the turn, and follows the poll when that fails too — the same contract
  *   as the unary routes' 202.
+ *
+ * The duration bound (`STREAM_MAX_DURATION_MS`, shared with the page) keeps an
+ * agent that never writes a terminal state from pinning a socket open. Each
+ * relay holds it, and the page holds it across a turn's resubscriptions: it
+ * stops resubscribing once it has followed the turn that long, so a chain of
+ * fresh relays cannot get around it.
  *
  * The relay is flush-wrapped because Backstage's root router applies
  * `compression()` globally, which buffers `res.write()` until `res.end()` —

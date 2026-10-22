@@ -6,6 +6,7 @@ import {
   AWAITING_INPUT_STATES,
   describeSessionState,
   isRuntimeLostFailureText,
+  STREAM_MAX_DURATION_MS,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   isResubscribeRetryable,
@@ -17,7 +18,6 @@ import {
   applyStreamEvent,
   createStreamTurn,
   isStreamTurnOver,
-  isTaskSnapshotEvent,
   resumeStreamTurn,
   StreamTurn,
 } from '../lib/kagentStreamTurn';
@@ -36,18 +36,33 @@ export type OpenTurnStream = (
 
 /**
  * How long to wait before each resubscription to a turn whose stream ended
- * before it did: at once, then backing off to 7 s in all, after which the poll
- * takes over. Short, because a controller rollout has its new pod serving
- * before the old one is cut and the reader is watching; bounded, because a
- * controller that is not coming back must not keep the page saying
- * "Reconnecting…". A subscription that delivered the turn's own events starts
- * the count again, so a turn cut twice is picked up twice.
+ * before it did. The first follows the cut at once; every later one waits at
+ * least the second step, backing off along the list while subscriptions keep
+ * failing to open or keep being cut soon after they opened.
+ *
+ * Short, because a controller rollout has its new pod serving before the old
+ * one is cut and the reader is watching. Bounded: once as many subscriptions
+ * in a row as there are steps have failed to open (7 s in all), the poll
+ * takes over, because a controller that is not coming back must not keep the
+ * page saying "Reconnecting…". A subscription that opened starts that count
+ * again, however quiet the turn: a route that cuts every stream at 60 s, over
+ * a tool call that says nothing for minutes, is followed for as long as it
+ * runs.
  */
 export const RESUBSCRIBE_DELAYS_MS = [0, 1000, 2000, 4000];
 
 /**
- * The most resubscriptions one turn makes, however many delivered events: a
- * guard against a stream that opens, says one thing and is cut, forever.
+ * How long a subscription has to stay open to count as steady rather than
+ * flapping. One cut sooner than this backs the next resubscription off, so a
+ * stream that opens, says one thing and is cut (an Envoy drain, a controller
+ * crash-looping) is not resubscribed back to back.
+ */
+export const STEADY_SUBSCRIPTION_MS = 15_000;
+
+/**
+ * The most resubscriptions one turn makes, however many opened: a guard
+ * against a stream that opens and is cut, forever. The turn's whole following
+ * is bounded by `STREAM_MAX_DURATION_MS` too.
  */
 export const MAX_RESUBSCRIBES = 30;
 
@@ -78,7 +93,7 @@ export type OnMessageMissing = (tasks: A2aTaskWire[]) => void;
 
 /** What a read of the session history says of a sent message. */
 type Landing =
-  | { kind: 'landed' }
+  | { kind: 'landed'; task: A2aTaskWire }
   | { kind: 'missing'; tasks: A2aTaskWire[] }
   | { kind: 'unknown' };
 
@@ -275,9 +290,8 @@ export function useStreamedTurn(
       } catch {
         return { kind: 'unknown' };
       }
-      return findTurnTask(tasks, { sentMessageId: messageId })
-        ? { kind: 'landed' }
-        : { kind: 'missing', tasks };
+      const task = findTurnTask(tasks, { sentMessageId: messageId });
+      return task ? { kind: 'landed', task } : { kind: 'missing', tasks };
     },
     [kagentApi, installation, sessionId],
   );
@@ -311,6 +325,7 @@ export function useStreamedTurn(
       open: OpenTurnStream,
       onMissing?: OnMessageMissing,
     ): Promise<StreamTurn> => {
+      const startedAt = Date.now();
       let turn = createStreamTurn(messageId);
       setStreamTurn(turn);
       // A new turn: whatever became of the previous one's stream is history.
@@ -344,33 +359,42 @@ export function useStreamedTurn(
        * and `end` as the last stream left them.
        */
       const followAgain = async () => {
+        // Subscriptions in a row that did not open: what gives up.
         let failures = 0;
+        // Subscriptions in a row that opened and were cut again soon: what
+        // backs a flapping stream off.
+        let flaps = 0;
         for (let attempt = 0; attempt < MAX_RESUBSCRIBES; attempt += 1) {
           const target = agentRef.current;
           const taskId = turn.taskId;
           if (
             !target ||
             !taskId ||
-            !turn.dispatched ||
             isStreamTurnOver(turn) ||
             awaitsPerson(turn) ||
             isRuntimeLostFailureText(end.error) ||
             control.signal.aborted ||
             unmountedRef.current ||
             failures >= RESUBSCRIBE_DELAYS_MS.length ||
+            Date.now() - startedAt >= STREAM_MAX_DURATION_MS ||
             pollShowsTurnOver(turn)
           ) {
             return;
           }
           setReconnecting(true);
-          await pause(RESUBSCRIBE_DELAYS_MS[failures], control.signal);
+          const step = attempt === 0 ? 0 : Math.max(1, failures, flaps);
+          await pause(
+            RESUBSCRIBE_DELAYS_MS[
+              Math.min(step, RESUBSCRIBE_DELAYS_MS.length - 1)
+            ],
+            control.signal,
+          );
           if (control.signal.aborted || unmountedRef.current) {
             return;
           }
           turn = resumeStreamTurn(turn);
           setStreamTurn(turn);
-          let opened = false;
-          let progressed = false;
+          let openedAt: number | undefined;
           try {
             end =
               (await kagentApi.subscribeToTask(
@@ -379,8 +403,8 @@ export function useStreamedTurn(
                 target,
                 taskId,
                 result => {
-                  if (!opened) {
-                    opened = true;
+                  if (openedAt === undefined) {
+                    openedAt = Date.now();
                     setReconnecting(false);
                     // What the turn said while no stream was open is in its
                     // history: the poll brings it in, the preview goes on.
@@ -388,18 +412,30 @@ export function useStreamedTurn(
                       queryKey: sessionTasksQueryKey(installation, sessionId),
                     });
                   }
-                  progressed ||= !isTaskSnapshotEvent(result);
                   fold(result);
                 },
                 control.signal,
               )) ?? {};
           } catch (error) {
+            // A refusal in a lost runtime's words: the turn failed with it,
+            // and the re-read shows the runtime loss, not a lost stream.
+            const message = (error as Error | undefined)?.message;
+            if (isRuntimeLostFailureText(message)) {
+              end = { error: message };
+              return;
+            }
             if (!isResubscribeRetryable(error)) {
               return;
             }
             end = {};
           }
-          failures = progressed ? 0 : failures + 1;
+          if (openedAt === undefined) {
+            failures += 1;
+          } else {
+            failures = 0;
+            flaps =
+              Date.now() - openedAt < STEADY_SUBSCRIPTION_MS ? flaps + 1 : 0;
+          }
         }
       };
 
@@ -422,6 +458,9 @@ export function useStreamedTurn(
             if (landing.kind !== 'landed') {
               throw error;
             }
+            // The read found the turn's task: it can be followed again even
+            // though its stream said nothing.
+            turn = { ...turn, taskId: turn.taskId ?? landing.task.id };
           }
         }
         await followAgain();
