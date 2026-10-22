@@ -51,8 +51,10 @@ import {
   SkillFileList,
   skillFileContent,
 } from './agentSkills/skillFiles';
-import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
-import { mimirServiceRef } from './services/MimirService';
+import {
+  containerRegistryServiceRef,
+  mimirServiceRef,
+} from '@giantswarm/backstage-plugin-gs-node';
 import { readSignedInConfig } from './signedInConfig';
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';

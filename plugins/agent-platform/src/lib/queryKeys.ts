@@ -61,6 +61,20 @@ export function sessionUsageQueryKey(installation: string) {
 }
 
 /**
+ * The caller's own model cost on one installation, per window. Under `kagent`
+ * with the per-user reads, so `QueryClientProvider` keeps it off the disk.
+ */
+export function modelCostQueryKey(installation: string, days: number) {
+  return [
+    'agent-platform',
+    'kagent',
+    'model-cost',
+    installation,
+    days,
+  ] as const;
+}
+
+/**
  * The model-manager reads, per installation — through muster as the person,
  * but about the installation: its inventory, backend descriptors and pull
  * jobs are the same for every user, so they are prefixed `model-manager` (not

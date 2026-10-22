@@ -4,6 +4,7 @@ import {
   KagentSession,
   KagentSessionDetail,
   MessageImage,
+  ModelCostResponse,
   SessionStatesResponse,
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -139,6 +140,13 @@ export interface KagentApi {
    * claim ownership it cannot support.
    */
   getSessionUsage(installation: string): Promise<SessionUsageResponse>;
+
+  /**
+   * The caller's own model cost on one installation over the last `days`
+   * days, as the gateway priced it. The backend takes the person from kagent
+   * and builds the query itself, so nothing here names whose cost it is.
+   */
+  getModelCost(installation: string, days: number): Promise<ModelCostResponse>;
 
   /**
    * Stop the turn a session is running: cancel its task on the server.
