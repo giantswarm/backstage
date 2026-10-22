@@ -41,7 +41,11 @@ function UnstableAction() {
 }
 
 function renderFrame(
-  props: { onBack?: () => void; confirmDiscard?: boolean } = {},
+  props: {
+    onBack?: () => void;
+    confirmDiscard?: boolean;
+    onDiscard?: () => void;
+  } = {},
 ) {
   return render(
     <MemoryRouter initialEntries={['/agents/new/tools']}>
@@ -170,8 +174,9 @@ describe('WizardFrame', () => {
     },
   );
 
-  it('leaves to the close href on Discard changes', async () => {
-    renderFrame({ confirmDiscard: true });
+  it('leaves to the close href on Discard changes, dropping the draft', async () => {
+    const onDiscard = jest.fn();
+    renderFrame({ confirmDiscard: true, onDiscard });
 
     await userEvent.click(screen.getByRole('link', { name: 'Cancel' }));
     await userEvent.click(
@@ -181,6 +186,21 @@ describe('WizardFrame', () => {
     );
 
     expect(await screen.findByText('Customize page')).toBeInTheDocument();
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the draft on Keep editing', async () => {
+    const onDiscard = jest.fn();
+    renderFrame({ confirmDiscard: true, onDiscard });
+
+    await userEvent.click(screen.getByRole('link', { name: 'Close' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Keep editing',
+      }),
+    );
+
+    expect(onDiscard).not.toHaveBeenCalled();
   });
 
   /** A `beforeunload` as the browser fires it; prevented means it asks. */

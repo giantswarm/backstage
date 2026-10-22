@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Progress } from '@backstage/core-components';
+import { Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { AWAITING_INPUT_STATES } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
@@ -266,14 +267,10 @@ export function AssistConversation({
         {fullSessionHref && (
           <Text variant="body-small" color="secondary">
             Everything here is an ordinary session —{' '}
-            {/* A new tab: navigating this one away discards the form. */}
-            <Link
-              to={fullSessionHref}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            {/* A new tab, like every link in the form: it stays as it is. */}
+            <ExternalLink href={fullSessionHref}>
               open it in full
-            </Link>{' '}
+            </ExternalLink>{' '}
             for details and history.
           </Text>
         )}
