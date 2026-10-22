@@ -21,6 +21,7 @@ import { TenantPicker } from '../TenantPicker';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker } from '../HarnessPicker';
 import { DefaultWorkspacePicker } from '../DefaultWorkspacePicker';
+import { EgressPolicyPicker } from '../EgressPolicyPicker';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
 import { harnessTitle } from '../../lib/harnesses';
@@ -76,7 +77,7 @@ function NewAgentPageContent() {
   const validation = useFieldValidation();
   const { errorFor, fieldProps, textFieldProps } = validation;
   // "More options" holds the technical knobs (model, runtime, default
-  // workspace, technical name, extra egress), collapsed: their defaults fit most agents. The shared
+  // workspace, technical name, EgressPolicies and extra egress), collapsed: their defaults fit most agents. The shared
   // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
   // model picker's preselection of the installation's default model runs
   // without the person ever opening it.
@@ -138,6 +139,10 @@ function NewAgentPageContent() {
   const defaultsSummary = `${runtimeName} runtime${
     state.defaultWorkspace
       ? `, default workspace ${state.defaultWorkspace}`
+      : ''
+  }${
+    state.egressPolicyRefs.length > 0
+      ? `, EgressPolicies ${state.egressPolicyRefs.join(', ')}`
       : ''
   }${state.slug && !edit ? `, technical name ${state.slug}` : ''}`;
 
@@ -304,6 +309,7 @@ function NewAgentPageContent() {
               {...textFieldProps('slug', fieldErrors.slug)}
             />
           )}
+          <EgressPolicyPicker />
           <TextAreaField
             label="Extra egress origins"
             secondaryLabel="optional"

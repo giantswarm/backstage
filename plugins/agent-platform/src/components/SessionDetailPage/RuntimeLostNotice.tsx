@@ -79,6 +79,12 @@ export type RuntimeLostNoticeProps = {
  * again" costs nothing; the message box stays for it, and the new session is
  * the secondary way on. A **reported** loss is final, and says so: the page
  * shows no message box, and the new session is the one way on.
+ *
+ * A loss read from **sends that keep timing out** (`source: 'send-timeouts'`)
+ * is the most tentative of all: kagent recorded nothing, and there are no
+ * runtime words to show. It says what the person saw happen and that the
+ * session may not be able to continue, with the retry as for any suspected
+ * loss.
  */
 export function RuntimeLostNotice({
   loss,
@@ -93,16 +99,20 @@ export function RuntimeLostNotice({
   const classes = useStyles();
   const agent = agentName ? `${agentName}` : 'the same agent';
 
-  const title = loss.reported
-    ? 'This session cannot continue'
-    : 'The agent’s runtime could not be brought back';
+  const fromSends = !loss.reported && loss.source === 'send-timeouts';
 
-  const what = loss.reported
-    ? `kagent marked this session’s runtime as lost: its working state was on a platform node that went away, likely while waiting for your answer. Nothing can restore it.`
-    : `kagent could not restart the runtime holding this session’s state — its platform node likely went away (spot interruption, node roll) while the session waited for your answer.`;
+  let title = 'The agent’s runtime could not be brought back';
+  let what = `kagent could not restart the runtime holding this session’s state — its platform node likely went away (spot interruption, node roll) while the session waited for your answer.`;
+  if (loss.reported) {
+    title = 'This session cannot continue';
+    what = `kagent marked this session’s runtime as lost: its working state was on a platform node that went away, likely while waiting for your answer. Nothing can restore it.`;
+  } else if (fromSends) {
+    title = 'This session may not be able to continue';
+    what = `${loss.attempts === 2 ? 'Neither' : 'None'} of your last ${loss.attempts} messages reached the agent: each timed out before it started. The session’s runtime may be failing to start.`;
+  }
 
   const attempts =
-    !loss.reported && loss.attempts > 1
+    !loss.reported && !fromSends && loss.attempts > 1
       ? ` It has failed ${loss.attempts} times in a row.`
       : '';
 
@@ -116,6 +126,9 @@ export function RuntimeLostNotice({
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
   } else if (newSession && loss.reported) {
     wayOut = `To carry on, continue in a new session with ${agent}. ${start}`;
+  } else if (newSession && fromSends) {
+    // The sends have already failed again: no "if it fails again".
+    wayOut = `Send again to retry, or continue in a new session with ${agent}. ${start}`;
   } else if (newSession) {
     wayOut = `Send again to retry. If it fails again, continue in a new session with ${agent}. ${start}`;
   }

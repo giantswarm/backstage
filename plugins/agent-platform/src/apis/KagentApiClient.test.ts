@@ -1263,6 +1263,40 @@ describe('KagentApiClient', () => {
         name: 'StreamTransportError',
       });
     });
+
+    it("carries the backend's reason on a 5xx before the stream opens", async () => {
+      // The backend's wait for kagent's first event ran out: still a failure
+      // to verify, but one the page counts when it repeats.
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              name: 'UpstreamError',
+              message:
+                "The kagent API for installation 'gazelle' did not respond in time.",
+              reason: 'timeout',
+            },
+          },
+          500,
+          { 'x-request-id': 'req-7' },
+        ),
+      );
+
+      await expect(
+        buildClient().streamMessage(
+          'gazelle',
+          'abc123',
+          agent,
+          message,
+          () => {},
+        ),
+      ).rejects.toMatchObject({
+        name: 'StreamTransportError',
+        status: 500,
+        reason: 'timeout',
+        requestId: 'req-7',
+      });
+    });
   });
 
   describe('getIdentity', () => {

@@ -5,6 +5,7 @@ import {
   agentManagerToolName,
   classifyAgentManagerError,
   type AgentManagerAgent,
+  type AgentManagerEgressPolicy,
   type AgentManagerInfo,
   type AgentManagerModelConfig,
   type AgentManagerTool,
@@ -121,6 +122,20 @@ export class AgentManagerClient {
       modelConfigs?: AgentManagerModelConfig[];
     }>(AGENT_MANAGER_TOOLS.listModelConfigs, { namespace });
     return result.modelConfigs ?? [];
+  }
+
+  /**
+   * The EgressPolicies of a namespace, as the caller reads them — the names
+   * `egressPolicyRefs` may take — each origin with its credential header's
+   * name, never the Secret.
+   */
+  async listEgressPolicies(
+    namespace: string,
+  ): Promise<AgentManagerEgressPolicy[]> {
+    const result = await this.call<{
+      egressPolicies?: AgentManagerEgressPolicy[];
+    }>(AGENT_MANAGER_TOOLS.listEgressPolicies, { namespace });
+    return result.egressPolicies ?? [];
   }
 
   /**

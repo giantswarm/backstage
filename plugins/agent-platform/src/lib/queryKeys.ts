@@ -283,6 +283,19 @@ export function musterAgentManagerModelConfigsQueryKey(
   ] as const;
 }
 
+export function musterAgentManagerEgressPoliciesQueryKey(
+  installation: string,
+  namespace: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-egress-policies',
+    installation,
+    namespace,
+  ] as const;
+}
+
 export function musterValidateAgentUpdateQueryKey(
   installation: string,
   updateSignature: string,
