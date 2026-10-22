@@ -6,6 +6,9 @@ import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionsRouteRef } from '../../routes';
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
 import type { NotificationLevel } from '../../lib/notificationRecord';
+import type { RawSessionBodies } from '../../apis/types';
+import { useExportSession } from '../../hooks/useExportSession';
+import { saveFile } from '../../lib/saveFile';
 import { SessionActionsMenu } from './SessionActionsMenu';
 
 // The delete state arrives as a prop — the menu renders in the shared plugin
@@ -21,18 +24,30 @@ jest.mock('react-router-dom', () => ({
 }));
 
 const mockToastPost = jest.fn();
+const mockGetRawSession = jest.fn();
 
-// Only the toast API is swapped out — everything else the test app looks up
-// (themes, route resolution) has to keep working.
+// Only the toast API and the kagent client are swapped out — everything else
+// the test app looks up (themes, route resolution) has to keep working.
 jest.mock('@backstage/frontend-plugin-api', () => {
   const actual = jest.requireActual('@backstage/frontend-plugin-api');
 
   return {
     ...actual,
-    useApi: (ref: unknown) =>
-      ref === actual.toastApiRef ? { post: mockToastPost } : actual.useApi(ref),
+    useApi: (ref: { id: string }) => {
+      if (ref === actual.toastApiRef) {
+        return { post: mockToastPost };
+      }
+      if (ref.id === 'plugin.agent-platform.kagent') {
+        return { getRawSession: mockGetRawSession };
+      }
+      return actual.useApi(ref);
+    },
   };
 });
+
+// The file is what the export is about: captured here rather than saved.
+jest.mock('../../lib/saveFile', () => ({ saveFile: jest.fn() }));
+const mockSaveFile = saveFile as jest.MockedFunction<typeof saveFile>;
 
 const deleteSession = jest.fn();
 const reset = jest.fn();
@@ -77,6 +92,9 @@ async function openDeleteDialog() {
 beforeEach(() => {
   mockNavigate.mockReset();
   mockToastPost.mockReset();
+  mockToastPost.mockReturnValue({ close: jest.fn() });
+  mockGetRawSession.mockReset();
+  mockSaveFile.mockReset();
   deleteSession.mockReset();
   deleteSession.mockResolvedValue(undefined);
   reset.mockReset();
@@ -556,5 +574,308 @@ describe('SessionActionsMenu — deleting a session whose runtime is lost', () =
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent(unavailable.message);
     expect(dialog).not.toHaveTextContent(/suspends a session’s runtime/);
+  });
+});
+
+describe('SessionActionsMenu — Export session', () => {
+  /** kagent's `Session`, as the session route answers it. */
+  const session = {
+    id: 'Ab12-session',
+    name: 'Why is the pod pending?',
+    agent: { namespace: 'kagent', name: 'sre-agent' },
+    creator: 'dev@lab.local',
+    preparedRevision: 'rev-7',
+    state: 'SESSION_STATE_READY',
+  };
+
+  /**
+   * One task for every way tool calls are spelled: the canonical part-type
+   * key current kagent writes, the legacy `adk_type` and `kagent_type` of
+   * older history, and an MCP result nested inside the function response.
+   */
+  const tasks = [
+    {
+      id: 'task-1',
+      contextId: 'Ab12-session',
+      status: { state: 'TASK_STATE_COMPLETED' },
+      history: [
+        {
+          messageId: 'm-1',
+          role: 'ROLE_USER',
+          parts: [{ text: 'Why is the pod pending?' }],
+        },
+        {
+          messageId: 'm-2',
+          role: 'ROLE_AGENT',
+          parts: [
+            {
+              data: {
+                id: 'call-1',
+                name: 'kubernetes_get',
+                args: { kind: 'Pod', name: 'web-0' },
+              },
+              metadata: { 'kagent.dev/a2a/part-type': 'function_call' },
+            },
+          ],
+        },
+      ],
+      artifacts: [
+        {
+          artifactId: 'a-1',
+          parts: [
+            {
+              data: {
+                id: 'call-1',
+                name: 'kubernetes_get',
+                response: {
+                  result: {
+                    content: [
+                      {
+                        type: 'text',
+                        text: '{"status":{"phase":"Pending"}}',
+                      },
+                    ],
+                    structuredContent: { status: { phase: 'Pending' } },
+                    isError: false,
+                  },
+                },
+              },
+              metadata: { 'kagent.dev/a2a/part-type': 'function_response' },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'task-2',
+      contextId: 'Ab12-session',
+      status: { state: 'TASK_STATE_COMPLETED' },
+      history: [
+        {
+          messageId: 'm-3',
+          role: 'ROLE_AGENT',
+          parts: [
+            {
+              data: { id: 'call-2', name: 'kubectl_get', args: {} },
+              metadata: { adk_type: 'function_call' },
+            },
+            {
+              data: { id: 'call-2', name: 'kubectl_get', response: {} },
+              metadata: { kagent_type: 'function_response' },
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const complete: RawSessionBodies = {
+    sessionBody: { session },
+    tasksBody: { tasks, totalSize: tasks.length },
+  };
+
+  function Harness() {
+    const onExport = useExportSession({
+      installation: 'gazelle',
+      sessionId: 'Ab12-session',
+      agentName: 'sre-agent',
+    });
+    return (
+      <SessionActionsMenu
+        title="Why is the pod pending?"
+        deletion={deletion}
+        onRename={onRename}
+        onExport={onExport}
+      />
+    );
+  }
+
+  const renderWithExport = () =>
+    renderInTestApp(<Harness />, {
+      mountedRoutes: { '/sessions': sessionsRouteRef },
+    });
+
+  async function exportSession() {
+    await openMenu();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /Export session/ }),
+    );
+  }
+
+  /** The toasts posted so far, by title. */
+  const toastTitles = () =>
+    mockToastPost.mock.calls.map(([toast]) => toast.title);
+
+  it('offers no export unless the page hands one over', async () => {
+    await renderMenu();
+    await openMenu();
+
+    expect(
+      screen.queryByRole('menuitem', { name: /Export session/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('sits above delete, which stays last, and says the file is customer data', async () => {
+    await renderWithExport();
+    await openMenu();
+
+    const items = screen.getAllByRole('menuitem').map(item => item.textContent);
+    expect(items).toEqual([
+      expect.stringMatching(/Rename session/),
+      expect.stringMatching(/Export session/),
+      expect.stringMatching(/Delete session/),
+    ]);
+    const item = screen.getByRole('menuitem', { name: /Export session/ });
+    expect(item).toHaveTextContent(
+      'The file holds everything the agent saw; handle it as customer data.',
+    );
+    // It is an export, never a download, wherever the person reads it.
+    expect(item).not.toHaveTextContent(/download/i);
+  });
+
+  it('saves the session and its tasks unchanged, inside the envelope', async () => {
+    mockGetRawSession.mockResolvedValue(complete);
+    await renderWithExport();
+
+    const before = Date.now();
+    await exportSession();
+
+    await waitFor(() => expect(mockSaveFile).toHaveBeenCalledTimes(1));
+    expect(mockGetRawSession).toHaveBeenCalledWith('gazelle', 'Ab12-session');
+    const [content, fileName, contentType] = mockSaveFile.mock.calls[0];
+    expect(fileName).toBe('sre-agent-session-Ab12-session.json');
+    expect(contentType).toBe('application/json');
+
+    const saved = JSON.parse(content);
+    expect(Object.keys(saved)).toEqual([
+      'formatVersion',
+      'exportedAt',
+      'installation',
+      'session',
+      'tasks',
+    ]);
+    expect(saved.formatVersion).toBe(1);
+    expect(saved.installation).toBe('gazelle');
+    expect(Date.parse(saved.exportedAt)).toBeGreaterThanOrEqual(
+      Math.floor(before / 1000) * 1000,
+    );
+    expect(saved.exportedAt).toMatch(/Z$/);
+    // Verbatim: every part-type spelling and the nested MCP result as they
+    // came, nothing normalized.
+    expect(saved.session).toEqual(session);
+    expect(saved.tasks).toEqual(tasks);
+
+    expect(toastTitles()).toContain('Session exported');
+  });
+
+  it('exports a session that has never run, with no tasks', async () => {
+    // proto3 JSON leaves an empty list and a zero out.
+    mockGetRawSession.mockResolvedValue({
+      sessionBody: { session },
+      tasksBody: {},
+    });
+    await renderWithExport();
+    await exportSession();
+
+    await waitFor(() => expect(mockSaveFile).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(mockSaveFile.mock.calls[0][0]).tasks).toEqual([]);
+  });
+
+  it('saves nothing and points to get_session when the session is too long to read whole', async () => {
+    mockGetRawSession.mockResolvedValue({
+      sessionBody: { session },
+      tasksBody: { tasks, totalSize: 1204 },
+    });
+    await renderWithExport();
+    await exportSession();
+
+    await waitFor(() =>
+      expect(mockToastPost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Could not export the session',
+          status: 'danger',
+        }),
+      ),
+    );
+    const failure = mockToastPost.mock.calls.find(
+      ([toast]) => toast.status === 'danger',
+    )![0];
+    expect(failure.description).toMatch(/1,204 turns, too many to export here/);
+    expect(failure.description).toMatch(/get_session/);
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['not found', Object.assign(new Error('gone'), { name: 'NotFoundError' })],
+    [
+      'forbidden by the task listing',
+      Object.assign(new Error('forbidden'), { name: 'ForbiddenError' }),
+    ],
+  ])(
+    'saves nothing and says not found when the read is %s',
+    async (_label, error) => {
+      mockGetRawSession.mockRejectedValue(error);
+      await renderWithExport();
+      await exportSession();
+
+      await waitFor(() =>
+        expect(mockToastPost).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'Could not export the session',
+            description:
+              'The session no longer exists, or it belongs to someone else.',
+            status: 'danger',
+          }),
+        ),
+      );
+      expect(mockSaveFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it('saves nothing when the tasks read fails', async () => {
+    mockGetRawSession.mockRejectedValue(
+      new Error('kagent request failed with status 502'),
+    );
+    await renderWithExport();
+    await exportSession();
+
+    await waitFor(() =>
+      expect(mockToastPost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Could not export the session',
+          description: 'kagent request failed with status 502',
+          status: 'danger',
+        }),
+      ),
+    );
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  it('saves nothing when the tasks come back in a form it does not know', async () => {
+    mockGetRawSession.mockResolvedValue({
+      sessionBody: { session },
+      tasksBody: { error: false, data: tasks },
+    });
+    await renderWithExport();
+    await exportSession();
+
+    await waitFor(() =>
+      expect(mockToastPost).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'danger' }),
+      ),
+    );
+    expect(mockSaveFile).not.toHaveBeenCalled();
+  });
+
+  it('closes its progress toast once the export settles', async () => {
+    const close = jest.fn();
+    mockToastPost.mockReturnValue({ close });
+    mockGetRawSession.mockResolvedValue(complete);
+    await renderWithExport();
+    await exportSession();
+
+    await waitFor(() => expect(mockSaveFile).toHaveBeenCalledTimes(1));
+    expect(toastTitles()[0]).toBe('Exporting the session…');
+    expect(close).toHaveBeenCalled();
   });
 });

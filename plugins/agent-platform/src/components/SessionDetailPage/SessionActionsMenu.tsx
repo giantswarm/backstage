@@ -11,11 +11,13 @@ import {
   MenuItem,
   MenuTrigger,
   SubmenuTrigger,
+  Text,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import CheckIcon from '@material-ui/icons/Check';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
+import GetAppOutlinedIcon from '@material-ui/icons/GetAppOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import NotificationsNoneOutlinedIcon from '@material-ui/icons/NotificationsNoneOutlined';
 import {
@@ -35,6 +37,13 @@ import {
 
 /** Long enough to read one line, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
+
+/**
+ * What a Session export holds, beside the item that makes one: the file is
+ * lossless and nothing in it is redacted.
+ */
+export const SESSION_EXPORT_NOTICE =
+  'The file holds everything the agent saw; handle it as customer data.';
 
 /** The Notifications submenu's choices, in the order the menu lists them. */
 const NOTIFICATION_LEVEL_LABELS: ReadonlyArray<[NotificationLevel, string]> = [
@@ -62,6 +71,20 @@ const useStyles = makeStyles({
     height: '1rem',
     flexShrink: 0,
     '& svg': { width: '1rem', height: '1rem' },
+  },
+  // Export session carries its notice on a second line, which bui's fixed
+  // item height would clip. The icon stays beside the label, not centred on
+  // both lines.
+  exportItem: {
+    height: 'auto',
+    minHeight: '2rem',
+    paddingBlock: 'var(--bui-space-1_5)',
+    '& .bui-MenuItemContent': { alignItems: 'flex-start' },
+  },
+  exportText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 'var(--bui-space-0_5)',
   },
 });
 
@@ -93,6 +116,7 @@ export function SessionActionsMenu({
   onDeleted,
   pin,
   notifications,
+  onExport,
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
@@ -127,6 +151,12 @@ export function SessionActionsMenu({
    * Absent: no Notifications item.
    */
   notifications?: SessionNotificationsControl;
+  /**
+   * Exports the session to a file (`useExportSession`), always offered: also
+   * mid-turn and while the session waits on the person. Absent: no Export
+   * session item, as in a list's row.
+   */
+  onExport?: () => void;
 }) {
   const classes = useStyles();
   const isPhone = usePhoneLayout();
@@ -267,6 +297,21 @@ export function SessionActionsMenu({
                 ))}
               </Menu>
             </SubmenuTrigger>
+          )}
+          {onExport && (
+            <MenuItem
+              className={classes.exportItem}
+              iconStart={<GetAppOutlinedIcon />}
+              textValue="Export session"
+              onAction={onExport}
+            >
+              <span className={classes.exportText}>
+                Export session
+                <Text variant="body-small" color="secondary">
+                  {SESSION_EXPORT_NOTICE}
+                </Text>
+              </span>
+            </MenuItem>
           )}
           <MenuItem
             color="danger"
