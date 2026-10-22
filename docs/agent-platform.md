@@ -332,7 +332,8 @@ called through the installation's muster as the signed-in person.
 2. **Skills** — `/customize/agents/new/skills` (`NewAgentSkillsPage`); see
    "Skill discovery".
 3. **Tools** — `/customize/agents/new/tools` (`NewAgentToolsPage`): the
-   selectors that bound which gateway tools the agent can use.
+   selectors that bound which gateway tools the agent can use. See "The
+   sign-in tool".
 4. **Review** — `/customize/agents/new/review` (`NewAgentReviewPage`):
    `validate_agent`, **Create agent** through `create_agent`, a pull-request
    variant where agent-manager reports the `commit` capability, and an "Install
@@ -352,6 +353,37 @@ agent").
 Form state lives in `NewAgentFormProvider`; installations and their models load
 once in `ModelConfigsProvider`; `useAgentManagerAvailability` decides which
 installations offer creation (see "Feature detection").
+
+### The sign-in tool
+
+An agent starts a connector's sign-in only through muster's `core_auth_login`,
+and muster refuses that tool when the toolset does not name it. A toolset with a
+connector that needs a sign-in but without that tool leaves the agent unable to
+ask (giantswarm/giantswarm#38774). So the Tools step adds
+`tool:core_auth_login` whenever the selection holds a `server:` selector, or a
+tool, of a connector muster signs in to per session or per person
+(`lib/signInTool.ts`, `useSignInTool`). That is a CR with `spec.auth.type: oauth`
+and neither `forwardToken` nor `tokenExchange` (`ServerInfo.signInTool`). An
+SSO connector muster connects with the caller's own token gets nothing, because
+muster refuses `core_auth_login` for it. A sigv4 connector gets nothing either,
+because it signs as muster.
+
+- The tool is not added when the selection names it already, or holds
+  `preset:read-only` or `preset:full`, which include it (muster annotates it
+  read-only). For an installation's own preset, muster's resolution of it
+  decides.
+- The Selected rail and the summary bar list it under "Added for sign-in",
+  with the reason ("Lets the agent start the sign-in to Grafana Cloud"). It goes
+  again with the last connector that needed it.
+- Removing it is kept for the draft (`signInToolDeclined`). While a connector
+  still needs it, a warning says the agent won't be able to sign in, with a way
+  to add it back. At the inline cap there is no room for it, and the step says
+  so.
+- The selection in the form stays the person's own. The review, the dry run
+  and the write use the selection plus the added tool. An edited agent whose
+  toolset lacks it gets it the same way, and the review lists Tools among the
+  changes with the reason. Opening the editor alone is not a change: Close and
+  Cancel do not ask.
 
 ### Model selection
 
@@ -2187,6 +2219,33 @@ sent choices first.
 
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.
+
+#### A connector sign-in in the conversation
+
+An agent that calls `core_auth_login` gets muster's sign-in link
+(`…/oauth/proxy/start?state=…`) and passes it on, in a message or an `ask_user`
+question. `ConnectorSignInLinks` (around the session column) shows such a link
+as **Sign in to <connector> ↗** in place of the URL, wherever `MessageMarkdown`
+renders it. Only a link muster issued in this session counts: the answer of one
+of the session's `core_auth_login` calls, for a server among the installation's
+MCPServer CRs (`lib/connectorSignIn.ts`). The agent's own text never makes a
+link a sign-in. A link muster no longer honours (10 minutes) says so and asks
+for a new one.
+
+The link opens in a new tab with `redirect=<this session page>?connector-sign-in=<id>`.
+muster sends the browser there after the callback when the portal is on its
+`postLoginRedirectAllowlist` (every portal domain is, where the gateway runs
+on-behalf-of connectors). The returned tab tells the session's other tabs over
+a `BroadcastChannel`, removes the parameters and closes where the browser lets
+it. Where muster drops the redirect, **I've signed in** beside the wait does the
+same by hand.
+
+Once done, the action reads "Signed in to <connector>". When the question the
+session waits on carried that link, the tab that started the sign-in answers it
+through `useAnswerConfirmation`: with the one choice that says the person signed
+in, or a sentence for free text (`signedInAnswer`). Several questions, no
+fitting choice or more than one leave the question open, and the action says
+why.
 
 #### An answer kagent does not take
 

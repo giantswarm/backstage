@@ -21,6 +21,7 @@ import {
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
+  mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
@@ -1686,6 +1687,29 @@ describe('NewAgentToolsPage', () => {
       expect(
         within(summaryBar()).getByTitle('tool:core_auth_login'),
       ).toBeInTheDocument();
+    });
+
+    it('shows the added tool in the bar at phone width, opened', async () => {
+      const layout = mockPhoneLayout();
+      try {
+        const { api } = makeMusterApi({
+          signedIn: false,
+          evaluatesToolsets: true,
+        });
+        await renderStep({ api, toolset: ['server:pro'] });
+        const user = userEvent.setup();
+        await connectorsListed();
+
+        await user.click(
+          within(summaryBar()).getByRole('button', { name: /1 selected/ }),
+        );
+        await waitFor(() => expect(addedForSignIn()).toBeInTheDocument());
+        expect(addedForSignIn()).toHaveTextContent(
+          'Lets the agent start the sign-in to pro.',
+        );
+      } finally {
+        layout.restore();
+      }
     });
 
     it('adds nothing for a connector muster signs in to with the caller’s own token', async () => {
