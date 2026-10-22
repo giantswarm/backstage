@@ -299,6 +299,37 @@ describe('CustomizeConnectorsPanel', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it('says Connecting while muster still connects an SSO connector, then Connected without a reload', async () => {
+    let connecting = true;
+    api.getAuthStatus.mockImplementation(async () => ({
+      servers: [
+        { name: 'github', status: 'connected' },
+        {
+          name: 'kubernetes',
+          status: connecting ? 'sso_pending' : 'connected',
+          token_forwarding_enabled: true,
+        },
+        { name: 'web-search', status: 'connected' },
+      ],
+    }));
+    await renderPanel();
+
+    const kubernetes = rowOf('kubernetes');
+    expect(
+      await within(kubernetes).findByText('Connecting'),
+    ).toBeInTheDocument();
+    expect(
+      within(kubernetes).queryByText('Sign in needed'),
+    ).not.toBeInTheDocument();
+
+    connecting = false;
+    expect(
+      await within(kubernetes).findByText('Connected', undefined, {
+        timeout: 5_000,
+      }),
+    ).toBeInTheDocument();
+  });
+
   it('says a failed SSO connection in a few words, the paragraph in a tooltip (T104)', async () => {
     api.getAuthStatus.mockImplementation(async () => ssoFailedAuthStatus());
     const user = userEvent.setup();

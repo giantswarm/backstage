@@ -52,6 +52,16 @@ describe('connectorStatus', () => {
     });
   });
 
+  it('says a connect with the portal sign-in is under way, not a sign-in', () => {
+    const entry = single(server('mcp-kubernetes', 'Awaiting Session'));
+    expect(
+      connectorStatus(entry, { name: 'mcp-kubernetes', status: 'sso_pending' }),
+    ).toEqual({ label: 'Connecting', tone: 'neutral' });
+    expect(
+      connectorReach(entry, { name: 'mcp-kubernetes', status: 'sso_pending' }),
+    ).toBe('not-connected');
+  });
+
   it('names a failing or deactivated server', () => {
     expect(connectorStatus(single(server('a', 'Failed')))).toEqual({
       label: 'Failed',

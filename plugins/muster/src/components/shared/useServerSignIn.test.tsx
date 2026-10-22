@@ -9,7 +9,11 @@ import {
   ServerSignInResult,
   SignInTarget,
 } from '../../apis';
-import { useServerSignIn } from './useServerSignIn';
+import {
+  CONNECTING_POLL_INTERVAL_MS,
+  connectingPollInterval,
+  useServerSignIn,
+} from './useServerSignIn';
 
 const AUTH_URL =
   'https://muster.gazelle.example.io/oauth/proxy/start?state=abc';
@@ -536,5 +540,27 @@ describe('useServerSignIn', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] }),
     );
     await waitFor(() => expect(result.current.needsLogin).toBe(true));
+  });
+});
+
+describe('connectingPollInterval', () => {
+  it('re-reads within seconds while muster still connects a server', () => {
+    expect(
+      connectingPollInterval({
+        servers: [
+          { name: 'github', status: 'connected' },
+          { name: 'mcp-kubernetes', status: 'sso_pending' },
+        ],
+      }),
+    ).toBe(CONNECTING_POLL_INTERVAL_MS);
+  });
+
+  it('leaves the interval alone once every connect settled', () => {
+    expect(
+      connectingPollInterval({
+        servers: [{ name: 'mcp-kubernetes', status: 'connected' }],
+      }),
+    ).toBe(false);
+    expect(connectingPollInterval(undefined)).toBe(false);
   });
 });
