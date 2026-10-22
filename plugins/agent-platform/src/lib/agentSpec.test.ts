@@ -25,6 +25,7 @@ const state: NewAgentFormState = {
   droppedHarness: undefined,
   systemMessage: 'You review pull requests.',
   egressText: '',
+  egressPolicyRefs: [],
   defaultWorkspace: '',
   selectedSkills: [skill],
   keptSkills: [],
@@ -75,6 +76,18 @@ describe('agentSpecOf', () => {
     expect(
       agentSpecOf(state, { toolset: ['preset:read-only'] }),
     ).not.toHaveProperty('egress');
+  });
+
+  it('sends the picked EgressPolicies by name, and none when nothing is picked', () => {
+    expect(
+      agentSpecOf(
+        { ...state, egressPolicyRefs: ['github', 'go-modules'] },
+        { toolset: ['preset:read-only'] },
+      ).egressPolicyRefs,
+    ).toEqual(['github', 'go-modules']);
+    expect(
+      agentSpecOf(state, { toolset: ['preset:read-only'] }),
+    ).not.toHaveProperty('egressPolicyRefs');
   });
 
   it('sends the picked plugins pinned, with their selections, and none when empty', () => {

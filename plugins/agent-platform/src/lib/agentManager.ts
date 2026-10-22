@@ -52,6 +52,7 @@ export const AGENT_MANAGER_TOOLS = {
   updateAgent: 'update_agent',
   deleteAgent: 'delete_agent',
   listModelConfigs: 'list_model_configs',
+  listEgressPolicies: 'list_egress_policies',
   startSession: 'start_session',
 } as const;
 
@@ -125,6 +126,11 @@ export type AgentSpec = {
    * (`Agent.spec.egress`), such as `https://github.com:443`.
    */
   egress?: string[];
+  /**
+   * Names of EgressPolicies in `namespace` whose origins the agent may reach
+   * too (`Agent.spec.egressPolicyRefs`). Never on a coding Harness.
+   */
+  egressPolicyRefs?: string[];
   /**
    * The workspace, `<namespace>/<name>` in the agent's namespace, its
    * Sessions start in unless the person picks another or none
@@ -579,6 +585,8 @@ export type AgentManagerAgent = {
   harness?: string;
   /** The extra HTTP(S) origins the agent may reach (`spec.egress`). */
   egress?: string[];
+  /** The EgressPolicies of its namespace it picks (`spec.egressPolicyRefs`). */
+  egressPolicyRefs?: string[];
   /** The agent's default workspace, `<namespace>/<name>`; absent, none. */
   defaultWorkspace?: string;
   status?: AgentObjectStatus;
@@ -596,6 +604,27 @@ export type AgentManagerModelConfig = {
   model?: string;
   accepted: boolean | null;
   message?: string;
+  managedBy?: string;
+};
+
+/** `get_info`'s capability for `egressPolicyRefs` and `list_egress_policies`. */
+export const EGRESS_POLICIES_CAPABILITY = 'egressPolicies';
+
+/**
+ * One origin of an EgressPolicy. `credentialHeader` names the request header
+ * the egress gateway fills from the policy's credential; the Secret behind it
+ * is never reported.
+ */
+export type EgressDestination = {
+  origin: string;
+  credentialHeader?: string;
+};
+
+/** `list_egress_policies`: an EgressPolicy an agent of its namespace may pick. */
+export type AgentManagerEgressPolicy = {
+  name: string;
+  namespace: string;
+  destinations: EgressDestination[];
   managedBy?: string;
 };
 
@@ -620,6 +649,8 @@ export type AgentUpdate = {
   toolset?: string[];
   /** Replaces the whole list; an empty list clears it. */
   egress?: string[];
+  /** Replaces the whole list; an empty list clears it. */
+  egressPolicyRefs?: string[];
   /** `<namespace>/<name>`; `""` removes the default. */
   defaultWorkspace?: string;
   refreshSkills?: boolean;
