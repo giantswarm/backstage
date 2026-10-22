@@ -52,6 +52,11 @@ export type UnreachableInstallationsAlertProps = {
    * outlasts the list going back to loading.
    */
   isLoading?: boolean;
+  /**
+   * What the failure means where the warning shows, as a sentence after the
+   * description: in a form, "They are not offered for this agent."
+   */
+  consequence?: string;
 };
 
 /**
@@ -79,6 +84,7 @@ export function UnreachableInstallationsAlert({
   resourceName = 'kagent resources',
   failures,
   isLoading = false,
+  consequence,
 }: UnreachableInstallationsAlertProps) {
   // Above every early return: hiding the card while the list loads, or while
   // nothing failed, must not forget that it was closed.
@@ -92,13 +98,18 @@ export function UnreachableInstallationsAlert({
 
   const count = installations.length;
   const title = `Could not read ${countNoun(count, 'environment')}`;
+  const after = consequence ? ` ${consequence}` : '';
 
   if (count <= NAMED_IN_SENTENCE) {
     return (
       <ClosableWarning
         title={title}
         onClose={onClose}
-        description={describeFew(installations, resourceName, failures)}
+        description={`${describeFew(
+          installations,
+          resourceName,
+          failures,
+        )}${after}`}
       />
     );
   }
@@ -123,7 +134,10 @@ export function UnreachableInstallationsAlert({
       onClose={onClose}
       description={
         <Flex direction="column" gap="2">
-          <span>{sentence}</span>
+          <span>
+            {sentence}
+            {after}
+          </span>
           <SimpleAccordion title={`All ${count} environments`} headingLevel={4}>
             <Flex direction="column" gap="1">
               {installations.map(installation => (

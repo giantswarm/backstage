@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import {
   musterInstallationsQueryKey,
@@ -61,6 +61,12 @@ export type MusterServerAvailability = {
   isLoading: boolean;
   /** The muster plugin is not installed: the server is reachable nowhere. */
   isUnavailable: boolean;
+  /**
+   * Reads the lists again where there is no answer yet (`unknown`), say once
+   * the person signed in to muster there in another tab; settles when the
+   * reads have.
+   */
+  recheck: () => Promise<void>;
 };
 
 export type MusterServerAvailabilityOptions = {
@@ -88,6 +94,7 @@ export function useMusterServerAvailability(
   { asPerson = true }: MusterServerAvailabilityOptions = {},
 ): MusterServerAvailability {
   const musterApi = useMusterPluginApi();
+  const queryClient = useQueryClient();
   // The muster plugin's own read of `/installations`, under its key, so the
   // page header's installation selector and this share one cache entry.
   const installationInfo = useQuery({
@@ -151,8 +158,25 @@ export function useMusterServerAvailability(
       presenceOf: of,
       isLoading: Boolean(musterApi) && isLoading,
       isUnavailable: !musterApi,
+      recheck: async () => {
+        const unknown = installations.filter(name => of(name) === 'unknown');
+        await Promise.all([
+          ...unknown.map(installation =>
+            queryClient.invalidateQueries({
+              queryKey: musterServersQueryKey(installation),
+            }),
+          ),
+          ...(isInstallationsUnknown && unknown.length > 0
+            ? [
+                queryClient.invalidateQueries({
+                  queryKey: musterInstallationsQueryKey(),
+                }),
+              ]
+            : []),
+        ]);
+      },
     };
     // `installations` is captured by the signature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, musterApi]);
+  }, [signature, musterApi, queryClient, isInstallationsUnknown]);
 }

@@ -1,9 +1,18 @@
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
-import { Alert, Card, CardBody, Flex, Link, Select, Text } from '@backstage/ui';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  Flex,
+  Select,
+  Text,
+} from '@backstage/ui';
 import { CircularProgress } from '@material-ui/core';
 import {
   joinNames,
   NAMED_IN_SENTENCE,
+  NewTabLink,
   searchableIf,
   SectionHeader,
   ShowMore,
@@ -71,39 +80,52 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
 /**
  * Why an installation with models is not offered although it may have
  * agent-manager: its muster's server list couldn't be read (no muster session
- * there, or the read failed), so there is no answer either way. Links to
- * muster's MCP Servers tab scoped to the installation, whose session gate is
- * where one signs in to that installation's muster.
+ * there, or the read failed), so there is no answer either way. Says what that
+ * means for the agent being created, and links to muster's MCP Servers tab
+ * scoped to the installation, whose session gate is where one signs in to that
+ * installation's muster: in a new tab, so the form stays as it is, and "Check
+ * again" reads the lists anew once the person is back.
  */
 function AgentManagerUnknownNote({
   installations,
+  onRecheck,
 }: {
   installations: string[];
+  onRecheck: () => Promise<void>;
 }) {
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
+  const [isChecking, setChecking] = useState(false);
   const signInHref = serversRoute
     ? (installation: string) =>
-        withInstallationQuery(serversRoute(), installation)
+        withInstallationQuery(serversRoute(), installation) ?? serversRoute()
     : undefined;
   if (installations.length === 0) {
     return null;
   }
   const list = joinNames(installations);
+  const isOne = installations.length === 1;
+  const recheck = () => {
+    setChecking(true);
+    onRecheck().finally(() => setChecking(false));
+  };
   // `info`, not `warning`: not being signed in to some installations' muster
   // is an expected state, not something broken.
   return (
     <Alert
       status="info"
       title={
-        installations.length === 1
+        isOne
           ? `Could not check ${list} for agent-manager`
           : 'Could not check some environments for agent-manager'
       }
       description={
-        <Flex direction="column" gap="1">
+        <Flex direction="column" gap="2" align="start">
           <Text variant="body-small">
+            {isOne
+              ? `${list} is not offered for this agent until it is checked.`
+              : 'They are not offered for this agent until they are checked.'}{' '}
             Sign in to muster on {list} to check whether agents can be created
-            there.
+            there, then check again. What you entered here stays.
           </Text>
           {/* One link per installation, wrapping, the first few shown: on a
               fleet of 50 where signed-out is the norm, a row of every link
@@ -118,16 +140,28 @@ function AgentManagerUnknownNote({
               {visible => (
                 <Flex gap="3" style={{ flexWrap: 'wrap' }}>
                   {visible.map(installation => (
-                    <Link key={installation} href={signInHref(installation)}>
-                      {installations.length === 1
+                    <NewTabLink
+                      key={installation}
+                      href={signInHref(installation)}
+                      variant="body-small"
+                    >
+                      {isOne
                         ? 'Sign in to muster'
                         : `Sign in to muster on ${installation}`}
-                    </Link>
+                    </NewTabLink>
                   ))}
                 </Flex>
               )}
             </ShowMore>
           )}
+          <Button
+            size="small"
+            variant="secondary"
+            isPending={isChecking}
+            onPress={recheck}
+          >
+            Check again
+          </Button>
         </Flex>
       }
     />
@@ -155,7 +189,9 @@ function InaccessibleInstallationsNote({
           ? `Could not check ${list}`
           : `Could not check ${installations.length} environments`
       }
-      description={`Cluster access to ${list} is not healthy (session expired, unreachable or not signed in), so it's unknown whether agents can be created there. See Cluster access in the sidebar.`}
+      description={`Cluster access to ${list} is not healthy (session expired, unreachable or not signed in), so it's unknown whether agents can be created there, and ${
+        installations.length === 1 ? 'it is' : 'they are'
+      } not offered for this agent. See Cluster access in the sidebar.`}
     />
   );
 }
@@ -306,6 +342,11 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
     <UnreachableInstallationsAlert
       installations={unreachableInstallations}
       resourceName="model configs"
+      consequence={
+        unreachableInstallations.length === 1
+          ? 'It is not offered for this agent.'
+          : 'They are not offered for this agent.'
+      }
     />
   );
   const notes = (
@@ -320,7 +361,10 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
         blocked="Agents cannot be created"
         via="Agents are created through agent-manager"
       />
-      <AgentManagerUnknownNote installations={agentManagerUnknown} />
+      <AgentManagerUnknownNote
+        installations={agentManagerUnknown}
+        onRecheck={agentManager.recheck}
+      />
     </>
   );
 

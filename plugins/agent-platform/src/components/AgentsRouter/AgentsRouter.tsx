@@ -3,7 +3,7 @@ import { Navigate, Routes, Route, useParams } from 'react-router-dom';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
-import { NewAgentFormProvider } from '../NewAgentFormProvider';
+import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { AgentDetailPage } from '../AgentDetailPage';
 import { EditAgentPage } from '../EditAgentPage';
 import { NewAgentPage } from '../NewAgentPage';
@@ -28,10 +28,21 @@ function AgentRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * A create step, once the kept draft is in: a reload on a later step would
+ * otherwise meet an empty form and be sent back to the first one.
+ */
+function CreateStep({ children }: { children: ReactNode }) {
+  const { isDraftLoaded } = useNewAgentForm();
+  return isDraftLoaded ? <>{children}</> : null;
+}
+
 // Content of the Customize screen's Agents tab below its list: one agent's
 // page, its edit, and the create wizard. The create steps share one
 // NewAgentFormProvider so the composed agent survives navigation across
-// `new`, `new/skills`, `new/tools` and `new/review`.
+// `new`, `new/skills`, `new/tools` and `new/review`, and it keeps that agent
+// as a draft in the tab's sessionStorage, so a reload, Back, or a link
+// followed in the same tab brings the form back as it was (`persistDraft`).
 //
 // This router is mounted as the tab's content (a descendant `<Routes>`), so the
 // paths here are relative — no leading slash — matching muster's WorkflowsRouter.
@@ -55,12 +66,40 @@ export const AgentsRouter = () => {
   useScrollToTopOnNavigation();
   return (
     <QueryClientProvider>
-      <NewAgentFormProvider>
+      <NewAgentFormProvider persistDraft>
         <Routes>
-          <Route path="new" element={<NewAgentPage />} />
-          <Route path="new/skills" element={<NewAgentSkillsPage />} />
-          <Route path="new/tools" element={<NewAgentToolsPage />} />
-          <Route path="new/review" element={<NewAgentReviewPage />} />
+          <Route
+            path="new"
+            element={
+              <CreateStep>
+                <NewAgentPage />
+              </CreateStep>
+            }
+          />
+          <Route
+            path="new/skills"
+            element={
+              <CreateStep>
+                <NewAgentSkillsPage />
+              </CreateStep>
+            }
+          />
+          <Route
+            path="new/tools"
+            element={
+              <CreateStep>
+                <NewAgentToolsPage />
+              </CreateStep>
+            }
+          />
+          <Route
+            path="new/review"
+            element={
+              <CreateStep>
+                <NewAgentReviewPage />
+              </CreateStep>
+            }
+          />
           <Route path="new/*" element={<Navigate to="." replace />} />
           <Route
             path=":installation/:namespace/:name/*"

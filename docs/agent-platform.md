@@ -74,6 +74,26 @@ only when the person accepts. Review is agent-manager's dry run, and **Create
 agent** deploys as the person. **Propose as pull request instead** appears
 where agent-manager supports it.
 
+The form keeps a draft of what the person entered, so a reload, a sign-in
+redirect, the browser's Back or a link followed in the same tab does not lose
+it: coming back to the form fills it in again and says so ("Your draft is
+back"), with **Start over** to begin empty instead. The draft is everything
+typed and picked on the four steps (name, description, instructions,
+environment, tenant, model, runtime, default workspace, technical name, egress
+origins, skills, plugins and tools); the form holds no secret or token, and the
+helper's side chat is not part of it. It lives in the browser tab's session
+storage, per signed-in person, so another tab or another person on the same
+browser never sees it, and it goes when the tab is closed. Creating the agent,
+opening its pull request, Start over and Discard changes (Close or Cancel)
+drop it. Links inside the form open in a new tab and say so, so the form stays
+where it is. Editing an agent keeps no draft: it starts from the agent each
+time.
+
+An environment that is not offered is explained on the Environment card, with
+what it means for the agent being created. One whose muster could not be
+checked links to signing in to muster there, in a new tab; **Check again**
+reads it anew once the person is back.
+
 On the agent page, Edit, Update all skills to latest and Delete appear only
 where agent-manager allows writes; an agent that comes from git gets a pull
 request instead of a direct change. Update all skills to latest moves every
@@ -349,7 +369,18 @@ Editing (`/customize/agents/<installation>/<namespace>/<name>/edit`) is the
 same wizard, prefilled, ending in an `update_agent` dry run (see "Editing an
 agent").
 
-Form state lives in `NewAgentFormProvider`; installations and their models load
+Form state lives in `NewAgentFormProvider`; the Agents router mounts it with
+`persistDraft`, which keeps the create flow's state as a draft through
+`useSessionDraft` (ui-react): `sessionStorage` under
+`gs-draft:agent-platform-new-agent:<userEntityRef>`, written on every change
+while the form is dirty and removed once it is not. The create steps render only
+once the draft has been looked for (`isDraftLoaded`), so a reload on a later
+step stays there instead of being redirected to step 1 by an empty form.
+`AgentWizardFrame` shows `DraftRestoredAlert` on the step the form reopens on,
+and passes `discardDraft` to `WizardFrame`'s `onDiscard`. The draft leaves out
+`tenantChoices` (the installation's answer, read again); bump `DRAFT_VERSION`
+when the kept shape changes, and an older draft is dropped instead of
+restored. The edit wizard's own provider keeps none. Installations and their models load
 once in `ModelConfigsProvider`; `useAgentManagerAvailability` decides which
 installations offer creation (see "Feature detection").
 

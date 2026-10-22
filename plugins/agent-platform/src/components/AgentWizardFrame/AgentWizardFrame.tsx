@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
+  DraftRestoredAlert,
   WizardFrame,
   type WizardStep,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -92,9 +93,12 @@ export function useAgentWizardLinks(): AgentWizardLinks {
  * Editing an agent is the same wizard, titled "Edit agent" and closing to the
  * agent's page. Close and Cancel ask before discarding a dirty form
  * (`isDirty`), on every step, and so does the browser on a reload or a closed
- * tab. Leaving through the shell's nav, rail or palette, or the browser's
- * Back, discards it without asking: blocking in-app navigation needs a router
- * blocker, which the app does not have (R2-6).
+ * tab. Leaving through the shell's nav, rail or palette, the browser's Back,
+ * or a link followed in the same tab is not asked about (blocking in-app
+ * navigation needs a router blocker, which the app does not have, R2-6):
+ * creating keeps a draft instead (`NewAgentFormProvider`'s `persistDraft`),
+ * and the form comes back with it, saying so on the step it reopens on, with
+ * a way to start over. Discarding drops the draft.
  */
 export function AgentWizardFrame({
   step,
@@ -116,7 +120,8 @@ export function AgentWizardFrame({
   children: ReactNode;
 }) {
   const links = useAgentWizardLinks();
-  const { edit, isDirty } = useNewAgentForm();
+  const { edit, isDirty, isDraftRestored, dismissDraftNotice, discardDraft } =
+    useNewAgentForm();
   const createCloseHref = useAgentWizardCloseHref();
   const closeHref = edit
     ? (edit.detailHref ?? createCloseHref)
@@ -149,10 +154,18 @@ export function AgentWizardFrame({
       currentStep={step}
       closeHref={closeHref}
       confirmDiscard={isDirty && !isProposed}
+      onDiscard={edit ? undefined : discardDraft}
       onBack={onBack}
       width="wide"
       rail={rail}
     >
+      {isDraftRestored && (
+        <DraftRestoredAlert
+          keptUntil="It is kept in this browser tab until you create the agent or discard it."
+          onStartOver={discardDraft}
+          onDismiss={dismissDraftNotice}
+        />
+      )}
       {children}
     </WizardFrame>
   );

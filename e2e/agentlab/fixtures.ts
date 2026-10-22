@@ -6,6 +6,7 @@ import {
   expect,
   type APIRequestContext,
   type BrowserContext,
+  type Dialog,
   type Locator,
   type Page,
   type Request,
@@ -273,11 +274,17 @@ export const LAB_AGENT_PREFIX = 'e2e-roster-';
  * without a request any route sees. The admin page drops both caches on the
  * first navigation after every test, before the app runs; clearing them from
  * the running page would race a throttled write.
+ *
+ * The forms' drafts (`useSessionDraft`, keys starting with
+ * {@link FORM_DRAFT_PREFIX}) go at the same moment: the tab keeps them, so a
+ * test that typed into the New agent wizard without creating would otherwise
+ * hand the next test a prefilled wizard.
  */
 const PERSISTED_QUERY_CACHES = [
   'agent-platform-react-query-cache',
   'gs-react-query-cache',
 ];
+const FORM_DRAFT_PREFIX = 'gs-draft:';
 const DROP_CACHES_FLAG = 'e2e-drop-persisted-caches-after-test';
 
 /** Where a worker records a failed `labAgent` setup for the rest of the run. */
@@ -316,13 +323,16 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const context = await browser.newContext(contextOptionsFor(variant));
       const page = await context.newPage();
       await page.addInitScript(
-        ([keys, flag]) => {
+        ([keys, flag, draftPrefix]) => {
           if (window.sessionStorage.getItem(flag)) {
             window.sessionStorage.removeItem(flag);
             keys.forEach(key => window.localStorage.removeItem(key));
+            Object.keys(window.sessionStorage)
+              .filter(key => key.startsWith(draftPrefix))
+              .forEach(key => window.sessionStorage.removeItem(key));
           }
         },
-        [PERSISTED_QUERY_CACHES, DROP_CACHES_FLAG] as const,
+        [PERSISTED_QUERY_CACHES, DROP_CACHES_FLAG, FORM_DRAFT_PREFIX] as const,
       );
       await signIn(page, lab.users.admin);
       await use(page);
@@ -446,6 +456,22 @@ export async function open(
     await gotoApp(page, path);
   }
   await expect(chrome).toBeAttached();
+}
+
+/**
+ * Reloads `page` like a person pressing reload: a `beforeunload` prompt the
+ * page raises (a wizard with input does) is accepted, so the reload goes
+ * through. Only for this reload; any other dialog meanwhile is dismissed.
+ */
+export async function reloadAccepting(page: Page): Promise<void> {
+  const onDialog = (dialog: Dialog) =>
+    dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss();
+  page.on('dialog', onDialog);
+  try {
+    await page.reload();
+  } finally {
+    page.off('dialog', onDialog);
+  }
 }
 
 /**

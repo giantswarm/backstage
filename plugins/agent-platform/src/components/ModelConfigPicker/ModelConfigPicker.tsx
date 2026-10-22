@@ -1,8 +1,10 @@
 import { useEffect, useId } from 'react';
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
-import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  FieldErrorText,
+  NewTabLink,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { newModelRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
@@ -176,11 +178,13 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
             title="No models found"
             description={`No ModelConfigs on ${installation}. A platform admin must add one before agents can be created here.`}
           />
-          {/* Leaving the create flow here loses this form's state, which is
-              fine: without a model, nothing on it can proceed anyway. */}
+          {/* A new tab, like every link in the form: it stays as it is. */}
           {newModelLink && (
             <Text variant="body-small" color="secondary">
-              Platform admins can <Link to={newModelLink()}>add a model</Link>{' '}
+              Platform admins can{' '}
+              <NewTabLink href={newModelLink()} variant="body-small">
+                add a model
+              </NewTabLink>{' '}
               in the Models tab.
             </Text>
           )}

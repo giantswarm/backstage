@@ -256,6 +256,12 @@ them and never invent a palette.
 - A wizard that holds typed input sets `WizardFrame`'s `confirmDiscard`, so
   Close and Cancel ask "Discard changes" or "Keep editing". Dialogs with
   unsaved edits ask the same way.
+- The router cannot hold in-app navigation, so a create wizard keeps its
+  input as a draft (`useSessionDraft`, per person, in the tab's
+  `sessionStorage`; never a secret or a token), shows `DraftRestoredAlert`
+  when it comes back with one, and drops it on submit and in `WizardFrame`'s
+  `onDiscard`. The new-agent wizard does; see `NewAgentFormProvider`.
+- A link inside a form opens in a new tab and says so: `NewTabLink`.
 - Hand-off naming contract (`MetaAgentBanner`):
   - "Let X help" opens a side chat and keeps the form; nothing is sent.
   - "Ask X …" opens New session with X preselected; nothing starts.
