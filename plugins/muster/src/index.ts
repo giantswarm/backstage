@@ -150,6 +150,8 @@ export type {
   ProviderAppRowState,
   ProviderAppSignInProps,
 } from './components/ProviderAppSignIn';
+export { ProviderAppConnections } from './components/ProviderAppConnections';
+export type { ProviderAppConnectionsProps } from './components/ProviderAppConnections';
 export {
   McpSignInProvider,
   useMcpSignIn,

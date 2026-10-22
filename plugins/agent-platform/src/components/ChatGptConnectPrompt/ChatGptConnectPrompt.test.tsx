@@ -7,7 +7,10 @@ import {
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
-import { ChatGptConnectPrompt } from './ChatGptConnectPrompt';
+import {
+  ChatGptConnectDialog,
+  ChatGptConnectPrompt,
+} from './ChatGptConnectPrompt';
 
 // The dialog names servers by their MCPServer; it lists none here.
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -37,16 +40,28 @@ function makeApi() {
   } as unknown as MusterApi;
 }
 
+const onConnect = jest.fn();
+
 async function renderPrompt(hasHeldMessage?: boolean) {
+  await renderInTestApp(
+    <ChatGptConnectPrompt
+      hasHeldMessage={hasHeldMessage}
+      onConnect={onConnect}
+    />,
+  );
+}
+
+async function renderDialog() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, makeApi()]]}>
       <QueryClientProvider client={queryClient}>
-        <ChatGptConnectPrompt
+        <ChatGptConnectDialog
           installation="graveler"
-          hasHeldMessage={hasHeldMessage}
+          isOpen
+          onOpenChange={() => {}}
         />
       </QueryClientProvider>
     </TestApiProvider>,
@@ -75,10 +90,16 @@ describe('ChatGptConnectPrompt', () => {
     ).toBeInTheDocument();
   });
 
-  it('opens the sign-in dialog on the ChatGPT row only', async () => {
+  it('asks the page to open the dialog on Connect', async () => {
     await renderPrompt();
 
     await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(onConnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers the ChatGPT row only in its dialog', async () => {
+    await renderDialog();
 
     const dialog = await screen.findByRole('dialog');
     const apps = await within(dialog).findByRole('list', {

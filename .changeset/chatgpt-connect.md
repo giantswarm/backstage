@@ -14,3 +14,5 @@ The agent chat of an agent whose model is the person's own ChatGPT login sends
 no turn until the person has connected it, shows the connect prompt instead,
 and sends a new session's first message once they have. The model is named
 "ChatGPT (your subscription)".
+Profile and settings lists the person's connections, where they connect or
+disconnect one without a feature asking.

@@ -195,6 +195,17 @@ const CHATGPT_CONNECTED = {
   isLoading: false,
 };
 
+// The ChatGPT row's dialog reads muster, which is not mounted: its props are
+// what matters here.
+const mockChatGptDialog = jest.fn();
+jest.mock('../ChatGptConnectPrompt', () => ({
+  ...jest.requireActual('../ChatGptConnectPrompt'),
+  ChatGptConnectDialog: (props: unknown) => {
+    mockChatGptDialog(props);
+    return null;
+  },
+}));
+
 // Stubbed for the same reason as the mutations above: no query client is mounted.
 const mockSendMessage = jest.fn();
 const mockUseSendMessage = jest.fn<UseSendMessageResult, []>();
@@ -2121,6 +2132,26 @@ describe('SessionDetailPage', () => {
       expect(composer()).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
       expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps the sign-in dialog open once the person has connected', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseChatGptConnection.mockReturnValue(CHATGPT_NOT_CONNECTED);
+      await render();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      expect(mockChatGptDialog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ isOpen: true, installation: 'gazelle' }),
+      );
+
+      setChatGpt(CHATGPT_CONNECTED);
+
+      expect(
+        screen.queryByTestId('chatgpt-connect-prompt'),
+      ).not.toBeInTheDocument();
+      expect(mockChatGptDialog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ isOpen: true }),
+      );
     });
 
     it('sends what was typed once the person is connected', async () => {

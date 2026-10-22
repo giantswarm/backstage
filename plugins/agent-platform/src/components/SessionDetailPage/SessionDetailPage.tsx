@@ -79,6 +79,7 @@ import { SessionWorkspaceChip } from '../SessionWorkspace';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
 import {
+  ChatGptConnectDialog,
   ChatGptConnectPrompt,
   CHATGPT_CONNECT_REASON,
 } from '../ChatGptConnectPrompt';
@@ -588,6 +589,9 @@ export function SessionDetailPage() {
         handoff?.modelConfig,
     },
   );
+  // Kept here, not in the prompt: the dialog stays open, reading Connected,
+  // after the prompt has gone.
+  const [isChatGptDialogOpen, setChatGptDialogOpen] = useState(false);
 
   // The $/token to price this session's tokens at, and which observation it
   // came from. The **model** is what matters: pricing an Opus session at the
@@ -1427,8 +1431,8 @@ export function SessionDetailPage() {
     }
     const chatGptPrompt = chatGpt.blocksTurn ? (
       <ChatGptConnectPrompt
-        installation={installation}
         hasHeldMessage={chatGptHoldsHandoff}
+        onConnect={() => setChatGptDialogOpen(true)}
       />
     ) : undefined;
     const newSession = offersNewSession
@@ -1447,6 +1451,11 @@ export function SessionDetailPage() {
         className={classes.bottomDock}
         data-testid="session-dock"
       >
+        <ChatGptConnectDialog
+          installation={installation}
+          isOpen={isChatGptDialogOpen}
+          onOpenChange={setChatGptDialogOpen}
+        />
         {runtimeLoss && (runtimeLoss.reported || !answerNotTaken) && (
           <RuntimeLostNotice
             loss={runtimeLoss}

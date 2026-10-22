@@ -14,6 +14,21 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   }),
 }));
 
+// The person's home installation, as the shell's MCP sign-in provider reads
+// it; its connections are muster's own component, tested in the muster plugin.
+let mockHomeInstallation: string | undefined;
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  useMcpSignIn: () =>
+    mockHomeInstallation ? { installation: mockHomeInstallation } : undefined,
+  ProviderAppConnections: ({
+    installation,
+    children,
+  }: {
+    installation: string;
+    children: (list: unknown) => unknown;
+  }) => children(<div>connections of {installation}</div>),
+}));
+
 const signOut = jest.fn().mockResolvedValue(undefined);
 
 async function renderPage(
@@ -49,11 +64,29 @@ async function renderPage(
 }
 
 beforeEach(() => {
+  mockHomeInstallation = undefined;
   signOut.mockClear();
   mockInstallations = [{ name: 'gazelle', pipeline: 'testing' }];
 });
 
 describe('ProfilePage', () => {
+  it("lists the person's connections of their home installation", async () => {
+    mockHomeInstallation = 'gazelle';
+    await renderPage();
+
+    const section = screen.getByRole('region', { name: 'Connections' });
+    expect(section).toHaveTextContent('connections of gazelle');
+    expect(section).toHaveTextContent(/your ChatGPT subscription/);
+  });
+
+  it('shows no connections without a home installation', async () => {
+    await renderPage();
+
+    expect(
+      screen.queryByRole('region', { name: 'Connections' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('heads the page and shows the signed-in identity', async () => {
     await renderPage();
 

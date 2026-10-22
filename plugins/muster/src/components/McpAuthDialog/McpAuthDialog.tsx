@@ -11,11 +11,7 @@ import {
   Text,
 } from '@backstage/ui';
 import { ServerSignIn } from '../shared';
-import {
-  ProviderAppSignIn,
-  providerAppHint,
-  providerAppLabel,
-} from '../ProviderAppSignIn';
+import { ProviderAppList } from '../ProviderAppSignIn/ProviderAppList';
 import { useMcpServersAwaitingSignIn } from './useMcpServersAwaitingSignIn';
 import { useServerLabels } from './useServerLabels';
 
@@ -179,26 +175,10 @@ export function McpAuthDialog({
                 </Text>
               )}
               {providerApps.length > 0 && (
-                <ul className={classes.list} aria-label="Connections">
-                  {providerApps.map(app => (
-                    <li key={app.name} className={classes.row}>
-                      <span className={classes.label}>
-                        <span className={classes.name}>
-                          {providerAppLabel(app.name)}
-                        </span>
-                        {providerAppHint(app.name) && (
-                          <Text variant="body-small" color="secondary">
-                            {providerAppHint(app.name)}
-                          </Text>
-                        )}
-                      </span>
-                      <ProviderAppSignIn
-                        app={app.name}
-                        installation={installation}
-                      />
-                    </li>
-                  ))}
-                </ul>
+                <ProviderAppList
+                  apps={providerApps}
+                  installation={installation}
+                />
               )}
               {rows.length > 0 && (
                 <ul className={classes.list} aria-label="MCP servers">

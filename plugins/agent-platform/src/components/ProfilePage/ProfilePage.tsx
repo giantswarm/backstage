@@ -10,6 +10,10 @@ import { makeStyles } from '@material-ui/core/styles';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import {
+  ProviderAppConnections,
+  useMcpSignIn,
+} from '@giantswarm/backstage-plugin-muster';
+import {
   PageHeaderActionsProvider,
   GSReleaseInfo,
   LoadingIndicator,
@@ -78,6 +82,8 @@ export function ProfilePage() {
     useApi(configApiRef).getOptionalString('app.releaseVersion');
   const profile = useProfileInfo();
   const { installations, isLoading: installationsLoading } = useInstallations();
+  // The person's home installation, whose muster keeps their connections.
+  const homeInstallation = useMcpSignIn()?.installation;
 
   const displayName = profile?.displayName?.trim() || undefined;
   const email = profile?.email?.trim() || undefined;
@@ -151,6 +157,20 @@ export function ProfilePage() {
               </ShowMore>
             )}
           </section>
+        )}
+        {homeInstallation && (
+          <ProviderAppConnections installation={homeInstallation}>
+            {list => (
+              <section aria-label="Connections" className={classes.section}>
+                <SectionHeader
+                  variant="title-x-small"
+                  title="Connections"
+                  description="Accounts of your own that your agents use, such as your ChatGPT subscription."
+                />
+                {list}
+              </section>
+            )}
+          </ProviderAppConnections>
         )}
         <section aria-label="Session" className={classes.section}>
           <Button
