@@ -10,6 +10,7 @@ import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
+import { useStickToEnd } from '../../hooks/useStickToEnd';
 import { extractFencedBlocks, type FencedBlock } from '../../lib/fencedBlocks';
 import { sessionDetailRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
@@ -48,9 +49,6 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(2),
   },
 }));
-
-/** How close to the end still counts as "reading the end" for auto-follow. */
-const FOLLOW_THRESHOLD_PX = 240;
 
 export type AssistConversationProps = {
   installation: string;
@@ -126,22 +124,11 @@ export function AssistConversation({
     (confirmation.isAnswering && answerDispatched) ||
     view.isAgentWorking;
 
-  // Follow the reply as it arrives — but only when already reading the end,
-  // and only this panel's own scroller, never the page.
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const streamTick = stream?.revision ?? 0;
-  const itemCount = timeline.items.length;
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) {
-      return;
-    }
-    const nearBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD_PX;
-    if (nearBottom) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [streamTick, itemCount]);
+  // Follow the reply as it arrives while the reader is at the end, and leave
+  // them alone once they scroll up — this panel's own scroller, never the page.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const [content, setContent] = useState<HTMLDivElement | null>(null);
+  const { stickToEnd } = useStickToEnd(content, scroller);
 
   // The newest reply that carries fenced blocks is the current proposal; an
   // older reply's draft is superseded the moment a newer one arrives.
@@ -214,8 +201,8 @@ export function AssistConversation({
 
   return (
     <div className={classes.root}>
-      <div ref={scrollRef} className={classes.scroll}>
-        <Flex direction="column" gap="3">
+      <div ref={setScroller} className={classes.scroll}>
+        <Flex ref={setContent} direction="column" gap="3">
           {view.error && (
             <Alert
               status="warning"
@@ -273,6 +260,8 @@ export function AssistConversation({
           onSubmit={text => {
             // Errors surface through the hook's `error`, shown by the composer.
             send.sendMessage(text).catch(() => {});
+            // The echo appears at the end; go where it is, and follow.
+            stickToEnd();
           }}
         />
         {fullSessionHref && (

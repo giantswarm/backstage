@@ -2,6 +2,7 @@ export {
   KagentApiClient,
   kagentApiRef,
   isConflictError,
+  isFirstEventTimeout,
   isStreamTransportError,
   isUnauthorizedError,
   CONFLICT_ERROR_NAME,

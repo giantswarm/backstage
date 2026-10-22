@@ -27,6 +27,15 @@ const RUNTIME_LABELS: Record<HarnessRuntime, string> = {
   byo: 'Custom image',
 };
 
+/**
+ * Whether a Harness runtime runs a coding CLI (every runtime but kagent's): an
+ * agent on one reaches its Harness's platform list only, so it picks no
+ * EgressPolicy. Undefined, the runtime is not known yet.
+ */
+export function isCodingRuntime(runtime: HarnessRuntime | undefined): boolean {
+  return runtime !== undefined && runtime !== 'kagent';
+}
+
 export function runtimeLabel(runtime: HarnessRuntime | undefined): string {
   return runtime ? RUNTIME_LABELS[runtime] : 'Unknown runtime';
 }

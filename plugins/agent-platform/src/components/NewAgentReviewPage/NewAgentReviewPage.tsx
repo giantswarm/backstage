@@ -28,6 +28,7 @@ import {
 import { agentSpecOf } from '../../lib/agentSpec';
 import { harnessTitle } from '../../lib/harnesses';
 import { parseEgressText } from '../../lib/egress';
+import { PickedEgressPolicies } from '../PickedEgressPolicies';
 import { shortCommit } from '../../lib/skills';
 import { pluginEntryOf, pluginSummary } from '../../lib/plugins';
 import {
@@ -505,6 +506,15 @@ function CreateAgentReview() {
                   <span className={classes.code}>{declared.join(', ')}</span>
                 </Text>
               </SummaryItem>
+              {state.egressPolicyRefs.length > 0 && (
+                <SummaryItem label="EgressPolicies">
+                  <PickedEgressPolicies
+                    installation={state.installation}
+                    namespace={state.modelConfigNamespace}
+                    names={state.egressPolicyRefs}
+                  />
+                </SummaryItem>
+              )}
               {egressOrigins.length > 0 && (
                 <SummaryItem label="Extra egress">
                   <Text variant="body-small">

@@ -370,6 +370,7 @@ const BASE_STATE: NewAgentFormState = {
   droppedHarness: undefined,
   systemMessage: '',
   egressText: '',
+  egressPolicyRefs: [],
   defaultWorkspace: '',
   selectedSkills: [],
   keptSkills: [],

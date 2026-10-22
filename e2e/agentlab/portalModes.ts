@@ -60,6 +60,7 @@ export const SHELL_SPECS = [
   'session-export.spec.ts',
   'session-images.spec.ts',
   'session-runtime-lost.spec.ts',
+  'session-stick-to-end.spec.ts',
   'session-state-column.spec.ts',
   'sessions-awaiting-data.spec.ts',
   'sessions-unreadable-reason.spec.ts',

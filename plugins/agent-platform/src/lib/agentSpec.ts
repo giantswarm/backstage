@@ -61,6 +61,9 @@ export function agentSpecOf(
   if (egress.length > 0) {
     spec.egress = egress;
   }
+  if (state.egressPolicyRefs.length > 0) {
+    spec.egressPolicyRefs = [...state.egressPolicyRefs];
+  }
   if (state.defaultWorkspace) {
     spec.defaultWorkspace = qualifiedDefaultWorkspace(
       spec.namespace,
