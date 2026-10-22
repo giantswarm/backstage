@@ -194,7 +194,7 @@ function PlanRow({
       <td className={classes.pin}>{headCell}</td>
       <td>
         {awaitsHead ? (
-          <CellSkeleton width="70%" />
+          <CellSkeleton width="70%" variant="body-small" />
         ) : (
           <Text
             variant="body-small"
