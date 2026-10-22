@@ -1,30 +1,13 @@
 import {
-  isSyncing,
   lastPushes,
   lastSyncResult,
   pushedSinceSync,
-  requestedSyncEnded,
   searchMirrors,
   sortedDirectories,
   sortedMirrors,
   syncTriggerLabel,
 } from './workspaceDetail';
-import type {
-  Workspace,
-  WorkspaceMirror,
-  WorkspacePreview,
-} from './workspaceManager';
-
-const workspace: Workspace = {
-  name: 'docs',
-  organization: 'lab',
-  sources: [{ provider: 'github', owner: 'example-org' }],
-  sync: { schedule: 'nightly' },
-  resourceVersion: '1',
-  createdAt: '2026-10-01T00:00:00Z',
-  repositories: 2,
-  sessions: 0,
-};
+import type { WorkspaceMirror, WorkspacePreview } from './workspaceManager';
 
 const mirror = (
   repository: string,
@@ -63,24 +46,6 @@ describe('lastSyncResult', () => {
   });
 });
 
-describe('isSyncing', () => {
-  it('follows a running or requested sync, not a deletion', () => {
-    expect(
-      isSyncing({
-        ...workspace,
-        activeSync: { job: 'sync-1', startedAt: '2026-10-20T11:00:00Z' },
-      }),
-    ).toBe(true);
-    expect(
-      isSyncing({
-        ...workspace,
-        syncRequest: { requestedAt: '2026-10-20T11:00:00Z' },
-      }),
-    ).toBe(true);
-    expect(isSyncing({ ...workspace, deleting: true })).toBe(false);
-  });
-});
-
 describe('syncTriggerLabel', () => {
   it('names what started a cycle, and nothing for none', () => {
     expect(syncTriggerLabel('request')).toBe(
@@ -91,59 +56,6 @@ describe('syncTriggerLabel', () => {
       'A deleted session’s directory',
     );
     expect(syncTriggerLabel(undefined)).toBeUndefined();
-  });
-});
-
-describe('requestedSyncEnded', () => {
-  const requestedAt = '2026-10-20T10:00:00Z';
-
-  it('waits while the sync runs or is still requested', () => {
-    expect(
-      requestedSyncEnded(
-        {
-          ...workspace,
-          lastSync: { time: '2026-10-20T10:05:00Z', result: 'Succeeded' },
-          syncRequest: { requestedAt },
-        },
-        requestedAt,
-      ),
-    ).toBe(false);
-  });
-
-  it('waits while the last cycle is older than the request', () => {
-    expect(
-      requestedSyncEnded(
-        {
-          ...workspace,
-          lastSync: { time: '2026-10-20T09:00:00Z', result: 'Succeeded' },
-        },
-        requestedAt,
-      ),
-    ).toBe(false);
-  });
-
-  it('takes a cycle that ended in the request’s second for the one before', () => {
-    expect(
-      requestedSyncEnded(
-        {
-          ...workspace,
-          lastSync: { time: requestedAt, result: 'Succeeded' },
-        },
-        requestedAt,
-      ),
-    ).toBe(false);
-  });
-
-  it('ends with a cycle after the request', () => {
-    expect(
-      requestedSyncEnded(
-        {
-          ...workspace,
-          lastSync: { time: '2026-10-20T10:01:00Z', result: 'NoChange' },
-        },
-        requestedAt,
-      ),
-    ).toBe(true);
   });
 });
 

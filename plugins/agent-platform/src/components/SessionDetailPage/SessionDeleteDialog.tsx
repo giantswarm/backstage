@@ -20,7 +20,9 @@ export function describeSessionDeleteFailure(
   error: Error,
   loss: RuntimeLoss | undefined,
 ): string {
-  if (!loss) {
+  // Sends that kept timing out say nothing about the runtime's node: the
+  // backend's message stands.
+  if (!loss || loss.source === 'send-timeouts') {
     return error.message;
   }
   return `kagent could not delete this session: it suspends the runtime first, and this runtime was lost with its platform node. A kagent fix is coming; until then the session stays listed. Nothing else is affected. (${error.message})`;

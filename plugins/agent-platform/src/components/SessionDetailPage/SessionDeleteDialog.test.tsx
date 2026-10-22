@@ -1,6 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import {
+  describeSessionDeleteFailure,
   SESSION_DELETE_SETTLING_HINT_MS,
   SessionDeleteDialog,
 } from './SessionDeleteDialog';
@@ -39,5 +40,26 @@ describe('SessionDeleteDialog', () => {
       setTimeout(resolve, SESSION_DELETE_SETTLING_HINT_MS + 100),
     );
     expect(screen.queryByText(SETTLING)).not.toBeInTheDocument();
+  });
+});
+
+describe('describeSessionDeleteFailure', () => {
+  const error = new Error('Unavailable: Failed to delete Session');
+
+  it('explains a failed delete on a lost runtime', () => {
+    expect(
+      describeSessionDeleteFailure(error, { reported: true, attempts: 1 }),
+    ).toMatch(/this runtime was lost with its platform node/);
+  });
+
+  it('keeps the backend’s message where only sends kept timing out', () => {
+    // Nothing says the runtime's node went away.
+    expect(
+      describeSessionDeleteFailure(error, {
+        reported: false,
+        attempts: 2,
+        source: 'send-timeouts',
+      }),
+    ).toBe(error.message);
   });
 });

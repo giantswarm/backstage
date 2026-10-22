@@ -56,6 +56,11 @@ export type McpSignInStatus = {
    */
   isRead: boolean;
   /**
+   * The first settling of `waiting` is over (`useSettledWaiting`): what a
+   * fresh load found is in it. Stays true once it is.
+   */
+  isSettled: boolean;
+  /**
    * muster answered with a status. False while it could not say (not read
    * yet, the read failed, muster unavailable): an empty `waiting` then says
    * nothing about the servers.
@@ -74,6 +79,7 @@ const NOT_READ: ReadStatus = {
   waiting: [],
   connected: [],
   isRead: false,
+  isSettled: false,
   isAvailable: false,
 };
 
@@ -112,7 +118,7 @@ function StatusReader({
   });
   // Only what has settled: a fresh load reads servers muster is still
   // connecting for the session.
-  const waiting = useSettledWaiting({
+  const { waiting, isSettled: hasSettled } = useSettledWaiting({
     waiting: reported,
     connecting,
     readAt,
@@ -125,6 +131,8 @@ function StatusReader({
   });
 
   const isRead = installation ? !isLoading : !isInstallationLoading;
+  // Without a home installation there is nothing to settle.
+  const isSettled = installation ? hasSettled : isRead;
   // Handed up only when what it says changes, compared as JSON: a display
   // name may hold any character.
   const key = JSON.stringify([
@@ -141,10 +149,19 @@ function StatusReader({
       waiting: servers.map(([name, label]) => ({ name, label })),
       connected,
       isRead,
+      isSettled,
       // A status kept from before the session expired is no answer now.
       isAvailable: isAvailable && !sessionExpired,
     });
-  }, [installation, key, isRead, isAvailable, sessionExpired, onRead]);
+  }, [
+    installation,
+    key,
+    isRead,
+    isSettled,
+    isAvailable,
+    sessionExpired,
+    onRead,
+  ]);
 
   if (!installation || !isDialogOpen) {
     return null;

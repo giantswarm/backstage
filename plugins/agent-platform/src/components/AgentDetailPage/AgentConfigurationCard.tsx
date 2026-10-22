@@ -24,6 +24,7 @@ import type { ClientServingSummary } from '../../lib/serving';
 import { bindsGateway, describeToolset } from '../../lib/toolset';
 import { deploymentDetailsExternalRouteRef } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { PickedEgressPolicies } from '../PickedEgressPolicies';
 import { FailureMarker } from './FailureMarker';
 import {
   describeToolScope,
@@ -325,6 +326,7 @@ export function AgentConfigurationCard({
   const namespace = agent.getNamespace();
   const created = agent.getCreatedTimestamp();
   const egress = agent.getEgress();
+  const egressPolicyRefs = agent.getEgressPolicyRefs();
 
   const metadata: Record<string, ReactNode> = {
     Model: (
@@ -344,6 +346,16 @@ export function AgentConfigurationCard({
         isFailing={failure?.field === 'tools'}
       />
     ),
+    ...(egressPolicyRefs.length > 0 && {
+      EgressPolicies: (
+        <PickedEgressPolicies
+          installation={installation}
+          namespace={namespace}
+          names={egressPolicyRefs}
+          variant="body-medium"
+        />
+      ),
+    }),
     ...(egress.length > 0 && {
       'Extra egress': (
         <Flex direction="column" gap="1">

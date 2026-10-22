@@ -283,6 +283,19 @@ export function musterAgentManagerModelConfigsQueryKey(
   ] as const;
 }
 
+export function musterAgentManagerEgressPoliciesQueryKey(
+  installation: string,
+  namespace: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-egress-policies',
+    installation,
+    namespace,
+  ] as const;
+}
+
 export function musterValidateAgentUpdateQueryKey(
   installation: string,
   updateSignature: string,
@@ -374,6 +387,16 @@ export function musterWorkspacesQueryKey(installation: string) {
 
 export function musterWorkspaceQueryKey(installation: string, name: string) {
   return ['muster', 'agent-platform', 'workspace', installation, name] as const;
+}
+
+/**
+ * The syncs the person started on this page load (a create, an edit,
+ * Synchronize), by workspace row id: kept in the cache, written by the writes
+ * and read by the list and the workspace's page, so both say Synchronizing
+ * before the manager's reads do. Nothing fetches it.
+ */
+export function musterWorkspaceSyncsAwaitedQueryKey() {
+  return ['muster', 'agent-platform', 'workspace-syncs-awaited'] as const;
 }
 
 /**

@@ -8,6 +8,7 @@ import {
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { kagentApiRef } from '../apis';
 import {
+  A2aTaskWire,
   KagentSessionDetail,
   RuntimeLoss,
   SessionState,
@@ -81,6 +82,12 @@ export type SessionDetailView = {
    * `readRuntimeLoss`.
    */
   runtimeLoss?: RuntimeLoss;
+  /**
+   * The conversation's tasks as last read, oldest first; undefined until
+   * read. For what the page reads with what only it knows: the sends that
+   * kept timing out (`readSendTimeoutRuntimeLoss`).
+   */
+  tasks?: A2aTaskWire[];
   /** Number of A2A tasks — the session's turn count. */
   taskCount: number;
   /**
@@ -389,6 +396,7 @@ export function useSessionDetail(
     turnProgress,
     pendingConfirmation,
     runtimeLoss,
+    tasks,
     taskCount: tasks?.length ?? 0,
     hasConversation: tasks !== undefined,
     // `isNotFound` short-circuits loading, because it is decided by the session

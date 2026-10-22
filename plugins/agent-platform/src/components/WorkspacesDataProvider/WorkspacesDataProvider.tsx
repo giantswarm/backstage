@@ -22,10 +22,12 @@ import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useMusterServerAvailability } from '../../hooks/useMusterServerAvailability';
+import { useAwaitedSyncs } from '../../hooks/useWorkspaceActions';
+import { forgetEndedSyncs } from '../../lib/awaitedSyncs';
 import { musterWorkspacesQueryKey } from '../../lib/queryKeys';
 import {
-  isSettling,
   workspaceRowId,
+  workspacesRefetchInterval,
   type WorkspaceRow,
 } from '../../lib/workspaceList';
 import {
@@ -35,9 +37,6 @@ import {
 
 /** The address's Organization scope: `?organization=<name>`. */
 export const ORGANIZATION_SEARCH_PARAM = 'organization';
-
-/** How often the list is read again while a row syncs or is deleted. */
-const SETTLING_REFETCH_MS = 5_000;
 
 export type WorkspacesData = {
   /**
@@ -62,7 +61,10 @@ export type WorkspacesData = {
   /** The scope's Organization; `undefined` while there is none. */
   organization: string | undefined;
   setOrganization: (organization: string) => void;
-  /** The scope's workspaces, every installation's. */
+  /**
+   * The scope's workspaces, every installation's, each with the sync the
+   * person started on it here (`awaitedSync`).
+   */
   rows: WorkspaceRow[];
   /** Some installation's list has not answered yet. */
   isLoading: boolean;
@@ -99,6 +101,10 @@ export function useWorkspacesData(): WorkspacesData {
  * person is a member of, and those Organizations, with or without a workspace.
  * They are the Organizations offered: nothing the manager would refuse.
  *
+ * A list is read again while one of its workspaces syncs, was just created or
+ * changed, or is being deleted (`workspacesRefetchInterval`), never while the
+ * tab is hidden; coming back to the tab then reads it at once.
+ *
  * Must be mounted inside the plugin's `QueryClientProvider`.
  */
 export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
@@ -122,6 +128,8 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     [sharedIdentityKey],
   );
 
+  const queryClient = useQueryClient();
+  const awaited = useAwaitedSyncs();
   const combineLists = useCallback(
     (results: UseQueryResult<WorkspaceList>[]) => ({
       rows: installations.flatMap((installation, index) =>
@@ -149,24 +157,38 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     }),
     [installations],
   );
+  const refetchInterval = (
+    installation: string,
+    list: WorkspaceList | undefined,
+  ) =>
+    workspacesRefetchInterval(
+      list?.workspaces ?? [],
+      workspace =>
+        awaited[workspaceRowId({ installation, name: workspace.name })],
+    );
   const lists = useQueries({
     queries: installations.map(installation => ({
       queryKey: musterWorkspacesQueryKey(installation),
       enabled: Boolean(musterApi),
-      queryFn: () =>
-        new WorkspaceManagerClient(musterApi!, installation).listWorkspaces(),
+      queryFn: async () => {
+        const list = await new WorkspaceManagerClient(
+          musterApi!,
+          installation,
+        ).listWorkspaces();
+        forgetEndedSyncs(queryClient, installation, list.workspaces);
+        return list;
+      },
       retry: false,
       refetchInterval: (query: { state: { data?: WorkspaceList } }) =>
-        query.state.data?.workspaces.some(isSettling)
-          ? SETTLING_REFETCH_MS
-          : false,
+        refetchInterval(installation, query.state.data),
+      refetchOnWindowFocus: (query: { state: { data?: WorkspaceList } }) =>
+        refetchInterval(installation, query.state.data) ? 'always' : false,
     })),
     combine: combineLists,
   });
   const allRows = lists.rows;
   const organizations = lists.organizations;
 
-  const queryClient = useQueryClient();
   const retry = useCallback(() => {
     for (const installation of installations) {
       void queryClient.invalidateQueries({
@@ -255,6 +277,9 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       setOrganization,
       rows: allRows
         .filter(row => row.organization === organization)
+        .map(row =>
+          awaited[row.id] ? { ...row, awaitedSync: awaited[row.id] } : row,
+        )
         .sort(
           (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
         ),
@@ -265,6 +290,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     }),
     [
       allRows,
+      awaited,
       failures,
       signIns,
       installations,

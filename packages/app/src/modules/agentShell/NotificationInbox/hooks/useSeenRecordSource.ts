@@ -6,6 +6,7 @@ import type {
   ReadableInboxRowSource,
 } from '../types';
 import { isAt } from './useInboxInterruptions';
+import type { McpSignInRowSource } from './useMcpSignInRowSource';
 
 type NotificationRecord = ReturnType<typeof useSessionNotificationRecord>;
 
@@ -25,12 +26,14 @@ function isDerivedRowOnScreen(row: DerivedInboxRow, pathname: string) {
  * other.
  *
  * The sessions decide when it has read: the MCP sign-in row joins when muster
- * answers, quietly unread if that is after the tab's first read.
+ * answers, quietly unread if that is after the tab's first read. Once muster
+ * has answered, the first read waits while its answer settles (`settling`, a
+ * few seconds), so a server waiting at load is catch-up like a session.
  */
 export function useSeenRecordSource(
   record: NotificationRecord,
   sessions: InboxRowSource<DerivedInboxRow>,
-  mcp: InboxRowSource<DerivedInboxRow>,
+  mcp: McpSignInRowSource,
 ): ReadableInboxRowSource<DerivedInboxRow> {
   const { markSeen, markManySeen } = record;
   const rows = useMemo(
@@ -63,7 +66,7 @@ export function useSeenRecordSource(
   return {
     rows,
     subjects,
-    ready: sessions.ready,
+    ready: sessions.ready && !mcp.settling,
     markRead,
     markAllRead,
     isOnScreen: isDerivedRowOnScreen,

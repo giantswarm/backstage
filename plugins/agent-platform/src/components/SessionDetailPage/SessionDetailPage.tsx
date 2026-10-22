@@ -59,6 +59,7 @@ import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
 import { useShowToolActivity } from '../../hooks/useShowToolActivity';
+import { useStickToEnd } from '../../hooks/useStickToEnd';
 import { useWorkspaceNames } from '../../hooks/useWorkspaceNames';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
@@ -67,6 +68,7 @@ import {
   AWAITING_INPUT_STATES,
   describeSessionState,
   isRuntimeLostFailureText,
+  readSendTimeoutRuntimeLoss,
   RuntimeLoss,
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -398,6 +400,7 @@ export function SessionDetailPage() {
     turnProgress,
     pendingConfirmation,
     runtimeLoss: conversationRuntimeLoss,
+    tasks,
     taskCount,
     hasConversation,
     isLoading,
@@ -473,7 +476,19 @@ export function SessionDetailPage() {
    * reported in-band before any event, or one the transport mapped, whose
    * message carries the same words. Either way the words are the runtime's
    * and are shown as the evidence, never as the explanation.
+   *
+   * Last, a runtime that leaves no words anywhere: sends that keep timing out
+   * before kagent's first event, none of them landing
+   * (`readSendTimeoutRuntimeLoss`). Each such failure re-reads the session, so
+   * a loss kagent has since reported reaches the first branch instead.
    */
+  // Read on every render, but only its count goes into the memo below: every
+  // poll brings new tasks, and a loss with a new identity each time would
+  // rebuild the header actions for nothing.
+  const sendTimeoutAttempts = readSendTimeoutRuntimeLoss(
+    send.timeouts,
+    tasks,
+  )?.attempts;
   const runtimeLoss = useMemo<RuntimeLoss | undefined>(() => {
     if (conversationRuntimeLoss) {
       return conversationRuntimeLoss;
@@ -481,8 +496,22 @@ export function SessionDetailPage() {
     const cause = [send.error?.message, confirmation.error?.message].find(
       isRuntimeLostFailureText,
     );
-    return cause ? { reported: false, cause, attempts: 1 } : undefined;
-  }, [conversationRuntimeLoss, send.error, confirmation.error]);
+    if (cause) {
+      return { reported: false, cause, attempts: 1 };
+    }
+    return sendTimeoutAttempts
+      ? {
+          reported: false,
+          attempts: sendTimeoutAttempts,
+          source: 'send-timeouts',
+        }
+      : undefined;
+  }, [
+    conversationRuntimeLoss,
+    send.error,
+    confirmation.error,
+    sendTimeoutAttempts,
+  ]);
 
   /**
    * The answer kagent did not take: the agent could not resume, and the
@@ -900,12 +929,31 @@ export function SessionDetailPage() {
     isKnown: isToolActivityKnown,
     setShowToolActivity,
   } = useShowToolActivity();
+
+  // The conversation column and the chat bar docked at its end, held as state
+  // through callback refs: both exist only on the loaded path (and the dock
+  // only while a composer is offered), and the layout hook re-measures when
+  // either comes or goes.
+  const [columnElement, setColumnElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
+  useDockedComposerLayout(columnElement, dockElement);
+
+  // Stick to the end: the page follows the reply as it streams in while the
+  // reader is at the end, and leaves them alone once they scroll away — up
+  // through the history, mid-stream included — until they come back to it.
+  const { stickToEnd, markReaderChange } = useStickToEnd(columnElement);
+
   // Adding or removing the work summaries around the place being read must
   // not move it: from the compact header the switch is pressed mid-session.
   const captureReadingAnchor = useReadingAnchor(showToolActivity);
   const changeToolActivity = useCallback(
     (show: boolean) => {
       captureReadingAnchor();
+      // The summaries it adds or removes are the reader's change: they keep
+      // their place, and follow the end only if it is still in view.
+      markReaderChange();
       // A failed write puts the switch and the conversation back to the
       // stored choice, so say why rather than let it snap back.
       setShowToolActivity(show).catch((failure: Error) => {
@@ -919,7 +967,7 @@ export function SessionDetailPage() {
         });
       });
     },
-    [captureReadingAnchor, setShowToolActivity, toastApi],
+    [captureReadingAnchor, markReaderChange, setShowToolActivity, toastApi],
   );
 
   // The menu's Export session: the file is named after the agent, by its
@@ -957,32 +1005,6 @@ export function SessionDetailPage() {
     ],
   );
   useProvidePageHeaderActions(actions);
-
-  // The page scrolls the document, so that is what "to the bottom" means here.
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      const el = document.scrollingElement ?? document.documentElement;
-      el.scrollTop = el.scrollHeight;
-    });
-  }, []);
-
-  // Follow the reply as it streams in — but only when already reading the end.
-  // Someone scrolled up through the history must not have the page yanked away
-  // under them by every arriving token.
-  // The turn's own event counter, not a size derived from its content: closing
-  // a text run moves length out of `live` into `items`, which can leave any such
-  // size unchanged across a real update and skip the follow for it.
-  const streamTick = (send.stream ?? answerStream)?.revision ?? 0;
-  useEffect(() => {
-    if (streamTick === 0) {
-      return;
-    }
-    const el = document.scrollingElement ?? document.documentElement;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
-    if (nearBottom) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [streamTick]);
 
   /**
    * The newest turn is active but has reported nothing for the age bound: the
@@ -1212,36 +1234,20 @@ export function SessionDetailPage() {
     return state;
   }, [showWorking, isStalled, state]);
 
-  // The conversation column and the chat bar docked at its end, held as state
-  // through callback refs: both exist only on the loaded path (and the dock
-  // only while a composer is offered), and the layout hook re-measures when
-  // either comes or goes.
-  const [columnElement, setColumnElement] = useState<HTMLDivElement | null>(
-    null,
-  );
-  const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
-  useDockedComposerLayout(columnElement, dockElement);
-
   // A session opens at its newest turn, the way a desktop chat app does (live
   // round 2, R8: a long session opened at its top). Once per session, when its
   // conversation first renders — the column exists only then. Later scrolling
   // is the reader's: "Show earlier activity" adds turns above without coming
-  // back here, and the follow above only moves a reader already at the end.
-  // Before paint, so the top never flashes; and once more a frame later, for
-  // layout that lands after the first (the dock's measured min-height).
+  // back here. Before paint, so the top never flashes; layout that lands after
+  // (the dock's measured min-height) is followed by `useStickToEnd`.
   const openedAtEndFor = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
     if (!columnElement || openedAtEndFor.current === sessionId) {
-      return undefined;
+      return;
     }
     openedAtEndFor.current = sessionId;
-    const el = document.scrollingElement ?? document.documentElement;
-    el.scrollTop = el.scrollHeight;
-    const frame = requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [columnElement, sessionId]);
+    stickToEnd();
+  }, [columnElement, sessionId, stickToEnd]);
 
   // The loaded page's header from the first paint, with skeletons where the
   // read will fill in: the title and the badge row (T95).
@@ -1579,8 +1585,9 @@ export function SessionDetailPage() {
               // Errors are surfaced through the hook's `error`, which the composer
               // renders beside the text it hands back.
               send.sendMessage(text, images).catch(() => {});
-              // The optimistic echo appears at the very bottom; go where it is.
-              scrollToBottom();
+              // The optimistic echo appears at the very bottom; go where it is,
+              // and follow the reply from there.
+              stickToEnd();
             }}
           />
         )}

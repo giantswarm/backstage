@@ -130,6 +130,19 @@ describe('Agent', () => {
       ]);
     });
 
+    it('reads the picked EgressPolicies, empty when none are picked', () => {
+      expect(withTemplate({}).getEgressPolicyRefs()).toEqual([]);
+      const agent = makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a' },
+        spec: {
+          template: {},
+          harnessRef: { name: 'kagent' },
+          egressPolicyRefs: [{ name: 'github' }, { name: 'go-modules' }],
+        },
+      } as Partial<AgentInterface>);
+      expect(agent.getEgressPolicyRefs()).toEqual(['github', 'go-modules']);
+    });
+
     it('reads the Harness the agent names', () => {
       expect(withTemplate({}).getHarnessName()).toBe('kagent');
       expect(withTemplate({}).getTemplateRef()).toBeUndefined();

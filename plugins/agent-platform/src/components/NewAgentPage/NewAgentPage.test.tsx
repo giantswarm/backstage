@@ -74,6 +74,9 @@ jest.mock('../HarnessPicker', () => ({
 jest.mock('../DefaultWorkspacePicker', () => ({
   DefaultWorkspacePicker: () => <p>default workspace picker</p>,
 }));
+jest.mock('../EgressPolicyPicker', () => ({
+  EgressPolicyPicker: () => <p>egress policy picker</p>,
+}));
 jest.mock('../CreateAgentAssist', () => ({ CreateAgentAssist: () => null }));
 jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
 
@@ -112,14 +115,15 @@ describe('NewAgentPage', () => {
     expect(screen.getByLabelText(/^What is it for\?/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^Instructions/)).toBeInTheDocument();
 
-    // Model, runtime, technical name and egress sit in the collapsed
-    // disclosure.
+    // Model, runtime, technical name, EgressPolicies and egress sit in the
+    // collapsed disclosure.
     const details = moreOptions();
     expect(details.open).toBe(false);
     for (const inside of [
       screen.getByText('model picker'),
       screen.getByText('runtime picker'),
       screen.getByLabelText(/^Technical name/),
+      screen.getByText('egress policy picker'),
       screen.getByLabelText(/^Extra egress origins/),
     ]) {
       expect(inside.closest('details')).toBe(details);
