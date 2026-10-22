@@ -76,7 +76,6 @@ import {
 } from '../ServerPage/useServerPageData';
 import { useServerCapabilityCounts } from '../McpServersPage/serverDetail';
 import {
-  authActionParts,
   deactivatedSignInGate,
   familyHealthLabel,
   ServerAuthActions,
@@ -98,6 +97,7 @@ import {
   ConnectorPageTargetProvider,
 } from './connectorPageTarget';
 import { ConnectorToolsTab, useToolSearchState } from './ConnectorToolsTab';
+import { ConnectorCannotConnect } from './ConnectorCannotConnect';
 import { ConnectorDetailsTab } from './ConnectorDetailsTab';
 import { ConnectorUsageTab } from './ConnectorUsageTab';
 import { useConnectorUsage } from './hooks/useConnectorUsage';
@@ -281,17 +281,6 @@ function ConnectorPageContent({
     canSignIn ? installation : undefined,
     { noun: 'connector' },
   );
-  // An SSO connector muster failed to connect for this person: the Customize
-  // list says "Could not sign in" and keeps the why in a hint; this page says
-  // it in full. Where muster asks for a sign-in, the Tools tab's gate already
-  // carries the same sentence.
-  const signInParts = canSignIn
-    ? authActionParts(displayName, signIn, { noun: 'connector' })
-    : undefined;
-  const ssoFailure =
-    signInParts?.kind === 'sso' && !signIn.needsLogin
-      ? signInParts.explanation
-      : undefined;
   const canSignOut =
     canSignIn &&
     !signIn.isSsoManaged &&
@@ -408,8 +397,19 @@ function ConnectorPageContent({
       context="Tools need a muster session."
     />
   );
-  const signInGate: ReactNode =
-    singular && canSignIn && signIn.needsLogin ? (
+  // An SSO connector that refused this person's sign-in hides its tools as a
+  // missing sign-in does, but nothing signs in to it: the Customize list says
+  // "Cannot connect" with the why in a hint, and this gate says it in full.
+  let signInGate: ReactNode;
+  if (singular && canSignIn && signIn.isSsoRefused) {
+    signInGate = (
+      <ConnectorCannotConnect
+        displayName={displayName}
+        error={signIn.status?.error}
+      />
+    );
+  } else if (singular && canSignIn && signIn.needsLogin) {
+    signInGate = (
       <Flex direction="column" gap="2" align="start">
         <Text as="p" variant="body-medium">
           Sign in to this connector to see its tools.
@@ -427,7 +427,8 @@ function ConnectorPageContent({
           }
         />
       </Flex>
-    ) : undefined;
+    );
+  }
 
   const emptyExplanation = singular
     ? noToolsExplanation(singular)
@@ -576,7 +577,6 @@ function ConnectorPageContent({
         tabs={tabs}
       >
         <Flex direction="column" gap="3">
-          {ssoFailure && <Alert status="danger" description={ssoFailure} />}
           {canSignIn && signIn.error && (
             <Alert status="danger" description={signIn.error} />
           )}

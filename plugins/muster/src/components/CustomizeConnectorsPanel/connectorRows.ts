@@ -10,7 +10,13 @@ import { selectRepresentative } from '../../lib/serverGrouping';
 import type { ServerListEntry } from '../../lib/serverList';
 import { serverAuthMode, type ServerAuthMode } from '../../lib/serverAuthMode';
 import type { ServerAuthStatus } from '../../apis/types';
-import { isConnecting, type StatusText } from '../shared';
+import {
+  isConnecting,
+  isSsoRefused,
+  needsSignIn,
+  SSO_REFUSED_STATUS,
+  type StatusText,
+} from '../shared';
 
 /** How a person gets into a server, in the shell's words. */
 export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
@@ -61,8 +67,9 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
 /**
  * A row's state: for one server, this person's sign-in when muster reports one
  * that asks something of them or a connect with their portal sign-in still
- * under way, else the server's own state; for a family, how
- * many of its instances are healthy.
+ * under way, "Cannot connect" for an SSO server that refused their sign-in,
+ * else the server's own state; for a family, how many of its
+ * instances are healthy.
  */
 export function connectorStatus(
   entry: ServerListEntry,
@@ -92,11 +99,13 @@ export function connectorStatus(
   if (server.getSuspended()) {
     return { label: 'Deactivated', tone: 'neutral' };
   }
-  if (authStatus?.status === 'reauth_required') {
-    return { label: 'Sign-in expired', tone: 'warning' };
+  if (authStatus && isSsoRefused(authStatus)) {
+    return SSO_REFUSED_STATUS;
   }
-  if (authStatus?.status === 'auth_required') {
-    return { label: 'Sign in needed', tone: 'warning' };
+  if (authStatus && needsSignIn(authStatus)) {
+    return authStatus.status === 'reauth_required'
+      ? { label: 'Sign-in expired', tone: 'warning' }
+      : { label: 'Sign in needed', tone: 'warning' };
   }
   if (authStatus && isConnecting(authStatus)) {
     return { label: 'Connecting', tone: 'neutral' };
@@ -155,10 +164,10 @@ export function connectorReach(
   if (server.getSuspended()) {
     return 'deactivated';
   }
-  if (
-    authStatus?.status === 'reauth_required' ||
-    authStatus?.status === 'auth_required'
-  ) {
+  if (authStatus && isSsoRefused(authStatus)) {
+    return 'not-connected';
+  }
+  if (authStatus && needsSignIn(authStatus)) {
     return 'sign-in';
   }
   if (authStatus && isConnecting(authStatus)) {

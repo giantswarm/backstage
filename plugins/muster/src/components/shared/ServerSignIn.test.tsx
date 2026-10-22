@@ -511,13 +511,32 @@ describe('ServerSignIn', () => {
     await renderSignIn(api);
 
     expect(
-      await screen.findByText(/authenticates through SSO/),
+      await screen.findByText(/^pro uses your portal sign-in/),
     ).toBeInTheDocument();
     // main's wording by default (the classic portal, e.g. Bot PRs).
     expect(
-      await screen.findByText(/check the server's trusted audiences/),
+      screen.getByText(/to the server's trusted audiences\.$/),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('explains a connected SSO server without a failure muster kept from another session', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'connected',
+        token_exchange_enabled: true,
+        sso_attempt_failed: true,
+      },
+    });
+    await renderSignIn(api);
+
+    expect(
+      await screen.findByText(
+        "pro authenticates through SSO from muster's own session, so there is nothing to sign in to here.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/trusted audiences/)).not.toBeInTheDocument();
   });
 
   /**
@@ -778,7 +797,7 @@ describe('ServerAuthActions', () => {
     const api = makeApi({
       status: {
         name: 'pro',
-        status: 'failed',
+        status: 'reauth_required',
         token_exchange_enabled: true,
         sso_attempt_failed: true,
       },
@@ -786,15 +805,55 @@ describe('ServerAuthActions', () => {
     await renderAuthActions(api);
 
     expect(
-      await screen.findByText(/check the server's trusted audiences/),
+      await screen.findByText(/to the server's trusted audiences\.$/),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['connected in this session', 'connected'],
+    ['unreachable, which refused nothing', 'unreachable'],
+    ['still retrying', 'sso_pending'],
+  ] as const)(
+    'stays hidden for an SSO server with a recorded failure, %s',
+    async (_, status) => {
+      const api = makeApi({
+        status: {
+          name: 'pro',
+          status,
+          token_exchange_enabled: true,
+          sso_attempt_failed: true,
+        },
+      });
+      await renderAuthActions(api);
+
+      await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+      expect(screen.queryByText(/trusted audiences/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/authenticates through SSO/),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    },
+  );
+
+  it('stays hidden for an SSO server muster has not connected yet', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required', kind: 'sso' },
+    });
+    await renderAuthActions(api);
+
+    await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+    expect(
+      screen.queryByText(/authenticates through SSO/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('names the connector in the SSO diagnosis in the agent platform’s sections', async () => {
     const api = makeApi({
       status: {
         name: 'pro',
-        status: 'failed',
+        status: 'reauth_required',
         token_exchange_enabled: true,
         sso_attempt_failed: true,
       },
@@ -802,7 +861,7 @@ describe('ServerAuthActions', () => {
     await renderAuthActions(api, { noun: 'connector' });
 
     expect(
-      await screen.findByText(/check the connector's trusted audiences/),
+      await screen.findByText(/to the connector's trusted audiences\.$/),
     ).toBeInTheDocument();
   });
 

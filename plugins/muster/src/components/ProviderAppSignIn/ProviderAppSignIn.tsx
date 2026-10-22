@@ -34,6 +34,11 @@ export type ProviderAppSignInProps = {
   installation?: string;
   /** How often `auth://status` is re-read while waiting; tests shorten it. */
   pollIntervalMs?: number;
+  /**
+   * Offer *Disconnect* while the App is connected; on by default. Off in the
+   * sign-in dialog, which only signs in: disconnecting is the Profile page's.
+   */
+  canDisconnect?: boolean;
 };
 
 /** Minutes left until `expiresAt`, re-read every 15 seconds. */
@@ -86,6 +91,7 @@ export function ProviderAppSignIn({
   app,
   installation,
   pollIntervalMs,
+  canDisconnect = true,
 }: ProviderAppSignInProps) {
   const signIn = useServerSignIn(app, installation, {
     noun: 'connector',
@@ -112,14 +118,16 @@ export function ProviderAppSignIn({
           <Text variant="body-small" color="success">
             ✓ Connected
           </Text>
-          <Button
-            variant="secondary"
-            size="small"
-            isDisabled={signIn.isSigningOut}
-            onPress={signIn.signOut}
-          >
-            {signIn.isSigningOut ? 'Disconnecting…' : 'Disconnect'}
-          </Button>
+          {canDisconnect && (
+            <Button
+              variant="secondary"
+              size="small"
+              isDisabled={signIn.isSigningOut}
+              onPress={signIn.signOut}
+            >
+              {signIn.isSigningOut ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
+          )}
         </Flex>
         {signIn.error && (
           <Text variant="body-small" color="danger">

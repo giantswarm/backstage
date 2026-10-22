@@ -48,13 +48,19 @@ export type ProviderAppListProps = {
   apps: ProviderAppAuthStatus[];
   /** The muster installation that keeps the person's grants. */
   installation?: string;
+  /** Offer *Disconnect* on a connected App; on by default. */
+  canDisconnect?: boolean;
 };
 
 /**
  * A row per provider App: what it is called, what connecting it is for, and
  * {@link ProviderAppSignIn} with its state and action.
  */
-export function ProviderAppList({ apps, installation }: ProviderAppListProps) {
+export function ProviderAppList({
+  apps,
+  installation,
+  canDisconnect,
+}: ProviderAppListProps) {
   const classes = useStyles();
   return (
     <ul className={classes.list} aria-label="Connections">
@@ -68,7 +74,11 @@ export function ProviderAppList({ apps, installation }: ProviderAppListProps) {
               </Text>
             )}
           </span>
-          <ProviderAppSignIn app={app.name} installation={installation} />
+          <ProviderAppSignIn
+            app={app.name}
+            installation={installation}
+            canDisconnect={canDisconnect}
+          />
         </li>
       ))}
     </ul>

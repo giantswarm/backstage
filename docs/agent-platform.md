@@ -161,6 +161,23 @@ set on the MCPServer directly, for example in its GitOps source or with
 `kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
 an edit that does not change the name keeps it.
 
+A connector whose tools wait for the person's sign-in says so in the
+Connectors list ("Sign in needed", "Sign-in expired", with its Sign in) and on
+its Tools tab, which offers the sign-in in place of the hidden tools. A
+connector that comes with the portal sign-in (muster's `kind: sso`, token
+forwarding or exchange) never asks for one, since there is nothing to sign in
+to. While muster still connects it (`sso_pending`) it reads "Connecting" and
+counts as not connected, and the sign-in status is re-read every 2 seconds
+(`connectingPollInterval`) until the connect settles. One that refused that
+sign-in (muster's `sso_attempt_failed` while it is
+not connected in this session, `auth_required` or `reauth_required`) reads
+"Cannot connect" in the list, its reason in the hint, and its Tools tab says
+that the connector cannot connect for the person, that an administrator needs
+to add the portal sign-in's audience to its trusted audiences, and muster's
+own account of the attempt (the token's issuer and audiences) under
+**Details**, to copy. muster keeps that flag per person rather than per
+session, so a connector connected in this session ignores it.
+
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/customize/connectors/<installation>/<connector>/tools/<tool>`.
@@ -1412,15 +1429,33 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   the seen marks. No text of the conversation enters a row.
 - **MCP sign-in row.** One for the person's home installation while any of its
   MCP servers waits for their own sign-in or grant (`auth_required` or
-  `reauth_required` in muster's per-user `auth://status`): "2 MCP servers need
-  your sign-in", naming the servers by display name, above the session rows (it
+  `reauth_required` in muster's per-user `auth://status`). A server that comes
+  with the portal sign-in (`kind: sso`, token forwarding or exchange) never
+  waits, not even one that refused that sign-in, because signing in cannot fix
+  it: it is out of the row, the unread count, the toast, the desktop
+  notification and the sign-in dialog's count, and its connector page says
+  what is wrong (see [Connectors](#connectors)). The row reads "2 MCP servers
+  need your sign-in", naming the servers by display name, above the session rows (it
   has no time to sort by), with **Sign in**, which marks it read, closes the
   overlay and then opens muster's sign-in dialog over the page (loaded on the
   first sign-in). Muster's `McpSignInProvider` reads the status under the muster
   plugin's query client, every five minutes and when the tab regains focus, and
   quietly: the read never asks for the portal sign-in, stops while the portal
   session is gone (a focus checks again), and the servers' display names are
-  read once. A sign-in finished in the dialog or on a muster page removes the
+  read once. A server joins the row only once the status has settled, so a
+  fresh portal load, while muster is still connecting the session's servers,
+  raises nothing for servers that connect a moment later: not while muster
+  reports a server still connecting (`sso_pending`), for at most a minute
+  (`SETTLE_WINDOW_MS`), and only when a read at least three seconds after the
+  first to report the same servers waiting still does. While a server is
+  connecting the status read itself polls every 2 seconds; otherwise, while the
+  status is unsettled, it is re-read every five seconds (`SETTLE_REREAD_MS`),
+  never while the reads fail or the portal session is gone. A server that stops
+  waiting leaves at once. The dialog reads the status once when it opens and
+  counts from that read. It lists a provider App (the person's GitHub or
+  ChatGPT grant) only while it needs a sign-in, with its Connect, and counts it
+  with the servers; an App connected there reads Connected without Disconnect,
+  which is on the Profile page's Connections. A sign-in finished in the dialog or on a muster page removes the
   row through the same read. Only the home installation is read, and the dialog
   opens only for it: another installation's muster needs a brokered token, and
   its servers are signed in to where they are used. The row replaces muster's
