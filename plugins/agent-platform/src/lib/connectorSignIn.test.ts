@@ -2,6 +2,7 @@ import {
   connectorSignInLinks,
   isSignInLinkExpired,
   questionCarries,
+  sameSignInLinks,
   signedInAnswer,
   signInLinkKey,
   withSignInReturn,
@@ -91,6 +92,7 @@ describe('connectorSignInLinks', () => {
         key: signInLinkKey(LINK),
         url: LINK,
         server: 'grafana-cloud',
+        servers: ['grafana-cloud'],
         label: 'Grafana Cloud',
         issuedAt: '2026-10-22T13:31:00Z',
       },
@@ -99,6 +101,27 @@ describe('connectorSignInLinks', () => {
     expect(
       connectorSignInLinks([loginCall(PROXIED, {})], SERVERS, LABELS).size,
     ).toBe(1);
+  });
+
+  it('names a family by its connector, whichever name the call used', () => {
+    const family: ServerInfo[] = [
+      {
+        name: 'kubernetes-gazelle',
+        family: 'kubernetes',
+        group: 'infrastructure',
+        toolNamePrefix: 'x_kubernetes',
+        oauth: true,
+        signInTool: true,
+        displayName: 'Kubernetes',
+      },
+    ];
+    const [link] = connectorSignInLinks(
+      [loginCall(PROXIED, { server: 'kubernetes' })],
+      family,
+      connectorLabels(family),
+    ).values();
+    expect(link.label).toBe('Kubernetes');
+    expect(link.servers).toEqual(['kubernetes', 'kubernetes-gazelle']);
   });
 
   it('ignores a connector the portal does not know and every other tool', () => {
@@ -130,6 +153,25 @@ describe('connectorSignInLinks', () => {
         LABELS,
       ).size,
     ).toBe(0);
+  });
+});
+
+describe('sameSignInLinks', () => {
+  it('keeps a reading whose links are the same', () => {
+    const read = () =>
+      connectorSignInLinks([loginCall(PROXIED)], SERVERS, LABELS);
+    expect(sameSignInLinks(read(), read())).toBe(true);
+    expect(
+      sameSignInLinks(
+        read(),
+        connectorSignInLinks(
+          [{ ...loginCall(PROXIED), at: '2026-10-22T13:40:00Z' }],
+          SERVERS,
+          LABELS,
+        ),
+      ),
+    ).toBe(false);
+    expect(sameSignInLinks(read(), new Map())).toBe(false);
   });
 });
 

@@ -4,6 +4,7 @@ import type {
   AgentSkillEntry,
   AgentUpdate,
 } from './agentManager';
+import { SIGN_IN_TOOL_SELECTOR, withoutSignInTool } from './signInTool';
 import { declaredToolset, normalizeSelection } from './toolset';
 import { egressTextOf, parseEgressText, sameEgress } from './egress';
 import { skillEntryOf } from './agentSpec';
@@ -120,6 +121,17 @@ function sameList(a: string[], b: string[]): boolean {
 }
 
 /**
+ * Two selections alike, the sign-in tool wherever it stands: the wizard
+ * appends it (`lib/signInTool`), while a saved agent may carry it anywhere.
+ */
+function sameSelection(a: string[], b: string[]): boolean {
+  return (
+    sameList(withoutSignInTool(a), withoutSignInTool(b)) &&
+    a.includes(SIGN_IN_TOOL_SELECTOR) === b.includes(SIGN_IN_TOOL_SELECTOR)
+  );
+}
+
+/**
  * The toolset an agent declares, for comparison with an edit: the selectors
  * without `preset:none`, or `undefined` for an agent that declares none (it
  * predates toolsets and has implicit full access — a different state from an
@@ -158,7 +170,7 @@ export function changedFields(
   const selection = normalizeSelection(edit.toolset);
   if (
     declared
-      ? !sameList(selection, declared)
+      ? !sameSelection(selection, declared)
       : selection.length > 0 || Boolean(edit.chatOnly)
   ) {
     changed.push('toolset');
@@ -347,7 +359,9 @@ export function formStateOfAgent(
     keptSkills,
     selectedPlugins,
     keptPlugins,
-    toolset: baseline.toolset,
+    // Without the sign-in tool: the Tools step adds it again while a connector
+    // needs it, and not once none does.
+    toolset: withoutSignInTool(baseline.toolset),
     // An agent declaring no tools is *Nothing outside the chat* on the Tools
     // step; one declaring no toolset at all (implicit full access) is not.
     toolsChatOnly: agent.toolset !== undefined && baseline.toolset.length === 0,

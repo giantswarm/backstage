@@ -28,7 +28,7 @@ import {
   pluginId,
   SelectedPlugin,
 } from '../../lib/plugins';
-import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
+import { withoutSignInTool } from '../../lib/signInTool';
 import {
   normalizeSelection,
   toggleSelector,
@@ -134,8 +134,9 @@ export type NewAgentFormState = {
   toolsetBase?: string;
   /**
    * The person removed the sign-in tool the wizard adds for a connector that
-   * needs it (`lib/signInTool`), so it is not added again. Adding it back, or
-   * *Nothing outside the chat*, clears it.
+   * needs it (`lib/signInTool`), so it is not added again. Set only by that
+   * removal on the Tools step; *Add it back*, the last such connector going,
+   * or *Nothing outside the chat* clears it.
    */
   signInToolDeclined?: boolean;
 };
@@ -342,21 +343,14 @@ function withTenant(
 }
 
 /**
- * The state with its toolset replaced: the selection's own sign-in tool
- * removed counts as declining it, so the wizard does not add it back; added,
- * as taking it again.
+ * The agent as the form compares an edit with: without the sign-in tool,
+ * which the form leaves to the Tools step (`formStateOfAgent`), so opening the
+ * editor is not a change of the person's.
  */
-function withToolset(
-  state: NewAgentFormState,
-  toolset: string[],
-): NewAgentFormState {
-  let signInToolDeclined = state.signInToolDeclined;
-  if (toolset.includes(SIGN_IN_TOOL_SELECTOR)) {
-    signInToolDeclined = undefined;
-  } else if (state.toolset.includes(SIGN_IN_TOOL_SELECTOR)) {
-    signInToolDeclined = true;
-  }
-  return { ...state, toolset, toolsChatOnly: false, signInToolDeclined };
+function baselineOf(agent: AgentManagerAgent): AgentManagerAgent {
+  return agent.toolset
+    ? { ...agent, toolset: withoutSignInTool(agent.toolset) }
+    : agent;
 }
 
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
@@ -440,7 +434,10 @@ export function NewAgentFormProvider({
     const isToolsetValid = problems.length === 0;
 
     const isDirty = edit
-      ? changedFields(edit.agent, editStateOfForm(edit.agent, state)).length > 0
+      ? changedFields(
+          baselineOf(edit.agent),
+          editStateOfForm(edit.agent, state),
+        ).length > 0
       : hasCreateInput(state);
 
     return {
@@ -531,11 +528,17 @@ export function NewAgentFormProvider({
       setDefaultWorkspace: defaultWorkspace =>
         setState(prev => ({ ...prev, defaultWorkspace })),
       toggleToolsetSelector: selector =>
-        setState(prev =>
-          withToolset(prev, toggleSelector(prev.toolset, selector)),
-        ),
+        setState(prev => ({
+          ...prev,
+          toolset: toggleSelector(prev.toolset, selector),
+          toolsChatOnly: false,
+        })),
       setToolset: selectors =>
-        setState(prev => withToolset(prev, normalizeSelection(selectors))),
+        setState(prev => ({
+          ...prev,
+          toolset: normalizeSelection(selectors),
+          toolsChatOnly: false,
+        })),
       setToolsChatOnly: () =>
         setState(prev => ({
           ...prev,

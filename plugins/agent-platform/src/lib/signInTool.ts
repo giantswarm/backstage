@@ -33,6 +33,15 @@ export const SIGN_IN_TOOL = 'core_auth_login';
 export const SIGN_IN_TOOL_SELECTOR = `tool:${SIGN_IN_TOOL}`;
 
 /**
+ * A toolset without the sign-in tool: what an edited agent's selection starts
+ * from, so the wizard decides about it afresh, as it does for a new agent,
+ * and drops it with the last connector that needed it.
+ */
+export function withoutSignInTool(selectors: readonly string[]): string[] {
+  return selectors.filter(selector => selector !== SIGN_IN_TOOL_SELECTOR);
+}
+
+/**
  * The built-in presets that include the sign-in tool: `read-only` through the
  * tool's read-only annotation, `full` through everything.
  */

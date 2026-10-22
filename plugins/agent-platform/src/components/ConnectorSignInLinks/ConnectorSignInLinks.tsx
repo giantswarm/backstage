@@ -20,7 +20,9 @@ import {
   connectorSignInLinks,
   isSignInLinkExpired,
   questionCarries,
+  sameSignInLinks,
   SIGN_IN_RETURN_PARAM,
+  SIGN_IN_RETURN_SERVER_PARAM,
   signInLinkKey,
   signedInAnswer,
   withSignInReturn,
@@ -31,6 +33,14 @@ import type { ServerInfo } from '../../lib/toolset';
 
 /** Where a tab muster returned to tells the session's other tabs. */
 const CHANNEL = 'giantswarm.agent-platform.connector-sign-in';
+
+/**
+ * Where this tab keeps each link's progress and when it first saw it, by
+ * link key, so a reload keeps both. Per tab: only the tab that started a
+ * sign-in answers for the person, and another tab must not think it did.
+ */
+const PROGRESS_KEY = 'agent-platform.connector-sign-in.progress';
+const SEEN_KEY = 'agent-platform.connector-sign-in.seen';
 
 type SignInProgress = {
   status: 'waiting' | 'done';
@@ -44,6 +54,7 @@ type ConnectorSignInLinksValue = {
   /** The link to open: muster's, returning to this page once signed in. */
   hrefOf: (link: ConnectorSignInLink) => string;
   start: (key: string) => void;
+  /** Marks the sign-in done: the person says so. */
   finish: (key: string) => void;
 };
 
@@ -71,6 +82,35 @@ function openChannel(): BroadcastChannel | undefined {
   }
 }
 
+function readStored<T>(key: string): Record<string, T> {
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : undefined;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStored(key: string, value: Record<string, unknown>): void {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Blocked storage: the progress lasts as long as the page.
+  }
+}
+
+/** The earlier of the timeline's time and when this tab first saw the link. */
+function earliest(at: string | undefined, seen: number | undefined) {
+  const atMs = at ? Date.parse(at) : NaN;
+  if (seen === undefined) {
+    return at;
+  }
+  return Number.isFinite(atMs) && atMs < seen
+    ? at
+    : new Date(seen).toISOString();
+}
+
 export type ConnectorSignInLinksProps = {
   children: ReactNode;
   /** The session's timeline: the `core_auth_login` answers are read off it. */
@@ -78,7 +118,10 @@ export type ConnectorSignInLinksProps = {
   /** The installation's MCPServer CRs: only their sign-ins are shown as one. */
   servers: ServerInfo[];
   labels: ReadonlyMap<string, string>;
-  /** The question the session waits on, which a finished sign-in may answer. */
+  /**
+   * The question a finished sign-in may answer: only while the page offers it
+   * to be answered (its question card is up) and no answer is under way.
+   */
   pending?: PendingConfirmation;
   onAnswer: (answer: ConfirmationAnswer) => void;
 };
@@ -87,11 +130,12 @@ export type ConnectorSignInLinksProps = {
  * Shows the connector sign-ins muster issued in a session as sign-in actions
  * wherever the agent passes the link on — its messages, its questions
  * (`MessageMarkdown` asks through {@link useConnectorSignInLink}) — and
- * follows them to the end: muster returns the sign-in's tab to this page
- * (`SIGN_IN_RETURN_PARAM`), which tells the session's other tabs and closes
- * where it can. The tab that started it then marks it done and answers the
- * question it was passed on in for the person, where the question's choices
- * allow.
+ * follows them to the end. muster returns the sign-in's tab to this page
+ * (`SIGN_IN_RETURN_PARAM`) only after a successful callback, naming the server
+ * it connected; that tab tells the session's other tabs and closes where it
+ * can. The tab that started the sign-in then marks it done and answers the
+ * question it was passed on in for the person, once, where the question's
+ * choices allow.
  */
 export function ConnectorSignInLinks({
   children,
@@ -101,13 +145,59 @@ export function ConnectorSignInLinks({
   pending,
   onAnswer,
 }: ConnectorSignInLinksProps) {
+  // The same map while the links are the same, so a streamed reply does not
+  // re-render every link of the conversation (the context value stays put).
+  const stable = useRef<Map<string, ConnectorSignInLink>>(new Map());
+  const found = useMemo(() => {
+    const next = connectorSignInLinks(items, servers, labels);
+    if (!sameSignInLinks(stable.current, next)) {
+      stable.current = next;
+    }
+    return stable.current;
+  }, [items, servers, labels]);
+
+  const [seen, setSeen] = useState<Record<string, number>>(() =>
+    readStored<number>(SEEN_KEY),
+  );
+  useEffect(() => {
+    const unseen = [...found.keys()].filter(key => seen[key] === undefined);
+    if (unseen.length > 0) {
+      const now = Date.now();
+      const next = { ...seen };
+      for (const key of unseen) {
+        next[key] = now;
+      }
+      writeStored(SEEN_KEY, next);
+      setSeen(next);
+    }
+  }, [found, seen]);
+  // kagent stamps every item of a turn with the turn's latest time, which
+  // moves on while the agent works: the time this tab first saw a link is the
+  // better bound on its age when it was there to see it arrive.
   const links = useMemo(
-    () => connectorSignInLinks(items, servers, labels),
-    [items, servers, labels],
+    () =>
+      new Map(
+        [...found].map(([key, link]) => {
+          const issuedAt = earliest(link.issuedAt, seen[key]);
+          return [key, issuedAt ? { ...link, issuedAt } : link];
+        }),
+      ),
+    [found, seen],
   );
-  const [progress, setProgress] = useState<ReadonlyMap<string, SignInProgress>>(
-    new Map(),
+
+  const [progress, setProgress] = useState<Record<string, SignInProgress>>(() =>
+    readStored<SignInProgress>(PROGRESS_KEY),
   );
+  const updateProgress = useCallback(
+    (key: string, next: SignInProgress) =>
+      setProgress(previous => {
+        const updated = { ...previous, [key]: next };
+        writeStored(PROGRESS_KEY, updated);
+        return updated;
+      }),
+    [],
+  );
+
   const [searchParams, setSearchParams] = useSearchParams();
   // The page muster returns the sign-in's tab to: this one, as the browser
   // addresses it (the app's base path included).
@@ -116,54 +206,68 @@ export function ConnectorSignInLinks({
   // Read in the callbacks below, which the channel's listener outlives.
   const latest = useRef({ links, progress, pending, onAnswer });
   latest.current = { links, progress, pending, onAnswer };
+  // The questions this tab answered, so one is never answered twice.
+  const answered = useRef(new Set<string>());
 
-  const finish = useCallback((key: string) => {
-    const current = latest.current;
-    const link = current.links.get(key);
-    if (!link || current.progress.get(key)?.status === 'done') {
-      return;
-    }
-    const started = current.progress.get(key)?.status === 'waiting';
-    let note: string | undefined;
-    const question = current.pending;
-    // Only the tab that started the sign-in answers, and only the question
-    // that passed this very link on: one answer, to what was asked about it.
-    if (
-      started &&
-      question?.asks === 'input' &&
-      question.questions.some(entry => questionCarries(entry.question, key))
-    ) {
-      const answer = signedInAnswer(question.questions, link.label);
-      if ('reason' in answer) {
-        note = `The agent's question is still open. ${answer.reason}`;
-      } else {
-        note = `Answered the agent's question for you: “${answer.text}”.`;
-        current.onAnswer({
-          taskId: question.taskId,
-          decision: 'approve',
-          answers: answer.answers,
-          text: answer.text,
-          ...(question.askedIn && { askedIn: question.askedIn }),
-        });
+  const finish = useCallback(
+    (key: string) => {
+      const current = latest.current;
+      const link = current.links.get(key);
+      if (!link || current.progress[key]?.status === 'done') {
+        return;
       }
-    }
-    setProgress(previous =>
-      new Map(previous).set(key, { status: 'done', ...(note && { note }) }),
-    );
-  }, []);
+      const started = current.progress[key]?.status === 'waiting';
+      let note: string | undefined;
+      const question = current.pending;
+      const asked = question && `${question.taskId}|${question.askedIn ?? ''}`;
+      // Only the tab that started the sign-in answers, only the question that
+      // passed this very link on, and only once.
+      if (
+        started &&
+        question?.asks === 'input' &&
+        asked &&
+        !answered.current.has(asked) &&
+        question.questions.some(entry => questionCarries(entry.question, key))
+      ) {
+        const answer = signedInAnswer(question.questions, link.label);
+        if ('reason' in answer) {
+          note = `The agent's question is still open. ${answer.reason}`;
+        } else {
+          answered.current.add(asked);
+          note = `Answered the agent's question for you: “${answer.text}”.`;
+          current.onAnswer({
+            taskId: question.taskId,
+            decision: 'approve',
+            answers: answer.answers,
+            text: answer.text,
+            ...(question.askedIn && { askedIn: question.askedIn }),
+          });
+        }
+      }
+      updateProgress(key, { status: 'done', ...(note && { note }) });
+    },
+    [updateProgress],
+  );
 
-  const start = useCallback((key: string) => {
-    setProgress(previous =>
-      previous.get(key)?.status === 'done'
-        ? previous
-        : new Map(previous).set(key, { status: 'waiting' }),
-    );
-  }, []);
+  const start = useCallback(
+    (key: string) => {
+      if (latest.current.progress[key]?.status !== 'done') {
+        updateProgress(key, { status: 'waiting' });
+      }
+    },
+    [updateProgress],
+  );
 
-  const finishByReturnId = useCallback(
-    (id: string) => {
-      for (const key of latest.current.links.keys()) {
-        if (returnId(key) === id) {
+  // muster names the server it connected on the way back; a return for
+  // another server, or none, finishes nothing.
+  const finishReturned = useCallback(
+    (id: string, server: unknown) => {
+      for (const [key, link] of latest.current.links) {
+        if (
+          returnId(key) === id &&
+          typeof server === 'string' &&
+          link.servers.includes(server)
+        ) {
           finish(key);
         }
       }
@@ -178,42 +282,44 @@ export function ConnectorSignInLinks({
       return undefined;
     }
     channel.onmessage = (event: MessageEvent) => {
-      const id = (event.data as { id?: unknown } | undefined)?.id;
-      if (typeof id === 'string') {
-        finishByReturnId(id);
+      const data = event.data as { id?: unknown; server?: unknown } | undefined;
+      if (typeof data?.id === 'string') {
+        finishReturned(data.id, data.server);
       }
     };
     return () => channel.close();
-  }, [finishByReturnId]);
+  }, [finishReturned]);
 
   // This tab is the one muster returned to: tell the others, mark it here too
   // once the timeline has the link, and close — a tab the link opened can be.
   const returned = searchParams.get(SIGN_IN_RETURN_PARAM);
-  const [returnedId, setReturnedId] = useState<string>();
+  const returnedServer = searchParams.get(SIGN_IN_RETURN_SERVER_PARAM);
+  const [arrival, setArrival] = useState<{ id: string; server?: string }>();
   useEffect(() => {
     if (!returned) {
       return;
     }
-    setReturnedId(returned);
+    const server = returnedServer ?? undefined;
+    setArrival({ id: returned, server });
     const channel = openChannel();
-    channel?.postMessage({ id: returned });
+    channel?.postMessage({ id: returned, server });
     channel?.close();
     setSearchParams(
       previous => {
         const next = new URLSearchParams(previous);
         next.delete(SIGN_IN_RETURN_PARAM);
-        next.delete('server');
+        next.delete(SIGN_IN_RETURN_SERVER_PARAM);
         return next;
       },
       { replace: true },
     );
     window.close();
-  }, [returned, setSearchParams]);
+  }, [returned, returnedServer, setSearchParams]);
   useEffect(() => {
-    if (returnedId) {
-      finishByReturnId(returnedId);
+    if (arrival) {
+      finishReturned(arrival.id, arrival.server);
     }
-  }, [returnedId, links, finishByReturnId]);
+  }, [arrival, links, finishReturned]);
 
   const value = useMemo<ConnectorSignInLinksValue>(
     () => ({
@@ -221,7 +327,7 @@ export function ConnectorSignInLinks({
         const key = signInLinkKey(href);
         return key ? links.get(key) : undefined;
       },
-      progressOf: key => progress.get(key),
+      progressOf: key => progress[key],
       hrefOf: link => {
         const back = new URL(page, window.location.origin);
         back.searchParams.set(SIGN_IN_RETURN_PARAM, returnId(link.key));
@@ -300,15 +406,10 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
     );
   }
 
-  if (isSignInLinkExpired(link, now)) {
-    return (
-      <Text as="span" variant="body-small" color="secondary">
-        The sign-in to {link.label} offered here has expired. Ask the agent to
-        start it again.
-      </Text>
-    );
-  }
-
+  // A sign-in under way stays under way past the link's lifetime: muster's
+  // limit is on starting the flow, and the tab opened in time may still
+  // finish it. Only reopening the stale link is no longer offered.
+  const isExpired = isSignInLinkExpired(link, now);
   const href = context.hrefOf(link);
   if (progress?.status === 'waiting') {
     return (
@@ -316,15 +417,17 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
         <Text as="span" variant="body-small" color="secondary" role="status">
           Waiting for you to finish signing in to {link.label}…
         </Text>
-        <ButtonLink
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="tertiary"
-          size="small"
-        >
-          Open the sign-in page again ↗
-        </ButtonLink>
+        {!isExpired && (
+          <ButtonLink
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="tertiary"
+            size="small"
+          >
+            Open the sign-in page again ↗
+          </ButtonLink>
+        )}
         <Button
           variant="tertiary"
           size="small"
@@ -333,6 +436,15 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
           I've signed in
         </Button>
       </span>
+    );
+  }
+
+  if (isExpired) {
+    return (
+      <Text as="span" variant="body-small" color="secondary">
+        The sign-in to {link.label} offered here has expired. Ask the agent to
+        start it again.
+      </Text>
     );
   }
 

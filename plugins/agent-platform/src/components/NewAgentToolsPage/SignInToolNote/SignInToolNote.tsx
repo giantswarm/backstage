@@ -6,9 +6,9 @@ import {
   TOUCH_QUERY,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import type { SignInToolState } from '../../hooks/useSignInTool';
-import { SIGN_IN_TOOL } from '../../lib/signInTool';
-import { MAX_INLINE_SELECTORS } from '../../lib/toolset';
+import type { SignInToolState } from '../../../hooks/useSignInTool';
+import { SIGN_IN_TOOL } from '../../../lib/signInTool';
+import { MAX_INLINE_SELECTORS } from '../../../lib/toolset';
 
 const useStyles = makeStyles(theme => ({
   row: {

@@ -1376,6 +1376,15 @@ export function SessionDetailPage() {
    * Assembled here rather than as a ternary chain in the JSX — there are three
    * outcomes and two of them are multi-element.
    */
+  // Whether the question card is up: the agent waits on a question the page
+  // lets the person answer. Not while kagent has reported the runtime lost,
+  // nor once it did not take an answer (see below), nor where the composer is
+  // withheld.
+  const isConfirming =
+    !composerWithheldReason &&
+    Boolean(pendingConfirmation && agent) &&
+    !answerDispatched &&
+    !cannotContinue;
   let bottomControl: ReactNode;
   if (composerWithheldReason) {
     // The chip keeps the session's totals in reach even where there is no box
@@ -1414,10 +1423,6 @@ export function SessionDetailPage() {
     // Not while kagent has reported the runtime lost, nor once it did not take
     // an answer: another answer would go the same way, so the question is left
     // where it is and the notice, with the way out, takes the card's place.
-    const isConfirming =
-      Boolean(pendingConfirmation && agent) &&
-      !answerDispatched &&
-      !cannotContinue;
     // The way out, offered in the notice that explains it: beside the retry
     // while the loss is only suspected, the only way on once kagent has
     // reported it or did not take an answer. Needs the agent
@@ -1784,7 +1789,14 @@ export function SessionDetailPage() {
         items={shownTimeline.items}
         servers={musterServers}
         labels={connectorLabelsOf}
-        pending={agent ? pendingConfirmation : undefined}
+        // Only a question the card offers, with no answer under way: a
+        // finished sign-in never answers a second time, nor a session the
+        // page says cannot go on.
+        pending={
+          isConfirming && !confirmation.isAnswering && !confirmation.pending
+            ? pendingConfirmation
+            : undefined
+        }
         onAnswer={answer => {
           // Errors surface through the hook's `error`, as the card's own.
           confirmation.answer(answer).catch(() => {});

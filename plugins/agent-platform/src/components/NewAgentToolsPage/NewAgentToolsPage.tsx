@@ -250,6 +250,20 @@ export function NewAgentToolsPage() {
     }
   }, [signInNeeded, state.signInToolDeclined, setSignInToolDeclined]);
   const isSignInToolAdded = signIn.status === 'added';
+  // Taking the sign-in tool out by hand — the step's own entry, or the
+  // selector the person added themselves — is what declines it; any other
+  // rewrite of the selection is not.
+  const declineSignInTool = useCallback(
+    (removed: readonly string[]) => {
+      if (
+        removed.includes(SIGN_IN_TOOL_SELECTOR) &&
+        signIn.connectors.length > 0
+      ) {
+        setSignInToolDeclined(true);
+      }
+    },
+    [signIn.connectors.length, setSignInToolDeclined],
+  );
 
   const isCatalogueLoading =
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
@@ -554,9 +568,12 @@ export function NewAgentToolsPage() {
         setSignInToolDeclined(true);
         return;
       }
+      if (base.includes(selector)) {
+        declineSignInTool([selector]);
+      }
       commit(toggleSelector(base, selector));
     },
-    [commit, base, isSignInToolAdded, setSignInToolDeclined],
+    [commit, base, isSignInToolAdded, setSignInToolDeclined, declineSignInTool],
   );
   // The rail and the bar list the toolset's own selectors (the preset among
   // them) beside the preset's part: removing one of its own takes just that
@@ -564,6 +581,7 @@ export function NewAgentToolsPage() {
   // the grid's.
   const removeSelectors = useCallback(
     (selectors: string[]) => {
+      declineSignInTool(selectors);
       if (!selectors.every(entry => state.toolset.includes(entry))) {
         commit(base.filter(entry => !selectors.includes(entry)));
         return;
@@ -573,7 +591,15 @@ export function NewAgentToolsPage() {
       }
       setToolset(state.toolset.filter(entry => !selectors.includes(entry)));
     },
-    [setToolset, setKeptBase, commit, state.toolset, base, presetBase],
+    [
+      setToolset,
+      setKeptBase,
+      commit,
+      state.toolset,
+      base,
+      presetBase,
+      declineSignInTool,
+    ],
   );
   // A copied toolset replaces the selection, and with it the base.
   const copyToolset = useCallback(

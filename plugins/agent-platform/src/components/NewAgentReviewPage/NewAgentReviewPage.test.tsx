@@ -45,11 +45,13 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 // The MCPServer CRs the toolset section groups by list nothing, unless a
 // test says otherwise.
 let mockServerCrs: unknown[] = [];
+/** Whether the MCPServer CRs are still being read. */
+let mockServersLoading = false;
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: (_clusters: string[], resourceClass: { kind?: string }) => ({
     resources: resourceClass?.kind === 'MCPServer' ? mockServerCrs : [],
-    isLoading: false,
+    isLoading: resourceClass?.kind === 'MCPServer' && mockServersLoading,
     errors: [],
   }),
 }));
@@ -339,6 +341,7 @@ beforeEach(() => {
   mockNavigate.mockReset();
   mockUseUnderlyingModel.mockReset();
   mockServerCrs = [];
+  mockServersLoading = false;
 });
 
 /** A connector muster signs in to per session, as `grafana-cloud` is. */
@@ -466,6 +469,21 @@ describe('NewAgentReviewPage', () => {
       'tool:x_docs_search',
       'tool:core_auth_login',
     ]);
+  });
+
+  it('holds Create while it is still read whether a connector needs the sign-in tool', async () => {
+    mockServerCrs = [grafanaCloud()];
+    mockServersLoading = true;
+    const { callTool } = await renderReview({
+      toolset: ['server:grafana-cloud'],
+    });
+
+    expect(deployButton()).toBeDisabled();
+    expect(
+      callTool.mock.calls.filter(
+        ([name]) => name === 'x_agent-manager_validate_agent',
+      ),
+    ).toHaveLength(0);
   });
 
   it("renders agent-manager's dry run: the 1.x OCIRepository, the HelmRelease with the pinned skill, the chart and the Harness", async () => {

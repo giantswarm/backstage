@@ -370,20 +370,28 @@ because it signs as muster.
 
 - The tool is not added when the selection names it already, or holds
   `preset:read-only` or `preset:full`, which include it (muster annotates it
-  read-only). For an installation's own preset, muster's resolution of it
-  decides.
+  read-only). For an installation's own preset, muster decides: `filter_tools`
+  within that preset for `core_auth_login` alone.
 - The Selected rail and the summary bar list it under "Added for sign-in",
   with the reason ("Lets the agent start the sign-in to Grafana Cloud"). It goes
   again with the last connector that needed it.
-- Removing it is kept for the draft (`signInToolDeclined`). While a connector
+- Taking it out by hand (its entry, or the selector itself) is kept for the
+  draft (`signInToolDeclined`). Replacing the selection otherwise (a copied
+  toolset, an access level, the grid) is not a removal. While a connector
   still needs it, a warning says the agent won't be able to sign in, with a way
-  to add it back. At the inline cap there is no room for it, and the step says
-  so.
+  to add it back. The removal lapses once no connector needs the tool. At the
+  inline cap there is no room for it, and the step says so.
 - The selection in the form stays the person's own. The review, the dry run
-  and the write use the selection plus the added tool. An edited agent whose
-  toolset lacks it gets it the same way, and the review lists Tools among the
-  changes with the reason. Opening the editor alone is not a change: Close and
-  Cancel do not ask.
+  and the write use the selection plus the added tool, and Create, Propose and
+  Save wait until the connectors' sign-in modes (and a preset's coverage) are
+  read.
+- An edited agent's selection starts without the tool (`formStateOfAgent`), so
+  the step decides afresh: an agent that lacks it gets it, and one whose last
+  connector needing it is gone loses it. The review lists Tools among the
+  changes with the reason ("Adds …", "Removes …: no connector in the toolset
+  needs it any more"). Where the tool stands in the saved list does not count
+  as a change, and opening the editor alone is not one: Close and Cancel do not
+  ask.
 
 ### Model selection
 
@@ -2252,22 +2260,32 @@ renders it. Only a link muster issued in this session counts: the answer of one
 of the session's `core_auth_login` calls, for a server among the installation's
 MCPServer CRs (`lib/connectorSignIn.ts`). The agent's own text never makes a
 link a sign-in. A link muster no longer honours (10 minutes) says so and asks
-for a new one.
+for a new one, unless its sign-in is already under way: muster's limit is on
+starting the flow, so the wait stays (without the stale link to reopen). kagent
+stamps every item of a turn with the turn's latest time, so the age is counted
+from the earlier of that and when the tab first saw the link. A link first seen
+in history can still be older than it looks; muster's own page then says it
+expired.
 
 The link opens in a new tab with `redirect=<this session page>?connector-sign-in=<id>`.
-muster sends the browser there after the callback when the portal is on its
-`postLoginRedirectAllowlist` (every portal domain is, where the gateway runs
-on-behalf-of connectors). The returned tab tells the session's other tabs over
-a `BroadcastChannel`, removes the parameters and closes where the browser lets
-it. Where muster drops the redirect, **I've signed in** beside the wait does the
-same by hand.
+muster sends the browser there only after a successful callback, adding
+`server=<name>`, when the portal is on its `postLoginRedirectAllowlist` (every
+portal domain is, where the gateway runs on-behalf-of connectors). A denied
+consent or a failed code exchange ends on muster's error page instead. The
+returned tab tells the session's other tabs over a `BroadcastChannel`, removes
+the parameters and closes where the browser lets it. A return that does not
+name the link's server finishes nothing. Where muster drops the redirect,
+**I've signed in** beside the wait does the same by hand. Each link's progress
+and when the tab first saw it are kept in `sessionStorage`, so a reload keeps
+the wait.
 
 Once done, the action reads "Signed in to <connector>". When the question the
 session waits on carried that link, the tab that started the sign-in answers it
 through `useAnswerConfirmation`: with the one choice that says the person signed
-in, or a sentence for free text (`signedInAnswer`). Several questions, no
-fitting choice or more than one leave the question open, and the action says
-why.
+in, or a sentence for free text (`signedInAnswer`). It answers once per
+question, and only while the question card is up with no answer under way: not
+in a session the page says cannot go on. Several questions, no fitting choice
+or more than one leave the question open, and the action says why.
 
 #### An answer kagent does not take
 

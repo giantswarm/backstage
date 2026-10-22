@@ -6,6 +6,7 @@ import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useUnderlyingModel } from '../../hooks/useUnderlyingModel';
 import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
+import type { SignInToolState } from '../../hooks/useSignInTool';
 import { SIGN_IN_TOOL } from '../../lib/signInTool';
 import { countNoun, parseSelector } from '../../lib/toolset';
 import { presetPhrase } from '../../lib/toolsetReach';
@@ -145,15 +146,47 @@ export function toolsetSummaryLabel(
 }
 
 /**
- * Under the toolset, when the Tools step added muster's sign-in tool for a
- * connector that needs it: what it is there for.
+ * Under the toolset, when the save adds muster's sign-in tool or takes it
+ * away (`lib/signInTool`): why. `signIn` is what the Tools step decided.
  */
-export function SignInToolAdded({ labels }: { labels: string[] }) {
+export function SignInToolChange({
+  change,
+  signIn,
+}: {
+  change: 'added' | 'removed';
+  signIn: Pick<SignInToolState, 'status' | 'labels'>;
+}) {
   const classes = useReviewStyles();
+  const tool = <span className={classes.code}>{SIGN_IN_TOOL}</span>;
+  const connectors = joinNames(signIn.labels);
+  let text: ReactNode;
+  if (change === 'added') {
+    text = (
+      <>
+        Adds {tool}, which lets the agent start the sign-in to {connectors}.
+      </>
+    );
+  } else if (signIn.status === 'removed') {
+    text = (
+      <>
+        Removes {tool}, so the agent won't be able to sign in to {connectors}.
+      </>
+    );
+  } else if (signIn.status === 'covered') {
+    text = <>Removes {tool}: a preset in the toolset includes it.</>;
+  } else if (signIn.status === 'no-room') {
+    text = (
+      <>
+        Removes {tool}: the toolset has no room left for it, so the agent won't
+        be able to sign in to {connectors}.
+      </>
+    );
+  } else {
+    text = <>Removes {tool}: no connector in the toolset needs it any more.</>;
+  }
   return (
     <Text as="p" variant="body-x-small" color="secondary">
-      Adds <span className={classes.code}>{SIGN_IN_TOOL}</span>, which lets the
-      agent start the sign-in to {joinNames(labels)}.
+      {text}
     </Text>
   );
 }

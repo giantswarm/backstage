@@ -1690,6 +1690,42 @@ describe('NewAgentToolsPage', () => {
       ).toBeInTheDocument();
     });
 
+    it('declines it only when the person takes it out, not when the selection is replaced', async () => {
+      const { api } = makeMusterApi({
+        signedIn: true,
+        evaluatesToolsets: true,
+      });
+      // The person added it by name; then copies a toolset without it.
+      await renderStep({
+        api,
+        toolset: ['server:pro', 'tool:core_auth_login'],
+        agents: [agentWithToolset('existing-agent', 'server:pro')],
+      });
+      const user = userEvent.setup();
+      await connectorsListed();
+      // A muster tool in the selection opens the individual tools by itself.
+      await user.click(await screen.findByText("Copy another agent's toolset"));
+      await user.click(
+        await screen.findByRole('radio', {
+          name: 'Copy the toolset of Existing agent',
+        }),
+      );
+
+      expect(toolsetOutput()).toBe('server:pro');
+      await waitFor(() => expect(addedForSignIn()).toBeInTheDocument());
+      expect(summaryBar()).not.toHaveTextContent("won't be able to sign in");
+
+      // Taking out the selector itself is a removal.
+      await user.click(
+        within(addedForSignIn()!).getByRole('button', {
+          name: 'Remove core_auth_login',
+        }),
+      );
+      expect(summaryBar()).toHaveTextContent(
+        "Without core_auth_login the agent won't be able to sign in to pro.",
+      );
+    });
+
     it('shows the added tool in the bar at phone width, opened', async () => {
       const layout = mockPhoneLayout();
       try {

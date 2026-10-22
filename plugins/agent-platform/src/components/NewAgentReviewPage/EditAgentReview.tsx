@@ -12,6 +12,7 @@ import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useSignInTool } from '../../hooks/useSignInTool';
+import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
@@ -42,7 +43,7 @@ import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import {
   Notes,
   PlainRow,
-  SignInToolAdded,
+  SignInToolChange,
   SectionTitle,
   SummaryItem,
   toolsetSummaryLabel,
@@ -107,6 +108,13 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     Boolean(state.signInToolDeclined),
   );
   const toolset = signIn.toolset;
+  // What the save does to the sign-in tool the agent has now.
+  const hadSignInTool = Boolean(agent.toolset?.includes(SIGN_IN_TOOL_SELECTOR));
+  const hasSignInTool = toolset.includes(SIGN_IN_TOOL_SELECTOR);
+  let signInChange: 'added' | 'removed' | undefined;
+  if (hasSignInTool !== hadSignInTool) {
+    signInChange = hasSignInTool ? 'added' : 'removed';
+  }
   const editState = useMemo(
     () => editStateOfForm(agent, { ...state, toolset }),
     [agent, state, toolset],
@@ -124,12 +132,14 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   // requested while nothing changed.
   const dryRun = useValidateAgentUpdate(
     installation,
-    isReady && dirty ? update : undefined,
+    // Not before the sign-in tool is decided: the update would lack it.
+    isReady && dirty && !signIn.isLoading ? update : undefined,
     writeMode,
   );
   const violations = dryRun.result?.errors ?? [];
   const notes = dryRun.result?.notes ?? [];
   const canWrite =
+    !signIn.isLoading &&
     dirty &&
     Boolean(dryRun.result) &&
     violations.length === 0 &&
@@ -313,8 +323,8 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
               {changed.map(field => (
                 <li key={field}>
                   <Text variant="body-small">{EDIT_FIELD_LABELS[field]}</Text>
-                  {field === 'toolset' && signIn.status === 'added' && (
-                    <SignInToolAdded labels={signIn.labels} />
+                  {field === 'toolset' && signInChange && (
+                    <SignInToolChange change={signInChange} signIn={signIn} />
                   )}
                 </li>
               ))}

@@ -13,16 +13,23 @@
 import type { AskUserQuestion } from './kagentHitl';
 import type { TimelineItem } from './kagentTimeline';
 import { SIGN_IN_TOOL } from './signInTool';
-import { connectorName, type ServerInfo, surfaceName } from './toolset';
+import { type ServerInfo, surfaceName } from './toolset';
 
 /** The path of muster's sign-in start endpoint. */
 export const MUSTER_SIGN_IN_PATH = '/oauth/proxy/start';
 
 /**
  * The query parameter the page muster returns the browser to carries: which
- * sign-in it was, as the page that started it named it. muster adds `server`.
+ * sign-in it was, as the page that started it named it.
  */
 export const SIGN_IN_RETURN_PARAM = 'connector-sign-in';
+
+/**
+ * The parameter muster adds on the way back: the server it connected. muster
+ * returns to the page only from a successful callback (`finishSuccess`); a
+ * denied consent or a failed code exchange ends on its own error page.
+ */
+export const SIGN_IN_RETURN_SERVER_PARAM = 'server';
 
 /**
  * How long muster honours a sign-in link: the state behind it lives for 10
@@ -39,6 +46,11 @@ export type ConnectorSignInLink = {
   url: string;
   /** muster's name for the server, as `core_auth_login` named it. */
   server: string;
+  /**
+   * The names muster may report the server by on the way back: as the call
+   * named it, its CR's and its connector's.
+   */
+  servers: string[];
   /** The connector as people call it. */
   label: string;
   /** When muster answered with it, when known. */
@@ -159,7 +171,8 @@ export function connectorSignInLinks(
             key,
             url,
             server,
-            label: connectorName(server, servers, labels),
+            servers: [...new Set([server, known.name, surfaceName(known)])],
+            label: labels.get(surfaceName(known)) ?? surfaceName(known),
             ...(item.at && { issuedAt: item.at }),
           });
         }
@@ -167,6 +180,29 @@ export function connectorSignInLinks(
     }
   }
   return links;
+}
+
+/** Whether two readings found the same links, so the first can be kept. */
+export function sameSignInLinks(
+  a: ReadonlyMap<string, ConnectorSignInLink>,
+  b: ReadonlyMap<string, ConnectorSignInLink>,
+): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const [key, link] of a) {
+    const other = b.get(key);
+    if (
+      !other ||
+      other.url !== link.url ||
+      other.label !== link.label ||
+      other.issuedAt !== link.issuedAt ||
+      other.servers.join(',') !== link.servers.join(',')
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Whether muster no longer honours the link. Unknown age counts as fresh. */

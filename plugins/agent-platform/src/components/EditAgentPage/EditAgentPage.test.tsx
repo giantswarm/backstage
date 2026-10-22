@@ -130,15 +130,18 @@ jest.mock('../../hooks/useToolsetResolution', () => ({
 let mockDeniedVerbs = new Set<string>();
 /** The installation's MCPServer CRs; none unless a test says otherwise. */
 let mockServerCrs: unknown[] = [];
+/** Whether the MCPServer CRs are still being read. */
+let mockServersLoading = false;
 afterEach(() => {
   mockDeniedVerbs = new Set();
   mockServerCrs = [];
+  mockServersLoading = false;
 });
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: (_clusters: string[], resourceClass: { kind?: string }) => ({
     resources: resourceClass?.kind === 'MCPServer' ? mockServerCrs : [],
-    isLoading: false,
+    isLoading: resourceClass?.kind === 'MCPServer' && mockServersLoading,
     errors: [],
   }),
   useSelfSubjectAccessReview: (
@@ -576,6 +579,58 @@ describe('EditAgentPage', () => {
       description: 'Reviews every pull request.',
       toolset: ['server:grafana-cloud', 'tool:core_auth_login'],
     } satisfies AgentUpdate);
+  });
+
+  it('reviews an agent that already has the sign-in tool its connector needs as no change', async () => {
+    mockServerCrs = [grafanaCloud()];
+    await renderEdit(`${BASE}/review`, {
+      agent: {
+        ...AGENT,
+        // Saved anywhere in the list, as another client may have put it.
+        toolset: ['tool:core_auth_login', 'server:grafana-cloud'],
+      },
+    });
+
+    expect(await screen.findByText('Nothing changed yet.')).toBeInTheDocument();
+  });
+
+  it('takes the sign-in tool away once no connector of the agent needs it', async () => {
+    mockServerCrs = [grafanaCloud()];
+    const { callTool } = await renderEdit(`${BASE}/review`, {
+      agent: {
+        ...AGENT,
+        toolset: ['tool:x_docs_search', 'tool:core_auth_login'],
+      },
+    });
+
+    const changes = await screen.findByRole('list', { name: 'Changed fields' });
+    expect(within(changes).getByText('Tools').closest('li')).toHaveTextContent(
+      'Removes core_auth_login: no connector in the toolset needs it any more.',
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    ).at(-1)!;
+    expect(dryRunArgs).toMatchObject({ toolset: ['tool:x_docs_search'] });
+  });
+
+  it('holds Save while it is still read whether a connector needs the sign-in tool', async () => {
+    mockServerCrs = [grafanaCloud()];
+    mockServersLoading = true;
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: { ...AGENT, toolset: ['server:grafana-cloud'] },
+    });
+
+    await changeDescriptionAndReview(user);
+
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(callsOf(callTool, 'x_agent-manager_validate_agent')).toHaveLength(0);
   });
 
   it('opens an agent whose connector needs a sign-in without counting the added tool as the person’s change', async () => {

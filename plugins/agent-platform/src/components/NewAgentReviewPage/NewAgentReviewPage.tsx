@@ -50,7 +50,7 @@ import {
   Notes,
   PlainRow,
   SectionTitle,
-  SignInToolAdded,
+  SignInToolChange,
   SummaryItem,
   toolsetSummaryLabel,
   UnderlyingModelItem,
@@ -141,9 +141,10 @@ function CreateAgentReview() {
   const namespace = spec.namespace;
 
   const { info } = useAgentManagerInfo(state.installation);
+  // Not before the sign-in tool is decided: the spec would lack it.
   const validation = useValidateAgent(
     state.installation,
-    isComplete && isToolsetValid ? spec : undefined,
+    isComplete && isToolsetValid && !signIn.isLoading ? spec : undefined,
   );
   const creation = useCreateAgent(state.installation);
   const [commitResult, setCommitResult] = useState<
@@ -154,7 +155,10 @@ function CreateAgentReview() {
   const violations = dryRun?.errors ?? [];
   const notes = dryRun?.notes ?? [];
   const canWrite =
-    Boolean(dryRun) && violations.length === 0 && !validation.failure;
+    !signIn.isLoading &&
+    Boolean(dryRun) &&
+    violations.length === 0 &&
+    !validation.failure;
   const isBusy = creation.isDeploying || creation.isCommitting;
   // The button shows only when agent-manager reports the capability that lands
   // the manifests as a pull request (giantswarm/agent-manager#24).
@@ -333,7 +337,7 @@ function CreateAgentReview() {
               connector => labels.get(connector) ?? connector,
             )}
             {signIn.status === 'added' && (
-              <SignInToolAdded labels={signIn.labels} />
+              <SignInToolChange change="added" signIn={signIn} />
             )}
           </PlainRow>
         </dl>
