@@ -1,4 +1,5 @@
 import {
+  deleteCurrentSession,
   expect,
   open,
   openReadyAgent,
@@ -38,18 +39,6 @@ async function snapshot(page: Page, name: string): Promise<void> {
     return;
   }
   await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
-}
-
-/** Deletes the session on screen through its actions menu — the portal's own path. */
-async function deleteCurrentSession(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Session actions' }).click();
-  await page.getByRole('menuitem', { name: /Delete session/ }).click();
-  const dialog = page.getByRole('dialog', { name: /Delete session/ });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Delete session' }).click();
-  await expect(page).toHaveURL(/\/sessions$/, {
-    timeout: 60_000,
-  });
 }
 
 /**
