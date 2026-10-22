@@ -102,6 +102,7 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
     rows: [docs, infra],
     isLoading: false,
     failures: {},
+    signIns: [],
     retry: jest.fn(),
     ...overrides,
   };
@@ -303,6 +304,7 @@ describe('CustomizeWorkspacesPanel', () => {
         gazelle:
           "agent-platform: auth_required: server 'workspace-manager' requires authentication before its tools can be called",
       },
+      signIns: ['gazelle'],
     });
     await renderPanel();
 

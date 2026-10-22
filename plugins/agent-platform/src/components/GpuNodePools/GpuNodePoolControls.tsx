@@ -7,6 +7,7 @@ import {
 import { Button } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import type { InstallationScope } from '@giantswarm/backstage-plugin-gs';
+import { splitConnectorSignIns } from '@giantswarm/backstage-plugin-muster';
 import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -133,6 +134,18 @@ export function useGpuNodePoolControls(
 ): GpuNodePoolControls {
   const availability = useClusterManagerAvailability(installations);
   const pools = useGpuNodePools(availability.available);
+  // Reads that ask for the person's sign-in to cluster-manager are offered
+  // that sign-in; the rest are reported as failures. Split again only when an
+  // installation's failure changes: the pools read refetches every 10 to 60
+  // seconds, each time with a fresh `errors` array.
+  const errorsKey = pools.errors
+    .map(({ installation, error }) => `${installation}:${error.message}`)
+    .join('|');
+  const { signIns, others: poolErrors } = useMemo(
+    () => splitConnectorSignIns(pools.errors),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [errorsKey],
+  );
   // What each pool's nodes cost per hour, from cluster-manager's list prices.
   const prices = useNodeSizePrices(pools.rows);
   const [removing, setRemoving] = useState<GpuNodePoolRow>();
@@ -345,7 +358,8 @@ export function useGpuNodePoolControls(
         rows={pools.rows}
         isLoading={reading}
         notes={pools.notes}
-        errors={pools.errors}
+        errors={poolErrors}
+        signIns={signIns}
         onRemove={onRemove}
         opened={opened}
         serve={serve}
@@ -362,6 +376,7 @@ export function useGpuNodePoolControls(
         removable={cacheRemovable}
         onRemove={onRemoveCache}
         hideColumns={hideColumns}
+        signIns={signIns}
       />
     ) : undefined,
   };

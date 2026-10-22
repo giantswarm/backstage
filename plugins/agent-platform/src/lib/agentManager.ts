@@ -414,8 +414,9 @@ export class AgentManagerError extends Error {
   constructor(
     readonly code: AgentManagerErrorCode,
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 
@@ -513,10 +514,11 @@ export function classifyAgentManagerError(error: unknown): Error {
     return new AgentManagerError(
       match[1] as AgentManagerErrorCode,
       match[2] || message,
+      { cause: error },
     );
   }
   if (looksNotConnected(message)) {
-    return new AgentManagerNotConnectedError(message);
+    return new AgentManagerNotConnectedError(message, { cause: error });
   }
   return error instanceof Error ? error : new Error(message);
 }

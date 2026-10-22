@@ -16,6 +16,7 @@ import {
   useInstallationInventory,
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
@@ -69,6 +70,12 @@ export type WorkspacesData = {
   isLoading: boolean;
   /** Why an installation's workspaces could not be read, by installation. */
   failures: Record<string, string>;
+  /**
+   * The installations among `failures` whose read muster refused because the
+   * person has not signed in to the workspace-manager there: read from the
+   * 401's reason, never from its wording.
+   */
+  signIns: string[];
   /** Reads every installation's workspaces again. */
   retry: () => void;
 };
@@ -141,6 +148,11 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
           return error ? [[installation, error.message]] : [];
         }),
       ) as Record<string, string>,
+      // The read calls the workspace-manager alone: a sign-in it asks for
+      // is that one's.
+      signIns: installations.filter((_, index) =>
+        Boolean(musterSignInRequiredOf(results[index]?.error)),
+      ),
       isAwaiting: results.some(result => isAwaitingData(result)),
     }),
     [installations],
@@ -223,6 +235,11 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
         installation => availability.presenceOf(installation) === 'unknown',
       );
   const unreachableKey = unreachable.join(',');
+  const signInsKey = lists.signIns.join(',');
+  const signIns = useMemo(
+    () => (signInsKey ? signInsKey.split(',') : []),
+    [signInsKey],
+  );
   const failures = useMemo(
     () => ({
       ...lists.errors,
@@ -268,12 +285,14 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
         ),
       isLoading,
       failures,
+      signIns,
       retry,
     }),
     [
       allRows,
       awaited,
       failures,
+      signIns,
       installations,
       isAvailable,
       isLoading,

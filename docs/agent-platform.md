@@ -613,6 +613,36 @@ the `LLMInferenceService` from the preset onto the platform's
 muster's "not connected" answers become `ModelManagerNotConnectedError`, shown
 as an error rather than a connect flow.
 
+**A read that needs the person's sign-in to a connector.** GPU node pools and
+the model cache are read through cluster-manager with the person's own grant.
+When muster-backend answers such a read `401` with the reason
+`server_sign_in_required` (see the muster-backend README), the card says
+"Sign in to cluster-manager to see GPU node pools" (or "… the model cache";
+the Add GPU node pool page's cluster list "… to list the clusters on
+<environment>") with the connector's Sign in, per environment, instead of an
+error. The sign-in is muster's usual flow (`ServerSignIn`); once it lands every
+`['muster', …]` query is read again, so the card fills in without a reload.
+Other pages that read through a connector use the same pieces from the muster
+plugin: `splitConnectorSignIns` on their per-installation failures and
+`ConnectorSignInAlert` for each connector it returns (`onSignedIn` re-reads
+queries outside the `muster` prefix).
+
+A connector that comes with the portal sign-in (SSO) has nothing to sign in
+to: the alert then reads "Could not connect to <connector>" and fills in once
+muster connects it.
+
+The muster client refreshes the forwarded installation token once less than a
+quarter of its lifetime is left and sends the refreshed token with every call
+to that installation while it lasts (a refresh that came back no better is not
+asked again for 30 s). It never sends a token past its `exp`. A `401` for a
+missing, expired or rejected token is refreshed and sent once more. No query
+retries a muster `401` or a gone portal session with backoff
+(`shouldRetryMusterQuery`, which agent-platform's query client builds on, reads
+through the `cause` the cluster-manager, model-manager, agent-manager and
+workspace-manager errors keep); a token mint that failed otherwise is retried.
+The Workspaces tab offers the workspace-manager sign-in from the same `401`
+reason.
+
 **Try it** is the one model call the portal's backend makes itself
 (`POST /served-models/try`, `tryRouter.ts`), because the browser cannot post to
 the models Gateway cross-origin. It sends two chat completions to the endpoint

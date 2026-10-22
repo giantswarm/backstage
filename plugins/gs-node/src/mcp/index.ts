@@ -4,4 +4,5 @@ export {
   isClosedClientError,
   isLostSessionError,
   isRecoverableSessionError,
+  isUnauthorizedTransportError,
 } from './mcpErrors';

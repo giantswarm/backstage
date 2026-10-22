@@ -539,8 +539,10 @@ export class WorkspaceManagerError extends Error {
     readonly repositories: string[] = [],
     /** `not_connected`: the providers to grant, with how to sign in. */
     readonly connect: ProviderConnect[] = [],
+    /** `cause`: what the tool call threw, muster's 401 with its reason. */
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 
@@ -578,12 +580,18 @@ export function classifyWorkspaceManagerError(
   const message = error instanceof Error ? error.message : String(error);
   const match = ERROR_PATTERNS.find(([, pattern]) => pattern.test(message));
   if (match) {
-    return new WorkspaceManagerError(match[0], message);
+    return new WorkspaceManagerError(match[0], message, [], [], {
+      cause: error,
+    });
   }
   if (looksNotConnected(message)) {
-    return new WorkspaceManagerError('unavailable', message);
+    return new WorkspaceManagerError('unavailable', message, [], [], {
+      cause: error,
+    });
   }
-  return new WorkspaceManagerError('failed', message);
+  return new WorkspaceManagerError('failed', message, [], [], {
+    cause: error,
+  });
 }
 
 /**

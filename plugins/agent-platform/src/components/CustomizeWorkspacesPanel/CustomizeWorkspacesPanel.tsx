@@ -216,9 +216,6 @@ function RowActions({ row }: { row: WorkspaceRow }) {
   );
 }
 
-/** muster's refusal of a tool call before the person signed in to its server. */
-const AUTH_REQUIRED = /\bauth_required\b/;
-
 /** The installations whose workspaces could not be read, and why. */
 function ReadFailures({
   failures,
@@ -302,6 +299,7 @@ export function CustomizeWorkspacesPanel({
     sharedIdentity,
     isLoading,
     failures,
+    signIns,
     retry,
   } = useWorkspacesData();
   const rows = useMemo(
@@ -397,10 +395,8 @@ export function CustomizeWorkspacesPanel({
   ]);
 
   // A read muster refused for want of the person's sign-in to
-  // workspace-manager offers that sign-in, not the refusal's text.
-  const signIns = Object.keys(failures).filter(installation =>
-    AUTH_REQUIRED.test(failures[installation]),
-  );
+  // workspace-manager (the 401's reason, `signIns`) offers that sign-in, not
+  // the refusal's text.
   const otherFailures = Object.fromEntries(
     Object.entries(failures).filter(
       ([installation]) => !signIns.includes(installation),
