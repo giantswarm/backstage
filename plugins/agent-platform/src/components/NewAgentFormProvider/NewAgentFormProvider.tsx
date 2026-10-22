@@ -20,7 +20,7 @@ import {
 import { slugify } from '../../lib/slugify';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
-import type { HarnessChoice } from '../../lib/harnesses';
+import { isCodingRuntime, type HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
   DiscoveredPlugin,
@@ -76,6 +76,12 @@ export type NewAgentFormState = {
    * (`Agent.spec.egress`). Empty means none beyond what its revision compiles.
    */
   egressText: string;
+  /**
+   * Names of the namespace's EgressPolicies the agent picks
+   * (`Agent.spec.egressPolicyRefs`), in the order picked. Always empty on a
+   * coding Harness, which reaches its platform list only.
+   */
+  egressPolicyRefs: string[];
   /**
    * The name of the workspace the agent's Sessions start in unless the person
    * picks another or none (written as `<namespace>/<name>`, see
@@ -172,6 +178,8 @@ export type NewAgentFormContextValue = {
   selectHarness: (harness: HarnessChoice | undefined) => void;
   setSystemMessage: (systemMessage: string) => void;
   setEgressText: (egressText: string) => void;
+  /** Replaces the picked EgressPolicies (names, in the order picked). */
+  setEgressPolicyRefs: (names: string[]) => void;
   /** `''` removes the default workspace. */
   setDefaultWorkspace: (defaultWorkspace: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
@@ -264,6 +272,7 @@ const initialState: NewAgentFormState = {
   // it (agentSpecOf), and agent-manager keeps the chart's default prompt.
   systemMessage: '',
   egressText: '',
+  egressPolicyRefs: [],
   defaultWorkspace: '',
   selectedSkills: [],
   keptSkills: [],
@@ -295,6 +304,7 @@ function hasCreateInput(state: NewAgentFormState): boolean {
       state.egressText,
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
+    state.egressPolicyRefs.length > 0 ||
     state.defaultWorkspace !== '' ||
     state.selectedSkills.length > 0 ||
     state.selectedPlugins.length > 0 ||
@@ -306,7 +316,8 @@ function hasCreateInput(state: NewAgentFormState): boolean {
 /**
  * The state with `tenant` picked: the agent's namespace, so a model (and the
  * Harness it brought) of another namespace is dropped, and the model picker
- * preselects the tenant's default instead.
+ * preselects the tenant's default instead. EgressPolicies are the namespace's
+ * own, so the picked ones go too.
  */
 function withTenant(
   state: NewAgentFormState,
@@ -316,11 +327,12 @@ function withTenant(
     return state;
   }
   if (!state.modelConfigNamespace || state.modelConfigNamespace === tenant) {
-    return { ...state, tenant };
+    return { ...state, tenant, egressPolicyRefs: [] };
   }
   return {
     ...state,
     tenant,
+    egressPolicyRefs: [],
     modelConfigName: undefined,
     modelConfigNamespace: undefined,
     modelDisplayName: undefined,
@@ -456,6 +468,7 @@ export function NewAgentFormProvider({
           tenantChoices: undefined,
           tenant: undefined,
           defaultWorkspace: '',
+          egressPolicyRefs: [],
           modelConfigName: undefined,
           modelConfigNamespace: undefined,
           modelDisplayName: undefined,
@@ -494,15 +507,27 @@ export function NewAgentFormProvider({
                 modelConfigName: name,
                 modelConfigNamespace: namespace,
                 modelDisplayName: displayName,
+                egressPolicyRefs: [],
                 harness: undefined,
                 droppedHarness: prev.harness?.name ?? prev.droppedHarness,
               };
         }),
+      // A coding Harness reaches its platform list only: picked
+      // EgressPolicies go with the move to one.
       selectHarness: harness =>
-        setState(prev => ({ ...prev, harness, droppedHarness: undefined })),
+        setState(prev => ({
+          ...prev,
+          harness,
+          droppedHarness: undefined,
+          egressPolicyRefs: isCodingRuntime(harness?.runtime)
+            ? []
+            : prev.egressPolicyRefs,
+        })),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
       setEgressText: egressText => setState(prev => ({ ...prev, egressText })),
+      setEgressPolicyRefs: egressPolicyRefs =>
+        setState(prev => ({ ...prev, egressPolicyRefs })),
       setDefaultWorkspace: defaultWorkspace =>
         setState(prev => ({ ...prev, defaultWorkspace })),
       toggleToolsetSelector: selector =>

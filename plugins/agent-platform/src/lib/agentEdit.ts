@@ -46,6 +46,8 @@ export type AgentEditState = {
   plugins: AgentPluginEntry[];
   /** Extra HTTP(S) origins the agent may reach, one per line as typed. */
   egressText: string;
+  /** The EgressPolicies of its namespace it picks, in order. */
+  egressPolicyRefs: string[];
   /** The default workspace's name; `''` for none. */
   defaultWorkspace: string;
   /**
@@ -66,6 +68,7 @@ export const AGENT_EDIT_FIELDS = [
   'skills',
   'plugins',
   'egress',
+  'egressPolicyRefs',
   'defaultWorkspace',
 ] as const;
 
@@ -82,6 +85,7 @@ export function editStateOf(agent: AgentManagerAgent): AgentEditState {
     skills: [...(agent.skills ?? [])],
     plugins: [...(agent.plugins ?? [])],
     egressText: egressTextOf(agent.egress),
+    egressPolicyRefs: [...(agent.egressPolicyRefs ?? [])],
     defaultWorkspace: defaultWorkspaceName(agent.defaultWorkspace),
   };
 }
@@ -168,6 +172,15 @@ export function changedFields(
   if (!sameEgress(parseEgressText(edit.egressText), agent.egress ?? [])) {
     changed.push('egress');
   }
+  // The set matters, not the order picked.
+  if (
+    !sameList(
+      [...edit.egressPolicyRefs].sort(),
+      [...baseline.egressPolicyRefs].sort(),
+    )
+  ) {
+    changed.push('egressPolicyRefs');
+  }
   if (edit.defaultWorkspace !== baseline.defaultWorkspace) {
     changed.push('defaultWorkspace');
   }
@@ -179,8 +192,8 @@ export function changedFields(
  *
  * A string field the person emptied is sent as `""`, which agent-manager reads
  * as "back to the chart's default" (an omitted field would mean "unchanged").
- * `toolset`, `skills` and `egress` replace their whole list (an empty
- * `egress` clears it); an emptied default workspace is sent as `""`, which
+ * `toolset`, `skills`, `egress` and `egressPolicyRefs` replace their whole
+ * list (an empty `egress` or `egressPolicyRefs` clears it); an emptied default workspace is sent as `""`, which
  * removes it; the empty selection is sent
  * as `preset:none`, never as an empty list (agent-manager refuses that).
  * Nothing else is ever sent — no `force`, no runtime.
@@ -212,6 +225,9 @@ export function updateOf(
       case 'egress':
         update.egress = parseEgressText(edit.egressText);
         break;
+      case 'egressPolicyRefs':
+        update.egressPolicyRefs = edit.egressPolicyRefs;
+        break;
       case 'defaultWorkspace':
         update.defaultWorkspace = qualifiedDefaultWorkspace(
           agent.namespace,
@@ -240,6 +256,7 @@ export const EDIT_FIELD_LABELS: Record<AgentEditField, string> = {
   skills: 'Skills',
   plugins: 'Plugins',
   egress: 'Extra egress origins',
+  egressPolicyRefs: 'EgressPolicies',
   defaultWorkspace: 'Default workspace',
 };
 
@@ -324,6 +341,7 @@ export function formStateOfAgent(
     droppedHarness: undefined,
     systemMessage: baseline.systemMessage,
     egressText: baseline.egressText,
+    egressPolicyRefs: baseline.egressPolicyRefs,
     defaultWorkspace: baseline.defaultWorkspace,
     selectedSkills,
     keptSkills,
@@ -426,6 +444,7 @@ export function editStateOfForm(
     skills: skillEntriesOfForm(agent, form),
     plugins: pluginEntriesOfForm(agent, form),
     egressText: form.egressText,
+    egressPolicyRefs: form.egressPolicyRefs,
     defaultWorkspace: form.defaultWorkspace,
     chatOnly: Boolean(form.toolsChatOnly),
   };

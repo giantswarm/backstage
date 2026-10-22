@@ -367,6 +367,7 @@ function idleSend(
     isStreamLost: false,
     failed: null,
     error: null,
+    timeouts: undefined,
     reset: jest.fn(),
     ...overrides,
   };
@@ -2685,6 +2686,117 @@ describe('SessionDetailPage', () => {
           image => image.name,
         ),
       ).toEqual(['shot.png']);
+    });
+
+    describe('sends that keep timing out before the first event (giantswarm/giantswarm#38771)', () => {
+      // A runtime that crashes on every restore: kagent records nothing, the
+      // session reads ready, and the sends never become turns.
+      const settledTasks = [
+        {
+          id: 'turn-1',
+          contextId: 'abc',
+          kind: 'task',
+          status: { state: 'completed' },
+        },
+      ];
+      const settledView: SessionDetailView = {
+        ...loadedView,
+        isAgentWorking: false,
+        state: { ...failedState, key: 'completed', raw: 'completed' },
+        tasks: settledTasks,
+      };
+      const timedOut = (count: number) =>
+        idleSend({
+          error: Object.assign(
+            new Error('The streaming send failed with status 500.'),
+            { name: 'StreamTransportError', status: 500, reason: 'timeout' },
+          ),
+          failed: {
+            messageId: `m-${count}`,
+            text: 'Six of them are vegetarian.',
+          },
+          timeouts: { count, newestTaskId: 'turn-1' },
+        });
+
+      it('offers the new session beside the retry from the second one in a row', async () => {
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(timedOut(2));
+        await render();
+
+        expect(
+          screen.getByText('This session may not be able to continue'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            /Neither of your last 2 messages reached the agent: each timed out before it started\./,
+          ),
+        ).toBeInTheDocument();
+        // Suspected: the box, its text and Send stay for the retry, and the
+        // session is not marked.
+        expect(composer()).toHaveValue('Six of them are vegetarian.');
+        expect(
+          screen.getByRole('button', { name: 'Send' }),
+        ).toBeInTheDocument();
+        expect(startButton()).toBeEnabled();
+        expect(screen.queryByText('Runtime lost')).not.toBeInTheDocument();
+        // The notice says what happened; the composer does not say it again.
+        expect(
+          screen.queryByText('The streaming send failed with status 500.'),
+        ).not.toBeInTheDocument();
+
+        await userEvent.click(startButton());
+        const { prompt } = await created();
+        // The message that never landed goes along as the newest one.
+        expect(prompt).toMatch(/User: Six of them are vegetarian\.$/);
+      });
+
+      it('offers nothing new after a single one', async () => {
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(timedOut(1));
+        await render();
+
+        expect(
+          screen.queryByText('This session may not be able to continue'),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Continue in a new session' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByText('The streaming send failed with status 500.'),
+        ).toBeInTheDocument();
+      });
+
+      it('offers nothing once a turn was created since', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...settledView,
+          tasks: [...settledTasks, { ...settledTasks[0], id: 'turn-2' }],
+        });
+        mockUseSendMessage.mockReturnValue(timedOut(2));
+        await render();
+
+        expect(
+          screen.queryByText('This session may not be able to continue'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('gives way to a loss kagent has since reported', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...reportedView,
+          tasks: settledTasks,
+        });
+        mockUseSendMessage.mockReturnValue(timedOut(2));
+        await render();
+
+        expect(
+          screen.getByText('This session cannot continue'),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText('This session may not be able to continue'),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('textbox', { name: 'Message' }),
+        ).not.toBeInTheDocument();
+      });
     });
 
     describe('the message that never got its answer', () => {

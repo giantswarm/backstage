@@ -28,6 +28,7 @@ import {
 } from '../../lib/agentEdit';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
+import { PickedEgressPolicies } from '../PickedEgressPolicies';
 import { pluginEntryName, pluginSummary } from '../../lib/plugins';
 import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
@@ -405,6 +406,15 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                   )}
                 </Text>
               </SummaryItem>
+              {state.egressPolicyRefs.length > 0 && (
+                <SummaryItem label="EgressPolicies">
+                  <PickedEgressPolicies
+                    installation={installation}
+                    namespace={agent.namespace}
+                    names={state.egressPolicyRefs}
+                  />
+                </SummaryItem>
+              )}
               {egressOrigins.length > 0 && (
                 <SummaryItem label="Extra egress">
                   <Text variant="body-small">

@@ -26,6 +26,20 @@ export type OpenTurnStream = (
   signal: AbortSignal,
 ) => Promise<void>;
 
+/**
+ * Called when a send failed before any event, the session history was read to
+ * check it, and the message is not there — with that read, which is fresher
+ * than the poll's. Not called when the message landed, nor when the history
+ * could not be read: "cannot tell" is not "did not land".
+ */
+export type OnMessageMissing = (tasks: A2aTaskWire[]) => void;
+
+/** What a read of the session history says of a sent message. */
+type Landing =
+  | { kind: 'landed' }
+  | { kind: 'missing'; tasks: A2aTaskWire[] }
+  | { kind: 'unknown' };
+
 /** A turn whose stream ended before the turn did, and when. */
 type LostStream = {
   turn: StreamTurn;
@@ -170,16 +184,20 @@ export function useStreamedTurn(installation: string, sessionId: string) {
   /**
    * Whether the message reached the session's history — the question a
    * transport failure leaves open. A read failure answers "cannot tell", which
-   * keeps the original error: "cannot tell" must not be read as "it worked".
+   * keeps the original error: "cannot tell" must not be read as "it worked",
+   * nor as "it did not land".
    */
-  const messageLanded = useCallback(
-    async (messageId: string): Promise<boolean> => {
+  const readLanding = useCallback(
+    async (messageId: string): Promise<Landing> => {
+      let tasks: A2aTaskWire[];
       try {
-        const tasks = await kagentApi.listSessionTasks(installation, sessionId);
-        return findTurnTask(tasks, { sentMessageId: messageId }) !== undefined;
+        tasks = await kagentApi.listSessionTasks(installation, sessionId);
       } catch {
-        return false;
+        return { kind: 'unknown' };
       }
+      return findTurnTask(tasks, { sentMessageId: messageId })
+        ? { kind: 'landed' }
+        : { kind: 'missing', tasks };
     },
     [kagentApi, installation, sessionId],
   );
@@ -205,9 +223,14 @@ export function useStreamedTurn(installation: string, sessionId: string) {
    * conversation. Rejects only with a failure that is known to be one.
    * Resolves with the turn as streamed, so a caller can tell a stream that
    * said nothing at all (`dispatched` false) from one that carried the turn.
+   * `onMissing` hears a failure the history confirmed did not land.
    */
   const run = useCallback(
-    async (messageId: string, open: OpenTurnStream): Promise<StreamTurn> => {
+    async (
+      messageId: string,
+      open: OpenTurnStream,
+      onMissing?: OnMessageMissing,
+    ): Promise<StreamTurn> => {
       let turn = createStreamTurn(messageId);
       setStreamTurn(turn);
       // A new turn: whatever became of the previous one's stream is history.
@@ -239,10 +262,14 @@ export function useStreamedTurn(installation: string, sessionId: string) {
         // the page went away comes only after one). A failure before any
         // event is reported even after the page went away: it is not ours.
         if (!turn.dispatched) {
-          if (
-            !isStreamTransportError(error) ||
-            !(await messageLanded(messageId))
-          ) {
+          if (!isStreamTransportError(error)) {
+            throw error;
+          }
+          const landing = await readLanding(messageId);
+          if (landing.kind === 'missing') {
+            onMissing?.(landing.tasks);
+          }
+          if (landing.kind !== 'landed') {
             throw error;
           }
         }
@@ -287,7 +314,7 @@ export function useStreamedTurn(installation: string, sessionId: string) {
     [
       installation,
       sessionId,
-      messageLanded,
+      readLanding,
       pollShowsTurnOver,
       queryClient,
       setStreamTurn,

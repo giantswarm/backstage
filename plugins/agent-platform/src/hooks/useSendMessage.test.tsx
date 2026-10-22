@@ -111,6 +111,24 @@ function transportError(message: string): Error {
   return error;
 }
 
+/**
+ * The transport failure the backend's 500 `UpstreamError` with
+ * `reason: "timeout"` becomes: its wait for kagent's first event ran out.
+ */
+function firstEventTimeout(): Error {
+  return Object.assign(
+    transportError('The streaming send failed with status 500.'),
+    { status: 500, reason: 'timeout' },
+  );
+}
+
+const SESSION_KEY = ['agent-platform', 'kagent', 'session', 'gazelle', 'abc'];
+
+/** A settled turn, as the conversation poll lists it. */
+function settledTask(id: string) {
+  return { id, contextId: 'abc', kind: 'task', status: { state: 'completed' } };
+}
+
 /** A terminal status-update carrying one complete reply. */
 function finalReplyEvent(text: string, messageId = 'reply-1') {
   return {
@@ -561,6 +579,134 @@ describe('useSendMessage', () => {
       });
 
       expect(listSessionTasks).not.toHaveBeenCalled();
+    });
+
+    describe('sends that keep timing out before the first event', () => {
+      /** Send once, failing or not, and let the state settle. */
+      async function send(result: {
+        current: { sendMessage: (text: string) => Promise<void> };
+      }) {
+        await act(async () => {
+          await result.current.sendMessage('hello').catch(() => {});
+        });
+      }
+
+      beforeEach(() => {
+        // The history read that checks the message: a settled turn, and not
+        // the message.
+        listSessionTasks.mockResolvedValue([settledTask('turn-1')]);
+      });
+
+      it('counts them in a row against the history the check read', async () => {
+        streamMessage.mockRejectedValue(firstEventTimeout());
+        const { result } = renderWith();
+
+        await send(result);
+        expect(result.current.timeouts).toEqual({
+          count: 1,
+          newestTaskId: 'turn-1',
+        });
+
+        await send(result);
+        expect(result.current.timeouts).toEqual({
+          count: 2,
+          newestTaskId: 'turn-1',
+        });
+      });
+
+      it('puts that read in the cache and re-reads the session', async () => {
+        // A `RUNTIME_LOST` kagent recorded since takes the reported path; the
+        // conversation was just read, and is not read twice.
+        streamMessage.mockRejectedValue(firstEventTimeout());
+        const { result, invalidateQueries, queryClient } = renderWith();
+
+        await send(result);
+
+        expect(queryClient.getQueryData(TASKS_KEY)).toEqual([
+          settledTask('turn-1'),
+        ]);
+        expect(invalidationFor(invalidateQueries, SESSION_KEY)).toBeDefined();
+        expect(invalidationFor(invalidateQueries, TASKS_KEY)).toBeUndefined();
+        expect(listSessionTasks).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not count one whose check could not read the history', async () => {
+        // "Cannot tell" is not "did not land": a slow kagent API fails both.
+        streamMessage.mockRejectedValue(firstEventTimeout());
+        listSessionTasks.mockRejectedValue(new Error('timed out'));
+        const { result } = renderWith();
+
+        await send(result);
+        await send(result);
+
+        expect(result.current.error).not.toBeNull();
+        expect(result.current.timeouts).toBeUndefined();
+      });
+
+      it('reads as nothing while the retry is in flight', async () => {
+        streamMessage.mockRejectedValueOnce(firstEventTimeout());
+        let release: () => void = () => {};
+        streamMessage.mockImplementationOnce(
+          () =>
+            new Promise<void>((_, reject) => {
+              release = () => reject(firstEventTimeout());
+            }),
+        );
+        const { result } = renderWith();
+        await send(result);
+        expect(result.current.timeouts?.count).toBe(1);
+
+        act(() => {
+          void result.current.sendMessage('again').catch(() => {});
+        });
+        await waitFor(() => expect(result.current.isSending).toBe(true));
+        expect(result.current.timeouts).toBeUndefined();
+
+        await act(async () => {
+          release();
+        });
+        await waitFor(() => expect(result.current.timeouts?.count).toBe(2));
+      });
+
+      it('ends the run once a send lands', async () => {
+        streamMessage.mockRejectedValueOnce(firstEventTimeout());
+        const { result } = renderWith();
+
+        await send(result);
+        expect(result.current.timeouts?.count).toBe(1);
+
+        await send(result);
+        expect(result.current.timeouts).toBeUndefined();
+      });
+
+      it('ends the run on a send that failed otherwise', async () => {
+        streamMessage
+          .mockRejectedValueOnce(firstEventTimeout())
+          .mockRejectedValueOnce(transportError('connection reset'));
+        const { result } = renderWith();
+
+        await send(result);
+        await send(result);
+
+        expect(result.current.timeouts).toBeUndefined();
+      });
+
+      it('ends the run on a timed-out send whose message landed', async () => {
+        // The backend gave up waiting, but the history holds the message: the
+        // runtime is up, only slow.
+        streamMessage.mockRejectedValue(firstEventTimeout());
+        const { result } = renderWith();
+        await send(result);
+        expect(result.current.timeouts?.count).toBe(1);
+
+        listSessionTasks.mockImplementation(async () => [
+          taskHolding(streamMessage.mock.calls[1][3].messageId, 'working'),
+        ]);
+        await send(result);
+
+        expect(result.current.error).toBeNull();
+        expect(result.current.timeouts).toBeUndefined();
+      });
     });
 
     it('does not report a stream that delivered the end of the turn as lost', async () => {
