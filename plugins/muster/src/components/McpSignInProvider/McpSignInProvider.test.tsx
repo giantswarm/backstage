@@ -13,7 +13,11 @@ import {
 import { McpSignInProvider, useMcpSignIn } from './McpSignInProvider';
 import { CONNECTING_POLL_INTERVAL_MS } from '../shared/useServerSignIn';
 import type { SignInInstallation } from './useSignInInstallation';
-import { SETTLE_REREAD_MS, SETTLE_WINDOW_MS } from './hooks/useSettledWaiting';
+import {
+  SETTLE_REREAD_MS,
+  SETTLE_REREAD_UNTIL_MS,
+  SETTLE_WINDOW_MS,
+} from './hooks/useSettledWaiting';
 import { MCPServer } from '../../lib/k8s';
 
 /** The installation's MCPServers, per test; none by default. */
@@ -115,6 +119,7 @@ function Status() {
           waiting: signIn.waiting,
           connected: signIn.connected,
           isRead: signIn.isRead,
+          isSettled: signIn.isSettled,
           isAvailable: signIn.isAvailable,
         })}
       </p>
@@ -180,6 +185,7 @@ describe('McpSignInProvider', () => {
         ],
         connected: ['mcp-kubernetes'],
         isRead: true,
+        isSettled: true,
         isAvailable: true,
       }),
     );
@@ -362,6 +368,66 @@ describe('McpSignInProvider', () => {
       expect(status().waiting).toEqual([]);
     });
 
+    it('is settled on the first read when nothing waits', async () => {
+      const api = readsOf({ servers: [sso('mcp-kubernetes')] });
+      await renderProvider(api);
+
+      await waitFor(() =>
+        expect(status()).toEqual(
+          expect.objectContaining({ isRead: true, isSettled: true }),
+        ),
+      );
+    });
+
+    it('is settled only once a later read confirms the waiting servers, and stays so', async () => {
+      const api = readsOf(
+        { servers: [waitingFor('workspace-manager')] },
+        { servers: [waitingFor('workspace-manager')] },
+        {
+          servers: [waitingFor('workspace-manager'), pending('mcp-kubernetes')],
+        },
+      );
+      await renderProvider(api);
+
+      await waitFor(() => expect(status().isRead).toBe(true));
+      expect(status().isSettled).toBe(false);
+      await reread();
+      expect(status()).toEqual(
+        expect.objectContaining({
+          isSettled: true,
+          waiting: [{ name: 'workspace-manager', label: 'workspace-manager' }],
+        }),
+      );
+
+      // muster connecting again later unsettles the set, not the load.
+      await reread();
+      expect(status().isSettled).toBe(true);
+    });
+
+    it('is settled after the quick re-reads by a status that keeps changing', async () => {
+      let read = 0;
+      const api = makeApi({ servers: [] });
+      api.getAuthStatus.mockImplementation(() =>
+        Promise.resolve({ servers: [waitingFor(`server-${read++}`)] }),
+      );
+      await renderProvider(api);
+      await waitFor(() => expect(status().isRead).toBe(true));
+      expect(status().isSettled).toBe(false);
+
+      await act(() => jest.advanceTimersByTimeAsync(SETTLE_REREAD_UNTIL_MS));
+      expect(status().isSettled).toBe(true);
+    });
+
+    it('is settled once the reads fail', async () => {
+      const api = readsOf({ servers: [waitingFor('workspace-manager')] });
+      await renderProvider(api);
+      await waitFor(() => expect(status().isRead).toBe(true));
+      api.getAuthStatus.mockRejectedValue(new Error('502 Bad Gateway'));
+
+      await reread();
+      expect(status().isSettled).toBe(true);
+    });
+
     it('stops re-reading quickly while the reads fail', async () => {
       const api = readsOf({ servers: [waitingFor('workspace-manager')] });
       await renderProvider(api);
@@ -478,6 +544,7 @@ describe('McpSignInProvider', () => {
         waiting: [],
         connected: [],
         isRead: true,
+        isSettled: true,
         isAvailable: false,
       }),
     );

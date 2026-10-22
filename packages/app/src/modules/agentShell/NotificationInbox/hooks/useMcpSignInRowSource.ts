@@ -24,6 +24,11 @@ const useStatus: () => McpSignInStatus | undefined =
 const NO_SUBJECTS: ReadonlySet<string> = new Set();
 const noop = () => {};
 
+/** The MCP sign-in row's source, and whether muster's answer still settles. */
+export type McpSignInRowSource = InboxRowSource<DerivedInboxRow> & {
+  settling: boolean;
+};
+
 /** How long a failed narrowing of the seen mark waits to be tried again. */
 export const NARROW_RETRY_MS = 60_000;
 
@@ -37,11 +42,14 @@ export const NARROW_RETRY_MS = 60_000;
  *
  * `ready` is the status's first answer. The inbox does not wait for it: a
  * row that arrives after the inbox's first read is quietly unread, since its
- * subject was not watched yet.
+ * subject was not watched yet. `settling` is muster's answer in, but its
+ * waiting servers not settled yet (`isSettled`): a server waiting at load
+ * joins only once a later read confirms it, and the inbox's first read waits
+ * for that, a few seconds, so the server is catch-up, with its toast.
  */
 export function useMcpSignInRowSource(
   record: NotificationRecord,
-): InboxRowSource<DerivedInboxRow> {
+): McpSignInRowSource {
   const status = useStatus();
   const { isKnown, mcpSignInSeenMarkOf, replaceSeenMark } = record;
   const installation = status?.installation;
@@ -134,5 +142,10 @@ export function useMcpSignInRowSource(
     [installation, isAvailable],
   );
 
-  return { rows, subjects, ready: !status || status.isRead };
+  return {
+    rows,
+    subjects,
+    ready: !status || status.isRead,
+    settling: Boolean(status?.isRead && !status.isSettled),
+  };
 }
