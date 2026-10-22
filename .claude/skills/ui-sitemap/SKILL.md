@@ -133,7 +133,9 @@ With the chrome-devtools MCP, against a signed-in dev server
 - **Dismiss toasts before every screenshot**: notifications and sign-in
   reminders ("… need your attention", "… need your sign-in") appear as
   `role="alertdialog"` or `role="alert"` pop-ups over the page, at any time.
-  Click their close button, then check that none is left.
+  They go on their own after a few seconds (the inbox's after 6 s), but not
+  while the pointer rests on them, and a screenshot should not wait on that:
+  click their close button, then check that none is left.
 - Tall pages: read `document.documentElement.scrollHeight`, set the viewport
   height to it (cap 2400), wait ~2 s, dismiss toasts, screenshot the
   viewport, and reset to 900. Chat-like pages with a docked composer (a

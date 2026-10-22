@@ -279,6 +279,8 @@ describe('WizardFrame', () => {
     expect(styles).toContain(
       'padding-bottom: calc(40px + var(--agent-shell-toast-height, 0px))',
     );
+    // The room eases in and out as the toast comes and goes.
+    expect(styles).toContain('transition: padding-bottom 200ms ease-out');
   });
 
   it('publishes the footer’s height on the document while it is mounted, for the shell’s toasts', () => {

@@ -1522,7 +1522,12 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   installation reports late stays quietly unread. News raises a toast in the
   visible tab ("Open session"), none for the session on screen, and more than
   three at once are one toast (the Sessions list on its Waiting filter when they
-  all wait). A toast closes once its row goes or is read, or its page is opened.
+  all wait). Every inbox toast is a brief heads-up, not something to dismiss:
+  it goes on its own after 6 s (`INBOX_TOAST_TIMEOUT_MS`, what most of the
+  portal's toasts take; a failed turn's too), held while the pointer rests on
+  it, and sooner once its row goes or is read, or its page is opened. One
+  raised while the window is visible but not focused counts its 6 s from when
+  the window has the focus again. The bell keeps the row.
   The MCP sign-in row is news when a server starts to wait; fewer servers
   waiting only narrows it and raises nothing. Its toast's **Sign in**
   (`#mcp-sign-in`) opens it in place like its button, and so does its desktop

@@ -370,6 +370,23 @@ describe('WorkspaceEditorPage', () => {
     expect(screen.queryByText(/There is no schedule/)).not.toBeInTheDocument();
   });
 
+  it('names the minimum disk size with its unit', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Advanced options' }),
+    );
+    expect(
+      await screen.findByRole('textbox', { name: 'Minimum size' }),
+    ).toHaveAccessibleDescription(
+      /^The disk never gets smaller than this many GiB\./,
+    );
+  });
+
   it('shows no source until the provider instances are read', async () => {
     const fake = createWorkspaceManagerFake({
       providers: [GITHUB, GITLAB],
