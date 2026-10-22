@@ -82,7 +82,8 @@ function CreateAgentReview() {
   const navigate = useNavigate();
   const { details: newAgentLink, tools: toolsLink } = useAgentWizardLinks();
   const agentDetailLink = useRouteRef(agentDetailRouteRef);
-  const { state, isComplete, isToolsetValid } = useNewAgentForm();
+  const { state, isComplete, isToolsetValid, discardDraft, clearSavedDraft } =
+    useNewAgentForm();
   // Only to number the steps: with no skill repositories configured the skills
   // step doesn't exist. Cached by the time this page renders.
   const { hasRepositories } = useSkillCatalog();
@@ -187,6 +188,13 @@ function CreateAgentReview() {
           },
         },
       });
+      // Created: the draft has done its job, and the next agent starts
+      // empty.
+      discardDraft();
+    } else {
+      // Nowhere to go: the page stays, with the form under the outcome, and
+      // only the kept draft goes.
+      clearSavedDraft();
     }
   }, [
     creation,
@@ -195,17 +203,27 @@ function CreateAgentReview() {
     state.installation,
     namespace,
     navigate,
+    discardDraft,
+    clearSavedDraft,
   ]);
 
   const onCommit = useCallback(async () => {
     setCommitResult(undefined);
     creation.reset();
+    let result;
     try {
-      setCommitResult(await creation.commit(spec));
+      result = await creation.commit(spec);
     } catch {
       // Left to `creation.failure`.
+      return;
     }
-  }, [creation, spec]);
+    setCommitResult(result);
+    // The agent is in the pull request now (what `isProposed` says too); the
+    // page still shows the form and the outcome, so only the kept draft goes.
+    if (result.commit !== undefined) {
+      clearSavedDraft();
+    }
+  }, [creation, spec, clearSavedDraft]);
 
   const createLabel = creation.isDeploying ? 'Creating…' : 'Create agent';
   const proposeLabel = creation.isCommitting

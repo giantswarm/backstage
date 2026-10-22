@@ -41,6 +41,9 @@ jest.mock('../NewAgentFormProvider', () => ({
     <>{children}</>
   ),
 }));
+jest.mock('../NewAgentStep', () => ({
+  NewAgentStep: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
 
 function LocationProbe() {
   const { pathname, search } = useLocation();
