@@ -164,6 +164,22 @@ export function musterToolCatalogueQueryKey(installation: string) {
   return ['muster', 'agent-platform', 'tool-catalogue', installation] as const;
 }
 
+/** Whether a toolset includes one tool, asked of muster by the tool's name. */
+export function musterToolsetIncludesQueryKey(
+  installation: string,
+  selectors: string[],
+  tool: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolset-includes',
+    installation,
+    selectors.join(','),
+    tool,
+  ] as const;
+}
+
 export function musterToolsetResolutionQueryKey(
   installation: string,
   selectors: string[],

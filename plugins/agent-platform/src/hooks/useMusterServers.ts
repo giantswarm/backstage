@@ -25,6 +25,8 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
       : prefix,
     state: server.getState(),
     oauth: server.getAuth()?.type === 'oauth',
+    signInTool:
+      server.getAuth()?.type === 'oauth' && !server.isServedPerSession(),
     ...(displayName ? { displayName } : {}),
   };
 }

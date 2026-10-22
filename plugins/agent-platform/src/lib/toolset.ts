@@ -514,6 +514,13 @@ export interface ServerInfo {
   state?: string;
   /** Whether the server declares per-user OAuth (`spec.auth.type: oauth`). */
   oauth: boolean;
+  /**
+   * Whether a session signs in to it through muster's `core_auth_login`: per
+   * session, or once per person with a `subject` grant. Not for a server muster
+   * connects with the caller's own token (`forwardToken`, `tokenExchange`),
+   * which refuses that tool, nor for a server signing as muster (sigv4).
+   */
+  signInTool?: boolean;
   /** The CR's `ui.giantswarm.io/display-name`, when one is set. */
   displayName?: string;
 }

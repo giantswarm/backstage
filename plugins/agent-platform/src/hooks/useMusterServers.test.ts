@@ -16,7 +16,57 @@ function mcpServer(namespace: string, name: string, state = 'Connected') {
   );
 }
 
+function withAuth(auth: Record<string, unknown> | undefined) {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: { name: 'grafana-cloud', namespace: 'muster' },
+      spec: { type: 'streamable-http', auth },
+    } as never,
+    'gazelle',
+  );
+}
+
 describe('serverInfoOf', () => {
+  // muster's core_auth_login signs a session in to an OAuth server, per
+  // session or with a person's `subject` grant, and refuses an SSO server it
+  // connects with the caller's own token.
+  it.each([
+    ['per-session OAuth', { type: 'oauth' }, true],
+    [
+      'a subject grant',
+      {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://idp.example.com',
+          grantScope: 'subject',
+        },
+      },
+      true,
+    ],
+    ['forwarded token', { type: 'oauth', forwardToken: true }, false],
+    [
+      'token exchange',
+      {
+        type: 'oauth',
+        tokenExchange: {
+          enabled: true,
+          dexTokenEndpoint: 'https://dex.example.com/token',
+          connectorId: 'example',
+        },
+      },
+      false,
+    ],
+    ['sigv4', { type: 'sigv4', sigv4: { region: 'eu-central-1' } }, false],
+    ['no auth', undefined, false],
+  ])(
+    'says whether %s signs in through the sign-in tool',
+    (_, auth, expected) => {
+      expect(serverInfoOf(withAuth(auth)).signInTool).toBe(expected);
+    },
+  );
+
   // muster keys an organization's server `<namespace>/<name>` and reports that
   // key as its tools' `server`; a server of muster's namespace keeps its name.
   it("puts an organization's server's tools on its own tile, apart from a shared server of the same name", () => {

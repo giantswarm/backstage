@@ -18,6 +18,7 @@ import {
 } from '../../hooks/useCreateAgent';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
+import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { useValidateAgent } from '../../hooks/useValidateAgent';
@@ -49,6 +50,7 @@ import {
   Notes,
   PlainRow,
   SectionTitle,
+  SignInToolChange,
   SummaryItem,
   toolsetSummaryLabel,
   UnderlyingModelItem,
@@ -93,29 +95,28 @@ function CreateAgentReview() {
   // is applied, and the "selected without a sign-in" flag is repeated here.
   const toolCatalogue = useMusterToolCatalogue(state.installation);
   const { servers, labels } = useMusterServers(state.installation);
-  const resolution = useToolsetResolution(state.installation, state.toolset);
+  // The selection with the sign-in tool the Tools step adds.
+  const signIn = useSignInTool(
+    state.installation,
+    state.toolset,
+    Boolean(state.signInToolDeclined),
+  );
+  const toolset = signIn.toolset;
+  const resolution = useToolsetResolution(state.installation, toolset);
   const unsignedServers = useMemo(
     () =>
       unsignedServerSelectors(
-        state.toolset,
+        toolset,
         buildCatalogue(
           toolCatalogue.tools,
           servers,
           toolCatalogue.serversRequiringAuth,
         ),
       ),
-    [
-      state.toolset,
-      toolCatalogue.tools,
-      servers,
-      toolCatalogue.serversRequiringAuth,
-    ],
+    [toolset, toolCatalogue.tools, servers, toolCatalogue.serversRequiringAuth],
   );
   // What the release declares: the selection, or `preset:none` for none.
-  const declared = useMemo(
-    () => declaredToolset(state.toolset),
-    [state.toolset],
-  );
+  const declared = useMemo(() => declaredToolset(toolset), [toolset]);
   const shape = toolsetShape(declared);
 
   // Persist the same deterministic avatar the UI renders onto the resource, as
@@ -141,9 +142,10 @@ function CreateAgentReview() {
   const namespace = spec.namespace;
 
   const { info } = useAgentManagerInfo(state.installation);
+  // Not before the sign-in tool is decided: the spec would lack it.
   const validation = useValidateAgent(
     state.installation,
-    isComplete && isToolsetValid ? spec : undefined,
+    isComplete && isToolsetValid && !signIn.isLoading ? spec : undefined,
   );
   const creation = useCreateAgent(state.installation);
   const [commitResult, setCommitResult] = useState<
@@ -154,7 +156,10 @@ function CreateAgentReview() {
   const violations = dryRun?.errors ?? [];
   const notes = dryRun?.notes ?? [];
   const canWrite =
-    Boolean(dryRun) && violations.length === 0 && !validation.failure;
+    !signIn.isLoading &&
+    Boolean(dryRun) &&
+    violations.length === 0 &&
+    !validation.failure;
   const isBusy = creation.isDeploying || creation.isCommitting;
   // The button shows only when agent-manager reports the capability that lands
   // the manifests as a pull request (giantswarm/agent-manager#24).
@@ -348,6 +353,9 @@ function CreateAgentReview() {
               shape,
               declared,
               connector => labels.get(connector) ?? connector,
+            )}
+            {signIn.status === 'added' && (
+              <SignInToolChange change="added" signIn={signIn} />
             )}
           </PlainRow>
         </dl>
