@@ -237,7 +237,7 @@ function WorkspaceDetailContent({
     if (
       workspace?.lastSync &&
       notifyAfter !== undefined &&
-      syncEnded(workspace, notifyAfter)
+      syncEnded(workspace, { after: notifyAfter })
     ) {
       setNotifyAfter(undefined);
       const result = lastSyncResult(workspace.lastSync);
@@ -365,7 +365,9 @@ function WorkspaceDetailContent({
   }
 
   // One state for the badge, the button and the Synchronization status, as
-  // the list's row says it.
+  // the list's row says it. Synchronize waits for a sync the manager reports;
+  // one only expected (after a save, or a new workspace's first) leaves it
+  // to the person, should the manager not start it.
   const state = syncState(workspace, awaited);
   const row: WorkspaceRow = {
     ...workspace,
@@ -387,10 +389,10 @@ function WorkspaceDetailContent({
       )}
       <Button
         variant="primary"
-        isDisabled={workspace.deleting || state.syncing || sync.isPending}
+        isDisabled={workspace.deleting || state.reported || sync.isPending}
         onPress={syncNow}
       >
-        {state.syncing ? 'Synchronizing…' : 'Synchronize'}
+        {state.reported || sync.isPending ? 'Synchronizing…' : 'Synchronize'}
       </Button>
     </>
   );
@@ -511,7 +513,7 @@ function SyncSection({
       label: 'Now',
       value: (
         <>
-          Synchronization requested{' '}
+          Synchronizing, requested{' '}
           <When at={workspace.syncRequest.requestedAt} />
           {workspace.syncRequest.requestedBy &&
             ` by ${workspace.syncRequest.requestedBy}`}

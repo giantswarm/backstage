@@ -386,6 +386,44 @@ describe('WorkspacesDataProvider', () => {
       );
     });
 
+    it('waits out the synchronization that ran when a change was saved, for the change’s own', async () => {
+      const docs: Workspace = {
+        ...workspace('docs', 'alpha'),
+        activeSync: { job: 'sync-1', startedAt: new Date().toISOString() },
+      };
+      mockWorkspaces = { gazelle: [docs] };
+      mockTools.update_workspace = () => ({ ...docs, resourceVersion: '2' });
+      await renderWorkspaces(<SaveButton edit={{ resourceVersion: '1' }} />);
+      await waitFor(() =>
+        expect(rowState('docs').getByText('Synchronizing')).toBeInTheDocument(),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Save changes' }),
+      );
+
+      // The synchronization that ran at the save ends; the change's own has
+      // not started yet.
+      delete docs.activeSync;
+      docs.lastSync = {
+        time: new Date().toISOString(),
+        result: 'Succeeded',
+        job: 'sync-1',
+      };
+      await tick(SYNC_REFETCH_MS);
+      expect(rowState('docs').getByText('Synchronizing')).toBeInTheDocument();
+
+      // The change's own ends.
+      docs.lastSync = {
+        time: new Date(Date.now() + 1000).toISOString(),
+        result: 'Succeeded',
+        job: 'sync-2',
+      };
+      await tick(SYNC_REFETCH_MS);
+      await waitFor(() =>
+        expect(rowState('docs').getByText('Synchronized')).toBeInTheDocument(),
+      );
+    });
+
     it('says Synchronizing in the row and on the page alike, from the page’s read on', async () => {
       const docs = workspace('docs', 'alpha');
       mockWorkspaces = { gazelle: [docs] };

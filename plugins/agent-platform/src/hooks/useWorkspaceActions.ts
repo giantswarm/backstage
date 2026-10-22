@@ -1,8 +1,4 @@
-import {
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { useWorkspaceManagerClient } from './useWorkspaceManager';
@@ -13,6 +9,13 @@ import {
   musterWorkspaceSyncsAwaitedQueryKey,
 } from '../lib/queryKeys';
 import { lastPushes, type LastPushes } from '../lib/workspaceDetail';
+import {
+  awaitedSyncs,
+  awaitSync,
+  forgetEndedSyncs,
+  NO_AWAITED_SYNCS,
+  type AwaitedSyncs,
+} from '../lib/awaitedSyncs';
 import {
   syncRefetchInterval,
   workspaceRowId,
@@ -26,31 +29,6 @@ import {
   type WorkspaceList,
 } from '../lib/workspaceManager';
 
-type AwaitedSyncs = Record<string, AwaitedSync>;
-
-const NO_AWAITED_SYNCS: AwaitedSyncs = {};
-
-/**
- * Records a sync the person started on a workspace (see {@link AwaitedSync}),
- * or with `undefined` forgets it: the list and the workspace's page say
- * Synchronizing, and read again, until a read shows it ended.
- */
-export function awaitSync(
-  queryClient: QueryClient,
-  installation: string,
-  name: string,
-  awaited: AwaitedSync | undefined,
-) {
-  const id = workspaceRowId({ installation, name });
-  queryClient.setQueryData<AwaitedSyncs>(
-    musterWorkspaceSyncsAwaitedQueryKey(),
-    (syncs = NO_AWAITED_SYNCS) => {
-      const { [id]: _forgotten, ...rest } = syncs;
-      return awaited ? { ...rest, [id]: awaited } : rest;
-    },
-  );
-}
-
 /** The syncs the person started on this page load, by workspace row id. */
 export function useAwaitedSyncs(): AwaitedSyncs {
   const queryClient = useQueryClient();
@@ -59,10 +37,7 @@ export function useAwaitedSyncs(): AwaitedSyncs {
   const { data } = useQuery<AwaitedSyncs>({
     queryKey: musterWorkspaceSyncsAwaitedQueryKey(),
     // Cache-only: nothing fetches this, awaitSync owns it.
-    queryFn: () =>
-      queryClient.getQueryData<AwaitedSyncs>(
-        musterWorkspaceSyncsAwaitedQueryKey(),
-      ) ?? NO_AWAITED_SYNCS,
+    queryFn: () => awaitedSyncs(queryClient),
     staleTime: Infinity,
     gcTime: Infinity,
   });
@@ -103,14 +78,22 @@ export function useWorkspaceDetail(
 ) {
   const client = useWorkspaceManagerClient(installation);
   const queryClient = useQueryClient();
-  const awaited = useAwaitedSync(installation, name);
+  // Read when the interval is, not subscribed to: a reader that does not
+  // follow the sync must not re-render for every sync recorded. The page that
+  // follows it subscribes itself (useAwaitedSync), which re-evaluates this.
   const refetchInterval = (data: WorkspaceDetail | undefined) =>
-    followSync && data ? syncRefetchInterval(data.workspace, awaited) : false;
+    followSync && data
+      ? syncRefetchInterval(
+          data.workspace,
+          awaitedSyncs(queryClient)[workspaceRowId({ installation, name })],
+        )
+      : false;
   return useQuery<WorkspaceDetail>({
     queryKey: musterWorkspaceQueryKey(installation, name),
     enabled: enabled && Boolean(client),
     queryFn: async () => {
       const detail = await client!.getWorkspace(name);
+      forgetEndedSyncs(queryClient, installation, [detail.workspace]);
       queryClient.setQueryData<WorkspaceList>(
         musterWorkspacesQueryKey(installation),
         list =>
@@ -215,7 +198,11 @@ export function useWorkspaceActions(installation: string, name: string) {
       'Housekeeping on a workspace; workspaces are measured at their creation.',
     mutationFn: () => requireClient().syncWorkspace(name),
     onMutate: ({ after }) =>
-      awaitSync(queryClient, installation, name, { after, since: Date.now() }),
+      awaitSync(queryClient, installation, name, {
+        cause: 'requested',
+        after,
+        since: Date.now(),
+      }),
     onError: () => awaitSync(queryClient, installation, name, undefined),
     onSuccess: reread,
   });

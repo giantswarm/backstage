@@ -231,7 +231,7 @@ test('Synchronize shows the synchronization running and notifies its result when
   await synchronize(admin);
 });
 
-test('the Workspaces tab says what the workspace’s page says of its synchronization', async ({
+test('the Workspaces tab follows a synchronization without a reload, and says what the page says', async ({
   admin,
 }) => {
   test.setTimeout(5 * 60_000);
@@ -240,22 +240,33 @@ test('the Workspaces tab says what the workspace’s page says of its synchroniz
     await needsManagerSignIn(admin),
     'the admin has not signed in to workspace-manager in muster (the GitHub App grant)',
   );
+  const main = admin.getByRole('main');
+  const settled = /^(Synchronized|Unchanged|Failed)$/;
 
-  await synchronize(admin);
-  const state =
-    /^(Synchronized|Unchanged|Failed|Synchronizing|Not synchronized yet)$/;
-  const badge = await admin
-    .getByRole('main')
-    .getByText(state)
-    .first()
-    .textContent();
+  await main.getByRole('button', { name: 'Synchronize' }).click();
+  await expect(
+    main.getByRole('button', { name: 'Synchronizing…' }),
+  ).toBeDisabled();
+  await expect(main.getByText('Synchronizing', { exact: true })).toBeVisible();
 
-  await open(admin, `/customize/workspaces?organization=${organization}`);
-  const row = admin
-    .getByRole('main')
+  // To the list in the app, as a person would: no page load reads it afresh.
+  await admin.getByRole('link', { name: 'Workspaces', exact: true }).click();
+  await expect(admin).toHaveURL(/\/customize\/workspaces(\?|$)/);
+  const row = main
     .getByRole('row')
     .filter({ has: admin.getByRole('link', { name, exact: true }) });
-  await expect(row.getByText(state)).toHaveText(badge!);
+  await expect(row.getByText('Synchronizing', { exact: true })).toBeVisible();
+
+  // The list reads again on its own until the synchronization ends.
+  const result = row.getByText(settled);
+  await expect(result).toBeVisible({ timeout: 4 * 60_000 });
+  const label = await result.textContent();
+
+  // Back on the page, in the app: the badge says what the row says.
+  await row.getByRole('link', { name, exact: true }).click();
+  await expect(main.getByRole('heading', { level: 1, name })).toBeVisible();
+  await expect(main.getByText(settled).first()).toHaveText(label!);
+  await expect(main.getByRole('button', { name: 'Synchronize' })).toBeEnabled();
 });
 
 test('an address naming another Organization goes to the workspace’s own', async ({

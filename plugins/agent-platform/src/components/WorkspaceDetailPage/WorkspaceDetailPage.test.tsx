@@ -342,7 +342,11 @@ describe('WorkspaceDetailPage', () => {
     mockSync.mutate.mockImplementation((variables: unknown, options: any) => {
       // The request is recorded as it is made; the read after it does not
       // show the synchronization yet.
-      mockAwaited = { ...(variables as { after: string }), since: Date.now() };
+      mockAwaited = {
+        cause: 'requested',
+        ...(variables as { after: string }),
+        since: Date.now(),
+      };
       options.onSuccess({
         workspace: 'ws-docs',
         requestedAt: '2026-10-21T08:00:00Z',
@@ -367,7 +371,7 @@ describe('WorkspaceDetailPage', () => {
     ).toBeNull();
   });
 
-  it('says Synchronizing on the badge, the button and Details alike for a new workspace the manager has not taken up yet', async () => {
+  it('says Synchronizing on the badge and in Details for a new workspace the manager has not taken up yet, and leaves Synchronize to the person', async () => {
     mockDetail = {
       ...mockDetail,
       data: {
@@ -381,9 +385,8 @@ describe('WorkspaceDetailPage', () => {
     await renderPage('/customize/workspaces/gazelle/lab/ws-docs/details');
 
     expect(screen.getByText('Synchronizing')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Synchronizing…' }),
-    ).toBeDisabled();
+    // The manager reports no sync: should it not start one, the person can.
+    expect(screen.getByRole('button', { name: 'Synchronize' })).toBeEnabled();
     const status = screen.getByRole('region', {
       name: 'Synchronization status',
     });
@@ -395,9 +398,37 @@ describe('WorkspaceDetailPage', () => {
     expect(screen.queryByText(/not synchronized yet/i)).toBeNull();
   });
 
+  it('words a requested synchronization as the badge and the button do', async () => {
+    mockDetail = {
+      ...mockDetail,
+      data: docs({
+        syncRequest: {
+          requestedAt: '2026-10-21T08:00:00Z',
+          requestedBy: 'dev@example.com',
+        },
+      }),
+    };
+    await renderPage('/customize/workspaces/gazelle/lab/ws-docs/details');
+
+    expect(screen.getByText('Synchronizing')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Synchronizing…' }),
+    ).toBeDisabled();
+    const status = screen.getByRole('region', {
+      name: 'Synchronization status',
+    });
+    expect(
+      within(status).getByText(/^Synchronizing, requested/),
+    ).toHaveTextContent(/by dev@example\.com, waiting to start$/);
+  });
+
   it('runs Synchronize and notifies an unchanged result when it ends', async () => {
     mockSync.mutate.mockImplementation((variables: unknown, options: any) => {
-      mockAwaited = { ...(variables as { after: string }), since: Date.now() };
+      mockAwaited = {
+        cause: 'requested',
+        ...(variables as { after: string }),
+        since: Date.now(),
+      };
       // The read after the request finds the synchronization ended, unchanged.
       mockDetail = {
         ...mockDetail,

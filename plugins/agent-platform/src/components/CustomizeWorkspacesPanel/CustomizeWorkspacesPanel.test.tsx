@@ -373,7 +373,11 @@ describe('CustomizeWorkspacesPanel', () => {
       rows: [
         {
           ...docs,
-          awaitedSync: { after: docs.lastSync!.time, since: Date.now() },
+          awaitedSync: {
+            cause: 'requested',
+            after: docs.lastSync!.time,
+            since: Date.now(),
+          },
         },
       ],
     });
@@ -388,6 +392,31 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(
       screen.getByRole('menuitem', { name: 'Synchronize…' }),
     ).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('says Synchronizing after a saved change, and leaves Synchronize… to the person while the manager reports no sync', async () => {
+    mockData = data({
+      rows: [
+        {
+          ...docs,
+          awaitedSync: {
+            cause: 'changed',
+            after: docs.lastSync!.time,
+            since: Date.now(),
+          },
+        },
+      ],
+    });
+    await renderPanel();
+
+    const row = screen.getByRole('row', { name: /docs/ });
+    expect(within(row).getByText('Synchronizing')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Actions for docs' }),
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'Synchronize…' }),
+    ).not.toHaveAttribute('aria-disabled', 'true');
   });
 
   it('confirms a delete, naming the workspace and the Sessions still using it', async () => {

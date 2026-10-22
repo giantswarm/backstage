@@ -132,7 +132,9 @@ function RowActions({ row }: { row: WorkspaceRow }) {
   });
   const [isDeleteOpen, setDeleteOpen] = useState(false);
 
-  const syncing = syncState(row, row.awaitedSync).syncing;
+  // As the page's Synchronize: it waits for a sync the manager reports, not
+  // for one only expected.
+  const { reported } = syncState(row, row.awaitedSync);
 
   const syncNow = () =>
     sync.mutate(
@@ -184,7 +186,7 @@ function RowActions({ row }: { row: WorkspaceRow }) {
           </MenuItem>
           <MenuItem
             iconStart={<SyncIcon />}
-            isDisabled={row.deleting || syncing || sync.isPending}
+            isDisabled={row.deleting || reported || sync.isPending}
             onAction={syncNow}
           >
             Synchronize…

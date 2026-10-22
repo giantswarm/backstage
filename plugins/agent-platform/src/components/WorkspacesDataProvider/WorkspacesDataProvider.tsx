@@ -22,6 +22,7 @@ import { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useMusterServerAvailability } from '../../hooks/useMusterServerAvailability';
 import { useAwaitedSyncs } from '../../hooks/useWorkspaceActions';
+import { forgetEndedSyncs } from '../../lib/awaitedSyncs';
 import { musterWorkspacesQueryKey } from '../../lib/queryKeys';
 import {
   workspaceRowId,
@@ -120,6 +121,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     [sharedIdentityKey],
   );
 
+  const queryClient = useQueryClient();
   const awaited = useAwaitedSyncs();
   const combineLists = useCallback(
     (results: UseQueryResult<WorkspaceList>[]) => ({
@@ -156,8 +158,14 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     queries: installations.map(installation => ({
       queryKey: musterWorkspacesQueryKey(installation),
       enabled: Boolean(musterApi),
-      queryFn: () =>
-        new WorkspaceManagerClient(musterApi!, installation).listWorkspaces(),
+      queryFn: async () => {
+        const list = await new WorkspaceManagerClient(
+          musterApi!,
+          installation,
+        ).listWorkspaces();
+        forgetEndedSyncs(queryClient, installation, list.workspaces);
+        return list;
+      },
       retry: false,
       refetchInterval: (query: { state: { data?: WorkspaceList } }) =>
         refetchInterval(installation, query.state.data),
@@ -169,7 +177,6 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
   const allRows = lists.rows;
   const organizations = lists.organizations;
 
-  const queryClient = useQueryClient();
   const retry = useCallback(() => {
     for (const installation of installations) {
       void queryClient.invalidateQueries({

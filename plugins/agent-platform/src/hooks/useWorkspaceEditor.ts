@@ -7,7 +7,7 @@ import {
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import type { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
-import { awaitSync } from './useWorkspaceActions';
+import { awaitSync } from '../lib/awaitedSyncs';
 import {
   previewableSources,
   toCreateInput,
@@ -245,9 +245,11 @@ export type SaveWorkspace = {
  * `create_workspace` or `update_workspace` as the person. The manager checks
  * the spec and the membership; its refusal is the mutation's error, a
  * `WorkspaceManagerError` of its kind. The manager syncs a workspace after
- * every change to it, so a save records that sync as awaited: the list and
- * the page say Synchronizing until it ends. An update that changed nothing
- * (the same `resourceVersion`) starts none.
+ * every change to its spec, so a save records that sync as awaited: the list
+ * and the page say Synchronizing until it ends, behind a sync that already
+ * ran. `update_workspace` writes only the spec, against the version the
+ * editor read, so an answer with that same `resourceVersion` changed nothing
+ * and starts no sync; without a version read, none is expected either.
  */
 export function useSaveWorkspace(client: WorkspaceManagerClient | undefined) {
   const queryClient = useQueryClient();
@@ -265,9 +267,15 @@ export function useSaveWorkspace(client: WorkspaceManagerClient | undefined) {
         : client.createWorkspace(toCreateInput(draft, organization));
     },
     onSuccess: (workspace: Workspace, { edit }) => {
-      if (client && workspace.resourceVersion !== edit?.resourceVersion) {
+      const changed = edit
+        ? edit.resourceVersion !== undefined &&
+          workspace.resourceVersion !== edit.resourceVersion
+        : true;
+      if (client && changed) {
         awaitSync(queryClient, client.installation, workspace.name, {
+          cause: edit ? 'changed' : 'created',
           after: workspace.lastSync?.time ?? '',
+          behind: workspace.activeSync?.job,
           since: Date.now(),
         });
       }

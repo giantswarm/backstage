@@ -89,16 +89,23 @@ export function lastSyncLabel(last: LastSync): {
  * workspace says one is due.
  */
 export type AwaitedSync = {
+  /** What started it: a create, a saved change, or Synchronize. */
+  cause: 'created' | 'changed' | 'requested';
   /** The last sync's time when it was started; `''` before the first. */
   after: string;
+  /**
+   * The sync Job that ran when it was started: it ends first, and the
+   * change's own cycle starts after it.
+   */
+  behind?: string;
   /** When it was started, in this browser's milliseconds. */
   since: number;
 };
 
 /**
- * How long a sync is followed from its start. Past it the list and the page
- * stop reading again and show what they read last; coming back to the tab
- * reads once more.
+ * How long a sync the manager does not report yet is expected: past it the
+ * list and the page stop saying Synchronizing for it and stop reading again.
+ * A sync the manager reports is followed until it ends.
  */
 export const SYNC_FOLLOW_MS = 30 * 60_000;
 
@@ -108,51 +115,97 @@ export const SYNC_REFETCH_SLOW_MS = 15_000;
 const SYNC_FAST_FOR_MS = 2 * 60_000;
 
 /**
- * Whether a sync started when the last sync was `after` has ended: nothing
- * runs or waits, and the last sync is another one. The manager names a
- * requested cycle (`syncRequest`, then `activeSync`) until it records its
- * result, so no read falls between.
+ * Whether the awaited sync has ended: nothing runs or waits, and the last
+ * sync is another one than `after` and than the Job it waited `behind`. The
+ * manager names a requested cycle (`syncRequest`, then `activeSync`) until it
+ * records its result, so no read falls between.
  */
-export function syncEnded(workspace: Workspace, after: string): boolean {
+export function syncEnded(
+  workspace: Workspace,
+  { after, behind }: Pick<AwaitedSync, 'after' | 'behind'>,
+): boolean {
+  const last = workspace.lastSync;
   return (
     !workspace.activeSync &&
     !workspace.syncRequest &&
-    (workspace.lastSync?.time ?? '') !== after
+    (last?.time ?? '') !== after &&
+    !(behind && last?.job === behind)
   );
 }
 
+/** Whether an awaited sync is still expected: not ended, not given up on. */
+export function isAwaiting(
+  workspace: Workspace,
+  awaited: AwaitedSync,
+  now: number = Date.now(),
+): boolean {
+  return (
+    !workspace.deleting &&
+    now - awaited.since < SYNC_FOLLOW_MS &&
+    !syncEnded(workspace, awaited)
+  );
+}
+
+const AWAITED_VERB: Record<AwaitedSync['cause'], string> = {
+  created: 'Created',
+  changed: 'Changed',
+  requested: 'Requested',
+};
+
 /**
- * When the sync under way started, in milliseconds; `undefined` while none
- * is. Under way: one runs or waits (`activeSync`, `syncRequest`), the person
- * started one the read does not show ended, or the workspace has never
- * synchronized — the manager syncs a new workspace right away. The last two
- * only for {@link SYNC_FOLLOW_MS}, so a manager that never starts one is not
- * waited for forever.
+ * The sync under way, `undefined` while none is: one the manager reports
+ * running or waiting (`activeSync`, `syncRequest`), followed until it ends;
+ * else one only expected — the person started it and the read does not show
+ * it ended, or the workspace has never synchronized (the manager syncs a new
+ * workspace right away) — for {@link SYNC_FOLLOW_MS}. `reported` when the
+ * manager reports it or accepted the request: Synchronize waits for it.
  */
-function syncStartedAt(
+function syncUnderWay(
   workspace: Workspace,
   awaited: AwaitedSync | undefined,
   now: number,
-): number | undefined {
+):
+  | { start: number; reported: boolean; when: { verb: string; at: string } }
+  | undefined {
   if (workspace.deleting) {
     return undefined;
   }
   if (workspace.activeSync) {
-    return Date.parse(workspace.activeSync.startedAt);
+    const at = workspace.activeSync.startedAt;
+    return {
+      start: Date.parse(at),
+      reported: true,
+      when: { verb: 'Started', at },
+    };
   }
   if (workspace.syncRequest) {
-    return Date.parse(workspace.syncRequest.requestedAt);
+    const at = workspace.syncRequest.requestedAt;
+    return {
+      start: Date.parse(at),
+      reported: true,
+      when: { verb: 'Requested', at },
+    };
   }
-  if (
-    awaited &&
-    now - awaited.since < SYNC_FOLLOW_MS &&
-    !syncEnded(workspace, awaited.after)
-  ) {
-    return awaited.since;
+  if (awaited && isAwaiting(workspace, awaited, now)) {
+    return {
+      start: awaited.since,
+      reported: awaited.cause === 'requested',
+      when: {
+        verb: AWAITED_VERB[awaited.cause],
+        at:
+          awaited.cause === 'created'
+            ? workspace.createdAt
+            : new Date(awaited.since).toISOString(),
+      },
+    };
   }
   const created = Date.parse(workspace.createdAt);
   if (!workspace.lastSync && now - created < SYNC_FOLLOW_MS) {
-    return created;
+    return {
+      start: created,
+      reported: false,
+      when: { verb: 'Created', at: workspace.createdAt },
+    };
   }
   return undefined;
 }
@@ -171,46 +224,41 @@ export function syncState(
 ): {
   label: string;
   tone: SyncTone;
-  /** A sync runs, waits, or is due: the button says so and is disabled. */
+  /** A sync runs, waits, or is expected: the state says Synchronizing. */
   syncing: boolean;
+  /**
+   * The manager reports the sync, or accepted its request: Synchronize says
+   * Synchronizing… and waits. A sync only expected leaves Synchronize to the
+   * person.
+   */
+  reported: boolean;
   /** What happened when, for a state that refers to a time. */
   when?: { verb: string; at: string };
   /** The manager's own words, for a failure. */
   detail?: string;
 } {
   if (workspace.deleting) {
-    return { label: 'Deleting', tone: 'neutral', syncing: false };
-  }
-  const synchronizing = {
-    label: 'Synchronizing',
-    tone: 'info' as const,
-    syncing: true,
-  };
-  if (workspace.activeSync) {
     return {
-      ...synchronizing,
-      when: { verb: 'Started', at: workspace.activeSync.startedAt },
+      label: 'Deleting',
+      tone: 'neutral',
+      syncing: false,
+      reported: false,
     };
   }
-  if (workspace.syncRequest) {
+  const underWay = syncUnderWay(workspace, awaited, now);
+  if (underWay) {
     return {
-      ...synchronizing,
-      when: { verb: 'Requested', at: workspace.syncRequest.requestedAt },
+      label: 'Synchronizing',
+      tone: 'info',
+      syncing: true,
+      reported: underWay.reported,
+      when: underWay.when,
     };
   }
-  const started = syncStartedAt(workspace, awaited, now);
-  if (started !== undefined) {
-    return {
-      ...synchronizing,
-      when: {
-        verb: awaited?.since === started ? 'Requested' : 'Created',
-        at: new Date(started).toISOString(),
-      },
-    };
-  }
+  const settled = { syncing: false, reported: false };
   const last = workspace.lastSync;
   if (!last) {
-    return { label: 'Not synchronized yet', tone: 'neutral', syncing: false };
+    return { label: 'Not synchronized yet', tone: 'neutral', ...settled };
   }
   const { label, tone } = lastSyncLabel(last);
   switch (last.result) {
@@ -218,21 +266,21 @@ export function syncState(
       return {
         label,
         tone,
-        syncing: false,
+        ...settled,
         when: { verb: 'Synchronized', at: last.time },
       };
     case 'NoChange':
       return {
         label,
         tone,
-        syncing: false,
+        ...settled,
         when: { verb: 'Checked', at: last.time },
       };
     default:
       return {
         label,
         tone,
-        syncing: false,
+        ...settled,
         when: { verb: 'Failed', at: last.time },
         detail: last.message,
       };
@@ -241,23 +289,20 @@ export function syncState(
 
 /**
  * How soon to read a workspace again while its sync is under way: often in
- * its first minutes, less often after them, not at all past
- * {@link SYNC_FOLLOW_MS} or while none is (a deletion included).
+ * its first minutes, less often after them, not at all while none is (a
+ * deletion included). A start the browser's clock puts in the future counts
+ * from now.
  */
 export function syncRefetchInterval(
   workspace: Workspace,
   awaited: AwaitedSync | undefined,
   now: number = Date.now(),
 ): number | false {
-  const started = syncStartedAt(workspace, awaited, now);
-  if (started === undefined) {
+  const underWay = syncUnderWay(workspace, awaited, now);
+  if (!underWay) {
     return false;
   }
-  // A start the read cannot date counts from now.
-  const running = Number.isNaN(started) ? 0 : now - started;
-  if (running >= SYNC_FOLLOW_MS) {
-    return false;
-  }
+  const running = Number.isNaN(underWay.start) ? 0 : now - underWay.start;
   return running < SYNC_FAST_FOR_MS ? SYNC_REFETCH_MS : SYNC_REFETCH_SLOW_MS;
 }
 

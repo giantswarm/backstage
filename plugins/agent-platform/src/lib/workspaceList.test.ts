@@ -82,17 +82,29 @@ describe('syncState', () => {
     ).toMatchObject({
       tone: 'danger',
       syncing: false,
+      reported: false,
       detail: 'owner gone',
       when: { verb: 'Failed', at: 't' },
     });
   });
 
-  it('is synchronizing for a new workspace the manager has not taken up yet', () => {
+  it('follows a sync the manager reports for as long as it runs', () => {
+    const running = {
+      ...base,
+      activeSync: { job: 'j', startedAt: '2026-10-02T00:00:00Z' },
+    };
+    expect(
+      syncState(running, undefined, now + 2 * SYNC_FOLLOW_MS),
+    ).toMatchObject({ label: 'Synchronizing', syncing: true, reported: true });
+  });
+
+  it('expects the first sync of a new workspace for a while, without waiting Synchronize for it', () => {
     const created = { ...base, createdAt: '2026-10-02T00:00:00Z' };
     expect(syncState(created, undefined, now + 10_000)).toMatchObject({
       label: 'Synchronizing',
       syncing: true,
-      when: { verb: 'Created', at: '2026-10-02T00:00:00.000Z' },
+      reported: false,
+      when: { verb: 'Created', at: '2026-10-02T00:00:00Z' },
     });
     // Not forever: past the follow window it says what the read says.
     expect(syncState(created, undefined, now + SYNC_FOLLOW_MS)).toMatchObject({
@@ -101,13 +113,35 @@ describe('syncState', () => {
     });
   });
 
+  it('names what started an expected sync, wherever it is shown', () => {
+    const created = { ...base, createdAt: '2026-10-01T23:59:59Z' };
+    expect(
+      syncState(created, { cause: 'created', after: '', since: now }, now).when,
+    ).toEqual({ verb: 'Created', at: '2026-10-01T23:59:59Z' });
+    expect(
+      syncState(
+        { ...base, lastSync: { time: 't', result: 'Succeeded' } },
+        { cause: 'changed', after: 't', since: now },
+        now,
+      ),
+    ).toMatchObject({
+      reported: false,
+      when: { verb: 'Changed', at: '2026-10-02T00:00:00.000Z' },
+    });
+  });
+
   it('is synchronizing after the person started a sync, until a read shows it ended', () => {
     const last = { time: '2026-10-01T12:00:00Z', result: 'Succeeded' as const };
-    const awaited = { after: last.time, since: now };
-    // The read after the request does not show it yet.
+    const awaited = {
+      cause: 'requested' as const,
+      after: last.time,
+      since: now,
+    };
+    // The read after the request does not show it yet; the manager accepted
+    // it, so Synchronize waits.
     expect(
       syncState({ ...base, lastSync: last }, awaited, now + 1000),
-    ).toMatchObject({ label: 'Synchronizing', syncing: true });
+    ).toMatchObject({ label: 'Synchronizing', syncing: true, reported: true });
     // A later read shows another last sync, and nothing running.
     expect(
       syncState(
@@ -137,7 +171,7 @@ describe('syncEnded', () => {
     expect(
       syncEnded(
         { ...base, lastSync: later, syncRequest: { requestedAt: after } },
-        after,
+        { after },
       ),
     ).toBe(false);
     expect(
@@ -147,13 +181,13 @@ describe('syncEnded', () => {
           lastSync: later,
           activeSync: { job: 'j', startedAt: after },
         },
-        after,
+        { after },
       ),
     ).toBe(false);
     expect(
-      syncEnded({ ...base, lastSync: { ...later, time: after } }, after),
+      syncEnded({ ...base, lastSync: { ...later, time: after } }, { after }),
     ).toBe(false);
-    expect(syncEnded(base, '')).toBe(false);
+    expect(syncEnded(base, { after: '' })).toBe(false);
   });
 
   it('ends with another last sync, failed or not', () => {
@@ -163,7 +197,7 @@ describe('syncEnded', () => {
           ...base,
           lastSync: { time: '2026-10-01T12:05:00Z', result: 'Failed' },
         },
-        after,
+        { after },
       ),
     ).toBe(true);
     expect(
@@ -172,7 +206,39 @@ describe('syncEnded', () => {
           ...base,
           lastSync: { time: '2026-10-01T12:05:00Z', result: 'NoChange' },
         },
-        '',
+        { after: '' },
+      ),
+    ).toBe(true);
+  });
+
+  it('waits out the sync that ran when a change was saved, for the change’s own', () => {
+    const awaited = { after, behind: 'sync-1' };
+    // The sync that ran at the save ended…
+    expect(
+      syncEnded(
+        {
+          ...base,
+          lastSync: {
+            time: '2026-10-01T12:05:00Z',
+            result: 'Succeeded',
+            job: 'sync-1',
+          },
+        },
+        awaited,
+      ),
+    ).toBe(false);
+    // …then the change's own.
+    expect(
+      syncEnded(
+        {
+          ...base,
+          lastSync: {
+            time: '2026-10-01T12:07:00Z',
+            result: 'Succeeded',
+            job: 'sync-2',
+          },
+        },
+        awaited,
       ),
     ).toBe(true);
   });
@@ -183,16 +249,17 @@ describe('syncRefetchInterval', () => {
   const start = Date.parse(startedAt);
   const running = { ...base, activeSync: { job: 'j', startedAt } };
 
-  it('reads often at first, then less often, then stops', () => {
+  it('reads a sync the manager reports often at first, then less often, until it ends', () => {
     expect(syncRefetchInterval(running, undefined, start + 1000)).toBe(
       SYNC_REFETCH_MS,
     );
     expect(syncRefetchInterval(running, undefined, start + 5 * 60_000)).toBe(
       SYNC_REFETCH_SLOW_MS,
     );
+    // A long sync, or a browser clock ahead of the manager's.
     expect(
-      syncRefetchInterval(running, undefined, start + SYNC_FOLLOW_MS),
-    ).toBe(false);
+      syncRefetchInterval(running, undefined, start + 2 * SYNC_FOLLOW_MS),
+    ).toBe(SYNC_REFETCH_SLOW_MS);
   });
 
   it('does not read again while nothing syncs, a deletion included', () => {
@@ -206,17 +273,23 @@ describe('syncRefetchInterval', () => {
     ).toBe(false);
   });
 
-  it('follows a new workspace and a sync the person started', () => {
+  it('follows a new workspace and a sync the person started, for a while', () => {
+    const created = { ...base, createdAt: startedAt };
+    expect(syncRefetchInterval(created, undefined, start)).toBe(
+      SYNC_REFETCH_MS,
+    );
     expect(
-      syncRefetchInterval({ ...base, createdAt: startedAt }, undefined, start),
-    ).toBe(SYNC_REFETCH_MS);
-    expect(
-      syncRefetchInterval(
-        { ...base, lastSync: { time: 'x', result: 'Succeeded' } },
-        { after: 'x', since: start },
-        start,
-      ),
-    ).toBe(SYNC_REFETCH_MS);
+      syncRefetchInterval(created, undefined, start + SYNC_FOLLOW_MS),
+    ).toBe(false);
+    const changed = {
+      ...base,
+      lastSync: { time: 'x', result: 'Succeeded' as const },
+    };
+    const awaited = { cause: 'changed' as const, after: 'x', since: start };
+    expect(syncRefetchInterval(changed, awaited, start)).toBe(SYNC_REFETCH_MS);
+    expect(syncRefetchInterval(changed, awaited, start + SYNC_FOLLOW_MS)).toBe(
+      false,
+    );
   });
 });
 
@@ -258,7 +331,7 @@ describe('workspacesRefetchInterval', () => {
     expect(
       workspacesRefetchInterval(
         [settled],
-        () => ({ after: 't', since: now }),
+        () => ({ cause: 'changed', after: 't', since: now }),
         now,
       ),
     ).toBe(SYNC_REFETCH_MS);
