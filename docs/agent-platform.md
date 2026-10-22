@@ -1721,7 +1721,7 @@ session with large messages. When it stopped early it answers with the
 the tasks returned, saves no file and points to agent-manager's
 `get_session`. A session whose context id differs from its id (an older
 controller's) is refused too, since its tasks cannot be listed. The file is
-written unindented with `saveFile` (`ui-react`), which the manifest review's
+written indented by two spaces with `saveFile` (`ui-react`), which the manifest review's
 Download and muster's tool result use too. A saved export reports
 `AgentPlatform.sessionExported` with its task count in coarse buckets.
 

@@ -89,10 +89,10 @@ export function useExportSession({
           installation,
           new Date(),
         );
-        // Unindented: a session with images runs to megabytes, and readers
-        // parse the file rather than read it.
+        // Indented: people read the file in editors and diffs, and tools
+        // parse either form (`jq -c` makes it compact).
         saveFile(
-          JSON.stringify(sessionExport),
+          JSON.stringify(sessionExport, null, 2),
           sessionExportFileName(agentName, sessionId),
           'application/json',
         );

@@ -8,7 +8,8 @@ after the fact.
 
 ## The file
 
-One JSON object with five keys:
+One JSON object with five keys, indented by two spaces for reading in an
+editor or a diff (`jq -c` makes it compact):
 
 ```json
 {

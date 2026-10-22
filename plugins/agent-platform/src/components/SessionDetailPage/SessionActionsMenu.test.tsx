@@ -763,6 +763,8 @@ describe('SessionActionsMenu — Export session', () => {
     expect(contentType).toBe('application/json');
 
     const saved = JSON.parse(content);
+    // Indented by two spaces, for reading in an editor or a diff.
+    expect(content).toBe(JSON.stringify(saved, null, 2));
     expect(Object.keys(saved)).toEqual([
       'formatVersion',
       'exportedAt',
