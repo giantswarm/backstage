@@ -56,6 +56,8 @@ export type {
 } from './hooks';
 export {
   authStatusQueryKey,
+  connectingPollInterval,
+  isConnecting,
   isSsoRefused,
   isSsoServer,
   needsSignIn,

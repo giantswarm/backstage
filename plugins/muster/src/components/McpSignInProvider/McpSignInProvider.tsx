@@ -13,7 +13,7 @@ import { QueryClientProvider } from '../QueryClientProvider';
 import { useMcpServersAwaitingSignIn } from '../McpAuthDialog/useMcpServersAwaitingSignIn';
 import { useServerLabels } from '../McpAuthDialog/useServerLabels';
 import { useSignInInstallation } from './useSignInInstallation';
-import { useSettledWaiting } from './useSettledWaiting';
+import { useSettledWaiting } from './hooks';
 
 // Loaded on the first sign-in only: the provider is mounted on every shell
 // page, the dialog (and its per-server sign-in) is rarely opened.
@@ -105,6 +105,7 @@ function StatusReader({
     sessionExpired,
     connecting,
     readAt,
+    answeredAt,
     refetch,
   } = useMcpServersAwaitingSignIn(installation, {
     enabled: Boolean(installation),
@@ -115,6 +116,8 @@ function StatusReader({
     waiting: reported,
     connecting,
     readAt,
+    answeredAt,
+    sessionExpired,
     refetch,
   });
   const labelOf = useServerLabels(installation, waiting, {

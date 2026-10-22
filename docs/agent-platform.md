@@ -166,7 +166,10 @@ Connectors list ("Sign in needed", "Sign-in expired", with its Sign in) and on
 its Tools tab, which offers the sign-in in place of the hidden tools. A
 connector that comes with the portal sign-in (muster's `kind: sso`, token
 forwarding or exchange) never asks for one, since there is nothing to sign in
-to. One that refused that sign-in (muster's `sso_attempt_failed` while it is
+to. While muster still connects it (`sso_pending`) it reads "Connecting" and
+counts as not connected, and the sign-in status is re-read every 2 seconds
+(`connectingPollInterval`) until the connect settles. One that refused that
+sign-in (muster's `sso_attempt_failed` while it is
 not connected in this session, `auth_required` or `reauth_required`) reads
 "Cannot connect" in the list, its reason in the hint, and its Tools tab says
 that the connector cannot connect for the person, that an administrator needs
@@ -1434,14 +1437,16 @@ mounted once per shell, around the rail, and shows nothing on classic pages.
   fresh portal load, while muster is still connecting the session's servers,
   raises nothing for servers that connect a moment later: not while muster
   reports a server still connecting (`sso_pending`), for at most a minute
-  (`SETTLE_WINDOW_MS`), and only when a second read about five seconds later
-  (`SETTLE_REREAD_MS`) still has the same servers waiting; the reads follow each
-  other that quickly only while the status is unsettled. A server that stops
-  waiting leaves at once. The dialog reads the status again when it opens and
+  (`SETTLE_WINDOW_MS`), and only when a read at least three seconds after the
+  first to report the same servers waiting still does. While a server is
+  connecting the status read itself polls every 2 seconds; otherwise, while the
+  status is unsettled, it is re-read every five seconds (`SETTLE_REREAD_MS`),
+  never while the reads fail or the portal session is gone. A server that stops
+  waiting leaves at once. The dialog reads the status once when it opens and
   counts from that read. It lists a provider App (the person's GitHub or
-  ChatGPT grant) only while it needs a sign-in, with its Sign in, and counts it
-  with the servers; a connected App is disconnected on the Profile page's
-  Connections. A sign-in finished in the dialog or on a muster page removes the
+  ChatGPT grant) only while it needs a sign-in, with its Connect, and counts it
+  with the servers; an App connected there reads Connected without Disconnect,
+  which is on the Profile page's Connections. A sign-in finished in the dialog or on a muster page removes the
   row through the same read. Only the home installation is read, and the dialog
   opens only for it: another installation's muster needs a brokered token, and
   its servers are signed in to where they are used. The row replaces muster's

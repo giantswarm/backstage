@@ -65,7 +65,131 @@ async function renderDialog(
   return queryClient;
 }
 
+function Harness({
+  api,
+  queryClient,
+  isOpen,
+}: {
+  api: Api;
+  queryClient: QueryClient;
+  isOpen: boolean;
+}) {
+  return (
+    <TestApiProvider apis={[[musterApiRef, api]]}>
+      <QueryClientProvider client={queryClient}>
+        <McpAuthDialog
+          isOpen={isOpen}
+          onOpenChange={() => {}}
+          installation="graveler"
+        />
+      </QueryClientProvider>
+    </TestApiProvider>
+  );
+}
+
 describe('McpAuthDialog', () => {
+  it('reads the status once per opening', async () => {
+    const api = makeApi({
+      servers: [status('workspace-manager', 'auth_required')],
+    });
+    await renderDialog(api, undefined, undefined, client =>
+      client.setQueryData(
+        ['muster', 'auth-status', 'graveler'],
+        { servers: [status('workspace-manager', 'auth_required')] },
+        { updatedAt: Date.now() - 60_000 },
+      ),
+    );
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'One MCP server needs your sign-in',
+    );
+    expect(api.getAuthStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts from the new opening’s read when it is kept mounted and opened again', async () => {
+    const response: AuthStatusResponse = {
+      servers: [
+        status('workspace-manager', 'auth_required'),
+        status('cluster-manager', 'auth_required'),
+      ],
+    };
+    const api = makeApi(response);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { rerender } = await renderInTestApp(
+      <Harness api={api} queryClient={queryClient} isOpen />,
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      '2 MCP servers need your sign-in',
+    );
+
+    rerender(<Harness api={api} queryClient={queryClient} isOpen={false} />);
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    // cluster-manager was signed in to elsewhere meanwhile.
+    response.servers = [
+      status('workspace-manager', 'auth_required'),
+      status('cluster-manager', 'connected'),
+    ];
+    rerender(<Harness api={api} queryClient={queryClient} isOpen />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'One MCP server needs your sign-in',
+      ),
+    );
+    const list = screen.getByRole('list', { name: 'MCP servers' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(list).not.toHaveTextContent('cluster-manager');
+  });
+
+  it('turns an App connected in the dialog Connected, without Disconnect', async () => {
+    const response: AuthStatusResponse = {
+      servers: [],
+      providerApps: [{ name: 'chatgpt', status: 'auth_required' }],
+    };
+    const queryClient = await renderDialog(makeApi(response), [], ['chatgpt']);
+    const apps = await screen.findByRole('list', { name: 'Connections' });
+    expect(
+      within(apps).getByRole('button', { name: 'Connect' }),
+    ).toBeInTheDocument();
+
+    response.providerApps = [{ name: 'chatgpt', status: 'connected' }];
+    await queryClient.invalidateQueries({ queryKey: ['muster'] });
+
+    await waitFor(() =>
+      expect(within(apps).getByText('✓ Connected')).toBeInTheDocument(),
+    );
+    expect(
+      within(apps).queryByRole('button', { name: 'Disconnect' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('takes muster’s kind over the SSO flags where it sends one', async () => {
+    await renderDialog(
+      makeApi({
+        servers: [
+          // A grant server that also forwards the sign-in: it needs the grant.
+          {
+            ...status('workspace-manager', 'auth_required'),
+            kind: 'grant',
+            token_forwarding_enabled: true,
+          },
+          // An SSO server marked by its kind alone.
+          { name: 'mcp-kubernetes', status: 'connected', kind: 'sso' },
+        ],
+      }),
+    );
+
+    const list = await screen.findByRole('list', { name: 'MCP servers' });
+    expect(list).toHaveTextContent('workspace-manager');
+    expect(
+      screen.getByText('1 more server comes with your portal sign-in.'),
+    ).toBeInTheDocument();
+  });
+
   it('turns a row Connected when its sign-in lands, keeping the row', async () => {
     const response: AuthStatusResponse = {
       servers: [

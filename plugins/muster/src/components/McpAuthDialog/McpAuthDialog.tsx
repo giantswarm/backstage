@@ -11,10 +11,11 @@ import {
   Text,
 } from '@backstage/ui';
 import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
-import { ServerSignIn } from '../shared';
+import { isSsoServer, ServerSignIn } from '../shared';
 import { ProviderAppList } from '../ProviderAppSignIn/ProviderAppList';
 import { useMcpServersAwaitingSignIn } from './useMcpServersAwaitingSignIn';
 import { useServerLabels } from './useServerLabels';
+import { useOpenRows } from './hooks';
 
 const useStyles = makeStyles((theme: Theme) => ({
   list: {
@@ -64,30 +65,6 @@ const SIGN_IN_HINTS: Record<string, string> = {
 };
 
 /**
- * The names a list shows while the dialog is open: those waiting when it
- * opened, plus any that start to wait while it is, so a finished sign-in
- * turns its row connected instead of making it vanish.
- */
-function useOpenRows(isOpen: boolean, waiting: string[]): string[] {
-  const [rows, setRows] = useState<string[]>([]);
-  const waitingKey = waiting.join('\n');
-  // Merged while rendering too, so the read that brings a row and the count
-  // that names it land in the same frame.
-  const shown = useMemo(() => {
-    if (!isOpen) {
-      return [];
-    }
-    const now = waitingKey ? waitingKey.split('\n') : [];
-    const added = now.filter(name => !rows.includes(name));
-    return added.length > 0 ? [...rows, ...added].sort() : rows;
-  }, [isOpen, rows, waitingKey]);
-  useEffect(() => {
-    setRows(isOpen ? shown : []);
-  }, [isOpen, shown]);
-  return shown;
-}
-
-/**
  * The dialog's count of what still needs a sign-in: the MCP servers and the
  * connections (provider Apps) listed, in one sentence.
  */
@@ -120,7 +97,8 @@ export type McpAuthDialogProps = {
   servers?: string[];
   /**
    * The provider Apps to offer, by name (`chatgpt` for the person's ChatGPT
-   * subscription). Without it, every App muster keeps a grant of.
+   * subscription), each while it needs a sign-in. Without it, every App
+   * muster keeps a grant of that needs one.
    */
   apps?: string[];
 };
@@ -129,9 +107,12 @@ export type McpAuthDialogProps = {
  * One place to sign in to the MCP servers that wait for the person and to
  * connect the person's provider Apps: a row per server with its state and
  * muster's sign-in (`core_auth_login`, in a new tab), and a row per provider
- * App muster keeps (connected or not, see {@link ProviderAppSignIn}). The rows are the servers that waited when the dialog opened, so a
- * finished sign-in turns its row *Connected* instead of making it vanish; the
- * servers that come with the portal sign-in are summarised in one line.
+ * App that needs a sign-in, with its Connect (see {@link ProviderAppSignIn});
+ * a connected App is disconnected on the Profile page, not here. The rows and
+ * the count come from a read when the dialog opens, and are what waited
+ * then, so a finished sign-in turns its row *Connected* instead of making it
+ * vanish; the servers that come with the portal sign-in are summarised in one
+ * line.
  */
 export function McpAuthDialog({
   isOpen,
@@ -152,19 +133,27 @@ export function McpAuthDialog({
     servers,
     apps,
     enabled: isOpen,
+    // Read once per opening, below, not once more when it mounts.
+    refetchOnMount: false,
   });
 
   // The count is the status as it is now, not the one the inbox raised its
-  // row from: a fresh read when the dialog opens, and the rows wait for it.
-  const [openedAt, setOpenedAt] = useState(() => (isOpen ? Date.now() : 0));
+  // row from: a read when the dialog opens, and the rows wait for it. The
+  // opening is noted while rendering, so the first render of a new opening
+  // never takes the previous one's answer for fresh.
+  const [opening, setOpening] = useState(() => ({
+    isOpen,
+    at: isOpen ? Date.now() : Infinity,
+  }));
+  if (opening.isOpen !== isOpen) {
+    setOpening({ isOpen, at: isOpen ? Date.now() : Infinity });
+  }
+  const openedAt = opening.at;
   useEffect(() => {
-    if (isOpen) {
-      setOpenedAt(Date.now());
+    if (openedAt !== Infinity) {
       refetch();
     }
-    // Once per opening; `refetch` follows each answer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [openedAt, refetch]);
   const isFresh = isOpen && answeredAt >= openedAt;
   const isLoading = isFirstRead || !isFresh;
   const waiting = useMemo(() => (isFresh ? reported : []), [isFresh, reported]);
@@ -197,7 +186,7 @@ export function McpAuthDialog({
   const withSignIn = statuses.filter(
     status =>
       status.status === 'connected' &&
-      (status.token_forwarding_enabled || status.token_exchange_enabled) &&
+      isSsoServer(status) &&
       !rows.includes(status.name),
   ).length;
 
@@ -254,6 +243,7 @@ export function McpAuthDialog({
                 <ProviderAppList
                   apps={listedApps}
                   installation={installation}
+                  canDisconnect={false}
                 />
               )}
               {rows.length > 0 && (

@@ -59,12 +59,26 @@ describe('settleWaiting', () => {
     expect(held.unsettledSince).toBe(0);
   });
 
-  it('stops holding back past the window, when two reads agree', () => {
+  it('raises a set held back throughout on the read that ends the window', () => {
+    const held = reads(
+      { waiting: ['a'], connecting: true, at: 0 },
+      { waiting: ['a'], connecting: true, at: SETTLE_WINDOW_MS - 5_000 },
+    );
+    expect(held.settled).toEqual([]);
+    expect(
+      settleWaiting(held, {
+        waiting: ['a'],
+        connecting: true,
+        at: SETTLE_WINDOW_MS,
+      }).settled,
+    ).toEqual(['a']);
+  });
+
+  it('confirms a set first seen while muster was connecting once it is done', () => {
     expect(
       reads(
         { waiting: ['a'], connecting: true, at: 0 },
-        { waiting: ['a'], connecting: true, at: SETTLE_WINDOW_MS },
-        { waiting: ['a'], connecting: true, at: SETTLE_WINDOW_MS + 5_000 },
+        { waiting: ['a'], at: 5_000 },
       ).settled,
     ).toEqual(['a']);
   });

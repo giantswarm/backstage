@@ -49,6 +49,7 @@ import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
   authStatusQueryKey,
+  connectingPollInterval,
   deactivatedSignInGate,
   isSsoRefused,
   needsSignIn,
@@ -358,6 +359,7 @@ function ConnectorsTable({
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: hasSession,
+    refetchInterval: query => connectingPollInterval(query.state.data),
   });
 
   // Every sub-tab's rows, muster's own among the internal ones: the search

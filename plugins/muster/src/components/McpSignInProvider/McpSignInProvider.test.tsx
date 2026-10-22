@@ -11,8 +11,9 @@ import {
   sessionExpiredError,
 } from '../../apis';
 import { McpSignInProvider, useMcpSignIn } from './McpSignInProvider';
+import { CONNECTING_POLL_INTERVAL_MS } from '../shared/useServerSignIn';
 import type { SignInInstallation } from './useSignInInstallation';
-import { SETTLE_REREAD_MS } from './useSettledWaiting';
+import { SETTLE_REREAD_MS, SETTLE_WINDOW_MS } from './hooks/useSettledWaiting';
 import { MCPServer } from '../../lib/k8s';
 
 /** The installation's MCPServers, per test; none by default. */
@@ -303,7 +304,7 @@ describe('McpSignInProvider', () => {
       ]);
     });
 
-    it('raises the waiting servers once muster has finished connecting', async () => {
+    it('raises the waiting servers a few seconds after muster finished connecting, when the reads agree', async () => {
       const api = readsOf(
         {
           servers: [waitingFor('workspace-manager'), pending('mcp-kubernetes')],
@@ -312,13 +313,81 @@ describe('McpSignInProvider', () => {
       );
       await renderProvider(api);
 
-      await settle();
-      // Settled now, but seen once only since muster finished.
+      await waitFor(() => expect(status().isRead).toBe(true));
+      // Held back while muster is connecting; its 2 s re-read, which finds
+      // it done, is too close to the first to confirm.
       expect(status().waiting).toEqual([]);
+      await reread();
+      expect(status().connected).toEqual(['mcp-kubernetes']);
+      expect(status().waiting).toEqual([]);
+      // The settling's own re-read, a few seconds later, confirms it.
       await reread();
       expect(status().waiting).toEqual([
         { name: 'workspace-manager', label: 'workspace-manager' },
       ]);
+    });
+
+    it('raises a waiting server within about a minute while muster keeps a server connecting', async () => {
+      const api = readsOf({
+        servers: [waitingFor('workspace-manager'), pending('mcp-kubernetes')],
+      });
+      await renderProvider(api);
+      await waitFor(() => expect(status().isRead).toBe(true));
+
+      // The window's re-reads, every few seconds, hold it back.
+      for (let i = 0; i < SETTLE_WINDOW_MS / SETTLE_REREAD_MS - 1; i++) {
+        await reread();
+        expect(status().waiting).toEqual([]);
+      }
+      // The read that ends the window raises it, not the 5-minute one.
+      await reread();
+      expect(status().waiting).toEqual([
+        { name: 'workspace-manager', label: 'workspace-manager' },
+      ]);
+    });
+
+    it('reads every 2 s while muster is connecting, with no second timer, and raises nothing meanwhile', async () => {
+      const api = readsOf({
+        servers: [waitingFor('workspace-manager'), pending('mcp-kubernetes')],
+      });
+      await renderProvider(api);
+      await waitFor(() => expect(status().isRead).toBe(true));
+      const first = api.getAuthStatus.mock.calls.length;
+
+      await act(() =>
+        jest.advanceTimersByTimeAsync(5 * CONNECTING_POLL_INTERVAL_MS),
+      );
+      await act(() => jest.advanceTimersByTimeAsync(10));
+      expect(api.getAuthStatus.mock.calls.length - first).toBe(5);
+      expect(status().waiting).toEqual([]);
+    });
+
+    it('stops re-reading quickly while the reads fail', async () => {
+      const api = readsOf({ servers: [waitingFor('workspace-manager')] });
+      await renderProvider(api);
+      await waitFor(() => expect(status().isRead).toBe(true));
+      api.getAuthStatus.mockRejectedValue(new Error('502 Bad Gateway'));
+
+      await reread();
+      const reads = api.getAuthStatus.mock.calls.length;
+      for (let i = 0; i < 6; i++) {
+        await reread();
+      }
+      expect(api.getAuthStatus).toHaveBeenCalledTimes(reads);
+    });
+
+    it('stops re-reading quickly once the portal session is gone', async () => {
+      const api = readsOf({ servers: [waitingFor('workspace-manager')] });
+      await renderProvider(api);
+      await waitFor(() => expect(status().isRead).toBe(true));
+      api.getAuthStatus.mockRejectedValue(sessionExpiredError('graveler'));
+
+      await reread();
+      const reads = api.getAuthStatus.mock.calls.length;
+      for (let i = 0; i < 6; i++) {
+        await reread();
+      }
+      expect(api.getAuthStatus).toHaveBeenCalledTimes(reads);
     });
   });
 

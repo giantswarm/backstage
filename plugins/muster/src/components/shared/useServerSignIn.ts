@@ -35,6 +35,9 @@ const DEFAULT_POLL_TIMEOUT_MS = 15 * 60 * 1_000;
 const MUSTER_STATE_TTL_MS = 10 * 60 * 1_000;
 const DEFAULT_AUTH_URL_LIFETIME_MS = MUSTER_STATE_TTL_MS - 60 * 1_000;
 
+/** How long a status read counts as fresh for a row that mounts after it. */
+const STATUS_FRESH_MS = 2_000;
+
 /** Statuses that mean the user themselves can still act (sign in). */
 const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
   'auth_required',
@@ -43,13 +46,16 @@ const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
 
 /**
  * Whether the server comes with the person's muster sign-in (token forwarding
- * or exchange): there is nothing of its own to sign in to.
+ * or exchange): there is nothing of its own to sign in to. muster's `kind`
+ * decides where it is sent; an older muster without it says so through the
+ * two flags.
  */
 export function isSsoServer(status: ServerAuthStatus): boolean {
+  if (status.kind !== undefined) {
+    return status.kind === 'sso';
+  }
   return Boolean(
-    status.kind === 'sso' ||
-    status.token_forwarding_enabled ||
-    status.token_exchange_enabled,
+    status.token_forwarding_enabled || status.token_exchange_enabled,
   );
 }
 
@@ -76,6 +82,31 @@ export function isSsoRefused(status: ServerAuthStatus): boolean {
     Boolean(status.sso_attempt_failed) &&
     NEEDS_LOGIN.includes(status.status)
   );
+}
+
+/**
+ * Whether muster is still connecting the server with the person's portal
+ * sign-in (`sso_pending`): its connect after a sign-in runs in the background
+ * and settles within seconds, nothing waits for the person.
+ */
+export function isConnecting(status: ServerAuthStatus): boolean {
+  return status.status === 'sso_pending';
+}
+
+/** How often `auth://status` is re-read while a server is connecting. */
+export const CONNECTING_POLL_INTERVAL_MS = 2_000;
+
+/**
+ * The re-read interval while muster still connects one of the person's
+ * servers, else false: a status read in the seconds after a sign-in settles
+ * without a reload.
+ */
+export function connectingPollInterval(
+  data: AuthStatusResponse | undefined,
+): number | false {
+  return data?.servers?.some(isConnecting)
+    ? CONNECTING_POLL_INTERVAL_MS
+    : false;
 }
 
 /** The per-installation `auth://status` read every sign-in affordance shares. */
@@ -373,6 +404,10 @@ export function useServerSignIn(
     queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: Boolean(installation),
+    // A row that mounts right after a read (the sign-in dialog's rows, drawn
+    // from the read it made on opening) does not read it again; polling,
+    // focus and invalidation re-read regardless.
+    staleTime: STATUS_FRESH_MS,
     // A provider App's code outstanding is a wait too, also one this tab did
     // not start (asked for before a reload, or in another tab).
     refetchInterval: query =>
