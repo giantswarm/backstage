@@ -128,10 +128,21 @@ test('Customize’s tab strip scrolls sideways with fades, the underline under t
   const tablist = admin.getByRole('main').getByRole('tablist').first();
   await expect(tablist.getByRole('tab')).toHaveCount(6);
   // The counts arrive with the data: measured before them, the six bare
-  // labels can just fit.
-  for (const tab of await tablist.getByRole('tab').all()) {
+  // labels can just fit. Workspaces counts only what it could read: without
+  // the person's sign-in to workspace-manager in muster (a GitHub App grant
+  // the suite cannot give) it carries no count, not "(0)" — checked on its
+  // own tab below.
+  const counted = tablist
+    .getByRole('tab')
+    .filter({ hasNotText: /^Workspaces/ });
+  await expect(counted).toHaveCount(5);
+  for (const tab of await counted.all()) {
     await expect(tab).toHaveText(/\(\d+\)$/, { timeout: 60_000 });
   }
+  await expect(
+    tablist.getByRole('tab', { name: /^Workspaces/ }).locator('[data-count]'),
+    'the Workspaces count is read or left out, not loading',
+  ).toHaveCount(0, { timeout: 60_000 });
   const strip = stripOf(tablist);
 
   const geometry = () =>
@@ -195,6 +206,22 @@ test('Customize’s tab strip scrolls sideways with fades, the underline under t
     await open(admin, `/customize/${tab}`);
     await expectNoHorizontalScroll(admin, `Customize · ${tab}`);
   }
+
+  // On its own tab: a count once the person's workspaces are read, none while
+  // the sign-in to workspace-manager stands in the way.
+  const main = admin.getByRole('main');
+  const workspacesTab = main
+    .getByRole('tablist')
+    .first()
+    .getByRole('tab', { name: /^Workspaces/ });
+  await expect(workspacesTab.locator('[data-count]')).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  await expect(workspacesTab).toHaveText(
+    (await main.getByTestId('workspaces-sign-in').isVisible())
+      ? /^Workspaces$/
+      : /^Workspaces \(\d+\)$/,
+  );
 });
 
 test('Usage’s tabs and pages fit a phone', async ({ admin }) => {
