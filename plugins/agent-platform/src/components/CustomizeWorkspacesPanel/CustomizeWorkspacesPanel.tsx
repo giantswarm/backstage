@@ -89,10 +89,11 @@ function StoredCell({ row }: { row: WorkspaceRow }) {
 
 /**
  * The sync's state now, or the last cycle's result: the dot and its label,
- * and behind the info hint when it happened and the manager's words.
+ * and behind the info hint when it happened and the manager's words. The
+ * workspace's page and its Synchronize button say the same (`syncState`).
  */
 function LastSyncCell({ row }: { row: WorkspaceRow }) {
-  const state = syncState(row);
+  const state = syncState(row, row.awaitedSync);
   return (
     <Cell>
       <span
@@ -131,21 +132,28 @@ function RowActions({ row }: { row: WorkspaceRow }) {
   });
   const [isDeleteOpen, setDeleteOpen] = useState(false);
 
+  // As the page's Synchronize: it waits for a sync the manager reports, not
+  // for one only expected.
+  const { reported } = syncState(row, row.awaitedSync);
+
   const syncNow = () =>
-    sync.mutate(undefined, {
-      onSuccess: () =>
-        toastApi.post({
-          title: `Synchronization of ${row.name} requested`,
-          status: 'success',
-          timeout: TOAST_TIMEOUT_MS,
-        }),
-      onError: error =>
-        toastApi.post({
-          title: `${row.name} could not be synchronized`,
-          description: error.message,
-          status: 'danger',
-        }),
-    });
+    sync.mutate(
+      { after: row.lastSync?.time ?? '' },
+      {
+        onSuccess: () =>
+          toastApi.post({
+            title: `Synchronization of ${row.name} requested`,
+            status: 'success',
+            timeout: TOAST_TIMEOUT_MS,
+          }),
+        onError: error =>
+          toastApi.post({
+            title: `${row.name} could not be synchronized`,
+            description: error.message,
+            status: 'danger',
+          }),
+      },
+    );
 
   const confirmDelete = () =>
     remove.mutate(undefined, {
@@ -178,7 +186,7 @@ function RowActions({ row }: { row: WorkspaceRow }) {
           </MenuItem>
           <MenuItem
             iconStart={<SyncIcon />}
-            isDisabled={row.deleting || sync.isPending}
+            isDisabled={row.deleting || reported || sync.isPending}
             onAction={syncNow}
           >
             Synchronize…

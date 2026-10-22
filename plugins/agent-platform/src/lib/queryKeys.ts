@@ -390,6 +390,16 @@ export function musterWorkspaceQueryKey(installation: string, name: string) {
 }
 
 /**
+ * The syncs the person started on this page load (a create, an edit,
+ * Synchronize), by workspace row id: kept in the cache, written by the writes
+ * and read by the list and the workspace's page, so both say Synchronizing
+ * before the manager's reads do. Nothing fetches it.
+ */
+export function musterWorkspaceSyncsAwaitedQueryKey() {
+  return ['muster', 'agent-platform', 'workspace-syncs-awaited'] as const;
+}
+
+/**
  * The last pushes of a workspace's repositories as of its last sync
  * (`preview_workspace`): a sibling of the workspace's key, so re-reading the
  * workspace after Sync now or Delete leaves the provider previews alone.

@@ -10,7 +10,6 @@ import type {
   LastSync,
   SessionDirectory,
   SyncTrigger,
-  Workspace,
   WorkspaceMirror,
   WorkspacePreview,
 } from './workspaceManager';
@@ -76,28 +75,6 @@ export function lastSyncResult(last: LastSync): {
           : 'The mirrors stay as they were; no reason was given.',
       };
   }
-}
-
-/** Whether a sync runs or waits to run: the page reads it again soon. */
-export function isSyncing(workspace: Workspace): boolean {
-  return Boolean(workspace.activeSync || workspace.syncRequest);
-}
-
-/**
- * Whether the sync a person asked for at `requestedAt` (the manager's time)
- * has ended: nothing runs or waits any more, and the last cycle ended after
- * the request. The manager writes both in whole seconds, and a cycle takes
- * longer than one, so a cycle that ended in the request's second is the one
- * before it.
- */
-export function requestedSyncEnded(
-  workspace: Workspace,
-  requestedAt: string,
-): boolean {
-  if (isSyncing(workspace) || !workspace.lastSync) {
-    return false;
-  }
-  return Date.parse(workspace.lastSync.time) > Date.parse(requestedAt);
 }
 
 /** A mirror's key across provider instances. */
