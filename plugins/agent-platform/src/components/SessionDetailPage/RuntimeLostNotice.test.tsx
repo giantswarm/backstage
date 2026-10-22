@@ -60,7 +60,7 @@ describe('RuntimeLostNotice', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Send again to retry\. If it fails again, continue in a new session with Grill master\./,
+        /Send again to retry, or continue in a new session with Grill master\./,
       ),
     ).toBeInTheDocument();
     // No words from the runtime, and no second count of the attempts.

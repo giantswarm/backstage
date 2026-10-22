@@ -591,10 +591,15 @@ describe('useSendMessage', () => {
         });
       }
 
-      it('counts them in a row against the newest turn', async () => {
+      beforeEach(() => {
+        // The history read that checks the message: a settled turn, and not
+        // the message.
+        listSessionTasks.mockResolvedValue([settledTask('turn-1')]);
+      });
+
+      it('counts them in a row against the history the check read', async () => {
         streamMessage.mockRejectedValue(firstEventTimeout());
-        const { result, queryClient } = renderWith();
-        queryClient.setQueryData(TASKS_KEY, [settledTask('turn-1')]);
+        const { result } = renderWith();
 
         await send(result);
         expect(result.current.timeouts).toEqual({
@@ -609,15 +614,58 @@ describe('useSendMessage', () => {
         });
       });
 
-      it('re-reads the session and its conversation after each one', async () => {
-        // A `RUNTIME_LOST` kagent recorded since takes the reported path.
+      it('puts that read in the cache and re-reads the session', async () => {
+        // A `RUNTIME_LOST` kagent recorded since takes the reported path; the
+        // conversation was just read, and is not read twice.
         streamMessage.mockRejectedValue(firstEventTimeout());
-        const { result, invalidateQueries } = renderWith();
+        const { result, invalidateQueries, queryClient } = renderWith();
 
         await send(result);
 
+        expect(queryClient.getQueryData(TASKS_KEY)).toEqual([
+          settledTask('turn-1'),
+        ]);
         expect(invalidationFor(invalidateQueries, SESSION_KEY)).toBeDefined();
-        expect(invalidationFor(invalidateQueries, TASKS_KEY)).toBeDefined();
+        expect(invalidationFor(invalidateQueries, TASKS_KEY)).toBeUndefined();
+        expect(listSessionTasks).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not count one whose check could not read the history', async () => {
+        // "Cannot tell" is not "did not land": a slow kagent API fails both.
+        streamMessage.mockRejectedValue(firstEventTimeout());
+        listSessionTasks.mockRejectedValue(new Error('timed out'));
+        const { result } = renderWith();
+
+        await send(result);
+        await send(result);
+
+        expect(result.current.error).not.toBeNull();
+        expect(result.current.timeouts).toBeUndefined();
+      });
+
+      it('reads as nothing while the retry is in flight', async () => {
+        streamMessage.mockRejectedValueOnce(firstEventTimeout());
+        let release: () => void = () => {};
+        streamMessage.mockImplementationOnce(
+          () =>
+            new Promise<void>((_, reject) => {
+              release = () => reject(firstEventTimeout());
+            }),
+        );
+        const { result } = renderWith();
+        await send(result);
+        expect(result.current.timeouts?.count).toBe(1);
+
+        act(() => {
+          void result.current.sendMessage('again').catch(() => {});
+        });
+        await waitFor(() => expect(result.current.isSending).toBe(true));
+        expect(result.current.timeouts).toBeUndefined();
+
+        await act(async () => {
+          release();
+        });
+        await waitFor(() => expect(result.current.timeouts?.count).toBe(2));
       });
 
       it('ends the run once a send lands', async () => {

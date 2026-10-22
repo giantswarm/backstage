@@ -64,12 +64,13 @@ export type PendingMessage = {
  * timeline.
  *
  * **Sends that keep timing out are counted** ({@link SendTimeouts}): a send the
- * backend gave up on before kagent's first event, whose message did not land,
- * adds one; any other outcome ends the run. A runtime that crashes on every
- * restore shows nowhere else — the session stays ready and the sends never
- * become turns — so the page reads the run (`readSendTimeoutRuntimeLoss`).
- * Each such failure also re-reads the session and its conversation, so a
- * `RUNTIME_LOST` kagent has recorded since takes the reported path.
+ * backend gave up on before kagent's first event, whose message the session
+ * history confirms did not land, adds one; any other outcome ends the run. A
+ * runtime that crashes on every restore shows nowhere else — the session stays
+ * ready and the sends never become turns — so the page reads the run
+ * (`readSendTimeoutRuntimeLoss`). Each such failure also re-reads the session,
+ * so a `RUNTIME_LOST` kagent has recorded since takes the reported path. The
+ * run reads as nothing while a send is in flight.
  */
 export function useSendMessage(
   installation: string,
@@ -84,6 +85,34 @@ export function useSendMessage(
   const [timeouts, setTimeouts] = useState<SendTimeouts | undefined>(undefined);
 
   const { run, clear } = turn;
+
+  /**
+   * Count a failed send into the run of timeouts, or end the run. Only a
+   * timeout the history confirmed did not land counts: a history read that
+   * failed too says nothing about the runtime. Counted against that read —
+   * a turn created since the run began ends it — which also goes into the
+   * conversation's cache in place of a second read; the session is re-read
+   * for a `RUNTIME_LOST` kagent may have recorded since.
+   */
+  const noteFailure = useCallback(
+    (error: unknown, missing: A2aTaskWire[] | undefined) => {
+      if (!isFirstEventTimeout(error) || !missing) {
+        setTimeouts(undefined);
+        return;
+      }
+      queryClient.setQueryData(
+        sessionTasksQueryKey(installation, sessionId),
+        missing,
+      );
+      setTimeouts(previous => countSendTimeout(previous, missing));
+      queryClient
+        .invalidateQueries({
+          queryKey: sessionQueryKey(installation, sessionId),
+        })
+        .catch(() => {});
+    },
+    [queryClient, installation, sessionId],
+  );
   const mutation = useTrackedMutation({
     // Neither the text nor its images: only that a message went.
     event: () => ({ name: 'AgentPlatform.messageSent', attributes: {} }),
@@ -97,22 +126,34 @@ export function useSendMessage(
           'Cannot send a message: the agent for this session is unknown.',
         );
       }
-      await run(message.messageId, (onEvent, signal) =>
-        kagentApi.streamMessage(
-          installation,
-          sessionId,
-          agent,
-          {
-            messageId: message.messageId,
-            text: message.text,
-            ...(message.images?.length
-              ? { images: toMessageImages(message.images) }
-              : {}),
+      // The history read that found the message missing, when one did.
+      let missing: A2aTaskWire[] | undefined;
+      try {
+        await run(
+          message.messageId,
+          (onEvent, signal) =>
+            kagentApi.streamMessage(
+              installation,
+              sessionId,
+              agent,
+              {
+                messageId: message.messageId,
+                text: message.text,
+                ...(message.images?.length
+                  ? { images: toMessageImages(message.images) }
+                  : {}),
+              },
+              onEvent,
+              signal,
+            ),
+          tasks => {
+            missing = tasks;
           },
-          onEvent,
-          signal,
-        ),
-      );
+        );
+      } catch (error) {
+        noteFailure(error, missing);
+        throw error;
+      }
     },
     onSuccess: () => {
       setPending(null);
@@ -128,26 +169,10 @@ export function useSendMessage(
     // (of the images too).
     // Losing a pasted manifest to a 502 is exactly what the generous length limit
     // exists to permit.
-    onError: (error, message) => {
+    onError: (_error, message) => {
       setPending(null);
       setFailed(message);
       clear();
-      if (!isFirstEventTimeout(error)) {
-        setTimeouts(undefined);
-        return;
-      }
-      // Counted against the conversation as last read: a turn created since
-      // the run began ends it.
-      const tasks = queryClient.getQueryData<A2aTaskWire[]>(
-        sessionTasksQueryKey(installation, sessionId),
-      );
-      setTimeouts(previous => countSendTimeout(previous, tasks));
-      for (const queryKey of [
-        sessionQueryKey(installation, sessionId),
-        sessionTasksQueryKey(installation, sessionId),
-      ]) {
-        queryClient.invalidateQueries({ queryKey }).catch(() => {});
-      }
     },
   });
 
@@ -193,9 +218,11 @@ export function useSendMessage(
       error: mutation.error as Error | null,
       /**
        * The sends in a row that timed out before kagent's first event and did
-       * not land; undefined once one lands or fails otherwise.
+       * not land; undefined once one lands or fails otherwise, and while a
+       * send is in flight — the retry may yet land, and the message it carries
+       * is in no failed send to take along.
        */
-      timeouts,
+      timeouts: mutation.isPending ? undefined : timeouts,
       reset,
     }),
     [

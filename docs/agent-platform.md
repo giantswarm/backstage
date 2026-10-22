@@ -1833,14 +1833,18 @@ on gazelle on 2026-09-15 (giantswarm/giantswarm#37795).
   backend gives up on a send after its 10 s wait for the first event and
   answers 500 `UpstreamError` with `reason: "timeout"`, which the client keeps
   on the `StreamTransportError` (`isFirstEventTimeout`). `useSendMessage`
-  counts such sends whose message did not land, in a row (`countSendTimeout`):
-  a send that lands or fails otherwise ends the run, and so does a turn created
-  since the run began (the conversation's newest task changed). From the
-  second, while the newest turn is settled, the notice reads "This session may
-  not be able to continue". Each such failure re-reads the session and its
-  conversation, so a `RUNTIME_LOST` kagent records later (about a minute after
-  the first crash) takes the reported path. The count is page state: a reload
-  starts it over, and the second timeout after it shows the way out again.
+  counts such sends in a row whose message the history read confirms did not
+  land (`countSendTimeout`, against that read, which goes into the
+  conversation's cache). A history read that fails too ("cannot tell") does
+  not count, nor does anything else: a send that lands or fails otherwise ends
+  the run, and so does a turn created since the run began (the conversation's
+  newest task changed). From the second, while the newest turn is settled and
+  no send is in flight, the notice reads "This session may not be able to
+  continue" and offers "Send again to retry, or continue in a new session".
+  Each such failure re-reads the session, so a `RUNTIME_LOST` kagent records
+  later (about a minute after the first crash) takes the reported path. The
+  count is page state: a reload starts it over, and the second timeout after
+  it shows the way out again.
   Waiting longer for the first event is no fix: the gateway in front of the
   portal cuts a silent stream at 15 s.
 

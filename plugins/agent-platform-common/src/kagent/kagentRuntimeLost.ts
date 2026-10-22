@@ -5,7 +5,7 @@ import type { KagentSession } from './kagentSessions';
 import {
   describeSessionState,
   FAILED_STATES,
-  findNewestStatefulTaskIndex,
+  readNewestTaskState,
 } from './kagentSessionState';
 
 /**
@@ -301,11 +301,7 @@ export function readSendTimeoutRuntimeLoss(
   if (newestTaskIdOf(tasks) !== timeouts.newestTaskId) {
     return undefined;
   }
-  const index = findNewestStatefulTaskIndex(tasks);
-  if (
-    index !== undefined &&
-    describeSessionState(tasks[index]?.status?.state)?.isActive
-  ) {
+  if (readNewestTaskState(tasks)?.state.isActive) {
     return undefined;
   }
   return {

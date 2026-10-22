@@ -1,5 +1,5 @@
 ---
-'@giantswarm/backstage-plugin-agent-platform': patch
+'@giantswarm/backstage-plugin-agent-platform': minor
 '@giantswarm/backstage-plugin-agent-platform-common': minor
 ---
 

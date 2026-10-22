@@ -115,6 +115,28 @@ function upstreamError(message: string): Error {
 }
 
 /**
+ * What a failed response's body and headers say: the backend's message, and
+ * the fields `describeReadFailure` turns into the page's words — the status,
+ * the backend's failure reason and the request id it sent toward kagent.
+ */
+async function readRequestError(
+  response: Response,
+): Promise<{ message?: string; fields: KagentRequestErrorFields }> {
+  const errorData = await response.json().catch(() => ({}));
+  const { message, reason } =
+    (errorData as { error?: { message?: string; reason?: string } })?.error ??
+    {};
+  return {
+    message,
+    fields: {
+      status: response.status,
+      reason,
+      requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+    },
+  };
+}
+
+/**
  * A streaming send failed in a way that says nothing about whether the message
  * reached kagent: the connection died, a gateway answered in kagent's stead, a
  * 5xx swallowed the outcome.
@@ -648,12 +670,7 @@ export class KagentApiClient implements KagentApi {
         // report. The backend's own says why: `reason: "timeout"` is its wait
         // for kagent's first event running out, and several of those in a
         // row read as a runtime that cannot start (`useSendMessage`).
-        const errorData = await response.json().catch(() => ({}));
-        const fields: KagentRequestErrorFields = {
-          status: response.status,
-          reason: (errorData as { error?: { reason?: string } })?.error?.reason,
-          requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
-        };
+        const { fields } = await readRequestError(response);
         throw Object.assign(
           streamTransportError(
             `The streaming send failed with status ${response.status}.`,
@@ -917,19 +934,9 @@ export class KagentApiClient implements KagentApi {
   ): Promise<void> {
     const { badRequestIsMissing = true } = options;
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const { message: bodyMessage, reason } =
-        (errorData as { error?: { message?: string; reason?: string } })
-          ?.error ?? {};
+      const { message: bodyMessage, fields } = await readRequestError(response);
       const message =
         bodyMessage ?? `kagent request failed with status ${response.status}`;
-      // What `describeReadFailure` turns into the page's words: the status,
-      // the backend's failure reason and the request id it sent toward kagent.
-      const fields: KagentRequestErrorFields = {
-        status: response.status,
-        reason,
-        requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
-      };
       const error = Object.assign(new Error(message), fields);
       // A 400 from this proxy means the backend has no kagent endpoint
       // configured for the requested installation (its `resolveInstallation`

@@ -126,6 +126,9 @@ export function RuntimeLostNotice({
     wayOut = newSessionBlockedText(agent, newSessionBlocker);
   } else if (newSession && loss.reported) {
     wayOut = `To carry on, continue in a new session with ${agent}. ${start}`;
+  } else if (newSession && fromSends) {
+    // The sends have already failed again: no "if it fails again".
+    wayOut = `Send again to retry, or continue in a new session with ${agent}. ${start}`;
   } else if (newSession) {
     wayOut = `Send again to retry. If it fails again, continue in a new session with ${agent}. ${start}`;
   }

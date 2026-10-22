@@ -481,6 +481,13 @@ export function SessionDetailPage() {
    * (`readSendTimeoutRuntimeLoss`). Each such failure re-reads the session, so
    * a loss kagent has since reported reaches the first branch instead.
    */
+  // Read on every render, but only its count goes into the memo below: every
+  // poll brings new tasks, and a loss with a new identity each time would
+  // rebuild the header actions for nothing.
+  const sendTimeoutAttempts = readSendTimeoutRuntimeLoss(
+    send.timeouts,
+    tasks,
+  )?.attempts;
   const runtimeLoss = useMemo<RuntimeLoss | undefined>(() => {
     if (conversationRuntimeLoss) {
       return conversationRuntimeLoss;
@@ -491,13 +498,18 @@ export function SessionDetailPage() {
     if (cause) {
       return { reported: false, cause, attempts: 1 };
     }
-    return readSendTimeoutRuntimeLoss(send.timeouts, tasks);
+    return sendTimeoutAttempts
+      ? {
+          reported: false,
+          attempts: sendTimeoutAttempts,
+          source: 'send-timeouts',
+        }
+      : undefined;
   }, [
     conversationRuntimeLoss,
     send.error,
-    send.timeouts,
     confirmation.error,
-    tasks,
+    sendTimeoutAttempts,
   ]);
 
   /**
