@@ -154,9 +154,7 @@ export function McpAuthDialog({
       width="min(90vw, 560px)"
     >
       <DialogHeader>
-        {providerApps.length > 0
-          ? 'Sign in to your connections'
-          : 'Sign in to MCP servers'}
+        {appsOnly ? 'Sign in to your connections' : 'Sign in to MCP servers'}
       </DialogHeader>
       <DialogBody>
         <Flex direction="column" gap="3">

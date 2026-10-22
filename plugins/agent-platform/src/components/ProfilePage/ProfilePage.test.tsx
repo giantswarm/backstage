@@ -14,19 +14,15 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   }),
 }));
 
-// The person's home installation, as the shell's MCP sign-in provider reads
-// it; its connections are muster's own component, tested in the muster plugin.
-let mockHomeInstallation: string | undefined;
+// muster's own component, tested in the muster plugin: here it lists the
+// person's connections when muster keeps any App.
+let mockHasApps = false;
 jest.mock('@giantswarm/backstage-plugin-muster', () => ({
-  useMcpSignIn: () =>
-    mockHomeInstallation ? { installation: mockHomeInstallation } : undefined,
   ProviderAppConnections: ({
-    installation,
     children,
   }: {
-    installation: string;
     children: (list: unknown) => unknown;
-  }) => children(<div>connections of {installation}</div>),
+  }) => (mockHasApps ? children(<div>the person's connections</div>) : null),
 }));
 
 const signOut = jest.fn().mockResolvedValue(undefined);
@@ -64,22 +60,22 @@ async function renderPage(
 }
 
 beforeEach(() => {
-  mockHomeInstallation = undefined;
+  mockHasApps = false;
   signOut.mockClear();
   mockInstallations = [{ name: 'gazelle', pipeline: 'testing' }];
 });
 
 describe('ProfilePage', () => {
-  it("lists the person's connections of their home installation", async () => {
-    mockHomeInstallation = 'gazelle';
+  it("lists the person's connections", async () => {
+    mockHasApps = true;
     await renderPage();
 
     const section = screen.getByRole('region', { name: 'Connections' });
-    expect(section).toHaveTextContent('connections of gazelle');
+    expect(section).toHaveTextContent("the person's connections");
     expect(section).toHaveTextContent(/your ChatGPT subscription/);
   });
 
-  it('shows no connections without a home installation', async () => {
+  it('shows no Connections section while muster keeps no App', async () => {
     await renderPage();
 
     expect(

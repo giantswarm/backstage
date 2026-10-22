@@ -2,10 +2,14 @@ import { type ReactNode } from 'react';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { useMcpServersAwaitingSignIn } from '../McpAuthDialog/useMcpServersAwaitingSignIn';
 import { ProviderAppList } from '../ProviderAppSignIn/ProviderAppList';
+import { useSignInInstallation } from '../McpSignInProvider/useSignInInstallation';
 
 export type ProviderAppConnectionsProps = {
-  /** The muster installation that keeps the person's grants. */
-  installation: string;
+  /**
+   * The muster installation that keeps the person's grants; the person's
+   * home installation by default, as the MCP sign-in reads it.
+   */
+  installation?: string;
   /**
    * Wraps the list once muster lists an App (a heading, a section); nothing
    * renders while it lists none.
@@ -13,9 +17,15 @@ export type ProviderAppConnectionsProps = {
   children?: (list: ReactNode) => ReactNode;
 };
 
-function Connections({ installation, children }: ProviderAppConnectionsProps) {
+function Connections({
+  installation: wanted,
+  children,
+}: ProviderAppConnectionsProps) {
+  const home = useSignInInstallation().installation;
+  const installation = wanted ?? home;
   const { providerApps } = useMcpServersAwaitingSignIn(installation, {
     servers: [],
+    enabled: Boolean(installation),
   });
   if (providerApps.length === 0) {
     return null;

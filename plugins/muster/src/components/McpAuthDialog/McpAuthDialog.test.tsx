@@ -148,9 +148,7 @@ describe('McpAuthDialog', () => {
     await renderDialog(api);
 
     expect(
-      await screen.findByRole('heading', {
-        name: 'Sign in to your connections',
-      }),
+      await screen.findByRole('heading', { name: 'Sign in to MCP servers' }),
     ).toBeInTheDocument();
     const apps = await screen.findByRole('list', { name: 'Connections' });
     const rows = within(apps).getAllByRole('listitem');
@@ -179,6 +177,11 @@ describe('McpAuthDialog', () => {
     });
     await renderDialog(api, [], ['chatgpt']);
 
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Sign in to your connections',
+      }),
+    ).toBeInTheDocument();
     const apps = await screen.findByRole('list', { name: 'Connections' });
     expect(within(apps).getAllByRole('listitem')).toHaveLength(1);
     expect(apps).toHaveTextContent('ChatGPT');
