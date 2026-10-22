@@ -140,8 +140,8 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
         {label}
         <Alert
           status="info"
-          title="Choose the agent’s organization first"
-          description="The platform and each organization have models of their own."
+          title="Choose who the agent belongs to first"
+          description="The models offered depend on it."
         />
       </Flex>
     );

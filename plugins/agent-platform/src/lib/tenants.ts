@@ -32,18 +32,85 @@ export function organizationOf(namespace: string): string | undefined {
   return namespace.slice(ORGANIZATION_PREFIX.length) || undefined;
 }
 
+/** What the platform tenant reads as, under the label "Organization". */
+const PLATFORM_LABEL = 'Platform';
+
 /**
  * The tenant a namespace is, as a value under the label "Organization":
  * `Platform` for the platform tenant, the organization's plain name for an
  * Organization's `org-<name>` namespace, and `namespace <name>` for any other
- * namespace agents live in, which is no organization.
+ * namespace agents live in, which is no organization. An organization whose
+ * plain name would read as the platform's keeps its qualifier
+ * (`organization platform`), so the two never sit side by side as one word.
  */
 export function tenantOf(namespace: string): string {
   if (namespace === PLATFORM_TENANT_NAMESPACE) {
-    return 'Platform';
+    return PLATFORM_LABEL;
   }
   const organization = organizationOf(namespace);
-  return organization ?? `namespace ${namespace}`;
+  if (organization === undefined) {
+    return `namespace ${namespace}`;
+  }
+  return organization.toLowerCase() === PLATFORM_LABEL.toLowerCase()
+    ? `organization ${organization}`
+    : organization;
+}
+
+/**
+ * The three kinds of place a new agent can be created in: the platform, an
+ * organization, or another namespace agent-manager manages that is no
+ * organization.
+ */
+export type TenantKind = 'platform' | 'organization' | 'namespace';
+
+/** Each kind as the New agent form offers it. */
+export const TENANT_KIND_LABELS: Record<TenantKind, string> = {
+  platform: PLATFORM_LABEL,
+  organization: 'Organization',
+  namespace: 'Other namespace',
+};
+
+/** The kind of place a namespace is. */
+export function tenantKindOf(namespace: string): TenantKind {
+  if (namespace === PLATFORM_TENANT_NAMESPACE) {
+    return 'platform';
+  }
+  return organizationOf(namespace) === undefined ? 'namespace' : 'organization';
+}
+
+/**
+ * The namespaces of `choices` by their kind, and the kinds present, in the
+ * order the form offers them: Platform, Organization, Other namespace.
+ */
+export function tenantGroups(choices: readonly string[]): {
+  kinds: TenantKind[];
+  byKind: Record<TenantKind, string[]>;
+} {
+  const byKind: Record<TenantKind, string[]> = {
+    platform: [],
+    organization: [],
+    namespace: [],
+  };
+  for (const namespace of choices) {
+    byKind[tenantKindOf(namespace)].push(namespace);
+  }
+  const kinds = (['platform', 'organization', 'namespace'] as const).filter(
+    kind => byKind[kind].length > 0,
+  );
+  return { kinds, byKind };
+}
+
+/** The problem while none of several kinds is chosen. */
+export function tenantKindProblem(kinds: readonly TenantKind[]): string {
+  const labels = kinds.map(kind => TENANT_KIND_LABELS[kind]);
+  return `Choose ${labels.slice(0, -1).join(', ')} or ${labels.at(-1)}.`;
+}
+
+/** The problem while a kind's dropdown has nothing picked. */
+export function tenantPickProblem(kind: TenantKind): string {
+  return kind === 'namespace'
+    ? 'Choose a namespace.'
+    : 'Choose an organization.';
 }
 
 /**

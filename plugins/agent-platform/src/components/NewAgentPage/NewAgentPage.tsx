@@ -275,9 +275,7 @@ function NewAgentPageContent() {
         )}
         {/* Which tenant the agent belongs to, among those the person may
             create in there. An existing agent stays in its own. */}
-        {!edit && (
-          <TenantPicker error={errorFor('tenant', fieldErrors.tenant)} />
-        )}
+        {!edit && <TenantPicker errorFor={errorFor} />}
         {modelSummary && (
           <Text as="p" variant="body-small" color="secondary">
             {modelSummary}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
   Alert,
   Card,
@@ -18,10 +18,11 @@ import {
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import {
   ACCESS_GRANT_HINT,
-  organizationOf,
-  PLATFORM_TENANT_NAMESPACE,
+  TENANT_KIND_LABELS,
+  tenantGroups,
   tenantInSentence,
   tenantOf,
+  type TenantKind,
 } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 
@@ -29,36 +30,58 @@ const TITLE = 'Organization';
 
 const DESCRIPTION = 'Who can use the agent, and whose editors can change it.';
 
-/** The dropdown's problem once Organization is chosen and none picked. */
-const NO_ORGANIZATION = 'Choose an organization.';
-
-type Kind = 'platform' | 'organization';
-
-export type TenantPickerProps = {
-  /** The field's validation problem, shown under it once the form wants it seen. */
-  error?: string;
+/** What each kind means, after its label on the radio. */
+const KIND_EXPLANATIONS: Record<TenantKind, string> = {
+  platform: 'the platform’s agents, for everyone',
+  organization: 'one organization’s agents, for its people',
+  namespace: 'the agents of a namespace that is no organization',
 };
 
+/** The radio group's name; the e2e suite finds it by it. */
+const KINDS_LABEL = 'Who the agent belongs to';
+
+/** Which of a field's problems shows now: `useFieldValidation`'s `errorFor`. */
+export type TenantErrorFor = (
+  field: 'tenant' | 'tenantPick',
+  problem: string | undefined,
+) => string | undefined;
+
+export type TenantPickerProps = {
+  /**
+   * Decides when each field's problem shows (the `forms` skill). Asked for
+   * the dropdown's only while the dropdown is on screen, so one that appears
+   * after a blocked Continue stays quiet until the next. None shows without.
+   */
+  errorFor?: TenantErrorFor;
+};
+
+const quiet: TenantErrorFor = () => undefined;
+
 /**
- * Where a new agent is created: the platform or one of the organizations on
- * the picked environment in which the person may create agents, as
- * agent-manager answers it for them (`get_info`'s `namespaces.managed`,
+ * Where a new agent is created: the platform, an organization, or another
+ * namespace on the picked environment in which the person may create agents,
+ * as agent-manager answers it for them (`get_info`'s `namespaces.managed`,
  * checked per namespace with a `SelfSubjectAccessReview`). Never a namespace
- * typed by hand. The only one is picked and named rather than offered; where
- * the platform is one of several, the person chooses Platform or
- * Organization, and Organization offers the organizations by name. Renders
- * nothing until an environment is picked or while editing, where the agent
- * stays where it is.
+ * typed by hand. The only one is picked and named rather than offered. Where
+ * several kinds are offered, the person chooses one (Platform, Organization,
+ * Other namespace), and Organization or Other namespace then offers its
+ * namespaces by plain name in a dropdown; a single kind with several shows
+ * the dropdown alone. Renders nothing until an environment is picked or while
+ * editing, where the agent stays where it is.
  */
-export function TenantPicker({ error }: TenantPickerProps = {}) {
-  const { state, edit, setTenantChoices, selectTenant } = useNewAgentForm();
+export function TenantPicker({ errorFor = quiet }: TenantPickerProps = {}) {
+  const {
+    state,
+    edit,
+    fieldErrors,
+    setTenantChoices,
+    selectTenant,
+    selectTenantKind,
+  } = useNewAgentForm();
   const installation = edit ? undefined : state.installation;
   const { info, isLoading } = useAgentManagerInfo(installation);
   const managed = info?.namespaces?.managed;
   const choicesKey = managed?.join(',');
-  // Organization chosen before an organization is picked: the form holds no
-  // tenant yet, so the choice is kept here.
-  const [kind, setKind] = useState<Kind>();
 
   useEffect(() => {
     if (choicesKey !== undefined) {
@@ -66,43 +89,40 @@ export function TenantPicker({ error }: TenantPickerProps = {}) {
     }
   }, [choicesKey, setTenantChoices]);
 
-  let picked: Kind | undefined;
-  if (state.tenant !== undefined) {
-    picked =
-      state.tenant === PLATFORM_TENANT_NAMESPACE ? 'platform' : 'organization';
-  } else if (kind === 'organization') {
-    picked = kind;
-  }
-  const hasPlatform = managed?.includes(PLATFORM_TENANT_NAMESPACE) ?? false;
-  const organizations =
-    managed?.filter(namespace => namespace !== PLATFORM_TENANT_NAMESPACE) ?? [];
-  const offersKind = hasPlatform && organizations.length > 0;
+  const { kinds, byKind } = tenantGroups(managed ?? []);
+  const offersKind = kinds.length > 1;
+  // The kind whose dropdown shows: the one chosen, or the only one.
+  const dropdownKind = offersKind ? state.tenantKind : kinds[0];
+  const dropdownChoices = dropdownKind ? byKind[dropdownKind] : [];
+  const showsDropdown =
+    Boolean(installation && managed && managed.length > 1) &&
+    dropdownKind !== undefined &&
+    dropdownKind !== 'platform';
 
   const kindError = useSelectFieldError(
-    offersKind && !picked ? error : undefined,
+    offersKind ? errorFor('tenant', fieldErrors.tenant) : undefined,
   );
-  const selectError = useSelectFieldError(
-    error && (!offersKind || picked === 'organization')
-      ? NO_ORGANIZATION
-      : undefined,
+  const pickError = useSelectFieldError(
+    showsDropdown ? errorFor('tenantPick', fieldErrors.tenantPick) : undefined,
   );
 
   if (!installation) {
     return null;
   }
 
-  const organizationSelect = (
+  const dropdown = showsDropdown ? (
     <>
       <Select
-        aria-label={TITLE}
+        aria-label={TENANT_KIND_LABELS[dropdownKind!]}
         isRequired
-        searchable={searchableIf(organizations)}
-        options={organizations.map(namespace => ({
+        searchable={searchableIf(dropdownChoices)}
+        options={dropdownChoices.map(namespace => ({
           id: namespace,
-          label: organizationOf(namespace) ?? tenantOf(namespace),
+          // Under Other namespace, the namespace's own name.
+          label: dropdownKind === 'namespace' ? namespace : tenantOf(namespace),
         }))}
         selectedKey={
-          state.tenant && state.tenant !== PLATFORM_TENANT_NAMESPACE
+          state.tenant && dropdownChoices.includes(state.tenant)
             ? state.tenant
             : null
         }
@@ -111,11 +131,11 @@ export function TenantPicker({ error }: TenantPickerProps = {}) {
             selectTenant(String(key));
           }
         }}
-        {...selectError.selectProps}
+        {...pickError.selectProps}
       />
-      {selectError.message}
+      {pickError.message}
     </>
-  );
+  ) : null;
 
   let body;
   if (isLoading && !managed) {
@@ -143,34 +163,24 @@ export function TenantPicker({ error }: TenantPickerProps = {}) {
     body = (
       <>
         <RadioGroup
-          aria-label="Platform or organization"
+          aria-label={KINDS_LABEL}
           isRequired
-          value={picked ?? null}
-          onChange={value => {
-            setKind(value as Kind);
-            if (value === 'platform') {
-              selectTenant(PLATFORM_TENANT_NAMESPACE);
-            } else if (organizations.length === 1) {
-              selectTenant(organizations[0]);
-            } else if (state.tenant === PLATFORM_TENANT_NAMESPACE) {
-              selectTenant(undefined);
-            }
-          }}
+          value={state.tenantKind ?? null}
+          onChange={value => selectTenantKind(value as TenantKind)}
           {...kindError.selectProps}
         >
-          <Radio value="platform">
-            Platform — the platform’s agents, for everyone
-          </Radio>
-          <Radio value="organization">
-            Organization — one organization’s agents, for its people
-          </Radio>
+          {kinds.map(kind => (
+            <Radio key={kind} value={kind}>
+              {TENANT_KIND_LABELS[kind]} — {KIND_EXPLANATIONS[kind]}
+            </Radio>
+          ))}
         </RadioGroup>
         {kindError.message}
-        {picked === 'organization' && organizationSelect}
+        {dropdown}
       </>
     );
   } else {
-    body = organizationSelect;
+    body = dropdown;
   }
 
   return (

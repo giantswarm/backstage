@@ -2473,7 +2473,10 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
           { resource: makeModelConfig() },
         );
 
-        await renderShell();
+        await renderShell(
+          '',
+          AGENT_PATH.replace('/agent-platform/', `/${namespace}/`),
+        );
 
         const facts = screen.getByRole('complementary', {
           name: 'About this agent',

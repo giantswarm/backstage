@@ -685,7 +685,7 @@ export async function createAgentInWizard(
     .getByRole('radio', { name: options.model ?? /default-model-config/ });
   // Platform beside the organizations, or the organizations alone.
   const kinds = page.getByRole('radiogroup', {
-    name: 'Platform or organization',
+    name: 'Who the agent belongs to',
   });
   // The Select's name is its value and its label: "Select an option
   // Organization".

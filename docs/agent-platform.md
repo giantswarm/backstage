@@ -73,11 +73,16 @@ and agent-manager call this the agent's tenant; the UI never does.) Where the
 agents belong to more than one, each row names its organization and the filter
 bar filters by it; the agent's page names it beside the overview. The New
 agent form asks for it on Details from the places agent-manager lets the person
-create in (`get_info.namespaces.managed`): the only one is picked and named;
-with the platform among several, a **Platform** / **Organization** choice, where
-Organization shows a dropdown of the organizations by name; organizations alone
-show the dropdown only. Nothing is chosen for the person, and editing an agent
-never moves it.
+create in (`get_info.namespaces.managed`): the only one is picked and named.
+Several of more than one kind are offered as a choice of **Platform**,
+**Organization** and, for a managed namespace that is no organization (not
+`org-<name>`), **Other namespace**; Organization and Other namespace then show a
+dropdown of their namespaces by plain name, and a kind with only one picks it
+straight away. Several of one kind show the dropdown alone. The choice lives in
+the form's state (`tenantKind`) and goes with the environment. Nothing is
+chosen for the person, a dropdown that appears after a blocked Continue stays
+quiet until the next, and editing an agent never moves it. An organization
+named `platform` reads `organization platform`, never as the platform.
 
 **New agent** (`/customize/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
