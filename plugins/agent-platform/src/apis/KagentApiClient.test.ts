@@ -497,6 +497,101 @@ describe('KagentApiClient', () => {
     });
   });
 
+  describe('getRawSession', () => {
+    const sessionBody = {
+      session: {
+        id: 'abc',
+        name: 'Why is the pod pending?',
+        agent: { namespace: 'kagent', name: 'sre-agent' },
+        creator: 'dev@lab.local',
+        preparedRevision: 'rev-7',
+        aFieldTheNormalizerDoesNotKnow: { kept: true },
+      },
+    };
+    const readable = {
+      id: 'task-1',
+      contextId: 'abc',
+      status: { state: 'TASK_STATE_COMPLETED' },
+      history: [
+        {
+          messageId: 'm-1',
+          role: 'ROLE_USER',
+          parts: [{ text: 'Why is the pod pending?' }],
+        },
+      ],
+    };
+    // Rows the timeline's normalizer drops: an export keeps them.
+    const tasksBody = {
+      tasks: [readable, null, 'not a task', { history: 42 }],
+      totalSize: 1200,
+    };
+
+    function answerBoth() {
+      fetchMock.mockImplementation(async (url: string) =>
+        jsonResponse(url.includes('/tasks?') ? tasksBody : sessionBody),
+      );
+    }
+
+    it('returns both route bodies unchanged, totalSize and every row included', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      answerBoth();
+
+      const raw = await buildClient().getRawSession('gazelle', 'abc');
+
+      expect(raw).toEqual({ sessionBody, tasksBody });
+      // The same body through the timeline's read loses those rows, which is
+      // what the raw read is for.
+      const timelineTasks = await buildClient().listSessionTasks(
+        'gazelle',
+        'abc',
+      );
+      expect(timelineTasks.length).toBeLessThan(tasksBody.tasks.length);
+      warnSpy.mockRestore();
+    });
+
+    it('reads the session, then its tasks, with the installation’s token', async () => {
+      answerBoth();
+
+      await buildClient().getRawSession('gazelle', 'a/b');
+
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        'http://backend/api/agent-platform/kagent/sessions/a%2Fb?installation=gazelle',
+        'http://backend/api/agent-platform/kagent/sessions/a%2Fb/tasks?installation=gazelle',
+      ]);
+      for (const [, init] of fetchMock.mock.calls) {
+        expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      }
+    });
+
+    it('does not read the tasks of a session it could not read', async () => {
+      // kagent's task listing answers 403 for a session that is not the
+      // caller's; the session read's 404 is what the caller gets instead.
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          { error: { message: 'That session does not exist' } },
+          404,
+        ),
+      );
+
+      await expect(
+        buildClient().getRawSession('gazelle', 'abc'),
+      ).rejects.toMatchObject({ name: 'NotFoundError' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails when the tasks read fails', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(sessionBody))
+        .mockResolvedValueOnce(
+          jsonResponse({ error: { message: 'kagent is down' } }, 502),
+        );
+
+      await expect(
+        buildClient().getRawSession('gazelle', 'abc'),
+      ).rejects.toThrow('kagent is down');
+    });
+  });
+
   describe('deleteSession', () => {
     /** kagent's actual success response: a 200 carrying its usual envelope. */
     function deleted() {

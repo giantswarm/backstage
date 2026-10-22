@@ -55,6 +55,14 @@ export type KagentIdentity = {
   email?: string;
 };
 
+/** {@link KagentApi.getRawSession}'s answer: two route bodies, as they came. */
+export type RawSessionBodies = {
+  /** `GET /kagent/sessions/:id`: kagent's `GetSessionResponse`, `{session}`. */
+  sessionBody: unknown;
+  /** `GET /kagent/sessions/:id/tasks`: `{tasks, totalSize}`. */
+  tasksBody: unknown;
+};
+
 export interface KagentApi {
   /**
    * Installations the backend can proxy kagent for, each with whether its
@@ -115,6 +123,20 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
   ): Promise<A2aTaskWire[]>;
+
+  /**
+   * The session route's and the tasks route's bodies, untouched, for a
+   * Session export: nothing normalized, no row dropped, `totalSize` kept.
+   *
+   * The session is read first and the tasks only once it answered, so a
+   * session that is not the caller's, or no longer exists, fails as the
+   * session read's `NotFoundError` — never as the `ForbiddenError` kagent's
+   * task listing answers for the same cases.
+   */
+  getRawSession(
+    installation: string,
+    sessionId: string,
+  ): Promise<RawSessionBodies>;
 
   /**
    * Derived state for this installation's sessions — what the session lists
