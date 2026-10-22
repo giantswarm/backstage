@@ -1,6 +1,11 @@
 import { readFile } from 'node:fs/promises';
-import type { Page } from '@playwright/test';
-import { expect, openReadyAgent, startSessionButton, test } from './fixtures';
+import {
+  deleteCurrentSession,
+  expect,
+  openReadyAgent,
+  startSessionButton,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -13,16 +18,6 @@ import { lab } from './lab';
  */
 
 const prompt = 'Say hello in one word.';
-
-/** Deletes the session on screen through its actions menu. */
-async function deleteCurrentSession(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Session actions' }).click();
-  await page.getByRole('menuitem', { name: /Delete session/ }).click();
-  const dialog = page.getByRole('dialog', { name: /Delete session/ });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Delete session' }).click();
-  await expect(page).toHaveURL(/\/sessions$/, { timeout: 60_000 });
-}
 
 test('a session exports to a file from its actions menu, whole and verbatim', async ({
   admin,
