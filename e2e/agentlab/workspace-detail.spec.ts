@@ -76,6 +76,44 @@ test('shows the workspace, its repositories with head commits and its Sessions w
   );
 });
 
+test('Edit opens the editor on the sign-ins the page already holds', async ({
+  admin,
+}) => {
+  await open(admin, path);
+  test.skip(
+    await needsManagerSignIn(admin),
+    'the admin has not signed in to workspace-manager in muster (the GitHub App grant)',
+  );
+
+  const main = admin.getByRole('main');
+  await main.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(admin).toHaveURL(new RegExp(`${path}/edit$`));
+
+  // The form, not a second sign-in: the editor reads the workspace's
+  // provider instances with the grant the detail page read them with.
+  const source = main.getByRole('region', { name: 'Source 1' });
+  await expect(source).toBeVisible({ timeout: 30_000 });
+  await expect(admin.getByTestId('workspace-editor-gate')).toHaveCount(0);
+  await expect(
+    source.getByRole('switch', { name: /^Show selected only \(\d+\)$/ }),
+  ).toBeVisible();
+
+  // The disk's unit follows the number, outside the editable value.
+  await main.getByRole('button', { name: 'Advanced options' }).click();
+  const minimum = main.getByRole('textbox', { name: 'Minimum size' });
+  await expect(minimum).toBeVisible();
+  await expect(minimum).toHaveAccessibleDescription(/this many GiB\./);
+  const unit = await minimum.evaluate(input => {
+    const after = getComputedStyle(input.parentElement!, '::after');
+    return {
+      content: after.content,
+      paddingRight: getComputedStyle(input).paddingRight,
+    };
+  });
+  expect(unit.content).toBe('"GiB"');
+  expect(unit.paddingRight).toBe('44px');
+});
+
 test('Synchronize shows the synchronization running and notifies its result when it ends', async ({
   admin,
 }) => {
