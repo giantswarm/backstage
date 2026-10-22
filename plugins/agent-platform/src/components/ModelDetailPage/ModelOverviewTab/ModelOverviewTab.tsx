@@ -9,6 +9,7 @@ import {
   type TechnicalDetailsFoldOutHandle,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import type { ContextWindowLookup } from '../../../lib/contextWindows';
 import { isVertexAIProvider } from '../../../lib/modelConfigs';
 import type { ModelProblem } from '../../../lib/modelProblem';
 
@@ -24,10 +25,11 @@ export type ModelOverviewTabProps = {
   /** The plain facts: what it calls, where, and since when. */
   facts: Fact[];
   /**
-   * Whether the context-window table names the model. When it does not, a
-   * note under the facts says so, where the Context window fact would be.
+   * What the context-window table says about the model, when that is known.
+   * A window is one of the facts; no window, or an unusable one, is a note
+   * under them.
    */
-  hasContextWindow: boolean;
+  contextWindow: ContextWindowLookup | undefined;
   /** The serving layer's word on the model behind the config, where it has one. */
   servedBy: ModelServedBy | undefined;
   /** The tool that asserts the model, which would revert portal edits. */
@@ -50,7 +52,7 @@ export function ModelOverviewTab({
   modelConfig,
   installation,
   facts,
-  hasContextWindow,
+  contextWindow,
   servedBy,
   owner,
   isUnsupportedProvider,
@@ -104,8 +106,11 @@ export function ModelOverviewTab({
       <FoldOutAlignedSection aria-label="Model details">
         <FactList facts={facts} labelWidth={160} />
       </FoldOutAlignedSection>
-      {!hasContextWindow && (
-        <ContextWindowNote model={modelConfig.getModel()} />
+      {contextWindow && contextWindow.kind !== 'window' && (
+        <ContextWindowNote
+          model={modelConfig.getModel() ?? ''}
+          lookup={contextWindow}
+        />
       )}
       {/* Open on arrival while the controller has not accepted the model, as
           the agent page does for an agent that is not ready: the conditions

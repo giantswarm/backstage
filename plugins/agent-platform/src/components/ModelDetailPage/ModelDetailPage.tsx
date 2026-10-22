@@ -35,7 +35,10 @@ import {
   modelConfigFormValues,
   modelConfigOwner,
 } from '../../lib/modelConfigs';
-import { contextWindowFor } from '../../lib/contextWindows';
+import {
+  type ContextWindowLookup,
+  lookUpContextWindow,
+} from '../../lib/contextWindows';
 import { modelStatus } from '../../lib/customize';
 import { modelProblem } from '../../lib/modelProblem';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -131,8 +134,8 @@ export function modelFacts({
 }: {
   modelConfig: ModelConfig;
   installation: string;
-  /** The window the context-window table names for the model, when it does. */
-  contextWindow: number | undefined;
+  /** What the context-window table says about the model, when that is known. */
+  contextWindow: ContextWindowLookup | undefined;
   /** The tool that asserts the model (`modelConfigOwner`), if any. */
   owner?: string;
 }): Fact[] {
@@ -146,10 +149,10 @@ export function modelFacts({
       value: modelConfig.getEndpoint() ?? 'Provider default',
     },
   ];
-  if (contextWindow !== undefined) {
+  if (contextWindow?.kind === 'window') {
     facts.push({
       label: 'Context window',
-      value: describeContextWindow(contextWindow),
+      value: describeContextWindow(contextWindow.tokens),
     });
   }
   facts.push({ label: 'Environment', value: installation });
@@ -162,7 +165,9 @@ export function modelFacts({
   if (created) {
     facts.push({
       label: 'Created',
-      value: <DateComponent value={created} />,
+      // Relative, as the shell's other "Created" facts; the shell's local
+      // clock puts the full timestamp in its title.
+      value: <DateComponent value={created} relative />,
     });
   }
   return facts;
@@ -334,12 +339,19 @@ function ModelDetailPageContent() {
   }
 
   const status = modelStatus(toModelRow(modelConfig, servedBy));
-  const contextWindow = contextWindowFor(
-    modelConfig.getModel(),
-    config?.getOptional<Record<string, unknown>>(
-      'agentPlatform.models.contextWindows',
-    ),
+  // Unknown while the signed-in config loads, and when it has no table at
+  // all: app-config.yaml ships one, so a missing table means the config did
+  // not load (the loader publishes an empty one once its retries run out), not
+  // that no model has a window. Unknown, too, for a model without a model id,
+  // which no pattern can name. Unknown says nothing either way.
+  const contextWindowTable = config?.getOptional<Record<string, unknown>>(
+    'agentPlatform.models.contextWindows',
   );
+  const modelId = modelConfig.getModel();
+  const contextWindow =
+    contextWindowTable && modelId
+      ? lookUpContextWindow(modelId, contextWindowTable)
+      : undefined;
   const facts = modelFacts({
     modelConfig,
     installation,
@@ -372,7 +384,7 @@ function ModelDetailPageContent() {
               modelConfig={modelConfig}
               installation={installation}
               facts={facts}
-              hasContextWindow={contextWindow !== undefined}
+              contextWindow={contextWindow}
               servedBy={servedBy}
               owner={owner}
               isUnsupportedProvider={isUnsupportedProvider}

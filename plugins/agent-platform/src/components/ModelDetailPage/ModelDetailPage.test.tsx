@@ -6,7 +6,10 @@ import {
   ModelConfig,
   type ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DateTimeZoneProvider,
+  PageHeaderActionsProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import type { LlmUsageView } from '../../hooks/useLlmUsage';
@@ -200,22 +203,25 @@ const agent = (name: string, technicalName: string, modelConfigId?: string) =>
 
 function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
   return renderInTestApp(
-    <PageHeaderActionsProvider>
-      <Routes>
-        <Route
-          path="/customize/models/:installation/:namespace/:name/*"
-          element={<ModelDetailPage />}
-        />
-        <Route
-          path="/customize/models/:installation/:namespace/:name/edit"
-          element={<p>The Connect-a-model flow, prefilled</p>}
-        />
-      </Routes>
-      {/* Another model under the same route, as the palette opens one. */}
-      <RouterLink to="/customize/models/inst-1/kagent/haiku">
-        Next model
-      </RouterLink>
-    </PageHeaderActionsProvider>,
+    // The shell's clock, as its layout mounts it around its pages.
+    <DateTimeZoneProvider timeZone="local">
+      <PageHeaderActionsProvider>
+        <Routes>
+          <Route
+            path="/customize/models/:installation/:namespace/:name/*"
+            element={<ModelDetailPage />}
+          />
+          <Route
+            path="/customize/models/:installation/:namespace/:name/edit"
+            element={<p>The Connect-a-model flow, prefilled</p>}
+          />
+        </Routes>
+        {/* Another model under the same route, as the palette opens one. */}
+        <RouterLink to="/customize/models/inst-1/kagent/haiku">
+          Next model
+        </RouterLink>
+      </PageHeaderActionsProvider>
+    </DateTimeZoneProvider>,
     {
       initialRouteEntries: [path],
       mountedRoutes: {
@@ -445,7 +451,7 @@ describe('ModelDetailPage', () => {
       screen.getByText(
         'The LLM gateway does not meter Vertex AI models yet, so this model’s spend and tokens are not on the Usage tab.',
       ),
-    ).toBeInTheDocument();
+    ).toHaveAttribute('role', 'note');
     // The form speaks Vertex AI: no "not editable here".
     expect(screen.queryByText(/is not editable here/)).toBeNull();
   });
@@ -774,23 +780,63 @@ describe('ModelDetailPage', () => {
       'No context window is configured for this model',
     );
     expect(note).toHaveTextContent(
-      'Configure one so a session can show how full its context is.',
+      'Configuring one lets a session show how full its context is.',
     );
     expect(note).toHaveTextContent(
-      'Add a pattern matching claude-sonnet-4-5 to agentPlatform.models.contextWindows in the portal’s app-config.',
+      'Ask whoever runs this portal to add a pattern matching claude-sonnet-4-5 to agentPlatform.models.contextWindows.',
     );
     expect(
       within(note).getByRole('link', { name: 'How to configure it' }),
     ).toHaveAttribute('href', CONTEXT_WINDOWS_DOCS_URL);
   });
 
-  it('says no context window is configured when there is no table at all', async () => {
+  it('names the entry to fix when only entries with an unusable value match the model', async () => {
+    mockContextWindows = {
+      'claude-*': 0,
+      'claude-sonnet-4-5': '200k',
+    };
     await renderPage();
 
     expect(screen.queryByText('Context window')).toBeNull();
-    expect(
-      screen.getByText('No context window is configured for this model'),
-    ).toBeInTheDocument();
+    const note = screen.getByRole('note', { name: 'Context window' });
+    expect(note).toHaveTextContent(
+      'The context window configured for this model is not valid',
+    );
+    expect(note).toHaveTextContent(
+      'Ask whoever runs this portal to set claude-sonnet-4-5 under agentPlatform.models.contextWindows to a number of tokens, such as 200000.',
+    );
+    expect(note).not.toHaveTextContent(/add a pattern/);
+  });
+
+  it('says nothing about the context window while there is no table, as before the signed-in config loads', async () => {
+    await renderPage();
+
+    expect(screen.queryByText('Context window')).toBeNull();
+    expect(screen.queryByRole('note', { name: 'Context window' })).toBeNull();
+  });
+
+  it('says nothing about the context window for a model without a model id, which no pattern can name', async () => {
+    mockContextWindows = { 'gpt-*': 400_000 };
+    const unnamed = sonnet();
+    delete (unnamed.jsonData.spec as { model?: string }).model;
+    mockUseResource.mockReturnValue({
+      resource: unnamed,
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(screen.queryByRole('note', { name: 'Context window' })).toBeNull();
+  });
+
+  it('shows when the model was created as a relative time, the full date on hover', async () => {
+    await renderPage();
+
+    const facts = screen.getByRole('region', { name: 'Model details' });
+    const created = facts.querySelector('time');
+    expect(created).toHaveAttribute('dateTime', '2026-09-01T10:00:00.000Z');
+    expect(created).toHaveTextContent(/ ago$/);
+    expect(created).toHaveAttribute('title', expect.stringMatching(/2026/));
   });
 
   it.each([

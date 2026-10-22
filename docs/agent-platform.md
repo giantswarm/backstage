@@ -375,8 +375,10 @@ the conditions with their reason and message), Usage (`…/usage`: the gateway's
 tab: the agents that use it with their spend on it). The former `…/details`
 address lands on Overview. The facts include the model's context window from
 `agentPlatform.models.contextWindows`, the window a session's context
-indicator uses; when the table names no window for the model, an info note
-under the facts says so and points to that setting. A model agents cannot use
+indicator uses; when the table names no window for the model, or only one
+whose value is not a number of tokens, an info note under the facts says so
+and whom to ask to set it. The note waits for the signed-in config, and a
+model without a model id gets none. A model agents cannot use
 yet says why at the top of Overview in plain words (`modelProblem`): what is
 wrong and what to do, from the reason kagent gives on the failed condition (a
 missing or incomplete key, an endpoint address it cannot find, settings it

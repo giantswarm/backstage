@@ -80,6 +80,7 @@ export const SHELL_SPECS = [
  */
 export const MOBILE_SPECS = [
   'mobile-hosting.spec.ts',
+  'mobile-model-page.spec.ts',
   'mobile-navigation.spec.ts',
   'mobile-notification-inbox.spec.ts',
   'mobile-sessions.spec.ts',
