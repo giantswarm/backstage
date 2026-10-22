@@ -463,8 +463,9 @@ html[data-agent-shell] body {
  * pointer rests on it, which holds it. A wizard step leaves room for the
  * toast at its end (`--agent-shell-toast-height`, ShellMain's
  * `useToastHeight`), so the toast never sits on the step's last control
- * either. Matched by the module class's stable prefix, since the hash changes with every release; theme.test.ts checks
- * the upstream class still carries it.
+ * either. Matched by the module class's stable prefix, since the hash changes
+ * with every release; theme.test.ts checks the upstream class still carries
+ * it.
  */
 html[data-agent-shell] [class*='Toast_container'] {
   bottom: calc(

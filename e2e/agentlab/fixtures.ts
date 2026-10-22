@@ -579,7 +579,12 @@ export async function dismissInboxToasts(page: Page): Promise<void> {
     if (await page.getByRole('listbox').isVisible()) {
       await page.keyboard.press('Escape');
     }
-    await toast.getByRole('button', { name: 'Close' }).click();
+    // The toast may go on its own between being seen and the click: then
+    // there is nothing left to close.
+    await toast
+      .getByRole('button', { name: 'Close' })
+      .click({ timeout: 2_000 })
+      .catch(() => undefined);
   });
 }
 

@@ -166,6 +166,9 @@ test("the inbox's toasts stand clear of the wizard footer: Continue takes the cl
     'agentPlatform.notificationInbox.tab',
   );
   await open(admin, '/customize/agents/new');
+  // The footer first: the toast stands on it, so it moves while the footer
+  // mounts.
+  await expectWizardStep(admin, 'Details');
   const toast = admin
     .getByRole('alertdialog')
     .filter({ hasText: /needs? your attention/ });
@@ -184,8 +187,10 @@ test("the inbox's toasts stand clear of the wizard footer: Continue takes the cl
   const footer = admin
     .locator('footer')
     .filter({ has: admin.getByRole('button', { name: 'Continue' }) });
+  await toast.hover();
   const toastBox = await toast.boundingBox();
   const footerBox = await footer.boundingBox();
+  expect(toastBox, 'the toast still shows, held by the pointer').not.toBeNull();
   expect(
     toastBox!.y + toastBox!.height,
     'the toast ends above the wizard footer',

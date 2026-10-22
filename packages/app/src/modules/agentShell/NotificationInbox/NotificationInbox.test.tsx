@@ -663,6 +663,40 @@ describe('Notification inbox', () => {
       );
     });
 
+    it('starts the time of a toast raised behind another application once the window has the focus', async () => {
+      jest.useFakeTimers({ doNotFake: ['requestAnimationFrame'] });
+      try {
+        fakeInbox.setSessions([{ sessionId: 's1', state: 'working' }]);
+        await renderShell();
+        await setFocused(false);
+
+        await read([
+          { sessionId: 's1', state: 'input-required', changedAt: now() },
+        ]);
+        expect(toastTitles()).toEqual(['SRE Agent is waiting for you']);
+        const [[message]] = post.mock.calls as unknown as Array<[object]>;
+        expect(message).not.toHaveProperty('timeout');
+
+        // Still there for when the person comes back.
+        await act(async () => {
+          jest.advanceTimersByTime(2 * INBOX_TOAST_TIMEOUT_MS);
+        });
+        expect(close).not.toHaveBeenCalled();
+
+        await setFocused(true);
+        await act(async () => {
+          jest.advanceTimersByTime(INBOX_TOAST_TIMEOUT_MS - 1);
+        });
+        expect(close).not.toHaveBeenCalled();
+        await act(async () => {
+          jest.advanceTimersByTime(1);
+        });
+        expect(close).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('does not announce a row the person has already seen elsewhere', async () => {
       fakeInbox.setSessions([{ sessionId: 's1', state: 'working' }]);
       await renderShell();
