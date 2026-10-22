@@ -139,6 +139,9 @@ describe('useCreateSession', () => {
         // One idempotency key per submission, so a retried start is the same start.
         requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
         sessionName: 'Why is the ingress failing?',
+        // Without a grant, said so: an agent with a default workspace would
+        // otherwise start in it.
+        noWorkspace: true,
       },
       'gazelle',
     );
@@ -635,6 +638,7 @@ describe('useCreateSession in a workspace', () => {
       installation: 'gazelle',
     });
     expect(startCalls()[1].args.workspaceGrant).toBe('signed.grant.jwt');
+    expect(startCalls()[1].args).not.toHaveProperty('noWorkspace');
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',

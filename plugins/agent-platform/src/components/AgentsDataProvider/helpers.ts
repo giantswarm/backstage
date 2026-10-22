@@ -39,6 +39,10 @@ import {
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
 import { CREATED_BY_ANNOTATION, tenantOf } from '../../lib/tenants';
+import {
+  DEFAULT_WORKSPACE_ANNOTATION,
+  defaultWorkspaceName,
+} from '../../lib/defaultWorkspace';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -274,6 +278,13 @@ export type AgentRow = {
    * not through agent-manager.
    */
   createdBy?: string;
+  /**
+   * The name of the agent's default workspace
+   * ({@link DEFAULT_WORKSPACE_ANNOTATION}): what a new session's workspace
+   * picker presets to when the person has not chosen one with the agent
+   * before. `undefined` for none.
+   */
+  defaultWorkspace?: string;
 };
 
 /**
@@ -412,6 +423,9 @@ export function toAgentRow(
     }));
   const skillIds = gitSkills.map(skill => skill.id);
   const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
+  const defaultWorkspace = defaultWorkspaceName(
+    agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],
+  );
   const skillPins = Object.fromEntries(
     gitSkills.map(skill => [skill.id, skill.pin]),
   );
@@ -440,6 +454,7 @@ export function toAgentRow(
     readinessMessage: agent.getReadinessMessage(),
     tenant: tenantOf(namespace),
     ...(createdBy ? { createdBy } : {}),
+    ...(defaultWorkspace ? { defaultWorkspace } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
     ...(carriers
