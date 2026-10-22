@@ -115,6 +115,7 @@ import {
   DOCK_HEIGHT_VAR,
   useDockedComposerLayout,
 } from './useDockedComposerLayout';
+import { useStickToEnd } from './useStickToEnd';
 import {
   SESSION_TITLE_FALLBACK,
   toSessionRow,
@@ -958,32 +959,6 @@ export function SessionDetailPage() {
   );
   useProvidePageHeaderActions(actions);
 
-  // The page scrolls the document, so that is what "to the bottom" means here.
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      const el = document.scrollingElement ?? document.documentElement;
-      el.scrollTop = el.scrollHeight;
-    });
-  }, []);
-
-  // Follow the reply as it streams in — but only when already reading the end.
-  // Someone scrolled up through the history must not have the page yanked away
-  // under them by every arriving token.
-  // The turn's own event counter, not a size derived from its content: closing
-  // a text run moves length out of `live` into `items`, which can leave any such
-  // size unchanged across a real update and skip the follow for it.
-  const streamTick = (send.stream ?? answerStream)?.revision ?? 0;
-  useEffect(() => {
-    if (streamTick === 0) {
-      return;
-    }
-    const el = document.scrollingElement ?? document.documentElement;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
-    if (nearBottom) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [streamTick]);
-
   /**
    * The newest turn is active but has reported nothing for the age bound: the
    * observed failure of a turn that outlived its transport and never landed.
@@ -1222,26 +1197,25 @@ export function SessionDetailPage() {
   const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
   useDockedComposerLayout(columnElement, dockElement);
 
+  // Stick to the end: the page follows the reply as it streams in while the
+  // reader is at the end, and leaves them alone once they scroll away — up
+  // through the history, mid-stream included — until they come back to it.
+  const stickToEnd = useStickToEnd(columnElement);
+
   // A session opens at its newest turn, the way a desktop chat app does (live
   // round 2, R8: a long session opened at its top). Once per session, when its
   // conversation first renders — the column exists only then. Later scrolling
   // is the reader's: "Show earlier activity" adds turns above without coming
-  // back here, and the follow above only moves a reader already at the end.
-  // Before paint, so the top never flashes; and once more a frame later, for
-  // layout that lands after the first (the dock's measured min-height).
+  // back here. Before paint, so the top never flashes; layout that lands after
+  // (the dock's measured min-height) is followed by `useStickToEnd`.
   const openedAtEndFor = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
     if (!columnElement || openedAtEndFor.current === sessionId) {
-      return undefined;
+      return;
     }
     openedAtEndFor.current = sessionId;
-    const el = document.scrollingElement ?? document.documentElement;
-    el.scrollTop = el.scrollHeight;
-    const frame = requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [columnElement, sessionId]);
+    stickToEnd();
+  }, [columnElement, sessionId, stickToEnd]);
 
   // The loaded page's header from the first paint, with skeletons where the
   // read will fill in: the title and the badge row (T95).
@@ -1579,8 +1553,9 @@ export function SessionDetailPage() {
               // Errors are surfaced through the hook's `error`, which the composer
               // renders beside the text it hands back.
               send.sendMessage(text, images).catch(() => {});
-              // The optimistic echo appears at the very bottom; go where it is.
-              scrollToBottom();
+              // The optimistic echo appears at the very bottom; go where it is,
+              // and follow the reply from there.
+              stickToEnd();
             }}
           />
         )}
