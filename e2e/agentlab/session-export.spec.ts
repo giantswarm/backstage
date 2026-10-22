@@ -52,10 +52,10 @@ test('a session exports to a file from its actions menu, whole and verbatim', as
     ).toBeVisible({ timeout: 60_000 });
 
     await admin.getByRole('button', { name: 'Session actions' }).click();
-    const item = admin.getByRole('menuitem', { name: /Export session/ });
-    await expect(item, 'the notice sits on the item').toContainText(
-      'The file holds everything the agent saw; handle it as customer data.',
-    );
+    const item = admin.getByRole('menuitem', {
+      name: 'Export session',
+      exact: true,
+    });
     await expect(item, 'it is an export, never a download').not.toContainText(
       /download/i,
     );

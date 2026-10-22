@@ -733,7 +733,7 @@ describe('SessionActionsMenu — Export session', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('sits above delete, which stays last, and says the file is customer data', async () => {
+  it('sits above delete, which stays last, as one plain item', async () => {
     await renderWithExport();
     await openMenu();
 
@@ -743,10 +743,8 @@ describe('SessionActionsMenu — Export session', () => {
       expect.stringMatching(/Export session/),
       expect.stringMatching(/Delete session/),
     ]);
-    const item = screen.getByRole('menuitem', { name: /Export session/ });
-    expect(item).toHaveTextContent(
-      'The file holds everything the agent saw; handle it as customer data.',
-    );
+    const item = screen.getByRole('menuitem', { name: 'Export session' });
+    expect(item).toHaveTextContent(/^Export session$/);
     // It is an export, never a download, wherever the person reads it.
     expect(item).not.toHaveTextContent(/download/i);
   });

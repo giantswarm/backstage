@@ -1703,8 +1703,7 @@ message.
 
 ### Exporting a session
 
-`useExportSession`, the actions menu's **Export session** item, with a notice
-that the file holds everything the agent saw and is customer data. Always
+`useExportSession`, the actions menu's **Export session** item. Always
 offered, also mid-turn and while the session waits on the person. The file and
 its caveats: [Session export format](agent-platform-session-export.md).
 
