@@ -1,4 +1,10 @@
-import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
@@ -11,6 +17,8 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
@@ -22,9 +30,15 @@ import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker, useRuntimeChoices } from '../HarnessPicker';
 import { DefaultWorkspacePicker } from '../DefaultWorkspacePicker';
 import { EgressPolicyPicker } from '../EgressPolicyPicker';
+import { DroppedEgressNotice, PlatformEgressNote } from '../PlatformEgressNote';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
-import { harnessTitle, PLATFORM_DEFAULT_LABEL } from '../../lib/harnesses';
+import {
+  harnessTitle,
+  PLATFORM_DEFAULT_LABEL,
+  platformEgressOf,
+  runtimeLabel,
+} from '../../lib/harnesses';
 import { MAX_SYSTEM_MESSAGE_LENGTH } from '../../lib/systemMessage';
 
 const useStyles = makeStyles({
@@ -66,11 +80,23 @@ function NewAgentPageContent() {
     setDescription,
     setSystemMessage,
     setEgressText,
+    setEgressSetByPlatform,
     validationErrors,
     fieldErrors,
   } = useNewAgentForm();
   // The platform Harness the runtime field shows, for the summary below.
   const { platformChoice } = useRuntimeChoices();
+  // The runtime decides whether extra egress origins are offered at all.
+  const egressRuntime = useFormHarnessRuntime();
+  const codingRuntime =
+    egressRuntime.harness.title ?? runtimeLabel(egressRuntime.runtime);
+  const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  // The form stops checking (and, creating, drops) extra egress once the
+  // runtime is known to be a coding one, however it became known.
+  const isCoding = egressRuntime.isCoding === true;
+  useEffect(() => {
+    setEgressSetByPlatform(isCoding);
+  }, [isCoding, setEgressSetByPlatform]);
 
   // Each field shows its own problem once the person leaves it having typed
   // in it, or tries to proceed — not while they first type, so the form does
@@ -312,18 +338,36 @@ function NewAgentPageContent() {
             />
           )}
           <EgressPolicyPicker />
-          <TextAreaField
-            label="Extra egress origins"
-            secondaryLabel="optional"
-            value={state.egressText}
-            onChange={setEgressText}
-            rows={3}
-            mono
-            placeholder={
-              'https://github.com:443\nhttps://*.githubusercontent.com\ntls://db.example.com:5432'
-            }
-            description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. One per line: an http(s) origin, or tls://host:port for another service that speaks TLS, such as a database; a leading * matches one host label."
-            {...fieldProps('egress', fieldErrors.egress)}
+          {/* A coding Harness reaches the platform's list for it only, and
+              agent-manager refuses any other origin: the field is not offered
+              there, and the line in its place says who sets it. While the
+              runtime is unknown the field stays, and is checked and sent. */}
+          {egressRuntime.isCoding ? (
+            <PlatformEgressNote
+              runtime={codingRuntime}
+              origins={platformEgressOf(
+                agentManagerInfo,
+                egressRuntime.harness.name,
+              )}
+            />
+          ) : (
+            <TextAreaField
+              label="Extra egress origins"
+              secondaryLabel="optional"
+              value={state.egressText}
+              onChange={setEgressText}
+              rows={3}
+              mono
+              placeholder={
+                'https://github.com:443\nhttps://*.githubusercontent.com\ntls://db.example.com:5432'
+              }
+              description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. One per line: an http(s) origin, or tls://host:port for another service that speaks TLS, such as a database; a leading * matches one host label."
+              {...fieldProps('egress', fieldErrors.egress)}
+            />
+          )}
+          <DroppedEgressNotice
+            runtime={egressRuntime.isCoding ? codingRuntime : undefined}
+            dropped={state.droppedEgress}
           />
         </MoreOptions>
       </Flex>

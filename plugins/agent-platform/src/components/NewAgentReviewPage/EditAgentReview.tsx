@@ -11,6 +11,7 @@ import {
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { classifyCommitFailure } from '../../hooks/useAgentCommitCheck';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useSignInTool } from '../../hooks/useSignInTool';
 import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
@@ -31,6 +32,7 @@ import {
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
 import { PickedEgressPolicies } from '../PickedEgressPolicies';
+import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
 import { pluginEntryName, pluginSummary } from '../../lib/plugins';
 import {
   harnessTitle,
@@ -55,11 +57,19 @@ import {
   toolsetSummaryLabel,
   UnderlyingModelItem,
   useReviewStyles,
-  Violations,
   YAML_OPTS,
 } from './reviewParts';
+import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
+import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
+import { ValidationRefusal } from '../ValidationRefusal';
 
-/** A refused or failed dry run or save, in agent-manager's words. */
+/**
+ * A refused or failed dry run or save, in agent-manager's words. The two
+ * refusals the edit page checks for before the form — a release outside
+ * agent-manager's directory, a GitHub authorization a sign-in gives — read as
+ * they do there, should the repository or the authorization change in
+ * between (`classifyCommitFailure`).
+ */
 function WriteFailure({
   installation,
   failure,
@@ -69,12 +79,23 @@ function WriteFailure({
   failure: AgentWriteFailure;
   title: string;
 }) {
-  if (failure.kind === 'not-connected') {
+  const refused = classifyCommitFailure(failure);
+  if (refused?.kind === 'connect') {
     return (
       <ConnectAgentManagerAlert
         installation={installation}
-        message={failure.message}
+        message={refused.message}
         action="Agents are edited"
+        needsGitHub={refused.github}
+      />
+    );
+  }
+  if (refused?.kind === 'release-outside') {
+    return (
+      <MissingReleaseFileAlert
+        missing={refused.missing}
+        message={refused.message}
+        action="edit"
       />
     );
   }
@@ -106,6 +127,8 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const { info } = useAgentManagerInfo(installation);
   // The platform Harness the runtime field shows, for its summary row.
   const { platformChoice } = useRuntimeChoices();
+  // The Harness a refusal names, by the title the runtime field shows.
+  const formRuntime = useFormHarnessRuntime();
   const viaPullRequest = writeMode === 'commit';
 
   // The selection with the sign-in tool the Tools step adds: an agent whose
@@ -362,7 +385,13 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             title="Could not check the change"
           />
         )}
-        {violations.length > 0 && <Violations errors={violations} />}
+        {violations.length > 0 && (
+          <ValidationRefusal
+            errors={violations}
+            title={VALIDATION_REFUSAL_COPY.editTitle}
+            harness={formRuntime.harness}
+          />
+        )}
         {notes.length > 0 && <Notes notes={notes} />}
         {updating.failure && (
           <WriteFailure

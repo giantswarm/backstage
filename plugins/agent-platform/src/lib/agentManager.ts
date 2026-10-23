@@ -473,6 +473,62 @@ export function missingReleaseFile(
   };
 }
 
+// agent-manager's `auth_required` for a commit whose call carries no GitHub
+// authorization at all (`gitHubToken` in agent-manager's
+// internal/agents/commit.go). Its other `auth_required`, "GitHub refused your
+// token on …", also covers an App not installed on the repository or no push
+// access, which no sign-in fixes. The test pins the exact wording.
+const MISSING_GITHUB_AUTHORIZATION =
+  /with your GitHub authorization, and this call carries none/;
+
+/**
+ * Whether a refusal is agent-manager's `auth_required` for a call that carried
+ * no GitHub authorization: the one form of it that signing in to
+ * agent-manager in muster fixes.
+ */
+export function missingGitHubAuthorization(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): boolean {
+  return (
+    failure?.code === 'auth_required' &&
+    MISSING_GITHUB_AUTHORIZATION.test(failure.message)
+  );
+}
+
+/**
+ * agent-manager's refusal of an extra egress origin on a coding Harness: such
+ * an agent reaches its Harness's platform list only (`guardCoding` in
+ * agent-manager's internal/agents/harness_guard.go), and `validate_agent`
+ * names each other origin requested.
+ */
+export type CodingEgressRefusal = {
+  /** The origin refused, as requested. */
+  origin: string;
+  /** The Harness's name. */
+  harness: string;
+};
+
+// `validate_agent` reports violations in prose only (structured codes are
+// giantswarm/agent-manager#144), so the message is parsed; the test pins
+// agent-manager's exact wording. A rewording there turns this back into the
+// generic refusal, nothing worse.
+const CODING_EGRESS_REFUSAL =
+  /egress origin "([^"]+)" is not one of Harness (\S+?)'s origins \(.*\): a coding agent reaches its Harness's origins only/;
+
+/**
+ * Whether a `validate_agent` violation is the refusal of an egress origin on
+ * a coding Harness, and if so which. `undefined` for any other violation.
+ */
+export function codingEgressRefusal(
+  violation: string,
+): CodingEgressRefusal | undefined {
+  const match = violation.match(CODING_EGRESS_REFUSAL);
+  if (!match) {
+    return undefined;
+  }
+  return { origin: match[1], harness: match[2] };
+}
+
 /**
  * The person's muster session holds no connection to agent-manager yet: the
  * tool is not in the session's tool set, or muster refuses to open the

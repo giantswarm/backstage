@@ -378,12 +378,61 @@ test.describe('agents per tenant', () => {
         rosterRowOf(alice, agent.name),
         `${agent.name} is listed with its organization`,
       ).toContainText(`Organization: ${organization}`, { timeout: rosterWait });
+      // Beside the name, on its line and inside the row; its full name is the
+      // name link's tooltip, since the link's hit area covers the row, the
+      // organization's text included.
+      const row = rosterRowOf(alice, agent.name);
+      const link = rosterLinkOf(alice, agent.name);
+      const named = row.getByText(`Organization: ${organization}`, {
+        exact: true,
+      });
+      const [rowBox, linkBox, namedBox] = await Promise.all([
+        row.boundingBox(),
+        link.boundingBox(),
+        named.boundingBox(),
+      ]);
+      expect(namedBox!.x, 'the organization follows the name').toBeGreaterThan(
+        linkBox!.x + linkBox!.width - 1,
+      );
+      expect(namedBox!.y, 'on the name’s line').toBeLessThan(
+        linkBox!.y + linkBox!.height,
+      );
+      expect(namedBox!.y + namedBox!.height).toBeGreaterThan(linkBox!.y);
+      expect(
+        namedBox!.x + namedBox!.width,
+        'the organization is not cut off by the row',
+      ).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
+      await expect(link).toHaveAttribute(
+        'title',
+        `${agent.name}\nOrganization: ${organization}`,
+      );
+      expect(
+        await named.evaluate(element => {
+          const box = element.getBoundingClientRect();
+          return document
+            .elementFromPoint(box.left + 4, box.top + box.height / 2)
+            ?.closest('a')?.textContent;
+        }),
+        'pointing at the organization points at the name link',
+      ).toBe(agent.name);
+      /** Where a row's first fact starts: the same on every row. */
+      const firstFactX = async (name: string) =>
+        (await rosterRowOf(alice, name)
+          .getByTestId('agent-facts')
+          .locator(':scope > *')
+          .first()
+          .boundingBox())!.x;
+      const organizationRowFactX = await firstFactX(agent.name);
       // The platform's agent belongs to no organization, and its row says
       // nothing of one.
       await searchRoster(alice, labAgent.name);
       await expect(rosterLinkOf(alice, labAgent.name)).toBeVisible({
         timeout: rosterWait,
       });
+      expect(
+        await firstFactX(labAgent.name),
+        'the platform agent’s facts line up with the organization’s agent’s',
+      ).toBeCloseTo(organizationRowFactX, 0);
       await expect(
         rosterRowOf(alice, labAgent.name).getByText(
           /^(None|Organization: .*)$/,

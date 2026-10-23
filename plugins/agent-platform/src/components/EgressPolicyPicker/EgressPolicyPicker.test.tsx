@@ -39,9 +39,18 @@ jest.mock('../../hooks/useHarnessChoices', () => ({
   useHarnessChoices: () => ({
     choices: mockHarnesses,
     platformHarness: 'kagent',
-    platformChoice: undefined,
+    platformChoice: mockHarnesses.find(choice => choice.name === 'kagent'),
     errors: [],
     isLoading: false,
+  }),
+}));
+// The runtime is read where the runtime field reads it, which asks get_info
+// for the platform namespace.
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerInfo: () => ({
+    info: undefined,
+    isLoading: false,
+    error: null,
   }),
 }));
 

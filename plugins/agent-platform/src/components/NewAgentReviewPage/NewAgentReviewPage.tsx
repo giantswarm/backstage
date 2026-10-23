@@ -60,9 +60,11 @@ import {
   toolsetSummaryLabel,
   UnderlyingModelItem,
   useReviewStyles,
-  Violations,
   YAML_OPTS,
 } from './reviewParts';
+import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
+import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
+import { ValidationRefusal } from '../ValidationRefusal';
 
 /** The headline for a refused write, by agent-manager's code. */
 function refusalTitle(code: CreateAgentFailure['code']): string {
@@ -149,6 +151,8 @@ function CreateAgentReview() {
   const { info } = useAgentManagerInfo(state.installation);
   // The platform Harness the runtime field shows, for its summary row.
   const { platformChoice } = useRuntimeChoices();
+  // The Harness a refusal names, by the title the runtime field shows.
+  const formRuntime = useFormHarnessRuntime();
   // Not before the sign-in tool is decided: the spec would lack it.
   const validation = useValidateAgent(
     state.installation,
@@ -400,7 +404,13 @@ function CreateAgentReview() {
             description={validation.failure.message}
           />
         )}
-        {violations.length > 0 && <Violations errors={violations} />}
+        {violations.length > 0 && (
+          <ValidationRefusal
+            errors={violations}
+            title={VALIDATION_REFUSAL_COPY.createTitle}
+            harness={formRuntime.harness}
+          />
+        )}
         {notes.length > 0 && <Notes notes={notes} />}
 
         {creation.failure?.kind === 'not-connected' && (

@@ -124,6 +124,11 @@ jest.mock('../../hooks/useAgentDeletion', () => ({
     reset: jest.fn(),
   }),
 }));
+// The Delete dialog's pull-request check, a dry run through the same client;
+// AgentDeleteDialog.test covers it.
+jest.mock('../../hooks/useAgentCommitCheck', () => ({
+  useAgentCommitCheck: () => ({ status: 'off' }),
+}));
 jest.mock('../../hooks/useUpdateAgent', () => ({
   useUpdateAgent: () => ({
     update: jest.fn(),

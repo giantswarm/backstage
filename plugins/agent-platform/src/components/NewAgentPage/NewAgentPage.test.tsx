@@ -1,9 +1,17 @@
-import { useEffect, type ReactNode } from 'react';
+import {
+  useEffect,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
+import { formStateOfAgent } from '../../lib/agentEdit';
+import type { AgentManagerAgent } from '../../lib/agentManager';
+import type { HarnessChoice } from '../../lib/harnesses';
 import { agentsRouteRef, customizeExternalRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentPage } from './NewAgentPage';
@@ -68,10 +76,37 @@ jest.mock('../ModelConfigPicker', () => ({
 jest.mock('../TenantPicker', () => ({
   TenantPicker: () => <p>tenant picker</p>,
 }));
+let mockHarnessChoices: HarnessChoice[] = [];
+let mockPlatformChoice: HarnessChoice | undefined;
+// The runtime marker can pick a coding Harness, which takes the extra egress
+// origins field away.
 jest.mock('../HarnessPicker', () => ({
-  HarnessPicker: () => <p>runtime picker</p>,
-  // The platform Harness not read: the summary names it by its mark.
-  useRuntimeChoices: () => ({ platformChoice: undefined }),
+  HarnessPicker: function MockHarnessPicker() {
+    const { selectHarness } = useNewAgentForm();
+    return (
+      <button
+        type="button"
+        onClick={() => selectHarness({ name: 'claude', runtime: 'claude' })}
+      >
+        runtime picker
+      </button>
+    );
+  },
+  // The namespace's Harnesses, for an edited agent's runtime; the platform
+  // Harness not read unless a test reads it (the summary then names it by its
+  // mark).
+  useRuntimeChoices: () => ({
+    choices: mockHarnessChoices,
+    platformHarness: mockPlatformChoice?.name ?? 'kagent',
+    platformChoice: mockPlatformChoice,
+  }),
+}));
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerInfo: () => ({
+    info: undefined,
+    isLoading: false,
+    error: null,
+  }),
 }));
 jest.mock('../DefaultWorkspacePicker', () => ({
   DefaultWorkspacePicker: () => <p>default workspace picker</p>,
@@ -82,10 +117,12 @@ jest.mock('../EgressPolicyPicker', () => ({
 jest.mock('../CreateAgentAssist', () => ({ CreateAgentAssist: () => null }));
 jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
 
-async function renderPage() {
+async function renderPage(
+  provider: Omit<ComponentProps<typeof NewAgentFormProvider>, 'children'> = {},
+) {
   await renderInTestApp(
     <PageHeaderActionsProvider>
-      <NewAgentFormProvider>
+      <NewAgentFormProvider {...provider}>
         <NewAgentPage />
       </NewAgentFormProvider>
     </PageHeaderActionsProvider>,
@@ -98,12 +135,38 @@ async function renderPage() {
   );
 }
 
+/** The page, with a rerender that keeps the form's state. */
+async function renderPageWithRerender() {
+  let bump: () => void = () => {};
+  function Rerenderable() {
+    const [, setTick] = useState(0);
+    bump = () => setTick(tick => tick + 1);
+    return <NewAgentPage />;
+  }
+  await renderInTestApp(
+    <PageHeaderActionsProvider>
+      <NewAgentFormProvider>
+        <Rerenderable />
+      </NewAgentFormProvider>
+    </PageHeaderActionsProvider>,
+    {
+      mountedRoutes: {
+        '/customize/agents': agentsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
+    },
+  );
+  return { rerender: () => act(() => bump()) };
+}
+
 const moreOptions = () =>
   screen.getByText('More options').closest('details') as HTMLDetailsElement;
 
 beforeEach(() => {
   mockNavigate.mockReset();
   mockPreselectedModel = 'Claude Sonnet';
+  mockHarnessChoices = [];
+  mockPlatformChoice = undefined;
 });
 
 describe('NewAgentPage', () => {
@@ -321,5 +384,168 @@ describe('NewAgentPage', () => {
     expect(
       screen.queryByText(/Enter a name for the agent/),
     ).not.toBeInTheDocument();
+  });
+
+  describe('on a coding Harness', () => {
+    it('takes typed origins away with the move to one, and says so', async () => {
+      await renderPage();
+      await userEvent.click(screen.getByText('More options'));
+      await userEvent.type(
+        screen.getByLabelText(/^Extra egress origins/),
+        'https://registry.npmjs.org',
+      );
+
+      await userEvent.click(screen.getByText('runtime picker'));
+
+      expect(screen.queryByLabelText(/^Extra egress origins/)).toBeNull();
+      expect(
+        screen.getByText(
+          'The platform sets what Claude Code agents may reach. Extra origins cannot be added.',
+        ),
+      ).toBeInTheDocument();
+      const note = screen.getByRole('status');
+      expect(
+        within(note).getByText('Extra egress removed'),
+      ).toBeInTheDocument();
+      expect(
+        within(note).getByText(
+          'Claude Code agents reach only the addresses the platform allows, so the extra origin https://registry.npmjs.org was removed.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('says nothing was removed when nothing was typed', async () => {
+      await renderPage();
+      await userEvent.click(screen.getByText('More options'));
+
+      await userEvent.click(screen.getByText('runtime picker'));
+
+      expect(screen.queryByLabelText(/^Extra egress origins/)).toBeNull();
+      expect(screen.queryByText('Extra egress removed')).toBeNull();
+    });
+
+    it('shows an edited agent’s network access as the platform’s, not as a field', async () => {
+      mockHarnessChoices = [{ name: 'claude', runtime: 'claude' }];
+      const agent: AgentManagerAgent = {
+        name: 'coder',
+        namespace: 'kagent',
+        exists: true,
+        ready: true,
+        managed: 'helmrelease',
+        displayName: 'Coder',
+        modelConfig: 'default-model-config',
+        harness: 'claude',
+        egress: ['https://github.com'],
+      };
+      await renderPage({
+        edit: {
+          agent,
+          installation: 'gazelle',
+          writeMode: 'apply',
+          detailHref: undefined,
+        },
+        initialState: formStateOfAgent(agent, {
+          installation: 'gazelle',
+          catalog: [],
+          pluginCatalog: [],
+          platformHarness: 'kagent',
+        }),
+      });
+      await userEvent.click(screen.getByText('More options'));
+
+      expect(screen.queryByLabelText(/^Extra egress origins/)).toBeNull();
+      expect(
+        screen.getByText(
+          'The platform sets what Claude Code agents may reach. Extra origins cannot be added.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the field while a named Harness’s runtime is unknown', async () => {
+      const agent: AgentManagerAgent = {
+        name: 'coder',
+        namespace: 'kagent',
+        exists: true,
+        ready: true,
+        managed: 'helmrelease',
+        modelConfig: 'default-model-config',
+        harness: 'unread',
+      };
+      await renderPage({
+        edit: {
+          agent,
+          installation: 'gazelle',
+          writeMode: 'apply',
+          detailHref: undefined,
+        },
+        initialState: formStateOfAgent(agent, {
+          installation: 'gazelle',
+          catalog: [],
+          pluginCatalog: [],
+          platformHarness: 'kagent',
+        }),
+      });
+      await userEvent.click(screen.getByText('More options'));
+
+      expect(
+        screen.getByLabelText(/^Extra egress origins/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/The platform sets/)).toBeNull();
+    });
+
+    it('reads the platform Harness’s runtime too, and drops what was typed once it is known', async () => {
+      // The platform default read as a coding Harness after the person typed.
+      const { rerender } = await renderPageWithRerender();
+      await userEvent.click(screen.getByText('More options'));
+      await userEvent.type(
+        screen.getByLabelText(/^Extra egress origins/),
+        'https://a.example.com{Enter}https://b.example.com',
+      );
+
+      mockPlatformChoice = { name: 'kagent', runtime: 'claude' };
+      rerender();
+
+      expect(
+        await screen.findByText(
+          'Claude Code agents reach only the addresses the platform allows, so the extra origins https://a.example.com and https://b.example.com were removed.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Extra egress origins/)).toBeNull();
+    });
+
+    it('does not check an edited agent’s egress the form does not show', async () => {
+      mockHarnessChoices = [{ name: 'claude', runtime: 'claude' }];
+      const agent: AgentManagerAgent = {
+        name: 'coder',
+        namespace: 'kagent',
+        exists: true,
+        ready: true,
+        managed: 'helmrelease',
+        displayName: 'Coder',
+        modelConfig: 'default-model-config',
+        harness: 'claude',
+        // Not an origin the form would take: unseen, it must not block.
+        egress: ['github.com/x'],
+      };
+      await renderPage({
+        edit: {
+          agent,
+          installation: 'gazelle',
+          writeMode: 'apply',
+          detailHref: undefined,
+        },
+        initialState: formStateOfAgent(agent, {
+          installation: 'gazelle',
+          catalog: [],
+          pluginCatalog: [],
+          platformHarness: 'kagent',
+        }),
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+      expect(mockNavigate).toHaveBeenCalled();
+      expect(screen.queryByText(/github\.com\/x/)).toBeNull();
+    });
   });
 });

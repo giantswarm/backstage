@@ -22,21 +22,19 @@ import {
   RUNTIME_LABEL,
   type HarnessChoice,
 } from '../../lib/harnesses';
+import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
 import { CommitOutcome } from '../CommitOutcome';
 import { HarnessSummary } from '../HarnessSummary';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
 import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
+import { ValidationRefusal } from '../ValidationRefusal';
 
 const useStyles = makeStyles(theme => ({
   // Holds the line under the cards at the loading indicator's height, so the
   // indicator, the note that replaces it, or nothing do not move the dialog.
   status: {
     minHeight: theme.spacing(5),
-  },
-  violations: {
-    margin: 0,
-    paddingLeft: theme.spacing(2.5),
   },
 }));
 
@@ -139,9 +137,10 @@ export function AgentChangeHarnessDialog({
     installation,
     opensPullRequest ? change : undefined,
   );
-  const missing =
-    missingReleaseFile(commitDryRun.failure) ??
-    missingReleaseFile(updating.failure);
+  const missingFailure = [commitDryRun.failure, updating.failure].find(
+    candidate => missingReleaseFile(candidate) !== undefined,
+  );
+  const missing = missingReleaseFile(missingFailure);
 
   const notConnected =
     failure?.kind === 'not-connected' ||
@@ -297,29 +296,32 @@ export function AgentChangeHarnessDialog({
           />
         )}
         {violations.length > 0 && target && (
-          <Alert
-            status="danger"
-            title={`${harnessTitle(target)} refuses this agent`}
-            description={
-              <Flex direction="column" gap="2">
-                <ul className={classes.violations} aria-label="Violations">
-                  {violations.map(violation => (
-                    <li key={violation}>{violation}</li>
-                  ))}
-                </ul>
-                {editHref && (
-                  <Text variant="body-small">
-                    <Link to={editHref}>Edit the agent</Link> to fix this, then
-                    change its Harness.
-                  </Text>
-                )}
-              </Flex>
-            }
-          />
+          <ValidationRefusal
+            errors={violations}
+            title={VALIDATION_REFUSAL_COPY.changeHarnessTitle(
+              harnessTitle(target),
+            )}
+            harness={{ name: target.name, title: harnessTitle(target) }}
+          >
+            {editHref && (
+              <Text variant="body-small">
+                <Link to={editHref}>
+                  {VALIDATION_REFUSAL_COPY.changeHarnessEditLink}
+                </Link>
+                {VALIDATION_REFUSAL_COPY.changeHarnessEditRest}
+              </Text>
+            )}
+          </ValidationRefusal>
         )}
 
         <div className={classes.status}>
-          {missing && <MissingReleaseFileAlert missing={missing} />}
+          {missing && (
+            <MissingReleaseFileAlert
+              missing={missing}
+              message={missingFailure?.message}
+              action="harness"
+            />
+          )}
           {isChecking && (
             <LoadingIndicator
               label={

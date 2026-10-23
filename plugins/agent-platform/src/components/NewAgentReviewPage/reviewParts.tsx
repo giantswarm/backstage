@@ -277,27 +277,6 @@ export function SectionTitle({
 }
 
 /**
- * agent-manager's refusal for the whole configuration: every schema violation
- * and precondition failure of the dry run, verbatim.
- */
-export function Violations({ errors }: { errors: string[] }) {
-  const classes = useReviewStyles();
-  return (
-    <Alert
-      status="danger"
-      title="agent-manager refuses this configuration"
-      description={
-        <ul className={classes.violations} aria-label="Violations">
-          {errors.map(error => (
-            <li key={error}>{error}</li>
-          ))}
-        </ul>
-      }
-    />
-  );
-}
-
-/**
  * The checks agent-manager's dry run could not make. Informational: the dry
  * run is still valid, so they never block Deploy.
  */

@@ -80,15 +80,24 @@ organizations" (`OrganizationValue`). (The code and agent-manager call this the
 agent's tenant; the UI never does.) The agent's page names it beside the
 overview. Where the agents belong to more than one, the filter bar filters by
 it, the platform's agents under the option "None", and the row of an
-organization's agent names it as its first fact, "Organization: acme", in a
-column wider than the others: a row has no labels, and a bare `acme` would read
-like the environment beside it. The name is the filter option's
-(`organization none` for an organization named `none`). A platform agent's row
-leaves that column empty, since a "None" without its label says nothing; the
-column stays, so every row has the same fixed columns and they line up however
-the facts wrap (at phone width, where the facts have no columns, it is gone).
-An agent in another namespace reads `namespace <name>` there. A row's link is the agent's name, its hit area
-stretched over the row, so the star is a button of its own above it. The New
+organization's agent names it beside the agent's name, "Organization: acme",
+since it says whose agent it is: a row has no labels, and a bare `acme` would
+read like the environment among the facts. The name is the filter option's
+(`organization none` for an organization named `none`); a long one truncates,
+taking at most half the name's line. The name link's tooltip gives the name
+and the organization in full, wherever the row is pointed at: the link's hit
+area covers the row, the organization's text included, which is also the
+link's accessible description. A
+platform agent's row names none: a "None" without its label would say
+nothing. An agent in another namespace reads `namespace <name>` there. The
+facts (model, Harness, skills and connectors, environment) are the same fixed
+columns on every row, so they line up from row to row: beside the name where
+the name keeps at least 320px (220px in a list that names no organizations),
+otherwise on one line under the name and its description, on every row of the
+list alike. At phone width they wrap under the name, and the organization goes
+under a name too long for its line and wraps there. A
+row's link is the agent's name, its hit area stretched over the row, so the
+star is a button of its own above it. The New
 agent form asks for it on Details from the places agent-manager lets the person
 create in (`get_info.namespaces.managed`): the only one is picked and named.
 Several of more than one kind are offered as a choice of **Platform**,
@@ -929,6 +938,20 @@ two labels under it; nothing opens every host. `lib/egress.ts` applies the
 CRD's rules client-side: an http(s) origin with a lowercase host and optional
 port, no path, at most 270 characters each, at most 64 entries, no duplicates.
 
+**Not on a coding Harness.** An agent on one (every runtime but `kagent`)
+reaches the platform's list for its Harness only, and agent-manager refuses any
+other origin (`guardCoding`), so the form shows a read-only Network access line
+in place of the field, as the EgressPolicy picker is hidden there.
+`useFormHarnessRuntime` decides both, reading the runtime where the runtime
+field does (`useRuntimeChoices`), the platform Harness included. While the
+runtime is unknown the field stays, and is checked and sent; once it is known
+to be a coding one the form stops checking it (`egressSetByPlatform`) and, on
+create, drops typed origins and picked EgressPolicies and says once what it
+removed (never kept in the draft). The platform's list itself is not shown
+yet: agent-manager does not report it (proposed as `get_info.harnessEgress`);
+`platformEgressOf` in `lib/harnesses.ts` is where it goes, and the line lists
+what it returns.
+
 ### The review page is agent-manager's dry run
 
 The review page turns the form into agent-manager's create contract
@@ -944,7 +967,15 @@ answer is rendered verbatim:
   range (`DefaultChartSemver`), so an agent never moves to 2.0.
 - **`errors[]`** — schema violations and failed preconditions (an unknown
   ModelConfig, an unpinnable skill, a malformed selector). **Create agent** is
-  withheld while any is present; `notes` are shown as information.
+  withheld while any is present; `notes` are shown as information. The
+  refusal (`ValidationRefusal`: "This agent cannot be created", "This change
+  cannot be saved" on edit, "This agent cannot be moved to {runtime}" in
+  Change Harness) leads with what to do and folds agent-manager's words under
+  Technical details. An egress origin refused on a coding Harness is
+  recognised by its wording (`codingEgressRefusal`) and named ("Claude Code
+  agents can only reach addresses the platform allows. Remove …"); any other
+  refusal gets a generic lead, until violations carry codes
+  (giantswarm/agent-manager#144).
 - **`manifests.values`** — the composed values, offered as the manual
   fallback's `values.yaml` with a `helm install` command from `get_info`'s chart
   (`ociUrl`, `latestVersion`).
@@ -1570,6 +1601,41 @@ to 480 px high.
 **Unreadable messages are counted.** `skippedMessages` counts history entries
 that failed the schema (artifact and status updates excluded), and the warning
 renders even when every entry failed.
+
+#### Egress refusals
+
+A connection the egress gateway refused shows on the turn that met it, one
+warning per destination ("Outgoing connection to {host} blocked", then "{agent}
+is not allowed to reach this address · {time} · {n} attempts"), read from
+`agentgateway_atenet_egress_refusals_total` for the Session's actor
+(`useSessionEgressRefusals`). The port, scheme and origin are folded under
+Technical details.
+
+Once a refusal shows, `useEgressRemedy` reads the agent and picks the remedy
+(`egressRemedyKind`, giantswarm/giantswarm#38814), in this order:
+
+| Case                                                        | Remedy                                                     |
+| ----------------------------------------------------------- | ---------------------------------------------------------- |
+| Coding Harness, `get_info` reports `toolchains`             | Start a session with a toolchain, or ask the platform team |
+| Coding Harness, no toolchains                               | Ask the platform team                                      |
+| From Git, HelmRelease outside the agent's namespace         | Changed in Git                                             |
+| From Git, agent-manager cannot commit                       | Changed in Git                                             |
+| Written live, the person may not update the HelmRelease     | An editor can allow it; links the agent's page             |
+| Written live (or by pull request), the person may update it | Add the origin; links the edit page                        |
+| The agent or its runtime cannot be read                     | Neutral: ask the platform team; nothing is promised        |
+
+A coding Harness (every runtime but `kagent`) reaches the platform's list for
+it only (agent-manager's `guardCoding`), so it is decided first, from the
+fleet's Agent row or the namespace's Harnesses, without `get_agent`. "Outside
+agent-manager's directory" is the cheap signal from `get_agent` (`managed:
+gitops` and a HelmRelease namespace other than the agent's). While anything
+is read (muster's server list included), the warning shows without a remedy;
+where agent-manager is not on the installation or `get_info` fails, it gives
+the neutral one, and an inline Harness whose runtime the fleet's row did not
+read is unknown, never the platform's. Every word of the warning, of a dry
+run's refusal and of the form's coding-Harness line lives in
+`lib/egressCopy.ts`, for other surfaces that report the same refusal
+(klaus-gateway's Slack notice).
 
 ### What it cannot show
 
@@ -2946,7 +3012,14 @@ failure the dialog stays open with the message.
 
 **Commit** (`delete_agent` with `mode: commit`, giantswarm/agent-manager#24)
 opens a pull request removing the agent's files, behind
-`get_info.capabilities.commit`. `auth_required` shows as a refusal.
+`get_info.capabilities.commit`. The page mounts the dialog only while it is
+open, and in commit mode it runs the pull-request check described under
+[Editing an agent](#editing-an-agent) afresh on every open. Confirm is disabled
+while the check runs, and stays disabled for a release outside agent-manager's
+directory (the explanation, with only Close) and for a GitHub authorization a
+sign-in can give (the sign-in). Any other answer enables it. Once the delete
+itself has answered, its refusal is what the dialog shows, the same two in the
+same way.
 
 The dialogs render in the **page body**, because the header slot is outside the
 plugin's `QueryClientProvider` and the mutations, dry runs and `ServerSignIn`
@@ -2994,6 +3067,30 @@ HelmRelease's `requestedBy` annotation. A suspended agent's dry run returns
 `conflict:` and locks Save; a viewer gets `forbidden:`. A git-applied agent,
 behind the commit capability, gets **Propose changes as pull request**
 (`update_agent` with `mode: commit`), locked once its pull request is open.
+
+**A git-applied agent is checked before the form** (`useAgentCommitCheck`):
+`update_agent` with `mode: commit`, `dryRun: true` and no changed fields reads
+the repository as the person and answers what a pull request would get, writing
+nothing (about 1–4 s). It runs alongside `get_agent` when a cached reading
+already says `managed: gitops`, otherwise once the fresh reading does. An
+answer cached before the page mounted does not count, and the page stays on
+"Reading the agent…" until the fresh one lands. `classifyCommitFailure` reads
+the answer, for the page, the review and the Delete dialog alike:
+
+| Answer                                                                                                                                                                                      | The page shows                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Passes                                                                                                                                                                                      | The wizard                                                                                                                                                                                                                                                                                                                                                                               |
+| `conflict` naming a release outside agent-manager's directory (`missingReleaseFile`)                                                                                                        | `MissingReleaseFileAlert` as an info empty state, "This agent cannot be edited here", that says why in plain words and to change it in the file that defines it in the repository, linked. The release, the file agent-manager looked for and its refusal are under Technical details. Where the release is defined instead is not something agent-manager reports, so it is not claimed |
+| muster not connected, or `auth_required` for a call that carried no GitHub authorization (`missingGitHubAuthorization`) while muster reports agent-manager waiting for the person's sign-in | `ConnectAgentManagerAlert`; the sign-in re-reads every muster query, and the wizard opens once the check passes                                                                                                                                                                                                                                                                          |
+| Anything else, including `auth_required` where agent-manager is already connected or GitHub refused the token (an App not installed, no push access)                                        | The wizard; the save reports its own answer                                                                                                                                                                                                                                                                                                                                              |
+
+Once the wizard is on screen the check no longer gates it, so a later re-read
+(every muster sign-in re-reads all muster queries) never takes a form away.
+Both refusals are recognised by agent-manager's wording until it reports codes
+of its own (giantswarm/agent-manager#144). The review renders them the same
+way, in case the repository or the authorization changes while the person
+edits. The check costs a GitHub read, so it runs on the edit page and in the
+Delete dialog only, never on the detail page.
 
 ### Updating an agent's skills
 

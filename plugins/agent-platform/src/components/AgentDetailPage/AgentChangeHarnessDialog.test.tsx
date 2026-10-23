@@ -201,6 +201,33 @@ describe('AgentChangeHarnessDialog', () => {
     ).toBeDisabled();
   });
 
+  it('words an extra egress origin the coding Harness refuses, and links to the edit page', async () => {
+    await renderDialog({
+      violations: {
+        codex: [
+          'invalid request: egress origin "https://registry.npmjs.org" is not one of Harness codex\'s origins (https://github.com): a coding agent reaches its Harness\'s origins only, which the platform sets',
+        ],
+      },
+    });
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: /Codex, Harness codex/ }),
+    );
+
+    expect(
+      await screen.findByText(
+        'Codex agents can only reach addresses the platform allows. Remove https://registry.npmjs.org, or ask your platform team to allow it.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/checks refused/)).toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'Edit the agent' }),
+    ).toHaveAttribute('href', '/agents/gazelle/kagent/pr-reviewer/edit');
+    expect(
+      screen.getByRole('button', { name: 'Change Harness' }),
+    ).toBeDisabled();
+  });
+
   it('lists every check the new Harness refuses, blocks the change and links to the edit page', async () => {
     const { callTool } = await renderDialog({
       violations: { codex: [CODEX_REFUSAL] },
@@ -210,11 +237,21 @@ describe('AgentChangeHarnessDialog', () => {
       screen.getByRole('radio', { name: /Codex, Harness codex/ }),
     );
 
-    const violations = await screen.findByRole('list', { name: 'Violations' });
+    expect(
+      await screen.findByText('This agent cannot be moved to Codex'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The platform’s checks refused this configuration. Change what the technical details name, or ask your platform team for help.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Technical details' }),
+    );
+    const violations = screen.getByRole('list', { name: 'Violations' });
     expect(violations).toHaveTextContent(
       'speaks the OpenAI Responses API only',
     );
-    expect(screen.getByText('Codex refuses this agent')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Edit the agent' }),
     ).toHaveAttribute('href', '/agents/gazelle/kagent/pr-reviewer/edit');
@@ -306,6 +343,44 @@ describe('AgentChangeHarnessDialog', () => {
     ).toBeInTheDocument();
     expect(onChanged).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('says in plain words where the Harness is changed instead when agent-manager has no file for the release', async () => {
+    await renderDialog({
+      commit: true,
+      updateError: new Error(
+        "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it",
+      ),
+    });
+    await userEvent.click(
+      screen.getByRole('radio', { name: /Claude Code, Harness claude/ }),
+    );
+
+    expect(
+      await screen.findByText('The Harness cannot be changed here'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /^This agent is defined in Git outside the directory the portal writes to\. Change the Harness in the file that defines it in/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', {
+        name: 'giantswarm/giantswarm-management-clusters',
+      }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/giantswarm-management-clusters',
+    );
+    // What agent-manager checked is technical: folded away.
+    expect(
+      screen.getByText(
+        'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+      ),
+    ).not.toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
   });
 
   it('opens a pull request for an agent applied from git and shows it', async () => {

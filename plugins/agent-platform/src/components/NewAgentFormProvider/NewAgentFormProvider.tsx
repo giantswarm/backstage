@@ -98,6 +98,19 @@ export type NewAgentFormState = {
    */
   egressPolicyRefs: string[];
   /**
+   * The extra origins and EgressPolicies a move to a coding Harness took out,
+   * which reaches its platform list only: what tells the person they are
+   * gone, once. Replaced by the next Harness pick; never kept in a draft.
+   */
+  droppedEgress?: DroppedEgress;
+  /**
+   * The agent runs on a coding Harness, whose egress the platform sets: the
+   * form shows no Extra egress origins, so they are not checked, and creating
+   * drops what was entered (`droppedEgress`). Set by the details step once
+   * the runtime is known (`setEgressSetByPlatform`); never kept in a draft.
+   */
+  egressSetByPlatform?: boolean;
+  /**
    * The name of the workspace the agent's Sessions start in unless the person
    * picks another or none (written as `<namespace>/<name>`, see
    * `lib/defaultWorkspace`). `''` for none, the start.
@@ -156,6 +169,12 @@ export type NewAgentFormState = {
   signInToolDeclined?: boolean;
 };
 
+/** What a move to a coding Harness took out of the form, as entered. */
+export type DroppedEgress = {
+  origins: string[];
+  policies: string[];
+};
+
 /**
  * The wizard in edit mode: the agent it changes, as agent-manager read it when
  * the wizard opened (the baseline the review compares against), and how a save
@@ -199,6 +218,8 @@ export type NewAgentFormContextValue = {
   selectHarness: (harness: HarnessChoice | undefined) => void;
   setSystemMessage: (systemMessage: string) => void;
   setEgressText: (egressText: string) => void;
+  /** Sets {@link NewAgentFormState.egressSetByPlatform}. */
+  setEgressSetByPlatform: (setByPlatform: boolean) => void;
   /** Replaces the picked EgressPolicies (names, in the order picked). */
   setEgressPolicyRefs: (names: string[]) => void;
   /** `''` removes the default workspace. */
@@ -354,7 +375,10 @@ function isValidSlug(slug: string): boolean {
  * token to leave out.
  */
 type NewAgentDraft = {
-  state: Omit<NewAgentFormState, 'tenantChoices'>;
+  state: Omit<
+    NewAgentFormState,
+    'tenantChoices' | 'droppedEgress' | 'egressSetByPlatform'
+  >;
   slugEdited: boolean;
 };
 
@@ -433,6 +457,24 @@ function withTenant(
 }
 
 /**
+ * The state with its extra origins and EgressPolicies taken out, and what was
+ * taken out recorded for the notice; unchanged when there was none.
+ */
+function withEgressDropped(state: NewAgentFormState): NewAgentFormState {
+  const origins = parseEgressText(state.egressText);
+  const policies = state.egressPolicyRefs;
+  if (origins.length === 0 && policies.length === 0) {
+    return state;
+  }
+  return {
+    ...state,
+    egressText: '',
+    egressPolicyRefs: [],
+    droppedEgress: { origins, policies },
+  };
+}
+
+/**
  * The agent as the form compares an edit with: without the sign-in tool,
  * which the form leaves to the Tools step (`formStateOfAgent`), so opening the
  * editor is not a change of the person's.
@@ -476,7 +518,14 @@ export function NewAgentFormProvider({
 
   const isDirtyCreate = !edit && hasCreateInput(state);
   const draftValue = useMemo<NewAgentDraft>(() => {
-    const { tenantChoices: _choices, ...kept } = state;
+    // The notice of a removal is said once, and whether the platform sets the
+    // egress is read again, like the tenant choices.
+    const {
+      tenantChoices: _choices,
+      droppedEgress: _dropped,
+      egressSetByPlatform: _setByPlatform,
+      ...kept
+    } = state;
     return { state: kept, slugEdited };
   }, [state, slugEdited]);
   const onRestore = useCallback((draft: NewAgentDraft) => {
@@ -503,7 +552,10 @@ export function NewAgentFormProvider({
     // (agentSpecOf omits it). Only its length is checked.
     const fieldErrors: NewAgentFieldErrors = {};
     fieldErrors.systemMessage = systemMessageProblem(state.systemMessage);
-    fieldErrors.egress = egressProblem(parseEgressText(state.egressText));
+    // Not shown on a coding Harness, so not checked there.
+    fieldErrors.egress = state.egressSetByPlatform
+      ? undefined
+      : egressProblem(parseEgressText(state.egressText));
     if (!state.name.trim()) {
       fieldErrors.name = 'Enter a name for the agent.';
     }
@@ -667,17 +719,34 @@ export function NewAgentFormProvider({
                 droppedHarness: prev.harness?.name ?? prev.droppedHarness,
               };
         }),
-      // A coding Harness reaches its platform list only: picked
-      // EgressPolicies go with the move to one.
+      // A coding Harness reaches its platform list only: typed origins and
+      // picked EgressPolicies go with the move to one, and the form says so.
       selectHarness: harness =>
-        setState(prev => ({
-          ...prev,
-          harness,
-          droppedHarness: undefined,
-          egressPolicyRefs: isCodingRuntime(harness?.runtime)
-            ? []
-            : prev.egressPolicyRefs,
-        })),
+        setState(prev => {
+          const next = {
+            ...prev,
+            harness,
+            droppedHarness: undefined,
+            droppedEgress: undefined,
+          };
+          return isCodingRuntime(harness?.runtime)
+            ? withEgressDropped(next)
+            : next;
+        }),
+      // The same once the runtime is read, for a Harness picked or defaulted
+      // before it was: the platform Harness may be a coding one. An edit
+      // never drops the agent's egress; it only stops checking it.
+      setEgressSetByPlatform: setByPlatform =>
+        setState(prev => {
+          if (Boolean(prev.egressSetByPlatform) === setByPlatform) {
+            return prev;
+          }
+          const next = {
+            ...prev,
+            egressSetByPlatform: setByPlatform || undefined,
+          };
+          return setByPlatform && !edit ? withEgressDropped(next) : next;
+        }),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
       setEgressText: egressText => setState(prev => ({ ...prev, egressText })),

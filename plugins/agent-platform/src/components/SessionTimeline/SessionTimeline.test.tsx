@@ -1780,33 +1780,36 @@ describe('egress refusals', () => {
     ],
   });
 
-  it('names the host, the reason, the count and links the egress settings', async () => {
+  it('names the host, the agent and the count, with the remedy it is given', async () => {
     await renderInTestApp(
       <SessionTimeline
         timeline={timeline({})}
         agentName="otter-coder"
-        agentEgressHref="/customize/agents/lab/agents/otter-coder/edit"
+        egressRemedy={{
+          kind: 'edit',
+          editHref: '/customize/agents/lab/agents/otter-coder/edit',
+        }}
       />,
     );
 
     const entry = screen.getByTestId('timeline-egress-refused');
     expect(
-      within(entry).getByText('Egress refused: proxy.golang.org:443'),
-    ).toBeInTheDocument();
-    expect(
       within(entry).getByText(
-        /Not in otter-coder’s egress settings · .* · 3 requests in this turn/,
+        'Outgoing connection to proxy.golang.org blocked',
       ),
     ).toBeInTheDocument();
     expect(
       within(entry).getByText(
-        /can add https:\/\/proxy\.golang\.org to its Extra egress origins/,
+        /otter-coder is not allowed to reach this address · .* · 3 attempts/,
       ),
     ).toBeInTheDocument();
     expect(
-      within(entry).getByRole('link', {
-        name: 'otter-coder’s egress settings',
-      }),
+      within(entry).getByText(
+        /add https:\/\/proxy\.golang\.org to otter-coder’s Extra egress origins/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByRole('link', { name: 'Edit otter-coder' }),
     ).toHaveAttribute('href', '/customize/agents/lab/agents/otter-coder/edit');
   });
 
@@ -1826,7 +1829,7 @@ describe('egress refusals', () => {
     const entry = screen.getByTestId('timeline-egress-refused');
     expect(
       within(entry).getByText(
-        /Raw TCP connections are not available to agents · .* · 1 request$/,
+        /Raw TCP connections are not available to agents · .* · 1 attempt$/,
       ),
     ).toBeInTheDocument();
     expect(within(entry).queryByRole('link')).not.toBeInTheDocument();
