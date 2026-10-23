@@ -96,7 +96,7 @@
     "codemirror-json-schema": "0.8.1",
     "vm2": "3.12.2",
     "sha.js": "2.4.12",
-    "basic-ftp": "6.2.2",
+    "basic-ftp": "6.2.3",
     "jsonpath-plus": "10.4.0",
     "protobufjs": "8.8.0",
     "@protobufjs/inquire": "1.1.2",
