@@ -65,7 +65,10 @@ describe('ConnectorTechnicalDetails', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Resource' })).toBeVisible();
-    expect(screen.getByText('muster/jira')).toBeVisible();
+    // Namespace and name as two facts, never one `namespace/name`.
+    expect(fact('Resource', 'Namespace')).toHaveTextContent(/^muster$/);
+    expect(fact('Resource', 'Name')).toHaveTextContent(/^jira$/);
+    expect(screen.queryByText('muster/jira')).toBeNull();
     expect(screen.getByText('Added through muster, not Git')).toBeVisible();
     expect(screen.queryByText('Managed through GitOps')).toBeNull();
 
@@ -103,11 +106,18 @@ describe('ConnectorTechnicalDetails', () => {
     );
 
     expect(screen.getByText('Managed through GitOps')).toBeVisible();
-    expect(fact('Resource', 'HelmRelease')).toHaveTextContent(
-      'flux-giantswarm/grafana-mcp',
+    // The objects that reconcile it carry their kind in their labels.
+    expect(fact('Resource', 'HelmRelease namespace')).toHaveTextContent(
+      /^flux-giantswarm$/,
     );
-    expect(fact('Resource', 'Kustomization')).toHaveTextContent(
-      'flux-giantswarm/collection',
+    expect(fact('Resource', 'HelmRelease name')).toHaveTextContent(
+      /^grafana-mcp$/,
+    );
+    expect(fact('Resource', 'Kustomization namespace')).toHaveTextContent(
+      /^flux-giantswarm$/,
+    );
+    expect(fact('Resource', 'Kustomization name')).toHaveTextContent(
+      /^collection$/,
     );
     expect(screen.queryByText('Origin')).toBeNull();
   });

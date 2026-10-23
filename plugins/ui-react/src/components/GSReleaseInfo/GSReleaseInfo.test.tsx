@@ -32,10 +32,20 @@ describe('GSReleaseInfo', () => {
   it('shows a version without a tag as it is, unlinked', async () => {
     await renderInTestApp(<GSReleaseInfo version="2.81.5-3f2a9c1" />);
 
-    expect(
-      screen.getByText(/provided by Giant Swarm, release 2\.81\.5-3f2a9c1$/),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('paragraph')).toHaveTextContent(
+      /provided by Giant Swarm, release 2\.81\.5-3f2a9c1$/,
+    );
     expect(screen.getAllByRole('link')).toHaveLength(1);
+  });
+
+  it('shortens the commit of a branch build, the full version in its title', async () => {
+    const version = '2.81.5-3f2a9c1d0e8b7a6f5e4d3c2b1a0f9e8d7c6b5a49';
+    await renderInTestApp(<GSReleaseInfo version={version} />);
+
+    expect(screen.getByText('2.81.5-3f2a9c1')).toHaveAttribute(
+      'title',
+      version,
+    );
   });
 
   it('marks both new-tab links with an arrow inside the shell', async () => {

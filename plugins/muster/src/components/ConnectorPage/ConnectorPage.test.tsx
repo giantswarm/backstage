@@ -953,15 +953,23 @@ describe('ConnectorPage at phone width', () => {
 describe('ConnectorPage Details tab', () => {
   const foldOut = () =>
     screen.getByRole('button', { name: 'Technical details' });
+  /** A fact of the fold-out's Resource card, by its label. */
+  const resourceFact = (label: string) =>
+    within(
+      screen.getByRole('heading', { name: 'Resource' }).closest('article')!,
+    )
+      .getByText(label)
+      .closest('dt')?.nextElementSibling;
 
   it('folds the connector resource under the facts', async () => {
     await renderAt(`${BASE}/jira/details`);
 
     expect(foldOut()).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('muster/jira')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Resource' })).toBeNull();
 
     await userEvent.click(foldOut());
-    expect(screen.getByText('muster/jira')).toBeInTheDocument();
+    expect(resourceFact('Namespace')).toHaveTextContent(/^muster$/);
+    expect(resourceFact('Name')).toHaveTextContent(/^jira$/);
     expect(
       screen.getByRole('heading', { name: 'Authentication' }),
     ).toBeInTheDocument();
@@ -976,16 +984,15 @@ describe('ConnectorPage Details tab', () => {
 
     // FactList sets its labels and values, Mono among them, in bui's
     // body-medium (14px) inside the shell.
-    for (const text of [
-      '1 of 1 instance healthy',
-      'muster/jira',
-      'Auto start',
-    ]) {
+    for (const text of ['1 of 1 instance healthy', 'Auto start']) {
       expect(screen.getByText(text)).toHaveAttribute(
         'data-variant',
         'body-medium',
       );
     }
+    expect(
+      within(resourceFact('Name') as HTMLElement).getByText('jira'),
+    ).toHaveAttribute('data-variant', 'body-medium');
   });
 
   it("lists a family's facts and one instance's technical details", async () => {
@@ -1013,7 +1020,7 @@ describe('ConnectorPage Details tab', () => {
     await renderAt(`${BASE}/mcp-jira/details`);
     await userEvent.click(foldOut());
 
-    expect(screen.getByText('muster/mcp-jira')).toBeInTheDocument();
+    expect(resourceFact('Name')).toHaveTextContent(/^mcp-jira$/);
   });
 
   it('opens the fold-out on arrival while muster reports the connector failed', async () => {
@@ -1024,7 +1031,7 @@ describe('ConnectorPage Details tab', () => {
     await renderAt(`${BASE}/linear/details`);
 
     expect(foldOut()).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('muster/linear')).toBeInTheDocument();
+    expect(resourceFact('Name')).toHaveTextContent(/^linear$/);
   });
 
   it("is not on muster's own page, whose address leads to its tools", async () => {

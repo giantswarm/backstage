@@ -23,6 +23,8 @@ import {
   ShellPageTitleSkeleton,
   useFactTextVariant,
   usePhoneLayout,
+  CommitSha,
+  shortSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -38,7 +40,6 @@ import {
   isSkillContentReadable,
   resolveSkillDetailPath,
   sameCommit,
-  shortCommit,
   skillSourceUrl,
   type DiscoveredSkill,
   type SkillDetailTab,
@@ -104,6 +105,15 @@ function FactLink({ href, children }: { href: string; children: ReactNode }) {
     >
       {children}
     </Link>
+  );
+}
+
+/** A commit as a fact's value, at the fact list's size, the full SHA at hand. */
+function FactCommit({ commit }: { commit: string }) {
+  return (
+    <Text variant={useFactTextVariant()}>
+      <CommitSha value={commit} />
+    </Text>
   );
 }
 
@@ -213,7 +223,7 @@ function InstructionsTab({ skill }: { skill: DiscoveredSkill }) {
   return (
     <Flex direction="column" gap="3">
       <Text as="p" variant="body-small" color="secondary">
-        {file} at {shortCommit(content.commit)}
+        {file} at <CommitSha value={content.commit} />
       </Text>
       {content.instructions.trim() ? (
         <SkillInstructions
@@ -263,13 +273,16 @@ function UsedByTab({
     }
     return using.map(row => {
       const pinned = pinnedBehind.get(row.id);
+      // The older pin keeps its full value in the line's title; in a row,
+      // which takes the press, there is no room for a copy button.
       return {
         row,
         detail: [
           row.installation,
           ...(named.get(nameKey(row))! > 1 ? [row.namespace] : []),
-          ...(pinned ? [`older version (${shortCommit(pinned)})`] : []),
+          ...(pinned ? [`older version (${shortSha(pinned)})`] : []),
         ].join(' · '),
+        detailTitle: pinned ? `Pinned at ${pinned}` : undefined,
       };
     });
   }, [using, behind]);
@@ -291,16 +304,26 @@ function UsedByTab({
       >
         {agents.length > 0 && (
           <Text as="p" variant="body-small" color="secondary">
-            {behind.length === 0 &&
-              `All agents use the newest version (${shortCommit(head)}).`}
-            {behind.length === 1 &&
-              `One agent pins an older commit than the newest (${shortCommit(
-                head,
-              )}). Update agents moves it there.`}
-            {behind.length > 1 &&
-              `${behind.length} agents pin an older commit than the newest (${shortCommit(
-                head,
-              )}). Update agents moves them there.`}
+            {behind.length === 0 && (
+              <>
+                All agents use the newest version (<CommitSha value={head} />
+                ).
+              </>
+            )}
+            {behind.length === 1 && (
+              <>
+                One agent pins an older commit than the newest (
+                <CommitSha value={head} />
+                ). Update agents moves it there.
+              </>
+            )}
+            {behind.length > 1 && (
+              <>
+                {behind.length} agents pin an older commit than the newest (
+                <CommitSha value={head} />
+                ). Update agents moves them there.
+              </>
+            )}
           </Text>
         )}
       </AgentUsageList>
@@ -427,9 +450,11 @@ function SkillPage({
       // (UX review M19). It opens the skill's folder at that commit.
       label: 'Latest commit',
       value: sourceUrl ? (
-        <FactLink href={sourceUrl}>{shortCommit(skill.commit)}</FactLink>
+        <FactLink href={sourceUrl}>
+          <CommitSha value={skill.commit} copy={false} />
+        </FactLink>
       ) : (
-        shortCommit(skill.commit)
+        <FactCommit commit={skill.commit} />
       ),
     },
   ];
@@ -550,9 +575,12 @@ function SkillPage({
       <ShellPage
         title={skill.name}
         breadcrumbs={breadcrumbs}
-        meta={`Read from ${source} at ${shortCommit(
-          skill.commit,
-        )}${moreFilesCaption(skill.fileCount)}`}
+        meta={
+          <>
+            Read from {source} at <CommitSha value={skill.commit} />
+            {moreFilesCaption(skill.fileCount)}
+          </>
+        }
         actions={actions}
         tabs={tabs}
         tabsBasePath={basePath}

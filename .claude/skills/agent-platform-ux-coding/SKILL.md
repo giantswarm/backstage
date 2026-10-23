@@ -194,6 +194,49 @@ them and never invent a palette.
   show.
 - Mark optional fields "(optional)" consistently within a form.
 
+### Links
+
+- A text link is bui's `Link` with an absolute href; core-components' `Link`
+  only where the target is a route ref (see the `ui` skill). On a white
+  surface bui draws it in the shell's link colour (`--agent-shell-link`,
+  #00609c) with its own light underline.
+- On a tinted surface a link takes the shell's link colour and a solid
+  underline, whatever its `color` prop: every `Alert`, wherever it sits, and
+  bui's neutral-2 surface (#f0f4f6, a `Card` inside a white `Card` or
+  `Accordion`, like the Technical details cards, or a `Box bg="neutral"`
+  nested once), but not a white neutral-3 surface nested inside that.
+  `agent-shell.css` does this for bui's and MUI's links alike; do not style a
+  link per component. The link colour holds 6.0:1 against the tint but only
+  2.3:1 against the body text, short of the 3:1 at which colour alone may mark
+  a link, so the underline is the cue. A trailing arrow is not: "↗" marks a
+  new tab (`ExternalLink`, `GSReleaseInfo`), nothing else.
+- A tinted surface is a bui surface (`Card`, `Box bg`), so the rule finds it
+  by bui's `data-bg`. A hand-drawn `var(--bui-bg-neutral-2)` fill with links
+  in it sets `data-bg="neutral-2"` too; hover and selection tints are not
+  surfaces.
+
+### Kubernetes resources and commits
+
+- A resource a card is about shows its namespace and name as two facts,
+  Namespace and Name: `namespacedNameFacts` (`ui-react` utils). A second resource in
+  the same list passes its `kind`, so its labels read "HelmRelease namespace"
+  and "HelmRelease name". Never one `namespace/name` value in a fact list.
+- A reference inside a value (the ModelConfig under Model, a sub-agent, the
+  HelmRelease under Deployed by) names the resource alone when it is in the
+  page resource's namespace, which the Resource card states; in another one it
+  adds a "Namespace <ns>" line under it. Sentences and outcome lines ("Deletes
+  claim ns/name") keep the joined form.
+- A git SHA is shown in 7 characters, through `shortSha` (`gs-common`,
+  re-exported by `ui-react`), wherever it sits: a bare SHA-1, a Flux revision
+  (`main@sha1:…`), a version that carries one (`1.2.3-<sha>`). A digest
+  (`sha256:`, `sha384:`, `sha512:`, `blake3:`, or a bare 64-hex value) keeps
+  its prefix and 12. An abbreviated SHA is shown as it comes. The full value
+  stays at hand: render `CommitSha`, which sets the `title` and adds a copy
+  button on a touch screen; `copy={false}` inside a link, a row or a
+  selectable card, where a button cannot go. Where the SHA sits in a plain
+  string (a row's detail line), the line carries the full value as its
+  title. Never `sha.slice(0, n)` or a hand-rolled `<span title>`.
+
 ### Shared helpers
 
 - Counts: `countNoun(n, noun)`. Name lists: `joinNames` and `groupNames`.

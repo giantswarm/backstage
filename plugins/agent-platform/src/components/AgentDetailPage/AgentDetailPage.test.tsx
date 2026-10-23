@@ -1083,16 +1083,17 @@ describe('AgentDetailPage', () => {
     await renderPage();
     await openTechnicalDetails();
 
-    expect(
-      screen.getByRole('link', { name: 'agent-platform/opus-4-7' }),
-    ).toHaveAttribute(
+    // Named alone: the agent references a ModelConfig in its own namespace,
+    // which the Resource card states.
+    expect(screen.getByRole('link', { name: 'opus-4-7' })).toHaveAttribute(
       'href',
       '/customize/models/gazelle/agent-platform/opus-4-7',
     );
     // Sized and coloured as the "ModelConfig" line it sits in.
-    expect(
-      screen.getByRole('link', { name: 'agent-platform/opus-4-7' }),
-    ).toHaveAttribute('data-variant', 'body-small');
+    expect(screen.getByRole('link', { name: 'opus-4-7' })).toHaveAttribute(
+      'data-variant',
+      'body-small',
+    );
   });
 
   it('keeps the model as text where the agent has no namespace to resolve it in', async () => {
@@ -1574,7 +1575,11 @@ describe('AgentDetailPage', () => {
       await renderPage();
       await openTechnicalDetails();
 
-      expect(screen.getByText('agent-platform/sre-agent')).toBeInTheDocument();
+      // A same-namespace template, so named alone.
+      expect(screen.getByText(/^Sub-agent/)).toHaveTextContent(
+        /^Sub-agent sre-agent$/,
+      );
+      expect(screen.queryByText('agent-platform/sre-agent')).toBeNull();
       expect(screen.getByText(/Called as the tool/)).toHaveTextContent(
         'escalate',
       );
@@ -1587,9 +1592,76 @@ describe('AgentDetailPage', () => {
     await renderPage();
     await openTechnicalDetails();
 
+    // In the agent's own namespace, so named alone.
+    expect(screen.getByText('HelmRelease pr-reviewer')).toBeInTheDocument();
+    expect(screen.queryByText(/^Namespace /)).toBeNull();
+  });
+
+  it('names the namespace of an owning HelmRelease in another one', async () => {
+    stubResources({
+      resource: makeAgent({
+        metadata: {
+          labels: {
+            'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
+            'helm.toolkit.fluxcd.io/namespace': 'flux-giantswarm',
+          },
+        },
+      } as Partial<AgentInterface>),
+    });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    expect(screen.getByText('HelmRelease pr-reviewer')).toBeInTheDocument();
+    expect(screen.getByText('flux-giantswarm').parentElement).toHaveTextContent(
+      /^Namespace flux-giantswarm$/,
+    );
+  });
+
+  it('shows the agent’s namespace and name as two facts', async () => {
+    stubResources({ resource: makeAgent() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    const resource = screen.getByRole('heading', { name: 'Resource' });
+    const card = resource.closest('article')!;
+    const valueOf = (label: string) =>
+      within(card).getByText(label).closest('dt')?.nextElementSibling;
+    expect(valueOf('Namespace')).toHaveTextContent(/^agent-platform$/);
+    expect(valueOf('Name')).toHaveTextContent(/^pr-reviewer$/);
+    expect(within(card).queryByText('agent-platform/pr-reviewer')).toBeNull();
+    // The system prompt is the overview's Instructions section, not a copy
+    // button on the card.
     expect(
-      screen.getByText('HelmRelease agent-platform/pr-reviewer'),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Copy system prompt' }),
+    ).toBeNull();
+  });
+
+  it('links each skill version to its skill’s page, at its short commit', async () => {
+    stubResources({ resource: makeAgent() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    const resource = screen.getByRole('heading', { name: 'Resource' });
+    const card = resource.closest('article')!;
+    expect(
+      within(card).getByRole('link', { name: 'PR review conventions' }),
+    ).toHaveAttribute('href', '/customize/skills/giantswarm/skills/pr-review');
+    expect(within(card).getByTitle(COMMIT)).toHaveTextContent(/^0123456$/);
+  });
+
+  it('makes See tools a link that reads as one on the card', async () => {
+    stubResources({ resource: makeAgent() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    // bui's link, which the shell's stylesheet underlines on a tinted card.
+    expect(screen.getByRole('link', { name: 'See tools' })).toHaveClass(
+      'bui-Link',
+    );
   });
 
   describe('GitOps provenance', () => {
@@ -1632,9 +1704,7 @@ describe('AgentDetailPage', () => {
         screen.queryByText('Managed through GitOps'),
       ).not.toBeInTheDocument();
       // The honest statement about where it came from stays.
-      expect(
-        screen.getByText('HelmRelease agent-platform/pr-reviewer'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('HelmRelease pr-reviewer')).toBeInTheDocument();
     });
 
     it('makes no GitOps claim for an agent no reconciler owns', async () => {
@@ -1690,7 +1760,7 @@ describe('AgentDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the system prompt as Markdown, with a button that copies its source', async () => {
+  it('renders the system prompt as Markdown', async () => {
     stubResources({
       resource: makeAgent({
         spec: {
@@ -1707,9 +1777,6 @@ describe('AgentDetailPage', () => {
       screen.getByRole('heading', { name: 'How you work' }),
     ).toBeInTheDocument();
     expect(screen.getByText('before').tagName).toBe('STRONG');
-    expect(
-      screen.getByRole('button', { name: 'Copy system prompt' }),
-    ).toBeInTheDocument();
   });
 
   describe('sessions', () => {
@@ -2775,10 +2842,17 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
 
       expect(sectionTitle('Configuration')).toBeInTheDocument();
       expect(sectionTitle('Status')).toBeInTheDocument();
-      expect(screen.getAllByText('agent-platform/pr-reviewer').length).toBe(1);
+      // The resource's name, once, as the Resource card's Name fact.
+      const resource = screen
+        .getByRole('heading', { name: 'Resource' })
+        .closest('article')!;
+      expect(
+        within(resource).getByText('Name').closest('dt')?.nextElementSibling,
+      ).toHaveTextContent(/^pr-reviewer$/);
+      expect(within(resource).getAllByText('pr-reviewer')).toHaveLength(1);
       // Which version of each skill it is pinned to, short with the full pin
       // on hover.
-      expect(screen.getByTitle(COMMIT)).toHaveTextContent('0123456789ab');
+      expect(screen.getByTitle(COMMIT)).toHaveTextContent('0123456');
     });
 
     it('starts with the technical details open for an agent that is not ready', async () => {
@@ -3016,7 +3090,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeInTheDocument();
     });
 
-    it('writes a skill’s pinned commit out whole, where no hover can show it', async () => {
+    it('offers a skill’s pinned commit to copy whole, where no hover can show it', async () => {
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
       await renderShell();
@@ -3024,8 +3098,10 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         screen.getByRole('button', { name: 'Technical details' }),
       );
 
-      const pin = await screen.findByText(COMMIT);
-      expect(pin).not.toHaveAttribute('title');
+      expect(await screen.findByText(COMMIT.slice(0, 7))).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Copy 0123456 in full' }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -3044,7 +3120,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         screen.getByRole('button', { name: 'Technical details' }),
       );
 
-      expect(await screen.findByText(COMMIT.slice(0, 12))).toHaveAttribute(
+      expect(await screen.findByText(COMMIT.slice(0, 7))).toHaveAttribute(
         'title',
         COMMIT,
       );

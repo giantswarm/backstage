@@ -79,12 +79,3 @@ export function skillLabel(skill: SkillLike): string {
 
   return fromUrl ?? url;
 }
-
-/** The first characters of a git commit or a `sha256:` digest, as `git log --oneline` would print it. */
-export function shortPin(pin: string): string {
-  const digest = pin.match(/^sha256:([0-9a-f]+)$/i);
-  if (digest) {
-    return `sha256:${digest[1].slice(0, 12)}`;
-  }
-  return /^[0-9a-f]{40,64}$/i.test(pin) ? pin.slice(0, 12) : pin;
-}

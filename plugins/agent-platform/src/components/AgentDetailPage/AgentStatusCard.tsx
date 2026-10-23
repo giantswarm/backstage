@@ -4,26 +4,16 @@ import {
   AGENT_CONDITION_STAGE_ORDER,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  CommitSha,
   ConditionsList,
   InfoCard,
+  MONO,
   SimpleAccordion,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { shortPin } from './helpers';
-
-/** Identifiers that may run to 64 characters with nowhere to break. */
-const MONO: React.CSSProperties = {
-  fontFamily: 'monospace',
-  overflowWrap: 'anywhere',
-};
-
-/** A revision hash shortened like a commit, the full value on hover. */
+/** A revision hash shortened like a commit, the full value at hand. */
 function Revision({ value }: { value: string }) {
-  return (
-    <span style={MONO} title={value}>
-      {shortPin(value)}
-    </span>
-  );
+  return <CommitSha value={value} style={MONO} />;
 }
 
 /**

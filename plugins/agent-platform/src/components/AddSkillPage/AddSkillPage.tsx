@@ -19,6 +19,7 @@ import {
   useSelectFieldError,
   WizardFrame,
   WizardStepHeading,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
@@ -31,7 +32,6 @@ import type { SkillContent } from '../../hooks/useSkillContent';
 import {
   canProposeSkillTo,
   repoSlug,
-  shortCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -328,7 +328,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             <Text variant="body-small" color="secondary">
               {edit.skill.path ? `${edit.skill.path}/SKILL.md` : 'SKILL.md'} in{' '}
               {repoSlug(edit.skill.repoUrl)}, as of{' '}
-              {shortCommit(edit.content.commit)}
+              <CommitSha value={edit.content.commit} />
             </Text>
           )}
           {!edit && repositories.length > 1 && (
