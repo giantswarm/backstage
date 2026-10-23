@@ -295,7 +295,7 @@ describe('toAgentRow', () => {
     };
 
     expect(toAgentRow(agent, [])).toMatchObject({
-      tenant: 'organization acme',
+      tenant: 'acme',
       createdBy: 'ana@acme.example',
     });
   });

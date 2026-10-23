@@ -11,7 +11,7 @@ import {
   AgentManagerError,
   AgentManagerNotConnectedError,
 } from '../lib/agentManager';
-import { tenantOf } from '../lib/tenants';
+import { tenantInSentence } from '../lib/tenants';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
@@ -75,10 +75,11 @@ function refusalNamingTenant(error: unknown, agent: AgentRow): unknown {
   ) {
     return error;
   }
-  const tenant = agent.tenant ?? tenantOf(agent.namespace);
   return new AgentManagerError(
     'forbidden',
-    `You may not start a session with ${agent.name}: it belongs to ${tenant}, and you have no access to that tenant’s agents on ${agent.installation}. Ask your platform team for the agent-platform:user role in its namespace. (${error.message})`,
+    `You may not start a session with ${agent.name}: it belongs to ${tenantInSentence(
+      agent.namespace,
+    )}, and you have no access to its agents on ${agent.installation}. Ask your platform team for the agent-platform:user role in its namespace. (${error.message})`,
   );
 }
 

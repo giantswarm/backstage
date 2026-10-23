@@ -9,6 +9,7 @@ import {
   open,
   openWizardMoreOptions,
   rosterLinkOf,
+  rosterRowOf,
   searchRoster,
   signIn,
   test as base,
@@ -51,7 +52,8 @@ const users = {
 
 const organization = 'e2e-tenants';
 const namespace = `org-${organization}`;
-const tenant = `organization ${organization}`;
+/** The organization as a sentence names it. */
+const inSentence = `the ${organization} organization`;
 /** The lab API server's `--oidc-username-prefix` and groups prefix. */
 const subjectPrefix = 'oidc:';
 const rosterWait = 2 * 60_000;
@@ -279,7 +281,7 @@ test.describe('agents per tenant', () => {
     await open(bob, '/customize/agents', users.bob);
     await expect(
       bob.getByText('No agents for you yet'),
-      'the empty state for a person no tenant binds',
+      'the empty state for a person no organization binds',
     ).toBeVisible({ timeout: rosterWait });
     await expect(
       bob.getByText(/agent-platform:user.*agent-platform:editor/),
@@ -292,7 +294,7 @@ test.describe('agents per tenant', () => {
   });
 
   test.describe('an organization’s agent', () => {
-    test('the editor of one organization creates there: the wizard names the only tenant, the agent’s page its tenant and creator, Edit and Delete', async ({
+    test('the editor of one organization creates there: the wizard names the only organization, the agent’s page its organization and creator, Edit and Delete', async ({
       tenantAgent,
       signInAs,
     }) => {
@@ -301,13 +303,15 @@ test.describe('agents per tenant', () => {
       await open(dev, '/customize/agents/new', lab.users.dev);
       await expect(
         dev.getByText(
-          `Created in ${tenant}, the only tenant you may create agents in on ${lab.installation}.`,
+          `The agent belongs to ${inSentence}: on ${lab.installation}, you may create agents only there.`,
         ),
-        'the only tenant is picked and named, not offered',
+        'the only organization is picked and named, not offered',
       ).toBeVisible({ timeout: 60_000 });
       await openWizardMoreOptions(dev);
       await expect(
-        dev.getByText(`The agents of ${tenant} run on the platform Harness.`),
+        dev.getByText(
+          `The agents of ${inSentence} run on the platform Harness.`,
+        ),
         'the organization runs its agents on the platform Harness, the only runtime offered',
       ).toBeVisible({ timeout: 60_000 });
       await expect(
@@ -317,7 +321,7 @@ test.describe('agents per tenant', () => {
 
       await open(dev, tenantAgent, lab.users.dev);
       await expectAgentRendered(dev);
-      await expect(fact(dev, 'Tenant')).toHaveText(tenant);
+      await expect(fact(dev, 'Organization')).toHaveText(organization);
       await expect(fact(dev, 'Created by')).toHaveText(lab.users.dev.email);
       await expect(editButton(dev), 'its editor may edit it').toBeVisible();
       await dev.getByRole('button', { name: 'Agent actions' }).click();
@@ -340,11 +344,11 @@ test.describe('agents per tenant', () => {
       ).toBeVisible({ timeout: rosterWait });
       await expect(
         alice.getByText(
-          `Editing and deleting the agents of ${tenant} needs the agent-platform:editor role in its namespace`,
+          `Editing and deleting the agents of ${inSentence} needs the agent-platform:editor role in its namespace`,
           { exact: false },
         ),
       ).toBeVisible();
-      await expect(fact(alice, 'Tenant')).toHaveText(tenant);
+      await expect(fact(alice, 'Organization')).toHaveText(organization);
       await expectAgentRendered(alice);
       await expect(editButton(alice), 'no Edit for a user').toHaveCount(0);
       await alice.getByRole('button', { name: 'Agent actions' }).click();
@@ -361,7 +365,7 @@ test.describe('agents per tenant', () => {
       await alice.keyboard.press('Escape');
     });
 
-    test('each person’s roster names the tenants; another organization’s agent is not listed', async ({
+    test('each person’s roster names the organizations; another organization’s agent is not listed', async ({
       tenantAgent: _tenantAgent,
       labAgent,
       signInAs,
@@ -370,15 +374,22 @@ test.describe('agents per tenant', () => {
       const alice = await signInAs(users.alice);
       await open(alice, '/customize/agents', users.alice);
       for (const [name, label] of [
-        [agent.name, tenant],
-        [labAgent.name, 'platform'],
+        [agent.name, organization],
+        // The platform's agent belongs to no organization.
+        [labAgent.name, 'None'],
       ]) {
         await searchRoster(alice, name);
         await expect(
-          rosterLinkOf(alice, name),
-          `${name} is listed with its tenant`,
+          rosterRowOf(alice, name),
+          `${name} is listed with its organization`,
         ).toContainText(label, { timeout: rosterWait });
       }
+      await expect(
+        rosterRowOf(alice, labAgent.name).getByRole('button', {
+          name: 'What None means',
+        }),
+        'None says what it means, on a button of its own',
+      ).toBeVisible();
 
       const bob = await signInAs(users.bob);
       await open(bob, '/customize/agents', users.bob);
@@ -406,7 +417,7 @@ test.describe('agents per tenant', () => {
       ).toBeVisible({ timeout: rosterWait });
       await expect(
         alice.getByText(
-          `Changing the agents of ${tenant} needs the agent-platform:editor role`,
+          `Changing the agents of ${inSentence} needs the agent-platform:editor role`,
           { exact: false },
         ),
       ).toBeVisible();

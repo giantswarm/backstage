@@ -41,7 +41,9 @@ update this file in the same change.
   render time only through `isAgentShellOn`, which latches it per app load so
   chrome and routes agree. Do not add `useAgentShell()`-style classic branches;
   the shell is the only renderer.
-- Fixed product decisions: there are no Organization selectors; the
+- Fixed product decisions: there is no Organization selector that scopes
+  a page (a new agent's form asks whether it belongs to the platform or an
+  organization, and says "Organization", never "tenant"); the
   Environment (installation) selector appears only with more than one
   installation; the UI is light mode only; workflows are not created, edited
   or deleted in the UI, but a workflow's Run it tab runs it (reversing D11's

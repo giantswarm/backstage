@@ -85,7 +85,7 @@ import {
 } from '../AgentsTable/readinessStatus';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { isStartableAgent } from '../../lib/startableAgent';
-import { tenantOf } from '../../lib/tenants';
+import { tenantInSentence } from '../../lib/tenants';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { toneOfIntent } from '../../lib/customize';
 import {
@@ -897,7 +897,7 @@ function AgentDetailPageContent() {
             refusedWrites.length === 2
               ? 'Editing and deleting'
               : refusedWrites[0].replace(/^./, c => c.toUpperCase())
-          } the agents of ${tenantOf(
+          } the agents of ${tenantInSentence(
             namespace,
           )} needs the agent-platform:editor role in its namespace, which your platform team grants.`}
         />

@@ -370,7 +370,7 @@ describe('useCreateSession', () => {
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
-  it('says a refusal from the controller as one that names the agent’s tenant', async () => {
+  it('says a refusal from the controller as one that names the agent’s organization', async () => {
     // agent-manager's answer when the controller refuses CreateSession
     // (PermissionDenied): the person may not use that tenant's agents.
     callTool.mockRejectedValueOnce(
@@ -386,14 +386,14 @@ describe('useCreateSession', () => {
           agent: {
             ...agent,
             namespace: 'org-acme',
-            tenant: 'organization acme',
+            tenant: 'acme',
           },
           prompt: 'Check',
         }),
       ).rejects.toMatchObject({
         code: 'forbidden',
         message: expect.stringContaining(
-          'SRE Agent: it belongs to organization acme',
+          'SRE Agent: it belongs to the acme organization, and you have no access to its agents',
         ),
       });
     });

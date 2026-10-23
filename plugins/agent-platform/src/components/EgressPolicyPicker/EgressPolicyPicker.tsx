@@ -12,6 +12,7 @@ import { useAgentManagerEgressPolicies } from '../../hooks/useAgentManagerEgress
 import { useHarnessChoices } from '../../hooks/useHarnessChoices';
 import type { AgentManagerEgressPolicy } from '../../lib/agentManager';
 import { isCodingRuntime } from '../../lib/harnesses';
+import { tenantAdminsOf } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 
 const useStyles = makeStyles({
@@ -92,7 +93,8 @@ export function EgressPolicyPicker() {
   const withCredential = egressPolicies.some(policy =>
     policy.destinations.some(destination => destination.credentialHeader),
   );
-  const description = `Shared sets of origins your tenant admins keep in ${namespace}. A change to a policy reaches the agent from its next session on.${
+  const admins = tenantAdminsOf(namespace);
+  const description = `Shared sets of origins kept in ${namespace} by ${admins}. A change to a policy reaches the agent from its next session on.${
     withCredential
       ? ' Where an origin names a header, the gateway adds it from the policy’s credential and the agent acts with it.'
       : ''
@@ -125,7 +127,8 @@ export function EgressPolicyPicker() {
         <FieldLabel label={LABEL} secondaryLabel="optional" />
         {failureNotice ?? (
           <Text variant="body-small" color="secondary">
-            No EgressPolicies in {namespace}. Your tenant admins can add them.
+            No EgressPolicies in {namespace}.{' '}
+            {admins.replace(/^./, c => c.toUpperCase())} can add them.
           </Text>
         )}
       </Flex>
@@ -172,7 +175,7 @@ export function EgressPolicyPicker() {
               <Text variant="body-small" color="secondary">
                 {failure
                   ? 'Picked; its origins could not be read.'
-                  : `Not in ${namespace} any more: the agent reaches none of its origins. Unpick it, or ask your tenant admins to restore it.`}
+                  : `Not in ${namespace} any more: the agent reaches none of its origins. Unpick it, or ask ${admins} to restore it.`}
               </Text>
             </Flex>
           </Checkbox>

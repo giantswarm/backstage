@@ -183,7 +183,7 @@ describe('HarnessPicker', () => {
       expect(cards[0]).toHaveTextContent('Harness kagent');
       expect(
         screen.getByText(
-          'The agents of organization acme run on the platform Harness.',
+          'The agents of the acme organization run on the platform Harness.',
         ),
       ).toBeInTheDocument();
     },
