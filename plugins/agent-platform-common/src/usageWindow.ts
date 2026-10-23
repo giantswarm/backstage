@@ -4,12 +4,12 @@
  * and a link carries it — the muster plugin's Connectors view included, which
  * is why this lives in the common package.
  *
- * Three fixed choices rather than a free-form picker, matching the prototype's
- * segmented control. The queries themselves take any whole number of days
+ * Three fixed choices rather than a free-form picker, offered by a select
+ * ("Last 7 days", …). The queries themselves take any whole number of days
  * (`llmUsageQueriesFor`), so widening this list is a one-line change here.
  */
 
-/** The windows the segmented control offers, in whole days. */
+/** The windows the select offers, in whole days. */
 export const USAGE_WINDOW_OPTIONS = [7, 30, 90] as const;
 
 export type UsageWindowDays = (typeof USAGE_WINDOW_OPTIONS)[number];
@@ -63,11 +63,6 @@ export function formatUsageWindowParam(
   days: UsageWindowDays,
 ): string | undefined {
   return days === DEFAULT_USAGE_WINDOW_DAYS ? undefined : `${days}d`;
-}
-
-/** The control's label for a window. */
-export function usageWindowLabel(days: UsageWindowDays): string {
-  return `${days} days`;
 }
 
 /**

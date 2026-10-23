@@ -9,7 +9,6 @@ export {
   USAGE_WINDOW_OPTIONS,
   USAGE_WINDOW_PARAM,
   usageDataStart,
-  usageWindowLabel,
   type UsageDataStart,
   type UsageWindowDays,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
