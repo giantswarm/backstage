@@ -31,7 +31,7 @@ yarn playwright show-report e2e-test-report/agentlab
 | `AGENTLAB_INSTALLATION`  | `agent-platform`                     | the platform's Helm release name                                                                                                                                                                                                        |
 | `AGENTLAB_CLUSTER`       | `agentlab`                           | the lab's `clusterName`: its MCP server `<cluster>-mcp-kubernetes` and its kind node `<cluster>-control-plane`                                                                                                                          |
 | `AGENTLAB_KIND_NODE`     | `<cluster>-control-plane`            | the kind node `serve-node-choice.spec.ts` serves on, for a lab whose node is named otherwise                                                                                                                                            |
-| `AGENTLAB_E2E_WORKERS`   | `1`                                  | parallel workers, each with one sign-in                                                                                                                                                                                                 |
+| `AGENTLAB_E2E_WORKERS`   | `1`                                  | parallel workers, each with one sign-in as lab users of its own — see [How it signs in](#how-it-signs-in)                                                                                                                               |
 | `AGENTLAB_E2E_RUN`       | the run's start, base 36             | the run id `tenants.spec.ts` names its organization's agent with (`e2e-tenant-<run>`) and `harness-codex-card.spec.ts` its Harness; letters and digits only                                                                             |
 | `AGENTLAB_E2E_NETNS`     | `1`                                  | `0` launches the browser in the host's network instead of [its own](#the-browsers-network)                                                                                                                                              |
 | `AGENTLAB_E2E_ORDER`     | `default`                            | the order of the spec files: `default` (by path), `shuffle` (a random order; the run prints its seed) or `shuffle:<seed>` (that order again) — see [Order](#order)                                                                      |
@@ -206,11 +206,44 @@ edge, Dex and the kind network are reached as before. Without `unshare` and
 
 ## How it signs in
 
-Each worker signs in as `admin@lab.local` once and keeps that browser context
-for all its tests (`fixtures.ts`). A saved `storageState` does not work here:
-Dex rotates the refresh token on every silent re-login, so contexts sharing a
+Each worker signs in as its admin once and keeps that browser context for all
+its tests (`fixtures.ts`). A saved `storageState` does not work here: Dex
+rotates the refresh token on every silent re-login, so contexts sharing a
 cookie sign each other out. Tests that need another user open their own
 context (`signInAs`).
+
+Every worker has lab users of its own (`forWorker` in `lab.ts`): the first
+worker is `admin@lab.local`, `dev@lab.local` and `viewer@lab.local`, worker
+_n_ is `admin-<n>@lab.local` ("Lab Admin _n_"), `dev-<n>@lab.local` ("Lab
+Developer _n_") and `viewer-<n>@lab.local` ("Lab Viewer _n_"). Two workers
+signed in as one user break each other: Dex keeps one refresh token per user
+and drops it on the next sign-in, which signs the other worker's page out, and
+the user's muster session, per-server sign-ins and Notification inbox are one.
+A lab for `AGENTLAB_E2E_WORKERS=<w>` carries workers 1 to _w_-1's users in its
+`agentlab.yaml`, each in its original's groups and with the fixture password,
+then `agentlab reload`:
+
+```yaml
+users:
+  # … the lab's own users, then per extra worker n:
+  - email: admin-1@lab.local
+    username: admin-1
+    name: Lab Admin 1
+    password: password
+    groups: [platform-admins, developers]
+  - email: dev-1@lab.local
+    username: dev-1
+    name: Lab Developer 1
+    password: password
+    groups: [developers]
+  - email: viewer-1@lab.local
+    username: viewer-1
+    name: Lab Viewer 1
+    password: password
+    groups: [viewers]
+```
+
+A worker whose admin the lab's Dex refuses fails its first test saying so.
 
 ## An idle tab
 

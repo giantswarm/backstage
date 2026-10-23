@@ -77,15 +77,41 @@ export const lab = {
    */
   ollamaEndpoint:
     process.env.AGENTLAB_OLLAMA_ENDPOINT ?? 'http://172.21.0.1:11434',
+  /** The worker's own lab users ({@link forWorker}). */
   users: {
     /** `platform-admins` + `developers`: may create agents and read kagent. */
-    admin: { email: 'admin@lab.local', name: 'Lab Admin' },
+    admin: forWorker({ email: 'admin@lab.local', name: 'Lab Admin' }),
     /** `developers`: edit in the demo namespace, no kagent reads. */
-    dev: { email: 'dev@lab.local', name: 'Lab Developer' },
+    dev: forWorker({ email: 'dev@lab.local', name: 'Lab Developer' }),
     /** `viewers`: view only. */
-    viewer: { email: 'viewer@lab.local', name: 'Lab Viewer' },
+    viewer: forWorker({ email: 'viewer@lab.local', name: 'Lab Viewer' }),
   } satisfies Record<string, LabUser>,
 } as const;
+
+/**
+ * The parallel worker's own copy of a lab user: the user itself on the first
+ * worker (and in the runner), `<name>-<n>@lab.local` named "<Name> <n>" on
+ * worker n. One Dex identity per worker, because whatever is the person's is
+ * shared by every page signed in as them: Dex keeps one refresh token per
+ * user and client and drops it on the next sign-in, which signs every other
+ * worker's page out; muster keeps one session and one per-server sign-in per
+ * user; the Notification inbox is per user. A lab for more than one worker
+ * carries these users in its `agentlab.yaml`, each in its original's groups
+ * (`e2e/agentlab/README.md`).
+ */
+export function forWorker(
+  user: LabUser,
+  parallelIndex: number = Number(process.env.TEST_PARALLEL_INDEX ?? 0),
+): LabUser {
+  if (!parallelIndex) {
+    return user;
+  }
+  const [local, domain] = user.email.split('@');
+  return {
+    email: `${local}-${parallelIndex}@${domain}`,
+    name: `${user.name} ${parallelIndex}`,
+  };
+}
 
 /**
  * Options for every browser context the suite opens — in the config's `use`

@@ -165,7 +165,7 @@ test('the list distinguishes the three ways a state can be missing', async ({
   // summary never evaluated are not states the lab can be put into.
   const session = (id: string, name: string) => ({
     id,
-    creator: 'admin@lab.local',
+    creator: lab.users.admin.email,
     agent: { namespace: 'kagent', name: 'e2e-state-column' },
     state: 'RUNTIME_STATE_READY',
     createdAt: '2026-09-18T09:00:00Z',

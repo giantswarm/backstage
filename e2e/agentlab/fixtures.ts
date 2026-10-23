@@ -209,8 +209,9 @@ type WorkerFixtures = {
    */
   variant: Variant;
   /**
-   * One page per worker, signed in as the lab admin once and kept for the
-   * worker's lifetime; every test navigates it.
+   * One page per worker, signed in as the worker's own lab admin
+   * (`lab.users.admin`, `forWorker` in `lab.ts`) once and kept for the worker's
+   * lifetime; every test navigates it.
    *
    * Why not Playwright's usual saved `storageState`, and why the page that
    * signed in stays open: the portal's session rests on Dex's refresh token,
@@ -319,7 +320,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   adminPage: [
-    async ({ browser, variant }, use) => {
+    async ({ browser, variant }, use, workerInfo) => {
       const context = await browser.newContext(contextOptionsFor(variant));
       const page = await context.newPage();
       await page.addInitScript(
@@ -334,7 +335,14 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         },
         [PERSISTED_QUERY_CACHES, DROP_CACHES_FLAG, FORM_DRAFT_PREFIX] as const,
       );
-      await signIn(page, lab.users.admin);
+      await signIn(page, lab.users.admin).catch((error: Error) => {
+        if (workerInfo.parallelIndex === 0) {
+          throw error;
+        }
+        throw new Error(
+          `this worker signs in as ${lab.users.admin.email}, a user of its own, which the lab's agentlab.yaml must carry for a run with more than one worker (e2e/agentlab/README.md, "How it signs in"): ${error.message}`,
+        );
+      });
       await use(page);
       await context.close();
     },
