@@ -22,7 +22,19 @@ import {
   type ListRepositoriesInput,
   type ProviderRepository,
 } from '../../lib/workspaceManager';
+import {
+  hasFilters,
+  includesName,
+  keptPicks,
+  sameName,
+  uniqueNames,
+} from '../../lib/workspaceSelection';
 import { repositoryNoun } from './repositoryNoun';
+import {
+  countSummary,
+  type FilterMatches,
+  type SourceCount,
+} from './sourceCount';
 
 /** `list_repositories`' largest page, for "select all matches". */
 export const SELECT_ALL_PAGE_SIZE = 200;
@@ -32,7 +44,7 @@ export function matchesFilters(
   source: SourceDraft,
   repository: ProviderRepository,
 ): boolean {
-  if (source.languages.length === 0 && source.topics.length === 0) {
+  if (!hasFilters(source)) {
     return false;
   }
   if (repository.archived && !source.includeArchived) {
@@ -80,17 +92,24 @@ function toggle(list: string[], value: string, on: boolean): string[] {
 /** How a repository is in the workspace, or why not. */
 type Membership = 'by filter' | 'by name' | 'excluded' | undefined;
 
+/** An exclusion wins over a pick by name too, as the manager selects. */
 function membership(
   source: SourceDraft,
   repository: ProviderRepository,
 ): Membership {
-  if (source.repositories.includes(repository.name)) {
-    return 'by name';
-  }
-  if (matchesFilters(source, repository)) {
-    return source.exclude.includes(repository.name) ? 'excluded' : 'by filter';
+  const picked = includesName(source.repositories, repository.name);
+  if (picked || matchesFilters(source, repository)) {
+    if (includesName(source.exclude, repository.name)) {
+      return 'excluded';
+    }
+    return picked ? 'by name' : 'by filter';
   }
   return undefined;
+}
+
+/** `names` without `name`, compared without case. */
+function withoutName(names: string[], name: string): string[] {
+  return names.filter(n => !sameName(n, name));
 }
 
 export type RepositoryPickerProps = {
@@ -98,8 +117,12 @@ export type RepositoryPickerProps = {
   organization: string;
   source: SourceDraft;
   onChange: (source: SourceDraft) => void;
-  /** How many of the owner's repositories the filters take, when known. */
+  /** The filtered listing's total, for its pages, when known. */
   matchTotal: number | undefined;
+  /** How many of the owner's repositories the filters take, for the count. */
+  filterMatches: FilterMatches;
+  /** How many repositories the source selects, exclusions applied. */
+  count: SourceCount;
   providerKind: string | undefined;
 };
 
@@ -117,6 +140,8 @@ export function RepositoryPicker({
   source,
   onChange,
   matchTotal,
+  filterMatches,
+  count,
   providerKind,
 }: RepositoryPickerProps) {
   const [search, setSearch] = useState('');
@@ -135,9 +160,9 @@ export function RepositoryPicker({
   }>({ busy: false });
 
   const owner = source.owner.trim();
-  const hasFilters = source.languages.length > 0 || source.topics.length > 0;
+  const filtered = hasFilters(source);
   // Matches first: the filters' pages, then the owner's listing without them.
-  const matchesFirst = hasFilters && !search;
+  const matchesFirst = filtered && !search;
   const matchPages = matchesFirst
     ? Math.ceil((matchTotal ?? 0) / EDITOR_PAGE_SIZE)
     : 0;
@@ -185,18 +210,29 @@ export function RepositoryPicker({
     [setPage],
   );
 
+  // A tick takes a repository in: out of the exclusions, and picked by name
+  // unless a filter takes it. Unticking a filter match excludes it; unticking
+  // a pick drops the pick.
   const onTick = useCallback(
     (repository: ProviderRepository, on: boolean) => {
-      if (matchesFilters(source, repository)) {
+      const name = repository.name;
+      const byFilter = matchesFilters(source, repository);
+      if (on) {
         onChange({
           ...source,
-          exclude: toggle(source.exclude, repository.name, !on),
-          repositories: source.repositories.filter(r => r !== repository.name),
+          exclude: withoutName(source.exclude, name),
+          repositories:
+            byFilter || includesName(source.repositories, name)
+              ? source.repositories
+              : [...source.repositories, name],
         });
       } else {
         onChange({
           ...source,
-          repositories: toggle(source.repositories, repository.name, on),
+          exclude: byFilter
+            ? [...withoutName(source.exclude, name), name]
+            : source.exclude,
+          repositories: withoutName(source.repositories, name),
         });
       }
     },
@@ -223,8 +259,8 @@ export function RepositoryPicker({
       }
       onChange({
         ...source,
-        repositories: [...new Set([...source.repositories, ...names])],
-        exclude: source.exclude.filter(name => !names.includes(name)),
+        repositories: uniqueNames([...source.repositories, ...names]),
+        exclude: source.exclude.filter(name => !includesName(names, name)),
       });
       setSelectAll({ busy: false });
     } catch (cause) {
@@ -242,17 +278,9 @@ export function RepositoryPicker({
   if (matchesFirst && ownerTotal !== undefined) {
     pageCount = matchPages + Math.ceil(ownerTotal / EDITOR_PAGE_SIZE);
   }
-  const byFilter = hasFilters ? (matchTotal ?? 0) : 0;
   const byName = source.repositories.length;
-  const excluded = source.exclude.length;
-  const total = byFilter - excluded + byName;
-  const summary = [
-    hasFilters ? `${byFilter} by filter` : undefined,
-    `${byName} by name`,
-    excluded > 0 ? `${excluded} excluded` : undefined,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  // The rows "selected only" lists: an excluded pick shows once.
+  const listed = keptPicks(source).length + source.exclude.length;
 
   return (
     <Flex direction="column" gap="2" data-testid="repository-picker">
@@ -282,7 +310,7 @@ export function RepositoryPicker({
         <Switch
           isSelected={selectedOnly}
           onChange={setSelectedOnly}
-          label={`Show selected only (${byName + excluded})`}
+          label={`Show selected only (${listed})`}
         />
       </Flex>
 
@@ -364,7 +392,12 @@ export function RepositoryPicker({
       )}
 
       <Text variant="body-small" data-testid="repository-summary">
-        {summary} = {total} {repositoryNoun(providerKind, total)}
+        {countSummary({
+          byFilter: filterMatches,
+          byName,
+          count,
+          providerKind,
+        })}
       </Text>
       {!selectedOnly && data && (
         <Flex gap="2" align="center">
@@ -478,7 +511,10 @@ function RepositoryRow({
   );
 }
 
-/** The picks by name and the exclusions, from the draft alone. */
+/**
+ * The picks by name and the exclusions, from the draft alone. A pick that is
+ * excluded shows once, as excluded: the exclusion wins.
+ */
 function SelectedOnly({
   source,
   onChange,
@@ -499,7 +535,7 @@ function SelectedOnly({
       style={{ width: '100%', borderCollapse: 'collapse' }}
     >
       <tbody>
-        {source.repositories.map(name => (
+        {keptPicks(source).map(name => (
           <tr key={`pick-${name}`}>
             <td style={CELL}>
               <Checkbox

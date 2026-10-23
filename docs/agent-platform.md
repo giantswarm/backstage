@@ -370,6 +370,42 @@ in the page) and, through the browser's own prompt, a reload or a closed tab.
 The browser's Back, the command palette and navigation that code starts are
 not held: the app's router has no navigation blocker.
 
+### Workspaces
+
+A workspace is the repositories agent sessions work on, kept by
+workspace-manager. Each source is one owner on one provider instance and
+selects repositories by name, by language and topic filters, or both. Its
+exclusions are repository names, exact and compared without case, never
+patterns. They follow workspace-manager's `provider.Select`: an exclusion
+drops a repository whatever selects it, a pick by name included, and the
+manager keeps an exclusion that names no selected repository (it leaves
+nothing out until a filter selects that name).
+
+The editor (`/customize/workspaces/new`, `…/<installation>/<organization>/<name>/edit`)
+shows a source's exclusions under **Exclusions**: each a tag to remove, what
+they leave out now, and a field that offers the repositories the source
+selects now and takes a typed name too. The field reads that selection
+(`preview_workspace` with the source alone, searched as typed) only while its
+list is open, and says a typed name is not selected only from a fresh answer
+for that search with every match on its page. Unticking a filter match in the
+repository table excludes it as well.
+
+The source's count is the draft's own where it can be: without filters, the
+picks by name less the excluded ones, each name once. With filters only the
+manager knows which matches an exclusion drops, so the count comes from a
+preview: the draft's own when the source is its only one, else a preview of
+the source alone while the source is open. It says "counting…" until the
+answer is in, and "total not known" when the preview fails or cannot run (the
+source's provider instance is not connected or not configured), rather than
+subtracting exclusions that may match nothing. The "by filter" part is left
+out for topics that must all match, since `list_repositories` filters topics
+as "any of" and cannot count them. The preview's "n excluded" is the manager's
+count of repositories the exclusions left out.
+
+The Workspaces tab has no Sources column: its Repositories column gives the
+last synchronization's count, and the sources in full are on the workspace's
+page.
+
 ## Usage
 
 `/usage` reports over 7, 30 (the default) or 90 days:

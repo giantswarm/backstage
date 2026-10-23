@@ -120,13 +120,10 @@ describe('CustomizeWorkspacesPanel', () => {
     jest.clearAllMocks();
   });
 
-  it('lists the workspaces with their sources, repositories, storage, last sync and Sessions', async () => {
+  it('lists the workspaces with their repositories, storage, last sync and Sessions', async () => {
     await renderPanel();
 
     const row = screen.getByRole('row', { name: /docs/ });
-    expect(
-      within(row).getByText('example-org · topic docs'),
-    ).toBeInTheDocument();
     expect(within(row).getByText('12')).toBeInTheDocument();
     expect(
       within(row).getByText(/4(\.0)? GiB of 15 GiB|4(\.0)? GB of 15 GiB/),
@@ -331,6 +328,18 @@ describe('CustomizeWorkspacesPanel', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('Workspaces are not available here')).toBeNull();
     expect(screen.queryByText('Reading your workspaces…')).toBeNull();
+  });
+
+  it('has no Sources column: the sources are on the workspace page', async () => {
+    await renderPanel();
+
+    expect(
+      screen.queryByRole('columnheader', { name: 'Sources' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: 'Repositories' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('example-org · topic docs')).toBeNull();
   });
 
   it('says when the search matches nothing', async () => {
