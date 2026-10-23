@@ -35,6 +35,7 @@ import {
 } from '../../lib/toolchainManager';
 import { AddToolchainSourceButton } from '../AddToolchainSourceDialog';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
+import { ToolchainReadFailure } from '../ToolchainReadFailure';
 
 export type CustomizeToolchainsPanelProps = {
   search: string;
@@ -197,10 +198,11 @@ function SourcesSection({ installation }: { installation: string }) {
     body = <LoadingIndicator label="Reading the toolchain sources…" />;
   } else if (sources.error) {
     body = (
-      <Alert
-        status="danger"
+      <ToolchainReadFailure
+        installation={installation}
+        error={sources.error}
         title="The toolchain sources could not be read"
-        description={sources.error.message}
+        onRetry={sources.refetch}
       />
     );
   } else {
@@ -247,10 +249,11 @@ function InstallationToolchains({
     body = <LoadingIndicator label="Reading the toolchains…" />;
   } else if (list.error) {
     body = (
-      <Alert
-        status="danger"
+      <ToolchainReadFailure
+        installation={installation}
+        error={list.error}
         title={`The toolchains on ${installation} could not be read`}
-        description={list.error.message}
+        onRetry={list.refetch}
       />
     );
   } else if (list.data.status) {

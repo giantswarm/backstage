@@ -46,6 +46,7 @@ import {
 import { toolchainDetailRouteRef, toolchainsRouteRef } from '../../routes';
 import { CodeBlock } from '../CodeBlock';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
+import { ToolchainReadFailure } from '../ToolchainReadFailure';
 
 /** The address's installation: `?installation=<name>`. */
 export const INSTALLATION_SEARCH_PARAM = 'installation';
@@ -344,10 +345,11 @@ function NewToolchainForm({ installation }: { installation: string }) {
             </Flex>
           </form>
           {search.error && (
-            <Alert
-              status="danger"
+            <ToolchainReadFailure
+              installation={installation}
+              error={search.error}
               title="Could not search the packages"
-              description={search.error.message}
+              onRetry={search.refetch}
             />
           )}
           {search.isFetching && <LoadingIndicator label="Searching…" />}

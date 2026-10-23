@@ -1,6 +1,7 @@
 import type { Response } from '@playwright/test';
 
 import {
+  completeDexLogin,
   createAgentInWizard,
   deleteAgentInPortal,
   expect,
@@ -52,9 +53,20 @@ async function goVersions(
     'Allow the toolchain-manager to read the toolchain sources as you',
   );
   const go = page.getByRole('row', { name: /^go\b/ });
-  await expect(unavailable.or(grant).or(go).first()).toBeVisible({
+  const signIn = page.getByTestId('toolchains-sign-in').first();
+  await expect(unavailable.or(grant).or(signIn).or(go).first()).toBeVisible({
     timeout: 2 * 60_000,
   });
+  if (await signIn.isVisible()) {
+    // muster's per-server sign-in to the toolchain-manager: a popup through
+    // muster's OAuth proxy to the lab Dex, as the same fixture account.
+    const popup = page.waitForEvent('popup');
+    await signIn.getByRole('button', { name: /Sign in/ }).click();
+    await completeDexLogin(await popup, lab.users.admin);
+    await expect(unavailable.or(grant).or(go).first()).toBeVisible({
+      timeout: 2 * 60_000,
+    });
+  }
   if (await unavailable.isVisible()) {
     return { missing: "the lab's muster lists no toolchain-manager" };
   }

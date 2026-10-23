@@ -1,7 +1,6 @@
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
-  Alert,
   CellText,
   ColumnConfig,
   Flex,
@@ -36,6 +35,7 @@ import {
 import { toolchainsRouteRef } from '../../routes';
 import { CodeBlock } from '../CodeBlock';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
+import { ToolchainReadFailure } from '../ToolchainReadFailure';
 
 /** The address's version: `?version=0.1.0`; absent, the newest. */
 export const VERSION_SEARCH_PARAM = 'version';
@@ -210,10 +210,11 @@ export function ToolchainDetailPage({
   if (description.error) {
     return (
       <ShellPage title={name} {...frame}>
-        <Alert
-          status="danger"
+        <ToolchainReadFailure
+          installation={installation}
+          error={description.error}
           title={`${name} could not be read`}
-          description={description.error.message}
+          onRetry={description.refetch}
         />
       </ShellPage>
     );
