@@ -154,7 +154,10 @@ const useStyles = makeStyles({
     marginBottom: 'var(--bui-space-3)',
   },
   // Name and description, then the facts: side by side where there is room,
-  // the facts wrapping under the name at phone width.
+  // the facts on a line of their own under the name where there is not. Every
+  // row of a list has the same facts in the same fixed columns, and the name
+  // the same least width, so all rows of a list wrap at the same width and
+  // their columns line up either way.
   body: {
     flex: '1 1 auto',
     minWidth: 0,
@@ -164,8 +167,10 @@ const useStyles = makeStyles({
     columnGap: 'var(--bui-space-4)',
     rowGap: 'var(--bui-space-1)',
   },
+  // 320px leaves the name and its organization room beside the facts: below
+  // it, the facts move under the name rather than squeeze them.
   main: {
-    flex: '1 1 220px',
+    flex: '1 1 320px',
     minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
@@ -174,8 +179,24 @@ const useStyles = makeStyles({
   nameLine: {
     display: 'flex',
     alignItems: 'center',
-    gap: 'var(--bui-space-2)',
+    columnGap: 'var(--bui-space-2)',
+    rowGap: 2,
     minWidth: 0,
+    // A phone's name takes two lines: its organization goes under it.
+    [PHONE_MEDIA]: {
+      flexWrap: 'wrap',
+    },
+  },
+  // Whose agent it is, beside its name: never more than half the line, so a
+  // long name and a long organization each keep some of it, and never
+  // squeezed out by the name.
+  organization: {
+    flex: 'none',
+    maxWidth: '50%',
+    [PHONE_MEDIA]: {
+      maxWidth: 'none',
+      overflowWrap: 'anywhere',
+    },
   },
   status: {
     flex: 'none',
@@ -202,22 +223,6 @@ const useStyles = makeStyles({
     [PHONE_MEDIA]: {
       flex: '0 1 auto',
       overflowWrap: 'anywhere',
-    },
-  },
-  // Wider than the other facts: its text carries its label, and the
-  // organization's name still needs room after "Organization: ".
-  organizationFact: {
-    flex: '0 0 220px',
-    [PHONE_MEDIA]: {
-      flex: '0 1 auto',
-    },
-  },
-  // A platform agent's empty Organization column, so its other columns line
-  // up with an organization's row however the facts wrap. A phone's facts
-  // have no columns to line up: there it is gone.
-  noFact: {
-    [PHONE_MEDIA]: {
-      display: 'none',
     },
   },
   // At phone width a name and a description wrap to two lines instead of
@@ -305,14 +310,14 @@ type AgentFact = {
   label: string;
   /** The tooltip's fuller wording of `text`; `text` itself by default. */
   detail?: string;
-  className?: string;
 };
 
 /**
- * A row's Organization fact, where the list's agents belong to more than one
- * tenant, in the words of the Organization filter's options (`tenantOf`).
- * A row has no label for it, so an organization reads "Organization: acme",
- * as the agent's page has it, and is not taken for the environment beside it.
+ * A row's organization, beside its name, where the list's agents belong to
+ * more than one tenant, in the words of the Organization filter's options
+ * (`tenantOf`). A row has no labels, so an organization reads
+ * "Organization: acme", as the agent's page has it, and is not taken for the
+ * environment among the facts.
  * An agent of the platform belongs to no organization and has no text there:
  * a "None" without its label says nothing (its page says "None", and what
  * that means). Another namespace already says what it is
@@ -329,8 +334,8 @@ function organizationText(namespace: string): string {
 }
 
 /**
- * One agent as the prototype's list row: avatar, name — with its state inline
- * only when it is not Ready — and what it is for, then its organization, its
+ * One agent as the prototype's list row: avatar, name — with its organization
+ * and, only when it is not Ready, its state — and what it is for, then its
  * model, its Harness, its skills and connectors and its environment, the
  * organization, Harness and environment when the list has more than one of
  * each.
@@ -367,21 +372,6 @@ function AgentListItem({
   const truncate = isPhone ? undefined : true;
   const organization = showTenant ? organizationText(row.namespace) : '';
   const facts: AgentFact[] = [
-    // First, and on every row of a list that names organizations, empty on a
-    // platform agent's: the columns after it line up from row to row.
-    ...(showTenant
-      ? [
-          {
-            key: 'tenant',
-            text: organization,
-            label: 'Organization',
-            detail: tenantOf(row.namespace),
-            className: organization
-              ? classes.organizationFact
-              : `${classes.organizationFact} ${classes.noFact}`,
-          },
-        ]
-      : []),
     { key: 'model', text: row.model ?? '', label: 'Model' },
     // The title, as main's Harness column led with; the name joins it in the
     // tooltip.
@@ -441,6 +431,21 @@ function AgentListItem({
                 {row.name}
               </Text>
             )}
+            {/* Whose agent it is, with the name rather than among the facts:
+                every row keeps the same fact columns, and a platform agent's
+                row has nothing here. */}
+            {organization && (
+              <Text
+                as="span"
+                variant="body-small"
+                color="secondary"
+                truncate={truncate}
+                className={classes.organization}
+                title={`Organization: ${tenantOf(row.namespace)}`}
+              >
+                {organization}
+              </Text>
+            )}
             {/* The state shows only when it needs a look, as in the
                 prototype; a Ready agent's state is on its own page. The
                 state keeps to its few words (T104): the reason is its
@@ -476,9 +481,7 @@ function AgentListItem({
               variant="body-small"
               color="secondary"
               truncate={truncate}
-              className={[classes.fact, fact.className]
-                .filter(Boolean)
-                .join(' ')}
+              className={classes.fact}
               title={
                 fact.text
                   ? `${fact.label}: ${fact.detail ?? fact.text}`

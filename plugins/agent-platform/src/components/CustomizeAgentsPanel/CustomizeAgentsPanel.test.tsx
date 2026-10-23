@@ -1063,6 +1063,30 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
     );
   });
 
+  it('wraps an organization under the name instead of cutting it', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [
+        triage,
+        row({
+          name: 'Billing',
+          technicalName: 'billing',
+          namespace: 'org-a-rather-long-organization-name',
+          tenant: 'a-rather-long-organization-name',
+        }),
+      ],
+    };
+    await renderPanel();
+
+    const organization = within(items()[1]).getByText(
+      'Organization: a-rather-long-organization-name',
+    );
+    expect(organization).not.toHaveAttribute('data-truncate');
+    expect(organization.previousElementSibling).toHaveTextContent('Billing');
+    // The platform agent's row names none.
+    expect(items()[0]).not.toHaveTextContent('Organization');
+  });
+
   it('keeps a not-Ready agent’s state to its few words; its page says why', async () => {
     const reason =
       'Model config sonnet not found. The agent references a model config that does not exist in its namespace, so the controller cannot render its deployment; create the model config or pick another one.';
@@ -1154,6 +1178,12 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
   };
   const listed = (name = 'Agents') =>
     within(screen.getByRole('list', { name })).getAllByRole('listitem');
+  /** A row's fact columns, in order, as text. */
+  const factsOf = (item: HTMLElement) =>
+    Array.from(
+      within(item).getByText('Opus').parentElement!.children,
+      fact => fact.textContent,
+    );
 
   beforeEach(() => {
     mockSessions = [];
@@ -1200,15 +1230,16 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       within(sre).queryByRole('button', { name: /None/ }),
     ).not.toBeInTheDocument();
     // An organization's agent names it with its label, not to be taken for
-    // the environment, as the first fact. The platform agent's row keeps the
-    // column, empty and untitled, so the facts after it line up.
-    const fact = within(listed()[1]).getByText('Organization: acme');
-    expect(fact).toHaveAttribute('title', 'Organization: acme');
-    expect(fact.nextElementSibling).toHaveTextContent('Opus');
-    const empty = within(sre).getByText('Opus').previousElementSibling;
-    expect(empty).toHaveTextContent(/^$/);
-    expect(empty).not.toHaveAttribute('title');
-    expect(empty?.previousElementSibling).toBeNull();
+    // the environment, beside its name: whose agent it is.
+    const billing = listed()[1];
+    const organization = within(billing).getByText('Organization: acme');
+    expect(organization).toHaveAttribute('title', 'Organization: acme');
+    expect(organization.previousElementSibling).toHaveTextContent(/^Billing$/);
+    // Not among the facts: both rows have the same fact columns, the model
+    // first, so they line up from row to row however the facts wrap.
+    expect(factsOf(billing)).toEqual(factsOf(sre));
+    expect(factsOf(billing)[0]).toBe('Opus');
+    expect(factsOf(billing).join()).not.toMatch(/Organization|acme/);
     expect(await filterOptions('organization')).toEqual(['acme 2', 'None 1']);
     expect(await filterOptions('created by')).toEqual(['Me 1']);
 
@@ -1262,10 +1293,14 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     );
     unmount();
 
-    // One organization's agents alone: the list says it of none of them.
+    // One organization's agents alone: the list says it of none of them, and
+    // the name stands alone on its line.
     mockAgents = { ...mockAgents, rows: [billing] };
     await renderPanel();
     expect(listed()[0]).not.toHaveTextContent('Organization');
+    expect(within(listed()[0]).getByText('Billing').nextElementSibling).toBe(
+      null,
+    );
   });
 
   it('offers the model dropdown over three agents on one model, none starred', async () => {
