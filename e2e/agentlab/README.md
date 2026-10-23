@@ -8,9 +8,6 @@ tokens headlessly. A change to a page ships with the spec that proves it.
 ## Run
 
 ```bash
-# once: a Playwright browser
-yarn playwright install chromium
-
 # the lab is up (`agentlab up`), or was just reconciled with your dev image
 # (`platform.devImages.backstage` + `agentlab platform`)
 yarn test:e2e:agentlab
@@ -22,6 +19,13 @@ yarn test:e2e:agentlab --headed                  # watch it
 AGENTLAB_E2E_ORDER=shuffle yarn test:e2e:agentlab # spec files in a random order
 yarn playwright show-report e2e-test-report/agentlab
 ```
+
+`yarn test:e2e:agentlab` first installs the Chromium its Playwright version
+needs (`playwright install chromium`, a no-op when it is there), so a
+Playwright bump needs no browser install by hand. A run that skips the script
+(`yarn playwright test --config e2e/agentlab/playwright.config.ts`) without
+that browser stops before the first spec, naming the missing executable and
+the command that installs it.
 
 | Variable                 | Default                              | Meaning                                                                                                                                                                                                                                 |
 | ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

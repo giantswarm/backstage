@@ -306,10 +306,10 @@ the New agent wizard, a chat turn — against a running
 [agentlab](https://github.com/giantswarm/agentlab), the local kind cluster
 that runs the whole agent platform with this Backstage in it. It is the
 browser-level complement of `agentlab backstage-test`, which proves the same
-portal's routes and tokens headlessly and renders no page.
+portal's routes and tokens headlessly and renders no page. The script first
+installs the Chromium its Playwright version needs, a no-op when it is there.
 
 ```bash
-yarn playwright install chromium          # once
 yarn test:e2e:agentlab                    # against https://backstage.127.0.0.1.nip.io
 yarn test:e2e:agentlab --grep-invert lifecycle   # the pages only, ~1 min
 ```
