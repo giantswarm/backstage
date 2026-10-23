@@ -13,7 +13,7 @@ import {
   DateComponent,
   type Fact,
   InfoHint,
-  MONO,
+  Mono,
   PageSection,
   ShowMore,
   TechnicalDetailsFoldOut,
@@ -25,7 +25,6 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import {
   harnessChoiceOf,
-  harnessTitle,
   PLATFORM_DEFAULT_LABEL,
   RUNTIME_DESCRIPTION,
   RUNTIME_LABEL,
@@ -43,6 +42,7 @@ import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
+import { HarnessSummary } from '../HarnessSummary';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { OrganizationValue } from '../OrganizationValue';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
@@ -524,10 +524,11 @@ function ModelFact({
 }
 
 /**
- * The Harness the agent runs on, in the create form's words: the title its
- * card carried, the platform default's mark and the Harness's name beneath.
- * A Harness the person cannot read is known by its name alone, and an agent
- * that names none says so rather than leaving the fact blank.
+ * The Harness the agent runs on, in the create form's words: the runtime
+ * card's `HarnessSummary`, with the platform default's mark once
+ * agent-manager has said which Harness that is. A Harness the person cannot
+ * read is known by its name alone, and an agent whose runtime is not known
+ * says so rather than leaving the fact blank.
  */
 function RuntimeFact({
   agent,
@@ -538,59 +539,58 @@ function RuntimeFact({
   agent: Agent;
   harness?: Harness;
   isReading: boolean;
-  platformHarness: string;
+  platformHarness?: string;
 }) {
   const name = agent.getHarnessName();
-  const choice = harness ? harnessChoiceOf(harness) : undefined;
+  const hint = (
+    <InfoHint label="What the runtime is" size="medium">
+      {RUNTIME_DESCRIPTION}
+    </InfoHint>
+  );
+  const mark =
+    name !== undefined && name === platformHarness
+      ? PLATFORM_DEFAULT_LABEL
+      : undefined;
+
+  if (harness) {
+    return (
+      <Flex direction="column" gap="1">
+        <HarnessSummary
+          choice={harnessChoiceOf(harness)}
+          mark={mark}
+          titleAddon={hint}
+          compact
+        />
+      </Flex>
+    );
+  }
 
   let title: ReactNode;
   let note: string | undefined;
-  if (choice) {
-    title = harnessTitle(choice);
-  } else if (name) {
-    title = <span style={MONO}>{name}</span>;
+  if (name) {
+    title = <Mono>{name}</Mono>;
     note = isReading ? undefined : 'Its runtime could not be read.';
   } else {
     // An inline Harness, which the chart never renders: its runtime family
-    // is all there is to name.
+    // is all there is to name, when this client knows it.
     const inlineRuntime = agent.getInlineHarnessRuntime();
-    title = runtimeLabel(inlineRuntime);
-    note = inlineRuntime ? undefined : 'The agent names no Harness.';
+    title = <Text variant="body-small">{runtimeLabel(inlineRuntime)}</Text>;
+    if (!agent.hasInlineHarness()) {
+      note = 'The agent names no Harness.';
+    } else if (!inlineRuntime) {
+      note = 'Its runtime is not known.';
+    }
   }
 
   return (
     <Flex direction="column" gap="1">
-      {/* A long display name wraps beside the hint, never past a phone's
-          343px column. */}
       <Flex align="center" gap="1">
-        <Text
-          variant="body-small"
-          style={{ minWidth: 0, overflowWrap: 'anywhere' }}
-        >
-          {title}
-        </Text>
-        <InfoHint label="What the runtime is" size="medium">
-          {RUNTIME_DESCRIPTION}
-        </InfoHint>
+        {title}
+        {hint}
       </Flex>
-      {name && name === platformHarness && (
-        <Text variant="body-x-small" color="secondary">
-          {PLATFORM_DEFAULT_LABEL}
-        </Text>
-      )}
-      {choice && (
-        <Text
-          variant="body-x-small"
-          color="secondary"
-          style={{ overflowWrap: 'anywhere' }}
-        >
-          Harness <span style={MONO}>{choice.name}</span>
-          {choice.imageName && (
-            <>
-              {' · '}
-              <span style={MONO}>{choice.imageName}</span>
-            </>
-          )}
+      {mark && (
+        <Text variant="body-small" color="secondary">
+          {mark}
         </Text>
       )}
       {note && (
@@ -622,8 +622,11 @@ export function agentFacts({
   /** The Harness the agent names, once read. */
   harness?: Harness;
   isReadingHarness?: boolean;
-  /** agent-manager's platform Harness, marked as the default. */
-  platformHarness: string;
+  /**
+   * agent-manager's platform Harness, marked as the default; undefined until
+   * (or unless) `get_info` names it, so no Harness is marked on a guess.
+   */
+  platformHarness?: string;
 }): Fact[] {
   const failure = agent.getFailure();
   const created = agent.getCreatedTimestamp();

@@ -65,7 +65,6 @@ import {
 } from '../../hooks/useNewSessionHandoff';
 import type { ComposerImage } from '../../lib/messageImages';
 import { AvatarSize } from '../../lib/agentAvatar';
-import { DEFAULT_PLATFORM_HARNESS } from '../../lib/harnesses';
 import { clientLookupOf } from '../../lib/serving';
 import { toolsetHasTools } from '../../lib/toolset';
 import {
@@ -274,17 +273,6 @@ function AgentDetailPageContent() {
     ModelConfig,
     { name: modelConfigName ?? '', namespace, enableDiscovery: false },
     { enabled: Boolean(modelConfigName) },
-  );
-
-  // The Harness it names, read on its own like the ModelConfig, so the facts
-  // call the runtime what the create form called it. A person who may not
-  // read Harnesses still sees its name.
-  const harnessName = agent?.getHarnessName();
-  const { resource: harness, isLoading: isReadingHarness } = useResource(
-    installation,
-    Harness,
-    { name: harnessName ?? '', namespace, enableDiscovery: false },
-    { enabled: Boolean(harnessName) },
   );
 
   // What the serving layer says about the model behind that ModelConfig — the
@@ -756,6 +744,18 @@ function AgentDetailPageContent() {
   const onOverview = path === basePath;
   const onTools = path === `${basePath}/tools`;
 
+  // The Harness it names, read on its own like the ModelConfig, so the facts
+  // call the runtime what the create form called it. Only on the Overview,
+  // whose facts column is the one place it shows; the read stays cached for
+  // a return. A person who may not read Harnesses still sees its name.
+  const harnessName = agent?.getHarnessName();
+  const { resource: harness, isLoading: isReadingHarness } = useResource(
+    installation,
+    Harness,
+    { name: harnessName ?? '', namespace, enableDiscovery: false },
+    { enabled: Boolean(harnessName) && onOverview },
+  );
+
   // Loading only while there is no agent to show. An agent already in the
   // query cache renders at once, even while the persisted cache restores on
   // this provider's mount (`useResource` reports loading throughout that
@@ -1025,8 +1025,9 @@ function AgentDetailPageContent() {
               modelServing: agentRow?.modelServing,
               harness,
               isReadingHarness: Boolean(harnessName) && isReadingHarness,
-              platformHarness:
-                agentManagerInfo?.harness?.name || DEFAULT_PLATFORM_HARNESS,
+              // Named by get_info alone: until it answers, or where it names
+              // none, no Harness is marked as the platform's on a guess.
+              platformHarness: agentManagerInfo?.harness?.name,
             })}
           />
         ) : undefined

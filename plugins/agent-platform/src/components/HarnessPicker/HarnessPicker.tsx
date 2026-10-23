@@ -1,7 +1,5 @@
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
 
-import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import { useHarnessChoices } from '../../hooks/useHarnessChoices';
 import {
   harnessTitle,
   PLATFORM_DEFAULT_LABEL,
@@ -16,8 +14,9 @@ import {
   SelectableCard,
   SelectableCardGrid,
   StaticCard,
-  useSelectableCardStyles,
 } from '../SelectableCard';
+import { HarnessSummary } from '../HarnessSummary';
+import { useRuntimeChoices } from './useRuntimeChoices';
 
 /**
  * The runtime an agent runs on: the Harnesses of the chosen model's namespace,
@@ -38,48 +37,34 @@ import {
  * warning.
  */
 export function HarnessPicker() {
-  const classes = useSelectableCardStyles();
   const { state, edit, selectHarness } = useNewAgentForm();
   const {
     installation,
     modelConfigNamespace: namespace,
     droppedHarness,
   } = state;
-  // The tenant the agent is created in; editing, its own namespace.
-  const tenant = state.tenant ?? namespace;
-  const { info } = useAgentManagerInfo(installation);
-  const platformNamespace = info?.namespaces?.default;
-  const inOtherTenant = Boolean(
-    tenant && platformNamespace && tenant !== platformNamespace,
-  );
-  const { choices, platformHarness, platformChoice, errors, isLoading } =
-    useHarnessChoices(installation, inOtherTenant ? tenant : namespace);
+  const {
+    choices,
+    platformHarness,
+    platformChoice,
+    errors,
+    isLoading,
+    tenant,
+    inOtherTenant,
+  } = useRuntimeChoices();
 
   if (!installation || !namespace) {
     return null;
   }
 
-  const content = (choice: HarnessChoice) => {
-    return (
-      <>
-        <Text weight="bold">{harnessTitle(choice)}</Text>
-        {choice.name === platformHarness && (
-          <Text variant="body-small" color="secondary">
-            {PLATFORM_DEFAULT_LABEL}
-          </Text>
-        )}
-        <Text variant="body-x-small" color="secondary">
-          Harness <span className={classes.code}>{choice.name}</span>
-          {choice.imageName && (
-            <>
-              {' · '}
-              <span className={classes.code}>{choice.imageName}</span>
-            </>
-          )}
-        </Text>
-      </>
-    );
-  };
+  const content = (choice: HarnessChoice) => (
+    <HarnessSummary
+      choice={choice}
+      mark={
+        choice.name === platformHarness ? PLATFORM_DEFAULT_LABEL : undefined
+      }
+    />
+  );
 
   // The edit page shows an existing agent's Harness without offering others:
   // moving it runs its own checks, from Change Harness on the agent's page.

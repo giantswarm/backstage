@@ -23,13 +23,10 @@ import {
   type HarnessChoice,
 } from '../../lib/harnesses';
 import { CommitOutcome } from '../CommitOutcome';
+import { HarnessSummary } from '../HarnessSummary';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
-import {
-  SelectableCard,
-  SelectableCardGrid,
-  useSelectableCardStyles,
-} from '../SelectableCard';
+import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
 
 const useStyles = makeStyles(theme => ({
   // Holds the line under the cards at the loading indicator's height, so the
@@ -112,7 +109,6 @@ export function AgentChangeHarnessDialog({
   onChanged,
 }: AgentChangeHarnessDialogProps) {
   const classes = useStyles();
-  const cardClasses = useSelectableCardStyles();
   const {
     choices,
     platformHarness,
@@ -197,23 +193,10 @@ export function AgentChangeHarnessDialog({
   };
 
   const cardContent = (choice: HarnessChoice) => (
-    <>
-      <Text weight="bold">{harnessTitle(choice)}</Text>
-      {choice.name === currentName && (
-        <Text variant="body-small" color="secondary">
-          Current runtime
-        </Text>
-      )}
-      <Text variant="body-x-small" color="secondary">
-        Harness <span className={cardClasses.code}>{choice.name}</span>
-        {choice.imageName && (
-          <>
-            {' · '}
-            <span className={cardClasses.code}>{choice.imageName}</span>
-          </>
-        )}
-      </Text>
-    </>
+    <HarnessSummary
+      choice={choice}
+      mark={choice.name === currentName ? 'Current runtime' : undefined}
+    />
   );
 
   return (
