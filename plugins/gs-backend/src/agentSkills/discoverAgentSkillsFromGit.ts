@@ -23,6 +23,7 @@ import {
   repositoryFilePath,
   SkillFileList,
 } from './skillFiles';
+import { shortSha } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
  * Discovery over the plain git protocol (smart HTTP), for skill repositories
@@ -408,7 +409,7 @@ function movedOn(
 ): GitFetchError {
   return new GitFetchError(
     409,
-    `${cloned.ref} of ${repoUrl} has moved on from ${commit.slice(0, 7)} to ${cloned.commit.slice(0, 7)}; reload the skill to read its current version.`,
+    `${cloned.ref} of ${repoUrl} has moved on from ${shortSha(commit)} to ${shortSha(cloned.commit)}; reload the skill to read its current version.`,
   );
 }
 
@@ -565,7 +566,7 @@ export async function readFileFromGit(options: {
     const target = path.join(root, ...filePath.split('/'));
     const notFound = new GitFetchError(
       404,
-      `${filePath} was not found in ${repoUrl} at ${commit.slice(0, 7)}.`,
+      `${filePath} was not found in ${repoUrl} at ${shortSha(commit)}.`,
     );
     const stat = await lstat(target).catch(() => undefined);
     if (!stat?.isFile()) {

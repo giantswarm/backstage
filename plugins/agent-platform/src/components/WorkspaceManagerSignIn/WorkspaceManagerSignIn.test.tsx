@@ -1,9 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import { WorkspaceManagerSignIn } from './WorkspaceManagerSignIn';
 
-let mockNeedsLogin = true;
+let mockConnected = false;
 jest.mock('@giantswarm/backstage-plugin-muster', () => ({
-  useServerSignIn: () => ({ needsLogin: mockNeedsLogin }),
+  useServerSignIn: () => ({
+    needsLogin: !mockConnected,
+    isConnected: mockConnected,
+  }),
   ServerSignIn: (props: { serverName: string; installation: string }) => (
     <button>
       Sign in to {props.serverName} on {props.installation}
@@ -17,7 +20,7 @@ jest.mock('../../hooks/useMusterPluginApi', () => ({
 
 describe('WorkspaceManagerSignIn', () => {
   beforeEach(() => {
-    mockNeedsLogin = true;
+    mockConnected = false;
     mockHasMuster = true;
   });
 
@@ -35,8 +38,23 @@ describe('WorkspaceManagerSignIn', () => {
     ).toBeInTheDocument();
     expect(onSignedIn).not.toHaveBeenCalled();
 
-    mockNeedsLogin = false;
+    mockConnected = true;
     rerender(
+      <WorkspaceManagerSignIn installation="gazelle" onSignedIn={onSignedIn} />,
+    );
+    expect(onSignedIn).toHaveBeenCalledTimes(1);
+
+    // Still connected on the next render: the read is not run again.
+    rerender(
+      <WorkspaceManagerSignIn installation="gazelle" onSignedIn={onSignedIn} />,
+    );
+    expect(onSignedIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads again when muster reads the server connected as the card mounts (the grant)', () => {
+    mockConnected = true;
+    const onSignedIn = jest.fn();
+    render(
       <WorkspaceManagerSignIn installation="gazelle" onSignedIn={onSignedIn} />,
     );
     expect(onSignedIn).toHaveBeenCalledTimes(1);

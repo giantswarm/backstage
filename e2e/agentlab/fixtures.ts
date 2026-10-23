@@ -956,12 +956,21 @@ export async function removeAgent(
  * the tab's "Last used by you" cards and the rail's sessions name an agent
  * too, once a session ran on it earlier in the run.
  */
+/**
+ * The link of the agent named `name`, relative to whatever it is scoped to:
+ * the roster's lists ({@link rosterLinkOf}) or one row ({@link rosterRowOf}).
+ */
+function agentLinkNamed(page: Page, name: string): Locator {
+  return page
+    .getByRole('link')
+    .filter({ has: page.getByText(name, { exact: true }) });
+}
+
 export function rosterLinkOf(page: Page, name: string): Locator {
   return page
     .getByRole('main')
     .getByRole('list', { name: /^(Favorite agents|Agents)$/ })
-    .getByRole('link')
-    .filter({ has: page.getByText(name, { exact: true }) });
+    .locator(agentLinkNamed(page, name));
 }
 
 /**
@@ -970,11 +979,14 @@ export function rosterLinkOf(page: Page, name: string): Locator {
  * model, parts, organization -- is read from the row.
  */
 export function rosterRowOf(page: Page, name: string): Locator {
-  return page
-    .getByRole('main')
-    .getByRole('list', { name: /^(Favorite agents|Agents)$/ })
-    .getByRole('listitem')
-    .filter({ has: rosterLinkOf(page, name) });
+  return (
+    page
+      .getByRole('main')
+      .getByRole('list', { name: /^(Favorite agents|Agents)$/ })
+      .getByRole('listitem')
+      // Relative to the row: rosterLinkOf starts at `main`, which no row holds.
+      .filter({ has: agentLinkNamed(page, name) })
+  );
 }
 
 /**

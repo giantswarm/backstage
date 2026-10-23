@@ -5,12 +5,12 @@ import {
   FactList,
   InfoCard,
   Mono,
+  namespacedNameFacts,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer, mcpServerStateSeverity } from '../../../lib/k8s';
 import {
   gitOpsManagerDescription,
   isGitOpsManaged,
-  qualifiedName,
   readProvenance,
 } from '../../../lib/gitops';
 import { ServerPageRow } from '../../../lib/serverGrouping';
@@ -23,8 +23,10 @@ import {
 } from '../../McpServersPage/serverDetail';
 
 /**
- * The MCPServer resource behind the connector: what it is called in the
- * cluster and where it comes from, Git or muster.
+ * The MCPServer resource behind the connector: its namespace and name in the
+ * cluster and where it comes from, Git or muster. The card is the MCPServer's,
+ * so its facts lead unprefixed and the objects that reconcile it carry their
+ * kind.
  */
 function ResourceCard({
   server,
@@ -37,29 +39,31 @@ function ResourceCard({
   const manager = gitOpsManagerDescription(provenance);
   const facts: Fact[] = [];
   if (showName) {
-    facts.push({
-      label: 'MCPServer',
-      value: (
-        <Mono>{qualifiedName(server.getName(), server.getNamespace())}</Mono>
-      ),
-    });
+    facts.push(
+      ...namespacedNameFacts({
+        namespace: server.getNamespace(),
+        name: server.getName(),
+      }),
+    );
   }
   if (manager) {
-    facts.push({ label: manager.kind, value: <Mono>{manager.id}</Mono> });
+    facts.push(
+      ...namespacedNameFacts({
+        namespace: manager.namespace,
+        name: manager.name,
+        kind: manager.kind,
+      }),
+    );
   }
   // A HelmRelease applied from Git names the Kustomization as well.
   if (provenance.fluxKustomization && manager?.kind !== 'Kustomization') {
-    facts.push({
-      label: 'Kustomization',
-      value: (
-        <Mono>
-          {qualifiedName(
-            provenance.fluxKustomization,
-            provenance.fluxKustomizationNamespace,
-          )}
-        </Mono>
-      ),
-    });
+    facts.push(
+      ...namespacedNameFacts({
+        namespace: provenance.fluxKustomizationNamespace,
+        name: provenance.fluxKustomization,
+        kind: 'Kustomization',
+      }),
+    );
   }
   if (!manager && provenance.managedBy) {
     facts.push({ label: 'Managed by', value: provenance.managedBy });

@@ -6,7 +6,6 @@ import {
   describeToolScope,
   isGatewayServerBinding,
   mcpBindingId,
-  shortPin,
   skillLabel,
 } from './helpers';
 
@@ -105,23 +104,5 @@ describe('skillLabel', () => {
   // A row with no label is unusable, so there is always something.
   it('falls back to the raw url when nothing else is available', () => {
     expect(skillLabel({ url: 'weird' })).toBe('weird');
-  });
-});
-
-describe('shortPin', () => {
-  it('shortens a git commit the way git log --oneline does', () => {
-    expect(shortPin('0123456789abcdef0123456789abcdef01234567')).toBe(
-      '0123456789ab',
-    );
-  });
-
-  it('keeps the algorithm prefix of a digest', () => {
-    expect(shortPin(`sha256:${'f'.repeat(64)}`)).toBe(
-      `sha256:${'f'.repeat(12)}`,
-    );
-  });
-
-  it('leaves anything else alone', () => {
-    expect(shortPin('v-42')).toBe('v-42');
   });
 });

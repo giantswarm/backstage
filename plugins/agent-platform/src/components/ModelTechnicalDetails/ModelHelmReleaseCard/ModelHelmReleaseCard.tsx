@@ -8,12 +8,14 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { findHelmReleaseChartName } from '@giantswarm/backstage-plugin-flux-react';
 import {
+  CommitSha,
   type Fact,
   FactList,
   InfoCard,
   LoadingIndicator,
   MONO,
   Mono,
+  namespacedNameFacts,
   StatusDot,
   type StatusDotTone,
   useFactTextVariant,
@@ -21,7 +23,7 @@ import {
 
 import { deploymentDetailsExternalRouteRef } from '../../../routes';
 
-/** `namespace/name`, or the name alone where the namespace is not known. */
+/** `namespace/name`, to compare two releases by; the card shows them as facts. */
 function qualified(namespace: string | undefined, name: string) {
   return namespace ? `${namespace}/${name}` : name;
 }
@@ -48,7 +50,7 @@ function releaseState(helmRelease: HelmRelease): {
   return { tone: 'neutral', label: 'Unknown', message: ready?.message };
 }
 
-/** The Flux HelmRelease's address, linked to its deployment page where gs is. */
+/** The Flux HelmRelease's name, linked to its deployment page where gs is. */
 function HelmReleaseName({
   installation,
   namespace,
@@ -60,7 +62,6 @@ function HelmReleaseName({
 }) {
   const deploymentDetailsRoute = useRouteRef(deploymentDetailsExternalRouteRef);
   const variant = useFactTextVariant();
-  const label = qualified(namespace, name);
   const href =
     namespace &&
     deploymentDetailsRoute?.({
@@ -70,11 +71,11 @@ function HelmReleaseName({
       name,
     });
   if (!href) {
-    return <Mono>{label}</Mono>;
+    return <Mono>{name}</Mono>;
   }
   return (
     <Link href={href} variant={variant} style={MONO}>
-      {label}
+      {name}
     </Link>
   );
 }
@@ -113,18 +114,22 @@ export function ModelHelmReleaseCard({
     return null;
   }
 
+  // The card is the HelmRelease's, so its namespace and name lead unprefixed.
   const facts: Fact[] = [];
   if (fluxName) {
-    facts.push({
-      label: 'HelmRelease',
-      value: (
-        <HelmReleaseName
-          installation={installation}
-          namespace={fluxNamespace}
-          name={fluxName}
-        />
-      ),
-    });
+    facts.push(
+      ...namespacedNameFacts({
+        namespace: fluxNamespace,
+        name: fluxName,
+        nameValue: (
+          <HelmReleaseName
+            installation={installation}
+            namespace={fluxNamespace}
+            name={fluxName}
+          />
+        ),
+      }),
+    );
   }
   // Helm's own name for the release, where it is not the HelmRelease's: a
   // HelmRelease may set its own `releaseName` or `targetNamespace`.
@@ -133,14 +138,13 @@ export function ModelHelmReleaseCard({
     qualified(provenance.helmNamespace, provenance.helmRelease) !==
       (fluxName ? qualified(fluxNamespace, fluxName) : undefined)
   ) {
-    facts.push({
-      label: 'Helm release',
-      value: (
-        <Mono>
-          {qualified(provenance.helmNamespace, provenance.helmRelease)}
-        </Mono>
-      ),
-    });
+    facts.push(
+      ...namespacedNameFacts({
+        namespace: provenance.helmNamespace,
+        name: provenance.helmRelease,
+        kind: 'Helm release',
+      }),
+    );
   }
 
   let note: string | undefined;
@@ -153,13 +157,19 @@ export function ModelHelmReleaseCard({
     if (chart) {
       facts.push({ label: 'Chart', value: <Mono>{chart}</Mono> });
     } else if (chartRef) {
+      // A reference, so named alone, with its namespace where it is not the
+      // HelmRelease's.
       facts.push({
         label: 'Chart from',
         value: (
-          <Mono>{`${chartRef.kind} ${qualified(
-            chartRef.namespace,
-            chartRef.name,
-          )}`}</Mono>
+          <Flex direction="column" gap="1">
+            <Mono>{`${chartRef.kind} ${chartRef.name}`}</Mono>
+            {chartRef.namespace && chartRef.namespace !== fluxNamespace && (
+              <Text variant="body-small" color="secondary">
+                Namespace <span style={MONO}>{chartRef.namespace}</span>
+              </Text>
+            )}
+          </Flex>
         ),
       });
     }
@@ -167,7 +177,14 @@ export function ModelHelmReleaseCard({
       helmRelease.getLastAppliedRevision() ??
       helmRelease.getChart()?.spec?.version;
     if (version) {
-      facts.push({ label: 'Version', value: <Mono>{version}</Mono> });
+      facts.push({
+        label: 'Version',
+        value: (
+          <Text variant={variant}>
+            <CommitSha value={version} style={MONO} />
+          </Text>
+        ),
+      });
     }
     const state = releaseState(helmRelease);
     facts.push({

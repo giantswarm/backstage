@@ -1,10 +1,12 @@
 import { Link, Text } from '@backstage/ui';
+import { CommitSha } from '../CommitSha';
 import { useShellScope } from '../ShellScope';
 
 const REPOSITORY_URL = 'https://github.com/giantswarm/backstage';
 
 // Only a release or RC build has a tag to link to; any other version (a
-// branch build, `development` locally) is shown as it is, without a link.
+// branch build, `development` locally) is shown as it is, without a link, a
+// commit in it shortened like every SHA the portal shows.
 const RELEASE_VERSION_PATTERN = /^\d+\.\d+\.\d+(-rc\.\d+)?$/;
 
 /**
@@ -50,7 +52,7 @@ export const GSReleaseInfo = ({ version }: { version: string }) => {
           {newTabMarker}
         </Link>
       ) : (
-        version
+        <CommitSha value={version} />
       )}
     </Text>
   );

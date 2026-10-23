@@ -19,17 +19,14 @@ import {
   ShowMore,
   useProvidePageHeaderActions,
   WizardStepHeading,
+  shortSha,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { agentsBySkill, searchSkills } from '../../lib/customize';
-import {
-  DiscoveredSkill,
-  repoSlug,
-  shortCommit,
-  skillId,
-} from '../../lib/skills';
+import { DiscoveredSkill, repoSlug, skillId } from '../../lib/skills';
 import { groupSkillsByRepo, RepoSkillGroup } from '../../lib/skillGrouping';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
@@ -122,19 +119,26 @@ function SkillCard({
           the pin is shown where it is chosen. */}
       {pinned ? (
         <Text variant="body-x-small" color="secondary">
-          pinned at <span className={classes.code}>{shortCommit(pinned)}</span>
+          pinned at{' '}
+          <CommitSha value={pinned} copy={false} className={classes.code} />
           {' · '}
           {skill.ref} is at{' '}
-          <span className={classes.code}>{shortCommit(skill.commit)}</span>
+          <CommitSha
+            value={skill.commit}
+            copy={false}
+            className={classes.code}
+          />
         </Text>
       ) : (
         <Text
           variant="body-x-small"
           color="secondary"
-          aria-label={`Pinned to commit ${shortCommit(skill.commit)} of ${skill.ref}`}
+          aria-label={`Pinned to commit ${shortSha(skill.commit)} of ${skill.ref}`}
         >
           {skill.ref}{' '}
-          <span className={classes.code}>@{shortCommit(skill.commit)}</span>
+          <span className={classes.code}>
+            @<CommitSha value={skill.commit} copy={false} />
+          </span>
         </Text>
       )}
     </SelectableCard>

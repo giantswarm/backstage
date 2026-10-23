@@ -1,7 +1,10 @@
 import { useMemo, type ReactNode } from 'react';
 import { Alert, ButtonLink, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  LoadingIndicator,
+  CommitSha,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useSkillFile } from '../../hooks/useSkillFile';
 import { formatBytes } from '../../lib/formatNumbers';
@@ -14,7 +17,6 @@ import {
   skillFileKind,
 } from '../../lib/skillFiles';
 import {
-  shortCommit,
   skillFileUrl,
   skillSourceUrl,
   type DiscoveredSkill,
@@ -184,7 +186,7 @@ function NotShown({
       ) : (
         <Text as="p" variant="body-small" color="secondary">
           {file.path} · {formatBytes(file.size)} — in the skill’s repository at{' '}
-          {shortCommit(skill.commit)}.
+          <CommitSha value={skill.commit} />.
         </Text>
       )}
     </Flex>
@@ -335,7 +337,8 @@ export function SkillFileViewer({
       <Flex direction="column" gap="3">
         <div className={classes.header}>
           <Text as="p" variant="body-small" color="secondary">
-            {repoPath} at {shortCommit(commit)} · {formatBytes(file.size)}
+            {repoPath} at <CommitSha value={commit} /> ·{' '}
+            {formatBytes(file.size)}
           </Text>
           {/* Not shown inline: the body offers the link instead. */}
           {url && !notShown && (

@@ -18,6 +18,11 @@ export type AgentUsage = {
   row: AgentRow;
   /** A short line on how it uses it, e.g. "Read-only tools". */
   detail?: string;
+  /**
+   * The detail's title, where it shortens a value: a short commit's full one.
+   * Shown on hover at desktop width; a phone has none.
+   */
+  detailTitle?: string;
 };
 
 export type AgentUsageListProps = {
@@ -66,7 +71,7 @@ export function AgentUsageList({
         <ShowMore items={agents} initial={USED_BY_ROWS} noun="agent" revealAll>
           {shown => (
             <List aria-label={label}>
-              {shown.map(({ row, detail }) => {
+              {shown.map(({ row, detail, detailTitle }) => {
                 // The agent's page; its installation is in the path.
                 const href = agentDetailRoute?.({
                   installation: row.installation,
@@ -94,7 +99,11 @@ export function AgentUsageList({
                     description={isPhone ? detail : undefined}
                     customActions={
                       !isPhone && detail ? (
-                        <Text variant="body-small" color="secondary">
+                        <Text
+                          variant="body-small"
+                          color="secondary"
+                          title={detailTitle}
+                        >
                           {detail}
                         </Text>
                       ) : undefined

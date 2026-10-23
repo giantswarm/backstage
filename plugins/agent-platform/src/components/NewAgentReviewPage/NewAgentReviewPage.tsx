@@ -7,6 +7,7 @@ import {
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
@@ -34,7 +35,6 @@ import {
 } from '../../lib/harnesses';
 import { parseEgressText } from '../../lib/egress';
 import { PickedEgressPolicies } from '../PickedEgressPolicies';
-import { shortCommit } from '../../lib/skills';
 import { pluginEntryOf, pluginSummary } from '../../lib/plugins';
 import {
   buildCatalogue,
@@ -549,7 +549,7 @@ function CreateAgentReview() {
                         {index > 0 ? ', ' : ''}
                         {skill.name}{' '}
                         <span className={classes.code}>
-                          @{shortCommit(skill.commit)}
+                          @<CommitSha value={skill.commit} />
                         </span>
                       </span>
                     ))}
@@ -564,7 +564,7 @@ function CreateAgentReview() {
                         {index > 0 ? ', ' : ''}
                         {plugin.name}{' '}
                         <span className={classes.code}>
-                          @{shortCommit(plugin.commit)}
+                          @<CommitSha value={plugin.commit} />
                         </span>
                       </span>
                     ))}

@@ -105,9 +105,16 @@ test.describe('a connector with a display name', () => {
     );
 
     await admin.getByRole('button', { name: 'Technical details' }).click();
+    // The resource's namespace and name, as two facts of the Resource card.
+    const resource = admin
+      .getByRole('heading', { name: 'Resource', exact: true })
+      .locator('xpath=ancestor::*[.//dt][1]');
     await expect(
-      admin.getByText(`${NAMESPACE}/${NAME}`, { exact: true }),
-    ).toBeVisible();
+      resource.locator('dt', { hasText: /^Namespace$/ }).locator('+ dd'),
+    ).toHaveText(NAMESPACE);
+    await expect(
+      resource.locator('dt', { hasText: /^Name$/ }).locator('+ dd'),
+    ).toHaveText(NAME);
   });
 
   test('keeps the display name first in a title the unread count leads', async ({

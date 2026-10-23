@@ -56,7 +56,10 @@ import {
   mimirServiceRef,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { readSignedInConfig } from './signedInConfig';
-import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  shortSha,
+  SUBJECT_TOKEN_HEADER,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
 
 export async function createRouter({
@@ -567,7 +570,7 @@ export async function createRouter({
   const noSkillAt = (repoUrl: string, path: string, commit: string) =>
     new GitFetchError(
       404,
-      `${path ? `${path}/SKILL.md` : 'SKILL.md'} was not found in ${repoUrl} at ${commit.slice(0, 7)}.`,
+      `${path ? `${path}/SKILL.md` : 'SKILL.md'} was not found in ${repoUrl} at ${shortSha(commit)}.`,
     );
 
   /**
@@ -786,14 +789,14 @@ export async function createRouter({
       }
       if (!list) {
         notFound(
-          `There is no skill at ${path || 'the root'} of ${repoUrl} at ${commit.slice(0, 7)}.`,
+          `There is no skill at ${path || 'the root'} of ${repoUrl} at ${shortSha(commit)}.`,
         );
         return;
       }
       const entry = list.files.find(f => f.path === file);
       if (!entry) {
         notFound(
-          `${file} is not ${list.truncated ? 'among the listed files' : 'a file'} of the skill at ${path || 'the root'} of ${repoUrl} at ${commit.slice(0, 7)}.`,
+          `${file} is not ${list.truncated ? 'among the listed files' : 'a file'} of the skill at ${path || 'the root'} of ${repoUrl} at ${shortSha(commit)}.`,
         );
         return;
       }
@@ -830,7 +833,7 @@ export async function createRouter({
           ).fileContents?.get(filePath);
           if (!bytes) {
             notFound(
-              `${file} could not be read from ${repoUrl} at ${commit.slice(0, 7)}.`,
+              `${file} could not be read from ${repoUrl} at ${shortSha(commit)}.`,
             );
             return;
           }

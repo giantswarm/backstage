@@ -307,9 +307,23 @@ describe('MusterMcpClient gated sign-ins', () => {
     expect(calledTools(execute)).toEqual([LIST, 'core_auth_logout', LIST]);
   });
 
-  it("holds a person's new token too (a reload), telling it no link", async () => {
+  /** auth://status reading workspace-manager `status`. */
+  function statusOf(status: string) {
+    return {
+      contents: [
+        {
+          text: JSON.stringify({
+            servers: [{ name: 'workspace-manager', status }],
+          }),
+        },
+      ],
+    };
+  }
+
+  it("holds a person's new token too (a reload) while its session is not connected, telling it no link", async () => {
     const execute = jest.fn().mockResolvedValue(authRequired());
-    const client = buildClient(execute);
+    const readResource = jest.fn().mockResolvedValue(statusOf('auth_required'));
+    const client = buildClient(execute, readResource);
 
     await expect(
       client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
@@ -317,8 +331,13 @@ describe('MusterMcpClient gated sign-ins', () => {
     const reload = (await client
       .callTool(LIST, {}, { authToken: jwt('alice', 2) })
       .catch((e: unknown) => e)) as MusterAuthRequiredError;
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 2) }),
+    ).rejects.toThrow(MusterAuthRequiredError);
 
+    // One sign-in started by muster; the new token's status read once.
     expect(execute).toHaveBeenCalledTimes(1);
+    expect(readResource).toHaveBeenCalledTimes(1);
     expect(reload).toBeInstanceOf(MusterAuthRequiredError);
     expect(reload.authUrl).toBeUndefined();
     expect(reload.message).toMatch(
@@ -326,6 +345,76 @@ describe('MusterMcpClient gated sign-ins', () => {
     );
     expect(JSON.stringify(reload)).not.toContain('state=abc');
     expect(reload.message).not.toContain('state=abc');
+  });
+
+  it("lets a person's new token through once its own session reads the server connected (the grant)", async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(authRequired())
+      .mockResolvedValue(listed);
+    const readResource = jest.fn().mockResolvedValue(statusOf('connected'));
+    const client = buildClient(execute, readResource);
+
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
+    ).rejects.toThrow(MusterAuthRequiredError);
+    // A new portal session: its first read lists the workspaces.
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 2) }),
+    ).resolves.toEqual({ workspaces: [] });
+
+    expect(readResource).toHaveBeenCalledTimes(1);
+    expect(readResource.mock.calls[0][0]).toEqual({ uri: 'auth://status' });
+    expect(calledTools(execute)).toEqual([LIST, LIST]);
+  });
+
+  it("shares one status read among a new token's concurrent held calls", async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(authRequired())
+      .mockResolvedValue(listed);
+    const readResource = jest.fn().mockResolvedValue(statusOf('connected'));
+    const client = buildClient(execute, readResource);
+
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
+    ).rejects.toThrow();
+    await Promise.all([
+      client.callTool(LIST, {}, { authToken: jwt('alice', 2) }),
+      client.callTool(LIST, {}, { authToken: jwt('alice', 2) }),
+    ]);
+
+    expect(readResource).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the hold when the new token's status cannot be read", async () => {
+    const execute = jest.fn().mockResolvedValue(authRequired());
+    const readResource = jest.fn().mockRejectedValue(new Error('down'));
+    const client = buildClient(execute, readResource);
+
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
+    ).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 2) }),
+    ).rejects.toMatchObject({ authUrl: undefined });
+
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('never reads the status for the token muster answered', async () => {
+    const execute = jest.fn().mockResolvedValue(authRequired());
+    const readResource = jest.fn().mockResolvedValue(statusOf('connected'));
+    const client = buildClient(execute, readResource);
+
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
+    ).rejects.toThrow();
+    await expect(
+      client.callTool(LIST, {}, { authToken: jwt('alice', 1) }),
+    ).rejects.toThrow();
+
+    expect(readResource).not.toHaveBeenCalled();
   });
 
   it("never holds one person's calls for another's sign-in", async () => {

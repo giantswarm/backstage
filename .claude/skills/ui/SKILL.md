@@ -193,6 +193,17 @@ core-components' `CopyTextButton` — that button renders an oversized,
 primary-colored `ButtonIcon` that needs margin hacks to sit right. Source:
 `plugins/ui-react/src/components/CodeBlock/CodeBlock.tsx`.
 
+### Commits and Kubernetes names: `CommitSha`, `namespacedNameFacts`
+
+A git SHA is shown in 7 characters everywhere in the portal, classic pages
+included: `shortSha` (`gs-common`, re-exported by `ui-react`) for the text,
+`CommitSha` (`ui-react`) to render it with the full value as its `title` and a
+copy button on touch screens (`copy={false}` inside a link or a row). Never
+`sha.slice(0, n)`. A resource's namespace
+and name in a `FactList` are two facts through `namespacedNameFacts`. See
+"Commits and resource names" in `docs/ui.md`; the shell's own rules for both,
+and for links on tinted surfaces, are in the `agent-platform-ux-coding` skill.
+
 ### Overriding bui component sizes
 
 bui components size themselves via **data-attribute selectors** (e.g.

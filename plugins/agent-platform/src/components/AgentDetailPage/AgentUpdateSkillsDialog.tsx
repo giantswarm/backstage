@@ -5,6 +5,8 @@ import {
   ConfirmDialog,
   CopyButton,
   LoadingIndicator,
+  shortSha,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
@@ -29,7 +31,6 @@ import { SkillRefreshSkeletonRow } from './SkillRefreshSkeletonRow';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
-import { shortPin } from './helpers';
 
 /**
  * Rows the table shows while the agent's skills are still being read, when the
@@ -104,9 +105,9 @@ const useStyles = makeStyles(theme => ({
  */
 function pinLabel(entry: SkillRefreshEntry): string {
   if (entry.kind === 'oci') {
-    return shortPin(entry.pinned.slice(entry.pinned.indexOf('@') + 1));
+    return shortSha(entry.pinned.slice(entry.pinned.indexOf('@') + 1));
   }
-  return shortPin(entry.pinned);
+  return shortSha(entry.pinned);
 }
 
 /**
@@ -147,12 +148,11 @@ function PlanRow({
     // by hand when agent-manager cannot open the pull request.
     headCell = (
       <Flex align="center" gap="1">
-        <span
+        <CommitSha
+          value={entry.head}
+          copy={false}
           className={`${classes.code} ${classes.pin} ${classes.headPin}`}
-          title={entry.head}
-        >
-          {shortPin(entry.head)}
-        </span>
+        />
         {entry.changes && (
           <CopyButton
             text={entry.head}

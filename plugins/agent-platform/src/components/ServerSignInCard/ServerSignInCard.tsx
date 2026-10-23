@@ -37,16 +37,19 @@ function SignInCard({
   'data-testid': testId,
   onSignedIn,
 }: ServerSignInCardProps) {
-  const { needsLogin } = useServerSignIn(serverName, installation, {
+  const { isConnected } = useServerSignIn(serverName, installation, {
     noun: 'connector',
   });
-  const wasNeeded = useRef(needsLogin);
+  // Once per stretch that muster reads the server connected: a sign-in that
+  // landed, or a refused read whose session muster connected meanwhile (the
+  // person's grant), whose status read already said so as the card mounted.
+  const wasConnected = useRef(false);
   useEffect(() => {
-    if (wasNeeded.current && !needsLogin) {
+    if (isConnected && !wasConnected.current) {
       onSignedIn();
     }
-    wasNeeded.current = needsLogin;
-  }, [needsLogin, onSignedIn]);
+    wasConnected.current = isConnected;
+  }, [isConnected, onSignedIn]);
 
   return (
     <Alert

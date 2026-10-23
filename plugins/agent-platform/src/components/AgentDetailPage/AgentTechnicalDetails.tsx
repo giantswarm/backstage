@@ -1,46 +1,29 @@
 import type { ReactNode } from 'react';
-import { Flex, Text } from '@backstage/ui';
+import { Flex, Link, Text } from '@backstage/ui';
 import {
   Agent,
   AgentFailure,
+  type AgentSkill,
   isGitOpsManaged,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { GitOpsCard } from '@giantswarm/backstage-plugin-flux-react';
 import {
-  CopyButton,
+  CommitSha,
   type Fact,
   FactList,
   InfoCard,
   MONO,
   Mono,
+  namespacedNameFacts,
   useFactTextVariant,
-  usePhoneLayout,
-  useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useSkillPaths } from '../../hooks/useSkillPaths';
 import type { ClientServingSummary } from '../../lib/serving';
 import { AgentConfigurationCard } from './AgentConfigurationCard';
 import { AgentStatusCard } from './AgentStatusCard';
-import { shortPin, skillLabel } from './helpers';
-
-/**
- * A commit, short where a pointer can hover for the whole of it, whole where
- * none can: a phone or a touch screen never shows a `title`, and these are
- * the ids someone retypes into `kubectl` or `git`.
- */
-function Pin({ value }: { value: string }) {
-  const isPhone = usePhoneLayout();
-  const isTouch = useTouchInput();
-  if (isPhone || isTouch) {
-    return <span style={MONO}>{value}</span>;
-  }
-  return (
-    <span style={MONO} title={value}>
-      {shortPin(value)}
-    </span>
-  );
-}
+import { skillLabel } from './helpers';
 
 /** Text at the size of the fact list it is a value in. */
 function FactText({ children }: { children: ReactNode }) {
@@ -48,25 +31,49 @@ function FactText({ children }: { children: ReactNode }) {
 }
 
 /**
+ * One skill the agent is pinned to: its name, opening the skill's page where
+ * there is one (a git skill the skills page can address), and the commit or
+ * digest it is pinned at.
+ */
+function SkillVersion({ skill }: { skill: AgentSkill }) {
+  const variant = useFactTextVariant();
+  const skillPaths = useSkillPaths();
+  const label = skillLabel(skill);
+  const href =
+    skill.source === 'git'
+      ? skillPaths.detail({ repoUrl: skill.url, path: skill.path ?? '' })
+      : undefined;
+  return (
+    <FactText>
+      {href ? (
+        <Link href={href} variant={variant}>
+          {label}
+        </Link>
+      ) : (
+        label
+      )}{' '}
+      at <CommitSha value={skill.pin} style={MONO} />
+    </FactText>
+  );
+}
+
+/**
  * The resource behind the agent, in the terms of the people who run the
- * platform: what it is called in the cluster, the Harness it runs on, the
- * revision it runs, where its instructions are read from and which version of
- * each skill it is pinned to.
+ * platform: its namespace and name in the cluster, the Harness it runs on,
+ * the revision it runs, where its instructions are read from and which
+ * version of each skill it is pinned to. The instructions themselves are the
+ * overview's Instructions section, not a copy button here.
  */
 function ResourceFacts({ agent }: { agent: Agent }) {
-  const namespace = agent.getNamespace();
-  const name = agent.getName();
   const harness = agent.getHarnessName();
   const revision = agent.getLatestSuccessfulRevision();
   const source = agent.getSystemMessageSource();
   const skills = agent.getSkills();
 
-  const facts: Fact[] = [
-    {
-      label: 'Agent',
-      value: <Mono>{namespace ? `${namespace}/${name}` : name}</Mono>,
-    },
-  ];
+  const facts: Fact[] = namespacedNameFacts({
+    namespace: agent.getNamespace(),
+    name: agent.getName(),
+  });
   if (harness) {
     facts.push({ label: 'Harness', value: <Mono>{harness}</Mono> });
   }
@@ -75,7 +82,7 @@ function ResourceFacts({ agent }: { agent: Agent }) {
       label: 'Revision',
       value: (
         <FactText>
-          <Pin value={revision} />
+          <CommitSha value={revision} style={MONO} />
         </FactText>
       ),
     });
@@ -92,30 +99,18 @@ function ResourceFacts({ agent }: { agent: Agent }) {
       value: (
         <Flex direction="column" gap="1">
           {skills.map((skill, index) => (
-            <FactText key={`${skill.url}#${skill.path ?? ''}#${index}`}>
-              {skillLabel(skill)} at <Pin value={skill.pin} />
-            </FactText>
+            <SkillVersion
+              key={`${skill.url}#${skill.path ?? ''}#${index}`}
+              skill={skill}
+            />
           ))}
         </Flex>
       ),
     });
   }
 
-  const instructions = agent.getSystemMessage();
-
   return (
-    <InfoCard
-      title="Resource"
-      headerActions={
-        instructions ? (
-          <CopyButton
-            text={instructions}
-            label="Copy system prompt"
-            size="compact"
-          />
-        ) : undefined
-      }
-    >
+    <InfoCard title="Resource">
       <FactList facts={facts} labelWidth={160} maxWidth={null} />
     </InfoCard>
   );
