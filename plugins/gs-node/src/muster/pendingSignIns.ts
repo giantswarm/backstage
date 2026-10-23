@@ -31,6 +31,12 @@ interface Pending extends SignInChallenge {
   until: number;
   /** The exposed tool names muster answered this challenge for. */
   tools: Set<string>;
+  /**
+   * The other tokens of the person whose own muster session was asked
+   * whether it is connected to the server, each once: the read in flight,
+   * then settled.
+   */
+  checks: Map<string, Promise<void>>;
 }
 
 /**
@@ -48,7 +54,12 @@ interface Pending extends SignInChallenge {
  *
  * A caller is a person on an installation, not one token: a page reload or
  * a second tab forwards a new token for the same person, and muster's limit
- * counts the person's sign-ins.
+ * counts the person's sign-ins. A new token is a muster session of its own,
+ * though, which muster may already have connected with the person's grant
+ * (a subject-scoped one, or a sign-in completed meanwhile): before its first
+ * held call, that session's `auth://status` is read once ({@link check}), a
+ * read that never starts a sign-in, and a server it reads connected ends the
+ * wait.
  */
 export class PendingSignIns {
   private readonly callers = new Map<string, Map<string, Pending>>();
@@ -84,11 +95,13 @@ export class PendingSignIns {
       servers = new Map();
       this.callers.set(caller, servers);
     }
-    const tools = servers.get(challenge.server)?.tools ?? new Set<string>();
+    const previous = servers.get(challenge.server);
+    const tools = previous?.tools ?? new Set<string>();
     tools.add(tool);
     servers.set(challenge.server, {
       ...challenge,
       tools,
+      checks: previous?.checks ?? new Map(),
       until:
         this.now() +
         (challenge.authUrl ? SIGN_IN_REUSE_MS : REFUSED_SIGN_IN_HOLD_MS),
@@ -112,6 +125,34 @@ export class PendingSignIns {
       pending.token = token;
       pending.until = this.now() + SIGN_IN_REUSE_MS;
     }
+  }
+
+  /**
+   * Whether `token`, another of the caller's tokens than the one muster
+   * answered, is connected to the server after all: `read` reads that
+   * token's `auth://status`, which ends the wait ({@link forget}) when it
+   * reads the server connected. Read once per token and challenge;
+   * concurrent calls share the read. A failed read leaves the wait as it is.
+   */
+  async check(
+    caller: string,
+    server: string,
+    token: string,
+    read: () => Promise<unknown>,
+  ): Promise<void> {
+    const pending = this.callers.get(caller)?.get(server);
+    if (!pending || pending.token === token) {
+      return;
+    }
+    let checked = pending.checks.get(token);
+    if (!checked) {
+      checked = read().then(
+        () => undefined,
+        () => undefined,
+      );
+      pending.checks.set(token, checked);
+    }
+    await checked;
   }
 
   /** The caller connected or signed out of the server: muster is asked again. */
