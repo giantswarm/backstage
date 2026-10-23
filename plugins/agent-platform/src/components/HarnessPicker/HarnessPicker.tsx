@@ -10,7 +10,7 @@ import {
   RUNTIME_TERM,
   type HarnessChoice,
 } from '../../lib/harnesses';
-import { tenantOf } from '../../lib/tenants';
+import { tenantInSentence } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import {
   SelectableCard,
@@ -135,7 +135,7 @@ export function HarnessPicker() {
         <FieldLabel
           label={RUNTIME_LABEL}
           secondaryLabel={RUNTIME_TERM}
-          description={`The agents of ${tenantOf(
+          description={`The agents of ${tenantInSentence(
             tenant,
           )} run on the platform Harness.`}
         />

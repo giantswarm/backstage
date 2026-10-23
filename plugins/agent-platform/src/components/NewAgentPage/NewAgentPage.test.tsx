@@ -237,7 +237,11 @@ describe('NewAgentPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
-    expect(screen.getByText(/Enter a name for the agent/)).toBeInTheDocument();
+    // On the field itself: the live announcer may say it too, depending on
+    // whether the blur's announcement lands before the press.
+    expect(screen.getByLabelText(/^Name/)).toHaveAccessibleDescription(
+      expect.stringContaining('Enter a name for the agent.'),
+    );
     expect(moreOptions().open).toBe(false);
   });
 

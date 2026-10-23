@@ -2147,7 +2147,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
 });
 
 describe('AgentDetailPage: the frame and the plain Overview', () => {
-  const renderShell = (tab: string = '') =>
+  const renderShell = (tab: string = '', path: string = AGENT_PATH) =>
     renderInTestApp(<AgentDetailPage />, {
       mountedRoutes: {
         '/customize/agents': agentsRouteRef,
@@ -2157,7 +2157,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         '/usage': usageRouteRef,
       },
       mountPath: '/customize/agents/:installation/:namespace/:name/*',
-      initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
+      initialRouteEntries: [tab ? `${path}/${tab}` : path],
     });
 
   beforeEach(() => {
@@ -2301,7 +2301,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeInTheDocument();
     });
 
-    it('offers a tenant’s user no Edit, and says whose editors may change the agent', async () => {
+    it('offers a user of the agent’s namespace no Edit, and says whose editors may change the agent', async () => {
       withAgentManager();
       mockDeniedVerbs = new Set(['update', 'delete']);
       stubResources({ resource: makeAgent() });
@@ -2585,7 +2585,80 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeInTheDocument();
     });
 
-    it('names the agent’s tenant and its creator beside the overview', async () => {
+    it('names the organization of an agent in an organization, under Organization', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: { name: 'pr-reviewer', namespace: 'org-acme' },
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell(
+        '',
+        AGENT_PATH.replace('/agent-platform/', '/org-acme/'),
+      );
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Organization')).toBeInTheDocument();
+      expect(within(facts).queryByText('Tenant')).toBeNull();
+      expect(within(facts).getByText('acme')).toBeInTheDocument();
+      expect(within(facts).queryByText('organization acme')).toBeNull();
+      expect(within(facts).queryByRole('button', { name: /None/ })).toBeNull();
+    });
+
+    it('says an agent of the platform belongs to no organization, and is available to all', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: { name: 'pr-reviewer', namespace: 'kagent' },
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell('', AGENT_PATH.replace('/agent-platform/', '/kagent/'));
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Organization')).toBeInTheDocument();
+      expect(within(facts).getByText(/^None/)).toBeInTheDocument();
+      // Not "Platform" as its organization; the Runtime fact's "Platform
+      // default" is about the Harness.
+      expect(within(facts).queryByText('Platform')).toBeNull();
+      const hint = within(facts).getByRole('button', {
+        name: 'What None means',
+      });
+      // In the tab order; its text is `OrganizationValue`'s own test.
+      expect(hint.tabIndex).toBeGreaterThanOrEqual(0);
+    });
+
+    it('offers an organization’s user no Edit, and names the organization whose editors may change the agent', async () => {
+      withAgentManager();
+      mockDeniedVerbs = new Set(['update', 'delete']);
+      stubResources({
+        resource: makeAgent({
+          metadata: { name: 'pr-reviewer', namespace: 'org-acme' },
+        }),
+      });
+
+      await renderShell(
+        '',
+        AGENT_PATH.replace('/agent-platform/', '/org-acme/'),
+      );
+
+      expect(
+        await screen.findByText(
+          /Editing and deleting the agents of the acme organization needs the agent-platform:editor role/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('names the agent’s organization and its creator beside the overview', async () => {
       const agent = makeAgent();
       agent.jsonData.metadata.annotations = {
         ...agent.jsonData.metadata.annotations,
