@@ -69,6 +69,7 @@ export const SHELL_SPECS = [
   'telemetry.spec.ts',
   'tenants.spec.ts',
   'usage-cost.spec.ts',
+  'usage-time-window.spec.ts',
   'wizard-tools-layout.spec.ts',
   'workflows.spec.ts',
   'workspace-detail.spec.ts',
