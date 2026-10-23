@@ -2036,15 +2036,13 @@ describe('WorkflowPage with nested loops (fleet-image-scan)', () => {
     expect(canvas().getAllByText('jq transform')).toHaveLength(9);
     expect(
       canvas().getByRole('button', { name: /^Step 1: / }),
-    ).toHaveAccessibleName(/result reshaped with jq/);
+    ).toHaveAccessibleName(/jq transform/);
     expect(
       canvas().getByRole('button', { name: /^Step 1\.2: / }),
     ).not.toHaveAccessibleName(/jq/);
     expect(
       canvas().getByRole('button', { name: /^Step 1\.2\.1: / }),
-    ).toHaveAccessibleName(
-      /paginated, up to 100 pages, result reshaped with jq/,
-    );
+    ).toHaveAccessibleName(/paginated, up to 100 pages, jq transform/);
     // The markers give the box a row of their own.
     const plain = canvas().getByRole('button', { name: /^Step 1\.1: / });
     expect(plain.closest('[data-node]')).toContainElement(

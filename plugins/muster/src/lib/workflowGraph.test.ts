@@ -91,7 +91,17 @@ describe('buildWorkflowGraph', () => {
       'forEach',
       'parallel',
     ]);
-    expect(graph.stepIds).toEqual(['fetch', 'apply', 'fanout', 'both']);
+    expect(Object.fromEntries(graph.stepNumbers)).toEqual({
+      fetch: '1',
+      apply: '2',
+      fanout: '3',
+      probe: '3.1',
+      report: '3.2',
+      both: '4',
+      left: '4.1',
+      right: '4.2',
+      middle: '4.3',
+    });
   });
 
   it('names a step by its description, else its id, and numbers it', () => {
@@ -155,10 +165,13 @@ describe('forEachSummary', () => {
     expect(
       forEachSummary(
         { items: '{{ .results.fetch.items }}' },
-        { x: '1', fetch: '2' },
+        new Map([
+          ['x', '1'],
+          ['fetch', '2'],
+        ]),
       ),
     ).toBe('For each item in the result of step 2 (fetch)');
-    expect(forEachSummary({ items: '{{.results.gone}}' }, {})).toBe(
+    expect(forEachSummary({ items: '{{.results.gone}}' }, new Map())).toBe(
       'For each item in the result of “gone”',
     );
   });
@@ -719,7 +732,7 @@ describe('a nested forEach (fleet-image-scan)', () => {
     for (const item of flowItemsInOrder(graph.main)) {
       expect(Boolean(item.node.tool)).toBe(item.kind === 'step');
     }
-    expect(graph.stepNumbers).toMatchObject({
+    expect(Object.fromEntries(graph.stepNumbers)).toMatchObject({
       fleet: '1',
       clusters: '1.1',
       scan: '1.2',
@@ -855,6 +868,59 @@ describe('a nested forEach (fleet-image-scan)', () => {
     expect(loopBox.x).toBeGreaterThanOrEqual(a.x + a.width);
     expect(loopBox.x + loopBox.width).toBeLessThanOrEqual(row.x + row.width);
     expect(nodeOf(layout, 's0.1.0').y).toBeGreaterThan(loopBox.y);
+    // The loop's own exit and the row's fan-in are two edges, two keys: the
+    // canvas keys its edges by them.
+    const keys = layout.edges.map(edge => edge.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toEqual(expect.arrayContaining(['s0.1:out', 's0.1:join']));
+  });
+
+  it('numbers a step with an id an object already has', () => {
+    const odd = buildWorkflowGraph([
+      { id: 'constructor', tool: 'x_a' },
+      {
+        id: 'loop',
+        forEach: { items: '{{ .results.constructor }}', steps: [] },
+      },
+    ]);
+    expect(odd.stepNumbers.get('constructor')).toBe('1');
+    const loopItem = odd.main[1];
+    if (loopItem.kind !== 'forEach') throw new Error('expected a loop');
+    expect(forEachSummary(loopItem.forEach, odd.stepNumbers)).toBe(
+      'For each item in the result of step 1 (constructor)',
+    );
+  });
+
+  it('keeps a step whose own id ends in _<digits> apart from its iteration suffixes', () => {
+    const odd = buildWorkflowGraph([
+      { id: 'step', tool: 'x_a' },
+      {
+        id: 'phase_2',
+        forEach: {
+          items: '{{ .input.xs }}',
+          steps: [
+            { id: 'step_1', tool: 'x_b' },
+            {
+              id: 'inner',
+              forEach: {
+                items: '{{ .input.ys }}',
+                steps: [{ id: 'leaf_3', tool: 'x_c' }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    const overlay = mapRunToGraph(odd, [
+      record('step', 'completed'),
+      record('step_1_0', 'completed'),
+      record('step_1_1', 'completed'),
+      record('leaf_3_0_1', 'completed'),
+      record('leaf_3_1_0', 'completed'),
+    ]);
+    expect(overlay.s0).toMatchObject({ status: 'completed', runs: 1 });
+    expect(overlay['s1.0']).toMatchObject({ status: 'completed', runs: 2 });
+    expect(overlay['s1.1.0']).toMatchObject({ status: 'completed', runs: 2 });
   });
 
   it('lays the last run’s nested records onto the nested steps', () => {

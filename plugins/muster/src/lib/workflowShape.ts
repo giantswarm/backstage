@@ -32,8 +32,10 @@ export interface WorkflowShape {
   toolSteps: number;
   /** The forEach steps, at any depth. */
   loops: number;
-  /** The forEach steps inside another loop or group. */
+  /** The forEach steps inside another forEach (at any depth). */
   nestedLoops: number;
+  /** The most loops on one path from the top: 2 for a loop in a loop. */
+  deepestLoops: number;
   /** The parallel groups, at any depth. */
   parallelGroups: number;
   /** Whether every tool step sits inside a loop or a group. */
@@ -46,29 +48,40 @@ export function workflowShape(steps: WorkflowStep[]): WorkflowShape {
     toolSteps: 0,
     loops: 0,
     nestedLoops: 0,
+    deepestLoops: 0,
     parallelGroups: 0,
     allGrouped: true,
   };
-  const visit = (step: WorkflowStep, depth: number) => {
+  /** `depth`: the groups around the step; `loopsAround`: the loops among them. */
+  const visit = (step: WorkflowStep, depth: number, loopsAround: number) => {
+    let loopsBelow = loopsAround;
     if (step.forEach) {
       shape.loops += 1;
-      if (depth > 0) shape.nestedLoops += 1;
+      if (loopsAround > 0) shape.nestedLoops += 1;
+      loopsBelow += 1;
+      shape.deepestLoops = Math.max(shape.deepestLoops, loopsBelow);
     } else if (Array.isArray(step.parallel)) {
       shape.parallelGroups += 1;
     } else {
       shape.toolSteps += 1;
       if (depth === 0) shape.allGrouped = false;
     }
-    subStepsOf(step).forEach(sub => visit(sub, depth + 1));
+    subStepsOf(step).forEach(sub => visit(sub, depth + 1, loopsBelow));
   };
-  steps.forEach(step => visit(step, 0));
+  steps.forEach(step => visit(step, 0, 0));
   return shape;
 }
 
-function loopsPhrase({ loops, nestedLoops }: WorkflowShape): string {
+function loopsPhrase({
+  loops,
+  nestedLoops,
+  deepestLoops,
+}: WorkflowShape): string {
   if (nestedLoops === 0) return countNoun(loops, 'loop');
-  // Every loop but the outermost one inside another: one nest of loops.
-  if (nestedLoops === loops - 1) return `${loops} nested loops`;
+  // One nest: every loop on a single path, each inside the one before.
+  // Two loops side by side in a third are not that, nor is a loop in a
+  // parallel group.
+  if (deepestLoops === loops) return `${loops} nested loops`;
   return `${countNoun(loops, 'loop')} (${nestedLoops} nested)`;
 }
 

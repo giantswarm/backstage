@@ -24,6 +24,7 @@ describe('workflowShapeLabel', () => {
       toolSteps: 8,
       loops: 2,
       nestedLoops: 1,
+      deepestLoops: 2,
       parallelGroups: 0,
       allGrouped: true,
     });
@@ -51,6 +52,25 @@ describe('workflowShapeLabel', () => {
         loop('two', [loop('three', [tool('b')])]),
       ]),
     ).toBe('2 tool steps in 3 loops (1 nested)');
+  });
+
+  it('calls loops nested only when each sits inside the one before', () => {
+    // Three deep: one nest.
+    expect(
+      workflowShapeLabel([loop('a', [loop('b', [loop('c', [tool('x')])])])]),
+    ).toBe('1 tool step in 3 nested loops');
+    // Two loops side by side in a third: not a three-deep nest.
+    expect(
+      workflowShapeLabel([
+        loop('outer', [loop('left', [tool('x')]), loop('right', [tool('y')])]),
+      ]),
+    ).toBe('2 tool steps in 3 loops (2 nested)');
+    // A loop in a parallel group is not inside another loop.
+    expect(
+      workflowShapeLabel([
+        { id: 'p', parallel: [loop('l', [tool('x')]), tool('y')] },
+      ]),
+    ).toBe('2 tool steps in 1 loop and 1 parallel group');
   });
 });
 

@@ -4,7 +4,7 @@ import { makeStyles } from '@material-ui/core';
 import { ShowMore } from '@giantswarm/backstage-plugin-ui-react';
 import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
-import { conditionSummary } from '../../lib/workflowDisplay';
+import { conditionSummary, type StepNumbers } from '../../lib/workflowDisplay';
 import {
   featureLabels,
   findFlowStep,
@@ -25,6 +25,7 @@ import {
 } from './flowLabels';
 import { EffectBadge, MarkerBadge } from '../shared';
 import { WorkflowStepDetails } from './WorkflowStepDetails';
+import { StepFeatureBadges } from './StepFeatureBadges';
 
 /** The cleanup lane's line, the same words the canvas puts on it. */
 const CLEANUP_LABEL = 'Cleanup muster runs when a step fails';
@@ -147,6 +148,10 @@ const useStyles = makeStyles({
     flexWrap: 'wrap',
     gap: 4,
   },
+  // The feature markers wrap among the card's other markers, as one row.
+  inlineMarkers: {
+    display: 'contents',
+  },
   cleanup: {
     display: 'flex',
     flexDirection: 'column',
@@ -185,7 +190,7 @@ interface StepCardProps {
    */
   groupLabel?: string;
   prefixes: ServerPrefixInfo[];
-  stepIds: string[];
+  stepNumbers: StepNumbers;
   overlay?: StepRunOverlay;
   effect?: ToolEffect;
   isOpen: boolean;
@@ -199,7 +204,7 @@ function StepCard({
   node,
   groupLabel,
   prefixes,
-  stepIds,
+  stepNumbers,
   overlay,
   effect,
   isOpen,
@@ -211,11 +216,10 @@ function StepCard({
   const runClass = useRunClass(overlay);
   const { line } = toolLine(node.tool, prefixes);
   const gate = node.condition
-    ? conditionSummary(node.condition, stepIds)
+    ? conditionSummary(node.condition, stepNumbers)
     : undefined;
-  const features = featureLabels(node);
   const hasMarkers =
-    Boolean(effect) || node.allowFailure || features.length > 0;
+    Boolean(effect) || node.allowFailure || featureLabels(node).length > 0;
 
   let stateClass = '';
   if (isOpen) stateClass = classes.cardOpen;
@@ -275,11 +279,7 @@ function StepCard({
               May fail
             </MarkerBadge>
           )}
-          {features.map(feature => (
-            <MarkerBadge key={feature} tone="neutral" size="compact">
-              {feature}
-            </MarkerBadge>
-          ))}
+          <StepFeatureBadges node={node} className={classes.inlineMarkers} />
         </span>
       )}
     </button>
@@ -354,7 +354,7 @@ export function WorkflowStepList({
           node={node}
           groupLabel={groupLabel}
           prefixes={prefixes}
-          stepIds={graph.stepIds}
+          stepNumbers={graph.stepNumbers}
           overlay={overlayOf(node.key)}
           effect={effects[node.key]}
           isOpen={isOpen}
@@ -366,7 +366,6 @@ export function WorkflowStepList({
           <WorkflowStepDetails
             id={detailsId(node.key)}
             context={context}
-            stepIds={graph.stepIds}
             stepNumbers={graph.stepNumbers}
             prefixes={prefixes}
             installation={installation}

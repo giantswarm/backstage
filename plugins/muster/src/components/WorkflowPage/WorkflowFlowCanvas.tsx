@@ -1032,7 +1032,6 @@ export function WorkflowFlowCanvas({
         variant="inline"
         id={detailsId(expanded.node.key)}
         context={expanded}
-        stepIds={graph.stepIds}
         stepNumbers={graph.stepNumbers}
         prefixes={prefixes}
         installation={installation}

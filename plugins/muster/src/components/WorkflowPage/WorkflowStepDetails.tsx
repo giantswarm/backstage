@@ -9,11 +9,14 @@ import { formatDuration } from '../../lib/formatDuration';
 import {
   conditionSummary,
   formatArgValue,
+  type StepNumbers,
   toolDisplay,
 } from '../../lib/workflowDisplay';
 import {
+  definedMaxPages,
   FlowStepContext,
   forEachSummary,
+  iterationsSentence,
   loopParallelism,
   StepRunOverlay,
 } from '../../lib/workflowGraph';
@@ -257,7 +260,7 @@ function TechnicalFields({ context }: { context: FlowStepContext }) {
       <>
         <div className={classes.mono}>
           maxPages: {node.paginate.maxPages}
-          {typeof paginate.maxPages === 'number' ? '' : ' (default)'}
+          {definedMaxPages(paginate) === undefined ? ' (default)' : ''}
         </div>
         {set.map(field => (
           <div key={field} className={classes.mono}>
@@ -330,10 +333,8 @@ export interface WorkflowStepDetailsProps {
   /** The panel's id, for the control that opens it (`aria-controls`). */
   id?: string;
   context: FlowStepContext;
-  /** Top-level step ids, to name a `fromStep` reference by number. */
-  stepIds: string[];
-  /** Every step's number by its id, to name the step a loop reads. */
-  stepNumbers: Record<string, string>;
+  /** Every step's number by its id, to name a step a condition or loop reads. */
+  stepNumbers: StepNumbers;
   prefixes: ServerPrefixInfo[];
   installation: string;
   /** The latest run's outcome for this step, when a run is known. */
@@ -361,7 +362,6 @@ export interface WorkflowStepDetailsProps {
 export function WorkflowStepDetails({
   id,
   context,
-  stepIds,
   stepNumbers,
   prefixes,
   installation,
@@ -396,10 +396,7 @@ export function WorkflowStepDetails({
         'step',
       )} in order.`,
     );
-    const parallelism = loopParallelism(group.forEach);
-    let iterations = 'The items run one after another';
-    if (parallelism === 1) iterations = 'The items run one at a time';
-    else if (parallelism) iterations = `Up to ${parallelism} items run at once`;
+    const iterations = iterationsSentence(group.forEach);
     // A nested loop's limit holds within one item of the loop around it.
     const within =
       parent?.kind === 'forEach'
@@ -432,7 +429,7 @@ export function WorkflowStepDetails({
     facts.push(
       `${conditionSummary(
         node.condition,
-        stepIds,
+        stepNumbers,
       )} — otherwise this step is skipped.`,
     );
   }

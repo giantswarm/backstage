@@ -6,12 +6,13 @@ import type {
 import type {
   WorkflowCondition,
   WorkflowForEach,
+  WorkflowPaginate,
   WorkflowStep,
   WorkflowSubStep,
 } from './k8s';
 import { toolEffect, ToolEffect } from './toolAnnotations';
-import { conditionSummary } from './workflowDisplay';
-import { subStepsOf } from './workflowShape';
+import { conditionSummary, type StepNumbers } from './workflowDisplay';
+import { isGroupStep, subStepsOf } from './workflowShape';
 
 /**
  * The read-only flow canvas of a muster workflow, as pure data: the graph a
@@ -78,13 +79,12 @@ export type FlowGroupItem = Exclude<FlowItem, { kind: 'step' }>;
 export interface WorkflowGraph {
   main: FlowItem[];
   onFailure: FlowStepNode[];
-  /** Top-level step ids, in order — resolves `fromStep` to a number. */
-  stepIds: string[];
   /**
-   * Every main-lane step's number by its id, at any depth — resolves a loop's
-   * `{{ .results.<id> }}` to the step it reads, nested ones included.
+   * Every main-lane step's number by its id, at any depth — resolves a
+   * `fromStep` condition and a loop's `{{ .results.<id> }}` to the step they
+   * name, nested ones included. The first step with an id keeps it.
    */
-  stepNumbers: Record<string, string>;
+  stepNumbers: StepNumbers;
 }
 
 function stepTitle(step: { id?: string; description?: string }): string {
@@ -98,17 +98,24 @@ function jqOf(step: WorkflowStep): string | undefined {
     : undefined;
 }
 
+/**
+ * The page bound a definition sets, when it sets a valid one; muster uses
+ * `DEFAULT_MAX_PAGES` otherwise.
+ */
+export function definedMaxPages(
+  paginate: Pick<WorkflowPaginate, 'maxPages'>,
+): number | undefined {
+  const { maxPages } = paginate;
+  return typeof maxPages === 'number' && maxPages >= 1
+    ? Math.floor(maxPages)
+    : undefined;
+}
+
 /** A paginated step's page bound, muster's default where it sets none. */
 function paginateOf(step: WorkflowStep): FlowStepNode['paginate'] {
   const paginate = step.paginate;
   if (!paginate || typeof paginate !== 'object') return undefined;
-  const { maxPages } = paginate;
-  return {
-    maxPages:
-      typeof maxPages === 'number' && maxPages >= 1
-        ? Math.floor(maxPages)
-        : DEFAULT_MAX_PAGES,
-  };
+  return { maxPages: definedMaxPages(paginate) ?? DEFAULT_MAX_PAGES };
 }
 
 /** A tool step's node: what it calls and how it treats the result. */
@@ -148,7 +155,7 @@ function buildItem(
     lane: 'main' as const,
     ...(parentKey ? { parentKey } : {}),
   };
-  if (!step.forEach && !Array.isArray(step.parallel)) {
+  if (!isGroupStep(step)) {
     return { kind: 'step', node: stepNode(step, key, placement) };
   }
   const jq = jqOf(step);
@@ -190,17 +197,16 @@ export function buildWorkflowGraph(
   const main = steps.map((step, index) =>
     buildItem(step, `s${index}`, String(index + 1)),
   );
-  const stepNumbers: Record<string, string> = {};
+  const stepNumbers = new Map<string, string>();
   for (const item of flowItemsInOrder(main)) {
     const { id, number } = item.node;
-    if (id && number && !(id in stepNumbers)) stepNumbers[id] = number;
+    if (id && number && !stepNumbers.has(id)) stepNumbers.set(id, number);
   }
   return {
     main,
     onFailure: onFailure.map((sub, j) =>
       stepNode(sub, `f${j}`, { lane: 'cleanup' }),
     ),
-    stepIds: steps.map(step => step.id),
     stepNumbers,
   };
 }
@@ -260,7 +266,7 @@ export function findFlowStep(
  */
 export function forEachSummary(
   forEach: Pick<WorkflowForEach, 'items' | 'as'>,
-  stepNumbers: Record<string, string> = {},
+  stepNumbers: StepNumbers = new Map(),
 ): string {
   const each = `For each ${forEach.as || 'item'}`;
   const items = (typeof forEach.items === 'string' ? forEach.items : '').trim();
@@ -272,9 +278,7 @@ export function forEachSummary(
     items,
   );
   if (result) {
-    const number = Object.prototype.hasOwnProperty.call(stepNumbers, result[1])
-      ? stepNumbers[result[1]]
-      : undefined;
+    const number = stepNumbers.get(result[1]);
     return number
       ? `${each} in the result of step ${number} (${result[1]})`
       : `${each} in the result of “${result[1]}”`;
@@ -295,14 +299,44 @@ export function loopParallelism(
     : undefined;
 }
 
+/**
+ * How a loop paces its iterations, in the two places it is said: the group's
+ * line ("in order", "one at a time", "up to 8 at once") and a sentence in its
+ * details. One switch, so the two cannot disagree on what each case means.
+ */
+function loopPace(forEach: Pick<WorkflowForEach, 'parallelism'>): {
+  label: string;
+  sentence: string;
+} {
+  const parallelism = loopParallelism(forEach);
+  if (parallelism === undefined) {
+    // The CRD: "Unset, they run one after another."
+    return { label: 'in order', sentence: 'The items run one after another' };
+  }
+  if (parallelism === 1) {
+    return { label: 'one at a time', sentence: 'The items run one at a time' };
+  }
+  return {
+    label: `up to ${parallelism} at once`,
+    sentence: `Up to ${parallelism} items run at once`,
+  };
+}
+
 /** "in order", "one at a time", "up to 8 at once". */
 export function iterationsLabel(
   forEach: Pick<WorkflowForEach, 'parallelism'>,
 ): string {
-  const parallelism = loopParallelism(forEach);
-  if (parallelism === undefined) return 'in order';
-  if (parallelism === 1) return 'one at a time';
-  return `up to ${parallelism} at once`;
+  return loopPace(forEach).label;
+}
+
+/**
+ * The same as a sentence, without its full stop: "The items run one after
+ * another", "The items run one at a time", "Up to 8 items run at once".
+ */
+export function iterationsSentence(
+  forEach: Pick<WorkflowForEach, 'parallelism'>,
+): string {
+  return loopPace(forEach).sentence;
 }
 
 /**
@@ -311,7 +345,7 @@ export function iterationsLabel(
  */
 export function forEachLabel(
   forEach: Pick<WorkflowForEach, 'items' | 'as' | 'parallelism'>,
-  stepNumbers: Record<string, string> = {},
+  stepNumbers: StepNumbers = new Map(),
 ): string {
   return `${forEachSummary(forEach, stepNumbers)}, ${iterationsLabel(forEach)}`;
 }
@@ -319,7 +353,7 @@ export function forEachLabel(
 /** The line a group head carries under its name. */
 export function groupLabel(
   group: FlowGroupItem,
-  stepNumbers: Record<string, string> = {},
+  stepNumbers: StepNumbers = new Map(),
 ): string {
   return group.kind === 'forEach'
     ? forEachLabel(group.forEach, stepNumbers)
@@ -610,31 +644,34 @@ function flowNodeWidth(graph: WorkflowGraph): number {
 }
 
 /**
- * An item's width: a node, or a group around what it holds — a loop's body
- * stacks (as wide as its widest step), a parallel group's steps sit side by
- * side. A group inside a group is wider by its own padding.
+ * Every item's width, computed once per layout from the leaves up: a node, or
+ * a group around what it holds — a loop's body stacks (as wide as its widest
+ * step), a parallel group's steps sit side by side. A group inside a group is
+ * wider by its own padding.
  */
-function itemWidth(item: FlowItem, nodeWidth: number): number {
-  switch (item.kind) {
-    case 'forEach':
-      return (
-        Math.max(
-          nodeWidth,
-          ...item.children.map(child => itemWidth(child, nodeWidth)),
-        ) +
-        2 * M.groupPadding
-      );
-    case 'parallel': {
-      const widths = item.children.map(child => itemWidth(child, nodeWidth));
+function itemWidths(
+  items: FlowItem[],
+  nodeWidth: number,
+): Map<FlowItem, number> {
+  const widths = new Map<FlowItem, number>();
+  const measure = (item: FlowItem): number => {
+    let width: number;
+    if (item.kind === 'forEach') {
+      width =
+        Math.max(nodeWidth, ...item.children.map(measure)) + 2 * M.groupPadding;
+    } else if (item.kind === 'parallel') {
       const row =
-        widths.reduce((sum, width) => sum + width, 0) +
-        Math.max(0, widths.length - 1) * M.parallelGap;
-      return Math.max(nodeWidth, row) + 2 * M.groupPadding;
+        item.children.map(measure).reduce((sum, w) => sum + w, 0) +
+        Math.max(0, item.children.length - 1) * M.parallelGap;
+      width = Math.max(nodeWidth, row) + 2 * M.groupPadding;
+    } else {
+      width = nodeWidth;
     }
-    case 'step':
-    default:
-      return nodeWidth;
-  }
+    widths.set(item, width);
+    return width;
+  };
+  items.forEach(measure);
+  return widths;
 }
 
 /**
@@ -671,6 +708,8 @@ export function layoutWorkflowGraph(
 
   const nodeWidth = flowNodeWidth(graph);
   const titleRoom = nodeWidth - M.nodeChrome;
+  const widths = itemWidths(graph.main, nodeWidth);
+  const widthOf = (item: FlowItem) => widths.get(item) ?? nodeWidth;
 
   const gapFor = (node: FlowStepNode) => (node.condition ? M.gateGap : M.gap);
 
@@ -739,7 +778,7 @@ export function layoutWorkflowGraph(
     if (target.condition) {
       gates.push({
         key: target.key,
-        label: conditionSummary(target.condition, graph.stepIds),
+        label: conditionSummary(target.condition, graph.stepNumbers),
         x,
         y: (fromY + toY) / 2,
         maxWidth: nodeWidth,
@@ -764,7 +803,7 @@ export function layoutWorkflowGraph(
       return top + box.height;
     }
 
-    const width = itemWidth(item, nodeWidth);
+    const width = widthOf(item);
     const label = groupLabel(item, graph.stepNumbers);
     const head = headOf(item.node, width, label);
     const headerBottom = top + head.headerHeight + head.detailsHeight;
@@ -793,17 +832,17 @@ export function layoutWorkflowGraph(
         ? M.gateGap
         : M.gap + 8;
       const childTop = headerBottom + fan;
-      const widths = item.children.map(child => itemWidth(child, nodeWidth));
+      const childWidths = item.children.map(widthOf);
       const row =
-        widths.reduce((sum, w) => sum + w, 0) +
-        (widths.length - 1) * M.parallelGap;
+        childWidths.reduce((sum, w) => sum + w, 0) +
+        (childWidths.length - 1) * M.parallelGap;
       const bend = headerBottom + 20;
       // Siblings share a row: the row is as tall as its tallest sibling,
       // and each keeps its own height inside it.
       let left = x - row / 2;
       const placed = item.children.map((child, j) => {
-        const cx = left + widths[j] / 2;
-        left += widths[j] + M.parallelGap;
+        const cx = left + childWidths[j] / 2;
+        left += childWidths[j] + M.parallelGap;
         // Fan out: a curve off the spine that lands in a straight stretch
         // above the sibling — the stretch a gate marker sits on.
         edges.push({
@@ -815,7 +854,7 @@ export function layoutWorkflowGraph(
         if (child.node.condition) {
           gates.push({
             key: child.node.key,
-            label: conditionSummary(child.node.condition, graph.stepIds),
+            label: conditionSummary(child.node.condition, graph.stepNumbers),
             x: cx,
             y: (bend + childTop) / 2,
             maxWidth: nodeWidth,
@@ -827,8 +866,10 @@ export function layoutWorkflowGraph(
         Math.max(...placed.map(({ childBottom }) => childBottom)) + M.fanIn;
       for (const { child, cx, childBottom } of placed) {
         const join = (childBottom + bottom) / 2;
+        // `:join`, not `:out`: a group in the row has an exit edge of its
+        // own under that key.
         edges.push({
-          key: `${child.node.key}:out`,
+          key: `${child.node.key}:join`,
           d: `M ${cx} ${childBottom} C ${cx} ${join} ${x} ${join} ${x} ${bottom}`,
           end: { x, y: bottom },
           dashed: false,
@@ -865,10 +906,7 @@ export function layoutWorkflowGraph(
     return y;
   }
 
-  const mainWidth = Math.max(
-    nodeWidth,
-    ...graph.main.map(item => itemWidth(item, nodeWidth)),
-  );
+  const mainWidth = Math.max(nodeWidth, ...graph.main.map(widthOf));
   const spineX = M.margin + mainWidth / 2;
 
   if (graph.main.length > 0) {
@@ -1001,8 +1039,18 @@ export function mapRunToGraph(
     remember(cleanupIndex, { node, lane: 'cleanup', containers: [] });
   }
 
-  const lookup = (index: Map<string, Slot>, id: string) =>
-    index.get(id) ?? index.get(id.replace(/(?:_\d+)+$/, ''));
+  // The id as recorded first, then with one `_<index>` suffix off at a time
+  // (a nested loop's records carry one per loop): a step whose own id ends
+  // in `_<digits>` is found before a shorter id is tried.
+  const lookup = (index: Map<string, Slot>, id: string) => {
+    for (let candidate = id; ;) {
+      const slot = index.get(candidate);
+      if (slot) return slot;
+      const shorter = candidate.replace(/_\d+$/, '');
+      if (shorter === candidate) return undefined;
+      candidate = shorter;
+    }
+  };
 
   const collected = new Map<
     string,

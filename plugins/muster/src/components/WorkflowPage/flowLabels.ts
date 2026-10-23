@@ -2,8 +2,8 @@ import { formatDuration } from '../../lib/formatDuration';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { toolDisplay } from '../../lib/workflowDisplay';
 import {
+  featureLabels,
   type FlowStepNode,
-  paginateLabel,
   type StepRunOverlay,
 } from '../../lib/workflowGraph';
 
@@ -86,14 +86,14 @@ export function quietStatus(overlay?: StepRunOverlay): boolean {
   return overlay?.status === 'skipped' || overlay?.status === 'notRun';
 }
 
-/** A step's feature markers in words, for its accessible name. */
+/**
+ * A step's feature markers for its accessible name: the markers' own words,
+ * so a speech-input user can name the step by the text they see on it.
+ */
 export function featureWords(
   node: Pick<FlowStepNode, 'paginate' | 'jq'>,
 ): string[] {
-  return [
-    ...(node.paginate ? [paginateLabel(node.paginate).toLowerCase()] : []),
-    ...(node.jq ? ['result reshaped with jq'] : []),
-  ];
+  return featureLabels(node).map(label => label.toLowerCase());
 }
 
 /** "Step 2: Apply the manifests, kubernetes · apply, last run failed". */
