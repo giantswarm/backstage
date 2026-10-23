@@ -3005,7 +3005,7 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
 environment and the window (7, 30 or 90 days, in `?window=`,
-`lib/usageWindow.ts`). The window control is ui-react's `TimeWindowPicker`,
+`lib/usageWindow.ts`). The window control is ui-react's `LastDaysPicker`,
 "Last [7 | 30 | 90] days" under a "Time range" label, a field box as tall as
 the Environment select beside it.
 

@@ -2,10 +2,7 @@ import { useState } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/test-utils';
-import {
-  TimeWindowPicker,
-  type TimeWindowPickerProps,
-} from './TimeWindowPicker';
+import { LastDaysPicker, type LastDaysPickerProps } from './LastDaysPicker';
 
 const OPTIONS = [7, 30, 90] as const;
 type Days = (typeof OPTIONS)[number];
@@ -13,10 +10,10 @@ type Days = (typeof OPTIONS)[number];
 function Controlled({
   onChange,
   ...props
-}: Partial<TimeWindowPickerProps<Days>>) {
+}: Partial<LastDaysPickerProps<Days>>) {
   const [days, setDays] = useState<Days>(props.value ?? 30);
   return (
-    <TimeWindowPicker
+    <LastDaysPicker
       options={OPTIONS}
       {...props}
       value={days}
@@ -28,7 +25,7 @@ function Controlled({
   );
 }
 
-describe('TimeWindowPicker', () => {
+describe('LastDaysPicker', () => {
   it('is a radio group named by its visible label', async () => {
     await renderInTestApp(<Controlled />);
 
@@ -62,6 +59,29 @@ describe('TimeWindowPicker', () => {
 
     expect(onChange).toHaveBeenCalledWith(7);
     expect(screen.getByRole('radio', { name: 'Last 7 days' })).toBeChecked();
+  });
+
+  it('moves focus to the selected option when its label is clicked, as a select label does', async () => {
+    const user = userEvent.setup();
+    await renderInTestApp(<Controlled />);
+
+    await user.click(screen.getByText('Time range'));
+
+    expect(screen.getByRole('radio', { name: 'Last 30 days' })).toHaveFocus();
+  });
+
+  it('moves focus to the first option on offer when the selected one is not', async () => {
+    const user = userEvent.setup();
+    await renderInTestApp(
+      <Controlled
+        value={90}
+        unavailableReason={days => (days > 30 ? 'Not kept.' : undefined)}
+      />,
+    );
+
+    await user.click(screen.getByText('Time range'));
+
+    expect(screen.getByRole('radio', { name: 'Last 7 days' })).toHaveFocus();
   });
 
   it('takes a custom label', async () => {

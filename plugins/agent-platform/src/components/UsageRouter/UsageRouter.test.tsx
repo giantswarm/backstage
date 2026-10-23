@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { LAST_DAYS_PICKER_CLASS_NAMES } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
@@ -445,11 +446,12 @@ describe('UsageScopeBar · the window limit on a phone', () => {
     const timeRange = await screen.findByRole('radiogroup', {
       name: 'Time range',
     });
-    // The picker: its label above, the "Last … days" line below.
-    const picker = screen
-      .getByText('Time range')
-      .closest('.bui-FieldLabelWrapper')!.parentElement!;
-    expect(picker).toContainElement(timeRange);
+    // The picker, by the root class it owns: its label above, the
+    // "Last … days" line below.
+    const picker = timeRange.closest<HTMLElement>(
+      `.${LAST_DAYS_PICKER_CLASS_NAMES.root}`,
+    )!;
+    expect(picker).toHaveTextContent(/^Time range/);
     const row = picker.parentElement!;
     expect(row.parentElement).toContainElement(
       screen.getByRole('heading', { level: 1 }),

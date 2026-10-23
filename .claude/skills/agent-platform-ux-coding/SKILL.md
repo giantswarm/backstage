@@ -113,10 +113,12 @@ them and never invent a palette.
   field (dropdown) or switches the scope or view of the whole surface (direct
   selection allowed). The PO-ruled instances are the Usage time range
   (7 | 30 | 90 toggle) and the command palette's result-type chips.
-- A time window is `TimeWindowPicker` (`ui-react`): "Last [7 | 30 | 90]
-  days" under its label, in a field box as tall as a select, so it lines up
-  with the Environment select. Do not use bui's stock `ToggleButtonGroup`
-  beside a select; its solid selection outweighs the field.
+- A window of days up to today is `LastDaysPicker` (`ui-react`): "Last
+  [7 | 30 | 90] days" under its label, in a field box as tall as a select, so
+  it lines up with the Environment select. Its shell look lives in
+  `agent-shell.css` by `LAST_DAYS_PICKER_CLASS_NAMES`. Do not use bui's stock
+  `ToggleButtonGroup` beside a select; its solid selection outweighs the
+  field.
 
 ### States
 

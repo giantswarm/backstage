@@ -8,83 +8,86 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from '@backstage/ui';
-import { TimeWindowPicker } from './TimeWindowPicker';
+import { LastDaysPicker, type LastDaysPickerProps } from './LastDaysPicker';
 import { componentDocs } from '../../storybook/docs';
 
 const OPTIONS = [7, 30, 90] as const;
 type Days = (typeof OPTIONS)[number];
 
 const meta = {
-  title: 'Components/TimeWindowPicker',
-  component: TimeWindowPicker,
+  title: 'Components/LastDaysPicker',
+  component: LastDaysPicker,
   tags: ['autodocs'],
   args: {
     options: OPTIONS,
     value: 30,
+    label: 'Time range',
     onChange: () => {},
   },
+  // Every story that renders the picker reads its args: the value and label
+  // from Controls, the rest from the story.
+  render: args => <Controlled key={String(args.value)} {...args} />,
   parameters: {
     agentShell: true,
     docs: {
       description: {
         component: componentDocs({
           summary:
-            'A choice of time window phrased once — "Last [7 | 30 | 90] days" — ' +
-            'where only the number is picked. A radio group named by its label, ' +
-            'each option named in full ("Last 7 days"), in a field box as tall ' +
-            'as a bui `Select`.',
+            'A choice among a few windows of whole days up to today, phrased ' +
+            'once — "Last [7 | 30 | 90] days" — where only the number is ' +
+            'picked. A radio group named by its label, each option named in ' +
+            'full ("Last 7 days"), in a field box as tall as a bui `Select`. ' +
+            'The words are fixed: day windows looking back only.',
           whenToUse:
             '- A scope control that switches the window of a whole surface, ' +
             'such as the Usage screen, beside the Environment select.\n' +
-            '- A handful of fixed windows. For a free range use bui ' +
+            '- A handful of fixed windows in days. For hours, months or a ' +
+            'window ahead, this is the wrong control; for a free range use bui ' +
             '`DateRangePicker`; to filter a list by a field, a dropdown.',
           migration: 'mixed',
           extra:
-            'Built on bui `ToggleButtonGroup` and `FieldLabel`, restyled with ' +
-            "`makeStyles` to the shell's field box. The **Variants** story " +
-            'compares it with the alternatives that were considered.',
+            'Built on bui `ToggleButtonGroup` and `FieldLabel` with bui tokens ' +
+            'only; the agent-platform shell gives it its field box through ' +
+            '`LAST_DAYS_PICKER_CLASS_NAMES` in `agent-shell.css`. These stories ' +
+            'render in the shell, which is light only, so the toolbar theme does ' +
+            'not apply. The **Variants** story compares it with the ' +
+            'alternatives that were considered.',
         }),
       },
     },
   },
-} satisfies Meta<typeof TimeWindowPicker<Days>>;
+} satisfies Meta<typeof LastDaysPicker<Days>>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function Controlled({
-  initial = 30,
-  unavailableReason,
-}: {
-  initial?: Days;
-  unavailableReason?: (days: Days) => string | undefined;
-}) {
-  const [days, setDays] = useState<Days>(initial);
+function Controlled({ value, onChange, ...props }: LastDaysPickerProps<Days>) {
+  const [days, setDays] = useState<Days>(value);
   return (
-    <TimeWindowPicker
-      options={OPTIONS}
+    <LastDaysPicker
+      {...props}
       value={days}
-      onChange={setDays}
-      unavailableReason={unavailableReason}
+      onChange={next => {
+        setDays(next);
+        onChange(next);
+      }}
     />
   );
 }
 
-export const Default: Story = {
-  render: () => <Controlled />,
-};
+export const Default: Story = {};
 
-const KEEPS_30 = (days: Days) =>
+const KEEPS_30 = (days: number) =>
   days > 30 ? 'kagent keeps 30 days of session usage' : undefined;
 
 /** A window the data cannot cover is disabled; hover it for the reason. */
 export const UnavailableWindow: Story = {
-  render: () => <Controlled unavailableReason={KEEPS_30} />,
+  args: { unavailableReason: KEEPS_30 },
 };
 
 /** A deep link selected a window that is not on offer: it stays marked, grey. */
 export const UnavailableWindowSelected: Story = {
-  render: () => <Controlled initial={90} unavailableReason={KEEPS_30} />,
+  args: { value: 90, unavailableReason: KEEPS_30 },
 };
 
 // The header's action row as ShellPage lays it out: wrapped, 8px apart, and
@@ -196,6 +199,8 @@ function WindowSelect() {
  * use.
  */
 export const Variants: Story = {
+  // A comparison, not the picker's own props.
+  parameters: { controls: { disable: true } },
   render: () => (
     <Flex direction="column" gap="6">
       <Variant
@@ -211,10 +216,10 @@ export const Variants: Story = {
         <WindowSelect />
       </Variant>
       <Variant
-        title="B (recommended): TimeWindowPicker, 'Last [7 | 30 | 90] days'"
+        title="B (recommended): LastDaysPicker, 'Last [7 | 30 | 90] days'"
         note="One click, every window visible; 'Last' and 'days' said once; the select's label, box, edge, radius and height; a light selection with an edge."
       >
-        <Controlled />
+        <Controlled options={OPTIONS} value={30} onChange={() => {}} />
       </Variant>
       <Variant
         title="C: bui ToggleButtonGroup with a label"
@@ -228,11 +233,12 @@ export const Variants: Story = {
 
 /** At 375px the row wraps, each control under its own label. */
 export const PhoneWidth: Story = {
+  parameters: { controls: { disable: true } },
   render: () => (
     <div style={{ width: 343, outline: '1px dashed var(--bui-border-2)' }}>
       <ActionRow>
         <EnvironmentSelect />
-        <Controlled />
+        <Controlled options={OPTIONS} value={30} onChange={() => {}} />
       </ActionRow>
     </div>
   ),

@@ -1,7 +1,7 @@
 import { useLocation } from 'react-router-dom';
 import { Text } from '@backstage/ui';
 import {
-  TimeWindowPicker,
+  LastDaysPicker,
   usePhoneLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -74,14 +74,13 @@ export function UsageScopeBar() {
   return (
     <>
       <EnvironmentSelect component="kagent" />
-      <TimeWindowPicker
+      <LastDaysPicker
         options={USAGE_WINDOW_OPTIONS}
         value={days}
         onChange={setDays}
+        // `windowReason` is set exactly when some window exceeds the backend's.
         unavailableReason={option =>
-          backendWindowDays !== undefined && option > backendWindowDays
-            ? windowReason
-            : undefined
+          option > (backendWindowDays ?? Infinity) ? windowReason : undefined
         }
       />
       {windowReason && (isPhone || isTouch) && (
