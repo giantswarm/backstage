@@ -5,6 +5,7 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import { recentAgentUses } from '../../lib/recentAgents';
 import { agentDetailRouteRef } from '../../routes';
@@ -38,8 +39,8 @@ const useStyles = makeStyles({
     },
   },
   // The card opens the agent, as the list's rows do: its name is the link,
-  // whose hit area stretches over the whole card, so the link is named by the
-  // agent alone and the card stays one target.
+  // stretched over the whole card (`useStretchedLinkStyles`), so the link is
+  // named by the agent alone and the card stays one target.
   card: {
     position: 'relative',
     display: 'flex',
@@ -61,22 +62,10 @@ const useStyles = makeStyles({
   nameLink: {
     color: 'inherit',
     textDecoration: 'none',
+    // The card's, which the stretched hit area and its focus ring take.
+    borderRadius: 12,
     '&:hover': {
       textDecoration: 'none',
-    },
-    '&::after': {
-      content: '""',
-      position: 'absolute',
-      inset: 0,
-      borderRadius: 12,
-    },
-    // The focus ring goes round the card, as the hover does.
-    '&[data-focus-visible]': {
-      outline: 'none',
-    },
-    '&[data-focus-visible]::after': {
-      outline: '2px solid var(--bui-ring)',
-      outlineOffset: -2,
     },
   },
   text: {
@@ -93,7 +82,8 @@ const useStyles = makeStyles({
  * cards: the agents of the person's latest sessions (at most three, so the
  * strip is the same size at 3 agents and at 300), each opening the agent's
  * page like every other item of the list; the page's **Use this agent**
- * starts a session. Hidden when the person has no session with a startable
+ * starts a session. An agent that cannot start a session now stays: its page
+ * is where to see why. Hidden when the person has no session with a known
  * agent yet.
  *
  * Reads `useAgents` and `useSessions`, so it renders under an
@@ -103,6 +93,7 @@ const useStyles = makeStyles({
  */
 export function LastUsedAgents() {
   const classes = useStyles();
+  const stretched = useStretchedLinkStyles();
   const headingId = useId();
   const buildAvatarUrl = useAgentAvatarUrl();
   const { rows: agents } = useAgents();
@@ -114,6 +105,7 @@ export function LastUsedAgents() {
     return recentAgentUses(
       sessions.filter(session => !notMine.has(session.installation)),
       agents,
+      { startableOnly: false },
     );
   }, [agents, sessions, notUserScopedInstallations]);
 
@@ -156,12 +148,19 @@ export function LastUsedAgents() {
                 variant="body-medium"
                 weight="bold"
                 truncate
-                className={classes.nameLink}
+                className={`${classes.nameLink} ${stretched.link}`}
               >
                 {agent.name}
               </Link>
+              {/* Above the stretched link, so hovering the relative date
+                  still shows its full date. */}
               {lastUsedAt && (
-                <Text as="span" variant="body-small" color="secondary">
+                <Text
+                  as="span"
+                  variant="body-small"
+                  color="secondary"
+                  className={stretched.above}
+                >
                   <DateComponent value={lastUsedAt} relative />
                 </Text>
               )}

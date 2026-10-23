@@ -16,16 +16,23 @@ export type RecentAgentUse = {
 };
 
 /**
- * The startable agents of the most recently started sessions, newest first,
- * each once, with when each was last used. A session counts only when it
- * matched an `Agent` on the fleet, since only then is its agent known by
- * identity. Sessions are walked newest first and stop at `limit` agents, so a
- * person with hundreds of sessions costs no more than the few it takes.
+ * The agents of the most recently started sessions, newest first, each once,
+ * with when each was last used. A session counts only when it matched an
+ * `Agent` on the fleet, since only then is its agent known by identity.
+ * Sessions are walked newest first and stop at `limit` agents, so a person
+ * with hundreds of sessions costs no more than the few it takes.
+ *
+ * `startableOnly` (the default) skips an agent no session can start on now,
+ * for a list that starts one; a list that opens the agent's page keeps it,
+ * since its page is where to see what is wrong.
  */
 export function recentAgentUses(
   sessions: SessionRow[],
   agents: AgentRow[],
-  limit: number = RECENT_AGENTS_LIMIT,
+  {
+    limit = RECENT_AGENTS_LIMIT,
+    startableOnly = true,
+  }: { limit?: number; startableOnly?: boolean } = {},
 ): RecentAgentUse[] {
   const byId = new Map(agents.map(agent => [agent.id, agent]));
   const picked: RecentAgentUse[] = [];
@@ -41,7 +48,7 @@ export function recentAgentUses(
     );
     if (
       agent &&
-      isStartableAgent(agent) &&
+      (!startableOnly || isStartableAgent(agent)) &&
       !picked.some(use => use.agent === agent)
     ) {
       picked.push({ agent, lastUsedAt: session.createdAt });
@@ -59,5 +66,5 @@ export function recentAgents(
   agents: AgentRow[],
   limit: number = RECENT_AGENTS_LIMIT,
 ): AgentRow[] {
-  return recentAgentUses(sessions, agents, limit).map(use => use.agent);
+  return recentAgentUses(sessions, agents, { limit }).map(use => use.agent);
 }
