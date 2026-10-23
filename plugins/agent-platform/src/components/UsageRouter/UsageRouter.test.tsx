@@ -5,12 +5,7 @@ import userEvent from '@testing-library/user-event';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { LAST_DAYS_PICKER_CLASS_NAMES } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  mockDesktopLayout,
-  mockPhoneLayout,
-  type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import { LAST_DAYS_SELECT_CLASS_NAME } from '@giantswarm/backstage-plugin-ui-react';
 import { usageRouteRef } from '../../routes';
 import { UsageRouter } from './UsageRouter';
 
@@ -110,6 +105,19 @@ function renderTab(path: string, sections?: ReactNode[]) {
       mountedRoutes: { '/usage': usageRouteRef },
     },
   );
+}
+
+/** The time range select's trigger, named by its label. */
+function timeRange() {
+  return screen.getByRole('button', { name: /Time range/ });
+}
+
+async function chooseWindow(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+) {
+  await user.click(timeRange());
+  await user.click(screen.getByRole('option', { name }));
 }
 
 const MCP_SECTION = [<div key="mcp">contributed section</div>];
@@ -261,20 +269,22 @@ describe('UsageRouter', () => {
       renderTab('/usage');
 
       expect(await screen.findByText('overview-view')).toBeInTheDocument();
-      await user.click(screen.getByRole('radio', { name: 'Last 7 days' }));
+      expect(timeRange()).toHaveTextContent('Last 30 days');
+      await chooseWindow(user, 'Last 7 days');
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
           '/usage?window=7d',
         );
       });
+      expect(timeRange()).toHaveTextContent('Last 7 days');
     });
 
     it('drops the window parameter for the default window', async () => {
       const user = userEvent.setup();
       renderTab('/usage?window=7d');
 
-      await user.click(screen.getByRole('radio', { name: 'Last 30 days' }));
+      await chooseWindow(user, 'Last 30 days');
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(/^\/usage$/);
@@ -289,7 +299,7 @@ describe('UsageRouter', () => {
       renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      await user.click(screen.getByRole('radio', { name: 'Last 7 days' }));
+      await chooseWindow(user, 'Last 7 days');
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
@@ -303,54 +313,89 @@ describe('UsageRouter', () => {
     it('disables windows beyond the backend window on Your sessions, saying why', async () => {
       // kagent computes session usage over a fixed window (30 days here), so
       // a wider selection could only re-show the same figures under a bigger
-      // number. The reason rides on the greyed button itself — a native title
-      // is the one affordance a disabled control still offers.
+      // number. The reason is the disabled option's own description: shown
+      // under its name on every device and read with it by screen readers.
+      const user = userEvent.setup();
       renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      const ninety = screen.getByRole('radio', { name: 'Last 90 days' });
-      expect(ninety).toBeDisabled();
-      expect(ninety).toHaveAttribute(
-        'title',
+      await user.click(timeRange());
+      const ninety = screen.getByRole('option', { name: 'Last 90 days' });
+      expect(ninety).toHaveAttribute('aria-disabled', 'true');
+      expect(ninety).toHaveAccessibleDescription(
         'kagent keeps 30 days of session usage',
       );
-      expect(screen.getByRole('radio', { name: 'Last 7 days' })).toBeEnabled();
-      expect(screen.getByRole('radio', { name: 'Last 30 days' })).toBeEnabled();
+      for (const name of ['Last 7 days', 'Last 30 days']) {
+        expect(screen.getByRole('option', { name })).not.toHaveAttribute(
+          'aria-disabled',
+        );
+      }
     });
 
     it('keeps every window enabled on the gateway views', async () => {
       // The gateway views query any window directly — only the kagent fan-out
       // has a fixed window, so the limit must not leak across tabs even while
       // its cached response is at hand.
+      const user = userEvent.setup();
       renderTab('/usage');
 
       expect(await screen.findByText('overview-view')).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: 'Last 90 days' })).toBeEnabled();
+      await user.click(timeRange());
+      expect(
+        screen.getByRole('option', { name: 'Last 90 days' }),
+      ).not.toHaveAttribute('aria-disabled');
     });
 
     it('keeps every window enabled while the backend window is still loading', async () => {
       // No locked control over a guess: until a response names its window,
       // nothing is greyed out.
       sessionUsageState.usage = undefined;
+      const user = userEvent.setup();
       renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: 'Last 90 days' })).toBeEnabled();
+      await user.click(timeRange());
+      expect(
+        screen.getByRole('option', { name: 'Last 90 days' }),
+      ).not.toHaveAttribute('aria-disabled');
     });
 
     it('leaves a deep-linked selection beyond the window selected, not clamped', async () => {
       // A shared link saying ?window=90d still lands where it pointed:
       // AgentUsageSection's note explains that the figures cover the backend's
       // own window — the control greys the option but never rewrites the URL.
+      const user = userEvent.setup();
       renderTab('/usage/your-sessions?window=90d');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      const ninety = screen.getByRole('radio', { name: 'Last 90 days' });
-      expect(ninety).toBeDisabled();
-      expect(ninety).toBeChecked();
+      expect(timeRange()).toHaveTextContent('Last 90 days');
+      await user.click(timeRange());
+      const ninety = screen.getByRole('option', { name: 'Last 90 days' });
+      expect(ninety).toHaveAttribute('aria-disabled', 'true');
+      expect(ninety).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByTestId('path')).toHaveTextContent(
         '/usage/your-sessions?window=90d',
       );
+    });
+
+    it('puts the time range and the Environment control straight into the header actions row', async () => {
+      // ShellPage's actions row spaces and aligns its items (bottom edges where
+      // it holds a labelled field, so the two selects' boxes line up); layout
+      // itself is not measured in jsdom, so this pins that the controls are
+      // that row's own items rather than a row of their own.
+      renderTab('/usage/your-sessions');
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      // The select, by the root class it owns.
+      const select = timeRange().closest<HTMLElement>(
+        `.${LAST_DAYS_SELECT_CLASS_NAME}`,
+      )!;
+      expect(select).toHaveTextContent(/^Time range/);
+      const row = select.parentElement!;
+      expect(row.parentElement).toContainElement(
+        screen.getByRole('heading', { level: 1 }),
+      );
+      expect(screen.getByTestId('environment-select').parentElement).toBe(row);
     });
   });
 
@@ -398,75 +443,9 @@ describe('UsageRouter', () => {
       const header = screen.getByRole('heading', { level: 1 }).closest('div')
         ?.parentElement?.parentElement as HTMLElement;
       expect(
-        within(header).getByRole('radiogroup', { name: 'Time range' }),
+        within(header).getByRole('button', { name: /Time range/ }),
       ).toBeInTheDocument();
       expect(within(header).getByTestId('environment-select')).toBeVisible();
     });
-  });
-});
-
-// T22 C23: a phone never shows the greyed buttons' `title=`.
-describe('UsageScopeBar · the window limit on a phone', () => {
-  let layout: MockedLayout;
-  beforeEach(() => {
-    scopeState.isSingleInstallation = false;
-    scopeState.isLoading = false;
-    sessionUsageState.usage = { windowDays: 30 };
-  });
-  afterEach(() => layout.restore());
-
-  const REASON =
-    'kagent keeps 30 days of session usage, so the longer ranges are unavailable.';
-
-  it('says why the longer windows are off beside the control', async () => {
-    layout = mockPhoneLayout();
-    renderTab('/usage/your-sessions');
-
-    expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Last 90 days' })).toBeDisabled();
-    expect(screen.getByText(REASON)).toBeVisible();
-  });
-
-  it('leaves it to the button’s tooltip on a desktop with a mouse', async () => {
-    layout = mockDesktopLayout();
-    renderTab('/usage/your-sessions');
-
-    expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-    expect(screen.queryByText(REASON)).toBeNull();
-  });
-
-  it('puts the time range, the Environment control and the reason straight into the header actions row', async () => {
-    // ShellPage's actions row spaces and aligns its items (bottom edges where
-    // it holds a labelled field, so the time range lines up with the select's
-    // field); layout itself is not measured in jsdom, so this pins that the
-    // controls are that row's own items rather than a row of their own.
-    layout = mockPhoneLayout();
-    renderTab('/usage/your-sessions');
-
-    const timeRange = await screen.findByRole('radiogroup', {
-      name: 'Time range',
-    });
-    // The picker, by the root class it owns: its label above, the
-    // "Last … days" line below.
-    const picker = timeRange.closest<HTMLElement>(
-      `.${LAST_DAYS_PICKER_CLASS_NAMES.root}`,
-    )!;
-    expect(picker).toHaveTextContent(/^Time range/);
-    const row = picker.parentElement!;
-    expect(row.parentElement).toContainElement(
-      screen.getByRole('heading', { level: 1 }),
-    );
-    expect(screen.getByTestId('environment-select').parentElement).toBe(row);
-    expect(screen.getByText(REASON).parentElement).toBe(row);
-  });
-
-  it('says nothing where no window is off', async () => {
-    layout = mockPhoneLayout();
-    renderTab('/usage');
-
-    expect(await screen.findByText('overview-view')).toBeInTheDocument();
-    expect(
-      screen.queryByText(/so the longer ranges are unavailable/),
-    ).toBeNull();
   });
 });

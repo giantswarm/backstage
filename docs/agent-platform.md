@@ -383,7 +383,8 @@ not held: the app's router has no navigation blocker.
   no connector page shows (one since removed) is not linked.
 - **Your sessions** — the person's own usage from their kagent sessions,
   limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
-  30 days by default); wider ranges are disabled there. Its cost is the
+  30 days by default); wider ranges are disabled options there, each saying
+  how many days kagent keeps. Its cost is the
   gateway's price for the person's own model calls, in total and per agent —
   every call made as them, in these sessions or not. Where that cannot be read,
   it shows an estimate labelled **Est. cost**, and its tooltip says why.
@@ -3005,9 +3006,10 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
 environment and the window (7, 30 or 90 days, in `?window=`,
-`lib/usageWindow.ts`). The window control is ui-react's `LastDaysPicker`,
-"Last [7 | 30 | 90] days" under a "Time range" label, a field box as tall as
-the Environment select beside it.
+`lib/usageWindow.ts`). The window control is ui-react's `LastDaysSelect`: a
+select labelled "Time range" with the options "Last 7 days", "Last 30 days"
+and "Last 90 days", the same label, box and height as the Environment select
+beside it.
 
 | View          | Path                   | Source                          | Whose            |
 | ------------- | ---------------------- | ------------------------------- | ---------------- |
@@ -3301,7 +3303,7 @@ Nothing polls it.
 
 ### One window control for the whole screen
 
-The 7, 30 or 90-day picker (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
+The 7, 30 or 90-day select (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
 out of the URL) drives every view. Gateway views query the window directly.
 Your sessions narrows kagent's `windowDays` answer client-side (`narrowDaily`)
 and disables wider choices; its by-agent and top tables still cover kagent's
