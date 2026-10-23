@@ -142,6 +142,8 @@ let isMusterUnavailable = true;
 // `get_info`'s `capabilities.commit`: whether agent-manager can open a pull
 // request in the repository that owns a release applied from git.
 let canCommit = false;
+// `get_info`'s platform Harness; unset, it names none, as before it answers.
+let managerHarness: string | undefined;
 
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: () => ({
@@ -152,7 +154,13 @@ jest.mock('../../hooks/useAgentManager', () => ({
     isUnavailable: isMusterUnavailable,
   }),
   useAgentManagerInfo: () => ({
-    info: canCommit ? { capabilities: { commit: true } } : undefined,
+    info:
+      canCommit || managerHarness
+        ? {
+            ...(canCommit && { capabilities: { commit: true } }),
+            ...(managerHarness && { harness: { name: managerHarness } }),
+          }
+        : undefined,
     isLoading: false,
     error: null,
   }),
@@ -352,8 +360,14 @@ const mockParams: {
   name: 'pr-reviewer',
 };
 
-const { Agent, GitRepository, HelmRelease, Kustomization, ModelConfig } =
-  jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react');
+const {
+  Agent,
+  GitRepository,
+  Harness,
+  HelmRelease,
+  Kustomization,
+  ModelConfig,
+} = jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react');
 
 const READY_CONDITIONS: AgentCondition[] = [
   {
@@ -441,6 +455,32 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
   );
 }
 
+/** A Harness of the fixture agent's namespace, as an admin may label it. */
+function makeHarness({
+  name = 'kagent',
+  runtime = 'kagent',
+  displayName,
+}: { name?: string; runtime?: string; displayName?: string } = {}) {
+  return new Harness(
+    {
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Harness',
+      metadata: {
+        name,
+        namespace: 'agent-platform',
+        ...(displayName && {
+          annotations: { 'ui.giantswarm.io/display-name': displayName },
+        }),
+      },
+      spec: {
+        [runtime]: {},
+        workload: { image: `registry.example/${name}-harness@sha256:0123` },
+      },
+    } as never,
+    'gazelle',
+  );
+}
+
 /** The model the fixture agent references; `displayName: null` omits the annotation. */
 function makeModelConfig({
   displayName = 'Claude Opus 4.7',
@@ -503,6 +543,8 @@ type FluxChain = {
   helmRelease?: unknown;
   kustomization?: unknown;
   gitRepository?: unknown;
+  /** Not Flux, but read beside it: the Harness the agent names. */
+  harness?: ResourceOutcome;
 };
 
 function stubResources(
@@ -536,6 +578,8 @@ function stubResources(
           return fill({ resource: flux.kustomization });
         case GitRepository:
           return fill({ resource: flux.gitRepository });
+        case Harness:
+          return fill(flux.harness);
         default:
           return fill();
       }
@@ -669,6 +713,7 @@ describe('AgentDetailPage', () => {
     managerAgent = undefined;
     isReadingManagerAgent = false;
     canCommit = false;
+    managerHarness = undefined;
   });
 
   it('lists the extra egress origins the Agent declares, and no row without them', async () => {
@@ -2141,6 +2186,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
     managerAgent = undefined;
     isReadingManagerAgent = false;
     canCommit = false;
+    managerHarness = undefined;
   });
 
   describe('the frame', () => {
@@ -2458,6 +2504,139 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(within(facts).getByText('gazelle')).toBeInTheDocument();
     });
 
+    it('names the runtime beside the overview as the create form does', async () => {
+      managerHarness = 'kagent';
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig() },
+        { harness: { resource: makeHarness() } },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      // The runtime card's title, mark and Harness line, from lib/harnesses.
+      expect(within(facts).getByText('Runtime')).toBeInTheDocument();
+      expect(
+        within(facts).getByText('Declarative (Go ADK)'),
+      ).toBeInTheDocument();
+      expect(within(facts).getByText('Platform default')).toBeInTheDocument();
+      expect(
+        within(facts).getByText(
+          (_, element) =>
+            element?.textContent === 'Harness kagent · kagent-harness',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(facts).getByRole('button', { name: 'What the runtime is' }),
+      ).toBeInTheDocument();
+    });
+
+    it('names a coding runtime by its display name, without the default mark', async () => {
+      const agent = makeAgent();
+      agent.jsonData.spec!.harnessRef = { name: 'claude' };
+      stubResources(
+        { resource: agent },
+        { resource: makeModelConfig() },
+        {
+          harness: {
+            resource: makeHarness({
+              name: 'claude',
+              runtime: 'claude',
+              displayName: 'Claude Code (Go toolchain)',
+            }),
+          },
+        },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(
+        within(facts).getByText('Claude Code (Go toolchain)'),
+      ).toBeInTheDocument();
+      expect(within(facts).queryByText('Platform default')).toBeNull();
+    });
+
+    it('names an unreadable Harness by its name and says its runtime is not known', async () => {
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig() },
+        { harness: { errors: [new Error('forbidden')] } },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('kagent')).toBeInTheDocument();
+      expect(
+        within(facts).getByText('Its runtime could not be read.'),
+      ).toBeInTheDocument();
+    });
+
+    it('marks no Harness as the platform default before get_info names it', async () => {
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig() },
+        { harness: { resource: makeHarness() } },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(
+        within(facts).getByText('Declarative (Go ADK)'),
+      ).toBeInTheDocument();
+      // Not on the guess that the platform's is `kagent`.
+      expect(within(facts).queryByText('Platform default')).toBeNull();
+    });
+
+    it('says the runtime of an inline Harness is not known when this client does not know it', async () => {
+      const agent = makeAgent();
+      delete agent.jsonData.spec!.harnessRef;
+      agent.jsonData.spec!.harness = {
+        workload: { image: 'registry.example/new-harness@sha256:0123' },
+      } as never;
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Unknown runtime')).toBeInTheDocument();
+      expect(
+        within(facts).getByText('Its runtime is not known.'),
+      ).toBeInTheDocument();
+      expect(
+        within(facts).queryByText('The agent names no Harness.'),
+      ).toBeNull();
+    });
+
+    it('says so plainly when the agent names no Harness', async () => {
+      const agent = makeAgent();
+      delete agent.jsonData.spec!.harnessRef;
+      stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Unknown runtime')).toBeInTheDocument();
+      expect(
+        within(facts).getByText('The agent names no Harness.'),
+      ).toBeInTheDocument();
+    });
+
     it('names the organization of an agent in an organization, under Organization', async () => {
       stubResources(
         {
@@ -2500,7 +2679,14 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       });
       expect(within(facts).getByText('Organization')).toBeInTheDocument();
       expect(within(facts).getByText(/^None/)).toBeInTheDocument();
-      expect(within(facts).queryByText(/Platform/)).toBeNull();
+      // Nothing about the platform in its organization; the Runtime fact's
+      // "Platform default" is about the Harness, so the check stays on the
+      // Organization fact's value.
+      const organization = within(facts)
+        .getByText('Organization')
+        .closest('dt')?.nextElementSibling;
+      expect(organization?.tagName).toBe('DD');
+      expect(organization).not.toHaveTextContent(/Platform/);
       const hint = within(facts).getByRole('button', {
         name: 'What None means',
       });

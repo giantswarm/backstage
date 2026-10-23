@@ -19,12 +19,12 @@ import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
 import { TenantPicker } from '../TenantPicker';
 import { ModelConfigPicker } from '../ModelConfigPicker';
-import { HarnessPicker } from '../HarnessPicker';
+import { HarnessPicker, useRuntimeChoices } from '../HarnessPicker';
 import { DefaultWorkspacePicker } from '../DefaultWorkspacePicker';
 import { EgressPolicyPicker } from '../EgressPolicyPicker';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
-import { harnessTitle } from '../../lib/harnesses';
+import { harnessTitle, PLATFORM_DEFAULT_LABEL } from '../../lib/harnesses';
 import { MAX_SYSTEM_MESSAGE_LENGTH } from '../../lib/systemMessage';
 
 const useStyles = makeStyles({
@@ -69,6 +69,8 @@ function NewAgentPageContent() {
     validationErrors,
     fieldErrors,
   } = useNewAgentForm();
+  // The platform Harness the runtime field shows, for the summary below.
+  const { platformChoice } = useRuntimeChoices();
 
   // Each field shows its own problem once the person leaves it having typed
   // in it, or tries to proceed — not while they first type, so the form does
@@ -126,10 +128,12 @@ function NewAgentPageContent() {
   useProvidePageHeaderActions(actions);
 
   // The disclosure's one-line summary of what it holds: the runtime (the
-  // platform's standard one unless another is picked) and, while creating,
-  // the technical name it can override. An edited agent's Harness is known by
-  // its name until the picker reads it.
-  let runtimeName = 'Standard';
+  // platform Harness, by the runtime field's title for it, unless another is
+  // picked) and, while creating, the technical name it can override. An
+  // edited agent's Harness is known by its name until the picker reads it.
+  let runtimeName = platformChoice
+    ? harnessTitle(platformChoice)
+    : PLATFORM_DEFAULT_LABEL;
   if (state.harness) {
     runtimeName =
       state.harness.displayName || state.harness.runtime

@@ -47,10 +47,15 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 let mockServerCrs: unknown[] = [];
 /** Whether the MCPServer CRs are still being read. */
 let mockServersLoading = false;
+// The Harnesses the runtime field lists; none read unless a test says so.
+let mockHarnesses: unknown[] = [];
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: (_clusters: string[], resourceClass: { kind?: string }) => ({
-    resources: resourceClass?.kind === 'MCPServer' ? mockServerCrs : [],
+    resources:
+      (resourceClass?.kind === 'MCPServer' && mockServerCrs) ||
+      (resourceClass?.kind === 'Harness' && mockHarnesses) ||
+      [],
     isLoading: resourceClass?.kind === 'MCPServer' && mockServersLoading,
     errors: [],
   }),
@@ -351,6 +356,7 @@ beforeEach(() => {
   mockUseUnderlyingModel.mockReset();
   mockServerCrs = [];
   mockServersLoading = false;
+  mockHarnesses = [];
   window.sessionStorage.clear();
 });
 
@@ -384,9 +390,8 @@ describe('NewAgentReviewPage', () => {
     );
     // No display name was handed over, so the ModelConfig's name stands in.
     expect(plainRow('Model')).toHaveTextContent('opus-4-7');
-    expect(plainRow('Runtime')).toHaveTextContent(
-      'Standard (platform default)',
-    );
+    // The runtime field's mark; its title too, once the Harness is read.
+    expect(plainRow('Runtime')).toHaveTextContent('Platform default');
     expect(plainRow('Skills')).toHaveTextContent('Incident responder');
     expect(plainRow('Tools')).toHaveTextContent('Read-only tools');
 
@@ -557,6 +562,31 @@ describe('NewAgentReviewPage', () => {
     expect(
       screen.getByText(/Values validated against the chart's schema/),
     ).toHaveTextContent('1.0.0 (registry)');
+  });
+
+  it('names the platform Harness as the runtime field does, once it is read', async () => {
+    const { Harness } = jest.requireActual(
+      '@giantswarm/backstage-plugin-kubernetes-react',
+    );
+    mockHarnesses = [
+      new Harness(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'Harness',
+          metadata: { name: 'kagent', namespace: 'kagent' },
+          spec: {
+            kagent: {},
+            workload: { image: 'registry.example/kagent-harness@sha256:0123' },
+          },
+        },
+        'gazelle',
+      ),
+    ];
+    await renderReview();
+
+    expect(
+      await screen.findByText('Declarative (Go ADK) · Platform default'),
+    ).toBeInTheDocument();
   });
 
   it('shows no limits for a Claude Code Harness', async () => {
