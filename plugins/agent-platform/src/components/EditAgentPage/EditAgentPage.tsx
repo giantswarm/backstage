@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQueryClient } from '@tanstack/react-query';
@@ -39,7 +39,7 @@ import { NewAgentPage } from '../NewAgentPage';
 import { NewAgentReviewPage } from '../NewAgentReviewPage';
 import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
 import { NewAgentToolsPage } from '../NewAgentToolsPage';
-import { ReleaseOutsideDirectory } from '../ReleaseOutsideDirectory';
+import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
 
 /**
  * The wizard, seeded once from agent-manager's reading of the agent — one read
@@ -47,6 +47,7 @@ import { ReleaseOutsideDirectory } from '../ReleaseOutsideDirectory';
  * form state (the create flow's draft, held by the router's provider, stays
  * untouched) and the agent as the baseline the review compares against. A
  * later re-read of the agent does not reseed what the person is changing.
+ * `onOpened` runs once it is on screen.
  */
 function EditAgentWizard({
   installation,
@@ -56,6 +57,7 @@ function EditAgentWizard({
   catalog,
   pluginCatalog,
   platformHarness,
+  onOpened,
 }: {
   installation: string;
   agent: AgentManagerAgent;
@@ -64,7 +66,9 @@ function EditAgentWizard({
   catalog: DiscoveredSkill[];
   pluginCatalog: DiscoveredPlugin[];
   platformHarness: string | undefined;
+  onOpened: () => void;
 }) {
+  useEffect(onOpened, [onOpened]);
   const [seed] = useState(() => ({
     edit: { agent, installation, writeMode, detailHref },
     state: formStateOfAgent(agent, {
@@ -178,10 +182,15 @@ export function EditAgentPage() {
   );
   // Asked once, before the form: a later re-read (every muster sign-in reads
   // all muster queries again) never takes away a form the person is filling.
+  // Latched by the wizard's mount, so only a form that reached the screen
+  // counts.
   const wizardKey = `${installation}/${namespace}/${name}`;
-  const wizardOpenedFor = useRef<string | undefined>(undefined);
-  const commitGates =
-    writeMode === 'commit' && wizardOpenedFor.current !== wizardKey;
+  const [wizardOpenedFor, setWizardOpenedFor] = useState<string>();
+  const onWizardOpened = useCallback(
+    () => setWizardOpenedFor(wizardKey),
+    [wizardKey],
+  );
+  const commitGates = writeMode === 'commit' && wizardOpenedFor !== wizardKey;
   const isCommitCheckPending = commitGates && commitCheck.status === 'checking';
   const reason = agentManagerAbsenceReason(
     { ...gate, isGitOpsOwned: isGitOpsOwned && !canCommit },
@@ -272,7 +281,7 @@ export function EditAgentPage() {
     );
   } else if (commitGates && commitCheck.status === 'release-outside') {
     body = (
-      <ReleaseOutsideDirectory
+      <MissingReleaseFileAlert
         missing={commitCheck.missing}
         message={commitCheck.message}
         action="edit"
@@ -295,7 +304,6 @@ export function EditAgentPage() {
       </Flex>
     );
   } else {
-    wizardOpenedFor.current = wizardKey;
     return (
       <EditAgentWizard
         key={wizardKey}
@@ -306,6 +314,7 @@ export function EditAgentPage() {
         catalog={catalog.skills}
         pluginCatalog={catalog.plugins}
         platformHarness={info?.harness?.name}
+        onOpened={onWizardOpened}
       />
     );
   }

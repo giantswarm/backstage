@@ -2946,12 +2946,14 @@ failure the dialog stays open with the message.
 
 **Commit** (`delete_agent` with `mode: commit`, giantswarm/agent-manager#24)
 opens a pull request removing the agent's files, behind
-`get_info.capabilities.commit`. While the dialog is open in commit mode it runs
-the pull-request check described under
-[Editing an agent](#editing-an-agent), and confirm is enabled once it passes. A
-release outside agent-manager's directory shows the explanation with only
-Close; `auth_required` shows the GitHub authorization prompt. The same two
-refusals of the delete itself read the same way.
+`get_info.capabilities.commit`. The page mounts the dialog only while it is
+open, and in commit mode it runs the pull-request check described under
+[Editing an agent](#editing-an-agent) afresh on every open. Confirm is disabled
+while the check runs, and stays disabled for a release outside agent-manager's
+directory (the explanation, with only Close) and for a GitHub authorization a
+sign-in can give (the sign-in). Any other answer enables it. Once the delete
+itself has answered, its refusal is what the dialog shows, the same two in the
+same way.
 
 The dialogs render in the **page body**, because the header slot is outside the
 plugin's `QueryClientProvider` and the mutations, dry runs and `ServerSignIn`
@@ -3004,21 +3006,25 @@ behind the commit capability, gets **Propose changes as pull request**
 `update_agent` with `mode: commit`, `dryRun: true` and no changed fields reads
 the repository as the person and answers what a pull request would get, writing
 nothing (about 1–4 s). It runs alongside `get_agent` when a cached reading
-already says `managed: gitops`, otherwise once the fresh reading does, and the
-page stays on "Reading the agent…" until it answers.
+already says `managed: gitops`, otherwise once the fresh reading does. An
+answer cached before the page mounted does not count, and the page stays on
+"Reading the agent…" until the fresh one lands. `classifyCommitFailure` reads
+the answer, for the page, the review and the Delete dialog alike:
 
-| Answer                                                                               | The page shows                                                                                                                                                                                                     |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Passes                                                                               | The wizard                                                                                                                                                                                                         |
-| `conflict` naming a release outside agent-manager's directory (`missingReleaseFile`) | An info empty state, "This agent cannot be edited here", linking the repository and the path the Kustomization builds from (the refusal's directory without `/agent-manager`), the refusal under Technical details |
-| `auth_required`, or muster not connected                                             | `ConnectAgentManagerAlert` (GitHub authorization); the sign-in re-reads every muster query, and the wizard opens once the check passes                                                                             |
-| Anything else                                                                        | The wizard; the save reports its own answer                                                                                                                                                                        |
+| Answer                                                                                                                                                                                      | The page shows                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Passes                                                                                                                                                                                      | The wizard                                                                                                                                                                                                                                                                                             |
+| `conflict` naming a release outside agent-manager's directory (`missingReleaseFile`)                                                                                                        | `MissingReleaseFileAlert` as an info empty state, "This agent cannot be edited here": the release and the file agent-manager looked for, the repository linked, the refusal under Technical details. Where the release is defined instead is not something agent-manager reports, so it is not claimed |
+| muster not connected, or `auth_required` for a call that carried no GitHub authorization (`missingGitHubAuthorization`) while muster reports agent-manager waiting for the person's sign-in | `ConnectAgentManagerAlert`; the sign-in re-reads every muster query, and the wizard opens once the check passes                                                                                                                                                                                        |
+| Anything else, including `auth_required` where agent-manager is already connected or GitHub refused the token (an App not installed, no push access)                                        | The wizard; the save reports its own answer                                                                                                                                                                                                                                                            |
 
-The refusal is recognised by agent-manager's wording until it reports a code of
-its own (giantswarm/agent-manager#144). The review renders the same two
-refusals the same way, in case the repository or the authorization changes
-while the person edits. The check costs a GitHub read, so it runs on the edit
-page and in the Delete dialog only, never on the detail page.
+Once the wizard is on screen the check no longer gates it, so a later re-read
+(every muster sign-in re-reads all muster queries) never takes a form away.
+Both refusals are recognised by agent-manager's wording until it reports codes
+of its own (giantswarm/agent-manager#144). The review renders them the same
+way, in case the repository or the authorization changes while the person
+edits. The check costs a GitHub read, so it runs on the edit page and in the
+Delete dialog only, never on the detail page.
 
 ### Updating an agent's skills
 

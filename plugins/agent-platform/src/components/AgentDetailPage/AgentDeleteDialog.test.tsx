@@ -11,6 +11,7 @@ import {
 import type { AgentDeletionState } from '../../hooks/useAgentDeletion';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { musterCommitAgentUpdateDryRunQueryKey } from '../../lib/queryKeys';
 import { AgentDeleteDialog } from './AgentDeleteDialog';
 
 // agent-manager's answers to the empty commit dry run, as they come over MCP
@@ -40,6 +41,10 @@ type Scenario = {
   dryRunPending?: boolean;
   commitResult?: CommitAgentResult;
   deletion?: Partial<AgentDeletionState>;
+  /** What muster's `auth://status` reports for agent-manager. */
+  agentManagerAuth?: 'auth_required' | 'connected';
+  /** An earlier open's answer, in the cache. */
+  cachedPass?: boolean;
 };
 
 function makeMusterApi(scenario: Scenario) {
@@ -57,7 +62,14 @@ function makeMusterApi(scenario: Scenario) {
       return { ...committedTo(), dryRun: true, after: {} };
     },
   );
-  const getAuthStatus = jest.fn(async () => ({ servers: [] }));
+  const getAuthStatus = jest.fn(async () => ({
+    servers: [
+      {
+        name: 'agent-manager',
+        status: scenario.agentManagerAuth ?? 'connected',
+      },
+    ],
+  }));
   return {
     api: { callTool, getAuthStatus } as unknown as MusterApi,
     callTool,
@@ -66,9 +78,22 @@ function makeMusterApi(scenario: Scenario) {
 
 async function renderDialog(scenario: Scenario) {
   const { api, callTool } = makeMusterApi(scenario);
+  // Trusting an entry for a minute, as the plugin's client does.
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, staleTime: 60_000 },
+      mutations: { retry: false },
+    },
   });
+  if (scenario.cachedPass) {
+    queryClient.setQueryData(
+      musterCommitAgentUpdateDryRunQueryKey(
+        'gazelle',
+        JSON.stringify({ namespace: 'kagent', name: 'pr-reviewer' }),
+      ),
+      { skills: undefined },
+    );
+  }
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
@@ -169,19 +194,11 @@ describe('AgentDeleteDialog', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', {
-        name: /^giantswarm\/giantswarm-management-clusters/,
+        name: 'giantswarm/giantswarm-management-clusters',
       }),
     ).toHaveAttribute(
       'href',
       'https://github.com/giantswarm/giantswarm-management-clusters',
-    );
-    expect(
-      screen.getByRole('link', {
-        name: /^management-clusters\/gazelle\/extras/,
-      }),
-    ).toHaveAttribute(
-      'href',
-      'https://github.com/giantswarm/giantswarm-management-clusters/tree/HEAD/management-clusters/gazelle/extras',
     );
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
@@ -198,8 +215,27 @@ describe('AgentDeleteDialog', () => {
     ).toBeVisible();
   });
 
+  it('does not trust an earlier open’s answer', async () => {
+    await renderDialog({
+      mode: 'commit',
+      cachedPass: true,
+      dryRunError: MISSING_RELEASE_FILE,
+    });
+
+    expect(
+      await screen.findByText('This agent cannot be deleted here'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('asks for the GitHub authorization before confirm', async () => {
-    await renderDialog({ mode: 'commit', dryRunError: AUTH_REQUIRED });
+    await renderDialog({
+      mode: 'commit',
+      dryRunError: AUTH_REQUIRED,
+      agentManagerAuth: 'auth_required',
+    });
 
     expect(
       await screen.findByText('Authorize GitHub for agent-manager'),
@@ -210,6 +246,17 @@ describe('AgentDeleteDialog', () => {
     expect(
       screen.getByRole('button', { name: 'Open pull request' }),
     ).toBeDisabled();
+  });
+
+  it('leaves confirm to the delete where a sign-in cannot give the authorization', async () => {
+    // agent-manager is connected already, so signing in changes nothing.
+    await renderDialog({ mode: 'commit', dryRunError: AUTH_REQUIRED });
+
+    const confirm = screen.getByRole('button', { name: 'Open pull request' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    expect(
+      screen.queryByText('Authorize GitHub for agent-manager'),
+    ).not.toBeInTheDocument();
   });
 
   it('leaves confirm to the delete when the check fails some other way', async () => {
@@ -245,7 +292,7 @@ describe('AgentDeleteDialog', () => {
         failure: {
           kind: 'refused',
           code: 'auth_required',
-          message: 'sign in to GitHub through muster first',
+          message: AUTH_REQUIRED.replace(/^auth_required: /, ''),
         },
       },
     });
@@ -253,9 +300,7 @@ describe('AgentDeleteDialog', () => {
     expect(
       screen.getByText('Authorize GitHub for agent-manager'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('sign in to GitHub through muster first'),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/this call carries none/)).toBeInTheDocument();
     await waitFor(() =>
       expect(
         screen.getByRole('button', { name: 'Open pull request' }),
@@ -282,5 +327,32 @@ describe('AgentDeleteDialog', () => {
     expect(
       screen.queryByRole('button', { name: 'Cancel' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows the delete’s own refusal, not a re-run check’s answer', async () => {
+    // The delete was refused; a sign-in elsewhere then re-ran the check,
+    // which asks for the GitHub authorization.
+    await renderDialog({
+      mode: 'commit',
+      dryRunError: AUTH_REQUIRED,
+      agentManagerAuth: 'auth_required',
+      deletion: {
+        failure: {
+          kind: 'refused',
+          code: 'forbidden',
+          message: 'you may not push to giantswarm/agents',
+        },
+      },
+    });
+
+    expect(
+      await screen.findByText('you may not push to giantswarm/agents'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Authorize GitHub for agent-manager'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Open pull request' }),
+    ).toBeEnabled();
   });
 });

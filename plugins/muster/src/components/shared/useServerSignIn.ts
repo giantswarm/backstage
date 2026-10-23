@@ -115,6 +115,40 @@ export function authStatusQueryKey(installation?: string) {
 }
 
 /**
+ * Whether muster reports `serverName` as waiting for the person's sign-in
+ * ({@link needsSignIn}), from the `auth://status` read the sign-in affordances
+ * share: `undefined` until it is read. A status that cannot be read, or a
+ * server it does not list, is `false`: nothing a sign-in is known to fix. For
+ * a surface that offers the sign-in only where it can help.
+ */
+export function useServerNeedsSignIn(
+  serverName: string,
+  installation: string | undefined,
+  options: { enabled?: boolean } = {},
+): boolean | undefined {
+  const musterApi = useApi(musterApiRef);
+  const enabled = (options.enabled ?? true) && Boolean(installation);
+  const { data, isPending, isError } = useQuery({
+    queryKey: authStatusQueryKey(installation),
+    queryFn: () => musterApi.getAuthStatus(installation),
+    enabled,
+    staleTime: STATUS_FRESH_MS,
+    retry: false,
+  });
+  if (!enabled) {
+    return undefined;
+  }
+  if (isError) {
+    return false;
+  }
+  if (isPending) {
+    return undefined;
+  }
+  const status = findStatus(data, serverName, false);
+  return status ? needsSignIn(status) : false;
+}
+
+/**
  * Muster's own `signed_out` confirmation is written for CLI users -- it ends
  * with "Use core_auth_login with server='x' to re-authenticate", an
  * instruction that reads as wrong advice next to the returning Sign in

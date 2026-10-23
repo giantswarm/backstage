@@ -4,15 +4,18 @@ import {
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useAgentCommitCheck } from '../../hooks/useAgentCommitCheck';
-import type { AgentDeletionState } from '../../hooks/useAgentDeletion';
 import {
-  missingReleaseFile,
-  type CommitAgentResult,
+  classifyCommitFailure,
+  useAgentCommitCheck,
+} from '../../hooks/useAgentCommitCheck';
+import type { AgentDeletionState } from '../../hooks/useAgentDeletion';
+import type {
+  CommitAgentResult,
+  MissingReleaseFile,
 } from '../../lib/agentManager';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
-import { ReleaseOutsideDirectory } from '../ReleaseOutsideDirectory';
+import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
 
 export type AgentDeleteDialogProps = {
   installation: string;
@@ -62,13 +65,13 @@ export function isCommitSettled(result: CommitAgentResult): boolean {
  * `force`.
  *
  * One thing is asked in advance, for a pull request: whether agent-manager
- * can open one for this agent at all (`useAgentCommitCheck`, run while the
- * dialog is open). Confirm is enabled once it passes. An agent defined outside
- * agent-manager's directory gets the explanation and only Close; a missing
- * GitHub authorization gets the sign-in. Any other failure of the check leaves
- * confirm enabled, and the delete answers for itself. The same two refusals
- * of the delete itself read the same way, should the repository change in
- * between.
+ * can open one for this agent at all (`useAgentCommitCheck`). The page mounts
+ * the dialog only while it is open, so every open asks afresh. Confirm waits
+ * for the answer: an agent defined outside agent-manager's directory gets the
+ * explanation and only Close, a GitHub authorization a sign-in can give gets
+ * the sign-in, and anything else enables confirm, so the delete answers for
+ * itself. Once the delete has answered, its own refusal is what the dialog
+ * shows, the same two in the same way.
  */
 export function AgentDeleteDialog({
   installation,
@@ -91,29 +94,27 @@ export function AgentDeleteDialog({
     name,
     isOpen && viaPullRequest,
   );
-  const isChecking = check.status === 'checking';
 
-  // What stands in the pull request's way: the check's answer, or the
-  // delete's own refusal of the same kind.
-  let releaseOutside;
-  if (check.status === 'release-outside') {
-    releaseOutside = { missing: check.missing, message: check.message };
-  } else {
-    const missing = missingReleaseFile(failure);
-    releaseOutside =
-      missing && failure ? { missing, message: failure.message } : undefined;
-  }
-  let connect;
-  if (failure?.kind === 'not-connected' || failure?.code === 'auth_required') {
-    connect = {
-      github: failure.code === 'auth_required',
-      message: failure.message,
-    };
+  // What stands in the way: the delete's own refusal once it answered, the
+  // check's answer before that. A re-run of the check (after a sign-in
+  // elsewhere) never covers what the delete said.
+  const refused = classifyCommitFailure(failure);
+  let releaseOutside:
+    { missing: MissingReleaseFile; message: string } | undefined;
+  let connect: { github: boolean; message: string } | undefined;
+  if (refused) {
+    if (refused.kind === 'release-outside') {
+      releaseOutside = refused;
+    } else if (refused.kind === 'connect') {
+      connect = refused;
+    }
+  } else if (check.status === 'release-outside') {
+    releaseOutside = check;
   } else if (check.status === 'connect') {
-    connect = { github: check.github, message: check.message };
+    connect = check;
   }
-  const shownError =
-    failure && !connect && !releaseOutside ? failure.message : undefined;
+  const shownError = refused?.kind === 'other' ? refused.message : undefined;
+  const isChecking = !refused && check.status === 'checking';
 
   return (
     <ConfirmDialog
@@ -130,7 +131,7 @@ export function AgentDeleteDialog({
       // for a viewer.
       error={shownError}
       isConfirmDisabled={
-        viaPullRequest && (isChecking || Boolean(connect && !failure))
+        viaPullRequest && !refused && (isChecking || Boolean(connect))
       }
       isDone={
         viaPullRequest &&
@@ -141,11 +142,10 @@ export function AgentDeleteDialog({
     >
       <Flex direction="column" gap="3">
         {releaseOutside ? (
-          <ReleaseOutsideDirectory
+          <MissingReleaseFileAlert
             missing={releaseOutside.missing}
             message={releaseOutside.message}
             action="delete"
-            variant="alert"
           />
         ) : (
           <>

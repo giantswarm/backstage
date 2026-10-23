@@ -525,9 +525,10 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(
         await screen.findByText('Skills cannot be updated here'),
       ).toBeInTheDocument();
+      // agent-manager's own words only under the folded Technical details.
       expect(
-        screen.queryByText(/is not in agent-manager's directory/),
-      ).not.toBeInTheDocument();
+        screen.getByText(/is not in agent-manager's directory/),
+      ).not.toBeVisible();
       expect(confirm).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
       expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(2);

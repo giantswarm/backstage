@@ -1,11 +1,16 @@
 ---
 '@giantswarm/backstage-plugin-agent-platform': minor
+'@giantswarm/backstage-plugin-muster': minor
 ---
 
 The edit page and the Delete dialog of an agent applied from Git check up
 front whether agent-manager can open a pull request for it. An agent defined
 outside agent-manager's directory gets an explanation instead of the form (or
-only Close in the dialog), linking the repository and the path to change it
-in; a missing GitHub authorization gets the agent-manager sign-in before the
-person starts. Any other failure of the check leaves the form and confirm as
-they were. The review step shows the same two refusals the same way.
+only Close in the dialog), naming the repository and the file agent-manager
+looked for; a missing GitHub authorization that a sign-in to agent-manager
+gives gets that sign-in before the person starts. Any other answer leaves the
+form and confirm as they were. The review step, Update skills and Change
+Harness explain the same refusal the same way, worded per action.
+
+The muster plugin exports `useServerNeedsSignIn`, whether muster reports a
+server as waiting for the person's sign-in.

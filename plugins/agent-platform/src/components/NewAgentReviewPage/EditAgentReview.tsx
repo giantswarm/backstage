@@ -11,6 +11,7 @@ import {
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { classifyCommitFailure } from '../../hooks/useAgentCommitCheck';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useSignInTool } from '../../hooks/useSignInTool';
 import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
@@ -28,13 +29,10 @@ import {
   hasChanges,
   updateOf,
 } from '../../lib/agentEdit';
-import {
-  missingReleaseFile,
-  type CommitAgentResult,
-} from '../../lib/agentManager';
+import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
 import { PickedEgressPolicies } from '../PickedEgressPolicies';
-import { ReleaseOutsideDirectory } from '../ReleaseOutsideDirectory';
+import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
 import { pluginEntryName, pluginSummary } from '../../lib/plugins';
 import {
   harnessTitle,
@@ -66,8 +64,9 @@ import {
 /**
  * A refused or failed dry run or save, in agent-manager's words. The two
  * refusals the edit page checks for before the form — a release outside
- * agent-manager's directory, a missing GitHub authorization — read as they do
- * there, should the repository or the authorization change in between.
+ * agent-manager's directory, a GitHub authorization a sign-in gives — read as
+ * they do there, should the repository or the authorization change in
+ * between (`classifyCommitFailure`).
  */
 function WriteFailure({
   installation,
@@ -78,29 +77,30 @@ function WriteFailure({
   failure: AgentWriteFailure;
   title: string;
 }) {
-  if (failure.kind === 'not-connected' || failure.code === 'auth_required') {
+  const refused = classifyCommitFailure(failure);
+  if (refused?.kind === 'connect') {
     return (
       <ConnectAgentManagerAlert
         installation={installation}
-        message={failure.message}
+        message={refused.message}
         action="Agents are edited"
-        needsGitHub={failure.code === 'auth_required'}
+        needsGitHub={refused.github}
       />
     );
   }
-  const missing = missingReleaseFile(failure);
-  if (missing) {
+  if (refused?.kind === 'release-outside') {
     return (
-      <ReleaseOutsideDirectory
-        missing={missing}
-        message={failure.message}
+      <MissingReleaseFileAlert
+        missing={refused.missing}
+        message={refused.message}
         action="edit"
-        variant="alert"
       />
     );
   }
   let heading = title;
-  if (failure.kind === 'refused') {
+  if (failure.code === 'auth_required') {
+    heading = 'Authorize GitHub first';
+  } else if (failure.kind === 'refused') {
     heading = failure.code === 'forbidden' ? 'Not permitted' : 'Refused';
   }
   return (

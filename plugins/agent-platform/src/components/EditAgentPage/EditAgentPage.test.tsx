@@ -21,7 +21,10 @@ import type {
   AgentUpdate,
 } from '../../lib/agentManager';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
-import { musterAgentManagerAgentQueryKey } from '../../lib/queryKeys';
+import {
+  musterAgentManagerAgentQueryKey,
+  musterCommitAgentUpdateDryRunQueryKey,
+} from '../../lib/queryKeys';
 import { agentsRouteRef } from '../../routes';
 import { EditAgentPage } from './EditAgentPage';
 
@@ -220,6 +223,8 @@ type Scenario = {
   commitError?: string;
   /** `get_agent` never answers. */
   getAgentPending?: boolean;
+  /** What muster's `auth://status` reports for agent-manager. */
+  agentManagerAuth?: 'auth_required' | 'connected';
 };
 
 // agent-manager's answers in mode `commit`, as they come over MCP (see
@@ -228,6 +233,8 @@ const MISSING_RELEASE_FILE =
   "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it";
 const AUTH_REQUIRED =
   'auth_required: commit mode opens the pull request with your GitHub authorization, and this call carries none: connect agent-manager in muster (core_auth_login server=agent-manager), then call again';
+const TOKEN_REFUSED =
+  'auth_required: GitHub refused your token on get contents (status 404): reconnect agent-manager in muster (core_auth_login server=agent-manager); the App must be installed on the repository and your account allowed to push to it';
 
 function makeMusterApi(scenario: Scenario = {}) {
   const agent = scenario.agent ?? AGENT;
@@ -309,6 +316,14 @@ function makeMusterApi(scenario: Scenario = {}) {
       listServers,
       filterTools,
       listInstallations,
+      getAuthStatus: jest.fn(async () => ({
+        servers: [
+          {
+            name: 'agent-manager',
+            status: scenario.agentManagerAuth ?? 'connected',
+          },
+        ],
+      })),
     } as unknown as MusterApi,
     callTool,
   };
@@ -1040,6 +1055,34 @@ describe('EditAgentPage', () => {
       expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
     });
 
+    it('does not open the form on an answer cached before the page', async () => {
+      // An earlier visit, or the Delete dialog, found the pull request
+      // possible; the repository has changed since.
+      // Trusted for a minute, as the plugin's client trusts an entry.
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+      });
+      queryClient.setQueryData(
+        musterCommitAgentUpdateDryRunQueryKey(
+          'gazelle',
+          JSON.stringify({ namespace: 'kagent', name: 'pr-reviewer' }),
+        ),
+        { skills: undefined },
+      );
+      await renderEdit(
+        BASE,
+        { ...COMMIT, commitDryRunError: MISSING_RELEASE_FILE },
+        queryClient,
+      );
+
+      expect(
+        await screen.findByRole('heading', {
+          name: 'This agent cannot be edited here',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+    });
+
     it('has no form for an agent defined outside agent-manager’s directory, and says where to change it', async () => {
       const user = userEvent.setup();
       await renderEdit(BASE, {
@@ -1055,17 +1098,32 @@ describe('EditAgentPage', () => {
       expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
       expect(
         screen.getByText(
-          /defined in Git outside the directory the portal writes to\. Change it in/,
+          'It is defined in Git outside the directory the portal writes to. Change it in the file that defines it.',
         ),
       ).toBeInTheDocument();
+      // Only what agent-manager reports is linked: the repository, never a
+      // guess at where the release is defined.
       expect(
         screen.getByRole('link', {
-          name: /^management-clusters\/gazelle\/extras/,
+          name: 'giantswarm/giantswarm-management-clusters',
         }),
       ).toHaveAttribute(
         'href',
-        'https://github.com/giantswarm/giantswarm-management-clusters/tree/HEAD/management-clusters/gazelle/extras',
+        'https://github.com/giantswarm/giantswarm-management-clusters',
       );
+      expect(
+        screen.getByText(
+          'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen
+          .getAllByRole('link')
+          .map(link => link.getAttribute('href'))
+          .filter(href => href?.startsWith('https://github.com/')),
+      ).toEqual([
+        'https://github.com/giantswarm/giantswarm-management-clusters',
+      ]);
       expect(
         screen.getByRole('link', { name: 'Back to the agent' }),
       ).toBeInTheDocument();
@@ -1083,6 +1141,7 @@ describe('EditAgentPage', () => {
       const scenario: Scenario = {
         ...COMMIT,
         commitDryRunError: AUTH_REQUIRED,
+        agentManagerAuth: 'auth_required',
       };
       const { queryClient } = await renderEdit(BASE, scenario);
 
@@ -1093,6 +1152,7 @@ describe('EditAgentPage', () => {
 
       // A completed sign-in reads every muster query again.
       scenario.commitDryRunError = undefined;
+      scenario.agentManagerAuth = 'connected';
       await act(() => queryClient.invalidateQueries({ queryKey: ['muster'] }));
 
       expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
@@ -1116,6 +1176,29 @@ describe('EditAgentPage', () => {
       expect(
         screen.queryByText('This agent cannot be edited here'),
       ).not.toBeInTheDocument();
+    });
+
+    it('opens the form where a sign-in cannot give the authorization: agent-manager already connected', async () => {
+      await renderEdit(BASE, {
+        ...COMMIT,
+        commitDryRunError: AUTH_REQUIRED,
+        agentManagerAuth: 'connected',
+      });
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      expect(
+        screen.queryByText('Authorize GitHub for agent-manager'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('opens the form where GitHub refused the token, which no sign-in fixes', async () => {
+      await renderEdit(BASE, {
+        ...COMMIT,
+        commitDryRunError: TOKEN_REFUSED,
+        agentManagerAuth: 'auth_required',
+      });
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
     });
 
     it('opens the form when the check fails some other way, and leaves the answer to the save', async () => {
