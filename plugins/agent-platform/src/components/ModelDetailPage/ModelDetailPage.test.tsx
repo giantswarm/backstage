@@ -508,9 +508,15 @@ describe('ModelDetailPage', () => {
     expect(
       screen.getByText('Secret sonnet-key, key ANTHROPIC_API_KEY'),
     ).toBeInTheDocument();
-    // The technical name, under Resource › Name, and only there.
-    expect(screen.getByText('Name')).toBeInTheDocument();
-    expect(screen.getAllByText('kagent/sonnet')).toHaveLength(1);
+    // The technical name, under Resource › Namespace and Name, as two facts.
+    const resource = screen
+      .getByRole('heading', { name: 'Resource' })
+      .closest('article')!;
+    const valueOf = (label: string) =>
+      within(resource).getByText(label).closest('dt')?.nextElementSibling;
+    expect(valueOf('Namespace')).toHaveTextContent(/^kagent$/);
+    expect(valueOf('Name')).toHaveTextContent(/^sonnet$/);
+    expect(screen.queryByText('kagent/sonnet')).toBeNull();
     // Each condition is a heading under the Status card, in the order the
     // controller evaluates them.
     expect(

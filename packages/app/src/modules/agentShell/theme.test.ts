@@ -78,6 +78,27 @@ describe('agentShellLightColors', () => {
     ).toBeGreaterThanOrEqual(3);
   });
 
+  // The rule for links on a tinted surface (agent-shell.css): the link colour
+  // reads against the tint, but not against the body text by colour alone,
+  // which is why those links are underlined.
+  it('sets links at 4.5:1 against the tinted surface and the alert backgrounds', () => {
+    const colors = agentShellLightColors;
+    for (const surface of [
+      colors.subtleSurface,
+      colors.infoBackground,
+      colors.successBackground,
+      colors.warningBackground,
+    ]) {
+      expect(contrast(colors.link, surface)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('cannot mark a link by colour alone against the body text', () => {
+    expect(
+      contrast(agentShellLightColors.link, agentShellLightColors.text),
+    ).toBeLessThan(3);
+  });
+
   it('lists the light palette by role', () => {
     expect(agentShellLightColors).toEqual({
       primary: '#002645',

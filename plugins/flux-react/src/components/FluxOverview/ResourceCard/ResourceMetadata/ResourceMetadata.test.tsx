@@ -135,9 +135,16 @@ describe('ResourceMetadata', () => {
       );
 
       expect(screen.getByText('Chart Version')).toBeInTheDocument();
-      expect(screen.getByText('0.2.14+6a5dea276262')).toBeInTheDocument();
+      // The commit in each version shortened, the full version in its title.
+      expect(screen.getByText('0.2.14+6a5dea2')).toHaveAttribute(
+        'title',
+        '0.2.14+6a5dea276262',
+      );
       expect(screen.getByText('Attempted')).toBeInTheDocument();
-      expect(screen.getByText('0.2.15+800a0275a0f0')).toBeInTheDocument();
+      expect(screen.getByText('0.2.15+800a027')).toHaveAttribute(
+        'title',
+        '0.2.15+800a0275a0f0',
+      );
       expect(screen.getByText('Upgrade Failures')).toBeInTheDocument();
     });
 

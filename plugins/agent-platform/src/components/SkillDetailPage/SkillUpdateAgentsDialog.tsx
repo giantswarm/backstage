@@ -16,6 +16,7 @@ import {
   ConfirmDialog,
   useFieldValidation,
   useGroupFieldError,
+  shortSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -33,7 +34,6 @@ import {
 } from '../../hooks/useUpdateAgent';
 import type { MusterServerPresence } from '../../hooks/useMusterServerAvailability';
 import { agentManagerBlocker, type AgentUpdate } from '../../lib/agentManager';
-import { shortCommit } from '../../lib/skills';
 import type { AgentRow } from '../AgentsDataProvider';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { ShowMore, USED_BY_ROWS } from '../ShowMore';
@@ -410,11 +410,11 @@ function AgentLine({
         <Text variant="body-small" color="secondary">
           {row.installation} · {row.namespace} ·{' '}
           <span className={classes.code} title={pinned}>
-            {shortCommit(pinned)}
+            {shortSha(pinned)}
           </span>
           {' → '}
           <span className={classes.code} title={head}>
-            {shortCommit(head)}
+            {shortSha(head)}
           </span>
         </Text>
         {note && (
@@ -677,7 +677,7 @@ export function SkillUpdateAgentsDialog({
           {behind.length === 1 ? 'This agent pins' : 'These agents pin'} the
           skill at an older commit than the newest one,{' '}
           <span className={classes.code} title={head}>
-            {shortCommit(head)}
+            {shortSha(head)}
           </span>
           . Updating an agent re-pins every git skill it mounts — this one and
           any others — to the head of its repository's default branch; nothing

@@ -9236,6 +9236,7 @@ __metadata:
     "@codemirror/view": "npm:^6.38.8"
     "@fsegurai/codemirror-theme-vscode-dark": "npm:^6.2.2"
     "@fsegurai/codemirror-theme-vscode-light": "npm:^6.2.2"
+    "@giantswarm/backstage-plugin-gs-common": "npm:^0.21.1"
     "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.7"
     "@material-ui/core": "npm:^4.9.13"
     "@material-ui/icons": "npm:^4.11.3"

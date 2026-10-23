@@ -18,6 +18,11 @@ export {
   OTHER_SERIES_LABEL,
 } from './chartPalette';
 export { saveFile } from './saveFile';
+// One rule for every SHA the portal shows, frontend and backend alike.
+export {
+  shortSha,
+  SHORT_SHA_LENGTH,
+} from '@giantswarm/backstage-plugin-gs-common';
 export { stopRowPress } from './rowPress';
 export { MENU_WIDTH } from './menuWidth';
 export { createMarkdownLinkResolver } from './resolveMarkdownLink';

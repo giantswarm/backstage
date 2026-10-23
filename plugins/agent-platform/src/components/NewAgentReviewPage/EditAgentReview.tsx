@@ -6,6 +6,7 @@ import {
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
+  shortSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
@@ -33,7 +34,6 @@ import { PickedEgressPolicies } from '../PickedEgressPolicies';
 import { pluginEntryName, pluginSummary } from '../../lib/plugins';
 import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
-import { shortPin } from '../AgentDetailPage/helpers';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
@@ -441,9 +441,12 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                       <span key={`${skill.name}#${index}`}>
                         {index > 0 ? ', ' : ''}
                         {skill.name}{' '}
-                        <span className={classes.code}>
+                        <span
+                          className={classes.code}
+                          title={'git' in skill ? skill.git.commit : skill.oci}
+                        >
                           @
-                          {shortPin(
+                          {shortSha(
                             'git' in skill ? skill.git.commit : skill.oci,
                           )}
                         </span>
@@ -459,8 +462,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                       <span key={`${pluginEntryName(plugin)}#${index}`}>
                         {index > 0 ? ', ' : ''}
                         {pluginEntryName(plugin)}{' '}
-                        <span className={classes.code}>
-                          @{shortPin(plugin.git?.commit ?? plugin.oci ?? '')}
+                        <span
+                          className={classes.code}
+                          title={plugin.git?.commit ?? plugin.oci}
+                        >
+                          @{shortSha(plugin.git?.commit ?? plugin.oci ?? '')}
                         </span>
                       </span>
                     ))}

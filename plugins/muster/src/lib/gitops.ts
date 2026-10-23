@@ -52,27 +52,31 @@ export function isChartRendered(p: Provenance): boolean {
   return Boolean(p.fluxHelmRelease || p.helmRelease || p.managedBy === 'Helm');
 }
 
-/** The object that reconciles a resource, by kind, for display. */
+/**
+ * The object that reconciles a resource, by kind, for display: its `name`
+ * and `namespace` for a fact list, and `id`, the two joined, for a sentence.
+ */
 export function gitOpsManagerDescription(
   p: Provenance,
-): { kind: string; id: string } | undefined {
+): { kind: string; id: string; name: string; namespace?: string } | undefined {
+  const describe = (kind: string, name: string, namespace?: string) => ({
+    kind,
+    id: qualifiedName(name, namespace),
+    name,
+    namespace,
+  });
   if (p.fluxHelmRelease) {
-    return {
-      kind: 'HelmRelease',
-      id: qualifiedName(p.fluxHelmRelease, p.fluxHelmNamespace),
-    };
+    return describe('HelmRelease', p.fluxHelmRelease, p.fluxHelmNamespace);
   }
   if (p.helmRelease) {
-    return {
-      kind: 'Helm release',
-      id: qualifiedName(p.helmRelease, p.helmNamespace),
-    };
+    return describe('Helm release', p.helmRelease, p.helmNamespace);
   }
   if (p.fluxKustomization) {
-    return {
-      kind: 'Kustomization',
-      id: qualifiedName(p.fluxKustomization, p.fluxKustomizationNamespace),
-    };
+    return describe(
+      'Kustomization',
+      p.fluxKustomization,
+      p.fluxKustomizationNamespace,
+    );
   }
   return undefined;
 }

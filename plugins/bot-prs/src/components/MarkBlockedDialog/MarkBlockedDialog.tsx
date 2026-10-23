@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Text, TextField } from '@backstage/ui';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import { ConfirmDialog, shortSha } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useMargeMark } from '../../hooks/useMarge';
 import {
@@ -87,12 +87,16 @@ export function MarkBlockedDialog({
         <Alert
           status="success"
           title="Marked blocked"
-          description={`The marker is on the PR as you, for head ${mark.result.head_sha.slice(
-            0,
-            7,
-          )}${
-            mark.result.change_id ? `, change ${mark.result.change_id}` : ''
-          }. It goes stale on its own when the PR content changes.`}
+          description={
+            <>
+              The marker is on the PR as you, for head{' '}
+              <span title={mark.result.head_sha}>
+                {shortSha(mark.result.head_sha)}
+              </span>
+              {mark.result.change_id ? `, change ${mark.result.change_id}` : ''}
+              . It goes stale on its own when the PR content changes.
+            </>
+          }
         />
       ) : (
         <>

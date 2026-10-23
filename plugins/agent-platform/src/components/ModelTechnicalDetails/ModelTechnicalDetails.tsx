@@ -11,6 +11,7 @@ import {
   FactList,
   InfoCard,
   Mono,
+  namespacedNameFacts,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { STALE_MODEL_DETAIL } from '../../lib/customize';
@@ -18,24 +19,20 @@ import { ModelHelmReleaseCard } from './ModelHelmReleaseCard';
 
 /**
  * The resource behind the model, in the terms of the people who run the
- * platform: what it is called in the cluster, its provider, and where its
- * key is read from.
+ * platform: its namespace and name in the cluster, its provider, and where
+ * its key is read from.
  */
 function ResourceFacts({ modelConfig }: { modelConfig: ModelConfig }) {
-  const namespace = modelConfig.getNamespace();
-  const name = modelConfig.getName();
   const provider = modelConfig.getProvider();
   const secret = modelConfig.getApiKeySecret();
   const secretKey = modelConfig.getApiKeySecretKey();
 
-  const facts: Fact[] = [
-    // The ModelConfig's technical name, here rather than beside the title,
-    // as the agent page keeps its own.
-    {
-      label: 'Name',
-      value: <Mono>{namespace ? `${namespace}/${name}` : name}</Mono>,
-    },
-  ];
+  // The ModelConfig's technical name, here rather than beside the title,
+  // as the agent page keeps its own.
+  const facts: Fact[] = namespacedNameFacts({
+    namespace: modelConfig.getNamespace(),
+    name: modelConfig.getName(),
+  });
   if (provider) {
     facts.push({ label: 'Provider', value: <Mono>{provider}</Mono> });
   }

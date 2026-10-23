@@ -219,11 +219,9 @@ describe('AgentUpdateSkillsDialog', () => {
 
     const moving = await screen.findByTestId('skill-refresh-pr-review');
     expect(within(moving).getByTitle(PINNED)).toHaveTextContent(
-      PINNED.slice(0, 12),
+      PINNED.slice(0, 7),
     );
-    expect(within(moving).getByTitle(HEAD)).toHaveTextContent(
-      HEAD.slice(0, 12),
-    );
+    expect(within(moving).getByTitle(HEAD)).toHaveTextContent(HEAD.slice(0, 7));
     expect(moving).toHaveTextContent('Moves to the head');
 
     const current = screen.getByTestId('skill-refresh-incident');

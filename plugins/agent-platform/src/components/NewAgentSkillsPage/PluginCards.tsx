@@ -1,6 +1,6 @@
 import { Button, Checkbox, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
+import { ExternalLink, shortSha } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentPluginEntry } from '../../lib/agentManager';
 import {
@@ -10,8 +10,7 @@ import {
   pluginId,
   SelectedPlugin,
 } from '../../lib/plugins';
-import { repoSlug, shortCommit } from '../../lib/skills';
-import { shortPin } from '../AgentDetailPage/helpers';
+import { repoSlug } from '../../lib/skills';
 import {
   SelectableCard,
   SelectableCardGrid,
@@ -54,19 +53,26 @@ function PluginSource({
       </Text>
       {pinned ? (
         <Text variant="body-x-small" color="secondary">
-          pinned at <span className={classes.code}>{shortCommit(pinned)}</span>
+          pinned at{' '}
+          <span className={classes.code} title={pinned}>
+            {shortSha(pinned)}
+          </span>
           {' · '}
           {plugin.ref} is at{' '}
-          <span className={classes.code}>{shortCommit(plugin.commit)}</span>
+          <span className={classes.code} title={plugin.commit}>
+            {shortSha(plugin.commit)}
+          </span>
         </Text>
       ) : (
         <Text
           variant="body-x-small"
           color="secondary"
-          aria-label={`Pinned to commit ${shortCommit(plugin.commit)} of ${plugin.ref}`}
+          aria-label={`Pinned to commit ${shortSha(plugin.commit)} of ${plugin.ref}`}
         >
           {plugin.ref}{' '}
-          <span className={classes.code}>@{shortCommit(plugin.commit)}</span>
+          <span className={classes.code} title={plugin.commit}>
+            @{shortSha(plugin.commit)}
+          </span>
         </Text>
       )}
     </>
@@ -267,8 +273,11 @@ export function KeptPlugins({
               </Text>
               <Text variant="body-x-small" color="secondary">
                 pinned at{' '}
-                <span className={classes.code}>
-                  {shortPin(plugin.git?.commit ?? plugin.oci ?? '')}
+                <span
+                  className={classes.code}
+                  title={plugin.git?.commit ?? plugin.oci}
+                >
+                  {shortSha(plugin.git?.commit ?? plugin.oci ?? '')}
                 </span>
                 {plugin.skills && plugin.skills.length > 0 && (
                   <> · skills {plugin.skills.join(', ')}</>
