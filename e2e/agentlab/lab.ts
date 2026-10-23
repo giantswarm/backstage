@@ -48,6 +48,13 @@ function portalModeFromEnv(): PortalMode {
   return mode;
 }
 
+/**
+ * The parallel worker this process is: Playwright's `TEST_PARALLEL_INDEX`,
+ * `0` in the first worker and in the runner. The one source of which lab users
+ * the process signs in as ({@link forWorker}).
+ */
+export const LAB_WORKER = Number(process.env.TEST_PARALLEL_INDEX ?? 0);
+
 export const lab = {
   /** Backstage's public URL through the lab's edge. */
   baseURL:
@@ -97,19 +104,17 @@ export const lab = {
  * worker's page out; muster keeps one session and one per-server sign-in per
  * user; the Notification inbox is per user. A lab for more than one worker
  * carries these users in its `agentlab.yaml`, each in its original's groups
- * (`e2e/agentlab/README.md`).
+ * (`e2e/agentlab/README.md`). A test title never names them: the runner
+ * lists the tests with the first worker's users.
  */
-export function forWorker(
-  user: LabUser,
-  parallelIndex: number = Number(process.env.TEST_PARALLEL_INDEX ?? 0),
-): LabUser {
-  if (!parallelIndex) {
+function forWorker(user: LabUser): LabUser {
+  if (!LAB_WORKER) {
     return user;
   }
   const [local, domain] = user.email.split('@');
   return {
-    email: `${local}-${parallelIndex}@${domain}`,
-    name: `${user.name} ${parallelIndex}`,
+    email: `${local}-${LAB_WORKER}@${domain}`,
+    name: `${user.name} ${LAB_WORKER}`,
   };
 }
 

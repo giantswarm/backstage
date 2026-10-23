@@ -13,6 +13,7 @@ import {
   type Response,
 } from '@playwright/test';
 import {
+  LAB_WORKER,
   LEFTOVER_AGE,
   contextOptionsFor,
   lab,
@@ -23,6 +24,17 @@ import {
 
 export { expect };
 
+/** The lab Dex refused a login: the account or its password is wrong. */
+export class DexRefusedLogin extends Error {
+  constructor(
+    readonly email: string,
+    refusal: string,
+  ) {
+    super(`the lab Dex refused the login of ${email}: ${refusal}`);
+    this.name = 'DexRefusedLogin';
+  }
+}
+
 /**
  * Submits the lab Dex's login form in the popup the portal opened, with the
  * fixture password unless the test passes another (the wrong-password case),
@@ -30,7 +42,8 @@ export { expect };
  * from Backstage's handler page, a per-server sign-in through muster's OAuth
  * proxy lands it on muster's completion page. Either way the popup has left
  * Dex when this resolves; a popup still open is closed, the opener has what
- * it needs by then.
+ * it needs by then. A refusal throws {@link DexRefusedLogin} as soon as Dex
+ * renders it: Dex answers the form with its login page again, naming it.
  */
 export async function completeDexLogin(
   dex: Page,
@@ -41,6 +54,9 @@ export async function completeDexLogin(
   await expect(dex, 'the popup lands on the lab Dex').toHaveURL(/\/dex\//);
   await dex.locator('input[name="login"]').fill(user.email);
   await dex.locator('input[name="password"]').fill(password);
+  // Each outcome settles to its name, or never: the first one to happen wins.
+  const settled = <T extends string>(outcome: Promise<boolean>, name: T) =>
+    outcome.then(happened => (happened ? name : new Promise<never>(() => {})));
   const closed = dex.waitForEvent('close', { timeout: 60_000 }).then(
     () => true,
     () => false,
@@ -51,9 +67,31 @@ export async function completeDexLogin(
       () => true,
       () => false,
     );
+  // The page Dex renders for the submitted form: an error the popup showed
+  // before (a typo's) is gone from it unless Dex refused this login too.
+  const refusal = dex.getByText(/invalid .* and password/i);
+  const refused = dex.waitForEvent('load', { timeout: 60_000 }).then(
+    async () =>
+      !dex.isClosed() &&
+      dex.url().includes('/dex/') &&
+      (await refusal.isVisible().catch(() => false)),
+    () => false,
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<'timeout'>(resolve => {
+    timer = setTimeout(() => resolve('timeout'), 61_000);
+  });
   await dex.getByRole('button', { name: 'Login' }).click();
-  const done = await Promise.race([closed, leftDex]);
-  expect(done, 'Dex accepted the login and sent the popup on').toBe(true);
+  const outcome = await Promise.race([
+    settled(closed, 'done'),
+    settled(leftDex, 'done'),
+    settled(refused, 'refused'),
+    timedOut,
+  ]).finally(() => clearTimeout(timer));
+  if (outcome === 'refused') {
+    throw new DexRefusedLogin(user.email, await refusal.innerText());
+  }
+  expect(outcome, 'Dex accepted the login and sent the popup on').toBe('done');
   if (!dex.isClosed()) {
     // A completion page: give it a moment in case it closes itself, then
     // close it the way a person would.
@@ -288,6 +326,11 @@ const PERSISTED_QUERY_CACHES = [
 const FORM_DRAFT_PREFIX = 'gs-draft:';
 const DROP_CACHES_FLAG = 'e2e-drop-persisted-caches-after-test';
 
+/** Where worker `worker` records that the lab Dex refused its admin. */
+function adminRefusedFile(outputDir: string, worker: number): string {
+  return join(outputDir, `admin-refused-worker-${worker}.txt`);
+}
+
 /** Where a worker records a failed `labAgent` setup for the rest of the run. */
 function labAgentFailureFile(outputDir: string): string {
   return join(outputDir, 'lab-agent-setup-failed.txt');
@@ -335,13 +378,28 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         },
         [PERSISTED_QUERY_CACHES, DROP_CACHES_FLAG, FORM_DRAFT_PREFIX] as const,
       );
+      // A refused admin is the run's answer for this worker: the worker
+      // Playwright starts in its place fails at once instead of trying again.
+      const refusedFile = adminRefusedFile(
+        workerInfo.project.outputDir,
+        LAB_WORKER,
+      );
+      if (existsSync(refusedFile)) {
+        throw new Error(readFileSync(refusedFile, 'utf8'));
+      }
       await signIn(page, lab.users.admin).catch((error: Error) => {
-        if (workerInfo.parallelIndex === 0) {
+        if (!(error instanceof DexRefusedLogin)) {
           throw error;
         }
-        throw new Error(
-          `this worker signs in as ${lab.users.admin.email}, a user of its own, which the lab's agentlab.yaml must carry for a run with more than one worker (e2e/agentlab/README.md, "How it signs in"): ${error.message}`,
+        const refused = new Error(
+          LAB_WORKER === 0
+            ? error.message
+            : `${error.message}. Worker ${LAB_WORKER} signs in as lab users of its own, which the lab's agentlab.yaml carries for a run with more than one worker (e2e/agentlab/README.md, "How it signs in")`,
+          { cause: error },
         );
+        mkdirSync(workerInfo.project.outputDir, { recursive: true });
+        writeFileSync(refusedFile, refused.message);
+        throw refused;
       });
       await use(page);
       await context.close();

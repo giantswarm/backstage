@@ -243,7 +243,9 @@ users:
     groups: [viewers]
 ```
 
-A worker whose admin the lab's Dex refuses fails its first test saying so.
+A worker whose admin the lab's Dex refuses fails its first test as soon as
+Dex says so, naming the users to add, and each later test of that worker at
+once, without signing in again.
 
 ## An idle tab
 
