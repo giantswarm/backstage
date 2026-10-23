@@ -77,11 +77,18 @@ label **Organization**: the organization's plain name (`acme`) for its
 since the platform is no organization; beside "None", an info icon
 (`InfoHint`, a button the keyboard reaches) says "Available to all
 organizations" (`OrganizationValue`). (The code and agent-manager call this the
-agent's tenant; the UI never does.) Where the agents belong to more than one,
-each row names its organization and the filter bar filters by it, the
-platform's agents under the option "None"; the agent's page names it beside the
-overview. A row's link is the agent's name, its hit area stretched over the
-row, so the info icon and the star are buttons of their own above it. The New
+agent's tenant; the UI never does.) The agent's page names it beside the
+overview. Where the agents belong to more than one, the filter bar filters by
+it, the platform's agents under the option "None", and the row of an
+organization's agent names it as its first fact, "Organization: acme", in a
+column wider than the others: a row has no labels, and a bare `acme` would read
+like the environment beside it. The name is the filter option's
+(`organization none` for an organization named `none`). A platform agent's row
+leaves that column empty, since a "None" without its label says nothing; the
+column stays, so every row has the same fixed columns and they line up however
+the facts wrap (at phone width, where the facts have no columns, it is gone).
+An agent in another namespace reads `namespace <name>` there. A row's link is the agent's name, its hit area
+stretched over the row, so the star is a button of its own above it. The New
 agent form asks for it on Details from the places agent-manager lets the person
 create in (`get_info.namespaces.managed`): the only one is picked and named.
 Several of more than one kind are offered as a choice of **Platform**,
@@ -431,7 +438,8 @@ page.
   no connector page shows (one since removed) is not linked.
 - **Your sessions** — the person's own usage from their kagent sessions,
   limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
-  30 days by default); wider ranges are disabled there. Its cost is the
+  30 days by default); wider ranges are disabled options there, each saying
+  how many days kagent keeps. Its cost is the
   gateway's price for the person's own model calls, in total and per agent —
   every call made as them, in these sessions or not. Where that cannot be read,
   it shows an estimate labelled **Est. cost**, and its tooltip says why.
@@ -3058,7 +3066,10 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
 environment and the window (7, 30 or 90 days, in `?window=`,
-`lib/usageWindow.ts`).
+`lib/usageWindow.ts`). The window control is ui-react's `LastDaysSelect`: a
+select labelled "Time range" with the options "Last 7 days", "Last 30 days"
+and "Last 90 days", the same label, box and height as the Environment select
+beside it.
 
 | View          | Path                   | Source                          | Whose            |
 | ------------- | ---------------------- | ------------------------------- | ---------------- |
@@ -3352,7 +3363,7 @@ Nothing polls it.
 
 ### One window control for the whole screen
 
-The 7, 30 or 90-day toggle (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
+The 7, 30 or 90-day select (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
 out of the URL) drives every view. Gateway views query the window directly.
 Your sessions narrows kagent's `windowDays` answer client-side (`narrowDaily`)
 and disables wider choices; its by-agent and top tables still cover kagent's
