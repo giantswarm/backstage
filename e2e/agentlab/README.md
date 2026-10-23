@@ -221,7 +221,9 @@ and drops it on the next sign-in, which signs the other worker's page out, and
 the user's muster session, per-server sign-ins and Notification inbox are one.
 A lab for `AGENTLAB_E2E_WORKERS=<w>` carries workers 1 to _w_-1's users in its
 `agentlab.yaml`, each in its original's groups and with the fixture password,
-then `agentlab reload`:
+then `agentlab platform`, which adds them to the lab Dex and to the portal's
+catalog (`agentlab reload` reaches Dex only, and Settings then names no user
+entity for them):
 
 ```yaml
 users:
