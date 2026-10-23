@@ -97,6 +97,7 @@ export {
   hasMarkers,
   ServerSignIn,
   useServerSignIn,
+  useServerNeedsSignIn,
   toneColors,
   severityTone,
   VIOLET,

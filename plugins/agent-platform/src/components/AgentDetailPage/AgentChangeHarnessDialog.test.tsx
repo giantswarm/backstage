@@ -308,6 +308,44 @@ describe('AgentChangeHarnessDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
+  it('says in plain words where the Harness is changed instead when agent-manager has no file for the release', async () => {
+    await renderDialog({
+      commit: true,
+      updateError: new Error(
+        "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it",
+      ),
+    });
+    await userEvent.click(
+      screen.getByRole('radio', { name: /Claude Code, Harness claude/ }),
+    );
+
+    expect(
+      await screen.findByText('The Harness cannot be changed here'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /^This agent is defined in Git outside the directory the portal writes to\. Change the Harness in the file that defines it in/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', {
+        name: 'giantswarm/giantswarm-management-clusters',
+      }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/giantswarm-management-clusters',
+    );
+    // What agent-manager checked is technical: folded away.
+    expect(
+      screen.getByText(
+        'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+      ),
+    ).not.toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('opens a pull request for an agent applied from git and shows it', async () => {
     const { callTool } = await renderDialog({ commit: true });
 

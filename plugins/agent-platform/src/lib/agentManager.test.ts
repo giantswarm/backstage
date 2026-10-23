@@ -6,6 +6,7 @@ import {
   helmInstallCommand,
   isSettledVerdict,
   looksNotConnected,
+  missingGitHubAuthorization,
   missingReleaseFile,
 } from './agentManager';
 
@@ -140,5 +141,39 @@ describe('helmInstallCommand', () => {
 
   it('falls back to the range when the registry did not answer', () => {
     expect(helmInstallCommand(spec, chart)).toContain('--version 1.x');
+  });
+});
+
+describe('missingGitHubAuthorization', () => {
+  // agent-manager's two `auth_required` answers to a commit over MCP
+  // (internal/agents/commit.go), as of giantswarm/agent-manager@334d94f. Only
+  // the first is fixed by a sign-in; a rewording there turns it back into a
+  // refusal the write shows, nothing worse.
+  const NO_TOKEN =
+    'auth_required: commit mode opens the pull request with your GitHub authorization, and this call carries none: connect agent-manager in muster (core_auth_login server=agent-manager), then call again';
+  const TOKEN_REFUSED =
+    'auth_required: GitHub refused your token on get contents (status 404): reconnect agent-manager in muster (core_auth_login server=agent-manager); the App must be installed on the repository and your account allowed to push to it';
+
+  const failureOf = (wire: string) => {
+    const error = classifyAgentManagerError(new Error(wire));
+    return {
+      code: (error as AgentManagerError).code,
+      message: error.message,
+    };
+  };
+
+  it('recognises a call that carried no GitHub authorization', () => {
+    expect(missingGitHubAuthorization(failureOf(NO_TOKEN))).toBe(true);
+  });
+
+  it('leaves out a token GitHub refused, and every other refusal', () => {
+    expect(missingGitHubAuthorization(failureOf(TOKEN_REFUSED))).toBe(false);
+    expect(missingGitHubAuthorization(undefined)).toBe(false);
+    expect(
+      missingGitHubAuthorization({
+        code: 'conflict',
+        message: failureOf(NO_TOKEN).message,
+      }),
+    ).toBe(false);
   });
 });

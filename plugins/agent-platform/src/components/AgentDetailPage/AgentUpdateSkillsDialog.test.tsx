@@ -440,7 +440,7 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
     });
 
-    it('says the skills are updated in the GitOps source, under the plan, and offers only Close, when the commit dry run finds no file for the release', async () => {
+    it('says in plain words where the skills are updated instead, under the plan, and offers only Close, when the commit dry run finds no file for the release', async () => {
       const { callTool } = await renderDialog({
         commit: true,
         commitDryRunError: MISSING_RELEASE_FILE,
@@ -449,9 +449,11 @@ describe('AgentUpdateSkillsDialog', () => {
       const title = await screen.findByText('Skills cannot be updated here');
       expect(
         screen.getByText(
-          "To update the skills, change their pins in the agent's GitOps source.",
+          /^This agent is defined in Git outside the directory the portal writes to\. Change the skill pins in the file that defines it in/,
         ),
-      ).toBeInTheDocument();
+      ).toHaveTextContent(
+        'pin each skill marked “Moves to the head” to the head commit shown for it above.',
+      );
       // Information, not a warning, and under the plan it refers to.
       expect(title.closest('[data-status]')).toHaveAttribute(
         'data-status',
@@ -465,10 +467,15 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(
         screen.queryByText('agent-manager cannot open this pull request'),
       ).not.toBeInTheDocument();
+      // What agent-manager checked is technical: folded away.
       expect(
         screen.getByText('flux-giantswarm/pr-reviewer-agent'),
-      ).toBeInTheDocument();
-      expect(screen.getByText(MISSING_PATH)).toBeInTheDocument();
+      ).not.toBeVisible();
+      expect(screen.getByText(MISSING_PATH)).not.toBeVisible();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Technical details' }),
+      );
+      expect(screen.getByText(MISSING_PATH)).toBeVisible();
       expect(
         screen.getByRole('link', {
           name: 'giantswarm/giantswarm-management-clusters',
@@ -525,9 +532,10 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(
         await screen.findByText('Skills cannot be updated here'),
       ).toBeInTheDocument();
+      // agent-manager's own words only under the folded Technical details.
       expect(
-        screen.queryByText(/is not in agent-manager's directory/),
-      ).not.toBeInTheDocument();
+        screen.getByText(/is not in agent-manager's directory/),
+      ).not.toBeVisible();
       expect(confirm).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
       expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(2);
