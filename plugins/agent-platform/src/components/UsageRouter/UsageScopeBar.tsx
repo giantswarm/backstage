@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom';
-import { Text, ToggleButton, ToggleButtonGroup } from '@backstage/ui';
+import { Text } from '@backstage/ui';
 import {
+  TimeWindowPicker,
   usePhoneLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -8,11 +9,7 @@ import { EnvironmentSelect } from '../EnvironmentSelect';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
-import {
-  USAGE_WINDOW_OPTIONS,
-  usageWindowLabel,
-  type UsageWindowDays,
-} from '../../lib/usageWindow';
+import { USAGE_WINDOW_OPTIONS } from '../../lib/usageWindow';
 
 /**
  * The Usage screen's scope controls: which environment (installation) it
@@ -72,54 +69,21 @@ export function UsageScopeBar() {
       : undefined;
 
   // A fragment: the controls are items of ShellPage's header actions row,
-  // which spaces and aligns them (bottom edges, so the time range lines up
-  // with the Environment select's field rather than its label).
+  // which spaces and aligns them (bottom edges, so the time range's box lines
+  // up with the Environment select's, each under its own label).
   return (
     <>
       <EnvironmentSelect component="kagent" />
-      <ToggleButtonGroup
-        aria-label="Time range"
-        selectionMode="single"
-        disallowEmptySelection
-        selectedKeys={[String(days)]}
-        onSelectionChange={keys => {
-          const next = Number([...keys][0]);
-          const option = USAGE_WINDOW_OPTIONS.find(o => o === next);
-          if (option) {
-            setDays(option as UsageWindowDays);
-          }
-        }}
-      >
-        {USAGE_WINDOW_OPTIONS.map(option => {
-          const isBeyondWindow =
-            backendWindowDays !== undefined && option > backendWindowDays;
-          return (
-            <ToggleButton
-              key={option}
-              id={String(option)}
-              size="small"
-              isDisabled={isBeyondWindow}
-              // Native tooltip: the only affordance a disabled button still
-              // offers, and the reason has to live on the thing that is grey.
-              // Set on the DOM node because react-aria strips `title` from
-              // props (it is not in its DOM-prop allowlist), and a wrapper
-              // element would break the group's direct-child border CSS.
-              ref={node => {
-                if (!node) {
-                  return;
-                }
-                if (isBeyondWindow) {
-                  node.setAttribute('title', windowReason ?? '');
-                } else {
-                  node.removeAttribute('title');
-                }
-              }}
-            >
-              {usageWindowLabel(option)}
-            </ToggleButton>
-          );
-        })}
-      </ToggleButtonGroup>
+      <TimeWindowPicker
+        options={USAGE_WINDOW_OPTIONS}
+        value={days}
+        onChange={setDays}
+        unavailableReason={option =>
+          backendWindowDays !== undefined && option > backendWindowDays
+            ? windowReason
+            : undefined
+        }
+      />
       {windowReason && (isPhone || isTouch) && (
         // A line of its own under the controls.
         <Text

@@ -68,6 +68,7 @@ export * from './SyncMark';
 export * from './StructuredMetadataList';
 export * from './TechnicalDetailsFoldOut';
 export * from './TextAreaField';
+export * from './TimeWindowPicker';
 export * from './WizardFrame';
 export * from './YamlEditor';
 export * from './YamlEditorFormField';

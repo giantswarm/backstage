@@ -260,7 +260,7 @@ describe('UsageRouter', () => {
       renderTab('/usage');
 
       expect(await screen.findByText('overview-view')).toBeInTheDocument();
-      await user.click(screen.getByRole('radio', { name: '7 days' }));
+      await user.click(screen.getByRole('radio', { name: 'Last 7 days' }));
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
@@ -273,7 +273,7 @@ describe('UsageRouter', () => {
       const user = userEvent.setup();
       renderTab('/usage?window=7d');
 
-      await user.click(screen.getByRole('radio', { name: '30 days' }));
+      await user.click(screen.getByRole('radio', { name: 'Last 30 days' }));
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(/^\/usage$/);
@@ -288,7 +288,7 @@ describe('UsageRouter', () => {
       renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      await user.click(screen.getByRole('radio', { name: '7 days' }));
+      await user.click(screen.getByRole('radio', { name: 'Last 7 days' }));
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
@@ -307,14 +307,14 @@ describe('UsageRouter', () => {
       renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      const ninety = screen.getByRole('radio', { name: '90 days' });
+      const ninety = screen.getByRole('radio', { name: 'Last 90 days' });
       expect(ninety).toBeDisabled();
       expect(ninety).toHaveAttribute(
         'title',
         'kagent keeps 30 days of session usage',
       );
-      expect(screen.getByRole('radio', { name: '7 days' })).toBeEnabled();
-      expect(screen.getByRole('radio', { name: '30 days' })).toBeEnabled();
+      expect(screen.getByRole('radio', { name: 'Last 7 days' })).toBeEnabled();
+      expect(screen.getByRole('radio', { name: 'Last 30 days' })).toBeEnabled();
     });
 
     it('keeps every window enabled on the gateway views', async () => {
@@ -324,7 +324,7 @@ describe('UsageRouter', () => {
       renderTab('/usage');
 
       expect(await screen.findByText('overview-view')).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: '90 days' })).toBeEnabled();
+      expect(screen.getByRole('radio', { name: 'Last 90 days' })).toBeEnabled();
     });
 
     it('keeps every window enabled while the backend window is still loading', async () => {
@@ -334,7 +334,7 @@ describe('UsageRouter', () => {
       renderTab('/usage/your-sessions');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: '90 days' })).toBeEnabled();
+      expect(screen.getByRole('radio', { name: 'Last 90 days' })).toBeEnabled();
     });
 
     it('leaves a deep-linked selection beyond the window selected, not clamped', async () => {
@@ -344,7 +344,7 @@ describe('UsageRouter', () => {
       renderTab('/usage/your-sessions?window=90d');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      const ninety = screen.getByRole('radio', { name: '90 days' });
+      const ninety = screen.getByRole('radio', { name: 'Last 90 days' });
       expect(ninety).toBeDisabled();
       expect(ninety).toBeChecked();
       expect(screen.getByTestId('path')).toHaveTextContent(
@@ -422,7 +422,7 @@ describe('UsageScopeBar · the window limit on a phone', () => {
     renderTab('/usage/your-sessions');
 
     expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: '90 days' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Last 90 days' })).toBeDisabled();
     expect(screen.getByText(REASON)).toBeVisible();
   });
 
@@ -445,7 +445,12 @@ describe('UsageScopeBar · the window limit on a phone', () => {
     const timeRange = await screen.findByRole('radiogroup', {
       name: 'Time range',
     });
-    const row = timeRange.parentElement!;
+    // The picker: its label above, the "Last … days" line below.
+    const picker = screen
+      .getByText('Time range')
+      .closest('.bui-FieldLabelWrapper')!.parentElement!;
+    expect(picker).toContainElement(timeRange);
+    const row = picker.parentElement!;
     expect(row.parentElement).toContainElement(
       screen.getByRole('heading', { level: 1 }),
     );

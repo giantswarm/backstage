@@ -1,4 +1,4 @@
-import { ComponentType, ReactNode, useMemo } from 'react';
+import { ComponentType, ReactNode, useLayoutEffect, useMemo } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { ConfigReader } from '@backstage/config';
 import { configApiRef, errorApiRef } from '@backstage/core-plugin-api';
@@ -14,6 +14,10 @@ import type { Decorator } from '@storybook/react';
 // returns the built-in GS light/dark palettes (no branding overrides), matching
 // a default deployment.
 import { buildPalette } from '../packages/app/src/modules/app/customThemes';
+// The agent-platform shell's stylesheet, as the app loads it. Every rule in it
+// is scoped to `html[data-agent-shell]`, so it changes nothing until a story
+// asks for the shell's look with `parameters: { agentShell: true }`.
+import '../packages/app/src/modules/agentShell/agent-shell.css';
 
 const emptyConfig = new ConfigReader({});
 
@@ -59,18 +63,41 @@ function GSTheme({
   return <UnifiedThemeProvider theme={theme}>{children}</UnifiedThemeProvider>;
 }
 
+/**
+ * Marks the document as the agent shell while the story is shown, the way the
+ * app's `useAgentShellAttribute` does, so `agent-shell.css` applies: the
+ * shell's colours, font and field boxes.
+ */
+function AgentShellRoot({ children }: { children: ReactNode }) {
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.dataset.agentShell = '';
+    return () => {
+      delete root.dataset.agentShell;
+    };
+  }, []);
+  return <>{children}</>;
+}
+
 function Providers({
   children,
   themeName,
   initialEntries,
   testAppOptions,
+  agentShell,
 }: {
   children: ReactNode;
   themeName: 'light' | 'dark';
   initialEntries: string[];
   testAppOptions?: TestAppOptions & object;
+  agentShell: boolean;
 }) {
-  const content = <div style={{ padding: 24 }}>{children}</div>;
+  const padded = <div style={{ padding: 24 }}>{children}</div>;
+  const content = agentShell ? (
+    <AgentShellRoot>{padded}</AgentShellRoot>
+  ) : (
+    padded
+  );
   const TestApp = testAppOptions && testAppFor(testAppOptions);
   return (
     <TestApiProvider
@@ -114,16 +141,22 @@ function Providers({
  *   parameters: { testApp: { mountedRoutes: { '/catalog/:namespace/:kind/:name': entityRouteRef } } }
  * `initialEntries` does not apply to a story that does this; the app owns the
  * router, and `testApp.routeEntries` seeds it instead.
+ *
+ * A story of a component that lives in the agent-platform shell can render in
+ * the shell's look (its colours, font and field boxes) with:
+ *   parameters: { agentShell: true }
  */
 export const withGSProviders: Decorator = (Story, context) => {
   const themeName = context.globals.theme === 'dark' ? 'dark' : 'light';
   const initialEntries = context.parameters?.router?.initialEntries ?? ['/'];
   const testAppOptions = context.parameters?.testApp;
+  const agentShell = Boolean(context.parameters?.agentShell);
   return (
     <Providers
       themeName={themeName}
       initialEntries={initialEntries}
       testAppOptions={testAppOptions}
+      agentShell={agentShell}
     >
       <Story />
     </Providers>

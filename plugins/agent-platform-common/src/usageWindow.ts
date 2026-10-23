@@ -65,11 +65,6 @@ export function formatUsageWindowParam(
   return days === DEFAULT_USAGE_WINDOW_DAYS ? undefined : `${days}d`;
 }
 
-/** The control's label for a window. */
-export function usageWindowLabel(days: UsageWindowDays): string {
-  return `${days} days`;
-}
-
 /**
  * Where a source's data starts inside the selected window, when it starts
  * after the window does — the case where the figures cover fewer days than

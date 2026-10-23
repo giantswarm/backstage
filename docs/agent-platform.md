@@ -3005,7 +3005,9 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
 environment and the window (7, 30 or 90 days, in `?window=`,
-`lib/usageWindow.ts`).
+`lib/usageWindow.ts`). The window control is ui-react's `TimeWindowPicker`,
+"Last [7 | 30 | 90] days" under a "Time range" label, a field box as tall as
+the Environment select beside it.
 
 | View          | Path                   | Source                          | Whose            |
 | ------------- | ---------------------- | ------------------------------- | ---------------- |
@@ -3299,7 +3301,7 @@ Nothing polls it.
 
 ### One window control for the whole screen
 
-The 7, 30 or 90-day toggle (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
+The 7, 30 or 90-day picker (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
 out of the URL) drives every view. Gateway views query the window directly.
 Your sessions narrows kagent's `windowDays` answer client-side (`narrowDaily`)
 and disables wider choices; its by-agent and top tables still cover kagent's
