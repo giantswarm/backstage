@@ -120,13 +120,10 @@ describe('CustomizeWorkspacesPanel', () => {
     jest.clearAllMocks();
   });
 
-  it('lists the workspaces with their sources, repositories, storage, last sync and Sessions', async () => {
+  it('lists the workspaces with their repositories, storage, last sync and Sessions', async () => {
     await renderPanel();
 
     const row = screen.getByRole('row', { name: /docs/ });
-    expect(
-      within(row).getByText('example-org · topic docs'),
-    ).toBeInTheDocument();
     expect(within(row).getByText('12')).toBeInTheDocument();
     expect(
       within(row).getByText(/4(\.0)? GiB of 15 GiB|4(\.0)? GB of 15 GiB/),
@@ -333,28 +330,16 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.queryByText('Reading your workspaces…')).toBeNull();
   });
 
-  it('sums a source up as its owner and the repositories it selects, its lists in full on the workspace page', async () => {
-    const picked: WorkspaceRow = {
-      ...docs,
-      id: 'gazelle/portal',
-      name: 'portal',
-      sources: [
-        {
-          provider: 'github',
-          owner: 'example-org',
-          repositories: Array.from({ length: 7 }, (_, i) => `app-${i + 1}`),
-          exclude: Array.from({ length: 8 }, (_, i) => `old-${i + 1}`),
-        },
-      ],
-    };
-    mockData = data({ rows: [picked] });
+  it('has no Sources column: the sources are on the workspace page', async () => {
     await renderPanel();
 
-    const row = screen.getByRole('row', { name: /portal/ });
     expect(
-      within(row).getByText('example-org · 7 repositories'),
+      screen.queryByRole('columnheader', { name: 'Sources' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: 'Repositories' }),
     ).toBeInTheDocument();
-    expect(within(row).queryByText(/app-1|old-1/)).toBeNull();
+    expect(screen.queryByText('example-org · topic docs')).toBeNull();
   });
 
   it('says when the search matches nothing', async () => {

@@ -7,7 +7,6 @@ import { matches } from './search';
 import { formatBytes } from './formatNumbers';
 import { quantityToGiB } from './workspaceDraft';
 import type { LastSync, Workspace, WorkspaceSource } from './workspaceManager';
-import { keptPicks, localSourceCount } from './workspaceSelection';
 
 /**
  * A workspace with the installation whose workspace-manager listed it; `id`
@@ -59,46 +58,6 @@ export function sourceLabel(source: WorkspaceSource): string {
 /** Every source of a workspace, one after the other. */
 export function sourcesLabel(sources: WorkspaceSource[]): string {
   return sources.map(sourceLabel).join('; ');
-}
-
-/**
- * One source in short, for the Workspaces tab: the owner and how many
- * repositories it selects, `example-org · 7 repositories`, counted as the
- * manager selects (an exclusion drops a pick by name; one that names no pick
- * drops nothing). A source with filters is the manager's to count, so it
- * names its filters instead, and the picks by name an exclusion leaves:
- * `example-org · lang Go · topic mcp · 2 by name`. The lists in full are on
- * the workspace's page.
- */
-export function sourceSummary(source: WorkspaceSource): string {
-  const local = localSourceCount(source);
-  if (local && (source.repositories?.length ?? 0) > 0) {
-    const noun = local.total === 1 ? 'repository' : 'repositories';
-    return `${source.owner} · ${local.total} ${noun}`;
-  }
-  const parts: string[] = [];
-  const languages = source.filters?.languages ?? [];
-  if (languages.length > 0) {
-    parts.push(`lang ${languages.join(', ')}`);
-  }
-  const topics = source.filters?.topics;
-  if (topics && topics.names.length > 0) {
-    const joiner = topics.match === 'all' ? ' + ' : ', ';
-    parts.push(`topic ${topics.names.join(joiner)}`);
-  }
-  const picks = keptPicks(source).length;
-  if (picks > 0) {
-    parts.push(`${picks} by name`);
-  }
-  if (parts.length === 0) {
-    parts.push('all repositories');
-  }
-  return [source.owner, ...parts].join(' · ');
-}
-
-/** Every source of a workspace in short, one after the other. */
-export function sourcesSummary(sources: WorkspaceSource[]): string {
-  return sources.map(sourceSummary).join('; ');
 }
 
 /** What a muster without per-user sign-in withholds, and what goes through the manager. */

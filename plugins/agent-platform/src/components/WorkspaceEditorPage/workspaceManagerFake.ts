@@ -12,6 +12,7 @@ import type {
   WorkspaceProvider,
   WorkspaceSource,
 } from '../../lib/workspaceManager';
+import { includesName } from '../../lib/workspaceSelection';
 
 export type FakeRepository = ProviderRepository & {
   provider: string;
@@ -46,11 +47,9 @@ function pageOf<T>(items: T[], page = 1, pageSize = 50) {
   return items.slice((page - 1) * pageSize, page * pageSize);
 }
 
-/** Whether a source names a repository among `names`, without case. */
+/** Whether `list` names the repository, as the manager compares names. */
 function names(list: string[] | undefined, repository: FakeRepository) {
-  return (list ?? []).some(
-    name => name.toLowerCase() === repository.name.toLowerCase(),
-  );
+  return includesName(list, repository.name);
 }
 
 /**

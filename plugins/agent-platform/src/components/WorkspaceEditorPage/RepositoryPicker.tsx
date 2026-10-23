@@ -23,12 +23,18 @@ import {
   type ProviderRepository,
 } from '../../lib/workspaceManager';
 import {
+  hasFilters,
   includesName,
   keptPicks,
   sameName,
+  uniqueNames,
 } from '../../lib/workspaceSelection';
 import { repositoryNoun } from './repositoryNoun';
-import { countSummary, type SourceCount } from './sourceCount';
+import {
+  countSummary,
+  type FilterMatches,
+  type SourceCount,
+} from './sourceCount';
 
 /** `list_repositories`' largest page, for "select all matches". */
 export const SELECT_ALL_PAGE_SIZE = 200;
@@ -38,7 +44,7 @@ export function matchesFilters(
   source: SourceDraft,
   repository: ProviderRepository,
 ): boolean {
-  if (source.languages.length === 0 && source.topics.length === 0) {
+  if (!hasFilters(source)) {
     return false;
   }
   if (repository.archived && !source.includeArchived) {
@@ -111,8 +117,10 @@ export type RepositoryPickerProps = {
   organization: string;
   source: SourceDraft;
   onChange: (source: SourceDraft) => void;
-  /** How many of the owner's repositories the filters take, when known. */
+  /** The filtered listing's total, for its pages, when known. */
   matchTotal: number | undefined;
+  /** How many of the owner's repositories the filters take, for the count. */
+  filterMatches: FilterMatches;
   /** How many repositories the source selects, exclusions applied. */
   count: SourceCount;
   providerKind: string | undefined;
@@ -132,6 +140,7 @@ export function RepositoryPicker({
   source,
   onChange,
   matchTotal,
+  filterMatches,
   count,
   providerKind,
 }: RepositoryPickerProps) {
@@ -151,9 +160,9 @@ export function RepositoryPicker({
   }>({ busy: false });
 
   const owner = source.owner.trim();
-  const hasFilters = source.languages.length > 0 || source.topics.length > 0;
+  const filtered = hasFilters(source);
   // Matches first: the filters' pages, then the owner's listing without them.
-  const matchesFirst = hasFilters && !search;
+  const matchesFirst = filtered && !search;
   const matchPages = matchesFirst
     ? Math.ceil((matchTotal ?? 0) / EDITOR_PAGE_SIZE)
     : 0;
@@ -250,7 +259,7 @@ export function RepositoryPicker({
       }
       onChange({
         ...source,
-        repositories: [...new Set([...source.repositories, ...names])],
+        repositories: uniqueNames([...source.repositories, ...names]),
         exclude: source.exclude.filter(name => !includesName(names, name)),
       });
       setSelectAll({ busy: false });
@@ -384,7 +393,7 @@ export function RepositoryPicker({
 
       <Text variant="body-small" data-testid="repository-summary">
         {countSummary({
-          byFilter: hasFilters ? (matchTotal ?? null) : undefined,
+          byFilter: filterMatches,
           byName,
           count,
           providerKind,

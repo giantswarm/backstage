@@ -35,6 +35,23 @@ describe('localSourceCount', () => {
     ).toEqual({ total: 0, excluded: 1 });
   });
 
+  it('counts a pick that differs only in case once', () => {
+    expect(
+      localSourceCount({
+        owner: 'o',
+        repositories: ['portal', 'Portal'],
+        exclude: ['portal'],
+      }),
+    ).toEqual({ total: 0, excluded: 1 });
+    expect(
+      localSourceCount({ owner: 'o', repositories: ['a', 'A', 'b'] }),
+    ).toEqual({ total: 2, excluded: 0 });
+  });
+
+  it('leaves a source with no selector to the manager, which takes every repository', () => {
+    expect(localSourceCount({ owner: 'o', exclude: ['a'] })).toBeUndefined();
+  });
+
   it.each([
     { owner: 'o', repositories: ['a'], languages: ['Go'] },
     { owner: 'o', topics: ['mcp'] },

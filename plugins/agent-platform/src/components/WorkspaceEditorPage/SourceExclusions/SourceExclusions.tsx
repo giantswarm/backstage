@@ -1,54 +1,57 @@
 import { useMemo, useState } from 'react';
 import { Combobox, Flex, Tag, TagGroup, Text } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
+import { useSelectFieldError } from '@giantswarm/backstage-plugin-ui-react';
 
-import type { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
-import { useSourcePreview } from '../../hooks/useWorkspaceEditor';
-import type { SourceDraft } from '../../lib/workspaceDraft';
-import {
-  exclusionsOutsidePicks,
-  hasFilters,
-  includesName,
-} from '../../lib/workspaceSelection';
-import { repositoryNoun } from './repositoryNoun';
-import { whyText } from './WorkspacePreviewPanel';
-
-/** The option that excludes the name as typed, ahead of a repository's id. */
-const TYPED = 'typed:';
+import type { WorkspaceManagerClient } from '../../../apis/WorkspaceManagerClient';
+import { useSourcePreview } from '../../../hooks/useWorkspaceEditor';
+import type { SourceDraft } from '../../../lib/workspaceDraft';
+import { includesName } from '../../../lib/workspaceSelection';
+import { repositoryNoun } from '../repositoryNoun';
+import { exclusionEffect } from '../sourceCount';
+import { whyText } from '../WorkspacePreviewPanel';
 
 /**
- * What the exclusions do now: how many selected repositories they leave
- * out, and how many match nothing the source selects. `excluded` is
- * undefined while the manager counts a source with filters.
+ * The option that excludes the name as typed, ahead of the name: `typed:`
+ * while nothing is known about it, `unselected:` once a fresh answer shows
+ * the source does not select it. Two ids, since the list keeps an option's
+ * content by its id.
  */
-export function exclusionEffect(
-  source: SourceDraft,
-  excluded: number | undefined,
-  providerKind: string | undefined,
-): string | undefined {
-  const count = source.exclude.length;
-  if (count === 0 || excluded === undefined) {
-    return undefined;
+const TYPED = 'typed:';
+const UNSELECTED = 'unselected:';
+
+const useStyles = makeStyles({
+  // A medium tag's text is 12px (`--bui-font-size-2`); its remove button,
+  // 16px in bui, gets a 24px target to tap.
+  tags: {
+    '& .bui-TagRemoveButton': {
+      minWidth: 24,
+      minHeight: 24,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+  },
+});
+
+/** The name an option excludes. */
+function nameOf(key: string): string {
+  for (const prefix of [TYPED, UNSELECTED]) {
+    if (key.startsWith(prefix)) {
+      return key.slice(prefix.length);
+    }
   }
-  // An exclusion is one repository's name: it leaves out one at most.
-  const idle = count - excluded;
-  const leftOut = `${excluded} ${repositoryNoun(providerKind, excluded)} left out`;
-  if (idle === 0) {
-    return `${leftOut}.`;
-  }
-  const nothing =
-    idle === 1
-      ? '1 exclusion matches nothing the source selects'
-      : `${idle} exclusions match nothing the source selects`;
-  if (excluded === 0) {
-    return `Nothing is left out: ${
-      count === 1 ? 'the exclusion matches' : `the ${count} exclusions match`
-    } nothing the source selects.`;
-  }
-  // Without filters the form knows which ones: they name no pick.
-  const names = hasFilters(source)
-    ? ''
-    : `: ${exclusionsOutsidePicks(source).join(', ')}`;
-  return `${leftOut}; ${nothing}${names}.`;
+  return key;
+}
+
+/**
+ * A preview row's repository name: its path's last part. The manager reports
+ * `<owner>/<name>`, and a name never holds a slash (a GitLab project in a
+ * subgroup is `group/sub~project`), so this is the name an exclusion matches.
+ */
+export function repositoryName(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1);
 }
 
 export type SourceExclusionsProps = {
@@ -80,21 +83,22 @@ export function SourceExclusions({
   error,
 }: SourceExclusionsProps) {
   const [typed, setTyped] = useState('');
-  // The selection is read once the person turns to the field.
-  const [isActive, setIsActive] = useState(false);
+  // The selection is read only while the field's list is open.
+  const [isOpen, setIsOpen] = useState(false);
   const selection = useSourcePreview(client, organization, source, {
-    enabled: isActive,
+    enabled: isOpen,
     search: typed.trim(),
   });
-  const owner = source.owner.trim();
+  const classes = useStyles();
   const noun = repositoryNoun(providerKind, 2);
+  const errorProps = useSelectFieldError(error);
 
   const options = useMemo(() => {
     const name = typed.trim();
     const selected = (selection.data?.repositories ?? [])
       .filter(repository => repository.provider === source.provider)
       .map(repository => ({
-        id: repository.repository.slice(owner.length + 1),
+        id: repositoryName(repository.repository),
         description: whyText(repository.why),
       }))
       .filter(option => !includesName(source.exclude, option.id))
@@ -104,20 +108,29 @@ export function SourceExclusions({
         selected.map(option => option.id),
         name,
       ) || includesName(source.exclude, name);
+    // Only a fresh answer for this very search, with every match on its one
+    // page, tells that the source does not select the name.
+    const isComplete =
+      selection.data !== undefined &&
+      !selection.isStale &&
+      !selection.error &&
+      selection.data.matching <= selection.data.repositories.length;
     return name && !isListed
       ? [
           ...selected,
           {
-            id: `${TYPED}${name}`,
+            id: `${isComplete ? UNSELECTED : TYPED}${name}`,
             label: `Exclude “${name}”`,
-            description: `Not among the ${noun} the source selects now`,
+            ...(isComplete
+              ? { description: `Not among the ${noun} the source selects now` }
+              : {}),
           },
         ]
       : selected;
-  }, [selection.data, source, owner, typed, noun]);
+  }, [selection.data, selection.isStale, selection.error, source, typed, noun]);
 
   const add = (key: string) => {
-    const name = key.startsWith(TYPED) ? key.slice(TYPED.length) : key;
+    const name = nameOf(key);
     if (name && !includesName(source.exclude, name)) {
       onChange({ ...source, exclude: [...source.exclude, name] });
     }
@@ -152,6 +165,7 @@ export function SourceExclusions({
         </Text>
         {source.exclude.length > 0 ? (
           <TagGroup
+            className={classes.tags}
             aria-label={`Excluded ${noun}`}
             onRemove={keys =>
               onChange({
@@ -166,7 +180,7 @@ export function SourceExclusions({
               <Tag
                 key={name}
                 id={name}
-                size="small"
+                size="medium"
                 textValue={name}
                 style={{ maxWidth: '100%' }}
               >
@@ -210,7 +224,7 @@ export function SourceExclusions({
               onInputChange: setTyped,
             }}
             loading={{
-              state: isActive && selection.isFetching ? 'loading' : 'idle',
+              state: isOpen && selection.isFetching ? 'loading' : 'idle',
             }}
             selectedKey={null}
             onSelectionChange={key => {
@@ -218,14 +232,11 @@ export function SourceExclusions({
                 add(String(key));
               }
             }}
-            onFocus={() => setIsActive(true)}
+            onOpenChange={setIsOpen}
+            {...errorProps.selectProps}
           />
+          {errorProps.message}
         </div>
-        {error && (
-          <Text variant="body-small" color="danger" role="alert">
-            {error}
-          </Text>
-        )}
       </Flex>
     </section>
   );

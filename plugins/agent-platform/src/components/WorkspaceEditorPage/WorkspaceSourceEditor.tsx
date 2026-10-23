@@ -22,7 +22,11 @@ import {
 import { ProviderConnectPrompt } from '../ProviderConnectPrompt';
 import { filterInput, RepositoryPicker } from './RepositoryPicker';
 import { repositoryNoun } from './repositoryNoun';
-import type { SourceCount } from './sourceCount';
+import {
+  previewCount,
+  type FilterMatches,
+  type SourceCount,
+} from './sourceCount';
 import { SourceExclusions } from './SourceExclusions';
 import { SourceFilterBox } from './SourceFilterBox';
 
@@ -44,22 +48,32 @@ export type WorkspaceSourceEditorProps = {
    * the edit flow opens one source at a time.
    */
   onExpand?: () => void;
+  /**
+   * The source's count from the draft's own preview, when it is the draft's
+   * only source: the source needs no preview of its own then.
+   */
+  draftCount?: SourceCount;
 };
 
 /**
  * How many of the owner's repositories a source takes, and how many its
- * filters match (one row of the filtered listing tells that total). Without
- * filters the draft tells the count; with them only the manager knows which
- * matches an exclusion drops, so it resolves the source alone. Also the
- * owner's facets, from one unfiltered row.
+ * filters match (one row of the filtered listing tells that total; the
+ * listing cannot count topics that must all match). Without filters the
+ * draft tells the count; with them only the manager knows which matches an
+ * exclusion drops: the draft's own preview when the source is its only one
+ * (`draftCount`), else a preview of the source alone, read only while the
+ * source is open. Also the owner's facets, from one unfiltered row.
  */
 function useSourceCounts(
   client: WorkspaceManagerClient | undefined,
   organization: string,
   source: SourceDraft,
+  { draftCount, isOpen }: { draftCount?: SourceCount; isOpen: boolean },
 ): {
   facets: ReturnType<typeof useRepositoriesPage>;
+  /** The filtered listing's total, for its pages. */
   matchTotal: number | undefined;
+  filterMatches: FilterMatches;
   count: SourceCount;
 } {
   const owner = source.owner.trim();
@@ -73,27 +87,39 @@ function useSourceCounts(
     client,
     base && filtered ? { ...base, ...filterInput(source) } : undefined,
   );
+  const local = localSourceCount(source);
+  const resolvesAlone =
+    !local && filtered && !draftCount && isOpen && Boolean(client);
   const resolved = useSourcePreview(client, organization, source, {
-    enabled: filtered && base !== undefined,
+    enabled: resolvesAlone,
   });
   let matchTotal: number | undefined = filtered ? matches.data?.total : 0;
   if (base === undefined) {
     matchTotal = undefined;
   }
-  const local = localSourceCount(source);
-  let count: SourceCount = { state: 'counting' };
-  if (local) {
-    count = { state: 'known', ...local };
-  } else if (resolved.data && !resolved.isStale) {
-    count = {
-      state: 'known',
-      total: resolved.data.total,
-      excluded: resolved.data.excluded,
-    };
-  } else if (resolved.error) {
-    count = { state: 'unknown' };
+
+  let filterMatches: FilterMatches;
+  if (filtered) {
+    if (source.topicMatch === 'all' && source.topics.length > 1) {
+      filterMatches = 'uncounted';
+    } else if (!client || matches.error) {
+      filterMatches = 'uncounted';
+    } else {
+      filterMatches = matchTotal ?? null;
+    }
   }
-  return { facets, matchTotal, count };
+
+  let count: SourceCount;
+  if (!filtered && source.repositories.length === 0) {
+    count = { state: 'none' };
+  } else if (local) {
+    count = { state: 'known', ...local };
+  } else if (draftCount) {
+    count = draftCount;
+  } else {
+    count = previewCount(resolved, resolvesAlone);
+  }
+  return { facets, matchTotal, filterMatches, count };
 }
 
 /** What a source selects, in short: `lang Go`, `topic mcp`, `1 by name`. */
@@ -174,6 +200,7 @@ export function WorkspaceSourceEditor({
   errorFor,
   touch,
   onExpand,
+  draftCount,
 }: WorkspaceSourceEditorProps) {
   const provider = providers.find(p => p.name === source.provider);
   const isConnected = provider?.connected ?? false;
@@ -183,6 +210,7 @@ export function WorkspaceSourceEditor({
     isConnected ? client : undefined,
     organization,
     source,
+    { draftCount, isOpen: !onExpand },
   );
   const owners = useProviderOwners(
     isConnected ? client : undefined,
@@ -332,7 +360,11 @@ export function WorkspaceSourceEditor({
                 source={source}
                 onChange={onChange}
                 facetsPage={counts.facets.data}
-                matchTotal={counts.matchTotal}
+                matchTotal={
+                  typeof counts.filterMatches === 'number'
+                    ? counts.filterMatches
+                    : undefined
+                }
                 providerKind={kind}
               />
               {(field('languages') || field('topics')) && (
@@ -346,6 +378,7 @@ export function WorkspaceSourceEditor({
                 source={source}
                 onChange={onChange}
                 matchTotal={counts.matchTotal}
+                filterMatches={counts.filterMatches}
                 count={counts.count}
                 providerKind={kind}
               />

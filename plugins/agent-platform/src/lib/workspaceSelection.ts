@@ -38,35 +38,54 @@ export function hasFilters(source: SelectionSource): boolean {
   );
 }
 
-/** The picks by name no exclusion drops. */
+/**
+ * The names once each, compared without case, as the manager's sets take
+ * them: `['portal', 'Portal']` is one repository. The first spelling stays.
+ */
+export function uniqueNames(names: string[] | undefined): string[] {
+  const seen = new Set<string>();
+  return (names ?? []).filter(name => {
+    const key = name.toLowerCase();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+/** The picks by name no exclusion drops, each once. */
 export function keptPicks(source: SelectionSource): string[] {
-  return (source.repositories ?? []).filter(
+  return uniqueNames(source.repositories).filter(
     name => !includesName(source.exclude, name),
   );
 }
 
 /**
- * The exclusions that leave out none of the picks by name. Without filters
- * they leave nothing out at all; with filters, one may drop a match.
+ * The exclusions that leave out none of the picks by name, each once.
+ * Without filters they leave nothing out at all; with filters, one may drop
+ * a match.
  */
 export function exclusionsOutsidePicks(source: SelectionSource): string[] {
-  return (source.exclude ?? []).filter(
+  return uniqueNames(source.exclude).filter(
     name => !includesName(source.repositories, name),
   );
 }
 
 /**
  * How many repositories a source selects, where the form can tell without
- * the manager: a source without filters selects its picks by name less the
- * excluded ones (`excluded`). With filters only the manager knows which
- * matches an exclusion drops: `undefined`.
+ * the manager: a source with picks by name and no filters selects those
+ * picks less the excluded ones (`excluded`), each name once. With filters
+ * only the manager knows which matches an exclusion drops, and a source with
+ * no selector at all is the manager's to read too: `undefined`.
  */
 export function localSourceCount(
   source: SelectionSource,
 ): { total: number; excluded: number } | undefined {
-  if (hasFilters(source)) {
+  const picks = uniqueNames(source.repositories).length;
+  if (hasFilters(source) || picks === 0) {
     return undefined;
   }
   const total = keptPicks(source).length;
-  return { total, excluded: (source.repositories?.length ?? 0) - total };
+  return { total, excluded: picks - total };
 }

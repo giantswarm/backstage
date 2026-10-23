@@ -1,6 +1,5 @@
 import { emptySource } from '../../lib/workspaceDraft';
-import { countSummary } from './sourceCount';
-import { exclusionEffect } from './SourceExclusions';
+import { countSummary, exclusionEffect, previewCount } from './sourceCount';
 
 describe('countSummary', () => {
   const kind = 'github';
@@ -63,6 +62,23 @@ describe('countSummary', () => {
     ).toBe('3 by filter · 0 by name · total not known');
   });
 
+  it('leaves out the filter part the listing cannot count, giving the total on its own', () => {
+    expect(
+      countSummary({
+        byFilter: 'uncounted',
+        byName: 0,
+        count: { state: 'known', total: 3, excluded: 0 },
+        providerKind: kind,
+      }),
+    ).toBe('0 by name · 3 repositories in all');
+  });
+
+  it('says when nothing is picked or filtered yet', () => {
+    expect(
+      countSummary({ byName: 0, count: { state: 'none' }, providerKind: kind }),
+    ).toBe('Nothing picked by name or filter yet');
+  });
+
   it("names GitLab's projects", () => {
     expect(
       countSummary({
@@ -115,6 +131,15 @@ describe('exclusionEffect', () => {
     );
   });
 
+  it('counts each name once, so no count goes negative', () => {
+    expect(
+      exclusionEffect(source(['portal', 'Portal'], ['portal']), 1, 'github'),
+    ).toBe('1 repository left out.');
+    expect(exclusionEffect(source(['a'], ['a', 'A']), 1, 'github')).toBe(
+      '1 repository left out.',
+    );
+  });
+
   it("counts a filtered source's idle exclusions without naming them", () => {
     expect(
       exclusionEffect(
@@ -125,5 +150,41 @@ describe('exclusionEffect', () => {
     ).toBe(
       '1 repository left out; 2 exclusions match nothing the source selects.',
     );
+  });
+});
+
+describe('previewCount', () => {
+  const preview = {
+    data: { total: 4, excluded: 1 },
+    error: undefined,
+    hasSources: true,
+    isSelectionCurrent: true,
+  };
+
+  it('is known once the preview resolved the sources as they are', () => {
+    expect(previewCount(preview, true)).toEqual({
+      state: 'known',
+      total: 4,
+      excluded: 1,
+    });
+  });
+
+  it('is counting while the answer shown is for other sources', () => {
+    expect(
+      previewCount({ ...preview, isSelectionCurrent: false }, true),
+    ).toEqual({ state: 'counting' });
+  });
+
+  it('is not known when the preview failed or cannot run', () => {
+    expect(
+      previewCount(
+        { ...preview, isSelectionCurrent: false, error: new Error('x') },
+        true,
+      ),
+    ).toEqual({ state: 'unknown' });
+    expect(previewCount(preview, false)).toEqual({ state: 'unknown' });
+    expect(previewCount({ ...preview, hasSources: false }, true)).toEqual({
+      state: 'unknown',
+    });
   });
 });

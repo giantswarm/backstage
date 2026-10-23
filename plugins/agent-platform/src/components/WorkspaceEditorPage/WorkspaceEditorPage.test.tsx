@@ -721,11 +721,12 @@ describe('WorkspaceEditorPage exclusions', () => {
     expect(exclusions().getByTestId('exclusion-effect')).toHaveTextContent(
       'Nothing is left out: the 8 exclusions match nothing the source selects.',
     );
-    expect(
-      within(
-        exclusions().getByRole('grid', { name: 'Excluded repositories' }),
-      ).getAllByRole('row'),
-    ).toHaveLength(8);
+    const tags = within(
+      exclusions().getByRole('grid', { name: 'Excluded repositories' }),
+    ).getAllByRole('row');
+    expect(tags).toHaveLength(8);
+    // The medium tag: 12px text.
+    expect(tags[0]).toHaveAttribute('data-size', 'medium');
     expect(
       await screen.findByText('1 source on 1 provider · 7 repositories'),
     ).toBeInTheDocument();
@@ -784,9 +785,20 @@ describe('WorkspaceEditorPage exclusions', () => {
     // Add a name the source does not select: the manager keeps it.
     await user.click(field);
     await user.type(field, 'future-repo');
-    await settlePreview();
-    await user.click(
+    // Before the answer for this search is in, the option claims nothing.
+    expect(
       await screen.findByRole('option', { name: /^Exclude “future-repo”/ }),
+    ).not.toHaveAccessibleDescription(/Not among/);
+    await settlePreview();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('option', { name: /^Exclude “future-repo”/ }),
+      ).toHaveAccessibleDescription(
+        'Not among the repositories the source selects now',
+      ),
+    );
+    await user.click(
+      screen.getByRole('option', { name: /^Exclude “future-repo”/ }),
     );
     await waitFor(() =>
       expect(exclusions().getByTestId('exclusion-effect')).toHaveTextContent(
@@ -849,6 +861,98 @@ describe('WorkspaceEditorPage exclusions', () => {
     const preview = within(screen.getByTestId('workspace-preview'));
     expect(await preview.findByTestId('preview-total')).toHaveTextContent(
       '2 repositories',
+    );
+  });
+});
+
+describe('WorkspaceEditorPage exclusion counts the form cannot know', () => {
+  it('says the total is not known for a source on a provider instance the installation does not configure', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [
+        {
+          ...storedWorkspace({ repositories: ['portal'] }),
+          sources: [
+            { provider: 'github', owner: 'acme', repositories: ['portal'] },
+            {
+              provider: 'retired',
+              owner: 'acme',
+              filters: { languages: ['Go'] },
+              exclude: ['operator'],
+            },
+          ],
+        },
+      ],
+    });
+    await render(fake, { name: 'portal' });
+    fireEvent.click(
+      within(await screen.findByTestId('workspace-source-1')).getByRole(
+        'button',
+        { name: 'Edit source' },
+      ),
+    );
+    await settlePreview();
+
+    await waitFor(() =>
+      expect(source(1).getByTestId('repository-summary')).toHaveTextContent(
+        /^0 by name · total not known$/,
+      ),
+    );
+  });
+
+  it('leaves out the by-filter count for topics that must all match, which the listing cannot count', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: [
+        ...ACME,
+        repo('github', 'acme', 'charts-mcp', 'Go', ['mcp', 'helm']),
+      ],
+      workspaces: [
+        storedWorkspace({
+          filters: { topics: { match: 'all', names: ['mcp', 'helm'] } },
+        }),
+      ],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    await settlePreview();
+
+    // The listing's "any of" would count 4; the manager selects 1.
+    await waitFor(() =>
+      expect(source(0).getByTestId('repository-summary')).toHaveTextContent(
+        /^0 by name · 1 repository in all$/,
+      ),
+    );
+    expect(
+      source(0).queryByTestId('filter-match-total'),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ties the manager's refusal of the exclusions to the exclusion field", async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    fake.onWrite('update_workspace', () => {
+      throw new Error(
+        'update_workspace: invalid workspace: spec.sources[0].exclude: Too many: 1001: must have at most 1000 items',
+      );
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    fireEvent.click(
+      await source(0).findByRole('checkbox', { name: 'operator' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(
+        exclusions().getByRole('combobox', { name: /^Exclude a repository/ }),
+      ).toHaveAccessibleDescription(
+        expect.stringContaining('must have at most 1000 items'),
+      ),
     );
   });
 });

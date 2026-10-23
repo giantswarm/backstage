@@ -56,6 +56,7 @@ import {
   formatQuantity,
   WorkspacePreviewPanel,
 } from './WorkspacePreviewPanel';
+import { previewCount } from './sourceCount';
 import { WorkspaceSourceEditor } from './WorkspaceSourceEditor';
 import { workspaceDetailRouteRef } from '../../routes';
 
@@ -389,6 +390,13 @@ function WorkspaceEditor({
     </Flex>
   );
 
+  // With one source the draft's preview counts it: it needs no preview of
+  // its own.
+  const onlySourceCount =
+    draft?.sources.length === 1
+      ? previewCount(preview, Boolean(client))
+      : undefined;
+
   const title = isEdit ? `Edit ${name}` : 'New workspace';
   return (
     <WizardFrame
@@ -466,6 +474,7 @@ function WorkspaceEditor({
                       ? () => setExpanded(source.key)
                       : undefined
                   }
+                  draftCount={onlySourceCount}
                 />
               ))
             : null

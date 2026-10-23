@@ -33,7 +33,6 @@ import {
   StatusDot,
   StatusHint,
   usePhoneColumns,
-  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useWorkspaceActions } from '../../hooks/useWorkspaceActions';
@@ -45,8 +44,6 @@ import {
 import {
   searchWorkspaces,
   sizeLabel,
-  sourceSummary,
-  sourcesSummary,
   storedLabel,
   syncState,
   WORKSPACES_BLOCKED,
@@ -283,7 +280,7 @@ export function CustomizeWorkspacesIntro() {
 
 /**
  * The Workspaces tab of the shell's Customize screen: the workspaces of the
- * scope's Organization on the installations in scope — sources, repositories,
+ * scope's Organization on the installations in scope — repositories,
  * what the volume stores, the last sync and the Sessions on it — with Sync now
  * and Delete per row. Must be mounted inside the plugin's
  * `CustomizeDataProvider`.
@@ -308,7 +305,6 @@ export function CustomizeWorkspacesPanel({
   );
   const showInstallation =
     new Set(allRows.map(row => row.installation)).size > 1;
-  const isPhone = usePhoneLayout();
   const detailRoute = useRouteRef(workspaceDetailRouteRef);
 
   const columns: ColumnConfig<WorkspaceRow>[] = [
@@ -326,37 +322,16 @@ export function CustomizeWorkspacesPanel({
             organization: row.organization,
             name: row.name,
           })}
-          description={[
-            ...(showInstallation ? [row.installation] : []),
-            // At phone width the Sources column is hidden: they join the
-            // name's line.
-            ...(isPhone ? [sourcesSummary(row.sources)] : []),
-          ].join(' · ')}
+          description={showInstallation ? row.installation : undefined}
         />
-      ),
-    },
-    {
-      id: 'sources',
-      label: 'Sources',
-      defaultWidth: '2fr',
-      // One line per source, in short: the lists in full are on the
-      // workspace's page.
-      cell: row => (
-        <Cell>
-          <Flex direction="column" gap="0">
-            {row.sources.map((source, index) => (
-              <Text key={index} variant="body-medium">
-                {sourceSummary(source)}
-              </Text>
-            ))}
-          </Flex>
-        </Cell>
       ),
     },
     {
       id: 'repositories',
       label: 'Repositories',
       defaultWidth: '1fr',
+      // Fits its header without cutting it.
+      minWidth: 120,
       cell: row => (
         <CellText title={row.lastSync ? String(row.repositories) : '—'} />
       ),

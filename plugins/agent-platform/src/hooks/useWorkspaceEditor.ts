@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   keepPreviousData,
   useQuery,
@@ -225,6 +225,15 @@ export function useWorkspacePreview(
     placeholderData: keepPreviousData,
     retry: false,
   });
+  // The sources the answer shown resolved: its total and excluded hold for
+  // every page and search of them.
+  const resolved = useRef<string | undefined>(undefined);
+  if (query.data && !query.isPlaceholderData) {
+    resolved.current = JSON.stringify({
+      sources: parsed.sources,
+      sizing: parsed.sizing,
+    });
+  }
   return {
     ...query,
     hasSources: sources.length > 0,
@@ -232,6 +241,13 @@ export function useWorkspacePreview(
     isStale:
       request !== JSON.stringify({ sources, sizing, page, search }) ||
       query.isPlaceholderData,
+    /**
+     * The answer shown resolved the draft's sources as they are now, if
+     * maybe for another page or search: its `total` and `excluded` hold.
+     */
+    isSelectionCurrent:
+      query.data !== undefined &&
+      resolved.current === JSON.stringify({ sources, sizing }),
   };
 }
 

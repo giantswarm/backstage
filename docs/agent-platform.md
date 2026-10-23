@@ -344,19 +344,27 @@ nothing out until a filter selects that name).
 The editor (`/customize/workspaces/new`, `…/<installation>/<organization>/<name>/edit`)
 shows a source's exclusions under **Exclusions**: each a tag to remove, what
 they leave out now, and a field that offers the repositories the source
-selects now (`preview_workspace` with that source alone) and takes a typed
-name too. Unticking a filter match in the repository table excludes it as
-well. The source's count is the draft's own where it can be: without filters,
-the picks by name less the excluded ones. With filters only the manager knows
-which matches an exclusion drops, so the count waits for its answer
-("counting…", or "total not known" when it fails) rather than subtracting
-exclusions that may match nothing. The preview's "n excluded" is the
-manager's count of repositories the exclusions left out.
+selects now and takes a typed name too. The field reads that selection
+(`preview_workspace` with the source alone, searched as typed) only while its
+list is open, and says a typed name is not selected only from a fresh answer
+for that search with every match on its page. Unticking a filter match in the
+repository table excludes it as well.
 
-The Workspaces tab sums each source up in its Sources column: the owner and
-the number of repositories it selects (`example-org · 7 repositories`), or,
-for a source with filters, the filters and the picks by name. The lists in
-full are on the workspace's page.
+The source's count is the draft's own where it can be: without filters, the
+picks by name less the excluded ones, each name once. With filters only the
+manager knows which matches an exclusion drops, so the count comes from a
+preview: the draft's own when the source is its only one, else a preview of
+the source alone while the source is open. It says "counting…" until the
+answer is in, and "total not known" when the preview fails or cannot run (the
+source's provider instance is not connected or not configured), rather than
+subtracting exclusions that may match nothing. The "by filter" part is left
+out for topics that must all match, since `list_repositories` filters topics
+as "any of" and cannot count them. The preview's "n excluded" is the manager's
+count of repositories the exclusions left out.
+
+The Workspaces tab has no Sources column: its Repositories column gives the
+last synchronization's count, and the sources in full are on the workspace's
+page.
 
 ## Usage
 
