@@ -1048,18 +1048,24 @@ export function SessionDetailPage() {
   /**
    * How the turn is being followed once its live stream ended before it did.
    *
-   * A gateway's request timeout closes the stream mid-reply while the turn runs
-   * on; "Working…" over text that stopped half-way promises a continuation that
-   * is not coming through the stream. Instead the row says what is happening:
-   * `checking` while the send is still re-reading the conversation, `following`
-   * once that read has come back with the task still working — the preview is
-   * gone for good and the poll delivers the reply. Nothing once the poll shows
-   * the turn over (the stream hooks retire the loss themselves), so a finished
-   * turn reads as finished with no reload. A stall keeps its own row.
+   * A controller rollout or a gateway's request timeout closes the stream
+   * mid-reply while the turn runs on; "Working…" over text that stopped
+   * half-way promises a continuation that is not coming through the stream.
+   * Instead the row says what is happening: `reconnecting` while the stream
+   * hooks resubscribe to the turn — the preview stays and continues once it is
+   * back — and, when that fails, `checking` while the send is still re-reading
+   * the conversation, `following` once that read has come back with the task
+   * still working — the preview is gone for good and the poll delivers the
+   * reply. Nothing once the poll shows the turn over (the stream hooks retire
+   * the loss themselves), so a finished turn reads as finished with no reload.
+   * A stall keeps its own row.
    */
+  const isReconnecting = send.isReconnecting || confirmation.isReconnecting;
   const isStreamLost = send.isStreamLost || confirmation.isStreamLost;
   let streamLost: StreamLossPhase | undefined;
-  if (isStreamLost && !isStalled) {
+  if (isReconnecting && !isStalled) {
+    streamLost = 'reconnecting';
+  } else if (isStreamLost && !isStalled) {
     if (send.isSending || confirmation.isAnswering) {
       streamLost = 'checking';
     } else if (agentIsWorking) {

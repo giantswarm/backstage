@@ -125,6 +125,12 @@ export type StreamTurn = {
    * hide it from an effect watching for one.
    */
   revision: number;
+  /**
+   * Partial artifact chunks are being skipped: the stream was resumed after a
+   * cut (see {@link resumeStreamTurn}), and a reply of chunks that began before
+   * it would show from mid-word. Cleared by the next complete artifact.
+   */
+  skipPartialArtifacts?: boolean;
   /** Calls awaiting their response, by function-call id. Internal. */
   openCalls: { callId: string; itemIndex: number }[];
   /** Monotonic id source for {@link items}. Internal. */
@@ -162,6 +168,35 @@ export function isStreamTurnOver(turn: StreamTurn): boolean {
   }
   const state = describeSessionState(turn.stateKey);
   return state !== undefined && !state.isActive;
+}
+
+/**
+ * The turn as it stands where its stream was cut, ready to take the events of
+ * a resubscription to its task.
+ *
+ * Everything already shown stays: a resubscription delivers the task's
+ * snapshot (whose history is not ingested) and the events from then on, so
+ * nothing on screen arrives twice, and a complete message that repeats one is
+ * recognised by its `messageId`. Only an open run of **artifact chunks** goes —
+ * one with no `messageId`, the Go executor's partial reply. The chunks sent
+ * while no stream was open are gone, so the next ones would be glued onto it
+ * with a hole in the middle; the complete artifact supersedes the run anyway,
+ * from the resubscription or from the poll. A run a message opened is that
+ * message's text as sent and keeps its place.
+ *
+ * Partial chunks are skipped from here until the next complete artifact: the
+ * first one the resubscription delivers may be the middle of a reply, and a
+ * preview starting mid-word reads as broken. The reply shows whole once its
+ * complete artifact arrives.
+ */
+export function resumeStreamTurn(turn: StreamTurn): StreamTurn {
+  const dropsRun = turn.live !== undefined && turn.live.messageId === undefined;
+  return {
+    ...turn,
+    live: dropsRun ? undefined : turn.live,
+    skipPartialArtifacts: true,
+    revision: turn.revision + 1,
+  };
 }
 
 /**
@@ -204,6 +239,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     }
 
     case 'status-update': {
+      next.taskId ??= event.taskId;
       const state = event.status?.state?.toLowerCase();
       if (state) {
         next.stateKey = state;
@@ -265,6 +301,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     }
 
     case 'artifact-update': {
+      next.taskId ??= event.taskId;
       const parts = Array.isArray(event.artifact?.parts)
         ? event.artifact.parts
         : [];
@@ -303,6 +340,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
        * adjacent repeat.
        */
       const emitComplete = () => {
+        next.skipPartialArtifacts = false;
         const live = next.live;
         if (!live || live.messageId !== undefined) {
           flushLiveRun(next);
@@ -332,7 +370,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         const partText = readPartText(part);
         if (partText !== undefined) {
           text += partText;
-          if (partial === true) {
+          if (partial === true && !next.skipPartialArtifacts) {
             // Appended as the parts are read rather than after the loop: a
             // `function_call` later in this same event must not take its item
             // slot ahead of the text that came before it.

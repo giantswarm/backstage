@@ -146,6 +146,11 @@ export type FakeControllerOptions = {
    * not name lists every Agent, as the `noop` authorizer answers.
    */
   listableNamespaces?: Record<string, string[]>;
+  /**
+   * What `SubscribeToTask` fails with before its first event, when set — a
+   * controller mid-rollout answers `Unavailable`.
+   */
+  subscribeError?: ConnectError;
 };
 
 type StoredTask = {
@@ -1005,6 +1010,35 @@ export function createFakeController(
           request.historyLength,
           true,
         );
+      },
+      async *subscribeToTask(request, ctx) {
+        record('A2AService', 'SubscribeToTask', ctx, request.tenant);
+        if (options.subscribeError) {
+          throw options.subscribeError;
+        }
+        const session = taskSession(ctx, request.tenant, request.id);
+        const stored = taskOf(session, request.id);
+        // A task already over yields its final event, as kagent answers it.
+        if (terminal(stored.task)) {
+          yield statusUpdate(stored.task);
+          return;
+        }
+        // The snapshot first, then the turn's events from now on: here, the
+        // end of a long turn when it is cancelled.
+        yield create(StreamResponseSchema, {
+          payload: { case: 'task', value: shape(stored.task, 0, false) },
+        });
+        await Promise.race([
+          stored.cancelled,
+          new Promise<void>(resolve => {
+            ctx.signal.addEventListener('abort', () => resolve(), {
+              once: true,
+            });
+          }),
+        ]);
+        if (stored.task.status?.state === TaskState.CANCELED) {
+          yield statusUpdate(stored.task);
+        }
       },
       cancelTask(request, ctx) {
         record('A2AService', 'CancelTask', ctx, request.tenant);

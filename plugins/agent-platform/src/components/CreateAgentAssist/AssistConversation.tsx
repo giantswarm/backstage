@@ -16,7 +16,7 @@ import { sessionDetailRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
-import { SessionTimeline } from '../SessionTimeline';
+import { SessionTimeline, StreamLossPhase } from '../SessionTimeline';
 import { AssistSuggestions } from './AssistSuggestions';
 import { mergeLiveTimeline } from './mergeLiveTimeline';
 
@@ -123,6 +123,16 @@ export function AssistConversation({
     send.isSending ||
     (confirmation.isAnswering && answerDispatched) ||
     view.isAgentWorking;
+  // A cut stream being picked up again, or the poll following a turn whose
+  // stream could not be: the working row says which.
+  let streamLost: StreamLossPhase | undefined;
+  if (showWorking) {
+    if (send.isReconnecting || confirmation.isReconnecting) {
+      streamLost = 'reconnecting';
+    } else if (send.isStreamLost || confirmation.isStreamLost) {
+      streamLost = 'following';
+    }
+  }
 
   // Follow the reply as it arrives while the reader is at the end, and leave
   // them alone once they scroll up — this panel's own scroller, never the page.
@@ -215,11 +225,7 @@ export function AssistConversation({
             agentName={agentName}
             agentAvatarUrl={agentAvatarUrl}
             isAgentWorking={showWorking}
-            streamLost={
-              (send.isStreamLost || confirmation.isStreamLost) && showWorking
-                ? 'following'
-                : undefined
-            }
+            streamLost={streamLost}
           />
           {suggestion && (
             <AssistSuggestions

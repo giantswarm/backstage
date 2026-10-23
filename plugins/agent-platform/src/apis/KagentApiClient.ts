@@ -41,6 +41,7 @@ import {
   OutboundMessage,
   RawSessionBodies,
   REQUEST_ID_HEADER,
+  StreamEnd,
 } from './types';
 
 export const kagentApiRef = createApiRef<KagentApi>({
@@ -108,10 +109,16 @@ const reportedDrift = new Set<string>();
  * `ServiceUnavailableError` as "kagent isn't deployed here" and stays silent, so
  * a read that genuinely failed must not borrow either name.
  */
+export const UPSTREAM_ERROR_NAME = 'UpstreamError';
+
 function upstreamError(message: string): Error {
   const error = new Error(message);
-  error.name = 'UpstreamError';
+  error.name = UPSTREAM_ERROR_NAME;
   return error;
+}
+
+export function isUpstreamError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === UPSTREAM_ERROR_NAME;
 }
 
 /**
@@ -136,6 +143,28 @@ async function readRequestError(
   };
 }
 
+/** How `relayStream`'s errors name the request they are about. */
+type StreamWording = {
+  /** What an in-band refusal refused. */
+  what: string;
+  /** What was under way when the connection failed. */
+  request: string;
+  /** The stream itself. */
+  stream: string;
+};
+
+const SEND_WORDING: StreamWording = {
+  what: 'the message',
+  request: 'sending the message',
+  stream: 'streaming send',
+};
+
+const SUBSCRIBE_WORDING: StreamWording = {
+  what: 'the subscription to the running turn',
+  request: 'subscribing to the running turn',
+  stream: 'subscription to the running turn',
+};
+
 /**
  * A streaming send failed in a way that says nothing about whether the message
  * reached kagent: the connection died, a gateway answered in kagent's stead, a
@@ -157,6 +186,17 @@ function streamTransportError(message: string): Error {
 
 export function isStreamTransportError(error: unknown): boolean {
   return (error as Error | undefined)?.name === STREAM_TRANSPORT_ERROR_NAME;
+}
+
+/**
+ * Whether a failed resubscription to a running turn is worth another try: the
+ * connection failed or a gateway answered (`StreamTransportError`), or the
+ * backend said in-band that the controller is unavailable or slow — what a
+ * controller rollout looks like (`UpstreamError`). Anything else is a decision
+ * no retry changes.
+ */
+export function isResubscribeRetryable(error: unknown): boolean {
+  return isStreamTransportError(error) || isUpstreamError(error);
 }
 
 /**
@@ -591,8 +631,8 @@ export class KagentApiClient implements KagentApi {
     message: OutboundMessage,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void> {
-    await this.relayStream(
+  ): Promise<StreamEnd> {
+    return this.relayStream(
       installation,
       `/kagent/sessions/${encodeURIComponent(sessionId)}/messages/stream`,
       {
@@ -614,8 +654,8 @@ export class KagentApiClient implements KagentApi {
     answer: ConfirmationAnswerRequest,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void> {
-    await this.relayStream(
+  ): Promise<StreamEnd> {
+    return this.relayStream(
       installation,
       `/kagent/sessions/${encodeURIComponent(sessionId)}/answer/stream`,
       answerBody(agent, answer),
@@ -624,11 +664,33 @@ export class KagentApiClient implements KagentApi {
     );
   }
 
+  async subscribeToTask(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    taskId: string,
+    onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
+  ): Promise<StreamEnd> {
+    return this.relayStream(
+      installation,
+      `/kagent/sessions/${encodeURIComponent(
+        sessionId,
+      )}/tasks/${encodeURIComponent(taskId)}/subscribe`,
+      { agentNamespace: agent.namespace, agentName: agent.name },
+      onEvent,
+      signal,
+      SUBSCRIBE_WORDING,
+    );
+  }
+
   /**
    * POST a body to one of the backend's streaming routes and hand every event
-   * frame to `onEvent` — the shared half of {@link streamMessage} and
-   * {@link streamAnswer}, so a message and an answer classify a broken stream
-   * identically. See {@link KagentApi.streamMessage} for the contract.
+   * frame to `onEvent` — the shared half of {@link streamMessage},
+   * {@link streamAnswer} and {@link subscribeToTask}, so a message, an answer
+   * and a resubscription classify a broken stream identically. See
+   * {@link KagentApi.streamMessage} for the contract. `wording` names the
+   * request in the errors it rejects with.
    *
    * `signal` reaches the fetch, so an abort ends the body read as well as a
    * request still waiting for its headers; both land in the same classification
@@ -640,7 +702,8 @@ export class KagentApiClient implements KagentApi {
     body: unknown,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
-  ): Promise<void> {
+    wording: StreamWording = SEND_WORDING,
+  ): Promise<StreamEnd> {
     const { url, headers } = await this.prepare(path, installation, {
       turn: true,
     });
@@ -658,7 +721,7 @@ export class KagentApiClient implements KagentApi {
       // reset it. Whether the message was dispatched is unknowable from here,
       // which is exactly what this name tells the caller to go and check.
       throw streamTransportError(
-        `The connection failed while sending the message: ${String(error)}`,
+        `The connection failed while ${wording.request}: ${String(error)}`,
       );
     }
 
@@ -673,7 +736,7 @@ export class KagentApiClient implements KagentApi {
         const { fields } = await readRequestError(response);
         throw Object.assign(
           streamTransportError(
-            `The streaming send failed with status ${response.status}.`,
+            `The ${wording.stream} failed with status ${response.status}.`,
           ),
           fields,
         );
@@ -689,7 +752,7 @@ export class KagentApiClient implements KagentApi {
       // resumed turn outlived the wait for its first event. Resolved like a
       // stream that ended without one, so the caller follows the turn through
       // the poll.
-      return;
+      return {};
     }
 
     const contentType = response.headers.get('content-type') ?? '';
@@ -705,6 +768,7 @@ export class KagentApiClient implements KagentApi {
     const decoder = new TextDecoder();
     const sse = createSseDataDecoder();
     let sawEvent = false;
+    const end: StreamEnd = {};
 
     const consumeFrame = (data: string) => {
       const frame = readStreamFrame(data);
@@ -722,9 +786,10 @@ export class KagentApiClient implements KagentApi {
         // preview short.
         if (!sawEvent) {
           throw upstreamError(
-            `The agent on ${installation} did not accept the message: ${frame.message}`,
+            `The agent on ${installation} did not accept ${wording.what}: ${frame.message}`,
           );
         }
+        end.error = frame.message;
       }
       // 'unreadable' frames cost their own liveness and nothing else.
     };
@@ -744,7 +809,7 @@ export class KagentApiClient implements KagentApi {
         consumeFrame(data);
       }
     } catch (error) {
-      if ((error as Error)?.name === 'UpstreamError') {
+      if (isUpstreamError(error)) {
         throw error;
       }
       // The stream died mid-read — the gateway's request timeout is the routine
@@ -752,10 +817,11 @@ export class KagentApiClient implements KagentApi {
       // finishes the job; without any, the caller verifies.
       if (!sawEvent) {
         throw streamTransportError(
-          `The event stream ended before the agent produced anything: ${String(error)}`,
+          `The ${wording.stream} ended before the agent produced anything: ${String(error)}`,
         );
       }
     }
+    return end;
   }
 
   async answerConfirmation(
