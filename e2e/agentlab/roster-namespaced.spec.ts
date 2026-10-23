@@ -1,4 +1,4 @@
-import { expect, open, rosterLinkOf, searchRoster, test } from './fixtures';
+import { expect, open, rosterRowOf, searchRoster, test } from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -19,7 +19,7 @@ test('a person with a namespaced kagent RoleBinding sees the agents of that name
   const dev = await signInAs(lab.users.dev);
   await open(dev, '/customize/agents', lab.users.dev);
   await searchRoster(dev, labAgent.name);
-  const row = rosterLinkOf(dev, labAgent.name);
+  const row = rosterRowOf(dev, labAgent.name);
   await expect(row, 'the roster lists the fixture agent').toBeVisible({
     timeout: rosterWait,
   });

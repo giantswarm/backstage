@@ -127,7 +127,7 @@ describe('EgressPolicyPicker', () => {
 
     expect(
       screen.getByText(
-        'No EgressPolicies in org-otter. Your tenant admins can add them.',
+        'No EgressPolicies in org-otter. The otter organization’s admins can add them.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
