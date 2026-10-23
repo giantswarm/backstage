@@ -37,6 +37,7 @@ export * from './GSReleaseInfo';
 export * from './InfoCard';
 export * from './InfoHint';
 export * from './JsonHighlight';
+export * from './LastDaysSelect';
 export * from './LoadingIndicator';
 export * from './ManifestDialog';
 export * from './MenuArrowIcons';

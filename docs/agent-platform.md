@@ -65,7 +65,11 @@ environment.
 
 Favorites follow the person across browsers. A `generalInformation` meta-agent
 adds a helper banner. Each agent's Harness, and a Harness filter, appear only
-when the agents run on more than one Harness.
+when the agents run on more than one Harness. **Last used by you** shows up
+to three agents, each once, walking the person's sessions newest first and
+counting a session only when its agent is still on the fleet. An agent that
+cannot start a session now stays in it. Like every item of the list, each
+opens the agent's page, where **Use this agent** starts a session.
 
 Every agent belongs to the platform or to one organization, shown under the
 label **Organization**: the organization's plain name (`acme`) for its
@@ -73,11 +77,18 @@ label **Organization**: the organization's plain name (`acme`) for its
 since the platform is no organization; beside "None", an info icon
 (`InfoHint`, a button the keyboard reaches) says "Available to all
 organizations" (`OrganizationValue`). (The code and agent-manager call this the
-agent's tenant; the UI never does.) Where the agents belong to more than one,
-each row names its organization and the filter bar filters by it, the
-platform's agents under the option "None"; the agent's page names it beside the
-overview. A row's link is the agent's name, its hit area stretched over the
-row, so the info icon and the star are buttons of their own above it. The New
+agent's tenant; the UI never does.) The agent's page names it beside the
+overview. Where the agents belong to more than one, the filter bar filters by
+it, the platform's agents under the option "None", and the row of an
+organization's agent names it as its first fact, "Organization: acme", in a
+column wider than the others: a row has no labels, and a bare `acme` would read
+like the environment beside it. The name is the filter option's
+(`organization none` for an organization named `none`). A platform agent's row
+leaves that column empty, since a "None" without its label says nothing; the
+column stays, so every row has the same fixed columns and they line up however
+the facts wrap (at phone width, where the facts have no columns, it is gone).
+An agent in another namespace reads `namespace <name>` there. A row's link is the agent's name, its hit area
+stretched over the row, so the star is a button of its own above it. The New
 agent form asks for it on Details from the places agent-manager lets the person
 create in (`get_info.namespaces.managed`): the only one is picked and named.
 Several of more than one kind are offered as a choice of **Platform**,
@@ -127,6 +138,14 @@ request instead of a direct change. Update all skills to latest moves every
 git skill of the agent to its repository's newest commit. A skill pinned
 behind the catalog's newest commit shows "Update available"; the mark comes
 from the skill catalog the page reads anyway.
+
+The facts beside the agent page's overview name its **Runtime** as the create
+form does: the Harness's title, **Platform default** once agent-manager's
+`get_info` names that Harness as the platform's, and its name and image
+beneath, read from the one Harness the agent names while the Overview is
+open. A Harness the person cannot read is shown by its name, and an agent
+whose runtime is not known (none named, or an inline one of a runtime the
+portal does not know) reads **Unknown runtime** and says which.
 
 ### Skills
 
@@ -370,6 +389,42 @@ in the page) and, through the browser's own prompt, a reload or a closed tab.
 The browser's Back, the command palette and navigation that code starts are
 not held: the app's router has no navigation blocker.
 
+### Workspaces
+
+A workspace is the repositories agent sessions work on, kept by
+workspace-manager. Each source is one owner on one provider instance and
+selects repositories by name, by language and topic filters, or both. Its
+exclusions are repository names, exact and compared without case, never
+patterns. They follow workspace-manager's `provider.Select`: an exclusion
+drops a repository whatever selects it, a pick by name included, and the
+manager keeps an exclusion that names no selected repository (it leaves
+nothing out until a filter selects that name).
+
+The editor (`/customize/workspaces/new`, `…/<installation>/<organization>/<name>/edit`)
+shows a source's exclusions under **Exclusions**: each a tag to remove, what
+they leave out now, and a field that offers the repositories the source
+selects now and takes a typed name too. The field reads that selection
+(`preview_workspace` with the source alone, searched as typed) only while its
+list is open, and says a typed name is not selected only from a fresh answer
+for that search with every match on its page. Unticking a filter match in the
+repository table excludes it as well.
+
+The source's count is the draft's own where it can be: without filters, the
+picks by name less the excluded ones, each name once. With filters only the
+manager knows which matches an exclusion drops, so the count comes from a
+preview: the draft's own when the source is its only one, else a preview of
+the source alone while the source is open. It says "counting…" until the
+answer is in, and "total not known" when the preview fails or cannot run (the
+source's provider instance is not connected or not configured), rather than
+subtracting exclusions that may match nothing. The "by filter" part is left
+out for topics that must all match, since `list_repositories` filters topics
+as "any of" and cannot count them. The preview's "n excluded" is the manager's
+count of repositories the exclusions left out.
+
+The Workspaces tab has no Sources column: its Repositories column gives the
+last synchronization's count, and the sources in full are on the workspace's
+page.
+
 ## Usage
 
 `/usage` reports over 7, 30 (the default) or 90 days:
@@ -383,7 +438,8 @@ not held: the app's router has no navigation blocker.
   no connector page shows (one since removed) is not linked.
 - **Your sessions** — the person's own usage from their kagent sessions,
   limited to kagent's window (`agentPlatform.kagent.sessionUsage.windowDays`,
-  30 days by default); wider ranges are disabled there. Its cost is the
+  30 days by default); wider ranges are disabled options there, each saying
+  how many days kagent keeps. Its cost is the
   gateway's price for the person's own model calls, in total and per agent —
   every call made as them, in these sessions or not. Where that cannot be read,
   it shows an estimate labelled **Est. cost**, and its tooltip says why.
@@ -854,7 +910,12 @@ default; picking it leaves `harness` out of the request. Any other pick is sent
 to `validate_agent` and `create_agent`. A single Harness shows read-only, none
 shows no section, and a failed read shows a warning. Changing the installation,
 or picking a model in another namespace, drops the pick. The Harness is fixed
-at create; the edit page shows it read-only.
+at create; the edit page shows it read-only. The field's words (`RUNTIME_LABEL`,
+`PLATFORM_DEFAULT_LABEL`, `harnessTitle`) live in `lib/harnesses.ts`, and its
+card (`HarnessSummary`) is the one Change Harness and the agent page's facts
+show. The review steps and the Details step's More options summary name the
+platform Harness by the same title and mark (`platformRuntimeLine`), or by the
+mark alone until its Harness is read.
 
 ### Extra egress origins
 
@@ -3005,7 +3066,10 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
 environment and the window (7, 30 or 90 days, in `?window=`,
-`lib/usageWindow.ts`).
+`lib/usageWindow.ts`). The window control is ui-react's `LastDaysSelect`: a
+select labelled "Time range" with the options "Last 7 days", "Last 30 days"
+and "Last 90 days", the same label, box and height as the Environment select
+beside it.
 
 | View          | Path                   | Source                          | Whose            |
 | ------------- | ---------------------- | ------------------------------- | ---------------- |
@@ -3299,7 +3363,7 @@ Nothing polls it.
 
 ### One window control for the whole screen
 
-The 7, 30 or 90-day toggle (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
+The 7, 30 or 90-day select (`USAGE_WINDOW_OPTIONS`; 30 is the default and stays
 out of the URL) drives every view. Gateway views query the window directly.
 Your sessions narrows kagent's `windowDays` answer client-side (`narrowDaily`)
 and disables wider choices; its by-agent and top tables still cover kagent's

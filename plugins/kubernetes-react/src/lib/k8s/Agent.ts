@@ -328,6 +328,11 @@ export class Agent extends KubeObject<AgentInterface> {
     return this.jsonData.spec?.harnessRef?.name;
   }
 
+  /** Whether the agent carries its Harness inline, under `spec.harness`. */
+  hasInlineHarness(): boolean {
+    return this.jsonData.spec?.harness !== undefined;
+  }
+
   /**
    * The runtime of the Harness inline under `spec.harness`, `undefined` when
    * the agent names its Harness instead (read that one's) or the inline one

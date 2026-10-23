@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   keepPreviousData,
   useQuery,
@@ -10,6 +10,7 @@ import type { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
 import { awaitSync } from '../lib/awaitedSyncs';
 import {
   previewableSources,
+  type SourceDraft,
   toCreateInput,
   toSizing,
   toUpdateInput,
@@ -224,6 +225,15 @@ export function useWorkspacePreview(
     placeholderData: keepPreviousData,
     retry: false,
   });
+  // The sources the answer shown resolved: its total and excluded hold for
+  // every page and search of them.
+  const resolved = useRef<string | undefined>(undefined);
+  if (query.data && !query.isPlaceholderData) {
+    resolved.current = JSON.stringify({
+      sources: parsed.sources,
+      sizing: parsed.sizing,
+    });
+  }
   return {
     ...query,
     hasSources: sources.length > 0,
@@ -231,7 +241,40 @@ export function useWorkspacePreview(
     isStale:
       request !== JSON.stringify({ sources, sizing, page, search }) ||
       query.isPlaceholderData,
+    /**
+     * The answer shown resolved the draft's sources as they are now, if
+     * maybe for another page or search: its `total` and `excluded` hold.
+     */
+    isSelectionCurrent:
+      query.data !== undefined &&
+      resolved.current === JSON.stringify({ sources, sizing }),
   };
+}
+
+/**
+ * What one source selects, as the manager resolves it: `preview_workspace`
+ * with the source alone, debounced like the draft's preview. Only the
+ * manager knows which of a filter's matches an exclusion drops, so the form
+ * counts a source with filters this way; the exclusion field lists what a
+ * source selects with it too. Nothing is read while `enabled` is false.
+ */
+export function useSourcePreview(
+  client: WorkspaceManagerClient | undefined,
+  organization: string | undefined,
+  source: SourceDraft,
+  { enabled, search = '' }: { enabled: boolean; search?: string },
+) {
+  return useWorkspacePreview(
+    client,
+    organization,
+    {
+      name: '',
+      sources: enabled ? [source] : [],
+      minimumGiB: '',
+      headroom: '',
+    },
+    { page: 1, search },
+  );
 }
 
 export type SaveWorkspace = {

@@ -6,8 +6,8 @@ import {
 
 import { useAgentManagerInfo } from './useAgentManager';
 import {
-  DEFAULT_PLATFORM_HARNESS,
   harnessChoicesOf,
+  platformHarnessOf,
   type HarnessChoice,
 } from '../lib/harnesses';
 
@@ -27,7 +27,7 @@ export function useHarnessChoices(
   isLoading: boolean;
 } {
   const { info } = useAgentManagerInfo(installation);
-  const platformHarness = info?.harness?.name || DEFAULT_PLATFORM_HARNESS;
+  const platformHarness = platformHarnessOf(info);
 
   const { resources, errors, isLoading } = useResources(
     installation ? [installation] : [],

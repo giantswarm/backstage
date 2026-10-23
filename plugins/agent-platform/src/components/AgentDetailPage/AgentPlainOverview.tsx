@@ -5,12 +5,15 @@ import { makeStyles } from '@material-ui/core';
 import {
   Agent,
   AgentSkill,
+  Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   CollapsibleMarkdown,
   DateComponent,
   type Fact,
+  InfoHint,
+  Mono,
   PageSection,
   ShowMore,
   TechnicalDetailsFoldOut,
@@ -20,6 +23,13 @@ import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
+import {
+  harnessChoiceOf,
+  PLATFORM_DEFAULT_LABEL,
+  RUNTIME_DESCRIPTION,
+  RUNTIME_LABEL,
+  runtimeLabel,
+} from '../../lib/harnesses';
 import type { ClientServingSummary } from '../../lib/serving';
 import {
   canonicalSkillId,
@@ -32,6 +42,7 @@ import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
+import { HarnessSummary } from '../HarnessSummary';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { OrganizationValue } from '../OrganizationValue';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
@@ -513,19 +524,109 @@ function ModelFact({
 }
 
 /**
- * The facts beside the overview: the model, where it runs, the organization it
- * belongs to, who created it and since when.
+ * The Harness the agent runs on, in the create form's words: the runtime
+ * card's `HarnessSummary`, with the platform default's mark once
+ * agent-manager has said which Harness that is. A Harness the person cannot
+ * read is known by its name alone, and an agent whose runtime is not known
+ * says so rather than leaving the fact blank.
+ */
+function RuntimeFact({
+  agent,
+  harness,
+  isReading,
+  platformHarness,
+}: {
+  agent: Agent;
+  harness?: Harness;
+  isReading: boolean;
+  platformHarness?: string;
+}) {
+  const name = agent.getHarnessName();
+  const hint = (
+    <InfoHint label="What the runtime is" size="medium">
+      {RUNTIME_DESCRIPTION}
+    </InfoHint>
+  );
+  const mark =
+    name !== undefined && name === platformHarness
+      ? PLATFORM_DEFAULT_LABEL
+      : undefined;
+
+  if (harness) {
+    return (
+      <Flex direction="column" gap="1">
+        <HarnessSummary
+          choice={harnessChoiceOf(harness)}
+          mark={mark}
+          titleAddon={hint}
+          compact
+        />
+      </Flex>
+    );
+  }
+
+  let title: ReactNode;
+  let note: string | undefined;
+  if (name) {
+    title = <Mono>{name}</Mono>;
+    note = isReading ? undefined : 'Its runtime could not be read.';
+  } else {
+    // An inline Harness, which the chart never renders: its runtime family
+    // is all there is to name, when this client knows it.
+    const inlineRuntime = agent.getInlineHarnessRuntime();
+    title = <Text variant="body-small">{runtimeLabel(inlineRuntime)}</Text>;
+    if (!agent.hasInlineHarness()) {
+      note = 'The agent names no Harness.';
+    } else if (!inlineRuntime) {
+      note = 'Its runtime is not known.';
+    }
+  }
+
+  return (
+    <Flex direction="column" gap="1">
+      <Flex align="center" gap="1">
+        {title}
+        {hint}
+      </Flex>
+      {mark && (
+        <Text variant="body-small" color="secondary">
+          {mark}
+        </Text>
+      )}
+      {note && (
+        <Text variant="body-x-small" color="secondary">
+          {note}
+        </Text>
+      )}
+    </Flex>
+  );
+}
+
+/**
+ * The facts beside the overview: the model and the runtime, where it runs,
+ * the organization it belongs to, who created it and since when.
  */
 export function agentFacts({
   agent,
   installation,
   modelConfig,
   modelServing,
+  harness,
+  isReadingHarness = false,
+  platformHarness,
 }: {
   agent: Agent;
   installation: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
+  /** The Harness the agent names, once read. */
+  harness?: Harness;
+  isReadingHarness?: boolean;
+  /**
+   * agent-manager's platform Harness, marked as the default; undefined until
+   * (or unless) `get_info` names it, so no Harness is marked on a guess.
+   */
+  platformHarness?: string;
 }): Fact[] {
   const failure = agent.getFailure();
   const created = agent.getCreatedTimestamp();
@@ -539,6 +640,17 @@ export function agentFacts({
           modelConfig={modelConfig}
           modelServing={modelServing}
           isFailing={failure?.field === 'model'}
+        />
+      ),
+    },
+    {
+      label: RUNTIME_LABEL,
+      value: (
+        <RuntimeFact
+          agent={agent}
+          harness={harness}
+          isReading={isReadingHarness}
+          platformHarness={platformHarness}
         />
       ),
     },

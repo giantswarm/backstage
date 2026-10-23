@@ -70,6 +70,8 @@ jest.mock('../TenantPicker', () => ({
 }));
 jest.mock('../HarnessPicker', () => ({
   HarnessPicker: () => <p>runtime picker</p>,
+  // The platform Harness not read: the summary names it by its mark.
+  useRuntimeChoices: () => ({ platformChoice: undefined }),
 }));
 jest.mock('../DefaultWorkspacePicker', () => ({
   DefaultWorkspacePicker: () => <p>default workspace picker</p>,
@@ -199,7 +201,7 @@ describe('NewAgentPage', () => {
       'support-triage',
     );
     expect(moreOptions().querySelector('summary')).toHaveTextContent(
-      'More options · Standard runtime, technical name support-triage',
+      'More options · Platform default runtime, technical name support-triage',
     );
     // The irreversible part is said beside the name, outside the
     // disclosure (M7).

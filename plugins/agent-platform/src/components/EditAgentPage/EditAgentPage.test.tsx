@@ -489,7 +489,7 @@ describe('EditAgentPage', () => {
     expect(harness?.closest('details')).not.toBeNull();
   });
 
-  it('calls the platform Harness the standard runtime', async () => {
+  it('calls the platform Harness by the runtime field’s mark', async () => {
     await renderEdit(`${BASE}/review`, {
       agent: { ...AGENT, harness: 'kagent' },
     });
@@ -497,7 +497,7 @@ describe('EditAgentPage', () => {
 
     expect(
       screen.getByText('Runtime', { selector: 'dt' }).nextElementSibling,
-    ).toHaveTextContent('Standard (platform default)');
+    ).toHaveTextContent('Platform default');
   });
 
   it('saves only what changed through update_agent and hands over to the agent’s page', async () => {
