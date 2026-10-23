@@ -1,7 +1,11 @@
 import { formatDuration } from '../../lib/formatDuration';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { toolDisplay } from '../../lib/workflowDisplay';
-import type { FlowStepNode, StepRunOverlay } from '../../lib/workflowGraph';
+import {
+  type FlowStepNode,
+  paginateLabel,
+  type StepRunOverlay,
+} from '../../lib/workflowGraph';
 
 /**
  * The words both step views — the flow canvas and its phone list — put on a
@@ -80,6 +84,16 @@ export function runSpoken(overlay: StepRunOverlay): string {
 /** Whether the last run passed the step by: drawn quieter. */
 export function quietStatus(overlay?: StepRunOverlay): boolean {
   return overlay?.status === 'skipped' || overlay?.status === 'notRun';
+}
+
+/** A step's feature markers in words, for its accessible name. */
+export function featureWords(
+  node: Pick<FlowStepNode, 'paginate' | 'jq'>,
+): string[] {
+  return [
+    ...(node.paginate ? [paginateLabel(node.paginate).toLowerCase()] : []),
+    ...(node.jq ? ['result reshaped with jq'] : []),
+  ];
 }
 
 /** "Step 2: Apply the manifests, kubernetes · apply, last run failed". */

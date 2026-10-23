@@ -27,6 +27,7 @@ import type { ToolEffect } from '../../lib/toolAnnotations';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { workflowEffect } from '../../lib/workflowDisplay';
 import { workflowRunKeys } from '../../lib/workflowRunKeys';
+import { workflowShapeLabel } from '../../lib/workflowShape';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
@@ -119,7 +120,6 @@ function WorkflowRows({
   });
 
   const rows = workflows.map<Row>((workflow, index) => {
-    const steps = workflow.getStepCount();
     const response = runs[index]?.data;
     const effect = workflowEffect(workflow.getName(), tools);
     const category = workflow.getCategory();
@@ -128,7 +128,8 @@ function WorkflowRows({
       name: workflow.getName(),
       description: workflow.getDescription() ?? '',
       ...(category ? { category } : {}),
-      steps: countNoun(steps, 'step'),
+      // The steps at every depth: a loop's steps count, not only the loop.
+      steps: workflowShapeLabel(workflow.getSteps()),
       ...(effect ? { effect } : {}),
       ...(response ? { runs: runsLabel(response) } : {}),
       source: SOURCE_LABELS[isGitOpsManaged(workflow) ? 'gitops' : 'manual'],
@@ -160,7 +161,8 @@ function WorkflowRows({
     {
       id: 'steps',
       label: 'Steps',
-      defaultWidth: '0.8fr',
+      // Room for a nested workflow's "8 tool steps in 2 nested loops".
+      defaultWidth: '1.4fr',
       cell: row => <CellText title={row.steps} />,
     },
     {

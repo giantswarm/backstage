@@ -1,4 +1,4 @@
-import { useCallback, useId, useRef, useState } from 'react';
+import { ReactNode, useCallback, useId, useRef, useState } from 'react';
 import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ShowMore } from '@giantswarm/backstage-plugin-ui-react';
@@ -6,15 +6,18 @@ import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { conditionSummary } from '../../lib/workflowDisplay';
 import {
+  featureLabels,
   findFlowStep,
   FlowItem,
   FlowStepNode,
-  forEachSummary,
+  groupLabel as groupLine,
   StepRunOverlay,
   WorkflowGraph,
 } from '../../lib/workflowGraph';
+import { workflowShapeLabel } from '../../lib/workflowShape';
 import {
   accessibleName,
+  featureWords,
   quietStatus,
   runBadgeLabel,
   runSpoken,
@@ -176,7 +179,10 @@ function useRunClass(overlay?: StepRunOverlay): string {
 
 interface StepCardProps {
   node: FlowStepNode;
-  /** A group head's second line: what the loop runs over, or "at the same time". */
+  /**
+   * A group head's second line: what the loop runs over and how many at
+   * once, or "at the same time".
+   */
   groupLabel?: string;
   prefixes: ServerPrefixInfo[];
   stepIds: string[];
@@ -207,7 +213,9 @@ function StepCard({
   const gate = node.condition
     ? conditionSummary(node.condition, stepIds)
     : undefined;
-  const hasMarkers = Boolean(effect) || node.allowFailure;
+  const features = featureLabels(node);
+  const hasMarkers =
+    Boolean(effect) || node.allowFailure || features.length > 0;
 
   let stateClass = '';
   if (isOpen) stateClass = classes.cardOpen;
@@ -230,6 +238,7 @@ function StepCard({
         gate,
         effect && TOOL_EFFECT_LABELS[effect].toLowerCase(),
         node.allowFailure && 'may fail',
+        ...featureWords(node),
         overlay && runSpoken(overlay),
       ])}
       onClick={() => onToggle(node.key)}
@@ -266,6 +275,11 @@ function StepCard({
               May fail
             </MarkerBadge>
           )}
+          {features.map(feature => (
+            <MarkerBadge key={feature} tone="neutral" size="compact">
+              {feature}
+            </MarkerBadge>
+          ))}
         </span>
       )}
     </button>
@@ -290,7 +304,8 @@ export interface WorkflowStepListProps {
  * Each step is a card that opens its details in place, under it
  * (`aria-expanded`) — several may be open at once, so opening one never
  * moves the one being read. A forEach or parallel step is a card whose steps
- * are an indented list under it; a condition is an "Only if …" line on the
+ * are an indented list under it — a nested loop's steps indented once more;
+ * a condition is an "Only if …" line on the
  * step it may skip; the cleanup steps are their own section at the end, as
  * the canvas's dashed lane is. Long workflows show a page of steps at a time.
  */
@@ -352,6 +367,7 @@ export function WorkflowStepList({
             id={detailsId(node.key)}
             context={context}
             stepIds={graph.stepIds}
+            stepNumbers={graph.stepNumbers}
             prefixes={prefixes}
             installation={installation}
             overlay={overlayOf(node.key)}
@@ -363,7 +379,9 @@ export function WorkflowStepList({
     );
   };
 
-  const renderItem = (item: FlowItem) => {
+  // A group's steps are an indented list under its card, and a group among
+  // them nests its own list the same way, at any depth.
+  const renderItem = (item: FlowItem): ReactNode => {
     if (item.kind === 'step') {
       return (
         <li key={item.node.key} className={classes.item}>
@@ -371,42 +389,33 @@ export function WorkflowStepList({
         </li>
       );
     }
-    const label =
-      item.kind === 'forEach'
-        ? forEachSummary(item.forEach, graph.stepIds)
-        : 'These run at the same time';
     return (
       <li key={item.node.key} className={classes.item}>
-        {renderStep(item.node, label)}
+        {renderStep(item.node, groupLine(item, graph.stepNumbers))}
         {item.children.length > 0 && (
           <ol
             className={`${classes.list} ${classes.children}`}
             aria-label={`Steps of step ${item.node.number}`}
           >
-            {item.children.map(child => (
-              <li key={child.key} className={classes.item}>
-                {renderStep(child)}
-              </li>
-            ))}
+            {item.children.map(renderItem)}
           </ol>
         )}
       </li>
     );
   };
 
-  const stepCount = graph.main.length;
   const cleanupHeadingId = `${idPrefix}-cleanup`;
 
   return (
     <div className={classes.item}>
-      {stepCount > 0 && (
+      {graph.main.length > 0 && (
         <ShowMore items={graph.main} noun="step">
           {visible => (
             <ol
               className={classes.list}
-              aria-label={`The workflow's ${stepCount} step${
-                stepCount === 1 ? '' : 's'
-              }, in order`}
+              aria-label={`The workflow's ${workflowShapeLabel(
+                graph.main.map(item => item.node.definition),
+              )}, in order`}
             >
               {visible.map(renderItem)}
             </ol>

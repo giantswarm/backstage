@@ -14,6 +14,7 @@ import {
 import {
   FlowStepContext,
   forEachSummary,
+  loopParallelism,
   StepRunOverlay,
 } from '../../lib/workflowGraph';
 import { DisclosureAccordion, useWorkflowPageLinks } from '../shared';
@@ -69,6 +70,25 @@ const useStyles = makeStyles({
     fontFamily: 'monospace',
     fontSize: 12,
     color: 'var(--bui-fg-secondary)',
+  },
+  // A jq program as written: its line breaks kept, and a long line scrolls
+  // inside the block rather than widening the details past a phone screen.
+  program: {
+    minWidth: 0,
+  },
+  code: {
+    margin: '4px 0 0',
+    padding: '8px 10px',
+    boxSizing: 'border-box',
+    maxWidth: '100%',
+    overflowX: 'auto',
+    whiteSpace: 'pre',
+    fontFamily: 'monospace',
+    fontSize: 12.5,
+    lineHeight: 1.5,
+    background: 'var(--bui-bg-neutral-2)',
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 8,
   },
   // Inside the step's own box on the canvas: the box is the panel, its title
   // the heading, and the step's button folds it — so no frame, heading or
@@ -209,7 +229,7 @@ function TechnicalFields({ context }: { context: FlowStepContext }) {
   if (isHead && group?.kind === 'forEach') {
     rows.push([
       'Items',
-      <code className={classes.mono}>{group.forEach.items}</code>,
+      <code className={classes.mono}>{String(group.forEach.items ?? '')}</code>,
     ]);
     if (group.forEach.as) {
       rows.push([
@@ -217,6 +237,35 @@ function TechnicalFields({ context }: { context: FlowStepContext }) {
         <code className={classes.mono}>{group.forEach.as}</code>,
       ]);
     }
+    const parallelism = loopParallelism(group.forEach);
+    rows.push([
+      'Parallelism',
+      parallelism === undefined ? (
+        'not set (one after another)'
+      ) : (
+        <code className={classes.mono}>{parallelism}</code>
+      ),
+    ]);
+  }
+  if (node.paginate) {
+    const paginate = definition.paginate ?? {};
+    const set = (['itemsField', 'tokenField', 'tokenArg'] as const).filter(
+      field => typeof paginate[field] === 'string',
+    );
+    rows.push([
+      'Pagination',
+      <>
+        <div className={classes.mono}>
+          maxPages: {node.paginate.maxPages}
+          {typeof paginate.maxPages === 'number' ? '' : ' (default)'}
+        </div>
+        {set.map(field => (
+          <div key={field} className={classes.mono}>
+            {field}: {paginate[field]}
+          </div>
+        ))}
+      </>,
+    ]);
   }
   if (node.condition) {
     rows.push([
@@ -263,6 +312,16 @@ function TechnicalFields({ context }: { context: FlowStepContext }) {
           </div>
         </Box>
       )}
+      {node.jq && (
+        <div className={classes.program}>
+          <Text as="p" variant="body-small" className={classes.caption}>
+            jq program
+          </Text>
+          <pre className={classes.code} data-testid="step-jq-program">
+            <code>{node.jq}</code>
+          </pre>
+        </div>
+      )}
     </Flex>
   );
 }
@@ -273,6 +332,8 @@ export interface WorkflowStepDetailsProps {
   context: FlowStepContext;
   /** Top-level step ids, to name a `fromStep` reference by number. */
   stepIds: string[];
+  /** Every step's number by its id, to name the step a loop reads. */
+  stepNumbers: Record<string, string>;
   prefixes: ServerPrefixInfo[];
   installation: string;
   /** The latest run's outcome for this step, when a run is known. */
@@ -301,6 +362,7 @@ export function WorkflowStepDetails({
   id,
   context,
   stepIds,
+  stepNumbers,
   prefixes,
   installation,
   overlay,
@@ -309,9 +371,8 @@ export function WorkflowStepDetails({
   onClose,
 }: WorkflowStepDetailsProps) {
   const classes = useStyles();
-  const { node, group } = context;
+  const { node, group, container: parent } = context;
   const isHead = group?.node.key === node.key;
-  const parent = !isHead ? group : undefined;
   const heading =
     node.lane === 'cleanup'
       ? `Cleanup step · ${node.title}`
@@ -330,10 +391,23 @@ export function WorkflowStepDetails({
   if (isHead && group?.kind === 'forEach') {
     const count = group.children.length;
     facts.push(
-      `${forEachSummary(group.forEach, stepIds)}, it runs its ${count} step${
-        count === 1 ? '' : 's'
-      } in order.`,
+      `${forEachSummary(group.forEach, stepNumbers)}, it runs its ${countNoun(
+        count,
+        'step',
+      )} in order.`,
     );
+    const parallelism = loopParallelism(group.forEach);
+    let iterations = 'The items run one after another';
+    if (parallelism === 1) iterations = 'The items run one at a time';
+    else if (parallelism) iterations = `Up to ${parallelism} items run at once`;
+    // A nested loop's limit holds within one item of the loop around it.
+    const within =
+      parent?.kind === 'forEach'
+        ? `, within each ${parent.forEach.as || 'item'} of step ${
+            parent.node.number
+          }`
+        : '';
+    facts.push(`${iterations}${within}.`);
   }
   if (isHead && group?.kind === 'parallel') {
     const count = group.children.length;
@@ -344,7 +418,7 @@ export function WorkflowStepDetails({
       parent.kind === 'forEach'
         ? `It belongs to step ${parent.node.number} (${parent.node.title}) and runs ${forEachSummary(
             parent.forEach,
-            stepIds,
+            stepNumbers,
           ).replace(/^F/, 'f')}.`
         : `It belongs to step ${parent.node.number} (${parent.node.title}) and runs at the same time as its siblings.`,
     );
@@ -360,6 +434,21 @@ export function WorkflowStepDetails({
         node.condition,
         stepIds,
       )} — otherwise this step is skipped.`,
+    );
+  }
+  if (node.paginate) {
+    facts.push(
+      `Follows the tool's pages, up to ${countNoun(
+        node.paginate.maxPages,
+        'page',
+      )}, and keeps every page's items as one list.`,
+    );
+  }
+  if (node.jq) {
+    facts.push(
+      isHead && group?.kind === 'forEach'
+        ? 'A jq program turns the records of its iterations into its result.'
+        : 'A jq program reshapes its result before later steps use it.',
     );
   }
   if (node.allowFailure) {

@@ -1,6 +1,7 @@
 import { MusterWorkflow, WorkflowCondition, WorkflowStep } from './k8s';
 import { ServerPrefixInfo, matchServers } from './toolGrouping';
 import { WORKFLOW_TOOL_PREFIX } from './workflowReferences';
+import { allSteps } from './workflowShape';
 
 /** A step's own tool and the one its condition calls, where it has them. */
 function ownTools(step: {
@@ -12,19 +13,15 @@ function ownTools(step: {
   );
 }
 
+/** The tools of the steps and of the steps they hold, at every depth. */
 function stepTools(steps: WorkflowStep[]): string[] {
-  return steps.flatMap(step => [
-    ...ownTools(step),
-    ...[...(step.parallel ?? []), ...(step.forEach?.steps ?? [])].flatMap(
-      ownTools,
-    ),
-  ]);
+  return allSteps(steps).flatMap(ownTools);
 }
 
 /**
  * Every tool a workflow's run can call: muster's `status.referencedTools` and
- * the definition's own steps and their conditions (parallel, forEach and
- * onFailure included), also
+ * the definition's own steps and their conditions (parallel, forEach — nested
+ * ones too — and onFailure included), also
  * through the workflows it calls as a step (`workflow_<name>`), each once.
  */
 export function toolsOfWorkflow(

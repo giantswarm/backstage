@@ -29,6 +29,7 @@ export type {
   WorkflowStep,
   WorkflowSubStep,
   WorkflowForEach,
+  WorkflowPaginate,
   WorkflowCondition,
   WorkflowConditionExpectation,
 } from './MusterWorkflow';
