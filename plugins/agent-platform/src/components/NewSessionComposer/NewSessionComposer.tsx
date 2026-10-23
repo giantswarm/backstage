@@ -58,6 +58,8 @@ import {
   type Workspace,
 } from '../../lib/workspaceManager';
 import { WorkspacePicker } from '../WorkspacePicker';
+import { ToolchainPicker } from '../ToolchainPicker';
+import { toolchainEntry, type ToolchainPick } from '../../lib/toolchainManager';
 import { WorkspaceStartNotice } from '../WorkspaceStartNotice';
 
 /** Rows the textarea shows before and after it expands. */
@@ -276,19 +278,25 @@ export type NewSessionComposerProps = {
    * agent's installation, or none (the default). Off for surfaces whose
    * session is not the person's own work, agent creation's assistant for
    * one. The chosen workspace reaches {@link onStart}, which starts the
-   * session in it (`useCreateSession`'s `workspace`).
+   * session in it (`useCreateSession`'s `workspace`). The same surfaces
+   * offer the session's toolchains beside it, preset to the agent's
+   * defaults (`useCreateSession`'s `toolchains`).
    */
   offersWorkspaces?: boolean;
   /**
    * Receives the chosen agent, the trimmed prompt, the attached images (none
-   * without {@link acceptsImages}) and the chosen workspace's name (none
-   * without {@link offersWorkspaces}).
+   * without {@link acceptsImages}), the chosen workspace's name (none
+   * without {@link offersWorkspaces}) and, where the person changed the
+   * agent's default toolchains, the session's toolchains as `start_session`
+   * names them (`name[@version]`; an empty list mounts none). The toolchains
+   * are offered beside the workspace.
    */
   onStart: (
     agent: AgentRow,
     prompt: string,
     images: ComposerImage[],
     workspace?: string,
+    toolchains?: string[],
   ) => void;
 };
 
@@ -536,6 +544,16 @@ export function NewSessionComposer({
       setWorkspaceChoice({ agentId, workspace: next }),
     [],
   );
+  // The toolchains chosen for the agent they were chosen with, as the
+  // workspace is; `undefined` keeps the agent's defaults.
+  const [toolchainChoice, setToolchainChoice] = useState<{
+    agentId: string;
+    picks: ToolchainPick[] | undefined;
+  }>();
+  const toolchains =
+    offersWorkspaces && toolchainChoice?.agentId === selectedAgent?.id
+      ? toolchainChoice?.picks
+      : undefined;
   // The workspace the last Start asked for: what the notice above the box
   // speaks of, whatever is picked since.
   const [startedIn, setStartedIn] = useState<Workspace>();
@@ -765,11 +783,13 @@ export function NewSessionComposer({
       return;
     }
     setStartedIn(inWorkspace);
-    if (inWorkspace) {
-      onStart(selectedAgent, text, attached.images, inWorkspace.name);
-    } else {
-      onStart(selectedAgent, text, attached.images);
-    }
+    onStart(
+      selectedAgent,
+      text,
+      attached.images,
+      inWorkspace?.name,
+      toolchains?.map(toolchainEntry),
+    );
     // Deliberately not cleared here. A create can fail, and this is the only
     // place the prompt still exists — the caller clears it by unmounting this
     // component (navigating away) once the session exists.
@@ -935,6 +955,17 @@ export function NewSessionComposer({
           onChange={next => chooseWorkspace(selectedAgent.id, next)}
           isDisabled={isStarting}
           showLabel={pickerOnTop && Boolean(pickerLabel)}
+        />
+      )}
+      {offersWorkspaces && selectedAgent && (
+        <ToolchainPicker
+          key={`toolchains:${selectedAgent.id}`}
+          agent={selectedAgent}
+          value={toolchains}
+          onChange={picks =>
+            setToolchainChoice({ agentId: selectedAgent.id, picks })
+          }
+          isDisabled={isStarting}
         />
       )}
       {renderPickerAccessory?.(selectedAgent)}

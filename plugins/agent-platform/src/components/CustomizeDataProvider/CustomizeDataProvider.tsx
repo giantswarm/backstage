@@ -4,6 +4,7 @@ import {
   useSkillCatalog,
   type SkillCatalog,
 } from '../../hooks/useSkillCatalog';
+import { useScopedToolchainInstallations } from '../../hooks/useToolchainManager';
 import { clientLookupOf } from '../../lib/serving';
 import { uniqueSkills } from '../../lib/customize';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
@@ -39,6 +40,11 @@ export type CustomizeDataValue = {
    * workspace-manager); `undefined` until that is known.
    */
   hasWorkspaces?: boolean;
+  /**
+   * Whether an installation in scope offers toolchains (its muster lists the
+   * toolchain-manager); `undefined` until that is known.
+   */
+  hasToolchains?: boolean;
   /** The models in scope, each with what the serving layer says about it. */
   modelRows: ModelRow[];
   skillCatalog: SkillCatalog;
@@ -86,6 +92,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     rows: { length: workspaceCount },
     failures: workspaceFailures,
   } = useWorkspacesData();
+  const { hasToolchains } = useScopedToolchainInstallations();
   // Nothing read, a sign-in or a refusal in the way: no count, not "0".
   const workspacesUnread =
     workspaceCount === 0 && Object.keys(workspaceFailures).length > 0;
@@ -138,6 +145,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
         })(),
       },
       hasWorkspaces,
+      hasToolchains,
       hasSkillRepositories: skillCatalog.isLoading
         ? undefined
         : skillCatalog.hasRepositories,
@@ -150,6 +158,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
       modelRows,
       skillCatalog,
       hasWorkspaces,
+      hasToolchains,
       workspacesLoading,
       workspaceCount,
       workspacesUnread,
