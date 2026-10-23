@@ -59,10 +59,22 @@ async function goVersions(
   });
   if (await signIn.isVisible()) {
     // muster's per-server sign-in to the toolchain-manager: a popup through
-    // muster's OAuth proxy to the lab Dex, as the same fixture account.
-    const popup = page.waitForEvent('popup');
+    // muster's OAuth proxy. On a lab whose toolchain-manager accepts the lab
+    // Dex it is completed as the same fixture account; one through its
+    // GitHub App is the person's own GitHub sign-in, which no headless run
+    // completes.
+    const popupEvent = page.waitForEvent('popup');
     await signIn.getByRole('button', { name: /Sign in/ }).click();
-    await completeDexLogin(await popup, lab.users.admin);
+    const popup = await popupEvent;
+    await popup.waitForURL(url => url.href !== 'about:blank');
+    if (new URL(popup.url()).hostname === 'github.com') {
+      await popup.close();
+      return {
+        missing:
+          'the admin has not signed in to the toolchain-manager through its GitHub App (a real GitHub sign-in, once per lab muster)',
+      };
+    }
+    await completeDexLogin(popup, lab.users.admin);
     await expect(unavailable.or(grant).or(go).first()).toBeVisible({
       timeout: 2 * 60_000,
     });
