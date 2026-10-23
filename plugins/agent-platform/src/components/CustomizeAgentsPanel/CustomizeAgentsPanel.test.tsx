@@ -896,19 +896,20 @@ describe('CustomizeAgentsPanel', () => {
       const strip = screen.getByRole('region', { name: 'Last used by you' });
       const cards = within(strip).getAllByRole('link');
       expect(cards).toHaveLength(2);
-      expect(cards[0]).toHaveTextContent('Docs');
-      // The agent's page, like every other item of the list: it is where a
-      // session starts, with Use this agent.
+      // The name is the link, as on the list's rows, and opens the agent's
+      // page like every other item of the list: it is where a session
+      // starts, with Use this agent.
+      expect(cards[0]).toHaveAccessibleName('Docs');
       expect(cards[0]).toHaveAttribute(
         'href',
         `/customize/agents/${docs.installation}/${docs.namespace}/docs`,
       );
-      expect(cards[1]).toHaveTextContent('Support triage');
+      expect(cards[1]).toHaveAccessibleName('Support triage');
       expect(cards[1]).toHaveAttribute(
         'href',
         '/customize/agents/golem/support/triage',
       );
-      expect(cards[1]).not.toHaveTextContent('Start a session');
+      expect(strip).not.toHaveTextContent('Start a session');
     });
 
     it('shows at most three cards however many sessions there are', async () => {

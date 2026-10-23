@@ -37,7 +37,11 @@ const useStyles = makeStyles({
       gap: 'var(--bui-space-2)',
     },
   },
+  // The card opens the agent, as the list's rows do: its name is the link,
+  // whose hit area stretches over the whole card, so the link is named by the
+  // agent alone and the card stays one target.
   card: {
+    position: 'relative',
     display: 'flex',
     alignItems: 'center',
     gap: 'var(--bui-space-3)',
@@ -48,12 +52,31 @@ const useStyles = makeStyles({
     borderRadius: 12,
     background: 'var(--bui-bg-neutral-1)',
     color: 'var(--bui-fg-primary)',
-    textDecoration: 'none',
     transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
     '&:hover': {
       borderColor: 'var(--bui-border-2)',
       boxShadow: '0 4px 16px rgba(0, 38, 69, 0.06)',
+    },
+  },
+  nameLink: {
+    color: 'inherit',
+    textDecoration: 'none',
+    '&:hover': {
       textDecoration: 'none',
+    },
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      inset: 0,
+      borderRadius: 12,
+    },
+    // The focus ring goes round the card, as the hover does.
+    '&[data-focus-visible]': {
+      outline: 'none',
+    },
+    '&[data-focus-visible]::after': {
+      outline: '2px solid var(--bui-ring)',
+      outlineOffset: -2,
     },
   },
   text: {
@@ -112,36 +135,37 @@ export function LastUsedAgents() {
       </div>
       <ul className={classes.grid}>
         {recent.map(({ agent, lastUsedAt }) => (
-          <li key={agent.id}>
-            <Link
-              href={agentDetailRoute({
-                installation: agent.installation,
-                namespace: agent.namespace,
-                name: agent.technicalName,
-              })}
-              className={classes.card}
-            >
-              <AgentAvatar
-                size="medium"
-                purpose="decoration"
-                name={agent.name}
-                src={
-                  buildAvatarUrl(agent.installation, agent.technicalName, {
-                    size: CARD_AVATAR_SIZE,
-                  }) ?? ''
-                }
-              />
-              <span className={classes.text}>
-                <Text as="span" variant="body-medium" weight="bold" truncate>
-                  {agent.name}
+          <li key={agent.id} className={classes.card}>
+            <AgentAvatar
+              size="medium"
+              purpose="decoration"
+              name={agent.name}
+              src={
+                buildAvatarUrl(agent.installation, agent.technicalName, {
+                  size: CARD_AVATAR_SIZE,
+                }) ?? ''
+              }
+            />
+            <span className={classes.text}>
+              <Link
+                href={agentDetailRoute({
+                  installation: agent.installation,
+                  namespace: agent.namespace,
+                  name: agent.technicalName,
+                })}
+                variant="body-medium"
+                weight="bold"
+                truncate
+                className={classes.nameLink}
+              >
+                {agent.name}
+              </Link>
+              {lastUsedAt && (
+                <Text as="span" variant="body-small" color="secondary">
+                  <DateComponent value={lastUsedAt} relative />
                 </Text>
-                {lastUsedAt && (
-                  <Text as="span" variant="body-small" color="secondary">
-                    <DateComponent value={lastUsedAt} relative />
-                  </Text>
-                )}
-              </span>
-            </Link>
+              )}
+            </span>
           </li>
         ))}
       </ul>
