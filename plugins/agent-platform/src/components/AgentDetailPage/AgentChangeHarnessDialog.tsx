@@ -137,9 +137,10 @@ export function AgentChangeHarnessDialog({
     installation,
     opensPullRequest ? change : undefined,
   );
-  const missing =
-    missingReleaseFile(commitDryRun.failure) ??
-    missingReleaseFile(updating.failure);
+  const missingFailure = [commitDryRun.failure, updating.failure].find(
+    candidate => missingReleaseFile(candidate) !== undefined,
+  );
+  const missing = missingReleaseFile(missingFailure);
 
   const notConnected =
     failure?.kind === 'not-connected' ||
@@ -314,7 +315,13 @@ export function AgentChangeHarnessDialog({
         )}
 
         <div className={classes.status}>
-          {missing && <MissingReleaseFileAlert missing={missing} />}
+          {missing && (
+            <MissingReleaseFileAlert
+              missing={missing}
+              message={missingFailure?.message}
+              action="harness"
+            />
+          )}
           {isChecking && (
             <LoadingIndicator
               label={

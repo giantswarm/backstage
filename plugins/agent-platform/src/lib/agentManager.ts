@@ -473,6 +473,28 @@ export function missingReleaseFile(
   };
 }
 
+// agent-manager's `auth_required` for a commit whose call carries no GitHub
+// authorization at all (`gitHubToken` in agent-manager's
+// internal/agents/commit.go). Its other `auth_required`, "GitHub refused your
+// token on …", also covers an App not installed on the repository or no push
+// access, which no sign-in fixes. The test pins the exact wording.
+const MISSING_GITHUB_AUTHORIZATION =
+  /with your GitHub authorization, and this call carries none/;
+
+/**
+ * Whether a refusal is agent-manager's `auth_required` for a call that carried
+ * no GitHub authorization: the one form of it that signing in to
+ * agent-manager in muster fixes.
+ */
+export function missingGitHubAuthorization(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): boolean {
+  return (
+    failure?.code === 'auth_required' &&
+    MISSING_GITHUB_AUTHORIZATION.test(failure.message)
+  );
+}
+
 /**
  * agent-manager's refusal of an extra egress origin on a coding Harness: such
  * an agent reaches its Harness's platform list only (`guardCoding` in

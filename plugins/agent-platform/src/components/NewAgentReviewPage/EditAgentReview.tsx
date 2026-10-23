@@ -11,6 +11,7 @@ import {
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { classifyCommitFailure } from '../../hooks/useAgentCommitCheck';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useSignInTool } from '../../hooks/useSignInTool';
 import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
@@ -31,6 +32,7 @@ import {
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
 import { PickedEgressPolicies } from '../PickedEgressPolicies';
+import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
 import { pluginEntryName, pluginSummary } from '../../lib/plugins';
 import {
   harnessTitle,
@@ -61,7 +63,13 @@ import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
 import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
 import { ValidationRefusal } from '../ValidationRefusal';
 
-/** A refused or failed dry run or save, in agent-manager's words. */
+/**
+ * A refused or failed dry run or save, in agent-manager's words. The two
+ * refusals the edit page checks for before the form — a release outside
+ * agent-manager's directory, a GitHub authorization a sign-in gives — read as
+ * they do there, should the repository or the authorization change in
+ * between (`classifyCommitFailure`).
+ */
 function WriteFailure({
   installation,
   failure,
@@ -71,12 +79,23 @@ function WriteFailure({
   failure: AgentWriteFailure;
   title: string;
 }) {
-  if (failure.kind === 'not-connected') {
+  const refused = classifyCommitFailure(failure);
+  if (refused?.kind === 'connect') {
     return (
       <ConnectAgentManagerAlert
         installation={installation}
-        message={failure.message}
+        message={refused.message}
         action="Agents are edited"
+        needsGitHub={refused.github}
+      />
+    );
+  }
+  if (refused?.kind === 'release-outside') {
+    return (
+      <MissingReleaseFileAlert
+        missing={refused.missing}
+        message={refused.message}
+        action="edit"
       />
     );
   }

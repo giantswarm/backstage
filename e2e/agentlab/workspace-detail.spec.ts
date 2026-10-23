@@ -31,9 +31,9 @@ test.skip(
 /**
  * Whether muster still waits for the person's sign-in to workspace-manager.
  * The GitHub grant is the person's, not the browser's (`grantScope: subject`):
- * a run's fresh muster session adopts it, and the card a first read may show
- * gives way once it has, or once its Sign in reuses the grant without a
- * GitHub page. Only a person with no grant at all keeps the card.
+ * a run's fresh muster session adopts it, so a person who holds it reads the
+ * page without the sign-in card. Only a person with no grant gets the card,
+ * whose sign-in needs GitHub, which no headless run completes: the spec skips.
  */
 async function needsManagerSignIn(page: Page): Promise<boolean> {
   const card = page.getByTestId('workspaces-sign-in');
@@ -44,26 +44,7 @@ async function needsManagerSignIn(page: Page): Promise<boolean> {
     .getByText(/^Organization .+ · /)
     .or(main.getByText(/^You are not a member of /));
   await expect(card.or(read).first()).toBeVisible();
-  if (!(await card.isVisible())) {
-    return false;
-  }
-  // A sign-in that needs GitHub opens its page in a window of its own, which
-  // no headless run completes: the card stays and the spec skips.
-  const popups: Page[] = [];
-  const keep = (popup: Page) => popups.push(popup);
-  page.on('popup', keep);
-  try {
-    await card.getByRole('button', { name: 'Sign in' }).click();
-    await expect(read.first()).toBeVisible({ timeout: 30_000 });
-    return false;
-  } catch {
-    return true;
-  } finally {
-    page.off('popup', keep);
-    await Promise.all(
-      popups.map(popup => popup.close().catch(() => undefined)),
-    );
-  }
+  return card.isVisible();
 }
 
 /**

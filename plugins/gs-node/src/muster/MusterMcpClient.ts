@@ -436,7 +436,15 @@ export class MusterMcpClient {
   ): Promise<T> {
     const caller = this.callerOf(options);
     const token = this.tokenOf(options);
-    const pending = this.signIns.pendingFor(caller, toolName);
+    let pending = this.signIns.pendingFor(caller, toolName);
+    if (pending && pending.token !== token) {
+      // Another muster session of the person: muster may have connected it
+      // with the person's grant. Its status says, without a sign-in.
+      await this.signIns.check(caller, pending.server, token, () =>
+        this.getResource(AUTH_STATUS_RESOURCE, options),
+      );
+      pending = this.signIns.pendingFor(caller, toolName);
+    }
     if (pending) {
       // The link and muster's text belong to the token muster answered;
       // another token of the person (a reload, a second tab) learns only

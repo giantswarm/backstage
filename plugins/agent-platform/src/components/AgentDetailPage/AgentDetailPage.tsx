@@ -945,17 +945,23 @@ function AgentDetailPageContent() {
       {/* The write dialogs, in the body for the same reason: their mutations
           and dry runs are react-query, and the muster sign-in affordance they
           may show needs the plugin's providers. */}
-      <AgentDeleteDialog
-        installation={installation}
-        displayName={agent.getDisplayName()}
-        isOpen={isDeleteOpen}
-        onOpenChange={setDeleteOpen}
-        deletion={deletion}
-        mode={deleteMode}
-        onConfirm={confirmDelete}
-        onCommit={commitDelete}
-        commitResult={commitResult}
-      />
+      {/* Mounted only while open: in commit mode it asks agent-manager afresh
+          whether it can open the pull request, which a page view never does. */}
+      {isDeleteOpen && (
+        <AgentDeleteDialog
+          installation={installation}
+          namespace={namespace}
+          name={name}
+          displayName={agent.getDisplayName()}
+          isOpen={isDeleteOpen}
+          onOpenChange={setDeleteOpen}
+          deletion={deletion}
+          mode={deleteMode}
+          onConfirm={confirmDelete}
+          onCommit={commitDelete}
+          commitResult={commitResult}
+        />
+      )}
       <AgentUpdateSkillsDialog
         installation={installation}
         namespace={namespace}
