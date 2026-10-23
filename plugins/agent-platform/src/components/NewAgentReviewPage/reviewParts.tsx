@@ -2,18 +2,10 @@ import type { ReactNode } from 'react';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
-import {
-  joinNames,
-  SimpleAccordion,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useUnderlyingModel } from '../../hooks/useUnderlyingModel';
-import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
-import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
-import {
-  AGENT_MANAGER_SERVER,
-  codingEgressRefusal,
-} from '../../lib/agentManager';
+import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
 import type { SignInToolState } from '../../hooks/useSignInTool';
 import { SIGN_IN_TOOL } from '../../lib/signInTool';
 import { countNoun, parseSelector } from '../../lib/toolset';
@@ -77,8 +69,6 @@ export const useReviewStyles = makeStyles(theme => ({
   violations: {
     margin: 0,
     paddingLeft: theme.spacing(2.5),
-    // agent-manager's words carry origins and paths, long single words.
-    overflowWrap: 'anywhere',
   },
   technical: {
     border: '1px solid var(--bui-border-1)',
@@ -283,76 +273,6 @@ export function SectionTitle({
         {description}
       </Text>
     </>
-  );
-}
-
-/**
- * agent-manager's refusal for the whole configuration, led by what to do: a
- * refusal it recognises (an egress origin on a coding Harness,
- * `codingEgressRefusal`) in plain words, any other with a generic lead. Every
- * schema violation and precondition failure stays verbatim under Technical
- * details, until `validate_agent` reports codes the portal can word reliably
- * (giantswarm/agent-manager#144).
- */
-export function Violations({
-  errors,
-  title,
-}: {
-  errors: string[];
-  /** What cannot happen (`VALIDATION_REFUSAL_COPY`'s titles). */
-  title: string;
-}) {
-  const classes = useReviewStyles();
-  const form = useFormHarnessRuntime();
-  const egressByHarness = new Map<string, string[]>();
-  let unrecognised = 0;
-  for (const error of errors) {
-    const refusal = codingEgressRefusal(error);
-    if (refusal) {
-      egressByHarness.set(refusal.harness, [
-        ...(egressByHarness.get(refusal.harness) ?? []),
-        refusal.origin,
-      ]);
-    } else {
-      unrecognised += 1;
-    }
-  }
-  const leads = [...egressByHarness].map(([harness, origins]) =>
-    VALIDATION_REFUSAL_COPY.codingEgress(
-      VALIDATION_REFUSAL_COPY.agentsOn(
-        form.harnessName === harness ? form.title : undefined,
-        harness,
-      ),
-      origins,
-    ),
-  );
-  if (unrecognised > 0) {
-    leads.push(VALIDATION_REFUSAL_COPY.generic(leads.length > 0));
-  }
-  return (
-    <Alert
-      status="danger"
-      title={title}
-      description={
-        <Flex direction="column" gap="2">
-          {leads.map(lead => (
-            <Text key={lead} as="p" variant="body-small">
-              {lead}
-            </Text>
-          ))}
-          <SimpleAccordion
-            title={VALIDATION_REFUSAL_COPY.detailsTitle}
-            headingLevel={4}
-          >
-            <ul className={classes.violations} aria-label="Violations">
-              {errors.map(error => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          </SimpleAccordion>
-        </Flex>
-      }
-    />
   );
 }
 

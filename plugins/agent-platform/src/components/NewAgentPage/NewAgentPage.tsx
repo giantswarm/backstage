@@ -1,4 +1,10 @@
-import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
@@ -24,7 +30,7 @@ import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker, useRuntimeChoices } from '../HarnessPicker';
 import { DefaultWorkspacePicker } from '../DefaultWorkspacePicker';
 import { EgressPolicyPicker } from '../EgressPolicyPicker';
-import { PlatformEgressNote } from '../PlatformEgressNote';
+import { DroppedEgressNotice, PlatformEgressNote } from '../PlatformEgressNote';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
 import {
@@ -74,6 +80,7 @@ function NewAgentPageContent() {
     setDescription,
     setSystemMessage,
     setEgressText,
+    setEgressSetByPlatform,
     validationErrors,
     fieldErrors,
   } = useNewAgentForm();
@@ -81,7 +88,15 @@ function NewAgentPageContent() {
   const { platformChoice } = useRuntimeChoices();
   // The runtime decides whether extra egress origins are offered at all.
   const egressRuntime = useFormHarnessRuntime();
+  const codingRuntime =
+    egressRuntime.harness.title ?? runtimeLabel(egressRuntime.runtime);
   const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  // The form stops checking (and, creating, drops) extra egress once the
+  // runtime is known to be a coding one, however it became known.
+  const isCoding = egressRuntime.isCoding === true;
+  useEffect(() => {
+    setEgressSetByPlatform(isCoding);
+  }, [isCoding, setEgressSetByPlatform]);
 
   // Each field shows its own problem once the person leaves it having typed
   // in it, or tries to proceed — not while they first type, so the form does
@@ -325,21 +340,17 @@ function NewAgentPageContent() {
           <EgressPolicyPicker />
           {/* A coding Harness reaches the platform's list for it only, and
               agent-manager refuses any other origin: the field is not offered
-              there, and the line in its place says who sets it. Nothing
-              while a named Harness's runtime is unknown, as the picker. */}
-          {egressRuntime.isCoding && (
+              there, and the line in its place says who sets it. While the
+              runtime is unknown the field stays, and is checked and sent. */}
+          {egressRuntime.isCoding ? (
             <PlatformEgressNote
-              runtime={
-                egressRuntime.title ?? runtimeLabel(egressRuntime.runtime)
-              }
+              runtime={codingRuntime}
               origins={platformEgressOf(
                 agentManagerInfo,
-                egressRuntime.harnessName,
+                egressRuntime.harness.name,
               )}
-              dropped={state.droppedEgress}
             />
-          )}
-          {egressRuntime.isCoding === false && (
+          ) : (
             <TextAreaField
               label="Extra egress origins"
               secondaryLabel="optional"
@@ -354,6 +365,10 @@ function NewAgentPageContent() {
               {...fieldProps('egress', fieldErrors.egress)}
             />
           )}
+          <DroppedEgressNotice
+            runtime={egressRuntime.isCoding ? codingRuntime : undefined}
+            dropped={state.droppedEgress}
+          />
         </MoreOptions>
       </Flex>
 

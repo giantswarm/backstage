@@ -484,8 +484,6 @@ export type CodingEgressRefusal = {
   origin: string;
   /** The Harness's name. */
   harness: string;
-  /** The platform's list for the Harness; empty for none. */
-  allowed: string[];
 };
 
 // `validate_agent` reports violations in prose only (structured codes are
@@ -493,7 +491,7 @@ export type CodingEgressRefusal = {
 // agent-manager's exact wording. A rewording there turns this back into the
 // generic refusal, nothing worse.
 const CODING_EGRESS_REFUSAL =
-  /egress origin "([^"]+)" is not one of Harness (\S+?)'s origins \((.*)\): a coding agent reaches its Harness's origins only/;
+  /egress origin "([^"]+)" is not one of Harness (\S+?)'s origins \(.*\): a coding agent reaches its Harness's origins only/;
 
 /**
  * Whether a `validate_agent` violation is the refusal of an egress origin on
@@ -506,11 +504,7 @@ export function codingEgressRefusal(
   if (!match) {
     return undefined;
   }
-  return {
-    origin: match[1],
-    harness: match[2],
-    allowed: match[3] === 'none' ? [] : match[3].split(', '),
-  };
+  return { origin: match[1], harness: match[2] };
 }
 
 /**

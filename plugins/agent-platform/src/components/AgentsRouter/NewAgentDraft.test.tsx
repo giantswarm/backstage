@@ -71,20 +71,13 @@ jest.mock('../TenantPicker', () => ({ TenantPicker: () => null }));
 jest.mock('../HarnessPicker', () => ({
   HarnessPicker: () => null,
   // The platform Harness not read: the summaries name it by its mark.
-  useRuntimeChoices: () => ({ platformChoice: undefined }),
-}));
-jest.mock('../EgressPolicyPicker', () => ({ EgressPolicyPicker: () => null }));
-// The form's runtime, which decides whether extra egress origins are offered:
-// the platform Harness, no other read.
-jest.mock('../../hooks/useHarnessChoices', () => ({
-  useHarnessChoices: () => ({
+  useRuntimeChoices: () => ({
     choices: [],
     platformHarness: 'kagent',
     platformChoice: undefined,
-    errors: [],
-    isLoading: false,
   }),
 }));
+jest.mock('../EgressPolicyPicker', () => ({ EgressPolicyPicker: () => null }));
 jest.mock('../DefaultWorkspacePicker', () => ({
   DefaultWorkspacePicker: () => null,
 }));

@@ -868,13 +868,7 @@ export function SessionDetailPage() {
   const egressRemedy = useEgressRemedy({
     installation,
     agent,
-    harness: agentRow
-      ? {
-          name: agentRow.harness,
-          title: agentRow.harnessTitle,
-          runtime: agentRow.harnessRuntime,
-        }
-      : undefined,
+    row: agentRow,
     enabled: egressRefusals.length > 0,
   });
 

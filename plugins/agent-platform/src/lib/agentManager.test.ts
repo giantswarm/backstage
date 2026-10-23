@@ -152,16 +152,10 @@ describe('codingEgressRefusal', () => {
   const refusal =
     'invalid request: egress origin "https://registry.npmjs.org" is not one of Harness claude\'s origins (https://github.com, https://api.github.com, https://codeload.github.com, https://*.githubusercontent.com): a coding agent reaches its Harness\'s origins only, which the platform sets';
 
-  it('reads the origin, the Harness and its list', () => {
+  it('reads the origin and the Harness', () => {
     expect(codingEgressRefusal(refusal)).toEqual({
       origin: 'https://registry.npmjs.org',
       harness: 'claude',
-      allowed: [
-        'https://github.com',
-        'https://api.github.com',
-        'https://codeload.github.com',
-        'https://*.githubusercontent.com',
-      ],
     });
   });
 
@@ -173,7 +167,6 @@ describe('codingEgressRefusal', () => {
     ).toEqual({
       origin: 'https://proxy.golang.org:8443',
       harness: 'codex-dev',
-      allowed: [],
     });
   });
 

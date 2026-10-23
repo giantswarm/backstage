@@ -201,6 +201,33 @@ describe('AgentChangeHarnessDialog', () => {
     ).toBeDisabled();
   });
 
+  it('words an extra egress origin the coding Harness refuses, and links to the edit page', async () => {
+    await renderDialog({
+      violations: {
+        codex: [
+          'invalid request: egress origin "https://registry.npmjs.org" is not one of Harness codex\'s origins (https://github.com): a coding agent reaches its Harness\'s origins only, which the platform sets',
+        ],
+      },
+    });
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: /Codex, Harness codex/ }),
+    );
+
+    expect(
+      await screen.findByText(
+        'Codex agents can only reach addresses the platform allows. Remove https://registry.npmjs.org, or ask your platform team to allow it.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/checks refused/)).toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'Edit the agent' }),
+    ).toHaveAttribute('href', '/agents/gazelle/kagent/pr-reviewer/edit');
+    expect(
+      screen.getByRole('button', { name: 'Change Harness' }),
+    ).toBeDisabled();
+  });
+
   it('lists every check the new Harness refuses, blocks the change and links to the edit page', async () => {
     const { callTool } = await renderDialog({
       violations: { codex: [CODEX_REFUSAL] },
@@ -210,11 +237,21 @@ describe('AgentChangeHarnessDialog', () => {
       screen.getByRole('radio', { name: /Codex, Harness codex/ }),
     );
 
-    const violations = await screen.findByRole('list', { name: 'Violations' });
+    expect(
+      await screen.findByText('This agent cannot be moved to Codex'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The platform’s checks refused this configuration. Change what the technical details name, or ask your platform team for help.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Technical details' }),
+    );
+    const violations = screen.getByRole('list', { name: 'Violations' });
     expect(violations).toHaveTextContent(
       'speaks the OpenAI Responses API only',
     );
-    expect(screen.getByText('Codex refuses this agent')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Edit the agent' }),
     ).toHaveAttribute('href', '/agents/gazelle/kagent/pr-reviewer/edit');

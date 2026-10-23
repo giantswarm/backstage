@@ -126,6 +126,20 @@ describe('egressRemedyKind', () => {
     );
   });
 
+  it('promises nothing where get_info could not be read', () => {
+    expect(
+      egressRemedyKind({ ...editable, runtime: 'claude', toolchains: null }),
+    ).toBe('neutral');
+    expect(
+      egressRemedyKind({
+        ...editable,
+        canCommit: null,
+        agent: { namespace: 'team', managed: 'gitops', helmRelease },
+      }),
+    ).toBe('neutral');
+    expect(egressRemedyKind({ ...editable, mayUpdate: null })).toBe('neutral');
+  });
+
   it('links the edit page for a person who may', () => {
     expect(egressRemedyKind(editable)).toBe('edit');
   });

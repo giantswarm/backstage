@@ -12,6 +12,7 @@ import {
 import { useAgentManagerAgent } from './useAgentManagerAgent';
 import { useHarnessChoices } from './useHarnessChoices';
 import { useNewSessionHref } from './useNewSessionHref';
+import type { AgentManagerInfo } from '../lib/agentManager';
 import {
   egressRemedyKind,
   type EgressRemedy,
@@ -30,23 +31,31 @@ const NO_INSTALLATIONS: string[] = [];
 /**
  * The remedy an egress refusal's alert offers for the Session's agent
  * (`egressRemedyKind`). Read only once the timeline shows a refusal
- * (`enabled`), as the signed-in person: the agent's Harness runtime from the
- * fleet's row (or the namespace's Harnesses), agent-manager's `get_agent` and
- * `get_info`, and whether the person may update the agent's HelmRelease, as
- * the agent's page asks it.
+ * (`enabled`), as the signed-in person, and only where muster lists
+ * agent-manager: the agent's Harness runtime from the fleet's row (or the
+ * namespace's Harnesses), agent-manager's `get_agent` and `get_info`, and
+ * whether the person may update the agent's HelmRelease, as the agent's page
+ * asks it. Each is `pending` until read, so the alert shows no remedy rather
+ * than one it takes back; one that cannot be read gives the neutral remedy.
  */
 export function useEgressRemedy(options: {
   installation: string;
   /** The agent's identity; unknown until the Session is joined to its agent. */
   agent: { namespace: string; name: string } | undefined;
   /**
-   * The agent's Harness as the fleet's row has it; absent where no row
-   * matched. A runtime the row has not read is looked up here.
+   * The fleet's row for the agent, where one matched: its id (what New
+   * session preselects) and its Harness, by name (none for an inline one)
+   * and runtime once read. A runtime the row has not read is looked up here.
    */
-  harness?: { name?: string; title?: string; runtime?: HarnessRuntime };
+  row?: {
+    id: string;
+    harness?: string;
+    harnessTitle?: string;
+    harnessRuntime?: HarnessRuntime;
+  };
   enabled: boolean;
 }): EgressRemedy {
-  const { installation, agent, harness, enabled } = options;
+  const { installation, agent, row, enabled } = options;
   const namespace = agent?.namespace ?? '';
   const name = agent?.name ?? '';
   const active = enabled && Boolean(agent);
@@ -55,18 +64,32 @@ export function useEgressRemedy(options: {
     active ? [installation] : NO_INSTALLATIONS,
   );
   const presence = availability.presenceOf(installation);
+  // muster's server list not in yet: nothing is settled.
+  const isListing = presence === 'unknown' && availability.isLoading;
   const reachable = active && presence === 'available';
   const managerRead = useAgentManagerAgent(installation, namespace, name, {
     enabled: reachable,
   });
   const managerAgent = managerRead.agent;
-  const { info, isLoading: isInfoLoading } = useAgentManagerInfo(
-    reachable ? installation : undefined,
-  );
+  const infoRead = useAgentManagerInfo(reachable ? installation : undefined);
 
-  // The runtime the fleet's row has not read: the namespace's Harnesses, the
-  // one the agent names (none names the platform's).
-  const needsHarnesses = active && !harness?.runtime;
+  // `get_info`: pending while listed or read, `null` where agent-manager is
+  // not reached or the read failed.
+  let info: AgentManagerInfo | null | undefined;
+  if (isListing) {
+    info = undefined;
+  } else if (!reachable) {
+    info = null;
+  } else if (infoRead.isLoading) {
+    info = undefined;
+  } else {
+    info = infoRead.info && !infoRead.error ? infoRead.info : null;
+  }
+
+  // The runtime the fleet's row has not read: the namespace's Harnesses.
+  // Not asked where agent-manager is not reached, since every remedy then is
+  // the neutral one.
+  const needsHarnesses = reachable && !row?.harnessRuntime;
   const {
     choices,
     platformHarness,
@@ -77,10 +100,13 @@ export function useEgressRemedy(options: {
   );
 
   // A live write runs as the person against the agent's HelmRelease, so the
-  // API server answers whether they may make it (the agent page's question).
+  // API server answers whether they may make it (the agent page's question),
+  // unless agent-manager writes as its ServiceAccount: asked once `get_info`
+  // has said which.
   const asksAccess =
     reachable &&
     managerAgent?.managed === 'helmrelease' &&
+    Boolean(info) &&
     info?.identity !== 'serviceAccount';
   const updateAccess = useSelfSubjectAccessReview(
     installation,
@@ -103,11 +129,11 @@ export function useEgressRemedy(options: {
     return { kind: 'pending' };
   }
 
-  // agent-manager's reading: pending while muster's server list or the read
-  // is in flight, `null` where it is not reached or could not read the agent.
+  // agent-manager's reading: pending while listed or read, `null` where it is
+  // not reached or could not read the agent.
   let agentFact: EgressRemedyFacts['agent'];
-  if (presence === 'unknown') {
-    agentFact = availability.isLoading ? undefined : null;
+  if (isListing) {
+    agentFact = undefined;
   } else if (!reachable) {
     agentFact = null;
   } else if (managerRead.isLoading) {
@@ -116,16 +142,26 @@ export function useEgressRemedy(options: {
     agentFact = managerAgent ?? null;
   }
 
+  // The runtime: the row's, else the namespace's Harness the agent names. A
+  // row without a Harness name runs an inline Harness whose runtime it did
+  // not read: unknown, never the platform's. Without a row, agent-manager's
+  // reading names the Harness, none being the platform's.
   let runtime: EgressRemedyFacts['runtime'];
-  let title: string | undefined = harness?.title;
-  if (harness?.runtime) {
-    runtime = harness.runtime;
+  let title = row?.harnessTitle;
+  if (row?.harnessRuntime) {
+    runtime = row.harnessRuntime;
+  } else if (isListing) {
+    runtime = undefined;
+  } else if (!reachable) {
+    runtime = null;
   } else {
-    let harnessName: string | undefined;
-    if (harness) {
-      harnessName = harness.name ?? platformHarness;
+    let harnessName: string | null | undefined;
+    if (row) {
+      harnessName = row.harness ?? null;
     } else if (managerAgent) {
       harnessName = managerAgent.harness ?? platformHarness;
+    } else {
+      harnessName = agentFact === undefined ? undefined : null;
     }
     const choice = harnessName
       ? choices.find(candidate => candidate.name === harnessName)
@@ -133,10 +169,12 @@ export function useEgressRemedy(options: {
     if (choice?.runtime) {
       runtime = choice.runtime;
       title = harnessTitle(choice);
+    } else if (harnessName === null) {
+      runtime = null;
     } else if (
+      harnessName === undefined ||
       isHarnessLoading ||
-      (reachable && isInfoLoading) ||
-      (!harnessName && agentFact === undefined)
+      infoRead.isLoading
     ) {
       runtime = undefined;
     } else {
@@ -144,18 +182,29 @@ export function useEgressRemedy(options: {
     }
   }
 
-  const settled = !reachable || !isInfoLoading;
+  let mayUpdate: EgressRemedyFacts['mayUpdate'];
+  if (info === undefined) {
+    mayUpdate = undefined;
+  } else if (info === null) {
+    mayUpdate = null;
+  } else if (!asksAccess) {
+    mayUpdate = true;
+  } else {
+    mayUpdate = updateAccess.isLoading ? undefined : updateAccess.allowed;
+  }
+
+  const capability = (key: string) => {
+    if (info === undefined || info === null) {
+      return info;
+    }
+    return info.capabilities?.[key] === true;
+  };
   const kind = egressRemedyKind({
     runtime,
     agent: agentFact,
-    toolchains: settled
-      ? Boolean(info?.capabilities?.[TOOLCHAINS_CAPABILITY])
-      : undefined,
-    canCommit: settled ? info?.capabilities?.commit === true : undefined,
-    mayUpdate:
-      asksAccess && updateAccess.isLoading
-        ? undefined
-        : !asksAccess || updateAccess.allowed,
+    toolchains: capability(TOOLCHAINS_CAPABILITY),
+    canCommit: capability('commit'),
+    mayUpdate,
   });
 
   const identity = { installation, namespace, name };
@@ -166,9 +215,7 @@ export function useEgressRemedy(options: {
         kind,
         runtime: runtimeName,
         toolchainsHref: toolchainsRoute?.(),
-        newSessionHref: newSessionHref?.({
-          id: `${installation}/${namespace}/${name}`,
-        }),
+        newSessionHref: row ? newSessionHref?.({ id: row.id }) : undefined,
       };
     case 'platform':
       return { kind, runtime: runtimeName };

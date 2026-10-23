@@ -932,13 +932,16 @@ port, no path, at most 270 characters each, at most 64 entries, no duplicates.
 **Not on a coding Harness.** An agent on one (every runtime but `kagent`)
 reaches the platform's list for its Harness only, and agent-manager refuses any
 other origin (`guardCoding`), so the form shows a read-only Network access line
-in place of the field, as the EgressPolicy picker is hidden there
-(`useFormHarnessRuntime` decides both; nothing is offered while a named
-Harness's runtime is unknown). Picking a coding Harness on create clears typed
-origins and picked EgressPolicies, and says what was removed. The platform's
-list itself is not shown yet: agent-manager does not report it (proposed as
-`get_info.harnessEgress`); `platformEgressOf` in `lib/harnesses.ts` is where it
-goes, and the line lists what it returns.
+in place of the field, as the EgressPolicy picker is hidden there.
+`useFormHarnessRuntime` decides both, reading the runtime where the runtime
+field does (`useRuntimeChoices`), the platform Harness included. While the
+runtime is unknown the field stays, and is checked and sent; once it is known
+to be a coding one the form stops checking it (`egressSetByPlatform`) and, on
+create, drops typed origins and picked EgressPolicies and says once what it
+removed (never kept in the draft). The platform's list itself is not shown
+yet: agent-manager does not report it (proposed as `get_info.harnessEgress`);
+`platformEgressOf` in `lib/harnesses.ts` is where it goes, and the line lists
+what it returns.
 
 ### The review page is agent-manager's dry run
 
@@ -956,12 +959,14 @@ answer is rendered verbatim:
 - **`errors[]`** — schema violations and failed preconditions (an unknown
   ModelConfig, an unpinnable skill, a malformed selector). **Create agent** is
   withheld while any is present; `notes` are shown as information. The
-  refusal ("This agent cannot be created", "This change cannot be saved" on
-  edit) leads with what to do and folds agent-manager's words under Technical
-  details. An egress origin refused on a coding Harness is recognised by its
-  wording (`codingEgressRefusal`) and named ("Claude Code agents can only reach
-  addresses the platform allows. Remove …"); any other refusal gets a generic
-  lead, until violations carry codes (giantswarm/agent-manager#144).
+  refusal (`ValidationRefusal`: "This agent cannot be created", "This change
+  cannot be saved" on edit, "This agent cannot be moved to {runtime}" in
+  Change Harness) leads with what to do and folds agent-manager's words under
+  Technical details. An egress origin refused on a coding Harness is
+  recognised by its wording (`codingEgressRefusal`) and named ("Claude Code
+  agents can only reach addresses the platform allows. Remove …"); any other
+  refusal gets a generic lead, until violations carry codes
+  (giantswarm/agent-manager#144).
 - **`manifests.values`** — the composed values, offered as the manual
   fallback's `values.yaml` with a `helm install` command from `get_info`'s chart
   (`ociUrl`, `latestVersion`).
@@ -1615,9 +1620,13 @@ it only (agent-manager's `guardCoding`), so it is decided first, from the
 fleet's Agent row or the namespace's Harnesses, without `get_agent`. "Outside
 agent-manager's directory" is the cheap signal from `get_agent` (`managed:
 gitops` and a HelmRelease namespace other than the agent's). While anything
-is read, the warning shows without a remedy. Every word of the warning and of
-the review step's refusal lives in `lib/egressCopy.ts`, for other surfaces
-that report the same refusal (klaus-gateway's Slack notice).
+is read (muster's server list included), the warning shows without a remedy;
+where agent-manager is not on the installation or `get_info` fails, it gives
+the neutral one, and an inline Harness whose runtime the fleet's row did not
+read is unknown, never the platform's. Every word of the warning, of a dry
+run's refusal and of the form's coding-Harness line lives in
+`lib/egressCopy.ts`, for other surfaces that report the same refusal
+(klaus-gateway's Slack notice).
 
 ### What it cannot show
 

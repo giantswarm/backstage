@@ -1,53 +1,47 @@
 import type { HarnessRuntime } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { useHarnessChoices } from './useHarnessChoices';
 import { harnessTitle, isCodingRuntime } from '../lib/harnesses';
 import { useNewAgentForm } from '../components/NewAgentFormProvider';
+import { useRuntimeChoices } from '../components/HarnessPicker';
 
 /**
- * The agent form's Harness and its runtime: the picked choice's, else the
- * namespace's Harness of the edited agent's name. Read only where a Harness is
- * named; none is the platform's.
+ * The agent form's Harness and its runtime, read where the runtime field
+ * reads them (`useRuntimeChoices`): the picked choice's, else the edited
+ * agent's Harness of that name, else the platform Harness, which a request
+ * naming none runs on and which may be a coding one too.
  *
- * `isCoding` is `undefined` while a named Harness other than the platform's
- * has no known runtime: it may be a coding one, so the form offers nothing
- * a coding Harness refuses until it knows. The platform Harness counts as not
- * coding until read otherwise.
+ * `isCoding` is `undefined` while the runtime is not known (not read yet, or
+ * not readable).
  */
 export function useFormHarnessRuntime(): {
-  harnessName: string | undefined;
+  /** The Harness the agent runs on, by name and, once read, title. */
+  harness: { name: string; title?: string };
   runtime: HarnessRuntime | undefined;
-  /** The Harness as a person names it, once its runtime is known. */
-  title: string | undefined;
   isCoding: boolean | undefined;
-  /** The namespace's Harnesses are still being read. */
-  isLoading: boolean;
+  /** No Harness named: the platform's. */
+  onPlatformHarness: boolean;
 } {
   const { state, edit } = useNewAgentForm();
-  const namespace = state.tenant ?? state.modelConfigNamespace;
-  const harnessName = state.harness?.name ?? edit?.agent.harness;
-  const { choices, platformHarness, isLoading } = useHarnessChoices(
-    state.installation,
-    harnessName ? namespace : undefined,
-  );
-  // An edited agent's Harness is seeded by its name alone: its runtime is the
-  // namespace's Harness of that name.
-  const choice = state.harness?.runtime
-    ? state.harness
-    : (choices.find(candidate => candidate.name === harnessName) ??
-      state.harness);
-  const runtime = choice?.runtime;
-  const onPlatformHarness = !harnessName || harnessName === platformHarness;
+  const { choices, platformHarness, platformChoice } = useRuntimeChoices();
+  const named = state.harness?.name ?? edit?.agent.harness;
+  const onPlatformHarness = !named || named === platformHarness;
 
-  let isCoding: boolean | undefined = isCodingRuntime(runtime);
-  if (runtime === undefined && !onPlatformHarness) {
-    isCoding = undefined;
+  // A picked choice carries its runtime; an edited agent's Harness is seeded
+  // by its name alone, so its runtime is the namespace's Harness of that name.
+  let choice = state.harness?.runtime ? state.harness : undefined;
+  if (!choice) {
+    choice = named
+      ? (choices.find(candidate => candidate.name === named) ?? state.harness)
+      : platformChoice;
   }
+  const runtime = choice?.runtime;
   return {
-    harnessName,
+    harness: {
+      name: named ?? platformHarness,
+      title: choice && runtime ? harnessTitle(choice) : undefined,
+    },
     runtime,
-    title: choice && runtime ? harnessTitle(choice) : undefined,
-    isCoding,
-    isLoading,
+    isCoding: runtime === undefined ? undefined : isCodingRuntime(runtime),
+    onPlatformHarness,
   };
 }

@@ -45,7 +45,8 @@ export type EgressRemedy =
 
 /**
  * What is known about the agent, each `undefined` while it is being read and
- * `null` where it could not be.
+ * `null` where it could not be (agent-manager not on the installation, or its
+ * read failed): a remedy that needs it is then the neutral one.
  */
 export type EgressRemedyFacts = {
   /** The runtime of the agent's Harness. */
@@ -56,14 +57,14 @@ export type EgressRemedyFacts = {
     | null
     | undefined;
   /** `get_info`'s `toolchains` capability: Sessions mount toolchains. */
-  toolchains: boolean | undefined;
+  toolchains: boolean | null | undefined;
   /** `get_info`'s `commit` capability: an agent from Git is edited by pull request. */
-  canCommit: boolean | undefined;
+  canCommit: boolean | null | undefined;
   /**
    * Whether the person may update the agent's HelmRelease
    * (`SelfSubjectAccessReview`); `true` where it is not asked.
    */
-  mayUpdate: boolean | undefined;
+  mayUpdate: boolean | null | undefined;
 };
 
 /**
@@ -101,6 +102,9 @@ export function egressRemedyKind(facts: EgressRemedyFacts): EgressRemedyKind {
     if (toolchains === undefined) {
       return 'pending';
     }
+    if (toolchains === null) {
+      return 'neutral';
+    }
     return toolchains ? 'toolchains' : 'platform';
   }
   if (agent === undefined) {
@@ -116,11 +120,17 @@ export function egressRemedyKind(facts: EgressRemedyFacts): EgressRemedyKind {
     if (canCommit === undefined) {
       return 'pending';
     }
+    if (canCommit === null) {
+      return 'neutral';
+    }
     // Edited through a pull request as the person, as the agent's page offers.
     return canCommit ? 'edit' : 'git';
   }
   if (mayUpdate === undefined) {
     return 'pending';
+  }
+  if (mayUpdate === null) {
+    return 'neutral';
   }
   return mayUpdate ? 'edit' : 'ask-editor';
 }

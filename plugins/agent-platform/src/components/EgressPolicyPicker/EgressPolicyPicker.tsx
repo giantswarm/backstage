@@ -64,9 +64,12 @@ export function EgressPolicyPicker() {
     useAgentManagerEgressPolicies(installation, namespace);
 
   // Until the Harness's runtime is known, a Harness other than the
-  // platform's may be a coding one, so nothing is offered yet.
-  const { isCoding } = useFormHarnessRuntime();
-  if (!installation || !namespace || !supported || isCoding !== false) {
+  // platform's may be a coding one, so nothing is offered yet; the platform
+  // Harness is offered until read otherwise.
+  const { isCoding, onPlatformHarness } = useFormHarnessRuntime();
+  const offered =
+    isCoding === false || (isCoding === undefined && onPlatformHarness);
+  if (!installation || !namespace || !supported || !offered) {
     return null;
   }
 

@@ -4,8 +4,10 @@ import {
   NAMED_IN_SENTENCE,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { codingEgressRefusal } from './agentManager';
+
 /** `a`, `a and b`, `a, b and c`; past a sentence's worth, `joinNames`'s count. */
-function listInSentence(names: readonly string[]): string {
+export function listInSentence(names: readonly string[]): string {
   if (names.length < 2 || names.length > NAMED_IN_SENTENCE) {
     return joinNames(names);
   }
@@ -14,7 +16,9 @@ function listInSentence(names: readonly string[]): string {
 
 /**
  * Every word of an egress refusal as the portal says it: the Session's alert
- * (`EgressRefusedEntry`) and the review step's refusal (`Violations`). Kept in
+ * (`EgressRefusedEntry`), the refusal of a dry run (`ValidationRefusal`, on
+ * the agent wizard's review step and in Change Harness) and the agent form's
+ * egress on a coding Harness (`PlatformEgressNote`). Kept in
  * one place so other surfaces that report the same refusal, such as
  * klaus-gateway's Slack notice, can say it the same way
  * (giantswarm/giantswarm#38814).
@@ -89,13 +93,20 @@ export const EGRESS_ALERT_COPY = {
 } as const;
 
 /**
- * The review step's refusal (`validate_agent`'s violations): what to do
- * first, agent-manager's words folded under Technical details.
+ * A dry run's refusal (`validate_agent`'s violations), on the agent wizard's
+ * review step and in Change Harness: what to do first, agent-manager's words
+ * folded under Technical details.
  */
 export const VALIDATION_REFUSAL_COPY = {
   createTitle: 'This agent cannot be created',
   editTitle: 'This change cannot be saved',
-  /** "Claude Code agents"; the Harness by name where the form has no title. */
+  /** Change Harness, `runtime` the Harness the agent would move to. */
+  changeHarnessTitle: (runtime: string) =>
+    `This agent cannot be moved to ${runtime}`,
+  /** Change Harness: the link to the edit page, then the rest of its sentence. */
+  changeHarnessEditLink: 'Edit the agent',
+  changeHarnessEditRest: ' to fix this, then change its Harness.',
+  /** "Claude Code agents"; the Harness by name where its title is not known. */
   agentsOn: (runtime: string | undefined, harness: string) =>
     runtime ? `${runtime} agents` : `Agents on the Harness ${harness}`,
   /** An extra egress origin refused on a coding Harness (`codingEgressRefusal`). */
@@ -111,4 +122,71 @@ export const VALIDATION_REFUSAL_COPY = {
         : 'The platform’s checks refused this configuration.'
     } Change what the technical details name, or ask your platform team for help.`,
   detailsTitle: 'Technical details',
+} as const;
+
+/**
+ * The plain lines a refusal leads with: one per Harness whose egress refused
+ * origins, in words, then one generic line for every violation not
+ * recognised. `harness` is the Harness the dry run checked against, so its
+ * title names it; another is named by its name.
+ */
+export function validationRefusalLeads(
+  errors: readonly string[],
+  harness?: { name: string; title?: string },
+): string[] {
+  const egressByHarness = new Map<string, string[]>();
+  let unrecognised = 0;
+  for (const error of errors) {
+    const refusal = codingEgressRefusal(error);
+    if (refusal) {
+      egressByHarness.set(refusal.harness, [
+        ...(egressByHarness.get(refusal.harness) ?? []),
+        refusal.origin,
+      ]);
+    } else {
+      unrecognised += 1;
+    }
+  }
+  const leads = [...egressByHarness].map(([name, origins]) =>
+    VALIDATION_REFUSAL_COPY.codingEgress(
+      VALIDATION_REFUSAL_COPY.agentsOn(
+        harness?.name === name ? harness.title : undefined,
+        name,
+      ),
+      origins,
+    ),
+  );
+  if (unrecognised > 0) {
+    leads.push(VALIDATION_REFUSAL_COPY.generic(leads.length > 0));
+  }
+  return leads;
+}
+
+/**
+ * The agent form's egress on a coding Harness, in place of Extra egress
+ * origins, and the notice of what a move to one removed.
+ */
+export const PLATFORM_EGRESS_COPY = {
+  label: 'Network access',
+  /** The platform's list is known (`platformEgressOf`). */
+  listed: (runtime: string, origins: readonly string[]) =>
+    `Set by the platform for ${runtime}: ${origins.join(', ')}. Extra origins cannot be added.`,
+  unlisted: (runtime: string) =>
+    `The platform sets what ${runtime} agents may reach. Extra origins cannot be added.`,
+  droppedTitle: 'Extra egress removed',
+  dropped: (
+    runtime: string,
+    origins: readonly string[],
+    policies: readonly string[],
+  ) => {
+    const parts = [
+      origins.length > 0 &&
+        `the extra ${origins.length === 1 ? 'origin' : 'origins'} ${listInSentence(origins)}`,
+      policies.length > 0 &&
+        `the ${policies.length === 1 ? 'EgressPolicy' : 'EgressPolicies'} ${listInSentence(policies)}`,
+    ].filter(Boolean);
+    return `${runtime} agents reach only the addresses the platform allows, so ${parts.join(
+      ', and ',
+    )} ${origins.length + policies.length === 1 ? 'was' : 'were'} removed.`;
+  },
 } as const;
