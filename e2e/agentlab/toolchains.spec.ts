@@ -90,7 +90,8 @@ async function goVersions(
         "the admin has not granted the toolchain-manager's GitHub App in muster",
     };
   }
-  const versions = (await go.getByRole('gridcell').nth(1).innerText())
+  // The Toolchain column is the row's header: the first gridcell is Versions.
+  const versions = (await go.getByRole('gridcell').first().innerText())
     .split('\n')[0]
     .split(',')
     .map(version => version.trim());
@@ -114,7 +115,7 @@ test('the Toolchains tab lists the toolchains with their versions and tools, and
   });
   await expect(go).toContainText(`${newest}, ${older}`);
   // The newest version's tools, read from its image's labels.
-  await expect(go.getByRole('gridcell').nth(2)).toContainText(/\bgo\b/, {
+  await expect(go.getByRole('gridcell').nth(1)).toContainText(/\bgo\b/, {
     timeout: 60_000,
   });
   await expect(
@@ -209,11 +210,16 @@ test('a session started from the portal with an older go mounts that version', a
     const choice = admin.getByRole('dialog', { name: 'Toolchains' });
     const goBox = choice.getByRole('checkbox', { name: 'go' });
     if (!(await goBox.isChecked())) {
-      await goBox.click();
+      // The label around the (visually hidden) input takes the click.
+      await goBox.locator('xpath=ancestor::label').click();
     }
     await choice.getByRole('button', { name: /go version/ }).click();
     await admin.getByRole('option', { name: older, exact: true }).click();
-    await admin.keyboard.press('Escape');
+    // The first Escape leaves the version select, the next the popover.
+    await expect(async () => {
+      await admin.keyboard.press('Escape');
+      await expect(choice).toBeHidden({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
     await expect(toolchains).toContainText(`go ${older}`);
     await test
       .info()
@@ -239,7 +245,12 @@ test('a session started from the portal with an older go mounts that version', a
     );
     const answer = (await response.json()) as {
       toolchains?: StartedToolchain[];
+      error?: { message?: string };
     };
+    test.skip(
+      /mounts no session tool images/.test(answer.error?.message ?? ''),
+      `the lab's kagent controller mounts no session tool images (KAGENT_SESSION_TOOL_IMAGE_REPOSITORIES): ${answer.error?.message}`,
+    );
     const mounted = answer.toolchains ?? [];
     const go = mounted.find(toolchain => toolchain.name === 'go');
     expect(go, 'start_session mounts go').toBeDefined();
