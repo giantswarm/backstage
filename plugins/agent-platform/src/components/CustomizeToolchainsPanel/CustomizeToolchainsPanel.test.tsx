@@ -31,7 +31,11 @@ const SOURCE: ToolchainSource = {
   offered: true,
 };
 
-let mockScope: { installations: string[]; hasToolchains?: boolean };
+let mockScope: {
+  installations: string[];
+  sharedIdentity: string[];
+  hasToolchains?: boolean;
+};
 let mockList: { isPending: boolean; error: Error | null; data?: ToolchainList };
 const TOOLS: Record<string, string[]> = {
   go: ['go', 'gofmt', 'golangci-lint'],
@@ -45,20 +49,27 @@ jest.mock('../../hooks/useToolchainManager', () => ({
     isLoading: false,
     list: mockList,
   }),
-  useToolchainDescription: (_installation: string, name: string) => ({
+  useToolchainDescription: (
+    _installation: string,
+    name: string,
+    { source }: { source?: string } = {},
+  ) => ({
     isPending: false,
     error: null,
     data: {
       toolchain: {
         name,
-        tools: TOOLS[name].map(tool => ({ name: tool, version: '--version' })),
+        tools: (source === 'acme' ? ['acme-go'] : TOOLS[name]).map(tool => ({
+          name: tool,
+          version: '--version',
+        })),
       },
     },
   }),
   useToolchainSources: () => ({
     isPending: false,
     error: null,
-    data: [SOURCE],
+    data: { sources: [SOURCE] },
   }),
 }));
 jest.mock('../AddToolchainSourceDialog', () => ({
@@ -77,7 +88,11 @@ function renderPanel(search = '') {
 }
 
 beforeEach(() => {
-  mockScope = { installations: ['gazelle'], hasToolchains: true };
+  mockScope = {
+    installations: ['gazelle'],
+    sharedIdentity: [],
+    hasToolchains: true,
+  };
   mockList = {
     isPending: false,
     error: null,
@@ -161,11 +176,49 @@ describe('CustomizeToolchainsPanel', () => {
   });
 
   it('says toolchains are off where no installation runs the toolchain-manager', async () => {
-    mockScope = { installations: [], hasToolchains: false };
+    mockScope = { installations: [], sharedIdentity: [], hasToolchains: false };
     await renderPanel();
 
     expect(
       screen.getByText('Toolchains are not available here'),
     ).toBeInTheDocument();
+  });
+
+  it('says why toolchains are withheld where muster has no per-user sign-in', async () => {
+    mockScope = {
+      installations: [],
+      sharedIdentity: ['gazelle'],
+      hasToolchains: false,
+    };
+    await renderPanel();
+
+    expect(
+      screen.getByText('Toolchains cannot be used on gazelle from this portal'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Toolchains are not available here'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens and describes the row’s own source where two sources publish one name', async () => {
+    mockList.data!.toolchains.push({
+      ...toolchain('go', ['v1.0.0']),
+      source: 'acme',
+      repository: 'acme/toolchains',
+    });
+    await renderPanel();
+
+    const [ours, theirs] = screen
+      .getAllByRole('row')
+      .filter(row => within(row).queryByRole('link', { name: 'go' }));
+    expect(within(ours).getByRole('link', { name: 'go' })).toHaveAttribute(
+      'href',
+      '/customize/toolchains/gazelle/go?source=agent-toolchains',
+    );
+    expect(within(theirs).getByRole('link', { name: 'go' })).toHaveAttribute(
+      'href',
+      '/customize/toolchains/gazelle/go?source=acme',
+    );
+    expect(within(theirs).getByText('acme-go')).toBeInTheDocument();
   });
 });

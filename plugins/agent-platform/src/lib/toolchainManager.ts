@@ -18,21 +18,6 @@
 import { looksNotConnected } from './agentManager';
 import type { WorkspaceProvider } from './workspaceManager';
 
-/**
- * A link the toolchain-manager answers with (a pull request, a CI job, an App
- * install page), only when it is http(s): anything else, `javascript:` among
- * them, is never rendered as a link.
- */
-export function webURL(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  try {
-    const { protocol } = new URL(url);
-    return protocol === 'https:' || protocol === 'http:' ? url : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** The MCPServer name muster registers the toolchain-manager under. */
 export const TOOLCHAIN_MANAGER_SERVER = 'toolchain-manager';
 
@@ -94,6 +79,29 @@ export type Toolchain = {
   versions: string[];
 };
 
+/**
+ * The page address's source (`?source=`): set only for a name two offered
+ * sources publish, so the page describes the one the person opened.
+ */
+export const TOOLCHAIN_SOURCE_PARAM = 'source';
+
+/** The names more than one offered source publishes. */
+export function sharedToolchainNames(
+  toolchains: readonly Toolchain[],
+): Set<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  for (const { name } of toolchains) {
+    (seen.has(name) ? shared : seen).add(name);
+  }
+  return shared;
+}
+
+/** The shared-identity note's clauses (`SharedIdentityNote`). */
+export const TOOLCHAINS_BLOCKED = 'Toolchains cannot be used';
+export const TOOLCHAINS_VIA =
+  'Toolchains are read and created through the toolchain-manager';
+
 /** An offered source whose toolchains could not be read as the person. */
 export type UnreachableSource = {
   source: string;
@@ -143,6 +151,10 @@ export type ToolchainSource = {
   approvedAt?: string;
 };
 
+export type ToolchainSourceList = ToolchainAnswer & {
+  sources: ToolchainSource[];
+};
+
 export type AddSourceInput = {
   repository: string;
   registry: string;
@@ -159,7 +171,7 @@ export type ToolchainPackage = {
   versions: Record<string, string>;
 };
 
-export type PackageSearch = {
+export type PackageSearch = ToolchainAnswer & {
   source: string;
   branches: string[];
   packages: ToolchainPackage[];

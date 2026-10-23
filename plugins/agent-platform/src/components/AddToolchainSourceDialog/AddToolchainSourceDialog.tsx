@@ -6,7 +6,6 @@ import {
   DialogFooter,
   DialogHeader,
   Flex,
-  Link,
   Text,
   TextField,
 } from '@backstage/ui';
@@ -17,7 +16,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAddToolchainSource } from '../../hooks/useToolchainWrites';
-import { webURL, type AddSourceResult } from '../../lib/toolchainManager';
+import type { AddSourceResult } from '../../lib/toolchainManager';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 
@@ -31,13 +30,26 @@ export type AddToolchainSourceDialogProps = {
   onOpenChange: (isOpen: boolean) => void;
 };
 
+/**
+ * `owner/name` from what the person entered: a github.com URL of it, or a
+ * trailing slash, is the same repository.
+ */
+export function repositoryName(entered: string): string {
+  return entered
+    .trim()
+    .replace(/^https:\/\/github\.com\//, '')
+    .replace(/\/$/, '');
+}
+
 /** What the dialog says once the manager answered. */
 function Outcome({
   installation,
   result,
+  onConnected,
 }: {
   installation: string;
   result: AddSourceResult;
+  onConnected: () => void;
 }) {
   if (result.source) {
     return (
@@ -52,29 +64,13 @@ function Outcome({
       />
     );
   }
-  if (result.status === 'install_required') {
-    return (
-      <Alert
-        status="warning"
-        title="Install the toolchain-manager’s GitHub App on the repository first"
-        description={
-          <Flex direction="column" gap="1">
-            <Text variant="body-small">{result.message}</Text>
-            {webURL(result.installURL) && (
-              <Link
-                href={webURL(result.installURL)}
-                target="_blank"
-                rel="noopener"
-              >
-                Install the App
-              </Link>
-            )}
-          </Flex>
-        }
-      />
-    );
-  }
-  return <ToolchainGrantPrompt installation={installation} answer={result} />;
+  return (
+    <ToolchainGrantPrompt
+      installation={installation}
+      answer={result}
+      onConnected={onConnected}
+    />
+  );
 }
 
 /**
@@ -115,7 +111,7 @@ export function AddToolchainSourceDialog({
       return;
     }
     add.mutate({
-      repository: repository.trim().replace(/\/$/, ''),
+      repository: repositoryName(repository),
       registry: registry.trim(),
       slackChannel: slackChannel.trim(),
     });
@@ -128,7 +124,11 @@ export function AddToolchainSourceDialog({
       isOpen={isOpen}
       onOpenChange={open => {
         if (!open) {
+          // A closed dialog opens empty again: what was added is in the list.
           add.reset();
+          setRepository('');
+          setRegistry('');
+          setSlackChannel('');
         }
         onOpenChange(open);
       }}
@@ -185,7 +185,12 @@ export function AddToolchainSourceDialog({
                 />
               )}
               {add.data && (
-                <Outcome installation={installation} result={add.data} />
+                <Outcome
+                  installation={installation}
+                  result={add.data}
+                  // With the grant given, the same source is added again.
+                  onConnected={() => add.variables && add.mutate(add.variables)}
+                />
               )}
             </Flex>
           </DialogBody>

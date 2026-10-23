@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 
 import type { AgentRow } from '../AgentsDataProvider';
 import type { Toolchain, ToolchainPick } from '../../lib/toolchainManager';
-import { ToolchainPicker } from './ToolchainPicker';
+import { pickerRows, ToolchainPicker, versionOptions } from './ToolchainPicker';
 
 let mockCapabilities: Record<string, boolean> = { toolchains: true };
 jest.mock('../../hooks/useAgentManager', () => ({
@@ -145,5 +145,41 @@ describe('ToolchainPicker', () => {
     mockToolchains = [];
     const { container } = render(<Harness onChange={jest.fn()} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('pickerRows', () => {
+  it('lists a name two sources publish once, and a pick the list lacks', () => {
+    const go = toolchain('go', ['v1.0.0']);
+    const rows = pickerRows(
+      [go, { ...toolchain('go', ['v2.0.0']), source: 'acme' }],
+      [{ name: 'go' }, { name: 'retired' }],
+    );
+
+    expect(rows).toEqual([{ name: 'go', toolchain: go }, { name: 'retired' }]);
+  });
+});
+
+describe('versionOptions', () => {
+  it('keeps a pinned version that is no longer published', () => {
+    const labels = versionOptions(
+      { name: 'go', toolchain: toolchain('go', ['v1.1.0', 'v1.0.0']) },
+      { name: 'go', version: 'v0.9.0' },
+    ).map(option => option.label);
+
+    expect(labels).toEqual([
+      'Latest (1.1.0)',
+      '1.1.0',
+      '1.0.0',
+      '0.9.0 (not published)',
+    ]);
+  });
+
+  it('offers only Latest for a pick the list lacks', () => {
+    expect(
+      versionOptions({ name: 'retired' }, { name: 'retired' }).map(
+        option => option.label,
+      ),
+    ).toEqual(['Latest']);
   });
 });

@@ -175,6 +175,7 @@ describe('NewSessionComposer workspaces', () => {
       'List the repositories',
       [],
       'platform-mix',
+      undefined,
     );
 
     unmount();
@@ -199,6 +200,7 @@ describe('NewSessionComposer workspaces', () => {
         'List the repositories',
         [],
         'platform-mcp',
+        undefined,
       );
     });
 
@@ -225,7 +227,13 @@ describe('NewSessionComposer workspaces', () => {
       expect(workspacePicker()).toHaveTextContent('No workspace');
       await userEvent.type(field(), 'Hello');
       await userEvent.click(startButton());
-      expect(onStart).toHaveBeenCalledWith(withDefault, 'Hello', []);
+      expect(onStart).toHaveBeenCalledWith(
+        withDefault,
+        'Hello',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('falls back to the default when the last choice is no longer listed', () => {
@@ -319,7 +327,13 @@ describe('NewSessionComposer workspaces', () => {
     await userEvent.type(field(), 'build it');
     await userEvent.click(startButton());
 
-    expect(onStart).toHaveBeenCalledWith(claude, 'build it', []);
+    expect(onStart).toHaveBeenCalledWith(
+      claude,
+      'build it',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('is not there where the installation offers no workspace', () => {
@@ -385,7 +399,13 @@ describe('NewSessionComposer workspaces', () => {
     await userEvent.click(
       within(alert).getByRole('button', { name: 'Start without workspace' }),
     );
-    expect(onStart).toHaveBeenCalledWith(claude, 'List the repositories', []);
+    expect(onStart).toHaveBeenCalledWith(
+      claude,
+      'List the repositories',
+      [],
+      undefined,
+      undefined,
+    );
     expect(workspacePicker()).toHaveTextContent('No workspace');
   });
 
@@ -456,6 +476,7 @@ describe('NewSessionComposer workspaces', () => {
       'List the repositories',
       [],
       'platform-mix',
+      undefined,
     );
     // Should that start not get under way, the person starts it.
     await userEvent.click(

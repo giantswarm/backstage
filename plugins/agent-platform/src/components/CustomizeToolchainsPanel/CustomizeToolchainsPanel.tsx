@@ -13,11 +13,14 @@ import {
   CatalogNoMatch,
   EmptyStateCard,
   getRelativeDate,
+  INITIAL_ROWS,
   LoadingIndicator,
   matchesQuery,
   PageSection,
+  ShowMore,
   StatusDot,
   usePhoneColumns,
+  safeWebURL,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -28,12 +31,20 @@ import {
 } from '../../hooks/useToolchainManager';
 import { toolchainDetailRouteRef } from '../../routes';
 import {
+  sharedIdentityReason,
+  sharedIdentityTitle,
+} from '../../lib/sharedIdentity';
+import {
   imageTag,
-  webURL,
+  sharedToolchainNames,
+  TOOLCHAIN_SOURCE_PARAM,
+  TOOLCHAINS_BLOCKED,
+  TOOLCHAINS_VIA,
   type Toolchain,
   type ToolchainSource,
 } from '../../lib/toolchainManager';
 import { AddToolchainSourceButton } from '../AddToolchainSourceDialog';
+import { SharedIdentityNote } from '../SharedIdentityNote';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
 
@@ -49,7 +60,9 @@ function ToolsCell({
   installation: string;
   toolchain: Toolchain;
 }) {
-  const description = useToolchainDescription(installation, toolchain.name);
+  const description = useToolchainDescription(installation, toolchain.name, {
+    source: toolchain.source,
+  });
   const tools = description.data?.toolchain?.tools;
   if (description.isPending) {
     return <CellText title="…" />;
@@ -95,6 +108,14 @@ function ToolchainsTable({
   toolchains: Toolchain[];
 }) {
   const detailRoute = useRouteRef(toolchainDetailRouteRef);
+  // A name two offered sources publish opens the page of the row's source.
+  const shared = useMemo(() => sharedToolchainNames(toolchains), [toolchains]);
+  const pageOf = (row: Toolchain) => {
+    const path = detailRoute?.({ installation, name: row.name });
+    return path && shared.has(row.name)
+      ? `${path}?${TOOLCHAIN_SOURCE_PARAM}=${encodeURIComponent(row.source)}`
+      : path;
+  };
   const columns: ColumnConfig<Toolchain & { id: string }>[] = [
     {
       id: 'name',
@@ -105,7 +126,7 @@ function ToolchainsTable({
       cell: row => (
         <CellText
           title={row.name}
-          href={detailRoute?.({ installation, name: row.name })}
+          href={pageOf(row)}
           description={row.repository}
         />
       ),
@@ -133,15 +154,21 @@ function ToolchainsTable({
     },
   ];
   const shownColumns = usePhoneColumns(columns, ['name', 'versions']);
+  // Only the rows shown read their tools (one `describe_toolchain` each):
+  // the rest wait behind Show more.
   return (
-    <Table<Toolchain & { id: string }>
-      columnConfig={shownColumns}
-      data={toolchains.map(toolchain => ({
-        ...toolchain,
-        id: `${toolchain.source}/${toolchain.name}`,
-      }))}
-      pagination={{ type: 'none' }}
-    />
+    <ShowMore items={toolchains} initial={INITIAL_ROWS} noun="toolchain">
+      {page => (
+        <Table<Toolchain & { id: string }>
+          columnConfig={shownColumns}
+          data={page.map(toolchain => ({
+            ...toolchain,
+            id: `${toolchain.source}/${toolchain.name}`,
+          }))}
+          pagination={{ type: 'none' }}
+        />
+      )}
+    </ShowMore>
   );
 }
 
@@ -168,7 +195,7 @@ function SourcesSection({ installation }: { installation: string }) {
       cell: row => (
         <CellText
           title={row.repository}
-          href={webURL(row.url)}
+          href={safeWebURL(row.url)}
           description={row.registry}
         />
       ),
@@ -205,11 +232,15 @@ function SourcesSection({ installation }: { installation: string }) {
         onRetry={sources.refetch}
       />
     );
+  } else if (sources.data.status) {
+    body = (
+      <ToolchainGrantPrompt installation={installation} answer={sources.data} />
+    );
   } else {
     body = (
       <Table<ToolchainSource & { id: string }>
         columnConfig={shownColumns}
-        data={(sources.data ?? []).map(source => ({
+        data={sources.data.sources.map(source => ({
           ...source,
           id: source.repository,
         }))}
@@ -306,10 +337,16 @@ function InstallationToolchains({
 export function CustomizeToolchainsPanel({
   search,
 }: CustomizeToolchainsPanelProps) {
-  const { installations, hasToolchains } = useScopedToolchainInstallations();
+  const { installations, sharedIdentity, hasToolchains } =
+    useScopedToolchainInstallations();
 
   if (hasToolchains === false) {
-    return (
+    return sharedIdentity.length > 0 ? (
+      <EmptyStateCard
+        title={sharedIdentityTitle(TOOLCHAINS_BLOCKED, sharedIdentity)}
+        description={sharedIdentityReason(TOOLCHAINS_VIA, sharedIdentity)}
+      />
+    ) : (
       <EmptyStateCard
         title="Toolchains are not available here"
         description="No environment in scope runs the toolchain-manager. Pick another environment, or ask your platform team to turn toolchains on."
@@ -326,6 +363,11 @@ export function CustomizeToolchainsPanel({
         version published from a source repository. Pick them when you start a
         session, or keep the agent’s defaults.
       </Text>
+      <SharedIdentityNote
+        installations={sharedIdentity}
+        blocked={TOOLCHAINS_BLOCKED}
+        via={TOOLCHAINS_VIA}
+      />
       {installations.map(installation => (
         <InstallationToolchains
           key={installation}

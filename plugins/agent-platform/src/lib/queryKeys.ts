@@ -406,26 +406,41 @@ export function musterWorkspaceQueryKey(installation: string, name: string) {
 }
 
 /**
- * The toolchain-manager's reads, as the signed-in person: the toolchains an
- * installation offers (`list_toolchains`), one version of one
- * (`describe_toolchain`) and the sources (`list_sources`). Under the `muster`
- * prefix like the workspace-manager's: what a person sees depends on their
- * GitHub App grant, so none of it is persisted.
+ * Every toolchain-manager read on an installation, as the signed-in person:
+ * what a person sees depends on their GitHub App grant, so a grant that
+ * lands invalidates this prefix, and none of it is persisted (the `muster`
+ * prefix, like the workspace-manager's).
  */
-export function musterToolchainsQueryKey(installation: string) {
-  return ['muster', 'agent-platform', 'toolchains', installation] as const;
+export function musterToolchainManagerQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolchain-manager',
+    installation,
+  ] as const;
 }
 
+/** The toolchains an installation offers (`list_toolchains`). */
+export function musterToolchainsQueryKey(installation: string) {
+  return [
+    ...musterToolchainManagerQueryKey(installation),
+    'toolchains',
+  ] as const;
+}
+
+/**
+ * One version of one source's toolchain (`describe_toolchain`): under the
+ * list, so a refreshed list refreshes what it shows of each.
+ */
 export function musterToolchainQueryKey(
   installation: string,
+  source: string,
   name: string,
   version: string,
 ) {
   return [
-    'muster',
-    'agent-platform',
-    'toolchains',
-    installation,
+    ...musterToolchainsQueryKey(installation),
+    source,
     name,
     version,
   ] as const;
@@ -437,10 +452,8 @@ export function musterToolchainPackagesQueryKey(
   query: string,
 ) {
   return [
-    'muster',
-    'agent-platform',
-    'toolchain-packages',
-    installation,
+    ...musterToolchainManagerQueryKey(installation),
+    'packages',
     query,
   ] as const;
 }
@@ -453,23 +466,17 @@ export function musterToolchainBuildQueryKey(
   pull: number,
 ) {
   return [
-    'muster',
-    'agent-platform',
-    'toolchain-build',
-    installation,
+    ...musterToolchainManagerQueryKey(installation),
+    'build',
     source,
     name,
     pull,
   ] as const;
 }
 
+/** The installation's toolchain sources (`list_sources`). */
 export function musterToolchainSourcesQueryKey(installation: string) {
-  return [
-    'muster',
-    'agent-platform',
-    'toolchain-sources',
-    installation,
-  ] as const;
+  return [...musterToolchainManagerQueryKey(installation), 'sources'] as const;
 }
 
 /**

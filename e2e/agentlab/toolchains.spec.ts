@@ -52,7 +52,9 @@ async function goVersions(
   const grant = page.getByText(
     'Allow the toolchain-manager to read the toolchain sources as you',
   );
-  const go = page.getByRole('row', { name: /^go\b/ });
+  const go = page.getByRole('row').filter({
+    has: page.getByRole('link', { name: 'go', exact: true }),
+  });
   const signIn = page.getByTestId('toolchains-sign-in').first();
   await expect(unavailable.or(grant).or(signIn).or(go).first()).toBeVisible({
     timeout: 2 * 60_000,
@@ -107,7 +109,9 @@ test('the Toolchains tab lists the toolchains with their versions and tools, and
   );
   const [newest, older] = versions as string[];
 
-  const go = admin.getByRole('row', { name: /^go\b/ });
+  const go = admin.getByRole('row').filter({
+    has: admin.getByRole('link', { name: 'go', exact: true }),
+  });
   await expect(go).toContainText(`${newest}, ${older}`);
   // The newest version's tools, read from its image's labels.
   await expect(go.getByRole('gridcell').nth(2)).toContainText(/\bgo\b/, {

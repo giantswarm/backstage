@@ -85,6 +85,8 @@ describe('NewSessionDialog', () => {
       sre,
       'why is the ingress failing?',
       [],
+      undefined,
+      undefined,
     );
     expect(onOpenChange).not.toHaveBeenCalled();
   });

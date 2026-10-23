@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -20,13 +20,15 @@ jest.mock('../../hooks/useToolchainManager', () => ({
   useToolchainManagerClient: () => mockClient,
   useToolchainSources: () => ({
     isPending: false,
-    data: [
-      {
-        name: 'agent-toolchains',
-        repository: 'giantswarm/agent-toolchains',
-        offered: true,
-      },
-    ],
+    data: {
+      sources: [
+        {
+          name: 'agent-toolchains',
+          repository: 'giantswarm/agent-toolchains',
+          offered: true,
+        },
+      ],
+    },
   }),
 }));
 const mockCreate = {
@@ -110,6 +112,40 @@ describe('NewToolchainPage', () => {
       name: 'helm-tools',
       source: 'agent-toolchains',
     });
+  });
+
+  it('drops a Dockerfile written for a name changed meanwhile', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    mockClient.addPackages.mockReturnValue(
+      new Promise(resolve => {
+        answer = resolve;
+      }),
+    );
+    await renderPage();
+
+    const nameField = screen.getByRole('textbox', { name: /Name/ });
+    await userEvent.type(nameField, 'helm-tools');
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: /Search packages/ }),
+      'helm',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Write Dockerfile' }),
+    );
+    await userEvent.type(nameField, '-x');
+    await act(async () =>
+      answer({
+        toolchain: 'helm-tools',
+        path: 'toolchains/helm-tools/Dockerfile',
+        dockerfile: '# toolchain-manager: helm-tools',
+      }),
+    );
+
+    expect(
+      screen.queryByText('# toolchain-manager: helm-tools'),
+    ).not.toBeInTheDocument();
   });
 
   it('writes nothing without a name and a package, saying so', async () => {

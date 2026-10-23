@@ -57,7 +57,8 @@ always the person's own: kagent answers only for the caller.
 ## Customize
 
 `/customize` (`CustomizePage`) has the tabs Agents, Skills, Connectors, Models,
-Toolchains and Workflows. An environment selector appears when there is more than one
+Workflows, Workspaces and Toolchains; Workspaces and Toolchains only where an
+installation in scope runs their manager. An environment selector appears when there is more than one
 environment.
 
 ### Agents

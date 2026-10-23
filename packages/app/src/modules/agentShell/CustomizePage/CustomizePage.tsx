@@ -114,7 +114,7 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     component: 'muster',
   },
   {
-    // Last: the tab the fewest people use, and least often. Offered only
+    // Near the end: tabs few people use, and not often. Offered only
     // where an installation in scope has the workspace-manager
     // (`hasWorkspaces`). Its create action is `CreateWorkspaceButton`, which
     // carries the tab's Organization and installation to the editor.
@@ -124,8 +124,8 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     component: 'muster',
   },
   {
-    // Offered only where an installation in scope has the toolchain-manager
-    // (`hasToolchains`).
+    // Last: the tab the fewest people use. Offered only where an
+    // installation in scope has the toolchain-manager (`hasToolchains`).
     id: 'toolchains',
     title: 'Toolchains',
     searchLabel: 'Search toolchains',
@@ -336,7 +336,7 @@ function CustomizeTabContent({
           ? [groupTitle, tab.title, 'Customize']
           : [tab.title, 'Customize']
       }
-      description="Manage the agents, skills, workspaces, connectors and models behind your sessions."
+      description="Manage the agents, skills, connectors, models, workspaces and toolchains behind your sessions."
       actions={
         tab.id === 'workspaces' ? (
           <Flex gap="3" align="end" style={{ flexWrap: 'wrap' }}>

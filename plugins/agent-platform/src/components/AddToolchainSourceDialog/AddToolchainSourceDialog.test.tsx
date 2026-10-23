@@ -2,7 +2,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import type { AddSourceResult } from '../../lib/toolchainManager';
-import { AddToolchainSourceDialog } from './AddToolchainSourceDialog';
+import {
+  AddToolchainSourceDialog,
+  repositoryName,
+} from './AddToolchainSourceDialog';
 
 const mockAdd = {
   mutate: jest.fn(),
@@ -53,7 +56,7 @@ describe('AddToolchainSourceDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add source' }));
 
     expect(mockAdd.mutate).toHaveBeenCalledWith({
-      repository: 'https://github.com/acme/toolchains',
+      repository: 'acme/toolchains',
       registry: 'registry.example.com/acme',
       slackChannel: '#team-toolchains',
     });
@@ -97,7 +100,7 @@ describe('AddToolchainSourceDialog', () => {
     expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
   });
 
-  it("links the App's installation when it does not reach the repository", () => {
+  it("hands the manager's refusal to the grant prompt", () => {
     mockAdd.data = {
       status: 'install_required',
       installURL: 'https://github.com/apps/toolchain-manager/installations/new',
@@ -105,11 +108,43 @@ describe('AddToolchainSourceDialog', () => {
     };
     renderDialog();
 
-    expect(
-      screen.getByRole('link', { name: 'Install the App' }),
-    ).toHaveAttribute(
-      'href',
-      'https://github.com/apps/toolchain-manager/installations/new',
+    expect(screen.getByText('Grant the App')).toBeInTheDocument();
+  });
+
+  it('opens empty again after it was closed', async () => {
+    const onOpenChange = jest.fn();
+    const { rerender } = render(
+      <AddToolchainSourceDialog
+        installation="gazelle"
+        isOpen
+        onOpenChange={onOpenChange}
+      />,
     );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /Repository/ }),
+      'acme/toolchains',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockAdd.reset).toHaveBeenCalled();
+
+    rerender(
+      <AddToolchainSourceDialog
+        installation="gazelle"
+        isOpen
+        onOpenChange={onOpenChange}
+      />,
+    );
+    expect(screen.getByRole('textbox', { name: /Repository/ })).toHaveValue('');
+  });
+});
+
+describe('repositoryName', () => {
+  it.each([
+    ['acme/toolchains', 'acme/toolchains'],
+    [' https://github.com/acme/toolchains/ ', 'acme/toolchains'],
+    ['acme/toolchains/', 'acme/toolchains'],
+  ])('reads %p as %p', (entered, name) => {
+    expect(repositoryName(entered)).toBe(name);
   });
 });

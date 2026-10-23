@@ -75,13 +75,57 @@ function withPick(
   );
 }
 
-function versionOptions(toolchain: Toolchain) {
+/**
+ * One row of the picker: a toolchain the installation offers, or a pick it
+ * does not (an agent default from an unreachable or removed source), which
+ * the person can still see and remove.
+ */
+export type PickerRow = { name: string; toolchain?: Toolchain };
+
+/**
+ * The picker's rows: one per name, since `start_session` names a toolchain
+ * by its name alone (the first source listed wins where two publish one),
+ * then every pick the list does not offer.
+ */
+export function pickerRows(
+  toolchains: readonly Toolchain[],
+  picks: readonly ToolchainPick[],
+): PickerRow[] {
+  const rows = new Map<string, PickerRow>();
+  for (const toolchain of toolchains) {
+    if (!rows.has(toolchain.name)) {
+      rows.set(toolchain.name, { name: toolchain.name, toolchain });
+    }
+  }
+  for (const pick of picks) {
+    if (!rows.has(pick.name)) {
+      rows.set(pick.name, { name: pick.name });
+    }
+  }
+  return [...rows.values()];
+}
+
+/**
+ * A row's version options: Latest and every published version, plus a
+ * picked version the list no longer has, so the choice is never blank.
+ */
+export function versionOptions(
+  row: PickerRow,
+  pick: ToolchainPick | undefined,
+) {
+  const published = (row.toolchain?.versions ?? []).map(imageTag);
+  const pinned = pick?.version ? imageTag(pick.version) : undefined;
   return [
-    { id: LATEST, label: `Latest (${imageTag(toolchain.version)})` },
-    ...toolchain.versions.map(version => ({
-      id: imageTag(version),
-      label: imageTag(version),
-    })),
+    {
+      id: LATEST,
+      label: row.toolchain
+        ? `Latest (${imageTag(row.toolchain.version)})`
+        : 'Latest',
+    },
+    ...published.map(version => ({ id: version, label: version })),
+    ...(pinned && !published.includes(pinned)
+      ? [{ id: pinned, label: `${pinned} (not published)` }]
+      : []),
   ];
 }
 
@@ -146,38 +190,31 @@ export function ToolchainPicker({
                 : `Changed for this session. The session mounts these tools beside its harness.`}
             </Text>
           </Flex>
-          {toolchains.map(toolchain => {
-            const pick = picks.find(p => p.name === toolchain.name);
+          {pickerRows(toolchains, picks).map(row => {
+            const pick = picks.find(p => p.name === row.name);
             return (
-              <div
-                key={`${toolchain.source}/${toolchain.name}`}
-                className={classes.row}
-              >
+              <div key={row.name} className={classes.row}>
                 <Checkbox
                   isSelected={Boolean(pick)}
                   onChange={selected =>
                     change(
-                      withPick(
-                        picks,
-                        toolchain.name,
-                        selected ? undefined : null,
-                      ),
+                      withPick(picks, row.name, selected ? undefined : null),
                     )
                   }
                 >
-                  {toolchain.name}
+                  {row.toolchain ? row.name : `${row.name} (not offered here)`}
                 </Checkbox>
                 <Select
-                  aria-label={`${toolchain.name} version`}
+                  aria-label={`${row.name} version`}
                   size="small"
-                  options={versionOptions(toolchain)}
+                  options={versionOptions(row, pick)}
                   selectedKey={pick?.version ? imageTag(pick.version) : LATEST}
-                  isDisabled={!pick}
+                  isDisabled={!pick || !row.toolchain}
                   onSelectionChange={key =>
                     change(
                       withPick(
                         picks,
-                        toolchain.name,
+                        row.name,
                         !key || key === LATEST ? undefined : String(key),
                       ),
                     )

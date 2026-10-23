@@ -783,19 +783,13 @@ export function NewSessionComposer({
       return;
     }
     setStartedIn(inWorkspace);
-    if (toolchains) {
-      onStart(
-        selectedAgent,
-        text,
-        attached.images,
-        inWorkspace?.name,
-        toolchains.map(toolchainEntry),
-      );
-    } else if (inWorkspace) {
-      onStart(selectedAgent, text, attached.images, inWorkspace.name);
-    } else {
-      onStart(selectedAgent, text, attached.images);
-    }
+    onStart(
+      selectedAgent,
+      text,
+      attached.images,
+      inWorkspace?.name,
+      toolchains?.map(toolchainEntry),
+    );
     // Deliberately not cleared here. A create can fail, and this is the only
     // place the prompt still exists — the caller clears it by unmounting this
     // component (navigating away) once the session exists.

@@ -15,8 +15,20 @@ jest.mock('../../hooks/useToolchainManager', () => ({
   useToolchainDescription: (
     _installation: string,
     _name: string,
-    version?: string,
-  ) => mockDescribe(version),
+    options: { source?: string; version?: string },
+  ) => mockDescribe(options.version, options.source),
+  useToolchainSources: () => ({
+    data: {
+      status: 'ok',
+      sources: [
+        {
+          name: 'agent-toolchains',
+          repository: 'giantswarm/agent-toolchains',
+          url: 'https://github.com/giantswarm/agent-toolchains',
+        },
+      ],
+    },
+  }),
 }));
 jest.mock('../CodeBlock', () => ({
   CodeBlock: (props: { content: string }) => <pre>{props.content}</pre>,
@@ -53,10 +65,13 @@ beforeEach(() => {
   }));
 });
 
-function renderPage() {
+function renderPage(path?: string) {
   return renderInTestApp(
     <ToolchainDetailPage installation="gazelle" name="go" />,
-    { mountedRoutes: { '/customize/toolchains': toolchainsRouteRef } },
+    {
+      mountedRoutes: { '/customize/toolchains': toolchainsRouteRef },
+      ...(path ? { initialRouteEntries: [path] } : {}),
+    },
   );
 }
 
@@ -72,6 +87,15 @@ describe('ToolchainDetailPage', () => {
     expect(screen.getByText('go 1.25.3-r0')).toBeInTheDocument();
     expect(screen.getByText('https://proxy.golang.org')).toBeInTheDocument();
     expect(screen.getByText('# go v0.2.0')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'giantswarm/agent-toolchains' }),
+    ).toHaveAttribute('href', 'https://github.com/giantswarm/agent-toolchains');
+  });
+
+  it('describes the source named in the address', async () => {
+    await renderPage('/?source=acme');
+
+    expect(mockDescribe).toHaveBeenLastCalledWith(undefined, 'acme');
   });
 
   it('switches to an older version', async () => {
@@ -84,7 +108,7 @@ describe('ToolchainDetailPage', () => {
       }),
     );
 
-    expect(mockDescribe).toHaveBeenLastCalledWith('0.1.0');
+    expect(mockDescribe).toHaveBeenLastCalledWith('0.1.0', undefined);
     expect(await screen.findByText('go 1.24.9-r0')).toBeInTheDocument();
   });
 

@@ -13,9 +13,15 @@ import {
   type ToolchainDescribeResult,
   type ToolchainList,
   type ToolchainManagerTool,
-  type ToolchainSource,
+  type ToolchainSourceList,
   type WrittenToolchain,
 } from '../lib/toolchainManager';
+import { callManagerTool, type ManagerErrors } from '../lib/managerToolCall';
+
+const TOOLCHAIN_MANAGER_ERRORS: ManagerErrors = {
+  classify: classifyToolchainManagerError,
+  notJSON: message => new ToolchainManagerError('failed', message),
+};
 
 /**
  * The toolchain-manager's tools on one installation, called as the signed-in
@@ -35,33 +41,17 @@ export class ToolchainManagerClient {
     readonly installation: string,
   ) {}
 
-  private async call<T>(
+  private call<T>(
     tool: ToolchainManagerTool,
     args: Record<string, unknown>,
   ): Promise<T> {
-    let result: unknown;
-    try {
-      result = await this.musterApi.callTool(
-        toolchainManagerToolName(tool),
-        args,
-        this.installation,
-      );
-    } catch (error) {
-      throw classifyToolchainManagerError(error);
-    }
-    // The proxy parses the tool's JSON for us; a bare string is a JSON text
-    // the proxy left alone, or prose where the data was expected.
-    if (typeof result === 'string') {
-      try {
-        return JSON.parse(result) as T;
-      } catch {
-        throw new ToolchainManagerError(
-          'failed',
-          `toolchain-manager's ${tool} answered text, not JSON: ${result}`,
-        );
-      }
-    }
-    return result as T;
+    return callManagerTool<T>(
+      this.musterApi,
+      this.installation,
+      toolchainManagerToolName(tool),
+      args,
+      TOOLCHAIN_MANAGER_ERRORS,
+    );
   }
 
   /** The toolchains the installation offers, each with its versions. */
@@ -85,13 +75,16 @@ export class ToolchainManagerClient {
     );
   }
 
-  /** The installation's toolchain sources, configured and added. */
-  async listSources(): Promise<ToolchainSource[]> {
-    const result = await this.call<{ sources?: ToolchainSource[] }>(
+  /**
+   * The installation's toolchain sources, configured and added, or the
+   * answer's status (a grant to give) with none.
+   */
+  async listSources(): Promise<ToolchainSourceList> {
+    const result = await this.call<Partial<ToolchainSourceList>>(
       TOOLCHAIN_MANAGER_TOOLS.listSources,
       {},
     );
-    return result.sources ?? [];
+    return { ...result, sources: result.sources ?? [] };
   }
 
   /** Adds a repository the person maintains as a source. */
@@ -103,11 +96,16 @@ export class ToolchainManagerClient {
 
   /** A package source's packages whose name contains `query`. */
   async searchPackages(query: string): Promise<PackageSearch> {
-    const result = await this.call<PackageSearch>(
+    const result = await this.call<Partial<PackageSearch>>(
       TOOLCHAIN_MANAGER_TOOLS.searchPackages,
       { query },
     );
-    return { ...result, packages: result.packages ?? [] };
+    return {
+      ...result,
+      source: result.source ?? '',
+      branches: result.branches ?? [],
+      packages: result.packages ?? [],
+    };
   }
 
   /** A new toolchain's Dockerfile from the picked packages; writes nothing. */

@@ -19,16 +19,18 @@ import {
   ShellPage,
   ShellPageFactsSkeleton,
   ShellPageTitleSkeleton,
+  safeWebURL,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import {
   useToolchainDescription,
   useToolchainManagerAvailability,
+  useToolchainSources,
 } from '../../hooks/useToolchainManager';
 import {
   imageTag,
-  webURL,
+  TOOLCHAIN_SOURCE_PARAM,
   type ToolchainDescription,
   type ToolchainTool,
 } from '../../lib/toolchainManager';
@@ -108,7 +110,14 @@ function ToolsTable({ tools }: { tools: ToolchainTool[] }) {
   );
 }
 
-function Described({ toolchain }: { toolchain: ToolchainDescription }) {
+function Described({
+  toolchain,
+  sourceURL,
+}: {
+  toolchain: ToolchainDescription;
+  /** The source's own address (`list_sources`); plain text without one. */
+  sourceURL: string | undefined;
+}) {
   const facts: Fact[] = [
     { label: 'Image', value: toolchain.image },
     {
@@ -129,14 +138,12 @@ function Described({ toolchain }: { toolchain: ToolchainDescription }) {
       : []),
     {
       label: 'Source',
-      value: (
-        <Link
-          href={`https://github.com/${toolchain.repository}`}
-          target="_blank"
-          rel="noopener"
-        >
+      value: sourceURL ? (
+        <Link href={sourceURL} target="_blank" rel="noopener">
           {toolchain.repository}
         </Link>
+      ) : (
+        toolchain.repository
       ),
     },
     {
@@ -183,9 +190,18 @@ export function ToolchainDetailPage({
     useToolchainManagerAvailability(installation);
   const [searchParams, setSearchParams] = useSearchParams();
   const version = searchParams.get(VERSION_SEARCH_PARAM) ?? undefined;
-  const description = useToolchainDescription(installation, name, version, {
+  const source = searchParams.get(TOOLCHAIN_SOURCE_PARAM) ?? undefined;
+  const description = useToolchainDescription(installation, name, {
+    source,
+    version,
     enabled: isAvailable,
   });
+  const sources = useToolchainSources(installation, { enabled: isAvailable });
+  const sourceURL = safeWebURL(
+    sources.data?.sources.find(
+      candidate => candidate.name === description.data?.toolchain?.source,
+    )?.url,
+  );
 
   if (!isAvailable && !isLoading) {
     return (
@@ -269,10 +285,10 @@ export function ToolchainDetailPage({
       }
     >
       <Flex direction="column" gap="2">
-        {webURL(toolchain.releaseURL) && (
+        {safeWebURL(toolchain.releaseURL) && (
           <Text variant="body-small" color="secondary">
             <Link
-              href={webURL(toolchain.releaseURL)}
+              href={safeWebURL(toolchain.releaseURL)}
               target="_blank"
               rel="noopener"
             >
@@ -280,7 +296,7 @@ export function ToolchainDetailPage({
             </Link>
           </Text>
         )}
-        <Described toolchain={toolchain} />
+        <Described toolchain={toolchain} sourceURL={sourceURL} />
       </Flex>
     </ShellPage>
   );

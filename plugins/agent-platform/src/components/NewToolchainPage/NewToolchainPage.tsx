@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
@@ -23,6 +23,7 @@ import {
   StatusDot,
   useFieldValidation,
   useSelectFieldError,
+  safeWebURL,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -39,10 +40,15 @@ import {
 import {
   BUILD_STATE_LABEL,
   isFinalBuildState,
-  webURL,
   type ToolchainBuild,
   type WrittenToolchain,
+  TOOLCHAINS_BLOCKED,
+  TOOLCHAINS_VIA,
 } from '../../lib/toolchainManager';
+import {
+  sharedIdentityReason,
+  sharedIdentityTitle,
+} from '../../lib/sharedIdentity';
 import { toolchainDetailRouteRef, toolchainsRouteRef } from '../../routes';
 import { CodeBlock } from '../CodeBlock';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
@@ -118,7 +124,11 @@ function BuildStatus({
   }
   if (!build) {
     return status.data?.status ? (
-      <ToolchainGrantPrompt installation={installation} answer={status.data} />
+      <ToolchainGrantPrompt
+        installation={installation}
+        answer={status.data}
+        onConnected={status.refetch}
+      />
     ) : (
       <LoadingIndicator label="Reading the build state…" />
     );
@@ -131,8 +141,8 @@ function BuildStatus({
       />
       {(build.jobs ?? []).map(job => (
         <Text key={job.name} variant="body-small" color="secondary">
-          {webURL(job.url) ? (
-            <Link href={webURL(job.url)} target="_blank" rel="noopener">
+          {safeWebURL(job.url) ? (
+            <Link href={safeWebURL(job.url)} target="_blank" rel="noopener">
               {job.name}
             </Link>
           ) : (
@@ -163,7 +173,8 @@ function BuildStatus({
  */
 export function NewToolchainPage() {
   const frame = useFrame();
-  const { installations, hasToolchains } = useScopedToolchainInstallations();
+  const { installations, sharedIdentity, hasToolchains } =
+    useScopedToolchainInstallations();
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = searchParams.get(INSTALLATION_SEARCH_PARAM);
   const installation =
@@ -171,13 +182,34 @@ export function NewToolchainPage() {
       ? requested
       : installations[0];
 
+  // The first installation that answers is pinned in the address: one that
+  // answers later never takes the form, and what was typed, away from it.
+  useEffect(() => {
+    if (!requested && installation) {
+      setSearchParams(
+        params => {
+          params.set(INSTALLATION_SEARCH_PARAM, installation);
+          return params;
+        },
+        { replace: true },
+      );
+    }
+  }, [requested, installation, setSearchParams]);
+
   if (hasToolchains === false) {
     return (
       <ShellPage title="New toolchain" {...frame}>
-        <EmptyStateCard
-          title="Toolchains are not available here"
-          description="No environment in scope runs the toolchain-manager. Ask your platform team to turn toolchains on."
-        />
+        {sharedIdentity.length > 0 ? (
+          <EmptyStateCard
+            title={sharedIdentityTitle(TOOLCHAINS_BLOCKED, sharedIdentity)}
+            description={sharedIdentityReason(TOOLCHAINS_VIA, sharedIdentity)}
+          />
+        ) : (
+          <EmptyStateCard
+            title="Toolchains are not available here"
+            description="No environment in scope runs the toolchain-manager. Ask your platform team to turn toolchains on."
+          />
+        )}
       </ShellPage>
     );
   }
@@ -222,7 +254,9 @@ export function NewToolchainPage() {
 function NewToolchainForm({ installation }: { installation: string }) {
   const client = useToolchainManagerClient(installation);
   const sources = useToolchainSources(installation);
-  const offered = (sources.data ?? []).filter(source => source.offered);
+  const offered = (sources.data?.sources ?? []).filter(
+    source => source.offered,
+  );
   const [name, setName] = useState('');
   const [source, setSource] = useState<string>();
   const [query, setQuery] = useState('');
@@ -255,9 +289,14 @@ function NewToolchainForm({ installation }: { installation: string }) {
     retry: false,
   });
 
+  // Which name and picks the newest write is for: a change while a write is
+  // in flight makes its answer stale, and a stale Dockerfile is dropped.
+  const writeRun = useRef(0);
+
   // A change to the picks or the name invalidates the written Dockerfile.
   const changed = (apply: () => void) => {
     apply();
+    writeRun.current += 1;
     setWritten(undefined);
     create.reset();
   };
@@ -267,12 +306,18 @@ function NewToolchainForm({ installation }: { installation: string }) {
       validation.reveal();
       return;
     }
+    const run = ++writeRun.current;
     setWriting(true);
     setWriteError(undefined);
     try {
-      setWritten(await client!.addPackages({ name, packages: picked }));
+      const answer = await client!.addPackages({ name, packages: picked });
+      if (run === writeRun.current) {
+        setWritten(answer);
+      }
     } catch (error) {
-      setWriteError(error instanceof Error ? error.message : String(error));
+      if (run === writeRun.current) {
+        setWriteError(error instanceof Error ? error.message : String(error));
+      }
     } finally {
       setWriting(false);
     }
@@ -315,6 +360,12 @@ function NewToolchainForm({ installation }: { installation: string }) {
             />
             {sourceError.message}
           </div>
+          {sources.data?.status && (
+            <ToolchainGrantPrompt
+              installation={installation}
+              answer={sources.data}
+            />
+          )}
         </Flex>
       </PageSection>
 
@@ -353,7 +404,13 @@ function NewToolchainForm({ installation }: { installation: string }) {
             />
           )}
           {search.isFetching && <LoadingIndicator label="Searching…" />}
-          {search.data && !search.isFetching && (
+          {search.data?.status && !search.isFetching && (
+            <ToolchainGrantPrompt
+              installation={installation}
+              answer={search.data}
+            />
+          )}
+          {search.data && !search.data.status && !search.isFetching && (
             <Flex direction="column" gap="1">
               {search.data.packages.length === 0 && (
                 <Text variant="body-small" color="secondary">
@@ -495,13 +552,17 @@ function NewToolchainForm({ installation }: { installation: string }) {
             <ToolchainGrantPrompt
               installation={installation}
               answer={create.data}
+              // With the grant given, the same pull request is opened.
+              onConnected={() =>
+                create.variables && create.mutate(create.variables)
+              }
             />
           )}
           {created && (
             <Flex direction="column" gap="3">
               <Text variant="body-medium">
                 <Link
-                  href={webURL(created.pullURL)}
+                  href={safeWebURL(created.pullURL)}
                   target="_blank"
                   rel="noopener"
                 >
