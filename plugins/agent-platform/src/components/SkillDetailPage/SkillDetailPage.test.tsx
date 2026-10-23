@@ -250,12 +250,20 @@ describe('SkillDetailPage', () => {
     );
     expect(screen.queryByRole('link', { name: /View source/ })).toBeNull();
     // Labels, values and links read at the shell's body size.
-    for (const text of ['Branch', 'main', 'a1b2c3d']) {
+    for (const text of ['Branch', 'main']) {
       expect(within(facts).getByText(text)).toHaveAttribute(
         'data-variant',
         'body-medium',
       );
     }
+    expect(
+      within(facts).getByRole('link', { name: 'a1b2c3d' }),
+    ).toHaveAttribute('data-variant', 'body-medium');
+    // The full commit on hover.
+    expect(within(facts).getByText('a1b2c3d')).toHaveAttribute(
+      'title',
+      skill.commit,
+    );
     // The Overview reads nothing more than the listing has.
     expect(mockUseSkillContent).not.toHaveBeenCalled();
   });
@@ -365,9 +373,10 @@ describe('SkillDetailPage', () => {
     await renderPage('giantswarm/skills/ticket-triage/used-by');
 
     // The behind row says so; the line under the list counts them.
+    // The full pin on hover.
     expect(
       screen.getByText('gazelle · older version (cb1fb76)'),
-    ).toBeInTheDocument();
+    ).toHaveAttribute('title', `Pinned at ${OLD_COMMIT}`);
     expect(
       byFullText(
         'One agent pins an older commit than the newest (a1b2c3d). Update agents moves it there.',

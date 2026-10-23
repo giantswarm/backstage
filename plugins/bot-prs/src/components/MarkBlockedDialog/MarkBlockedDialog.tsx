@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Alert, Text, TextField } from '@backstage/ui';
-import { ConfirmDialog, shortSha } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  CommitSha,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useMargeMark } from '../../hooks/useMarge';
 import {
@@ -90,9 +93,7 @@ export function MarkBlockedDialog({
           description={
             <>
               The marker is on the PR as you, for head{' '}
-              <span title={mark.result.head_sha}>
-                {shortSha(mark.result.head_sha)}
-              </span>
+              <CommitSha value={mark.result.head_sha} />
               {mark.result.change_id ? `, change ${mark.result.change_id}` : ''}
               . It goes stale on its own when the PR content changes.
             </>

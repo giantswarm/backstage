@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import type { Fact } from '../FactList';
-import { Mono } from '../Mono';
+import type { Fact } from '../components/FactList';
+import { Mono } from '../components/Mono';
 
 export type NamespacedNameFactsOptions = {
   /** The resource's namespace; a cluster-scoped one, or one not known, has no Namespace fact. */

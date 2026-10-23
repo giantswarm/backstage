@@ -19,10 +19,11 @@ reference in the agent's own namespace (its ModelConfig, a sub-agent, the
 HelmRelease behind it) is named alone. The Configuration card's "See tools" is
 bui's link.
 
-Every git SHA the portal shows is 7 characters, with the full value as its
-title and a copy button on touch screens: skill pins and versions, agent
-revisions, workspace heads, Flux revisions and versions that carry a commit,
-the release footer, scaffold and revert commits, and the backend's messages.
+Every git SHA the portal shows is 7 characters, a digest 12, with the full
+value as its title and a copy button on touch screens: skill pins and
+versions, agent revisions, workspace heads, Flux revisions and digests,
+branch-build versions, the release footer, scaffold and revert commits, and
+the backend's messages.
 
 New in `gs-common`: `shortSha`, re-exported by `ui-react`. New in `ui-react`:
 `CommitSha` and `namespacedNameFacts`.

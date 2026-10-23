@@ -7,7 +7,7 @@ import {
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
-  shortSha,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
@@ -541,8 +541,8 @@ function CreateAgentReview() {
                       <span key={`${skill.repoUrl}#${skill.path}`}>
                         {index > 0 ? ', ' : ''}
                         {skill.name}{' '}
-                        <span className={classes.code} title={skill.commit}>
-                          @{shortSha(skill.commit)}
+                        <span className={classes.code}>
+                          @<CommitSha value={skill.commit} />
                         </span>
                       </span>
                     ))}
@@ -556,8 +556,8 @@ function CreateAgentReview() {
                       <span key={`${plugin.repoUrl}#${plugin.path}`}>
                         {index > 0 ? ', ' : ''}
                         {plugin.name}{' '}
-                        <span className={classes.code} title={plugin.commit}>
-                          @{shortSha(plugin.commit)}
+                        <span className={classes.code}>
+                          @<CommitSha value={plugin.commit} />
                         </span>
                       </span>
                     ))}

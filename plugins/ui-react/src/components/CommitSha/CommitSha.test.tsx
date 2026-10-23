@@ -40,6 +40,14 @@ describe('CommitSha', () => {
     ).toBeInTheDocument();
   });
 
+  it('leaves the copy button out where a button cannot go', () => {
+    layout = mockViewport({ width: 375, touch: true });
+    render(<CommitSha value={SHA} copy={false} />);
+
+    expect(screen.getByText('0123456')).toHaveAttribute('title', SHA);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
   it('renders a value without a SHA as it is, with nothing to copy', () => {
     layout = mockViewport({ width: 375, touch: true });
     render(<CommitSha value="1.2.3" />);

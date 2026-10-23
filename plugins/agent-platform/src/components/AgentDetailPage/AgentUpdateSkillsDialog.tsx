@@ -6,6 +6,7 @@ import {
   CopyButton,
   LoadingIndicator,
   shortSha,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
@@ -147,12 +148,11 @@ function PlanRow({
     // by hand when agent-manager cannot open the pull request.
     headCell = (
       <Flex align="center" gap="1">
-        <span
+        <CommitSha
+          value={entry.head}
+          copy={false}
           className={`${classes.code} ${classes.pin} ${classes.headPin}`}
-          title={entry.head}
-        >
-          {shortSha(entry.head)}
-        </span>
+        />
         {entry.changes && (
           <CopyButton
             text={entry.head}

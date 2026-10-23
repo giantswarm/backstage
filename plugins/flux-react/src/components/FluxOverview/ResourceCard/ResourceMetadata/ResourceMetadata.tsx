@@ -15,7 +15,6 @@ import {
   DateComponent,
   ExternalLink,
   NotAvailable,
-  shortSha,
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { Box } from '@backstage/ui';
@@ -165,13 +164,13 @@ function getKustomizationSpec(
 }
 
 /**
- * A revision linked to its commit: the short SHA, the full one as the link's
- * title. Not `CommitSha`, whose copy button cannot sit inside a link.
+ * A revision linked to its commit: the short SHA, the full one as its title;
+ * no copy button, which cannot sit inside a link.
  */
 function RevisionLink({ href, revision }: { href: string; revision: string }) {
   return (
     <ExternalLink href={href}>
-      <span title={revision}>{shortSha(revision)}</span>
+      <CommitSha value={revision} copy={false} />
     </ExternalLink>
   );
 }

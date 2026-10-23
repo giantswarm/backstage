@@ -6,7 +6,7 @@ import {
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
-  shortSha,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
@@ -441,14 +441,13 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                       <span key={`${skill.name}#${index}`}>
                         {index > 0 ? ', ' : ''}
                         {skill.name}{' '}
-                        <span
-                          className={classes.code}
-                          title={'git' in skill ? skill.git.commit : skill.oci}
-                        >
+                        <span className={classes.code}>
                           @
-                          {shortSha(
-                            'git' in skill ? skill.git.commit : skill.oci,
-                          )}
+                          <CommitSha
+                            value={
+                              'git' in skill ? skill.git.commit : skill.oci
+                            }
+                          />
                         </span>
                       </span>
                     ))}
@@ -462,11 +461,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                       <span key={`${pluginEntryName(plugin)}#${index}`}>
                         {index > 0 ? ', ' : ''}
                         {pluginEntryName(plugin)}{' '}
-                        <span
-                          className={classes.code}
-                          title={plugin.git?.commit ?? plugin.oci}
-                        >
-                          @{shortSha(plugin.git?.commit ?? plugin.oci ?? '')}
+                        <span className={classes.code}>
+                          @
+                          <CommitSha
+                            value={plugin.git?.commit ?? plugin.oci ?? ''}
+                          />
                         </span>
                       </span>
                     ))}

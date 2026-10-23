@@ -114,18 +114,88 @@ html[data-agent-shell]
  * on the tint. On these surfaces every text link — bui's `Link` or MUI's —
  * takes the shell's link colour and a solid underline, whatever its `color`.
  * The colour holds 4.5:1 against the tint (6.0:1) and each light alert
- * background (info, success, warning, danger), but only 2.3:1 against the
- * body text, short of the 3:1 that would let colour alone mark a link, so the
+ * background (info, success, warning, danger). Against the body text it is
+ * only 2.3:1, short of the 3:1 at which colour alone may mark a link, so the
  * underline is what marks it. Hover darkens it and thickens the line.
  *
- * A white surface nested inside (bui's neutral-3, a card in a tinted card) is
- * not tinted, so its links keep bui's own look. Buttons rendered as links
- * (`ButtonLink`), tabs, menu items and tags keep theirs. Dark mode takes bui's
- * info foreground, which holds 4.5:1 against the dark surfaces. Unlayered, so
- * it wins over MUI's link classes as well as bui's.
+ * Buttons rendered as links (`ButtonLink`), tabs, menu items and tags keep
+ * their own look. Unlayered, so it wins over MUI's link classes as well as
+ * bui's.
  */
+
+/* In a banner, wherever the banner sits. */
 html[data-agent-shell]
-  :is(.bui-Alert, [data-bg='neutral-2'])
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ) {
+  color: var(--agent-shell-link);
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+html[data-agent-shell]
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ):hover {
+  color: var(--agent-shell-link-hover);
+  text-decoration-thickness: 2px;
+}
+
+/* Dark mode takes bui's info foreground, which holds 4.5:1 against the dark
+   alert backgrounds. */
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ) {
+  color: var(--bui-fg-info);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='dark']
+  .bui-Alert
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ):hover {
+  color: var(--bui-fg-info-on-bg);
+}
+
+/* On the neutral-2 tint. A surface nested inside it is bui's neutral-3, white
+   in the light theme, so its links keep bui's own look. Light mode only, as
+   the shell is: the dark neutral-3 is a tint of its own, and no dark colour
+   here has been checked against it. */
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  [data-bg='neutral-2']
   a:not(
     .bui-Button,
     .bui-ButtonLink,
@@ -143,7 +213,8 @@ html[data-agent-shell]
 }
 
 html[data-agent-shell]
-  :is(.bui-Alert, [data-bg='neutral-2'])
+  body[data-theme-mode='light']
+  [data-bg='neutral-2']
   a:not(
     .bui-Button,
     .bui-ButtonLink,
@@ -155,36 +226,6 @@ html[data-agent-shell]
   ):not([data-bg='neutral-3'] a):hover {
   color: var(--agent-shell-link-hover);
   text-decoration-thickness: 2px;
-}
-
-html[data-agent-shell]
-  body[data-theme-mode='dark']
-  :is(.bui-Alert, [data-bg='neutral-2'])
-  a:not(
-    .bui-Button,
-    .bui-ButtonLink,
-    .bui-ButtonIcon,
-    .bui-Tag,
-    [class*='MuiButton'],
-    [role='tab'],
-    [role='menuitem']
-  ):not([data-bg='neutral-3'] a) {
-  color: var(--bui-fg-info);
-}
-
-html[data-agent-shell]
-  body[data-theme-mode='dark']
-  :is(.bui-Alert, [data-bg='neutral-2'])
-  a:not(
-    .bui-Button,
-    .bui-ButtonLink,
-    .bui-ButtonIcon,
-    .bui-Tag,
-    [class*='MuiButton'],
-    [role='tab'],
-    [role='menuitem']
-  ):not([data-bg='neutral-3'] a):hover {
-  color: var(--bui-fg-info-on-bg);
 }
 
 /*

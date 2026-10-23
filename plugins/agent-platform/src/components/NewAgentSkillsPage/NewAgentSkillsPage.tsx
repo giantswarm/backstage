@@ -20,6 +20,7 @@ import {
   useProvidePageHeaderActions,
   WizardStepHeading,
   shortSha,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
@@ -119,14 +120,14 @@ function SkillCard({
       {pinned ? (
         <Text variant="body-x-small" color="secondary">
           pinned at{' '}
-          <span className={classes.code} title={pinned}>
-            {shortSha(pinned)}
-          </span>
+          <CommitSha value={pinned} copy={false} className={classes.code} />
           {' · '}
           {skill.ref} is at{' '}
-          <span className={classes.code} title={skill.commit}>
-            {shortSha(skill.commit)}
-          </span>
+          <CommitSha
+            value={skill.commit}
+            copy={false}
+            className={classes.code}
+          />
         </Text>
       ) : (
         <Text
@@ -135,8 +136,8 @@ function SkillCard({
           aria-label={`Pinned to commit ${shortSha(skill.commit)} of ${skill.ref}`}
         >
           {skill.ref}{' '}
-          <span className={classes.code} title={skill.commit}>
-            @{shortSha(skill.commit)}
+          <span className={classes.code}>
+            @<CommitSha value={skill.commit} copy={false} />
           </span>
         </Text>
       )}

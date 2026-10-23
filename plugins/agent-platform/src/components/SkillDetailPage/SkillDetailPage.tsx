@@ -23,8 +23,8 @@ import {
   ShellPageTitleSkeleton,
   useFactTextVariant,
   usePhoneLayout,
-  shortSha,
   CommitSha,
+  shortSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -95,19 +95,10 @@ const useStyles = makeStyles({
 });
 
 /** A fact's link out to GitHub, at the size of the fact list it is in. */
-function FactLink({
-  href,
-  title,
-  children,
-}: {
-  href: string;
-  title?: string;
-  children: ReactNode;
-}) {
+function FactLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
       href={href}
-      title={title}
       target="_blank"
       rel="noopener noreferrer"
       variant={useFactTextVariant()}
@@ -282,6 +273,8 @@ function UsedByTab({
     }
     return using.map(row => {
       const pinned = pinnedBehind.get(row.id);
+      // The older pin keeps its full value in the line's title; in a row,
+      // which takes the press, there is no room for a copy button.
       return {
         row,
         detail: [
@@ -289,6 +282,7 @@ function UsedByTab({
           ...(named.get(nameKey(row))! > 1 ? [row.namespace] : []),
           ...(pinned ? [`older version (${shortSha(pinned)})`] : []),
         ].join(' · '),
+        detailTitle: pinned ? `Pinned at ${pinned}` : undefined,
       };
     });
   }, [using, behind]);
@@ -456,8 +450,8 @@ function SkillPage({
       // (UX review M19). It opens the skill's folder at that commit.
       label: 'Latest commit',
       value: sourceUrl ? (
-        <FactLink href={sourceUrl} title={skill.commit}>
-          {shortSha(skill.commit)}
+        <FactLink href={sourceUrl}>
+          <CommitSha value={skill.commit} copy={false} />
         </FactLink>
       ) : (
         <FactCommit commit={skill.commit} />

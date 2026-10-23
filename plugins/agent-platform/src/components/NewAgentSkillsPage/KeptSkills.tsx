@@ -1,6 +1,6 @@
 import { Button, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { ExternalLink, shortSha } from '@giantswarm/backstage-plugin-ui-react';
+import { ExternalLink, CommitSha } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentSkillEntry } from '../../lib/agentManager';
 import { skillEntryKey } from '../../lib/agentEdit';
@@ -75,12 +75,11 @@ export function KeptSkills({
             </Text>
             <Text variant="body-x-small" color="secondary">
               pinned at{' '}
-              <span
+              <CommitSha
+                value={'git' in skill ? skill.git.commit : skill.oci}
+                copy={false}
                 className={classes.code}
-                title={'git' in skill ? skill.git.commit : skill.oci}
-              >
-                {shortSha('git' in skill ? skill.git.commit : skill.oci)}
-              </span>
+              />
             </Text>
             <div className={styles.actions}>
               <Button

@@ -2656,7 +2656,14 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
 
       expect(sectionTitle('Configuration')).toBeInTheDocument();
       expect(sectionTitle('Status')).toBeInTheDocument();
-      expect(screen.getAllByText('pr-reviewer').length).toBeGreaterThan(0);
+      // The resource's name, once, as the Resource card's Name fact.
+      const resource = screen
+        .getByRole('heading', { name: 'Resource' })
+        .closest('article')!;
+      expect(
+        within(resource).getByText('Name').closest('dt')?.nextElementSibling,
+      ).toHaveTextContent(/^pr-reviewer$/);
+      expect(within(resource).getAllByText('pr-reviewer')).toHaveLength(1);
       // Which version of each skill it is pinned to, short with the full pin
       // on hover.
       expect(screen.getByTitle(COMMIT)).toHaveTextContent('0123456');

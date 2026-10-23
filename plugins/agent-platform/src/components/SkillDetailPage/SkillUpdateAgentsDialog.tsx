@@ -16,7 +16,7 @@ import {
   ConfirmDialog,
   useFieldValidation,
   useGroupFieldError,
-  shortSha,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -409,13 +409,9 @@ function AgentLine({
       <Flex direction="column" gap="1" className={classes.detail}>
         <Text variant="body-small" color="secondary">
           {row.installation} · {row.namespace} ·{' '}
-          <span className={classes.code} title={pinned}>
-            {shortSha(pinned)}
-          </span>
+          <CommitSha value={pinned} copy={false} className={classes.code} />
           {' → '}
-          <span className={classes.code} title={head}>
-            {shortSha(head)}
-          </span>
+          <CommitSha value={head} copy={false} className={classes.code} />
         </Text>
         {note && (
           <Text id={noteId} variant="body-small" color="secondary">
@@ -676,12 +672,10 @@ export function SkillUpdateAgentsDialog({
         <Text as="p" variant="body-medium" style={{ margin: 0 }}>
           {behind.length === 1 ? 'This agent pins' : 'These agents pin'} the
           skill at an older commit than the newest one,{' '}
-          <span className={classes.code} title={head}>
-            {shortSha(head)}
-          </span>
-          . Updating an agent re-pins every git skill it mounts — this one and
-          any others — to the head of its repository's default branch; nothing
-          else about the agent changes.
+          <CommitSha value={head} className={classes.code} />. Updating an agent
+          re-pins every git skill it mounts — this one and any others — to the
+          head of its repository's default branch; nothing else about the agent
+          changes.
         </Text>
         {proposing > 0 && !isDone && (
           <Text as="p" variant="body-small" color="secondary">

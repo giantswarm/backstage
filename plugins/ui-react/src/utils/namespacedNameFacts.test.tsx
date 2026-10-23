@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { FactList } from '../FactList';
+import { FactList } from '../components/FactList';
 import { namespacedNameFacts } from './namespacedNameFacts';
 
 function definitionOf(term: string) {

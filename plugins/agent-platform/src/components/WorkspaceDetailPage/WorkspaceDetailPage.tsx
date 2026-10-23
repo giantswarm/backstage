@@ -47,7 +47,7 @@ import {
   useCatalogFilters,
   usePhoneColumns,
   useSplatBasePath,
-  shortSha,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
@@ -696,8 +696,8 @@ function RepositoriesTab({
       defaultWidth: '1fr',
       cell: mirror => (
         <Cell>
-          <code title={mirror.head}>
-            {mirror.head ? shortSha(mirror.head) : '—'}
+          <code>
+            {mirror.head ? <CommitSha value={mirror.head} copy={false} /> : '—'}
           </code>
         </Cell>
       ),

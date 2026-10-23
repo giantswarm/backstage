@@ -1,6 +1,10 @@
 import { Button, Checkbox, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { ExternalLink, shortSha } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  shortSha,
+  CommitSha,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentPluginEntry } from '../../lib/agentManager';
 import {
@@ -54,14 +58,14 @@ function PluginSource({
       {pinned ? (
         <Text variant="body-x-small" color="secondary">
           pinned at{' '}
-          <span className={classes.code} title={pinned}>
-            {shortSha(pinned)}
-          </span>
+          <CommitSha value={pinned} copy={false} className={classes.code} />
           {' · '}
           {plugin.ref} is at{' '}
-          <span className={classes.code} title={plugin.commit}>
-            {shortSha(plugin.commit)}
-          </span>
+          <CommitSha
+            value={plugin.commit}
+            copy={false}
+            className={classes.code}
+          />
         </Text>
       ) : (
         <Text
@@ -70,8 +74,8 @@ function PluginSource({
           aria-label={`Pinned to commit ${shortSha(plugin.commit)} of ${plugin.ref}`}
         >
           {plugin.ref}{' '}
-          <span className={classes.code} title={plugin.commit}>
-            @{shortSha(plugin.commit)}
+          <span className={classes.code}>
+            @<CommitSha value={plugin.commit} copy={false} />
           </span>
         </Text>
       )}
@@ -273,12 +277,11 @@ export function KeptPlugins({
               </Text>
               <Text variant="body-x-small" color="secondary">
                 pinned at{' '}
-                <span
+                <CommitSha
+                  value={plugin.git?.commit ?? plugin.oci ?? ''}
+                  copy={false}
                   className={classes.code}
-                  title={plugin.git?.commit ?? plugin.oci}
-                >
-                  {shortSha(plugin.git?.commit ?? plugin.oci ?? '')}
-                </span>
+                />
                 {plugin.skills && plugin.skills.length > 0 && (
                   <> · skills {plugin.skills.join(', ')}</>
                 )}

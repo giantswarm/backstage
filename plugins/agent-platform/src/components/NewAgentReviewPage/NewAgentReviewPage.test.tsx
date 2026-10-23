@@ -549,7 +549,9 @@ describe('NewAgentReviewPage', () => {
       'kagent',
     );
     // The technical summary names the skill's pin and the selectors.
-    expect(screen.getByText('@cb1fb76')).toBeInTheDocument();
+    expect(screen.getByText('cb1fb76').parentElement).toHaveTextContent(
+      /^@cb1fb76$/,
+    );
     expect(screen.getByText('Toolset').parentElement).toHaveTextContent(
       'preset:read-only',
     );
