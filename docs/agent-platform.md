@@ -2946,7 +2946,12 @@ failure the dialog stays open with the message.
 
 **Commit** (`delete_agent` with `mode: commit`, giantswarm/agent-manager#24)
 opens a pull request removing the agent's files, behind
-`get_info.capabilities.commit`. `auth_required` shows as a refusal.
+`get_info.capabilities.commit`. While the dialog is open in commit mode it runs
+the pull-request check described under
+[Editing an agent](#editing-an-agent), and confirm is enabled once it passes. A
+release outside agent-manager's directory shows the explanation with only
+Close; `auth_required` shows the GitHub authorization prompt. The same two
+refusals of the delete itself read the same way.
 
 The dialogs render in the **page body**, because the header slot is outside the
 plugin's `QueryClientProvider` and the mutations, dry runs and `ServerSignIn`
@@ -2994,6 +2999,26 @@ HelmRelease's `requestedBy` annotation. A suspended agent's dry run returns
 `conflict:` and locks Save; a viewer gets `forbidden:`. A git-applied agent,
 behind the commit capability, gets **Propose changes as pull request**
 (`update_agent` with `mode: commit`), locked once its pull request is open.
+
+**A git-applied agent is checked before the form** (`useAgentCommitCheck`):
+`update_agent` with `mode: commit`, `dryRun: true` and no changed fields reads
+the repository as the person and answers what a pull request would get, writing
+nothing (about 1–4 s). It runs alongside `get_agent` when a cached reading
+already says `managed: gitops`, otherwise once the fresh reading does, and the
+page stays on "Reading the agent…" until it answers.
+
+| Answer                                                                               | The page shows                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Passes                                                                               | The wizard                                                                                                                                                                                                         |
+| `conflict` naming a release outside agent-manager's directory (`missingReleaseFile`) | An info empty state, "This agent cannot be edited here", linking the repository and the path the Kustomization builds from (the refusal's directory without `/agent-manager`), the refusal under Technical details |
+| `auth_required`, or muster not connected                                             | `ConnectAgentManagerAlert` (GitHub authorization); the sign-in re-reads every muster query, and the wizard opens once the check passes                                                                             |
+| Anything else                                                                        | The wizard; the save reports its own answer                                                                                                                                                                        |
+
+The refusal is recognised by agent-manager's wording until it reports a code of
+its own (giantswarm/agent-manager#144). The review renders the same two
+refusals the same way, in case the repository or the authorization changes
+while the person edits. The check costs a GitHub read, so it runs on the edit
+page and in the Delete dialog only, never on the detail page.
 
 ### Updating an agent's skills
 

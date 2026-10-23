@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Flex } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import {
@@ -17,6 +18,7 @@ import {
   useAgentManagerAvailability,
   useAgentManagerInfo,
 } from '../../hooks/useAgentManager';
+import { useAgentCommitCheck } from '../../hooks/useAgentCommitCheck';
 import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
@@ -24,6 +26,7 @@ import { formStateOfAgent } from '../../lib/agentEdit';
 import type { AgentManagerAgent, WriteMode } from '../../lib/agentManager';
 import type { DiscoveredSkill } from '../../lib/skills';
 import type { DiscoveredPlugin } from '../../lib/plugins';
+import { musterAgentManagerAgentQueryKey } from '../../lib/queryKeys';
 import { tenantInSentence } from '../../lib/tenants';
 import { agentDetailRouteRef } from '../../routes';
 import {
@@ -36,6 +39,7 @@ import { NewAgentPage } from '../NewAgentPage';
 import { NewAgentReviewPage } from '../NewAgentReviewPage';
 import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
 import { NewAgentToolsPage } from '../NewAgentToolsPage';
+import { ReleaseOutsideDirectory } from '../ReleaseOutsideDirectory';
 
 /**
  * The wizard, seeded once from agent-manager's reading of the agent — one read
@@ -94,6 +98,13 @@ function EditAgentWizard({
  * fields, model and runtime under More options showing the agent's own, and a
  * review that saves only what changed (`update_agent`, or a pull request for
  * an agent applied from git).
+ *
+ * For an agent applied from git it also asks, before the form, whether
+ * agent-manager can open that pull request at all (`useAgentCommitCheck`): an
+ * agent defined outside agent-manager's directory gets an explanation instead
+ * of a form, and a missing GitHub authorization the connect step, so nobody
+ * fills in a form whose save is refused. Any other failure of that check
+ * opens the form, and the review reports the save's own answer.
  */
 export function EditAgentPage() {
   const { installation = '', namespace = '', name = '' } = useParams();
@@ -150,6 +161,28 @@ export function EditAgentPage() {
     },
     { enabled: asksAccess },
   );
+  // Asked alongside `get_agent` where the agent is already known to be applied
+  // from git — a reading the detail page cached, which the wizard is never
+  // seeded from — and otherwise once the fresh reading says so.
+  const queryClient = useQueryClient();
+  const knownAgent =
+    agent ??
+    queryClient.getQueryData<AgentManagerAgent>(
+      musterAgentManagerAgentQueryKey(installation, namespace, name),
+    );
+  const commitCheck = useAgentCommitCheck(
+    installation,
+    namespace,
+    name,
+    presence === 'available' && canCommit && knownAgent?.managed === 'gitops',
+  );
+  // Asked once, before the form: a later re-read (every muster sign-in reads
+  // all muster queries again) never takes away a form the person is filling.
+  const wizardKey = `${installation}/${namespace}/${name}`;
+  const wizardOpenedFor = useRef<string | undefined>(undefined);
+  const commitGates =
+    writeMode === 'commit' && wizardOpenedFor.current !== wizardKey;
+  const isCommitCheckPending = commitGates && commitCheck.status === 'checking';
   const reason = agentManagerAbsenceReason(
     { ...gate, isGitOpsOwned: isGitOpsOwned && !canCommit },
     installation,
@@ -187,6 +220,7 @@ export function EditAgentPage() {
     presence === 'unknown' ||
     gate.isVerdictPending ||
     (asksAccess && updateAccess.isLoading) ||
+    isCommitCheckPending ||
     (agent && isCatalogPending)
   ) {
     body = <LoadingIndicator label="Reading the agent…" />;
@@ -236,10 +270,35 @@ export function EditAgentPage() {
         actions={backLink}
       />
     );
+  } else if (commitGates && commitCheck.status === 'release-outside') {
+    body = (
+      <ReleaseOutsideDirectory
+        missing={commitCheck.missing}
+        message={commitCheck.message}
+        action="edit"
+        variant="page"
+        actions={backLink}
+      />
+    );
+  } else if (commitGates && commitCheck.status === 'connect') {
+    // Once the sign-in lands every muster query is read again, this check
+    // with them, and the form opens when it passes.
+    body = (
+      <Flex direction="column" gap="3">
+        <ConnectAgentManagerAlert
+          installation={installation}
+          message={commitCheck.message}
+          action="Agents applied from Git are edited"
+          needsGitHub={commitCheck.github}
+        />
+        {backLink}
+      </Flex>
+    );
   } else {
+    wizardOpenedFor.current = wizardKey;
     return (
       <EditAgentWizard
-        key={`${installation}/${namespace}/${name}`}
+        key={wizardKey}
         installation={installation}
         agent={agent}
         writeMode={writeMode ?? 'apply'}

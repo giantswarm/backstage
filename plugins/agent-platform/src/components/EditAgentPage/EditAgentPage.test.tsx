@@ -21,6 +21,7 @@ import type {
   AgentUpdate,
 } from '../../lib/agentManager';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { musterAgentManagerAgentQueryKey } from '../../lib/queryKeys';
 import { agentsRouteRef } from '../../routes';
 import { EditAgentPage } from './EditAgentPage';
 
@@ -213,7 +214,20 @@ type Scenario = {
   violations?: string[];
   /** What `/installations` reports for gazelle; true unless said otherwise. */
   requiresAuth?: boolean;
+  /** What the empty commit dry run fails with; it passes otherwise. */
+  commitDryRunError?: string;
+  /** What the pull request itself is refused with. */
+  commitError?: string;
+  /** `get_agent` never answers. */
+  getAgentPending?: boolean;
 };
+
+// agent-manager's answers in mode `commit`, as they come over MCP (see
+// `missingReleaseFile`'s test for the first).
+const MISSING_RELEASE_FILE =
+  "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it";
+const AUTH_REQUIRED =
+  'auth_required: commit mode opens the pull request with your GitHub authorization, and this call carries none: connect agent-manager in muster (core_auth_login server=agent-manager), then call again';
 
 function makeMusterApi(scenario: Scenario = {}) {
   const agent = scenario.agent ?? AGENT;
@@ -226,6 +240,9 @@ function makeMusterApi(scenario: Scenario = {}) {
         case 'x_agent-manager_get_info':
           return { ...INFO, ...scenario.info };
         case 'x_agent-manager_get_agent':
+          if (scenario.getAgentPending) {
+            return new Promise(() => {});
+          }
           if (scenario.getAgentError) {
             throw new Error(scenario.getAgentError);
           }
@@ -246,7 +263,16 @@ function makeMusterApi(scenario: Scenario = {}) {
             },
           };
         case 'x_agent-manager_update_agent':
+          if (args.mode === 'commit' && args.dryRun) {
+            if (scenario.commitDryRunError) {
+              throw new Error(scenario.commitDryRunError);
+            }
+            return { ...committedTo(), dryRun: true, after: {} };
+          }
           if (args.mode === 'commit') {
+            if (scenario.commitError) {
+              throw new Error(scenario.commitError);
+            }
             return committedTo(PULL_REQUEST);
           }
           return {
@@ -306,11 +332,14 @@ function DetailProbe() {
   );
 }
 
-async function renderEdit(path: string, scenario: Scenario = {}) {
-  const { api, callTool } = makeMusterApi(scenario);
-  const queryClient = new QueryClient({
+async function renderEdit(
+  path: string,
+  scenario: Scenario = {},
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  }),
+) {
+  const { api, callTool } = makeMusterApi(scenario);
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
@@ -333,7 +362,7 @@ async function renderEdit(path: string, scenario: Scenario = {}) {
       mountedRoutes: { '/customize/agents': agentsRouteRef },
     },
   );
-  return { callTool };
+  return { callTool, queryClient };
 }
 
 /** Changes what the agent is for, then walks Skills and Tools to Review. */
@@ -849,7 +878,9 @@ describe('EditAgentPage', () => {
     expect(
       await screen.findByRole('button', { name: 'Proposed' }),
     ).toBeDisabled();
-    const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+    const [, written] = callsOf(callTool, 'x_agent-manager_update_agent').find(
+      ([, args]) => !args.dryRun,
+    )!;
     expect(written).toMatchObject({
       mode: 'commit',
       description: 'Reviews every pull request.',
@@ -957,5 +988,186 @@ describe('EditAgentPage', () => {
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
     // Nothing is asked of agent-manager: muster-backend would refuse it.
     expect(callTool).not.toHaveBeenCalled();
+  });
+
+  describe('an agent applied from git, before the form', () => {
+    const COMMIT: Scenario = {
+      agent: GITOPS_AGENT,
+      info: { ...INFO, capabilities: { commit: true } },
+    };
+    const commitDryRuns = (callTool: jest.Mock) =>
+      callsOf(callTool, 'x_agent-manager_update_agent').filter(
+        ([, args]) => args.dryRun,
+      );
+
+    it('opens the form once agent-manager says it can open the pull request', async () => {
+      const { callTool } = await renderEdit(BASE, COMMIT);
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      // The empty commit dry run: nothing to change, nothing written.
+      expect(commitDryRuns(callTool)).toEqual([
+        [
+          'x_agent-manager_update_agent',
+          {
+            namespace: 'kagent',
+            name: 'pr-reviewer',
+            mode: 'commit',
+            dryRun: true,
+          },
+          'gazelle',
+        ],
+      ]);
+    });
+
+    it('keeps reading the agent while agent-manager is asked', async () => {
+      // A cached reading says the agent is applied from git, so the check is
+      // asked while get_agent is still out.
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      queryClient.setQueryData(
+        musterAgentManagerAgentQueryKey('gazelle', 'kagent', 'pr-reviewer'),
+        GITOPS_AGENT,
+      );
+      const { callTool } = await renderEdit(
+        BASE,
+        { ...COMMIT, getAgentPending: true },
+        queryClient,
+      );
+
+      expect(await screen.findByText('Reading the agent…')).toBeInTheDocument();
+      await waitFor(() => expect(commitDryRuns(callTool)).toHaveLength(1));
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+    });
+
+    it('has no form for an agent defined outside agent-manager’s directory, and says where to change it', async () => {
+      const user = userEvent.setup();
+      await renderEdit(BASE, {
+        ...COMMIT,
+        commitDryRunError: MISSING_RELEASE_FILE,
+      });
+
+      expect(
+        await screen.findByRole('heading', {
+          name: 'This agent cannot be edited here',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /defined in Git outside the directory the portal writes to\. Change it in/,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', {
+          name: /^management-clusters\/gazelle\/extras/,
+        }),
+      ).toHaveAttribute(
+        'href',
+        'https://github.com/giantswarm/giantswarm-management-clusters/tree/HEAD/management-clusters/gazelle/extras',
+      );
+      expect(
+        screen.getByRole('link', { name: 'Back to the agent' }),
+      ).toBeInTheDocument();
+      // Information, not a failure.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      await user.click(
+        screen.getByRole('button', { name: 'Technical details' }),
+      );
+      expect(
+        await screen.findByText(/is not in agent-manager's directory/),
+      ).toBeVisible();
+    });
+
+    it('asks for the GitHub authorization first, and opens the form once it is given', async () => {
+      const scenario: Scenario = {
+        ...COMMIT,
+        commitDryRunError: AUTH_REQUIRED,
+      };
+      const { queryClient } = await renderEdit(BASE, scenario);
+
+      expect(
+        await screen.findByText('Authorize GitHub for agent-manager'),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+
+      // A completed sign-in reads every muster query again.
+      scenario.commitDryRunError = undefined;
+      await act(() => queryClient.invalidateQueries({ queryKey: ['muster'] }));
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      expect(
+        screen.queryByText('Authorize GitHub for agent-manager'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('keeps an open form when a later re-read of the check is refused', async () => {
+      const scenario: Scenario = { ...COMMIT };
+      const { callTool, queryClient } = await renderEdit(BASE, scenario);
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+
+      // A sign-in elsewhere reads every muster query again; this time the
+      // repository refuses.
+      scenario.commitDryRunError = MISSING_RELEASE_FILE;
+      await act(() => queryClient.invalidateQueries({ queryKey: ['muster'] }));
+      await waitFor(() => expect(commitDryRuns(callTool)).toHaveLength(2));
+
+      expect(screen.getByLabelText(/^Name/)).toBeInTheDocument();
+      expect(
+        screen.queryByText('This agent cannot be edited here'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('opens the form when the check fails some other way, and leaves the answer to the save', async () => {
+      await renderEdit(BASE, {
+        ...COMMIT,
+        commitDryRunError: 'backend_error: GitHub answered 502',
+      });
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      expect(screen.queryByText(/GitHub answered 502/)).not.toBeInTheDocument();
+    });
+
+    it('is not asked for an agent written live', async () => {
+      const { callTool } = await renderEdit(BASE, {
+        info: { ...INFO, capabilities: { commit: true } },
+      });
+
+      expect(await screen.findByLabelText(/^Name/)).toBeInTheDocument();
+      expect(commitDryRuns(callTool)).toHaveLength(0);
+    });
+
+    it('still explains a pull request refused at the end for a release outside agent-manager’s directory', async () => {
+      // The check passed; the repository changed while the person edited.
+      const user = userEvent.setup();
+      await renderEdit(BASE, { ...COMMIT, commitError: MISSING_RELEASE_FILE });
+
+      await changeDescriptionAndReview(user);
+      const propose = await screen.findByRole('button', {
+        name: 'Propose changes as pull request',
+      });
+      await waitFor(() => expect(propose).toBeEnabled());
+      await user.click(propose);
+
+      expect(
+        await screen.findByText('This agent cannot be edited here'),
+      ).toBeInTheDocument();
+    });
+
+    it('asks for the GitHub authorization when the pull request at the end needs it', async () => {
+      const user = userEvent.setup();
+      await renderEdit(BASE, { ...COMMIT, commitError: AUTH_REQUIRED });
+
+      await changeDescriptionAndReview(user);
+      const propose = await screen.findByRole('button', {
+        name: 'Propose changes as pull request',
+      });
+      await waitFor(() => expect(propose).toBeEnabled());
+      await user.click(propose);
+
+      expect(
+        await screen.findByText('Authorize GitHub for agent-manager'),
+      ).toBeInTheDocument();
+    });
   });
 });

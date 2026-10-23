@@ -947,6 +947,8 @@ function AgentDetailPageContent() {
           may show needs the plugin's providers. */}
       <AgentDeleteDialog
         installation={installation}
+        namespace={namespace}
+        name={name}
         displayName={agent.getDisplayName()}
         isOpen={isDeleteOpen}
         onOpenChange={setDeleteOpen}

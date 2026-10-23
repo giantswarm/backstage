@@ -28,9 +28,13 @@ import {
   hasChanges,
   updateOf,
 } from '../../lib/agentEdit';
-import type { CommitAgentResult } from '../../lib/agentManager';
+import {
+  missingReleaseFile,
+  type CommitAgentResult,
+} from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
 import { PickedEgressPolicies } from '../PickedEgressPolicies';
+import { ReleaseOutsideDirectory } from '../ReleaseOutsideDirectory';
 import { pluginEntryName, pluginSummary } from '../../lib/plugins';
 import {
   harnessTitle,
@@ -59,7 +63,12 @@ import {
   YAML_OPTS,
 } from './reviewParts';
 
-/** A refused or failed dry run or save, in agent-manager's words. */
+/**
+ * A refused or failed dry run or save, in agent-manager's words. The two
+ * refusals the edit page checks for before the form — a release outside
+ * agent-manager's directory, a missing GitHub authorization — read as they do
+ * there, should the repository or the authorization change in between.
+ */
 function WriteFailure({
   installation,
   failure,
@@ -69,19 +78,29 @@ function WriteFailure({
   failure: AgentWriteFailure;
   title: string;
 }) {
-  if (failure.kind === 'not-connected') {
+  if (failure.kind === 'not-connected' || failure.code === 'auth_required') {
     return (
       <ConnectAgentManagerAlert
         installation={installation}
         message={failure.message}
         action="Agents are edited"
+        needsGitHub={failure.code === 'auth_required'}
+      />
+    );
+  }
+  const missing = missingReleaseFile(failure);
+  if (missing) {
+    return (
+      <ReleaseOutsideDirectory
+        missing={missing}
+        message={failure.message}
+        action="edit"
+        variant="alert"
       />
     );
   }
   let heading = title;
-  if (failure.code === 'auth_required') {
-    heading = 'Authorize GitHub first';
-  } else if (failure.kind === 'refused') {
+  if (failure.kind === 'refused') {
     heading = failure.code === 'forbidden' ? 'Not permitted' : 'Refused';
   }
   return (
