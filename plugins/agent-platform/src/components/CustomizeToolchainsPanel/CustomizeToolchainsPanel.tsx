@@ -29,6 +29,7 @@ import {
 import { toolchainDetailRouteRef } from '../../routes';
 import {
   imageTag,
+  webURL,
   type Toolchain,
   type ToolchainSource,
 } from '../../lib/toolchainManager';
@@ -166,7 +167,7 @@ function SourcesSection({ installation }: { installation: string }) {
       cell: row => (
         <CellText
           title={row.repository}
-          href={row.url}
+          href={webURL(row.url)}
           description={row.registry}
         />
       ),

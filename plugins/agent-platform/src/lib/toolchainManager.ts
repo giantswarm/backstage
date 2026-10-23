@@ -18,6 +18,21 @@
 import { looksNotConnected } from './agentManager';
 import type { WorkspaceProvider } from './workspaceManager';
 
+/**
+ * A link the toolchain-manager answers with (a pull request, a CI job, an App
+ * install page), only when it is http(s): anything else, `javascript:` among
+ * them, is never rendered as a link.
+ */
+export function webURL(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'https:' || protocol === 'http:' ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The MCPServer name muster registers the toolchain-manager under. */
 export const TOOLCHAIN_MANAGER_SERVER = 'toolchain-manager';
 

@@ -39,6 +39,7 @@ import {
 import {
   BUILD_STATE_LABEL,
   isFinalBuildState,
+  webURL,
   type ToolchainBuild,
   type WrittenToolchain,
 } from '../../lib/toolchainManager';
@@ -129,8 +130,8 @@ function BuildStatus({
       />
       {(build.jobs ?? []).map(job => (
         <Text key={job.name} variant="body-small" color="secondary">
-          {job.url ? (
-            <Link href={job.url} target="_blank" rel="noopener">
+          {webURL(job.url) ? (
+            <Link href={webURL(job.url)} target="_blank" rel="noopener">
               {job.name}
             </Link>
           ) : (
@@ -497,7 +498,11 @@ function NewToolchainForm({ installation }: { installation: string }) {
           {created && (
             <Flex direction="column" gap="3">
               <Text variant="body-medium">
-                <Link href={created.pullURL} target="_blank" rel="noopener">
+                <Link
+                  href={webURL(created.pullURL)}
+                  target="_blank"
+                  rel="noopener"
+                >
                   {created.repository}#{created.pull}
                 </Link>{' '}
                 adds {created.toolchain} on the branch {created.branch}.

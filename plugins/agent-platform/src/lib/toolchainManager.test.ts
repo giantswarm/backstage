@@ -9,9 +9,22 @@ import {
   toolchainEntry,
   toolchainManagerToolName,
   toolchainsLabel,
+  webURL,
 } from './toolchainManager';
 
 describe('toolchainManager', () => {
+  it('keeps only http(s) links', () => {
+    expect(webURL('https://github.com/o/r/pull/1')).toBe(
+      'https://github.com/o/r/pull/1',
+    );
+    expect(webURL('http://ci.example/job/2')).toBe('http://ci.example/job/2');
+    // eslint-disable-next-line no-script-url
+    expect(webURL('javascript:alert(1)')).toBeUndefined();
+    expect(webURL('data:text/html,x')).toBeUndefined();
+    expect(webURL('not a url')).toBeUndefined();
+    expect(webURL(undefined)).toBeUndefined();
+  });
+
   it('names the tools as muster exposes them', () => {
     expect(toolchainManagerToolName('list_toolchains')).toBe(
       'x_toolchain-manager_list_toolchains',

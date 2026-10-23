@@ -29,6 +29,7 @@ import {
 } from '../../hooks/useToolchainManager';
 import {
   imageTag,
+  webURL,
   type ToolchainDescription,
   type ToolchainTool,
 } from '../../lib/toolchainManager';
@@ -267,9 +268,13 @@ export function ToolchainDetailPage({
       }
     >
       <Flex direction="column" gap="2">
-        {toolchain.releaseURL && (
+        {webURL(toolchain.releaseURL) && (
           <Text variant="body-small" color="secondary">
-            <Link href={toolchain.releaseURL} target="_blank" rel="noopener">
+            <Link
+              href={webURL(toolchain.releaseURL)}
+              target="_blank"
+              rel="noopener"
+            >
               Release {toolchain.name}/{toolchain.version}
             </Link>
           </Text>

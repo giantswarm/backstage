@@ -17,7 +17,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAddToolchainSource } from '../../hooks/useToolchainWrites';
-import type { AddSourceResult } from '../../lib/toolchainManager';
+import { webURL, type AddSourceResult } from '../../lib/toolchainManager';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 
@@ -60,8 +60,12 @@ function Outcome({
         description={
           <Flex direction="column" gap="1">
             <Text variant="body-small">{result.message}</Text>
-            {result.installURL && (
-              <Link href={result.installURL} target="_blank" rel="noopener">
+            {webURL(result.installURL) && (
+              <Link
+                href={webURL(result.installURL)}
+                target="_blank"
+                rel="noopener"
+              >
                 Install the App
               </Link>
             )}
