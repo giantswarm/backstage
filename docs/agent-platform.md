@@ -319,6 +319,26 @@ and Git do. A workflow's page splits into Overview, Run it, Usage (its run
 statistics) and Details tabs; its ⋮ menu shows the Workflow CR as YAML and,
 where Flux reconciles the workflow, where in Git to change it.
 
+Overview draws the workflow's steps as a flow (a list at phone width), from
+the Workflow CR alone. A forEach or parallel step is a group around its steps,
+and a forEach inside a forEach is a group inside it, its steps numbered on
+(step 1.2.3 is the third step of the loop that is step 1.2). Each loop says
+how many items run at once: "up to 8 at once" or "one at a time" from its
+`parallelism`, "in order" where the definition sets none, since muster then
+runs them one after another. A tool step with `paginate` carries a
+"Paginated, up to N pages" marker (`maxPages`, 10 where unset), and a step
+with `jq` (a tool step, or a forEach that reshapes its iterations' records) a
+"jq transform" marker; a step's details say what both do, and its technical
+information shows `maxPages` and the jq program as written, line breaks kept,
+in a block that scrolls sideways rather than widening the page. Step fields
+the page does not know are left out.
+
+The page header and the Workflows list give a workflow's size from its steps
+at every depth: "3 steps" for a plain list, and with loops or parallel groups
+the tool steps they hold and the groups, as in "8 tool steps in 2 nested
+loops" or "5 tool steps, 1 loop" (some of them outside the loop). The cleanup
+steps (`onFailure`) are not counted.
+
 The Workflows list and a workflow's page say what a workflow does in the same
 badges a tool has: Reads or Changes things. muster marks a workflow read-only
 only when every tool its steps can reach is, so Reads holds for all its steps;

@@ -26,10 +26,12 @@ import { WorkflowStep, WorkflowSubStep } from '../../lib/k8s';
 import { TOOL_EFFECT_LABELS, type ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { executionOutcome } from '../../lib/workflowDisplay';
+import { workflowShapeLabel } from '../../lib/workflowShape';
 import {
   buildWorkflowGraph,
   findFlowStep,
   FLOW_METRICS,
+  flowItemsInOrder,
   FlowStepNode,
   layoutWorkflowGraph,
   mapRunToGraph,
@@ -44,6 +46,7 @@ import {
 import { EffectBadge, MarkerBadge, useToolCatalogue } from '../shared';
 import {
   accessibleName,
+  featureWords,
   quietStatus,
   runBadgeLabel,
   runSpoken,
@@ -53,6 +56,7 @@ import { useLatestRun } from './useLatestRun';
 import { useContentAreaLeft, useInertBehind } from './contentAreaLayer';
 import { WorkflowStepDetails } from './WorkflowStepDetails';
 import { WorkflowStepList } from './WorkflowStepList';
+import { StepFeatureBadges } from './StepFeatureBadges';
 
 export { runBadgeLabel } from './flowLabels';
 
@@ -231,16 +235,20 @@ const useStyles = makeStyles({
     gap: 8,
     minWidth: 0,
   },
+  // What the group does — its loop and how many run at once — wraps onto a
+  // second line (the layout sized the head for it) before it is clamped,
+  // with the full line as its tooltip.
   groupLabel: {
-    display: 'block',
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    overflow: 'hidden',
     flex: '1 1 auto',
     minWidth: 0,
-    fontSize: 12,
-    lineHeight: '16px',
+    fontSize: FLOW_METRICS.groupLabelFontSize,
+    lineHeight: `${FLOW_METRICS.groupLabelLineHeight}px`,
     color: 'var(--bui-fg-secondary)',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    overflowWrap: 'anywhere',
   },
   // The step's box: its button (number, name, tool, last run) on top and,
   // while expanded, its details under it — the layout gave the box the room.
@@ -339,6 +347,15 @@ const useStyles = makeStyles({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
+  // What the step does with its result (paginated, jq), under its lines.
+  // It wraps in a narrow box; the layout gave the box a row per line.
+  features: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: FLOW_METRICS.featureRow - 18,
+    minWidth: 0,
+    marginTop: FLOW_METRICS.featureRow - 18,
+  },
   run: {
     flex: 'none',
     marginLeft: 'auto',
@@ -408,6 +425,7 @@ const useStyles = makeStyles({
     textAlign: 'center',
     '& $groupTitleRow, & $subRow': { justifyContent: 'center' },
     '& $groupTitleText, & $groupLabel': { flex: '0 1 auto' },
+    '& $features': { justifyContent: 'center' },
   },
 });
 
@@ -542,6 +560,7 @@ function StepNode({
           gate,
           effect && TOOL_EFFECT_LABELS[effect].toLowerCase(),
           node.allowFailure && 'may fail',
+          ...featureWords(node),
           overlay && runSpoken(overlay),
         ])}
         onClick={() => onToggle(node.key)}
@@ -567,6 +586,7 @@ function StepNode({
               <RunBadge overlay={overlay} />
             </span>
           )}
+          <StepFeatureBadges node={node} className={classes.features} />
         </span>
       </button>
       {expanded && details}
@@ -620,11 +640,15 @@ function Group({
         )}
       </span>
       <span className={classes.subRow}>
-        <span className={classes.groupLabel} title={group.label}>
+        <span
+          className={classes.groupLabel}
+          title={titleTooltip(group.label, group.labelFit)}
+        >
           {group.label}
         </span>
         <RunBadge overlay={overlay} />
       </span>
+      {node && <StepFeatureBadges node={node} className={classes.features} />}
     </>
   );
   let stateClass = '';
@@ -659,6 +683,7 @@ function Group({
               group.label,
               gate,
               node.allowFailure && 'may fail',
+              ...featureWords(node),
               overlay && runSpoken(overlay),
             ])}
             onClick={() => onToggle(node.key)}
@@ -1007,7 +1032,7 @@ export function WorkflowFlowCanvas({
         variant="inline"
         id={detailsId(expanded.node.key)}
         context={expanded}
-        stepIds={graph.stepIds}
+        stepNumbers={graph.stepNumbers}
         prefixes={prefixes}
         installation={installation}
         overlay={overlayOf(expanded.node.key)}
@@ -1024,8 +1049,9 @@ export function WorkflowFlowCanvas({
   });
 
   // Reading (and tab) order follows the flow: each group's head before its
-  // steps, the cleanup lane last. Groups paint before their steps, so the
-  // steps sit on top of the group boxes.
+  // steps (a nested group's head before its own), the cleanup lane last.
+  // Groups paint before their steps, so the steps sit on top of the group
+  // boxes, and a nested group on top of the group around it.
   const nodeByKey = new Map(layout.nodes.map(n => [n.node.key, n]));
   const gateByKey = new Map(layout.gates.map(g => [g.key, g.label]));
   const groupByKey = new Map(
@@ -1061,12 +1087,11 @@ export function WorkflowFlowCanvas({
       />,
     );
   };
-  for (const item of graph.main) {
+  for (const item of flowItemsInOrder(graph.main)) {
     if (item.kind === 'step') {
       pushNode(item.node.key);
     } else {
       pushGroup(item.node.key);
-      item.children.forEach(child => pushNode(child.key));
     }
   }
   if (graph.onFailure.length > 0) {
@@ -1087,9 +1112,9 @@ export function WorkflowFlowCanvas({
           fullScreen ? classes.scrollerFull : ''
         }`}
         role="group"
-        aria-label={`Flow of the workflow's ${steps.length} step${
-          steps.length === 1 ? '' : 's'
-        }${onFailure.length > 0 ? ' and its cleanup steps' : ''}`}
+        aria-label={`Flow of the workflow's ${workflowShapeLabel(steps)}${
+          onFailure.length > 0 ? ' and its cleanup steps' : ''
+        }`}
         data-testid="workflow-flow-viewport"
       >
         <div

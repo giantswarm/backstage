@@ -57,13 +57,21 @@ export function toolDisplay(
 }
 
 /**
+ * Every main-lane step's number by its id, at any depth (`2`, `1.2.3`): how
+ * a reference to a step — a `fromStep` condition, a loop over a step's
+ * result — names it.
+ */
+export type StepNumbers = ReadonlyMap<string, string>;
+
+/**
  * A condition as one plain "Only if …" sentence. A false condition skips the
  * step (there is no else-branch), so the sentence is a gate, not a fork.
- * `stepIds` resolves a `fromStep` reference to its 1-based step number.
+ * `stepNumbers` resolves a `fromStep` reference to its step number, a nested
+ * step's too.
  */
 export function conditionSummary(
   condition: WorkflowCondition,
-  stepIds: string[] = [],
+  stepNumbers: StepNumbers = new Map(),
 ): string {
   const expectsFailure =
     condition.expect?.success === false ||
@@ -73,9 +81,9 @@ export function conditionSummary(
   );
 
   if (condition.fromStep) {
-    const number = stepIds.indexOf(condition.fromStep) + 1;
+    const number = stepNumbers.get(condition.fromStep);
     const stepName =
-      number > 0
+      number !== undefined
         ? `step ${number} (${condition.fromStep})`
         : `step “${condition.fromStep}”`;
     if (!hasJsonPath && expectsFailure) {
