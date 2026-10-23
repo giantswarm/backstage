@@ -9,6 +9,7 @@ import {
   open,
   openWizardMoreOptions,
   rosterLinkOf,
+  rosterRowOf,
   searchRoster,
   signIn,
   test as base,
@@ -374,14 +375,21 @@ test.describe('agents per tenant', () => {
       await open(alice, '/customize/agents', users.alice);
       for (const [name, label] of [
         [agent.name, organization],
-        [labAgent.name, 'Platform'],
+        // The platform's agent belongs to no organization.
+        [labAgent.name, 'None'],
       ]) {
         await searchRoster(alice, name);
         await expect(
-          rosterLinkOf(alice, name),
+          rosterRowOf(alice, name),
           `${name} is listed with its organization`,
         ).toContainText(label, { timeout: rosterWait });
       }
+      await expect(
+        rosterRowOf(alice, labAgent.name).getByRole('button', {
+          name: 'What None means',
+        }),
+        'None says what it means, on a button of its own',
+      ).toBeVisible();
 
       const bob = await signInAs(users.bob);
       await open(bob, '/customize/agents', users.bob);

@@ -8,14 +8,15 @@ import {
 
 describe('tenantOf', () => {
   it.each([
-    ['kagent', 'Platform'],
+    ['kagent', 'None'],
     ['org-acme', 'acme'],
     ['team-a', 'namespace team-a'],
     // `org-` alone names no organization.
     ['org-', 'namespace org-'],
-    // An organization called platform never reads as the platform.
-    ['org-platform', 'organization platform'],
-    ['org-Platform', 'organization Platform'],
+    // An organization called none never reads as the platform's None.
+    ['org-none', 'organization none'],
+    ['org-None', 'organization None'],
+    ['org-platform', 'platform'],
   ])('names namespace %s as %s', (namespace, tenant) => {
     expect(tenantOf(namespace)).toBe(tenant);
   });

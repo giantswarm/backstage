@@ -4,6 +4,7 @@ import {
   open,
   openWizardMoreOptions,
   rosterLinkOf,
+  rosterRowOf,
   searchRoster,
   test,
 } from './fixtures';
@@ -34,7 +35,7 @@ test('the roster lists the agent with its model, under Customize · Agents', asy
     admin.getByRole('main').getByRole('tab', { name: /^Agents/ }),
   ).toHaveAttribute('aria-selected', 'true');
   await searchRoster(admin, labAgent.name);
-  const row = rosterLinkOf(admin, labAgent.name);
+  const row = rosterRowOf(admin, labAgent.name);
   await expect(row, 'the roster lists the fixture agent').toBeVisible({
     timeout: rosterWait,
   });

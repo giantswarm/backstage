@@ -950,8 +950,8 @@ export async function removeAgent(
 
 /**
  * The roster's link to the agent named `name`, on the open Agents tab
- * (Customize's): one row per agent, the whole row a link to its page, named by
- * all it shows — so the row is found by the name line itself. Only the
+ * (Customize's): one row per agent, its name a link to its page whose hit
+ * area covers the row. Only the
  * roster's lists ("Agents", and "Favorite agents" once the person has some):
  * the tab's "Last used by you" cards and the rail's sessions name an agent
  * too, once a session ran on it earlier in the run.
@@ -962,6 +962,19 @@ export function rosterLinkOf(page: Page, name: string): Locator {
     .getByRole('list', { name: /^(Favorite agents|Agents)$/ })
     .getByRole('link')
     .filter({ has: page.getByText(name, { exact: true }) });
+}
+
+/**
+ * The roster row of the agent named `name`: its link is the name alone (its
+ * hit area covers the row), so what the row says beside it -- description,
+ * model, parts, organization -- is read from the row.
+ */
+export function rosterRowOf(page: Page, name: string): Locator {
+  return page
+    .getByRole('main')
+    .getByRole('list', { name: /^(Favorite agents|Agents)$/ })
+    .getByRole('listitem')
+    .filter({ has: rosterLinkOf(page, name) });
 }
 
 /**

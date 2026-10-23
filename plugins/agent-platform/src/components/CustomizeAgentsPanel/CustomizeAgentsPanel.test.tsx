@@ -316,20 +316,23 @@ describe('CustomizeAgentsPanel', () => {
     const items = within(list).getAllByRole('listitem');
     expect(items).toHaveLength(2);
 
-    const triageLink = within(items[0]).getByRole('link');
+    // The name is the link; its hit area covers the row.
+    const triageLink = within(items[0]).getByRole('link', {
+      name: 'Support triage',
+    });
     expect(triageLink).toHaveAttribute(
       'href',
       '/customize/agents/golem/support/triage',
     );
-    expect(within(triageLink).getByText('Support triage')).toBeInTheDocument();
-    expect(within(triageLink).getByText('Sorts tickets')).toBeInTheDocument();
-    expect(within(triageLink).getByText('Sonnet 4.5')).toBeInTheDocument();
+    const triageRow = items[0];
+    expect(within(triageRow).getByText('Sorts tickets')).toBeInTheDocument();
+    expect(within(triageRow).getByText('Sonnet 4.5')).toBeInTheDocument();
     expect(
-      within(triageLink).getByText('2 skills · 2 connectors'),
+      within(triageRow).getByText('2 skills · 2 connectors'),
     ).toBeInTheDocument();
-    expect(within(triageLink).queryByText('support')).not.toBeInTheDocument();
+    expect(within(triageRow).queryByText('support')).not.toBeInTheDocument();
     // A Ready agent shows no state; one that needs a look says so inline.
-    expect(within(triageLink).queryByText('Ready')).not.toBeInTheDocument();
+    expect(within(triageRow).queryByText('Ready')).not.toBeInTheDocument();
     expect(within(items[1]).getByText('Release notes')).toBeInTheDocument();
     expect(within(items[1]).getByText('Failed')).toBeInTheDocument();
     // One environment: no environment fact.
@@ -1152,7 +1155,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
           name: 'SRE',
           technicalName: 'sre',
           namespace: 'kagent',
-          tenant: 'Platform',
+          tenant: 'None',
         }),
         row({
           name: 'Billing',
@@ -1175,11 +1178,20 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     };
     await renderPanel();
 
-    expect(listed()[0]).toHaveTextContent('Platform');
-    expect(await filterOptions('organization')).toEqual([
-      'acme 2',
-      'Platform 1',
-    ]);
+    // The platform's agent belongs to no organization: None, and a hint
+    // that says it is available to all of them, a button of its own beside
+    // the row's link, which the keyboard reaches.
+    const sre = listed()[0];
+    expect(sre).toHaveTextContent('None');
+    expect(sre).not.toHaveTextContent('Platform');
+    const hint = within(sre).getByRole('button', { name: 'What None means' });
+    expect(hint.closest('a')).toBeNull();
+    // In the tab order; its text is `OrganizationValue`'s own test.
+    expect(hint.tabIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      within(listed()[1]).queryByRole('button', { name: /None/ }),
+    ).toBeNull();
+    expect(await filterOptions('organization')).toEqual(['acme 2', 'None 1']);
     expect(await filterOptions('created by')).toEqual(['Me 1']);
 
     await pickFilter('created by', 'Me 1');

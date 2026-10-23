@@ -25,7 +25,10 @@ import {
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
-import { ACCESS_GRANT_HINT } from '../../lib/tenants';
+import {
+  ACCESS_GRANT_HINT,
+  PLATFORM_TENANT_NAMESPACE,
+} from '../../lib/tenants';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
   agentHarnesses,
@@ -45,6 +48,7 @@ import {
 import { FirstAgentCard } from '../FirstAgentCard';
 import { KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
+import { OrganizationValue } from '../OrganizationValue';
 import { SessionsDataProvider } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -93,9 +97,12 @@ const useStyles = makeStyles({
     background: 'var(--bui-bg-neutral-1)',
     overflow: 'hidden',
   },
-  // The row is the link plus the star beside it: a button can't live inside
-  // a link, so the star sits after it and the hover tints both.
+  // The row opens the agent: its name is the link, whose hit area stretches
+  // over the whole row (as `StackedRowList`'s does), so the buttons in it --
+  // the star, an Organization fact's info icon -- sit above that area rather
+  // than inside a link. The hover tints the row.
   item: {
+    position: 'relative',
     display: 'flex',
     alignItems: 'center',
     paddingRight: 'var(--bui-space-2)',
@@ -116,12 +123,36 @@ const useStyles = makeStyles({
     padding:
       'var(--bui-space-3) var(--bui-space-2) var(--bui-space-3) var(--bui-space-4)',
     color: 'var(--bui-fg-primary)',
+  },
+  nameLink: {
+    color: 'inherit',
     textDecoration: 'none',
     '&:hover': {
       textDecoration: 'none',
     },
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      inset: 0,
+    },
+    // The focus ring goes round the row, as the hover does; inset, so the
+    // list's rounded, clipped border does not cut it.
+    '&[data-focus-visible]': {
+      outline: 'none',
+    },
+    '&[data-focus-visible]::after': {
+      outline: '2px solid var(--bui-ring)',
+      outlineOffset: -2,
+    },
+  },
+  // Above the name link's stretched hit area: a press on it is its own.
+  aboveLink: {
+    position: 'relative',
+    zIndex: 1,
   },
   star: {
+    position: 'relative',
+    zIndex: 1,
     flex: 'none',
     // A thumb's target at phone width (T22 §2.5), not the mouse's 32px.
     [PHONE_MEDIA]: {
@@ -312,6 +343,8 @@ function AgentListItem({
     label: string;
     /** The tooltip's fuller wording of `text`; `text` itself by default. */
     detail?: string;
+    /** What shows in place of `text`, where it is more than text. */
+    value?: ReactNode;
   }[] = [
     { key: 'model', text: row.model ?? '', label: 'Model' },
     // The title, as main's Harness column led with; the name joins it in the
@@ -328,7 +361,23 @@ function AgentListItem({
       : []),
     { key: 'parts', text: parts, label: 'Skills and connectors' },
     ...(showTenant && row.tenant
-      ? [{ key: 'tenant', text: row.tenant, label: 'Organization' }]
+      ? [
+          {
+            key: 'tenant',
+            text: row.tenant,
+            label: 'Organization',
+            ...(row.namespace === PLATFORM_TENANT_NAMESPACE
+              ? {
+                  value: (
+                    <OrganizationValue
+                      namespace={row.namespace}
+                      className={classes.aboveLink}
+                    />
+                  ),
+                }
+              : {}),
+          },
+        ]
       : []),
     ...(showInstallation
       ? [{ key: 'installation', text: row.installation, label: 'Environment' }]
@@ -346,21 +395,36 @@ function AgentListItem({
       <div className={classes.body}>
         <div className={classes.main}>
           <div className={classes.nameLine}>
-            <Text
-              as="span"
-              variant="body-medium"
-              weight="bold"
-              truncate={truncate}
-              className={isPhone ? classes.twoLines : undefined}
-            >
-              {row.name}
-            </Text>
+            {/* The link is the name itself, so a long name truncates with
+                its ellipsis, as the text does without one. */}
+            {href ? (
+              <Link
+                href={href}
+                variant="body-medium"
+                weight="bold"
+                truncate={truncate}
+                className={[classes.nameLink, isPhone ? classes.twoLines : '']
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                {row.name}
+              </Link>
+            ) : (
+              <Text
+                as="span"
+                variant="body-medium"
+                weight="bold"
+                truncate={truncate}
+                className={isPhone ? classes.twoLines : undefined}
+              >
+                {row.name}
+              </Text>
+            )}
             {/* The state shows only when it needs a look, as in the
                 prototype; a Ready agent's state is on its own page. The
                 state keeps to its few words (T104): the reason is its
                 tooltip, and the agent's page says it in full, which is where
-                a phone reads it (the row is one link, so no hint button can
-                sit in it). */}
+                a phone reads it. */}
             {status.tone !== 'success' && (
               <span className={classes.status} title={row.readinessMessage}>
                 <StatusDot tone={status.tone} />
@@ -390,15 +454,18 @@ function AgentListItem({
               as="span"
               variant="body-small"
               color="secondary"
-              truncate={truncate}
+              // A value with a button (the info icon) is short, and is not cut:
+              // the cut would clip the button's hit area.
+              truncate={fact.value ? undefined : truncate}
               className={classes.fact}
+              // No native tooltip over the info icon's own.
               title={
-                fact.text
+                fact.text && !fact.value
                   ? `${fact.label}: ${fact.detail ?? fact.text}`
                   : undefined
               }
             >
-              {fact.text}
+              {fact.value ?? fact.text}
             </Text>
           ))}
         </div>
@@ -408,13 +475,7 @@ function AgentListItem({
 
   return (
     <li className={classes.item}>
-      {href ? (
-        <Link href={href} className={classes.row}>
-          {content}
-        </Link>
-      ) : (
-        <div className={classes.row}>{content}</div>
-      )}
+      <div className={classes.row}>{content}</div>
       <ButtonIcon
         className={classes.star}
         variant="tertiary"

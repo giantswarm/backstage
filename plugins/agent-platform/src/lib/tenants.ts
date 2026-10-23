@@ -5,8 +5,10 @@
  * platform tenant, the platform's agents for everyone, and an Organization's
  * `org-<name>` namespace is that organization's tenant. Kubernetes RBAC in the
  * namespace decides who sees and changes its agents; the portal only names the
- * tenant. The portal never says "tenant": a person reads "Platform" or the
- * organization's name, under the label "Organization".
+ * tenant. The portal never says "tenant": under the label "Organization" a
+ * person reads the organization's name, or "None" for the platform, whose
+ * agents are available to all organizations; the New agent form offers the
+ * platform as "Platform".
  */
 
 import { DEFAULT_MODEL_CONFIG_NAMESPACE } from '../components/ModelConfigPicker/helpers';
@@ -32,26 +34,34 @@ export function organizationOf(namespace: string): string | undefined {
   return namespace.slice(ORGANIZATION_PREFIX.length) || undefined;
 }
 
-/** What the platform tenant reads as, under the label "Organization". */
+/** The platform as the New agent form offers it, a kind of place. */
 const PLATFORM_LABEL = 'Platform';
 
 /**
+ * What the platform tenant reads as under the label "Organization": the
+ * platform is no organization, its agents are available to all of them
+ * (`OrganizationValue` says so beside it).
+ */
+const NO_ORGANIZATION = 'None';
+
+/**
  * The tenant a namespace is, as a value under the label "Organization":
- * `Platform` for the platform tenant, the organization's plain name for an
- * Organization's `org-<name>` namespace, and `namespace <name>` for any other
- * namespace agents live in, which is no organization. An organization whose
- * plain name would read as the platform's keeps its qualifier
- * (`organization platform`), so the two never sit side by side as one word.
+ * `None` for the platform tenant, which is no organization, the
+ * organization's plain name for an Organization's `org-<name>` namespace, and
+ * `namespace <name>` for any other namespace agents live in, which is no
+ * organization either. An organization whose plain name would read as the
+ * platform's keeps its qualifier (`organization none`), so the two never sit
+ * side by side as one word.
  */
 export function tenantOf(namespace: string): string {
   if (namespace === PLATFORM_TENANT_NAMESPACE) {
-    return PLATFORM_LABEL;
+    return NO_ORGANIZATION;
   }
   const organization = organizationOf(namespace);
   if (organization === undefined) {
     return `namespace ${namespace}`;
   }
-  return organization.toLowerCase() === PLATFORM_LABEL.toLowerCase()
+  return organization.toLowerCase() === NO_ORGANIZATION.toLowerCase()
     ? `organization ${organization}`
     : organization;
 }

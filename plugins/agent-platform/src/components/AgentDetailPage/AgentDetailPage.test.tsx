@@ -2458,37 +2458,55 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(within(facts).getByText('gazelle')).toBeInTheDocument();
     });
 
-    it.each([
-      ['kagent', 'Platform'],
-      ['org-acme', 'acme'],
-    ])(
-      'names the organization of an agent in %s as %s, under Organization',
-      async (namespace, organization) => {
-        stubResources(
-          {
-            resource: makeAgent({
-              metadata: { name: 'pr-reviewer', namespace },
-            }),
-          },
-          { resource: makeModelConfig() },
-        );
+    it('names the organization of an agent in an organization, under Organization', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: { name: 'pr-reviewer', namespace: 'org-acme' },
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
 
-        await renderShell(
-          '',
-          AGENT_PATH.replace('/agent-platform/', `/${namespace}/`),
-        );
+      await renderShell(
+        '',
+        AGENT_PATH.replace('/agent-platform/', '/org-acme/'),
+      );
 
-        const facts = screen.getByRole('complementary', {
-          name: 'About this agent',
-        });
-        expect(within(facts).getByText('Organization')).toBeInTheDocument();
-        expect(within(facts).queryByText('Tenant')).toBeNull();
-        expect(within(facts).getByText(organization)).toBeInTheDocument();
-        expect(
-          within(facts).queryByText(`organization ${organization}`),
-        ).toBeNull();
-      },
-    );
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Organization')).toBeInTheDocument();
+      expect(within(facts).queryByText('Tenant')).toBeNull();
+      expect(within(facts).getByText('acme')).toBeInTheDocument();
+      expect(within(facts).queryByText('organization acme')).toBeNull();
+      expect(within(facts).queryByRole('button', { name: /None/ })).toBeNull();
+    });
+
+    it('says an agent of the platform belongs to no organization, and is available to all', async () => {
+      stubResources(
+        {
+          resource: makeAgent({
+            metadata: { name: 'pr-reviewer', namespace: 'kagent' },
+          }),
+        },
+        { resource: makeModelConfig() },
+      );
+
+      await renderShell('', AGENT_PATH.replace('/agent-platform/', '/kagent/'));
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(within(facts).getByText('Organization')).toBeInTheDocument();
+      expect(within(facts).getByText(/^None/)).toBeInTheDocument();
+      expect(within(facts).queryByText(/Platform/)).toBeNull();
+      const hint = within(facts).getByRole('button', {
+        name: 'What None means',
+      });
+      // In the tab order; its text is `OrganizationValue`'s own test.
+      expect(hint.tabIndex).toBeGreaterThanOrEqual(0);
+    });
 
     it('offers an organization’s user no Edit, and names the organization whose editors may change the agent', async () => {
       withAgentManager();
