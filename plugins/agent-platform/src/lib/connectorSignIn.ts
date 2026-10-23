@@ -10,6 +10,8 @@
  * Pure functions over plain data, like `lib/kagentTimeline`.
  */
 
+import { isWebURL } from '@giantswarm/backstage-plugin-ui-react';
+
 import type { AskUserQuestion } from './kagentHitl';
 import type { TimelineItem } from './kagentTimeline';
 import { SIGN_IN_TOOL } from './signInTool';
@@ -73,11 +75,7 @@ export function signInLinkKey(href: string | undefined): string | undefined {
     return undefined;
   }
   const state = url.searchParams.get('state');
-  if (
-    (url.protocol !== 'https:' && url.protocol !== 'http:') ||
-    !url.pathname.endsWith(MUSTER_SIGN_IN_PATH) ||
-    !state
-  ) {
+  if (!isWebURL(url) || !url.pathname.endsWith(MUSTER_SIGN_IN_PATH) || !state) {
     return undefined;
   }
   return `${url.origin}${url.pathname}?state=${state}`;

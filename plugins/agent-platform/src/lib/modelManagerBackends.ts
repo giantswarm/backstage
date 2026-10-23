@@ -16,6 +16,8 @@
  * MCPServer its muster registers, never as a URL.
  */
 
+import { safeWebURL } from '@giantswarm/backstage-plugin-ui-react';
+
 import { looksNotConnected, type CommitAgentResult } from './agentManager';
 
 /** The MCPServer name muster registers model-manager under. */
@@ -234,14 +236,7 @@ export type RemoveBackendResult = {
 
 /** A base URL a host backend is reached at: `http(s)://host[:port][/path]`. */
 export function isValidEndpoint(value: string): boolean {
-  try {
-    const url = new URL(value.trim());
-    return (
-      (url.protocol === 'http:' || url.protocol === 'https:') && !!url.host
-    );
-  } catch {
-    return false;
-  }
+  return safeWebURL(value) !== undefined;
 }
 
 /**

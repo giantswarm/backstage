@@ -510,6 +510,16 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/workspaces/:installation/:organization/:name/*',
     ],
     [
+      '/customize/toolchains/new',
+      { page: 'Create toolchain' },
+      '/customize/toolchains/new',
+    ],
+    [
+      '/customize/toolchains/gazelle/go',
+      { page: 'Toolchain detail' },
+      '/customize/toolchains/:installation/:name',
+    ],
+    [
       '/customize/models/new',
       { page: 'Models', view: 'new' },
       '/customize/models/new',
@@ -838,6 +848,9 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/models/gazelle/agent-platform/gpt-4o/used-by',
       '/customize/workflows',
       '/customize/workspaces',
+      '/customize/toolchains',
+      '/customize/toolchains/new',
+      '/customize/toolchains/gazelle/go',
       '/customize/workspaces/new',
       '/customize/workspaces/gazelle/acme/platform-mcp/edit',
       '/customize/workspaces/gazelle/acme/platform-mcp',

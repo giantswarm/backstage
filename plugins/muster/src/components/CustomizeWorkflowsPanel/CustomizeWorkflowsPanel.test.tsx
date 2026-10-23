@@ -10,6 +10,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import { workflowsRouteRef } from '../../routes';
+import { fleetImageScanWorkflow } from '../../lib/__fixtures__/fleetImageScan';
 import { MusterWorkflow, WORKFLOW_CATEGORY_LABEL } from '../../lib/k8s';
 import { CustomizeWorkflowsPanel, runsLabel } from './CustomizeWorkflowsPanel';
 
@@ -193,6 +194,16 @@ describe('CustomizeWorkflowsPanel', () => {
     mockLastRuns = { executions: [], has_more: false };
     api.listExecutions.mockClear();
     api.filterTools.mockClear();
+  });
+
+  it('counts a nested workflow’s steps at every depth', async () => {
+    mockWorkflows = [fleetImageScanWorkflow()];
+    await renderPanel();
+
+    const fleet = screen.getByRole('row', { name: /fleet-image-scan/ });
+    expect(
+      within(fleet).getByText('8 tool steps in 2 nested loops'),
+    ).toBeInTheDocument();
   });
 
   it('lists the workflows with their steps and runs, opening each', async () => {

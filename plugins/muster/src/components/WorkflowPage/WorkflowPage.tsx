@@ -39,6 +39,7 @@ import {
   WORKFLOW_TOOL_PREFIX,
 } from '../../lib/workflowReferences';
 import { serversOfTools, toolsOfWorkflow } from '../../lib/workflowTools';
+import { workflowShapeLabel } from '../../lib/workflowShape';
 import { mcpServerDisplayNames } from '../../lib/serverGrouping';
 import { customizeExternalRouteRef } from '../../routes';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
@@ -283,9 +284,10 @@ function WorkflowPageContent({
             )}
           </>
         }
-        meta={`${countNoun(steps.length, 'step')} · ${
-          args.length
-        } input${args.length === 1 ? '' : 's'}`}
+        meta={`${workflowShapeLabel(steps)} · ${countNoun(
+          args.length,
+          'input',
+        )}`}
         // No description in the header — the agent and skill pages carry none
         // either (T53): a long one takes the title block's whole row, and the
         // header's actions then wrap under it at the left. Overview opens

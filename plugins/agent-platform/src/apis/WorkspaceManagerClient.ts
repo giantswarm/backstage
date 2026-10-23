@@ -21,6 +21,12 @@ import {
   type WorkspacePreview,
   type WorkspaceProvider,
 } from '../lib/workspaceManager';
+import { callManagerTool, type ManagerErrors } from '../lib/managerToolCall';
+
+const WORKSPACE_MANAGER_ERRORS: ManagerErrors = {
+  classify: classifyWorkspaceManagerError,
+  notJSON: message => new WorkspaceManagerError('failed', message),
+};
 
 /**
  * workspace-manager's tools on one installation, called as the signed-in
@@ -40,33 +46,17 @@ export class WorkspaceManagerClient {
     readonly installation: string,
   ) {}
 
-  private async call<T>(
+  private call<T>(
     tool: WorkspaceManagerTool,
     args: Record<string, unknown>,
   ): Promise<T> {
-    let result: unknown;
-    try {
-      result = await this.musterApi.callTool(
-        workspaceManagerToolName(tool),
-        args,
-        this.installation,
-      );
-    } catch (error) {
-      throw classifyWorkspaceManagerError(error);
-    }
-    // The proxy parses the tool's JSON for us; a bare string is a JSON text
-    // the proxy left alone, or prose where the data was expected.
-    if (typeof result === 'string') {
-      try {
-        return JSON.parse(result) as T;
-      } catch {
-        throw new WorkspaceManagerError(
-          'failed',
-          `workspace-manager's ${tool} answered text, not JSON: ${result}`,
-        );
-      }
-    }
-    return result as T;
+    return callManagerTool<T>(
+      this.musterApi,
+      this.installation,
+      workspaceManagerToolName(tool),
+      args,
+      WORKSPACE_MANAGER_ERRORS,
+    );
   }
 
   /**

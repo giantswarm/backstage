@@ -33,6 +33,12 @@ export type NewSession = {
    * name; absent, the plain session.
    */
   workspace?: string;
+  /**
+   * The toolchains the session mounts, `name[@version]` each, where the
+   * person changed the agent's defaults; an empty list mounts none. Absent,
+   * the agent's default toolchains.
+   */
+  toolchains?: string[];
 };
 
 /**
@@ -121,6 +127,7 @@ export function useCreateSession(
       prompt,
       title,
       workspace,
+      toolchains,
       requestId,
     }: NewSessionRequest) => {
       if (!musterApi) {
@@ -164,6 +171,7 @@ export function useCreateSession(
           requestId,
           sessionName,
           workspaceGrant,
+          toolchains,
         });
         return { sessionId };
       } catch (error) {
@@ -206,7 +214,8 @@ export function useCreateSession(
         previous &&
         previous.agent.id === newSession.agent.id &&
         previous.prompt === newSession.prompt &&
-        previous.workspace === newSession.workspace
+        previous.workspace === newSession.workspace &&
+        previous.toolchains?.join(',') === newSession.toolchains?.join(',')
           ? { ...newSession, requestId: previous.requestId }
           : { ...newSession, requestId: crypto.randomUUID() };
       lastRequest.current = request;

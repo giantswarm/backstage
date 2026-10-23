@@ -103,6 +103,28 @@ export const workspaceEditRouteRef = createSubRouteRef({
   parent: workspacesRouteRef,
 });
 
+// The Customize screen's Toolchains tab (`/customize/toolchains`): a sub-page
+// of the app's Customize page, whose bare path lists the toolchains the
+// installations offer and their sources; the create flow and one
+// toolchain's page live underneath.
+export const toolchainsRouteRef = createRouteRef();
+
+// Creating a toolchain (`/customize/toolchains/new`), on the installation in
+// `?installation=`. One static segment, never read as a toolchain's
+// two-segment path.
+export const newToolchainRouteRef = createSubRouteRef({
+  path: '/new',
+  parent: toolchainsRouteRef,
+});
+
+// One toolchain's page (`<installation>/<name>`): its versions, and per
+// version the tools, Harnesses, pins and egress its image declares. A
+// toolchain's name is what a Session names it by on its installation.
+export const toolchainDetailRouteRef = createSubRouteRef({
+  path: '/:installation/:name',
+  parent: toolchainsRouteRef,
+});
+
 // The shell's minimal "Profile and settings" page (`/profile`): who is signed
 // in, the installations the portal talks to, and Sign out. Linked from the
 // shell rail's profile menu.

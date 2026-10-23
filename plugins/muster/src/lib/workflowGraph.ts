@@ -6,11 +6,13 @@ import type {
 import type {
   WorkflowCondition,
   WorkflowForEach,
+  WorkflowPaginate,
   WorkflowStep,
   WorkflowSubStep,
 } from './k8s';
 import { toolEffect, ToolEffect } from './toolAnnotations';
-import { conditionSummary } from './workflowDisplay';
+import { conditionSummary, type StepNumbers } from './workflowDisplay';
+import { isGroupStep, subStepsOf } from './workflowShape';
 
 /**
  * The read-only flow canvas of a muster workflow, as pure data: the graph a
@@ -19,15 +21,25 @@ import { conditionSummary } from './workflowDisplay';
  *
  * Only what the definition holds is drawn: an ordered spine of steps (the
  * execution order IS the list order — muster has no explicit DAG), forEach and
- * parallel steps as groups of their sub-steps, a condition as a gate on the
- * step's incoming edge (a false condition SKIPS the step, it never branches —
- * so there are no yes/no edges), and the onFailure cleanup steps as their own
+ * parallel steps as groups of their sub-steps — a group may hold another
+ * group, at any depth, drawn inside it — a condition as a gate on the step's
+ * incoming edge (a false condition SKIPS the step, it never branches — so
+ * there are no yes/no edges), and the onFailure cleanup steps as their own
  * lane. There is no trigger or schedule node: muster has neither.
+ *
+ * Fields the page does not know are left out, never guessed at: a step that
+ * is neither a tool call nor a group draws as a step without a tool.
  */
+
+/** The pages a paginated step fetches at most when `maxPages` is unset. */
+export const DEFAULT_MAX_PAGES = 10;
 
 /** One drawable step: a tool call, or the head of a forEach/parallel group. */
 export interface FlowStepNode {
-  /** Stable layout key: `s<i>` top level, `s<i>.<j>` sub-step, `f<j>` cleanup. */
+  /**
+   * Stable layout key: `s<i>` top level, `s<i>.<j>` sub-step, `s<i>.<j>.<k>`
+   * a nested group's sub-step, `f<j>` cleanup.
+   */
   key: string;
   /** The definition's step id. */
   id: string;
@@ -37,12 +49,16 @@ export interface FlowStepNode {
   tool?: string;
   condition?: WorkflowCondition;
   allowFailure: boolean;
-  /** The number a reader sees: `2`, `3.1`; none in the cleanup lane. */
+  /** The number a reader sees: `2`, `3.1`, `1.2.3`; none in the cleanup lane. */
   number?: string;
   /** The spine (with its groups) or the cleanup lane. */
   lane: 'main' | 'cleanup';
-  /** The key of the forEach/parallel group a sub-step belongs to. */
+  /** The key of the innermost forEach/parallel group a sub-step belongs to. */
   parentKey?: string;
+  /** The jq program that reshapes the step's result, when it has one. */
+  jq?: string;
+  /** How a tool step follows the tool's pages, when it does. */
+  paginate?: { maxPages: number };
   /** The step as the definition holds it — for its details. */
   definition: WorkflowStep | WorkflowSubStep;
 }
@@ -53,26 +69,63 @@ export type FlowItem =
       kind: 'forEach';
       node: FlowStepNode;
       forEach: WorkflowForEach;
-      children: FlowStepNode[];
+      children: FlowItem[];
     }
-  | { kind: 'parallel'; node: FlowStepNode; children: FlowStepNode[] };
+  | { kind: 'parallel'; node: FlowStepNode; children: FlowItem[] };
+
+/** A forEach or parallel group. */
+export type FlowGroupItem = Exclude<FlowItem, { kind: 'step' }>;
 
 export interface WorkflowGraph {
   main: FlowItem[];
   onFailure: FlowStepNode[];
-  /** Top-level step ids, in order — resolves `fromStep` to a number. */
-  stepIds: string[];
+  /**
+   * Every main-lane step's number by its id, at any depth — resolves a
+   * `fromStep` condition and a loop's `{{ .results.<id> }}` to the step they
+   * name, nested ones included. The first step with an id keeps it.
+   */
+  stepNumbers: StepNumbers;
 }
 
 function stepTitle(step: { id?: string; description?: string }): string {
   return step.description || step.id || '(unnamed step)';
 }
 
-function subNode(
+/** The jq program, when the definition gives a non-empty one. */
+function jqOf(step: WorkflowStep): string | undefined {
+  return typeof step.jq === 'string' && step.jq.trim() !== ''
+    ? step.jq
+    : undefined;
+}
+
+/**
+ * The page bound a definition sets, when it sets a valid one; muster uses
+ * `DEFAULT_MAX_PAGES` otherwise.
+ */
+export function definedMaxPages(
+  paginate: Pick<WorkflowPaginate, 'maxPages'>,
+): number | undefined {
+  const { maxPages } = paginate;
+  return typeof maxPages === 'number' && maxPages >= 1
+    ? Math.floor(maxPages)
+    : undefined;
+}
+
+/** A paginated step's page bound, muster's default where it sets none. */
+function paginateOf(step: WorkflowStep): FlowStepNode['paginate'] {
+  const paginate = step.paginate;
+  if (!paginate || typeof paginate !== 'object') return undefined;
+  return { maxPages: definedMaxPages(paginate) ?? DEFAULT_MAX_PAGES };
+}
+
+/** A tool step's node: what it calls and how it treats the result. */
+function stepNode(
   step: WorkflowSubStep,
   key: string,
   placement: Pick<FlowStepNode, 'number' | 'lane' | 'parentKey'>,
 ): FlowStepNode {
+  const jq = jqOf(step);
+  const paginate = paginateOf(step);
   return {
     key,
     id: step.id,
@@ -81,69 +134,96 @@ function subNode(
     condition: step.condition,
     allowFailure: Boolean(step.allowFailure),
     ...placement,
+    ...(jq ? { jq } : {}),
+    ...(paginate ? { paginate } : {}),
     definition: step,
   };
 }
 
 /**
- * The graph a definition describes. Each top-level step is exactly one of a
- * tool call, a forEach loop (sequential body) or a parallel group; a step
- * that carries both a tool and a group draws as the group, which is how
- * muster runs it.
+ * One step and, for a group, the steps it holds — each numbered under its
+ * group's number and keyed under its key, at any depth.
+ */
+function buildItem(
+  step: WorkflowStep,
+  key: string,
+  number: string,
+  parentKey?: string,
+): FlowItem {
+  const placement = {
+    number,
+    lane: 'main' as const,
+    ...(parentKey ? { parentKey } : {}),
+  };
+  if (!isGroupStep(step)) {
+    return { kind: 'step', node: stepNode(step, key, placement) };
+  }
+  const jq = jqOf(step);
+  const node: FlowStepNode = {
+    key,
+    id: step.id,
+    title: stepTitle(step),
+    condition: step.condition,
+    allowFailure: Boolean(step.allowFailure),
+    ...placement,
+    ...(jq ? { jq } : {}),
+    definition: step,
+  };
+  const children = subStepsOf(step).map((sub, j) =>
+    buildItem(sub, `${key}.${j}`, `${number}.${j + 1}`, key),
+  );
+  return step.forEach
+    ? { kind: 'forEach', node, forEach: step.forEach, children }
+    : { kind: 'parallel', node, children };
+}
+
+/** Every item at every depth, each group before the steps it holds. */
+export function flowItemsInOrder(items: FlowItem[]): FlowItem[] {
+  return items.flatMap(item =>
+    item.kind === 'step' ? [item] : [item, ...flowItemsInOrder(item.children)],
+  );
+}
+
+/**
+ * The graph a definition describes. Each step is exactly one of a tool call,
+ * a forEach loop (sequential body) or a parallel group, and a group's steps
+ * may be groups again; a step that carries both a tool and a group draws as
+ * the group, which is how muster runs it.
  */
 export function buildWorkflowGraph(
   steps: WorkflowStep[],
   onFailure: WorkflowSubStep[] = [],
 ): WorkflowGraph {
-  const main = steps.map<FlowItem>((step, index) => {
-    const number = String(index + 1);
-    const node: FlowStepNode = {
-      key: `s${index}`,
-      id: step.id,
-      title: stepTitle(step),
-      condition: step.condition,
-      allowFailure: Boolean(step.allowFailure),
-      number,
-      lane: 'main',
-      definition: step,
-    };
-    const child = (sub: WorkflowSubStep, j: number) =>
-      subNode(sub, `s${index}.${j}`, {
-        number: `${number}.${j + 1}`,
-        lane: 'main',
-        parentKey: node.key,
-      });
-    if (step.forEach) {
-      return {
-        kind: 'forEach',
-        node,
-        forEach: step.forEach,
-        children: (step.forEach.steps ?? []).map(child),
-      };
-    }
-    if (step.parallel) {
-      return {
-        kind: 'parallel',
-        node,
-        children: step.parallel.map(child),
-      };
-    }
-    return { kind: 'step', node: { ...node, tool: step.tool || undefined } };
-  });
+  const main = steps.map((step, index) =>
+    buildItem(step, `s${index}`, String(index + 1)),
+  );
+  const stepNumbers = new Map<string, string>();
+  for (const item of flowItemsInOrder(main)) {
+    const { id, number } = item.node;
+    if (id && number && !stepNumbers.has(id)) stepNumbers.set(id, number);
+  }
   return {
     main,
     onFailure: onFailure.map((sub, j) =>
-      subNode(sub, `f${j}`, { lane: 'cleanup' }),
+      stepNode(sub, `f${j}`, { lane: 'cleanup' }),
     ),
-    stepIds: steps.map(step => step.id),
+    stepNumbers,
   };
 }
 
 /** Where a step sits in the graph: its node and the group it heads or is in. */
 export interface FlowStepContext {
   node: FlowStepNode;
-  /** The forEach/parallel item the node heads (group head) or belongs to. */
-  group?: Exclude<FlowItem, { kind: 'step' }>;
+  /**
+   * The forEach/parallel item the node heads (group head) or belongs to (its
+   * innermost group).
+   */
+  group?: FlowGroupItem;
+  /**
+   * The group the node — or, for a group head, the group it heads — sits in;
+   * absent on the spine and in the cleanup lane.
+   */
+  container?: FlowGroupItem;
 }
 
 /** The step behind a layout key, for its details; undefined when unknown. */
@@ -151,31 +231,45 @@ export function findFlowStep(
   graph: WorkflowGraph,
   key: string,
 ): FlowStepContext | undefined {
-  for (const item of graph.main) {
-    if (item.node.key === key) {
-      return item.kind === 'step'
-        ? { node: item.node }
-        : { node: item.node, group: item };
+  const search = (
+    items: FlowItem[],
+    container?: FlowGroupItem,
+  ): FlowStepContext | undefined => {
+    for (const item of items) {
+      if (item.node.key === key) {
+        if (item.kind === 'step') {
+          return container
+            ? { node: item.node, group: container, container }
+            : { node: item.node };
+        }
+        return container
+          ? { node: item.node, group: item, container }
+          : { node: item.node, group: item };
+      }
+      if (item.kind !== 'step') {
+        const found = search(item.children, item);
+        if (found) return found;
+      }
     }
-    if (item.kind !== 'step') {
-      const child = item.children.find(c => c.key === key);
-      if (child) return { node: child, group: item };
-    }
-  }
+    return undefined;
+  };
+  const found = search(graph.main);
+  if (found) return found;
   const cleanup = graph.onFailure.find(node => node.key === key);
   return cleanup ? { node: cleanup } : undefined;
 }
 
 /**
  * What a forEach loops over, in words: the input it names, the result of an
- * earlier step, or — for anything else — the expression itself.
+ * earlier step (by its number, nested steps too), or — for anything else —
+ * the expression itself.
  */
 export function forEachSummary(
   forEach: Pick<WorkflowForEach, 'items' | 'as'>,
-  stepIds: string[] = [],
+  stepNumbers: StepNumbers = new Map(),
 ): string {
   const each = `For each ${forEach.as || 'item'}`;
-  const items = (forEach.items ?? '').trim();
+  const items = (typeof forEach.items === 'string' ? forEach.items : '').trim();
   const input = /^\{\{\s*\.input\.([\w.-]+)\s*\}\}$/.exec(items);
   if (input) {
     return `${each} in the input “${input[1]}”`;
@@ -184,12 +278,109 @@ export function forEachSummary(
     items,
   );
   if (result) {
-    const number = stepIds.indexOf(result[1]) + 1;
-    return number > 0
+    const number = stepNumbers.get(result[1]);
+    return number
       ? `${each} in the result of step ${number} (${result[1]})`
       : `${each} in the result of “${result[1]}”`;
   }
   return `${each} in ${items || 'a list'}`;
+}
+
+/**
+ * How many iterations a loop runs at once, when the definition says so.
+ * muster runs them one after another where it does not.
+ */
+export function loopParallelism(
+  forEach: Pick<WorkflowForEach, 'parallelism'>,
+): number | undefined {
+  const { parallelism } = forEach;
+  return typeof parallelism === 'number' && parallelism >= 1
+    ? Math.floor(parallelism)
+    : undefined;
+}
+
+/**
+ * How a loop paces its iterations, in the two places it is said: the group's
+ * line ("in order", "one at a time", "up to 8 at once") and a sentence in its
+ * details. One switch, so the two cannot disagree on what each case means.
+ */
+function loopPace(forEach: Pick<WorkflowForEach, 'parallelism'>): {
+  label: string;
+  sentence: string;
+} {
+  const parallelism = loopParallelism(forEach);
+  if (parallelism === undefined) {
+    // The CRD: "Unset, they run one after another."
+    return { label: 'in order', sentence: 'The items run one after another' };
+  }
+  if (parallelism === 1) {
+    return { label: 'one at a time', sentence: 'The items run one at a time' };
+  }
+  return {
+    label: `up to ${parallelism} at once`,
+    sentence: `Up to ${parallelism} items run at once`,
+  };
+}
+
+/** "in order", "one at a time", "up to 8 at once". */
+export function iterationsLabel(
+  forEach: Pick<WorkflowForEach, 'parallelism'>,
+): string {
+  return loopPace(forEach).label;
+}
+
+/**
+ * The same as a sentence, without its full stop: "The items run one after
+ * another", "The items run one at a time", "Up to 8 items run at once".
+ */
+export function iterationsSentence(
+  forEach: Pick<WorkflowForEach, 'parallelism'>,
+): string {
+  return loopPace(forEach).sentence;
+}
+
+/**
+ * A loop group's line: what it loops over and how many iterations run at
+ * once — "For each mc in the input “clusters”, up to 8 at once".
+ */
+export function forEachLabel(
+  forEach: Pick<WorkflowForEach, 'items' | 'as' | 'parallelism'>,
+  stepNumbers: StepNumbers = new Map(),
+): string {
+  return `${forEachSummary(forEach, stepNumbers)}, ${iterationsLabel(forEach)}`;
+}
+
+/** The line a group head carries under its name. */
+export function groupLabel(
+  group: FlowGroupItem,
+  stepNumbers: StepNumbers = new Map(),
+): string {
+  return group.kind === 'forEach'
+    ? forEachLabel(group.forEach, stepNumbers)
+    : 'These run at the same time';
+}
+
+/** "Paginated, up to 100 pages". */
+export function paginateLabel(paginate: { maxPages: number }): string {
+  return `Paginated, up to ${paginate.maxPages} page${
+    paginate.maxPages === 1 ? '' : 's'
+  }`;
+}
+
+/** The marker of a step whose result a jq program reshapes. */
+export const JQ_LABEL = 'jq transform';
+
+/**
+ * The markers of what a step does with its result, in the order they show:
+ * it follows the tool's pages, a jq program reshapes it.
+ */
+export function featureLabels(
+  node: Pick<FlowStepNode, 'paginate' | 'jq'>,
+): string[] {
+  return [
+    ...(node.paginate ? [paginateLabel(node.paginate)] : []),
+    ...(node.jq ? [JQ_LABEL] : []),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +435,21 @@ export const FLOW_METRICS = {
   laneGap: 56,
   /** The gate marker's height (its width follows the node column). */
   gateHeight: 24,
+  /**
+   * A row of markers under a step's lines (or a group head's), for what the
+   * step does with its result: paginated, a jq transform. A compact
+   * MarkerBadge is 18px; a row's top margin (or gap) is 4. They wrap onto a
+   * second row in a narrow box.
+   */
+  featureRow: 22,
+  /** A group head's second line (what the group does) and its font size. */
+  groupLabelFontSize: 12,
+  groupLabelLineHeight: 16,
+  /**
+   * The room the last-run badge takes at the end of a group head's second
+   * line ("✓ ×12 1m 4s" at 11.5px, with the row's gap).
+   */
+  runBadgeRoom: 72,
 } as const;
 
 /**
@@ -275,9 +481,14 @@ export interface PlacedGroup {
   y: number;
   width: number;
   height: number;
-  /** The head's height: one or two lines of the container step's name. */
+  /**
+   * The head's height: one or two lines of the container step's name, one or
+   * two of what the group does, and its markers' row.
+   */
   headerHeight: number;
   titleFit: TitleFit;
+  /** How the second line (`label`) sits: one line, two, or clamped. */
+  labelFit: TitleFit;
   /** The room for the container step's details under its head; 0 while folded. */
   detailsHeight: number;
 }
@@ -377,20 +588,41 @@ function widthForTwoLines(textWidth: number, chrome: number): number {
   return Math.ceil(textWidth / (2 * WRAP_FILL) + chrome);
 }
 
-/** Every step a node draws for, group heads aside. */
+/**
+ * The rows a step's feature markers take in `room` pixels: none without
+ * markers, else as many as wrapping them needs. A compact marker is its text
+ * at 12px plus 6px of padding a side; markers sit 4px apart.
+ */
+function featureRows(node: FlowStepNode, room: number): number {
+  let rows = 0;
+  let used = 0;
+  for (const label of featureLabels(node)) {
+    const width = estimateTextWidth(label, M.groupLabelFontSize) + 12;
+    if (rows === 0 || used + 4 + width > room) {
+      rows += 1;
+      used = width;
+    } else {
+      used += 4 + width;
+    }
+  }
+  return rows;
+}
+
+/** Every step a node draws for, group heads aside, at every depth. */
 function stepNodes(graph: WorkflowGraph): FlowStepNode[] {
   return [
-    ...graph.main.flatMap(item =>
-      item.kind === 'step' ? [item.node] : item.children,
-    ),
+    ...flowItemsInOrder(graph.main)
+      .filter(item => item.kind === 'step')
+      .map(item => item.node),
     ...graph.onFailure,
   ];
 }
 
 /**
  * The one node width of a flow: the narrowest that fits every title in two
- * lines (a forEach head's too — it is a node wide plus its padding), within
- * [nodeWidth, maxNodeWidth]. Rounded to 4px so widths stay crisp.
+ * lines (a forEach head's too, at any depth — it is at least a node wide
+ * plus its padding), within [nodeWidth, maxNodeWidth]. Rounded to 4px so
+ * widths stay crisp.
  */
 function flowNodeWidth(graph: WorkflowGraph): number {
   let needed: number = M.nodeWidth;
@@ -398,7 +630,7 @@ function flowNodeWidth(graph: WorkflowGraph): number {
     const text = estimateTextWidth(node.title, M.titleFontSize);
     needed = Math.max(needed, widthForTwoLines(text, M.nodeChrome));
   }
-  for (const item of graph.main) {
+  for (const item of flowItemsInOrder(graph.main)) {
     if (item.kind !== 'forEach') continue;
     const text = estimateTextWidth(item.node.title, M.titleFontSize);
     const headChrome =
@@ -411,36 +643,53 @@ function flowNodeWidth(graph: WorkflowGraph): number {
   return Math.min(M.maxNodeWidth, Math.ceil(needed / 4) * 4);
 }
 
-function itemWidth(item: FlowItem, nodeWidth: number): number {
-  switch (item.kind) {
-    case 'step':
-      return nodeWidth;
-    case 'forEach':
-      return nodeWidth + 2 * M.groupPadding;
-    case 'parallel': {
-      const n = item.children.length;
-      const row = n * nodeWidth + Math.max(0, n - 1) * M.parallelGap;
-      return Math.max(nodeWidth, row) + 2 * M.groupPadding;
+/**
+ * Every item's width, computed once per layout from the leaves up: a node, or
+ * a group around what it holds — a loop's body stacks (as wide as its widest
+ * step), a parallel group's steps sit side by side. A group inside a group is
+ * wider by its own padding.
+ */
+function itemWidths(
+  items: FlowItem[],
+  nodeWidth: number,
+): Map<FlowItem, number> {
+  const widths = new Map<FlowItem, number>();
+  const measure = (item: FlowItem): number => {
+    let width: number;
+    if (item.kind === 'forEach') {
+      width =
+        Math.max(nodeWidth, ...item.children.map(measure)) + 2 * M.groupPadding;
+    } else if (item.kind === 'parallel') {
+      const row =
+        item.children.map(measure).reduce((sum, w) => sum + w, 0) +
+        Math.max(0, item.children.length - 1) * M.parallelGap;
+      width = Math.max(nodeWidth, row) + 2 * M.groupPadding;
+    } else {
+      width = nodeWidth;
     }
-    default:
-      return nodeWidth;
-  }
+    widths.set(item, width);
+    return width;
+  };
+  items.forEach(measure);
+  return widths;
 }
 
 /**
  * A deterministic layout: the spine runs top to bottom on one center line,
  * groups wrap their sub-steps (a forEach body stacks — it runs in order; a
  * parallel group's siblings sit side by side, fanned out from and back into
- * the spine), and the cleanup lane stands to the right as its own dashed
+ * the spine), a group inside a group is drawn inside it, the same way, at
+ * any depth, and the cleanup lane stands to the right as its own dashed
  * strand. No measuring, no randomness: the same definition always lays out
  * the same way, so the renderer is a plain projection of this.
  *
  * Step titles are the information, so the boxes are sized to them: every
  * node shares the narrowest width at which each title fits in two lines
  * (capped at `maxNodeWidth`), a node whose title wraps is taller, and so is
- * a group head whose name wraps. Only a title too long for two lines at the
- * widest node is clamped (`titleFit: 'clamped'`), with its full text as the
- * tooltip.
+ * a group head whose name — or what the group does — wraps. Only a title too
+ * long for two lines at the widest node is clamped (`titleFit: 'clamped'`),
+ * with its full text as the tooltip. A step that is paginated or reshapes
+ * its result with jq has a row of markers more.
  *
  * One step may be expanded (`expansion`): its box — or its group's head —
  * grows by the room its details take, and the steps after it move down (a
@@ -459,6 +708,8 @@ export function layoutWorkflowGraph(
 
   const nodeWidth = flowNodeWidth(graph);
   const titleRoom = nodeWidth - M.nodeChrome;
+  const widths = itemWidths(graph.main, nodeWidth);
+  const widthOf = (item: FlowItem) => widths.get(item) ?? nodeWidth;
 
   const gapFor = (node: FlowStepNode) => (node.condition ? M.gateGap : M.gap);
 
@@ -466,7 +717,7 @@ export function layoutWorkflowGraph(
   const detailsOf = (node: FlowStepNode) =>
     expansion?.key === node.key ? Math.max(0, Math.ceil(expansion.height)) : 0;
 
-  /** A node's box for its title (one line or two) and its open details. */
+  /** A node's box for its title (one line or two), markers and open details. */
   const sized = (node: FlowStepNode) => {
     const titleFit = fitTitle(
       estimateTextWidth(node.title, M.titleFontSize),
@@ -477,23 +728,34 @@ export function layoutWorkflowGraph(
       titleFit,
       height:
         (titleFit === 'oneLine' ? M.nodeHeight : M.nodeHeightTwoLines) +
+        featureRows(node, titleRoom) * M.featureRow +
         detailsHeight,
       detailsHeight,
     };
   };
 
-  /** A group head's height for the container step's name, at `width`. */
-  const headOf = (node: FlowStepNode, width: number) => {
+  /**
+   * A group head's height at `width`: the container step's name and what
+   * the group does (`label`), each on one line or two, and its markers.
+   */
+  const headOf = (node: FlowStepNode, width: number, label: string) => {
     const room =
       width - M.groupHeadChrome - (node.allowFailure ? M.mayFailMarker : 0);
     const titleFit = fitTitle(
       estimateTextWidth(node.title, M.titleFontSize),
       room,
     );
+    const labelFit = fitTitle(
+      estimateTextWidth(label, M.groupLabelFontSize),
+      width - 2 * 14 - M.runBadgeRoom,
+    );
     return {
       titleFit,
+      labelFit,
       headerHeight:
-        titleFit === 'oneLine' ? M.groupHeader : M.groupHeaderTwoLines,
+        (titleFit === 'oneLine' ? M.groupHeader : M.groupHeaderTwoLines) +
+        (labelFit === 'oneLine' ? 0 : M.groupLabelLineHeight) +
+        featureRows(node, width - 2 * 14) * M.featureRow,
       detailsHeight: detailsOf(node),
     };
   };
@@ -516,7 +778,7 @@ export function layoutWorkflowGraph(
     if (target.condition) {
       gates.push({
         key: target.key,
-        label: conditionSummary(target.condition, graph.stepIds),
+        label: conditionSummary(target.condition, graph.stepNumbers),
         x,
         y: (fromY + toY) / 2,
         maxWidth: nodeWidth,
@@ -524,150 +786,133 @@ export function layoutWorkflowGraph(
     }
   };
 
-  /** A stacked column of steps from `fromY` on center `x`; returns its end. */
-  const stack = (
-    children: FlowStepNode[],
-    x: number,
-    fromY: number,
-    dashed: boolean,
-  ): number => {
-    let y = fromY;
-    for (const child of children) {
-      const top = y + gapFor(child);
-      connect(`${child.key}:in`, x, y, top, child, dashed);
-      const box = sized(child);
+  /**
+   * Places one item with its top at `top` on center `x` — a node, or a group
+   * with everything it holds — and returns its bottom.
+   */
+  const place = (item: FlowItem, x: number, top: number): number => {
+    if (item.kind === 'step') {
+      const box = sized(item.node);
       nodes.push({
-        node: child,
+        node: item.node,
         x: x - nodeWidth / 2,
         y: top,
         width: nodeWidth,
         ...box,
       });
-      y = top + box.height;
-    }
-    return y;
-  };
-
-  const mainWidth = Math.max(
-    nodeWidth,
-    ...graph.main.map(item => itemWidth(item, nodeWidth)),
-  );
-  const spineX = M.margin + mainWidth / 2;
-
-  let exitY: number = M.margin;
-  if (graph.main.length > 0) {
-    starts.push({ x: spineX, y: exitY, dashed: false });
-  }
-
-  for (const item of graph.main) {
-    const top = exitY + gapFor(item.node);
-    connect(`${item.node.key}:in`, spineX, exitY, top, item.node, false);
-
-    if (item.kind === 'step') {
-      const box = sized(item.node);
-      nodes.push({
-        node: item.node,
-        x: spineX - nodeWidth / 2,
-        y: top,
-        width: nodeWidth,
-        ...box,
-      });
-      exitY = top + box.height;
-      continue;
+      return top + box.height;
     }
 
-    const width = itemWidth(item, nodeWidth);
-    const head = headOf(item.node, width);
+    const width = widthOf(item);
+    const label = groupLabel(item, graph.stepNumbers);
+    const head = headOf(item.node, width, label);
     const headerBottom = top + head.headerHeight + head.detailsHeight;
+    // The group's slot comes first, so groups stay in reading order (a
+    // group before the groups it holds); its height is known once its
+    // steps are placed.
+    const slot = groups.length;
+    groups.push(undefined as unknown as PlacedGroup);
     let bottom: number;
 
     if (item.kind === 'forEach') {
-      const end = stack(item.children, spineX, headerBottom, false);
+      const end = stack(item.children, x, headerBottom, false);
       bottom = end + M.groupPadding;
       if (item.children.length > 0) {
         edges.push({
           key: `${item.node.key}:out`,
-          d: line(spineX, end, spineX, bottom),
-          end: { x: spineX, y: bottom },
+          d: line(x, end, x, bottom),
+          end: { x, y: bottom },
           dashed: false,
         });
       }
-      groups.push({
-        kind: 'forEach',
-        node: item.node,
-        label: forEachSummary(item.forEach, graph.stepIds),
-        x: spineX - width / 2,
-        y: top,
-        width,
-        height: bottom - top,
-        ...head,
-      });
+    } else if (item.children.length === 0) {
+      bottom = headerBottom + M.groupPadding;
     } else {
-      const n = item.children.length;
-      if (n === 0) {
-        bottom = headerBottom + M.groupPadding;
-      } else {
-        const fan = item.children.some(child => child.condition)
-          ? M.gateGap
-          : M.gap + 8;
-        const childTop = headerBottom + fan;
-        const row = n * nodeWidth + (n - 1) * M.parallelGap;
-        const bend = headerBottom + 20;
-        // Siblings share a row: the row is as tall as its tallest title,
-        // and each sibling keeps its own height inside it.
-        const boxes = item.children.map(sized);
-        const rowHeight = Math.max(...boxes.map(box => box.height));
-        bottom = childTop + rowHeight + M.fanIn;
-        item.children.forEach((child, j) => {
-          const left = spineX - row / 2 + j * (nodeWidth + M.parallelGap);
-          const cx = left + nodeWidth / 2;
-          // Fan out: a curve off the spine that lands in a straight stretch
-          // above the sibling — the stretch a gate marker sits on.
-          edges.push({
-            key: `${child.key}:in`,
-            d: `M ${spineX} ${headerBottom} C ${spineX} ${bend} ${cx} ${headerBottom} ${cx} ${bend} L ${cx} ${childTop}`,
-            end: { x: cx, y: childTop },
-            dashed: false,
+      const fan = item.children.some(child => child.node.condition)
+        ? M.gateGap
+        : M.gap + 8;
+      const childTop = headerBottom + fan;
+      const childWidths = item.children.map(widthOf);
+      const row =
+        childWidths.reduce((sum, w) => sum + w, 0) +
+        (childWidths.length - 1) * M.parallelGap;
+      const bend = headerBottom + 20;
+      // Siblings share a row: the row is as tall as its tallest sibling,
+      // and each keeps its own height inside it.
+      let left = x - row / 2;
+      const placed = item.children.map((child, j) => {
+        const cx = left + childWidths[j] / 2;
+        left += childWidths[j] + M.parallelGap;
+        // Fan out: a curve off the spine that lands in a straight stretch
+        // above the sibling — the stretch a gate marker sits on.
+        edges.push({
+          key: `${child.node.key}:in`,
+          d: `M ${x} ${headerBottom} C ${x} ${bend} ${cx} ${headerBottom} ${cx} ${bend} L ${cx} ${childTop}`,
+          end: { x: cx, y: childTop },
+          dashed: false,
+        });
+        if (child.node.condition) {
+          gates.push({
+            key: child.node.key,
+            label: conditionSummary(child.node.condition, graph.stepNumbers),
+            x: cx,
+            y: (bend + childTop) / 2,
+            maxWidth: nodeWidth,
           });
-          if (child.condition) {
-            gates.push({
-              key: child.key,
-              label: conditionSummary(child.condition, graph.stepIds),
-              x: cx,
-              y: (bend + childTop) / 2,
-              maxWidth: nodeWidth,
-            });
-          }
-          const childBottom = childTop + boxes[j].height;
-          const join = (childBottom + bottom) / 2;
-          edges.push({
-            key: `${child.key}:out`,
-            d: `M ${cx} ${childBottom} C ${cx} ${join} ${spineX} ${join} ${spineX} ${bottom}`,
-            end: { x: spineX, y: bottom },
-            dashed: false,
-          });
-          nodes.push({
-            node: child,
-            x: left,
-            y: childTop,
-            width: nodeWidth,
-            ...boxes[j],
-          });
+        }
+        return { child, cx, childBottom: place(child, cx, childTop) };
+      });
+      bottom =
+        Math.max(...placed.map(({ childBottom }) => childBottom)) + M.fanIn;
+      for (const { child, cx, childBottom } of placed) {
+        const join = (childBottom + bottom) / 2;
+        // `:join`, not `:out`: a group in the row has an exit edge of its
+        // own under that key.
+        edges.push({
+          key: `${child.node.key}:join`,
+          d: `M ${cx} ${childBottom} C ${cx} ${join} ${x} ${join} ${x} ${bottom}`,
+          end: { x, y: bottom },
+          dashed: false,
         });
       }
-      groups.push({
-        kind: 'parallel',
-        node: item.node,
-        label: 'These run at the same time',
-        x: spineX - width / 2,
-        y: top,
-        width,
-        height: bottom - top,
-        ...head,
-      });
     }
-    exitY = bottom;
+
+    groups[slot] = {
+      kind: item.kind,
+      node: item.node,
+      label,
+      x: x - width / 2,
+      y: top,
+      width,
+      height: bottom - top,
+      ...head,
+    };
+    return bottom;
+  };
+
+  /** A stacked column of items from `fromY` on center `x`; returns its end. */
+  function stack(
+    items: FlowItem[],
+    x: number,
+    fromY: number,
+    dashed: boolean,
+  ): number {
+    let y = fromY;
+    for (const item of items) {
+      const top = y + gapFor(item.node);
+      connect(`${item.node.key}:in`, x, y, top, item.node, dashed);
+      y = place(item, x, top);
+    }
+    return y;
   }
+
+  const mainWidth = Math.max(nodeWidth, ...graph.main.map(widthOf));
+  const spineX = M.margin + mainWidth / 2;
+
+  if (graph.main.length > 0) {
+    starts.push({ x: spineX, y: M.margin, dashed: false });
+  }
+  const exitY = stack(graph.main, spineX, M.margin, false);
 
   let height = exitY + M.margin;
   let width = M.margin * 2 + mainWidth;
@@ -678,7 +923,12 @@ export function layoutWorkflowGraph(
       graph.main.length > 0 ? width - M.margin + M.laneGap : M.margin;
     const laneCenter = laneX + laneWidth / 2;
     const top = M.margin;
-    const end = stack(graph.onFailure, laneCenter, top + M.groupHeader, true);
+    const end = stack(
+      graph.onFailure.map(node => ({ kind: 'step', node })),
+      laneCenter,
+      top + M.groupHeader,
+      true,
+    );
     const bottom = end + M.groupPadding;
     groups.push({
       kind: 'onFailure',
@@ -689,6 +939,7 @@ export function layoutWorkflowGraph(
       height: bottom - top,
       headerHeight: M.groupHeader,
       titleFit: 'oneLine',
+      labelFit: 'oneLine',
       detailsHeight: 0,
     });
     width = laneX + laneWidth + M.margin;
@@ -743,12 +994,14 @@ function combine(statuses: StepRunStatus[]): StepRunStatus {
  * The latest run's per-step records, laid onto the graph's nodes.
  *
  * muster records steps in execution order under their definition ids: a
- * forEach body step once per iteration (some stores suffix `_<index>`), a
+ * forEach body step once per iteration (some stores suffix `_<index>`, a
+ * nested loop's once per index), a
  * parallel sibling under its own id, a group head only when its condition
  * skipped the whole group, and the cleanup steps after the failure that set
  * them off — where an id may repeat a main step's, so a record after the
  * first fatal failure belongs to the cleanup lane first. A group head without
- * a record of its own takes its verdict from its sub-steps. A node the run
+ * a record of its own takes its verdict from its sub-steps (a nested group's
+ * from its own first). A node the run
  * left no record for is `notRun` (not reached, or a loop over nothing).
  *
  * Returns nothing for a run without per-step records: claiming every step
@@ -765,31 +1018,39 @@ export function mapRunToGraph(
   type Slot = {
     node: FlowStepNode;
     lane: 'main' | 'cleanup';
-    container?: FlowStepNode;
+    /** The group heads the node sits in, outermost first. */
+    containers: FlowStepNode[];
   };
   const mainIndex = new Map<string, Slot>();
   const cleanupIndex = new Map<string, Slot>();
   const remember = (index: Map<string, Slot>, slot: Slot) => {
     if (!index.has(slot.node.id)) index.set(slot.node.id, slot);
   };
-  for (const item of graph.main) {
-    remember(mainIndex, { node: item.node, lane: 'main' });
-    if (item.kind !== 'step') {
-      for (const child of item.children) {
-        remember(mainIndex, {
-          node: child,
-          lane: 'main',
-          container: item.node,
-        });
+  const rememberAll = (items: FlowItem[], containers: FlowStepNode[]) => {
+    for (const item of items) {
+      remember(mainIndex, { node: item.node, lane: 'main', containers });
+      if (item.kind !== 'step') {
+        rememberAll(item.children, [...containers, item.node]);
       }
     }
-  }
+  };
+  rememberAll(graph.main, []);
   for (const node of graph.onFailure) {
-    remember(cleanupIndex, { node, lane: 'cleanup' });
+    remember(cleanupIndex, { node, lane: 'cleanup', containers: [] });
   }
 
-  const lookup = (index: Map<string, Slot>, id: string) =>
-    index.get(id) ?? index.get(id.replace(/_\d+$/, ''));
+  // The id as recorded first, then with one `_<index>` suffix off at a time
+  // (a nested loop's records carry one per loop): a step whose own id ends
+  // in `_<digits>` is found before a shorter id is tried.
+  const lookup = (index: Map<string, Slot>, id: string) => {
+    for (let candidate = id; ;) {
+      const slot = index.get(candidate);
+      if (slot) return slot;
+      const shorter = candidate.replace(/_\d+$/, '');
+      if (shorter === candidate) return undefined;
+      candidate = shorter;
+    }
+  };
 
   const collected = new Map<
     string,
@@ -820,7 +1081,7 @@ export function mapRunToGraph(
       slot.lane === 'main' &&
       status === 'failed' &&
       !slot.node.allowFailure &&
-      !slot.container?.allowFailure
+      !slot.containers.some(container => container.allowFailure)
     ) {
       cleanupPhase = true;
     }
@@ -841,23 +1102,23 @@ export function mapRunToGraph(
     return result;
   };
 
-  for (const item of graph.main) {
+  const settleItem = (item: FlowItem): StepRunOverlay => {
     if (item.kind === 'step') {
-      settle(item.node);
-      continue;
+      return settle(item.node);
     }
-    const children = item.children.map(settle);
-    const own = collected.get(item.node.key);
-    if (own) {
-      settle(item.node);
-    } else {
-      const ran = children.filter(child => child.status !== 'notRun');
-      overlay[item.node.key] = {
-        status: combine(ran.map(child => child.status)),
-        runs: 0,
-      };
+    const children = item.children.map(settleItem);
+    if (collected.has(item.node.key)) {
+      return settle(item.node);
     }
-  }
+    const ran = children.filter(child => child.status !== 'notRun');
+    const result: StepRunOverlay = {
+      status: combine(ran.map(child => child.status)),
+      runs: 0,
+    };
+    overlay[item.node.key] = result;
+    return result;
+  };
+  graph.main.forEach(settleItem);
   graph.onFailure.forEach(settle);
   return overlay;
 }
@@ -879,10 +1140,7 @@ export function stepToolEffects(
     const tool = node.tool ? byName.get(node.tool) : undefined;
     if (tool) effects[node.key] = toolEffect(tool);
   };
-  for (const item of graph.main) {
-    visit(item.node);
-    if (item.kind !== 'step') item.children.forEach(visit);
-  }
+  flowItemsInOrder(graph.main).forEach(item => visit(item.node));
   graph.onFailure.forEach(visit);
   return effects;
 }

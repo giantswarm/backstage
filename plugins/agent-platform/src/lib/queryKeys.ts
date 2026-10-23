@@ -406,6 +406,80 @@ export function musterWorkspaceQueryKey(installation: string, name: string) {
 }
 
 /**
+ * Every toolchain-manager read on an installation, as the signed-in person:
+ * what a person sees depends on their GitHub App grant, so a grant that
+ * lands invalidates this prefix, and none of it is persisted (the `muster`
+ * prefix, like the workspace-manager's).
+ */
+export function musterToolchainManagerQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolchain-manager',
+    installation,
+  ] as const;
+}
+
+/** The toolchains an installation offers (`list_toolchains`). */
+export function musterToolchainsQueryKey(installation: string) {
+  return [
+    ...musterToolchainManagerQueryKey(installation),
+    'toolchains',
+  ] as const;
+}
+
+/**
+ * One version of one source's toolchain (`describe_toolchain`): under the
+ * list, so a refreshed list refreshes what it shows of each.
+ */
+export function musterToolchainQueryKey(
+  installation: string,
+  source: string,
+  name: string,
+  version: string,
+) {
+  return [
+    ...musterToolchainsQueryKey(installation),
+    source,
+    name,
+    version,
+  ] as const;
+}
+
+/** A package search of the create page (`search_packages`). */
+export function musterToolchainPackagesQueryKey(
+  installation: string,
+  query: string,
+) {
+  return [
+    ...musterToolchainManagerQueryKey(installation),
+    'packages',
+    query,
+  ] as const;
+}
+
+/** A new toolchain's pull request, from its checks to its release. */
+export function musterToolchainBuildQueryKey(
+  installation: string,
+  source: string,
+  name: string,
+  pull: number,
+) {
+  return [
+    ...musterToolchainManagerQueryKey(installation),
+    'build',
+    source,
+    name,
+    pull,
+  ] as const;
+}
+
+/** The installation's toolchain sources (`list_sources`). */
+export function musterToolchainSourcesQueryKey(installation: string) {
+  return [...musterToolchainManagerQueryKey(installation), 'sources'] as const;
+}
+
+/**
  * The syncs the person started on this page load (a create, an edit,
  * Synchronize), by workspace row id: kept in the cache, written by the writes
  * and read by the list and the workspace's page, so both say Synchronizing

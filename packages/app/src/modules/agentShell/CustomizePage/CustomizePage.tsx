@@ -28,6 +28,7 @@ import {
   CustomizeDataProvider,
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
+  CustomizeToolchainsPanel,
   CustomizeWorkspacesIntro,
   CustomizeWorkspacesPanel,
   CreateWorkspaceButton,
@@ -113,7 +114,7 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     component: 'muster',
   },
   {
-    // Last: the tab the fewest people use, and least often. Offered only
+    // Near the end: tabs few people use, and not often. Offered only
     // where an installation in scope has the workspace-manager
     // (`hasWorkspaces`). Its create action is `CreateWorkspaceButton`, which
     // carries the tab's Organization and installation to the editor.
@@ -121,6 +122,18 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     title: 'Workspaces',
     searchLabel: 'Search workspaces',
     component: 'muster',
+  },
+  {
+    // Last: the tab the fewest people use. Offered only where an
+    // installation in scope has the toolchain-manager (`hasToolchains`).
+    id: 'toolchains',
+    title: 'Toolchains',
+    searchLabel: 'Search toolchains',
+    component: 'muster',
+    create: {
+      label: 'New toolchain',
+      routeRef: agentPlatformPlugin.routes.newToolchain,
+    },
   },
 ];
 
@@ -130,22 +143,29 @@ const CONNECTORS_TAB = CUSTOMIZE_TABS.find(tab => tab.id === 'connectors')!;
 
 /**
  * Whether the strip shows a tab besides the open one: Skills unless no skill
- * repository is configured, Workspaces only once an installation in scope is
- * known to have the workspace-manager, so the tab never shows where
- * workspaces are off.
+ * repository is configured, Workspaces and Toolchains only once an
+ * installation in scope is known to have the workspace-manager or the
+ * toolchain-manager, so the tab never shows where they are off.
  */
 function isTabShown(
   id: CustomizeTabId,
   {
     hasSkillRepositories,
     hasWorkspaces,
-  }: { hasSkillRepositories?: boolean; hasWorkspaces?: boolean },
+    hasToolchains,
+  }: {
+    hasSkillRepositories?: boolean;
+    hasWorkspaces?: boolean;
+    hasToolchains?: boolean;
+  },
 ): boolean {
   switch (id) {
     case 'skills':
       return hasSkillRepositories !== false;
     case 'workspaces':
       return hasWorkspaces === true;
+    case 'toolchains':
+      return hasToolchains === true;
     default:
       return true;
   }
@@ -190,6 +210,8 @@ function TabPanel({
       return <CustomizeSkillsPanel search={search} />;
     case 'workspaces':
       return <CustomizeWorkspacesPanel search={search} />;
+    case 'toolchains':
+      return <CustomizeToolchainsPanel search={search} />;
     case 'connectors':
       return (
         <CustomizeConnectorsPanel search={search} group={connectorGroup} />
@@ -271,7 +293,8 @@ function CustomizeTabContent({
   /** The Connectors tab's sub-tab; the customer's own connectors by default. */
   connectorGroup?: ConnectorGroup;
 }) {
-  const { counts, hasSkillRepositories, hasWorkspaces } = useCustomizeData();
+  const { counts, hasSkillRepositories, hasWorkspaces, hasToolchains } =
+    useCustomizeData();
   const canAddSkill = useCanAddSkill();
   const create = tab.id === 'skills' && !canAddSkill ? undefined : tab.create;
   const musterCounts = useMusterCustomizeCounts();
@@ -295,7 +318,11 @@ function CustomizeTabContent({
   const tabs = CUSTOMIZE_TABS.filter(
     candidate =>
       candidate.id === tab.id ||
-      isTabShown(candidate.id, { hasSkillRepositories, hasWorkspaces }),
+      isTabShown(candidate.id, {
+        hasSkillRepositories,
+        hasWorkspaces,
+        hasToolchains,
+      }),
   ).map(({ id, title }) => ({ id, path: id, title, count: tabCounts[id] }));
 
   return (
@@ -309,7 +336,7 @@ function CustomizeTabContent({
           ? [groupTitle, tab.title, 'Customize']
           : [tab.title, 'Customize']
       }
-      description="Manage the agents, skills, workspaces, connectors and models behind your sessions."
+      description="Manage the agents, skills, connectors, models, workspaces and toolchains behind your sessions."
       actions={
         tab.id === 'workspaces' ? (
           <Flex gap="3" align="end" style={{ flexWrap: 'wrap' }}>

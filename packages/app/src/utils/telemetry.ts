@@ -618,6 +618,20 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       break;
     }
 
+    // The toolchain create flow (`/customize/toolchains/new`) and one
+    // toolchain's page (`…/toolchains/<installation>/<name>`), whose segments
+    // name a toolchain and stay out of every attribute. Above the tab case,
+    // which would report them as the Toolchains tab.
+    case pathname === '/customize/toolchains/new':
+      payload = { page: 'Create toolchain' };
+      route = '/customize/toolchains/new';
+      break;
+
+    case /^\/customize\/toolchains\/[^/]+\/[^/]+$/.test(pathname):
+      payload = { page: 'Toolchain detail' };
+      route = '/customize/toolchains/:installation/:name';
+      break;
+
     // A Customize tab, with the tab as the view. Only the known tabs: the
     // segment comes from the URL, and an unknown one redirects to the Agents tab.
     // The Connectors tab's sub-tabs below its own address add a `subview`; the

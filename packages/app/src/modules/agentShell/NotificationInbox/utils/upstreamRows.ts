@@ -2,6 +2,7 @@ import type {
   Notification,
   NotificationSeverity,
 } from '@backstage/plugin-notifications-common';
+import { isWebURL } from '@giantswarm/backstage-plugin-ui-react';
 import type { UpstreamInboxRow } from '../types';
 
 const SEVERITY_STATUS: Record<
@@ -71,7 +72,7 @@ export function notificationHref(
   } catch {
     return undefined;
   }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+  if (!isWebURL(url)) {
     return undefined;
   }
   if (url.origin !== app.origin) {

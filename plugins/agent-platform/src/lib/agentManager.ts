@@ -272,6 +272,11 @@ export type StartSessionRequest = {
   requestId: string;
   sessionName?: string;
   workspaceGrant?: string;
+  /**
+   * The toolchains the session mounts, `name[@version]` each; an empty list
+   * mounts none. Absent, the agent's default toolchains.
+   */
+  toolchains?: string[];
 };
 
 /**

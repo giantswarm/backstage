@@ -23,6 +23,7 @@ export { MENU_WIDTH } from './menuWidth';
 export { createMarkdownLinkResolver } from './resolveMarkdownLink';
 export { isAwaitingData } from './isAwaitingData';
 export { liveRouterState } from './liveRouterState';
+export { isWebURL, safeWebURL } from './webURL';
 export {
   PHONE_MAX_WIDTH,
   PHONE_QUERY,

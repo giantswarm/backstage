@@ -40,6 +40,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const agents = createRouteRef();
   const skills = createRouteRef();
   const models = createRouteRef();
+  const toolchains = createRouteRef();
   return {
     agentPlatformPlugin: {
       routes: {
@@ -49,6 +50,8 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         newSkill: createSubRouteRef({ path: '/new', parent: skills }),
         models,
         newModel: createSubRouteRef({ path: '/new', parent: models }),
+        toolchains,
+        newToolchain: createSubRouteRef({ path: '/new', parent: toolchains }),
       },
     },
     CustomizeDataProvider: ({ children }: { children: ReactNode }) => children,
@@ -58,6 +61,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
     CustomizeWorkspacesPanel: mockPanel('Workspaces'),
+    CustomizeToolchainsPanel: mockPanel('Toolchains'),
     WorkspaceOrganizationSelect: () => <p>Organization scope</p>,
     CreateWorkspaceButton: () => <a href="/new-workspace">New workspace</a>,
     CustomizeWorkspacesIntro: () => <h2>Workspaces of acme</h2>,
@@ -125,6 +129,7 @@ const allRoutes = {
   '/customize/agents': agentPlatformPlugin.routes.agents,
   '/customize/skills': agentPlatformPlugin.routes.skills,
   '/customize/models': agentPlatformPlugin.routes.models,
+  '/customize/toolchains': agentPlatformPlugin.routes.toolchains,
   '/customize/connectors': musterPlugin.routes.mcpServers,
 };
 
@@ -636,6 +641,40 @@ describe('CustomizePage', () => {
       await renderCustomize('/customize/agents');
 
       expect(tabs().some(([title]) => title?.startsWith('Workspaces'))).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('the Toolchains tab', () => {
+    it('sits after Workspaces, with New toolchain, where an installation in scope has the toolchain-manager', async () => {
+      mockCustomizeData = {
+        ...mockCustomizeData,
+        hasWorkspaces: true,
+        hasToolchains: true,
+      };
+      await renderCustomize('/customize/toolchains');
+
+      expect(tabs().map(([title]) => title?.split(' (')[0])).toEqual([
+        'Agents',
+        'Skills',
+        'Connectors',
+        'Models',
+        'Workflows',
+        'Workspaces',
+        'Toolchains',
+      ]);
+      expect(screen.getByText(/^Toolchains panel/)).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'New toolchain' }),
+      ).toBeInTheDocument();
+    });
+
+    it('is absent from the strip where no installation has the toolchain-manager', async () => {
+      mockCustomizeData = { ...mockCustomizeData, hasToolchains: false };
+      await renderCustomize('/customize/agents');
+
+      expect(tabs().some(([title]) => title?.startsWith('Toolchains'))).toBe(
         false,
       );
     });

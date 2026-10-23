@@ -282,6 +282,8 @@ describe('NewSessionComposer', () => {
         sre,
         'why is the ingress failing?',
         [],
+        undefined,
+        undefined,
       );
     });
 
@@ -290,7 +292,13 @@ describe('NewSessionComposer', () => {
 
       await userEvent.type(field(), 'check the cluster{Enter}');
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster', []);
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check the cluster',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('still starts on Cmd/Ctrl+Enter, the key it used to be', async () => {
@@ -299,7 +307,13 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), 'check the cluster');
       await userEvent.keyboard('{Meta>}{Enter}{/Meta}');
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster', []);
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check the cluster',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('breaks the line on Shift+Enter', async () => {
@@ -540,7 +554,13 @@ describe('NewSessionComposer', () => {
       await userEvent.type(field(), 'check');
       await userEvent.click(startButton());
 
-      expect(onStart).toHaveBeenCalledWith(sre, 'check', []);
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check',
+        [],
+        undefined,
+        undefined,
+      );
     });
   });
 
@@ -685,7 +705,13 @@ describe('opt-in picker options', () => {
     await userEvent.type(field(), 'check');
     await userEvent.click(startButton());
 
-    expect(onStart).toHaveBeenCalledWith(research, 'check', []);
+    expect(onStart).toHaveBeenCalledWith(
+      research,
+      'check',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('lists the favorites second, after the recent agents, in display order', async () => {
@@ -753,7 +779,13 @@ describe('opt-in picker options', () => {
     await userEvent.type(field(), 'check');
     await userEvent.click(startButton());
 
-    expect(onStart).toHaveBeenCalledWith(research, 'check', []);
+    expect(onStart).toHaveBeenCalledWith(
+      research,
+      'check',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('moves from Recent into Favorites with the arrow keys', async () => {
@@ -1386,7 +1418,13 @@ describe('NewSessionComposer agent-first', () => {
     expect(field()).toBeEnabled();
     await userEvent.type(field(), 'Check the cluster');
     await userEvent.click(startButton());
-    expect(onStart).toHaveBeenCalledWith(sre, 'Check the cluster', []);
+    expect(onStart).toHaveBeenCalledWith(
+      sre,
+      'Check the cluster',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('without the flag, an unchosen agent leaves the field open and is refused on submit', async () => {
@@ -1420,7 +1458,13 @@ describe('NewSessionComposer with touch input (T22 B2)', () => {
     ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Start' }));
-    expect(onStart).toHaveBeenCalledWith(sre, 'line one\nline two', []);
+    expect(onStart).toHaveBeenCalledWith(
+      sre,
+      'line one\nline two',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('names Enter and Shift+Enter with a keyboard', () => {
@@ -1464,12 +1508,18 @@ describe('NewSessionComposer — images', () => {
     expect(await screen.findByText('Pasted image.png')).toBeInTheDocument();
     await userEvent.type(field(), 'what is this?{Enter}');
 
-    expect(onStart).toHaveBeenCalledWith(seer, 'what is this?', [
-      expect.objectContaining({
-        name: 'Pasted image.png',
-        mediaType: 'image/png',
-      }),
-    ]);
+    expect(onStart).toHaveBeenCalledWith(
+      seer,
+      'what is this?',
+      [
+        expect.objectContaining({
+          name: 'Pasted image.png',
+          mediaType: 'image/png',
+        }),
+      ],
+      undefined,
+      undefined,
+    );
   });
 
   it('takes no images without acceptsImages', async () => {
@@ -1507,6 +1557,12 @@ describe('NewSessionComposer — images', () => {
       screen.getByRole('button', { name: 'Remove Pasted image.png' }),
     );
     await userEvent.click(startButton());
-    expect(onStart).toHaveBeenCalledWith(coder, 'fix it', []);
+    expect(onStart).toHaveBeenCalledWith(
+      coder,
+      'fix it',
+      [],
+      undefined,
+      undefined,
+    );
   });
 });
