@@ -149,9 +149,65 @@ async function armEndlessReply(page: Page): Promise<void> {
   );
 }
 
-/** Waits long enough for several more paragraphs to stream in. */
+function streamedChunks(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      (window as unknown as { __e2eStream?: { chunks: number } }).__e2eStream
+        ?.chunks ?? 0,
+  );
+}
+
+/** Waits for several more paragraphs to stream in. */
 async function whileItStreams(page: Page): Promise<void> {
-  await page.waitForTimeout(CHUNK_MS * 8);
+  const from = await streamedChunks(page);
+  await expect
+    .poll(() => streamedChunks(page), {
+      message: 'more paragraphs stream in',
+      timeout: 30_000,
+    })
+    .toBeGreaterThanOrEqual(from + 8);
+}
+
+/**
+ * Waits for a scroll the test started to come to rest — moved from `from`,
+ * and still across two frames (a wheel's smooth scroll, a swipe's fling) —
+ * and returns where it rests.
+ */
+async function settled(page: Page, from: Metrics): Promise<Metrics> {
+  let rest = from;
+  await expect
+    .poll(
+      async () => {
+        const before = await metrics(page);
+        await page.evaluate(
+          () =>
+            new Promise(resolve =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            ),
+        );
+        rest = await metrics(page);
+        return rest.top !== from.top && Math.abs(rest.top - before.top) <= 1;
+      },
+      { message: 'the scroll comes to rest', timeout: 30_000 },
+    )
+    .toBe(true);
+  return rest;
+}
+
+/**
+ * Expects the page to follow the end. A single read can land between a
+ * streamed chunk's render and the frame that follows it — at 375px one
+ * paragraph is more than {@link AT_END_PX} — so it is polled: a page that
+ * follows is at the end at every frame, one that stopped following drifts
+ * further from it with every chunk and never comes back.
+ */
+async function expectFollowsEnd(page: Page, message: string): Promise<void> {
+  await expect
+    .poll(async () => (await metrics(page)).distance, {
+      message,
+      timeout: 10_000,
+    })
+    .toBeLessThanOrEqual(AT_END_PX);
 }
 
 /** A swipe on the touch screen, `step` px per move (positive: finger down). */
@@ -223,16 +279,13 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
         { message: 'the reply grows past two views', timeout: 60_000 },
       )
       .toBe(true);
-    expect(
-      (await metrics(admin)).distance,
-      'at the end while the reply streams',
-    ).toBeLessThanOrEqual(AT_END_PX);
+    await expectFollowsEnd(admin, 'at the end while the reply streams');
 
     // --- Scrolled up with the wheel, mid-stream: the place is kept ---------
     await admin.mouse.move(400, 400);
+    let before = await metrics(admin);
     await admin.mouse.wheel(0, -600);
-    await admin.waitForTimeout(300);
-    const read = await metrics(admin);
+    const read = await settled(admin, before);
     await whileItStreams(admin);
     const later = await metrics(admin);
     expect(later.height, 'the reply went on growing').toBeGreaterThan(
@@ -251,16 +304,16 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
     );
     await admin.keyboard.press('End');
     await whileItStreams(admin);
-    expect(
-      (await metrics(admin)).distance,
+    await expectFollowsEnd(
+      admin,
       'End goes back to the end and follows the reply',
-    ).toBeLessThanOrEqual(AT_END_PX);
+    );
 
     // A nudge of one line up, from the end, leaves the end just the same:
     // the old follow pulled back anything within 240px.
+    before = await metrics(admin);
     await admin.mouse.wheel(0, -40);
-    await admin.waitForTimeout(300);
-    const nudged = await metrics(admin);
+    const nudged = await settled(admin, before);
     await whileItStreams(admin);
     expect(
       Math.abs((await metrics(admin)).top - nudged.top),
@@ -268,16 +321,15 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
     ).toBeLessThanOrEqual(1);
 
     // --- Back to the end: the page follows again ---------------------------
+    before = await metrics(admin);
     await admin.mouse.wheel(0, 100_000);
-    await admin.waitForTimeout(300);
-    const back = await metrics(admin);
+    const back = await settled(admin, before);
     await whileItStreams(admin);
-    const following = await metrics(admin);
-    expect(following.height).toBeGreaterThan(back.height);
-    expect(
-      following.distance,
+    expect((await metrics(admin)).height).toBeGreaterThan(back.height);
+    await expectFollowsEnd(
+      admin,
       'scrolled back to the end, the reply is followed again',
-    ).toBeLessThanOrEqual(AT_END_PX);
+    );
 
     // --- A phone, by touch -------------------------------------------------
     await admin.setViewportSize({ width: 375, height: 812 });
@@ -287,15 +339,12 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
       maxTouchPoints: 1,
     });
     await whileItStreams(admin);
-    expect(
-      (await metrics(admin)).distance,
-      'at 375px the page still follows the end',
-    ).toBeLessThanOrEqual(AT_END_PX);
+    await expectFollowsEnd(admin, 'at 375px the page still follows the end');
 
     // Finger down the screen: the page scrolls up.
+    before = await metrics(admin);
     await swipe(cdp, 180, 250, 20);
-    await admin.waitForTimeout(300);
-    const swiped = await metrics(admin);
+    const swiped = await settled(admin, before);
     await whileItStreams(admin);
     const afterSwipe = await metrics(admin);
     expect(afterSwipe.height).toBeGreaterThan(swiped.height);
@@ -305,15 +354,16 @@ test('a streaming reply is followed at the end and leaves a reader who scrolled 
     ).toBeLessThanOrEqual(1);
 
     // Swiped back down to the end: followed again.
+    before = await metrics(admin);
     for (let i = 0; i < 8; i++) {
       await swipe(cdp, 180, 700, -40);
     }
-    await admin.waitForTimeout(300);
+    await settled(admin, before);
     await whileItStreams(admin);
-    expect(
-      (await metrics(admin)).distance,
+    await expectFollowsEnd(
+      admin,
       'swiped back to the end, the reply is followed again',
-    ).toBeLessThanOrEqual(AT_END_PX);
+    );
   } catch (error) {
     failure = error;
   } finally {
