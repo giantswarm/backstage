@@ -1,18 +1,10 @@
 import { useLocation } from 'react-router-dom';
-import { Text, ToggleButton, ToggleButtonGroup } from '@backstage/ui';
-import {
-  usePhoneLayout,
-  useTouchInput,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { LastDaysSelect } from '@giantswarm/backstage-plugin-ui-react';
 import { EnvironmentSelect } from '../EnvironmentSelect';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
-import {
-  USAGE_WINDOW_OPTIONS,
-  usageWindowLabel,
-  type UsageWindowDays,
-} from '../../lib/usageWindow';
+import { USAGE_WINDOW_OPTIONS } from '../../lib/usageWindow';
 
 /**
  * The Usage screen's scope controls: which environment (installation) it
@@ -28,8 +20,10 @@ import {
  * selection asks for more than that window holds).
  *
  * On Your sessions, windows **larger than the backend's reported window are
- * disabled** rather than offered: selecting one could only ever re-show the
- * same figures under a bigger number. The window comes from the same cached
+ * disabled options** rather than choices: selecting one could only ever
+ * re-show the same figures under a bigger number. Each says why under its
+ * name, which a screen reader reads with it and every device shows once the
+ * select is open. The window comes from the same cached
  * query `AgentUsageSection` reads (`useSessionUsage`, keyed per installation),
  * so this costs no extra request on that view and runs no query on the others
  * (`enabled` gates it). While the response is still loading nothing is
@@ -40,10 +34,6 @@ import {
  */
 export function UsageScopeBar() {
   const { days, setDays } = useUsageWindow();
-  // A phone, or any touch screen, never shows the greyed buttons' `title=`:
-  // the reason is said beside the control there instead (T22 C23).
-  const isPhone = usePhoneLayout();
-  const isTouch = useTouchInput();
 
   // Only the sessions view has a backend-fixed window; the gateway views
   // query any window directly, so everything stays selectable there.
@@ -65,72 +55,23 @@ export function UsageScopeBar() {
       ? usage.windowDays
       : undefined;
 
-  const windowReason =
-    backendWindowDays !== undefined &&
-    USAGE_WINDOW_OPTIONS.some(option => option > backendWindowDays)
+  const unavailableReason = (option: number) =>
+    backendWindowDays !== undefined && option > backendWindowDays
       ? `kagent keeps ${backendWindowDays} days of session usage`
       : undefined;
 
   // A fragment: the controls are items of ShellPage's header actions row,
-  // which spaces and aligns them (bottom edges, so the time range lines up
-  // with the Environment select's field rather than its label).
+  // which spaces and aligns them (bottom edges, so the two selects' boxes line
+  // up, each under its own label).
   return (
     <>
       <EnvironmentSelect component="kagent" />
-      <ToggleButtonGroup
-        aria-label="Time range"
-        selectionMode="single"
-        disallowEmptySelection
-        selectedKeys={[String(days)]}
-        onSelectionChange={keys => {
-          const next = Number([...keys][0]);
-          const option = USAGE_WINDOW_OPTIONS.find(o => o === next);
-          if (option) {
-            setDays(option as UsageWindowDays);
-          }
-        }}
-      >
-        {USAGE_WINDOW_OPTIONS.map(option => {
-          const isBeyondWindow =
-            backendWindowDays !== undefined && option > backendWindowDays;
-          return (
-            <ToggleButton
-              key={option}
-              id={String(option)}
-              size="small"
-              isDisabled={isBeyondWindow}
-              // Native tooltip: the only affordance a disabled button still
-              // offers, and the reason has to live on the thing that is grey.
-              // Set on the DOM node because react-aria strips `title` from
-              // props (it is not in its DOM-prop allowlist), and a wrapper
-              // element would break the group's direct-child border CSS.
-              ref={node => {
-                if (!node) {
-                  return;
-                }
-                if (isBeyondWindow) {
-                  node.setAttribute('title', windowReason ?? '');
-                } else {
-                  node.removeAttribute('title');
-                }
-              }}
-            >
-              {usageWindowLabel(option)}
-            </ToggleButton>
-          );
-        })}
-      </ToggleButtonGroup>
-      {windowReason && (isPhone || isTouch) && (
-        // A line of its own under the controls.
-        <Text
-          as="p"
-          variant="body-small"
-          color="secondary"
-          style={{ flexBasis: '100%', margin: 0 }}
-        >
-          {windowReason}, so the longer ranges are unavailable.
-        </Text>
-      )}
+      <LastDaysSelect
+        options={USAGE_WINDOW_OPTIONS}
+        value={days}
+        onChange={setDays}
+        unavailableReason={unavailableReason}
+      />
     </>
   );
 }
