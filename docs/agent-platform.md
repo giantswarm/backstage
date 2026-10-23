@@ -66,6 +66,30 @@ Favorites follow the person across browsers. A `generalInformation` meta-agent
 adds a helper banner. Each agent's Harness, and a Harness filter, appear only
 when the agents run on more than one Harness.
 
+Every agent belongs to the platform or to one organization, shown under the
+label **Organization**: the organization's plain name (`acme`) for its
+`org-acme` namespace, and "None" for the installation's `kagent` namespace,
+since the platform is no organization; beside "None", an info icon
+(`InfoHint`, a button the keyboard reaches) says "Available to all
+organizations" (`OrganizationValue`). (The code and agent-manager call this the
+agent's tenant; the UI never does.) Where the agents belong to more than one,
+each row names its organization and the filter bar filters by it, the
+platform's agents under the option "None"; the agent's page names it beside the
+overview. A row's link is the agent's name, its hit area stretched over the
+row, so the info icon and the star are buttons of their own above it. The New
+agent form asks for it on Details from the places agent-manager lets the person
+create in (`get_info.namespaces.managed`): the only one is picked and named.
+Several of more than one kind are offered as a choice of **Platform**,
+**Organization** and, for a managed namespace that is no organization (not
+`org-<name>`), **Other namespace**; Organization and Other namespace then show a
+dropdown of their namespaces by plain name, and a kind with only one picks it
+straight away. Several of one kind show the dropdown alone. The choice lives in
+the form's state (`tenantKind`) and goes with the environment. Nothing is
+chosen for the person, a dropdown that appears after a blocked Continue stays
+quiet until the next, and editing an agent never moves it. The form keeps
+"Platform" as the name of that choice. An organization named `none` reads
+`organization none`, never as the platform's "None".
+
 **New agent** (`/customize/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
 configured; every skill is pinned to a commit. An `agentManagement` meta-agent
@@ -80,7 +104,7 @@ it: coming back to the form fills it in again and says so ("Your draft is
 back") on the step it reopens on, with **Start over** to begin empty instead;
 the note closes once the person moves to another step. The draft is everything
 typed and picked on the four steps (name, description, instructions,
-environment, tenant, model, runtime, default workspace, technical name,
+environment, organization, model, runtime, default workspace, technical name,
 EgressPolicies, egress origins, skills, plugins and tools); the form holds no secret or token, and the
 helper's side chat is not part of it. It lives in the browser tab's session
 storage, per signed-in person, so another tab or another person on the same
