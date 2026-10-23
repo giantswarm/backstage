@@ -189,9 +189,15 @@ describe('AgentDeleteDialog', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /defined in Git outside the directory the portal writes to/,
+        /^This agent is defined in Git outside the directory the portal writes to\. Remove it from the file that defines it in/,
       ),
     ).toBeInTheDocument();
+    // What agent-manager checked is technical: folded away.
+    expect(
+      screen.getByText(
+        'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+      ),
+    ).not.toBeVisible();
     expect(
       screen.getByRole('link', {
         name: 'giantswarm/giantswarm-management-clusters',

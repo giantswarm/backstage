@@ -1098,9 +1098,9 @@ describe('EditAgentPage', () => {
       expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
       expect(
         screen.getByText(
-          'It is defined in Git outside the directory the portal writes to. Change it in the file that defines it.',
+          /^This agent is defined in Git outside the directory the portal writes to\. Change it in the file that defines it in/,
         ),
-      ).toBeInTheDocument();
+      ).toHaveTextContent('in giantswarm/giantswarm-management-clusters.');
       // Only what agent-manager reports is linked: the repository, never a
       // guess at where the release is defined.
       expect(
@@ -1111,11 +1111,12 @@ describe('EditAgentPage', () => {
         'href',
         'https://github.com/giantswarm/giantswarm-management-clusters',
       );
+      // What agent-manager checked is technical: folded away.
       expect(
         screen.getByText(
           'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
         ),
-      ).toBeInTheDocument();
+      ).not.toBeVisible();
       expect(
         screen
           .getAllByRole('link')
@@ -1134,6 +1135,11 @@ describe('EditAgentPage', () => {
       );
       expect(
         await screen.findByText(/is not in agent-manager's directory/),
+      ).toBeVisible();
+      expect(
+        screen.getByText(
+          'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+        ),
       ).toBeVisible();
     });
 
