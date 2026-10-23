@@ -18,6 +18,9 @@ jest.mock('../../hooks/useSessionWorkspaces', () => ({
   useSessionWorkspaces: () => ({ workspaces: [], isLoading: false }),
 }));
 
+// The toolchain picker's reads are its own tests'; here it is not offered.
+jest.mock('../ToolchainPicker', () => ({ ToolchainPicker: () => null }));
+
 const onStart = jest.fn();
 const onOpenChange = jest.fn();
 

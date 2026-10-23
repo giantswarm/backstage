@@ -124,10 +124,16 @@ export function StartNewSession({
       prompt: string,
       images?: ComposerImage[],
       workspace?: string,
+      toolchains?: string[],
     ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent, prompt, workspace });
+        sessionId = await createSession({
+          agent,
+          prompt,
+          workspace,
+          toolchains,
+        });
       } catch {
         // Left to the composer, which renders the hook's `error` beside the
         // prompt the user still has.

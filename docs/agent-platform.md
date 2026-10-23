@@ -56,8 +56,8 @@ always the person's own: kagent answers only for the caller.
 
 ## Customize
 
-`/customize` (`CustomizePage`) has the tabs Agents, Skills, Connectors, Models
-and Workflows. An environment selector appears when there is more than one
+`/customize` (`CustomizePage`) has the tabs Agents, Skills, Connectors, Models,
+Toolchains and Workflows. An environment selector appears when there is more than one
 environment.
 
 ### Agents
@@ -267,6 +267,25 @@ Models are kagent ModelConfigs. **Connect a model** supports OpenAI-compatible
 endpoints, Anthropic, Gemini and Ollama; the API key is optional and
 write-only. Where the installation runs model-manager, **Model hosting** adds
 running models, GPU capacity and the model cache.
+
+### Toolchains
+
+Toolchains are the toolchain-manager's, over muster as the person, on
+installations that run it. The tab (`/customize/toolchains`) lists the
+toolchains the sources publish, each with its versions and its newest
+version's tools, and the sources, with **Add source**. A toolchain's page
+(`/customize/toolchains/<installation>/<name>`) shows per version its tools,
+Harnesses, pinned packages and binaries, egress and Dockerfile. **New
+toolchain** (`/customize/toolchains/new`) writes a Dockerfile from picked
+Alpine packages, opens it as the person's pull request in a source and follows
+its build to the published image.
+
+The New session dialog offers the session's toolchains beside the workspace,
+preset to the agent's defaults (its
+`agent-platform.giantswarm.io/default-toolchains` annotation); a toolchain
+added, removed or set to another version reaches `start_session`.
+agent-manager mounts toolchains from one toolchain repository, so a toolchain
+from an added source is refused at start until it does more.
 
 ### Workflows
 

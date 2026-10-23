@@ -406,6 +406,73 @@ export function musterWorkspaceQueryKey(installation: string, name: string) {
 }
 
 /**
+ * The toolchain-manager's reads, as the signed-in person: the toolchains an
+ * installation offers (`list_toolchains`), one version of one
+ * (`describe_toolchain`) and the sources (`list_sources`). Under the `muster`
+ * prefix like the workspace-manager's: what a person sees depends on their
+ * GitHub App grant, so none of it is persisted.
+ */
+export function musterToolchainsQueryKey(installation: string) {
+  return ['muster', 'agent-platform', 'toolchains', installation] as const;
+}
+
+export function musterToolchainQueryKey(
+  installation: string,
+  name: string,
+  version: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolchains',
+    installation,
+    name,
+    version,
+  ] as const;
+}
+
+/** A package search of the create page (`search_packages`). */
+export function musterToolchainPackagesQueryKey(
+  installation: string,
+  query: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolchain-packages',
+    installation,
+    query,
+  ] as const;
+}
+
+/** A new toolchain's pull request, from its checks to its release. */
+export function musterToolchainBuildQueryKey(
+  installation: string,
+  source: string,
+  name: string,
+  pull: number,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolchain-build',
+    installation,
+    source,
+    name,
+    pull,
+  ] as const;
+}
+
+export function musterToolchainSourcesQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolchain-sources',
+    installation,
+  ] as const;
+}
+
+/**
  * The syncs the person started on this page load (a create, an edit,
  * Synchronize), by workspace row id: kept in the cache, written by the writes
  * and read by the list and the workspace's page, so both say Synchronizing

@@ -577,6 +577,37 @@ describe('useCreateSession', () => {
     });
   });
 
+  it('mounts the toolchains the person chose, or none, instead of the agent’s defaults', async () => {
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.createSession({
+        agent,
+        prompt: 'Build it with the older go',
+        toolchains: ['go@0.1.0', 'node'],
+      });
+    });
+    await act(async () => {
+      await result.current.createSession({
+        agent,
+        prompt: 'No tools this time',
+        toolchains: [],
+      });
+    });
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'The defaults' });
+    });
+
+    const [chosen, none, defaults] = startCalls().map(call => call.args);
+    expect(chosen.toolchains).toEqual(['go@0.1.0', 'node']);
+    expect(chosen).not.toHaveProperty('noToolchains');
+    expect(none.noToolchains).toBe(true);
+    expect(none).not.toHaveProperty('toolchains');
+    // Neither: agent-manager mounts the agent's default toolchains.
+    expect(defaults).not.toHaveProperty('toolchains');
+    expect(defaults).not.toHaveProperty('noToolchains');
+  });
+
   it('starts nothing for a prompt with nothing to title it by', async () => {
     const { result } = renderWith();
 

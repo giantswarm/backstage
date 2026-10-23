@@ -64,6 +64,9 @@ import {
   workspaceDetailRouteRef,
   workspaceEditRouteRef,
   workspacesRouteRef,
+  toolchainsRouteRef,
+  newToolchainRouteRef,
+  toolchainDetailRouteRef,
   newWorkspaceRouteRef,
 } from './routes';
 
@@ -160,6 +163,25 @@ const workspacesSubPage = SubPageBlueprint.make({
       const { WorkspacesRouter } =
         await import('./components/WorkspacesRouter');
       return <WorkspacesRouter />;
+    },
+  },
+});
+
+// The Customize screen's Toolchains tab: the create flow
+// (`/customize/toolchains/new`) and one toolchain's page
+// (`/customize/toolchains/<installation>/<name>`), driven by
+// ToolchainsRouter.
+const toolchainsSubPage = SubPageBlueprint.make({
+  name: 'toolchains',
+  attachTo: { id: CUSTOMIZE_PAGE, input: 'pages' },
+  params: {
+    path: 'toolchains',
+    title: 'Toolchains',
+    routeRef: toolchainsRouteRef,
+    loader: async () => {
+      const { ToolchainsRouter } =
+        await import('./components/ToolchainsRouter');
+      return <ToolchainsRouter />;
     },
   },
 });
@@ -427,6 +449,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     skillsSubPage,
     modelsSubPage,
     workspacesSubPage,
+    toolchainsSubPage,
     createClusterAction,
     deleteClusterAction,
     connectorUsedBy,
@@ -468,6 +491,9 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newWorkspace: newWorkspaceRouteRef,
     workspaceDetail: workspaceDetailRouteRef,
     workspaceEdit: workspaceEditRouteRef,
+    toolchains: toolchainsRouteRef,
+    newToolchain: newToolchainRouteRef,
+    toolchainDetail: toolchainDetailRouteRef,
   },
   // All but `customize` and `newSession` carry a `defaultTarget`, so they
   // resolve without an app-config binding and are simply unbound when the

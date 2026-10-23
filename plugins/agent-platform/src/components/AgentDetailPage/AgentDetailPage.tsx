@@ -636,10 +636,16 @@ function AgentDetailPageContent() {
       prompt: string,
       images?: ComposerImage[],
       workspace?: string,
+      toolchains?: string[],
     ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent: target, prompt, workspace });
+        sessionId = await createSession({
+          agent: target,
+          prompt,
+          workspace,
+          toolchains,
+        });
       } catch {
         // Left to the dialog, which stays open and renders the hook's `error`
         // beside the prompt the user still has.

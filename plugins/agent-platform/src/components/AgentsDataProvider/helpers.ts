@@ -43,6 +43,11 @@ import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
 } from '../../lib/defaultWorkspace';
+import {
+  DEFAULT_TOOLCHAINS_ANNOTATION,
+  defaultToolchainsOf,
+  type ToolchainPick,
+} from '../../lib/toolchainManager';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -285,6 +290,12 @@ export type AgentRow = {
    * before. `undefined` for none.
    */
   defaultWorkspace?: string;
+  /**
+   * The agent's default toolchains ({@link DEFAULT_TOOLCHAINS_ANNOTATION}):
+   * what a new session mounts unless the person starting it changes them.
+   * `undefined` for none.
+   */
+  defaultToolchains?: ToolchainPick[];
 };
 
 /**
@@ -426,6 +437,9 @@ export function toAgentRow(
   const defaultWorkspace = defaultWorkspaceName(
     agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],
   );
+  const defaultToolchains = defaultToolchainsOf(
+    agent.getAnnotations()?.[DEFAULT_TOOLCHAINS_ANNOTATION],
+  );
   const skillPins = Object.fromEntries(
     gitSkills.map(skill => [skill.id, skill.pin]),
   );
@@ -455,6 +469,7 @@ export function toAgentRow(
     tenant: tenantOf(namespace),
     ...(createdBy ? { createdBy } : {}),
     ...(defaultWorkspace ? { defaultWorkspace } : {}),
+    ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
     ...(carriers
