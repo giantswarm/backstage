@@ -13,10 +13,13 @@ import { lab } from './lab';
  * card, the popup to the lab Dex, the fixture account, and back. Every lab
  * user signs in, sees their own identity on Settings, and signs out again.
  */
-for (const user of Object.values(lab.users)) {
-  test(`signs in as ${user.email} through the Dex popup, shows the identity on Settings, signs out`, async ({
+// By role, not by email: a worker past the first signs in as users of its own
+// (`forWorker` in lab.ts), and a title must read the same in the runner.
+for (const role of ['admin', 'dev', 'viewer'] as const) {
+  test(`signs in as the lab ${role} through the Dex popup, shows the identity on Settings, signs out`, async ({
     signInAs,
   }) => {
+    const user = lab.users[role];
     const page = await signInAs(user);
     const errors = watchPageErrors(page);
 

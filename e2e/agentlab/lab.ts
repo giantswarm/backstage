@@ -48,6 +48,13 @@ function portalModeFromEnv(): PortalMode {
   return mode;
 }
 
+/**
+ * The parallel worker this process is: Playwright's `TEST_PARALLEL_INDEX`,
+ * `0` in the first worker and in the runner. The one source of which lab users
+ * the process signs in as ({@link forWorker}).
+ */
+export const LAB_WORKER = Number(process.env.TEST_PARALLEL_INDEX ?? 0);
+
 export const lab = {
   /** Backstage's public URL through the lab's edge. */
   baseURL:
@@ -77,15 +84,39 @@ export const lab = {
    */
   ollamaEndpoint:
     process.env.AGENTLAB_OLLAMA_ENDPOINT ?? 'http://172.21.0.1:11434',
+  /** The worker's own lab users ({@link forWorker}). */
   users: {
     /** `platform-admins` + `developers`: may create agents and read kagent. */
-    admin: { email: 'admin@lab.local', name: 'Lab Admin' },
+    admin: forWorker({ email: 'admin@lab.local', name: 'Lab Admin' }),
     /** `developers`: edit in the demo namespace, no kagent reads. */
-    dev: { email: 'dev@lab.local', name: 'Lab Developer' },
+    dev: forWorker({ email: 'dev@lab.local', name: 'Lab Developer' }),
     /** `viewers`: view only. */
-    viewer: { email: 'viewer@lab.local', name: 'Lab Viewer' },
+    viewer: forWorker({ email: 'viewer@lab.local', name: 'Lab Viewer' }),
   } satisfies Record<string, LabUser>,
 } as const;
+
+/**
+ * The parallel worker's own copy of a lab user: the user itself on the first
+ * worker (and in the runner), `<name>-<n>@lab.local` named "<Name> <n>" on
+ * worker n. One Dex identity per worker, because whatever is the person's is
+ * shared by every page signed in as them: Dex keeps one refresh token per
+ * user and client and drops it on the next sign-in, which signs every other
+ * worker's page out; muster keeps one session and one per-server sign-in per
+ * user; the Notification inbox is per user. A lab for more than one worker
+ * carries these users in its `agentlab.yaml`, each in its original's groups
+ * (`e2e/agentlab/README.md`). A test title never names them: the runner
+ * lists the tests with the first worker's users.
+ */
+function forWorker(user: LabUser): LabUser {
+  if (!LAB_WORKER) {
+    return user;
+  }
+  const [local, domain] = user.email.split('@');
+  return {
+    email: `${local}-${LAB_WORKER}@${domain}`,
+    name: `${user.name} ${LAB_WORKER}`,
+  };
+}
 
 /**
  * Options for every browser context the suite opens — in the config's `use`
