@@ -77,11 +77,18 @@ label **Organization**: the organization's plain name (`acme`) for its
 since the platform is no organization; beside "None", an info icon
 (`InfoHint`, a button the keyboard reaches) says "Available to all
 organizations" (`OrganizationValue`). (The code and agent-manager call this the
-agent's tenant; the UI never does.) Where the agents belong to more than one,
-each row names its organization and the filter bar filters by it, the
-platform's agents under the option "None"; the agent's page names it beside the
-overview. A row's link is the agent's name, its hit area stretched over the
-row, so the info icon and the star are buttons of their own above it. The New
+agent's tenant; the UI never does.) The agent's page names it beside the
+overview. Where the agents belong to more than one, the filter bar filters by
+it, the platform's agents under the option "None", and the row of an
+organization's agent names it as its first fact, "Organization: acme", in a
+column wider than the others: a row has no labels, and a bare `acme` would read
+like the environment beside it. The name is the filter option's
+(`organization none` for an organization named `none`). A platform agent's row
+leaves that column empty, since a "None" without its label says nothing; the
+column stays, so every row has the same fixed columns and they line up however
+the facts wrap (at phone width, where the facts have no columns, it is gone).
+An agent in another namespace reads `namespace <name>` there. A row's link is the agent's name, its hit area
+stretched over the row, so the star is a button of its own above it. The New
 agent form asks for it on Details from the places agent-manager lets the person
 create in (`get_info.namespaces.managed`): the only one is picked and named.
 Several of more than one kind are offered as a choice of **Platform**,
