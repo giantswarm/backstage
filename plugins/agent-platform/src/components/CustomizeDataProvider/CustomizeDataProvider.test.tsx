@@ -63,6 +63,12 @@ jest.mock('../WorkspacesDataProvider', () => ({
           failures: mockWorkspaceFailures,
         },
 }));
+jest.mock('../../hooks/useToolchainManager', () => ({
+  useScopedToolchainInstallations: () => ({
+    installations: ['gazelle'],
+    hasToolchains: true,
+  }),
+}));
 jest.mock('../ServingProvider', () => ({
   ServingProvider: ({ children }: { children: ReactNode }) => children,
   useServing: () => ({

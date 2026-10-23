@@ -24,6 +24,16 @@ import {
 } from '../lib/agentManager';
 
 /**
+ * A session's toolchains for `start_session`, named only when the person
+ * changed the agent's defaults: none is said with `noToolchains`, since an
+ * empty list means the defaults.
+ */
+function toolchainArgs(toolchains: StartSessionRequest['toolchains']) {
+  if (!toolchains) return {};
+  return toolchains.length > 0 ? { toolchains } : { noToolchains: true };
+}
+
+/**
  * agent-manager's tools on one installation, called as the signed-in person.
  *
  * The seam is the muster plugin's own client: `musterApi.callTool()` sends the
@@ -244,6 +254,7 @@ export class AgentManagerClient {
         ...(request.workspaceGrant
           ? { workspaceGrant: request.workspaceGrant }
           : { noWorkspace: true }),
+        ...toolchainArgs(request.toolchains),
       },
     );
     // The id is where the person is taken next: an answer without one has

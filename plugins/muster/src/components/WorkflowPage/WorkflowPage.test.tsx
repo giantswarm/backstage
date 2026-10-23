@@ -16,6 +16,7 @@ import {
 import { musterApiRef } from '../../apis';
 import { customizeExternalRouteRef, workflowsRouteRef } from '../../routes';
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
+import { fleetImageScanWorkflow } from '../../lib/__fixtures__/fleetImageScan';
 import { DEFAULT_DETAILS_HEIGHT } from './WorkflowFlowCanvas';
 import { WorkflowPage } from './WorkflowPage';
 import { useWorkflowPageTarget } from './workflowPageTarget';
@@ -572,7 +573,7 @@ describe('WorkflowPage', () => {
 
     expect(
       screen.getByRole('group', {
-        name: "Flow of the workflow's 3 steps and its cleanup steps",
+        name: "Flow of the workflow's 3 tool steps, 1 loop and its cleanup steps",
       }),
     ).toBeInTheDocument();
     // Each step is a button naming its place, tool and gate.
@@ -605,7 +606,9 @@ describe('WorkflowPage', () => {
     // The forEach step is a group around its body step.
     const loop = figure.querySelector('[data-group="forEach"]');
     expect(loop).toHaveTextContent('Check every cluster');
-    expect(loop).toHaveTextContent('For each cluster in the input “clusters”');
+    expect(loop).toHaveTextContent(
+      'For each cluster in the input “clusters”, in order',
+    );
     expect(
       canvas.getByRole('button', { name: /^Step 3\.1: Probe it/ }),
     ).toBeInTheDocument();
@@ -1667,7 +1670,7 @@ describe('WorkflowPage at phone width', () => {
     expect(list.getByText(/Tap a step to see its details\.$/)).toBeVisible();
 
     const steps = list.getByRole('list', {
-      name: "The workflow's 3 steps, in order",
+      name: "The workflow's 3 tool steps, 1 loop, in order",
     });
     const first = within(steps).getByRole('button', {
       name: /^Step 1: Read the current pods, kubernetes · get_pods/,
@@ -1698,7 +1701,9 @@ describe('WorkflowPage at phone width', () => {
     const loop = within(steps).getByRole('button', {
       name: /^Step 3: Check every cluster/,
     });
-    expect(loop).toHaveTextContent('For each cluster in the input “clusters”');
+    expect(loop).toHaveTextContent(
+      'For each cluster in the input “clusters”, in order',
+    );
     const body = list.getByRole('list', { name: 'Steps of step 3' });
     expect(loop.closest('li')).toContainElement(body);
     expect(
@@ -1792,7 +1797,7 @@ describe('WorkflowPage at phone width', () => {
     await renderAt(`${BASE}/long`);
 
     const steps = screen.getByRole('list', {
-      name: "The workflow's 300 steps, in order",
+      name: "The workflow's 301 tool steps, 1 parallel group, in order",
     });
     // 20 top-level cards, the parallel group's two siblings under step 2.
     expect(
@@ -1898,5 +1903,348 @@ describe('WorkflowPage on a desktop', () => {
     expect(
       screen.getByText(/Select a step to see its details\.$/),
     ).toBeInTheDocument();
+  });
+});
+
+// giantswarm/giantswarm#38792: a loop (up to 8 at once) holding a paginated
+// tool step and a nested loop (one at a time) of seven paginated tool steps,
+// each reshaping its result with jq, as the outer loop does its records.
+const FLEET = fleetImageScanWorkflow();
+const FLEET_KINDS = [
+  'deployments',
+  'replicasets',
+  'statefulsets',
+  'daemonsets',
+  'cronjobs',
+  'jobs',
+  'pods',
+];
+
+describe('WorkflowPage with nested loops (fleet-image-scan)', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockDesktopLayout();
+    mockWorkflows = [FLEET];
+  });
+  afterEach(() => layout.restore());
+
+  const canvas = () => within(screen.getByTestId('workflow-flow-canvas'));
+  const box = (key: string) =>
+    screen
+      .getByTestId('workflow-flow-canvas')
+      .querySelector(`[data-node="${key}"]`) as HTMLElement;
+
+  it('counts the tool steps at every depth and names the loops in the header', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    expect(
+      screen.getByText('8 tool steps in 2 nested loops · 2 inputs'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('group', {
+        name: "Flow of the workflow's 8 tool steps in 2 nested loops",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('draws every step, the nested loop’s seven inside it, with no empty tool node', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    // Two loop groups: step 1, and step 1.2 drawn inside it.
+    const groups = screen
+      .getByTestId('workflow-flow-canvas')
+      .querySelectorAll('[data-group="forEach"]');
+    expect(groups).toHaveLength(2);
+    const [outer, inner] = [...groups].map(g => g as HTMLElement);
+    const rect = (el: HTMLElement) => ({
+      left: parseFloat(el.style.left),
+      top: parseFloat(el.style.top),
+      right: parseFloat(el.style.left) + parseFloat(el.style.width),
+      bottom: parseFloat(el.style.top) + parseFloat(el.style.height),
+    });
+    const within2 = (a: HTMLElement, b: HTMLElement) => {
+      const [x, y] = [rect(a), rect(b)];
+      return (
+        x.left >= y.left &&
+        x.right <= y.right &&
+        x.top >= y.top &&
+        x.bottom <= y.bottom
+      );
+    };
+    expect(within2(inner, outer)).toBe(true);
+
+    // The eight tool steps, numbered on: 1.1, then 1.2.1 to 1.2.7.
+    const steps = canvas().getAllByRole('button', {
+      name: /^Step 1\.(1|2\.\d): /,
+    });
+    expect(
+      steps.map(step => step.getAttribute('data-step-key')).sort(),
+    ).toEqual(['s0.0', ...FLEET_KINDS.map((_, k) => `s0.1.${k}`)].sort());
+    FLEET_KINDS.forEach((_, k) => {
+      const node = box(`s0.1.${k}`);
+      expect(within2(node, inner)).toBe(true);
+      expect(node).toHaveTextContent(`1.2.${k + 1}`);
+    });
+    expect(within2(box('s0.0'), outer)).toBe(true);
+    expect(within2(box('s0.0'), inner)).toBe(false);
+    // Every tool node names its tool (the kubernetes connector's `list`):
+    // its tile is the connector's initial, never the `·` of no tool.
+    for (const step of steps) {
+      expect(step).toHaveTextContent('kubernetes · list');
+      expect(step.textContent).toMatch(/^K/);
+    }
+    // Read in the flow's order: a group's head before its steps.
+    const order = [
+      ...screen
+        .getByTestId('workflow-flow-canvas')
+        .querySelectorAll('[data-step-key]'),
+    ].map(el => el.getAttribute('data-step-key'));
+    expect(order).toEqual([
+      's0',
+      's0.0',
+      's0.1',
+      ...FLEET_KINDS.map((_, k) => `s0.1.${k}`),
+    ]);
+  });
+
+  it('says on each loop how many iterations run at once', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    expect(
+      canvas().getByRole('button', {
+        name: /^Step 1: Each management cluster.*, For each mc in the input “management_clusters”, up to 8 at once/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      canvas().getByRole('button', {
+        name: /^Step 1\.2: Each cluster in turn.*, For each cluster in the result of step 1\.1 \(clusters\), one at a time/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('marks the paginated steps and the jq transforms', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    expect(box('s0.0')).toHaveTextContent('Paginated, up to 10 pages');
+    FLEET_KINDS.forEach((_, k) => {
+      expect(box(`s0.1.${k}`)).toHaveTextContent('Paginated, up to 100 pages');
+      expect(box(`s0.1.${k}`)).toHaveTextContent('jq transform');
+    });
+    expect(canvas().getAllByText('Paginated, up to 100 pages')).toHaveLength(7);
+    // Eight tool steps and the outer loop reshape with jq; the inner loop
+    // does not.
+    expect(canvas().getAllByText('jq transform')).toHaveLength(9);
+    expect(
+      canvas().getByRole('button', { name: /^Step 1: / }),
+    ).toHaveAccessibleName(/jq transform/);
+    expect(
+      canvas().getByRole('button', { name: /^Step 1\.2: / }),
+    ).not.toHaveAccessibleName(/jq/);
+    expect(
+      canvas().getByRole('button', { name: /^Step 1\.2\.1: / }),
+    ).toHaveAccessibleName(/paginated, up to 100 pages, jq transform/);
+    // The markers give the box a row of their own.
+    const plain = canvas().getByRole('button', { name: /^Step 1\.1: / });
+    expect(plain.closest('[data-node]')).toContainElement(
+      within(box('s0.0')).getByTestId('step-feature-badges'),
+    );
+  });
+
+  it('shows a paginated step’s page bound and its jq program in its details', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    await userEvent.click(
+      canvas().getByRole('button', { name: /^Step 1\.2\.1: / }),
+    );
+    const details = within(
+      screen.getByRole('region', { name: /^Details of Step 1\.2\.1 · / }),
+    );
+    expect(
+      details.getByText(
+        "Follows the tool's pages, up to 100 pages, and keeps every page's items as one list.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      details.getByText(
+        'A jq program reshapes its result before later steps use it.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      details.getByText(
+        /^It belongs to step 1\.2 \(Each cluster in turn.*\) and runs for each cluster in the result of step 1\.1 \(clusters\)\.$/,
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      details.getByRole('button', { name: 'Show technical information' }),
+    );
+    expect(details.getByText('maxPages: 100')).toBeInTheDocument();
+    // The program next to the templated arguments, as code.
+    expect(details.getByText('Arguments (templated)')).toBeInTheDocument();
+    expect(details.getByText('jq program')).toBeInTheDocument();
+    const program = details.getByTestId('step-jq-program');
+    expect(program.tagName).toBe('PRE');
+    const deployments = FLEET.getSteps()[0].forEach!.steps[1].forEach!.steps[0];
+    expect(program.textContent).toBe(deployments.jq);
+  });
+
+  it('shows a loop’s parallelism and its multi-line jq program as written', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    await userEvent.click(canvas().getByRole('button', { name: /^Step 1: / }));
+    const outer = within(
+      screen.getByRole('region', { name: /^Details of Step 1 · / }),
+    );
+    expect(
+      outer.getByText(
+        'For each mc in the input “management_clusters”, it runs its 2 steps in order.',
+      ),
+    ).toBeInTheDocument();
+    expect(outer.getByText('Up to 8 items run at once.')).toBeInTheDocument();
+    expect(
+      outer.getByText(
+        'A jq program turns the records of its iterations into its result.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      outer.getByRole('button', { name: 'Show technical information' }),
+    );
+    expect(outer.getByText('Parallelism')).toBeInTheDocument();
+    expect(outer.getByText('8')).toBeInTheDocument();
+    const program = outer.getByTestId('step-jq-program');
+    // Line breaks kept: the program reads as written.
+    expect(program.textContent).toBe(FLEET.getSteps()[0].jq);
+    expect(program.textContent).toContain('\n  failures: ([');
+
+    await userEvent.click(
+      canvas().getByRole('button', { name: /^Step 1\.2: / }),
+    );
+    const inner = within(
+      screen.getByRole('region', { name: /^Details of Step 1\.2 · / }),
+    );
+    expect(
+      inner.getByText('The items run one at a time, within each mc of step 1.'),
+    ).toBeInTheDocument();
+    expect(
+      inner.getByText(/^It belongs to step 1 \(Each management cluster/),
+    ).toBeInTheDocument();
+    expect(inner.queryByText(/jq program/)).toBeNull();
+  });
+
+  it('says a loop without a parallelism runs its items one after another', async () => {
+    mockWorkflows = [DEPLOY];
+    await renderAt(`${BASE}/deploy`);
+
+    await userEvent.click(canvas().getByRole('button', { name: /^Step 3: / }));
+    const details = within(
+      screen.getByRole('region', { name: /^Details of Step 3 · / }),
+    );
+    expect(
+      details.getByText('The items run one after another.'),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      details.getByRole('button', { name: 'Show technical information' }),
+    );
+    expect(
+      details.getByText('not set (one after another)'),
+    ).toBeInTheDocument();
+  });
+
+  it('draws what it knows of a step whose fields it does not know', async () => {
+    mockWorkflows = [
+      new MusterWorkflow(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'Workflow',
+          metadata: { name: 'future', namespace: 'muster' },
+          spec: {
+            steps: [
+              // A step kind muster may add later: neither tool nor group.
+              { id: 'pause', wait: { seconds: 5 }, description: 'Wait' },
+              {
+                id: 'loop',
+                forEach: {
+                  items: '{{ .input.xs }}',
+                  parallelism: 'many',
+                  steps: [
+                    {
+                      id: 'call',
+                      tool: 'x_a',
+                      paginate: 'yes',
+                      jq: 42,
+                      retries: 3,
+                    },
+                  ],
+                  window: 2,
+                },
+              },
+            ],
+          },
+        } as never,
+        'gazelle',
+      ),
+    ];
+    await renderAt(`${BASE}/future`);
+
+    expect(
+      canvas().getByRole('button', { name: /^Step 1: Wait/ }),
+    ).toBeInTheDocument();
+    expect(
+      canvas().getByRole('button', {
+        name: /^Step 2: loop, For each item in the input “xs”, in order/,
+      }),
+    ).toBeInTheDocument();
+    const call = canvas().getByRole('button', { name: /^Step 2\.1: call/ });
+    expect(call).toHaveTextContent('x_a');
+    expect(box('s1.0')).not.toHaveTextContent(/Paginated|jq/);
+  });
+});
+
+describe('WorkflowPage with nested loops at phone width', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockPhoneLayout();
+    mockWorkflows = [FLEET];
+  });
+  afterEach(() => layout.restore());
+
+  it('nests the inner loop’s steps in the outer loop’s list, with the loops’ pace and the markers', async () => {
+    await renderAt(`${BASE}/fleet-image-scan`);
+
+    const all = screen.getByRole('list', {
+      name: "The workflow's 8 tool steps in 2 nested loops, in order",
+    });
+    const outer = within(all).getByRole('list', { name: 'Steps of step 1' });
+    const inner = within(outer).getByRole('list', {
+      name: 'Steps of step 1.2',
+    });
+    expect(
+      within(inner)
+        .getAllByRole('button', { name: /^Step 1\.2\.\d: / })
+        .map(card => card.getAttribute('data-step-key')),
+    ).toEqual(FLEET_KINDS.map((_, k) => `s0.1.${k}`));
+    expect(
+      within(all).getByRole('button', { name: /^Step 1: / }),
+    ).toHaveTextContent('up to 8 at once');
+    expect(
+      within(outer).getByRole('button', { name: /^Step 1\.2: / }),
+    ).toHaveTextContent('one at a time');
+    expect(
+      within(inner).getAllByText('Paginated, up to 100 pages'),
+    ).toHaveLength(7);
+    expect(within(all).getAllByText('jq transform')).toHaveLength(9);
+
+    // A nested step's details open under its card, with the program.
+    await userEvent.click(
+      within(inner).getByRole('button', { name: /^Step 1\.2\.7: / }),
+    );
+    const details = within(
+      screen.getByRole('region', { name: /^Details of Step 1\.2\.7 · / }),
+    );
+    await userEvent.click(
+      details.getByRole('button', { name: 'Show technical information' }),
+    );
+    expect(details.getByText('maxPages: 100')).toBeInTheDocument();
+    expect(details.getByTestId('step-jq-program')).toBeInTheDocument();
   });
 });

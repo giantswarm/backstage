@@ -25,6 +25,7 @@ export type NewSessionDialogProps = {
     prompt: string,
     images?: ComposerImage[],
     workspace?: string,
+    toolchains?: string[],
   ) => void;
 };
 

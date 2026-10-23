@@ -56,8 +56,9 @@ always the person's own: kagent answers only for the caller.
 
 ## Customize
 
-`/customize` (`CustomizePage`) has the tabs Agents, Skills, Connectors, Models
-and Workflows. An environment selector appears when there is more than one
+`/customize` (`CustomizePage`) has the tabs Agents, Skills, Connectors, Models,
+Workflows, Workspaces and Toolchains; Workspaces and Toolchains only where an
+installation in scope runs their manager. An environment selector appears when there is more than one
 environment.
 
 ### Agents
@@ -304,12 +305,51 @@ endpoints, Anthropic, Gemini and Ollama; the API key is optional and
 write-only. Where the installation runs model-manager, **Model hosting** adds
 running models, GPU capacity and the model cache.
 
+### Toolchains
+
+Toolchains are the toolchain-manager's, over muster as the person, on
+installations that run it. The tab (`/customize/toolchains`) lists the
+toolchains the sources publish, each with its versions and its newest
+version's tools, and the sources, with **Add source**. A toolchain's page
+(`/customize/toolchains/<installation>/<name>`) shows per version its tools,
+Harnesses, pinned packages and binaries, egress and Dockerfile. **New
+toolchain** (`/customize/toolchains/new`) writes a Dockerfile from picked
+Alpine packages, opens it as the person's pull request in a source and follows
+its build to the published image.
+
+The New session dialog offers the session's toolchains beside the workspace,
+preset to the agent's defaults (its
+`agent-platform.giantswarm.io/default-toolchains` annotation); a toolchain
+added, removed or set to another version reaches `start_session`.
+agent-manager mounts toolchains from one toolchain repository, so a toolchain
+from an added source is refused at start until it does more.
+
 ### Workflows
 
 Muster's workflows. The portal does not create, edit or delete them; agents
 and Git do. A workflow's page splits into Overview, Run it, Usage (its run
 statistics) and Details tabs; its ⋮ menu shows the Workflow CR as YAML and,
 where Flux reconciles the workflow, where in Git to change it.
+
+Overview draws the workflow's steps as a flow (a list at phone width), from
+the Workflow CR alone. A forEach or parallel step is a group around its steps,
+and a forEach inside a forEach is a group inside it, its steps numbered on
+(step 1.2.3 is the third step of the loop that is step 1.2). Each loop says
+how many items run at once: "up to 8 at once" or "one at a time" from its
+`parallelism`, "in order" where the definition sets none, since muster then
+runs them one after another. A tool step with `paginate` carries a
+"Paginated, up to N pages" marker (`maxPages`, 10 where unset), and a step
+with `jq` (a tool step, or a forEach that reshapes its iterations' records) a
+"jq transform" marker; a step's details say what both do, and its technical
+information shows `maxPages` and the jq program as written, line breaks kept,
+in a block that scrolls sideways rather than widening the page. Step fields
+the page does not know are left out.
+
+The page header and the Workflows list give a workflow's size from its steps
+at every depth: "3 steps" for a plain list, and with loops or parallel groups
+the tool steps they hold and the groups, as in "8 tool steps in 2 nested
+loops" or "5 tool steps, 1 loop" (some of them outside the loop). The cleanup
+steps (`onFailure`) are not counted.
 
 The Workflows list and a workflow's page say what a workflow does in the same
 badges a tool has: Reads or Changes things. muster marks a workflow read-only
@@ -341,6 +381,42 @@ page's tabs, clicks on links to other addresses (breadcrumbs, the rail, links
 in the page) and, through the browser's own prompt, a reload or a closed tab.
 The browser's Back, the command palette and navigation that code starts are
 not held: the app's router has no navigation blocker.
+
+### Workspaces
+
+A workspace is the repositories agent sessions work on, kept by
+workspace-manager. Each source is one owner on one provider instance and
+selects repositories by name, by language and topic filters, or both. Its
+exclusions are repository names, exact and compared without case, never
+patterns. They follow workspace-manager's `provider.Select`: an exclusion
+drops a repository whatever selects it, a pick by name included, and the
+manager keeps an exclusion that names no selected repository (it leaves
+nothing out until a filter selects that name).
+
+The editor (`/customize/workspaces/new`, `…/<installation>/<organization>/<name>/edit`)
+shows a source's exclusions under **Exclusions**: each a tag to remove, what
+they leave out now, and a field that offers the repositories the source
+selects now and takes a typed name too. The field reads that selection
+(`preview_workspace` with the source alone, searched as typed) only while its
+list is open, and says a typed name is not selected only from a fresh answer
+for that search with every match on its page. Unticking a filter match in the
+repository table excludes it as well.
+
+The source's count is the draft's own where it can be: without filters, the
+picks by name less the excluded ones, each name once. With filters only the
+manager knows which matches an exclusion drops, so the count comes from a
+preview: the draft's own when the source is its only one, else a preview of
+the source alone while the source is open. It says "counting…" until the
+answer is in, and "total not known" when the preview fails or cannot run (the
+source's provider instance is not connected or not configured), rather than
+subtracting exclusions that may match nothing. The "by filter" part is left
+out for topics that must all match, since `list_repositories` filters topics
+as "any of" and cannot count them. The preview's "n excluded" is the manager's
+count of repositories the exclusions left out.
+
+The Workspaces tab has no Sources column: its Repositories column gives the
+last synchronization's count, and the sources in full are on the workspace's
+page.
 
 ## Usage
 

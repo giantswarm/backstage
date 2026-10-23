@@ -326,10 +326,16 @@ function PaletteSessionComposer({
       prompt: string,
       images?: ComposerImage[],
       workspace?: string,
+      toolchains?: string[],
     ) => {
       let sessionId: string;
       try {
-        sessionId = await createSession({ agent: chosen, prompt, workspace });
+        sessionId = await createSession({
+          agent: chosen,
+          prompt,
+          workspace,
+          toolchains,
+        });
       } catch {
         // Left to the dialog, which stays open and shows the hook's error.
         return;

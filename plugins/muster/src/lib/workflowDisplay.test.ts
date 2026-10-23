@@ -65,17 +65,33 @@ describe('toolDisplay', () => {
 describe('conditionSummary', () => {
   it('resolves a fromStep reference to its step number and verdict', () => {
     expect(
-      conditionSummary({ fromStep: 'probe', expect: { success: true } }, [
-        'fetch',
-        'probe',
-        'apply',
-      ]),
+      conditionSummary(
+        { fromStep: 'probe', expect: { success: true } },
+        new Map([
+          ['fetch', '1'],
+          ['probe', '2'],
+          ['apply', '3'],
+        ]),
+      ),
     ).toBe('Only if step 2 (probe) succeeded');
     expect(
-      conditionSummary({ fromStep: 'probe', expect: { success: false } }, [
-        'probe',
-      ]),
+      conditionSummary(
+        { fromStep: 'probe', expect: { success: false } },
+        new Map([['probe', '1']]),
+      ),
     ).toBe('Only if step 1 (probe) failed');
+  });
+
+  it('names a nested step by its nested number, and an unknown one by its id', () => {
+    expect(
+      conditionSummary(
+        { fromStep: 'clusters', expect: { success: true } },
+        new Map([['clusters', '1.1']]),
+      ),
+    ).toBe('Only if step 1.1 (clusters) succeeded');
+    expect(
+      conditionSummary({ fromStep: 'constructor', expect: { success: true } }),
+    ).toBe('Only if step “constructor” succeeded');
   });
 
   it('describes tool probes and templates', () => {
@@ -94,7 +110,7 @@ describe('conditionSummary', () => {
     expect(
       conditionSummary(
         { fromStep: 'probe', expect: { jsonPath: { healthy: true } } },
-        ['probe'],
+        new Map([['probe', '1']]),
       ),
     ).toBe('Only if the result of step 1 (probe) matches what is expected');
   });
