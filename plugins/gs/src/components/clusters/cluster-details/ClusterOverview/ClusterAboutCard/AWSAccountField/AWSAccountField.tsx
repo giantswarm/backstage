@@ -7,6 +7,7 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
+import { useIsExpectedClusterError } from '../../../../ClusterDetailsPage/useIsExpectedClusterError';
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 import { Account } from '../../../../../UI/Account';
 import type { InfrastructureRef } from '../../../ClusterSwitch';
@@ -17,6 +18,7 @@ export const AWSAccountField = ({
   infrastructureRef: InfrastructureRef;
 }) => {
   const { installationName } = useCurrentCluster();
+  const isExpectedError = useIsExpectedClusterError();
 
   const { name, namespace } = infrastructureRef;
 
@@ -29,7 +31,7 @@ export const AWSAccountField = ({
   } = useResource(installationName, AWSCluster, { name, namespace });
 
   let awsClusterErrorMessage: string | undefined;
-  if (awsClusterError) {
+  if (awsClusterError && !isExpectedError(awsClusterError)) {
     awsClusterErrorMessage = getErrorMessage({
       error: awsClusterError,
       resourceKind: AWSCluster.kind,
@@ -68,7 +70,7 @@ export const AWSAccountField = ({
   // cached under the same name for another cluster — an error or an
   // incompatibility that has nothing to do with this one.
   let identityErrorMessage: string | undefined;
-  if (hasRoleIdentity && identityError) {
+  if (hasRoleIdentity && identityError && !isExpectedError(identityError)) {
     identityErrorMessage = getErrorMessage({
       error: identityError,
       resourceKind: AWSClusterRoleIdentity.kind,
