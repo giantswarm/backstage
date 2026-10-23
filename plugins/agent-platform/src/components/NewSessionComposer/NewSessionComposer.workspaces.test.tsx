@@ -42,6 +42,23 @@ jest.mock('../../hooks/useSessionWorkspaces', () => ({
   }),
 }));
 
+/** The toolchains the installation offers; none unless a test says so. */
+let mockToolchains: unknown[] = [];
+jest.mock('../../hooks/useToolchainManager', () => ({
+  useToolchains: () => ({
+    isAvailable: true,
+    isLoading: false,
+    list: { data: { toolchains: mockToolchains } },
+  }),
+}));
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerInfo: () => ({
+    info: { capabilities: { toolchains: true } },
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 jest.mock('../../hooks/useWorkspaceManager', () => ({
   ...jest.requireActual('../../hooks/useWorkspaceManager'),
   useWorkspaceManagerClient: () => undefined,
@@ -115,6 +132,7 @@ beforeEach(() => {
   onStart.mockReset();
   mockWorkspacesOf.mockReset();
   mockWorkspacesOf.mockReturnValue([]);
+  mockToolchains = [];
   Object.assign(mockSignIn, { isWaiting: false, isConnected: false });
   mockProviders.data = [{ name: 'github', kind: 'github', connected: false }];
 });
@@ -157,6 +175,7 @@ describe('NewSessionComposer workspaces', () => {
       'List the repositories',
       [],
       'platform-mix',
+      undefined,
     );
 
     unmount();
@@ -181,6 +200,7 @@ describe('NewSessionComposer workspaces', () => {
         'List the repositories',
         [],
         'platform-mcp',
+        undefined,
       );
     });
 
@@ -207,7 +227,13 @@ describe('NewSessionComposer workspaces', () => {
       expect(workspacePicker()).toHaveTextContent('No workspace');
       await userEvent.type(field(), 'Hello');
       await userEvent.click(startButton());
-      expect(onStart).toHaveBeenCalledWith(withDefault, 'Hello', []);
+      expect(onStart).toHaveBeenCalledWith(
+        withDefault,
+        'Hello',
+        [],
+        undefined,
+        undefined,
+      );
     });
 
     it('falls back to the default when the last choice is no longer listed', () => {
@@ -249,6 +275,65 @@ describe('NewSessionComposer workspaces', () => {
     renderComposer({ pickerPlacement: 'top', pickerLabel: () => 'Agent' });
 
     expect(screen.getByText('Workspace')).toBeInTheDocument();
+  });
+
+  it('starts with the toolchains the person changed, beside the workspace', async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    mockToolchains = [
+      {
+        name: 'go',
+        source: 'agent-toolchains',
+        repository: 'giantswarm/agent-toolchains',
+        version: 'v0.2.0',
+        image: 'gsoci.azurecr.io/giantswarm/agent-toolchains/go:0.2.0',
+        versions: ['v0.2.0', 'v0.1.0'],
+      },
+    ];
+    renderComposer({
+      agents: [agentRow({ defaultToolchains: [{ name: 'go' }] })],
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Toolchains: go latest' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /go version/ }));
+    await userEvent.click(screen.getByRole('option', { name: '0.1.0' }));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.type(field(), 'build it');
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({ id: claude.id }),
+      'build it',
+      [],
+      undefined,
+      ['go@0.1.0'],
+    );
+  });
+
+  it("starts with the agent's defaults, naming no toolchain, when nothing was changed", async () => {
+    mockToolchains = [
+      {
+        name: 'go',
+        source: 'agent-toolchains',
+        repository: 'giantswarm/agent-toolchains',
+        version: 'v0.2.0',
+        image: 'gsoci.azurecr.io/giantswarm/agent-toolchains/go:0.2.0',
+        versions: ['v0.2.0'],
+      },
+    ];
+    renderComposer();
+
+    await userEvent.type(field(), 'build it');
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith(
+      claude,
+      'build it',
+      [],
+      undefined,
+      undefined,
+    );
   });
 
   it('is not there where the installation offers no workspace', () => {
@@ -314,7 +399,13 @@ describe('NewSessionComposer workspaces', () => {
     await userEvent.click(
       within(alert).getByRole('button', { name: 'Start without workspace' }),
     );
-    expect(onStart).toHaveBeenCalledWith(claude, 'List the repositories', []);
+    expect(onStart).toHaveBeenCalledWith(
+      claude,
+      'List the repositories',
+      [],
+      undefined,
+      undefined,
+    );
     expect(workspacePicker()).toHaveTextContent('No workspace');
   });
 
@@ -385,6 +476,7 @@ describe('NewSessionComposer workspaces', () => {
       'List the repositories',
       [],
       'platform-mix',
+      undefined,
     );
     // Should that start not get under way, the person starts it.
     await userEvent.click(

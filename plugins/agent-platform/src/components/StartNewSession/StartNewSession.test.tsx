@@ -21,6 +21,9 @@ jest.mock('../../hooks/useSessionWorkspaces', () => ({
   useSessionWorkspaces: () => ({ workspaces: [], isLoading: false }),
 }));
 
+// The toolchain picker's reads are its own tests'; here it is not offered.
+jest.mock('../ToolchainPicker', () => ({ ToolchainPicker: () => null }));
+
 const mockUseAgents = jest.fn<AgentsContextValue, []>();
 jest.mock('../AgentsDataProvider', () => ({
   ...jest.requireActual('../AgentsDataProvider'),

@@ -59,6 +59,8 @@ export {
 } from './components/CustomizeWorkspacesPanel';
 export type { CustomizeWorkspacesPanelProps } from './components/CustomizeWorkspacesPanel';
 export { WorkspaceOrganizationSelect } from './components/WorkspaceOrganizationSelect';
+export { CustomizeToolchainsPanel } from './components/CustomizeToolchainsPanel';
+export type { CustomizeToolchainsPanelProps } from './components/CustomizeToolchainsPanel';
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
 export { CustomizeModelPage } from './components/CustomizeModelPage';
 export { MODEL_PAGE_TABS } from './components/ModelDetailPage';

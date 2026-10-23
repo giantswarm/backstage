@@ -2,6 +2,7 @@ import { ButtonIcon, ButtonLink, Text } from '@backstage/ui';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import {
   PHONE_MEDIA,
+  safeWebURL,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core/styles';
@@ -29,17 +30,7 @@ export const DEFAULT_SLACK_DOCS_URL = 'https://docs.giantswarm.io';
  * default: config is not a place a `javascript:` link should come from.
  */
 export function slackDocsUrl(configured: string | undefined): string {
-  if (configured) {
-    try {
-      const url = new URL(configured);
-      if (url.protocol === 'https:' || url.protocol === 'http:') {
-        return configured;
-      }
-    } catch {
-      // Not a URL: the default instead.
-    }
-  }
-  return DEFAULT_SLACK_DOCS_URL;
+  return safeWebURL(configured) ?? DEFAULT_SLACK_DOCS_URL;
 }
 
 /** The id the dismissal is stored under (see `useDismissedHint`). */

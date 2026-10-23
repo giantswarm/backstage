@@ -311,6 +311,20 @@ describe('toAgentRow', () => {
     );
   });
 
+  it('carries the default toolchains with their versions, for the session pickers', () => {
+    const agent = makeAgent({ name: 'coder', namespace: 'kagent' });
+    agent.jsonData.metadata.annotations = {
+      'agent-platform.giantswarm.io/default-toolchains': 'go@0.2.0,node',
+    };
+    expect(toAgentRow(agent, []).defaultToolchains).toEqual([
+      { name: 'go', version: '0.2.0' },
+      { name: 'node' },
+    ]);
+    expect(toAgentRow(makeAgent({ name: 'plain' }), [])).not.toHaveProperty(
+      'defaultToolchains',
+    );
+  });
+
   it('identifies git skills as the catalog does and leaves the others out', () => {
     const agent = makeAgent({ name: 'triager' });
     agent.jsonData.spec!.template!.skills = [

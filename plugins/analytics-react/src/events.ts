@@ -123,6 +123,16 @@ export const portalEvents = defineEvents({
       'A workspace, the repositories agent sessions work on, was created or its sources changed, as the signed-in person.',
     attributes: { kind: ['created', 'updated'] },
   },
+  'AgentPlatform.toolchainCreated': {
+    description:
+      'A toolchain, tools a coding agent session mounts, was opened as a pull request in a toolchain source, as the signed-in person.',
+    attributes: {},
+  },
+  'AgentPlatform.toolchainSourceAdded': {
+    description:
+      'A repository was added as a toolchain source, offered at once (an owner of the installation added it) or waiting for an owner to approve it.',
+    attributes: { approval: ['approved', 'pending'] },
+  },
   'AgentPlatform.modelCreated': {
     description:
       "A model an agent can use (a kagent ModelConfig) was created in the Agent Platform, through the model form. The models a model backend's addition registers are not counted.",
