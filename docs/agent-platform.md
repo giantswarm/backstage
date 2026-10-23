@@ -84,14 +84,18 @@ organization's agent names it beside the agent's name, "Organization: acme",
 since it says whose agent it is: a row has no labels, and a bare `acme` would
 read like the environment among the facts. The name is the filter option's
 (`organization none` for an organization named `none`); a long one truncates,
-taking at most half the name's line, with the full name in its tooltip. A
+taking at most half the name's line. The name link's tooltip gives the name
+and the organization in full, wherever the row is pointed at: the link's hit
+area covers the row, the organization's text included, which is also the
+link's accessible description. A
 platform agent's row names none: a "None" without its label would say
 nothing. An agent in another namespace reads `namespace <name>` there. The
 facts (model, Harness, skills and connectors, environment) are the same fixed
 columns on every row, so they line up from row to row: beside the name where
-the name keeps at least 320px, otherwise on one line under the name and its
-description, on every row of the list alike. At phone width they wrap under
-the name, and the organization goes under a name too long for its line. A
+the name keeps at least 320px (220px in a list that names no organizations),
+otherwise on one line under the name and its description, on every row of the
+list alike. At phone width they wrap under the name, and the organization goes
+under a name too long for its line and wraps there. A
 row's link is the agent's name, its hit area stretched over the row, so the
 star is a button of its own above it. The New
 agent form asks for it on Details from the places agent-manager lets the person

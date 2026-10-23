@@ -167,18 +167,23 @@ const useStyles = makeStyles({
     columnGap: 'var(--bui-space-4)',
     rowGap: 'var(--bui-space-1)',
   },
-  // 320px leaves the name and its organization room beside the facts: below
-  // it, the facts move under the name rather than squeeze them.
   main: {
-    flex: '1 1 320px',
+    flex: '1 1 220px',
     minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
     gap: 2,
   },
+  // Where the rows name organizations: room for one beside the name, or the
+  // facts move under the name rather than squeeze them. A list without them
+  // keeps its rows on one line down to the narrower 220px.
+  mainWithOrganization: {
+    flexBasis: 320,
+  },
+  // The name, its organization and its state on one baseline, as the facts.
   nameLine: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'baseline',
     columnGap: 'var(--bui-space-2)',
     rowGap: 2,
     minWidth: 0,
@@ -190,19 +195,26 @@ const useStyles = makeStyles({
   // Whose agent it is, beside its name: never more than half the line, so a
   // long name and a long organization each keep some of it, and never
   // squeezed out by the name.
+  // On a phone it shrinks to its line and wraps there instead.
   organization: {
     flex: 'none',
     maxWidth: '50%',
     [PHONE_MEDIA]: {
+      flex: '0 1 auto',
+      minWidth: 0,
       maxWidth: 'none',
       overflowWrap: 'anywhere',
     },
   },
+  // On the name's baseline by its label; the dot stays centred on the label.
   status: {
     flex: 'none',
     display: 'inline-flex',
-    alignItems: 'center',
+    alignItems: 'baseline',
     gap: 'var(--bui-space-1)',
+    '& > [data-tone]': {
+      alignSelf: 'center',
+    },
   },
   facts: {
     flex: '0 1 auto',
@@ -371,6 +383,14 @@ function AgentListItem({
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
   const organization = showTenant ? organizationText(row.namespace) : '';
+  const organizationId = useId();
+  // The name's tooltip, with the organization beside it on a line of its own:
+  // the name link's hit area covers the row, so the row shows this tooltip
+  // wherever it is pointed at, the organization's text included, and either
+  // can be read in full however it is cut. A phone has no hover.
+  const nameTitle = isPhone
+    ? undefined
+    : [row.name, organization].filter(Boolean).join('\n');
   const facts: AgentFact[] = [
     { key: 'model', text: row.model ?? '', label: 'Model' },
     // The title, as main's Harness column led with; the name joins it in the
@@ -400,7 +420,13 @@ function AgentListItem({
         src={avatarUrl ?? ''}
       />
       <div className={classes.body}>
-        <div className={classes.main}>
+        <div
+          className={
+            showTenant
+              ? `${classes.main} ${classes.mainWithOrganization}`
+              : classes.main
+          }
+        >
           <div className={classes.nameLine}>
             {/* The link is the name itself, so a long name truncates with
                 its ellipsis, as the text does without one. */}
@@ -410,6 +436,8 @@ function AgentListItem({
                 variant="body-medium"
                 weight="bold"
                 truncate={truncate}
+                title={nameTitle}
+                aria-describedby={organization ? organizationId : undefined}
                 className={[
                   classes.nameLink,
                   stretched.link,
@@ -426,6 +454,7 @@ function AgentListItem({
                 variant="body-medium"
                 weight="bold"
                 truncate={truncate}
+                title={nameTitle}
                 className={isPhone ? classes.twoLines : undefined}
               >
                 {row.name}
@@ -433,15 +462,16 @@ function AgentListItem({
             )}
             {/* Whose agent it is, with the name rather than among the facts:
                 every row keeps the same fact columns, and a platform agent's
-                row has nothing here. */}
+                row has nothing here. Its tooltip is the name's (above): a
+                title of its own would sit under the link's hit area. */}
             {organization && (
               <Text
                 as="span"
+                id={organizationId}
                 variant="body-small"
                 color="secondary"
                 truncate={truncate}
                 className={classes.organization}
-                title={`Organization: ${tenantOf(row.namespace)}`}
               >
                 {organization}
               </Text>
@@ -473,7 +503,8 @@ function AgentListItem({
             </Text>
           )}
         </div>
-        <div className={classes.facts}>
+        {/* The test id: agentlab's tenants spec lines the rows' facts up. */}
+        <div className={classes.facts} data-testid="agent-facts">
           {facts.map(fact => (
             <Text
               key={fact.key}
