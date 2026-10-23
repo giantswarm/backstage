@@ -1,16 +1,22 @@
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
 
-import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import { useHarnessChoices } from '../../hooks/useHarnessChoices';
-import { harnessTitle, type HarnessChoice } from '../../lib/harnesses';
+import {
+  harnessTitle,
+  PLATFORM_DEFAULT_LABEL,
+  RUNTIME_DESCRIPTION,
+  RUNTIME_LABEL,
+  RUNTIME_TERM,
+  type HarnessChoice,
+} from '../../lib/harnesses';
 import { tenantInSentence } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import {
   SelectableCard,
   SelectableCardGrid,
   StaticCard,
-  useSelectableCardStyles,
 } from '../SelectableCard';
+import { HarnessSummary } from '../HarnessSummary';
+import { useRuntimeChoices } from './useRuntimeChoices';
 
 /**
  * The runtime an agent runs on: the Harnesses of the chosen model's namespace,
@@ -31,48 +37,34 @@ import {
  * warning.
  */
 export function HarnessPicker() {
-  const classes = useSelectableCardStyles();
   const { state, edit, selectHarness } = useNewAgentForm();
   const {
     installation,
     modelConfigNamespace: namespace,
     droppedHarness,
   } = state;
-  // The tenant the agent is created in; editing, its own namespace.
-  const tenant = state.tenant ?? namespace;
-  const { info } = useAgentManagerInfo(installation);
-  const platformNamespace = info?.namespaces?.default;
-  const inOtherTenant = Boolean(
-    tenant && platformNamespace && tenant !== platformNamespace,
-  );
-  const { choices, platformHarness, platformChoice, errors, isLoading } =
-    useHarnessChoices(installation, inOtherTenant ? tenant : namespace);
+  const {
+    choices,
+    platformHarness,
+    platformChoice,
+    errors,
+    isLoading,
+    tenant,
+    inOtherTenant,
+  } = useRuntimeChoices();
 
   if (!installation || !namespace) {
     return null;
   }
 
-  const content = (choice: HarnessChoice) => {
-    return (
-      <>
-        <Text weight="bold">{harnessTitle(choice)}</Text>
-        {choice.name === platformHarness && (
-          <Text variant="body-small" color="secondary">
-            Platform default
-          </Text>
-        )}
-        <Text variant="body-x-small" color="secondary">
-          Harness <span className={classes.code}>{choice.name}</span>
-          {choice.imageName && (
-            <>
-              {' · '}
-              <span className={classes.code}>{choice.imageName}</span>
-            </>
-          )}
-        </Text>
-      </>
-    );
-  };
+  const content = (choice: HarnessChoice) => (
+    <HarnessSummary
+      choice={choice}
+      mark={
+        choice.name === platformHarness ? PLATFORM_DEFAULT_LABEL : undefined
+      }
+    />
+  );
 
   // The edit page shows an existing agent's Harness without offering others:
   // moving it runs its own checks, from Change Harness on the agent's page.
@@ -87,11 +79,15 @@ export function HarnessPicker() {
     return (
       <Flex direction="column" gap="2">
         <FieldLabel
-          label="Runtime"
-          secondaryLabel="Harness"
-          description="What runs the agent. Change it with Change Harness in the Agent actions menu on the agent's page."
+          label={RUNTIME_LABEL}
+          secondaryLabel={RUNTIME_TERM}
+          description={`${RUNTIME_DESCRIPTION} Change it with Change Harness in the Agent actions menu on the agent's page.`}
         />
-        <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
+        <SelectableCardGrid
+          role="list"
+          ariaLabel={RUNTIME_LABEL}
+          minWidth={220}
+        >
           <StaticCard>{content(current)}</StaticCard>
         </SelectableCardGrid>
       </Flex>
@@ -122,14 +118,18 @@ export function HarnessPicker() {
     return (
       <Flex direction="column" gap="2">
         <FieldLabel
-          label="Runtime"
-          secondaryLabel="Harness"
+          label={RUNTIME_LABEL}
+          secondaryLabel={RUNTIME_TERM}
           description={`The agents of ${tenantInSentence(
             tenant,
           )} run on the platform Harness.`}
         />
         {dropNotice}
-        <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
+        <SelectableCardGrid
+          role="list"
+          ariaLabel={RUNTIME_LABEL}
+          minWidth={220}
+        >
           <StaticCard>{content(platform)}</StaticCard>
         </SelectableCardGrid>
       </Flex>
@@ -140,8 +140,8 @@ export function HarnessPicker() {
     return (
       <Flex direction="column" gap="2">
         <FieldLabel
-          label="Runtime"
-          secondaryLabel="Harness"
+          label={RUNTIME_LABEL}
+          secondaryLabel={RUNTIME_TERM}
           description="Choose what runs the agent."
         />
         {dropNotice}
@@ -174,8 +174,8 @@ export function HarnessPicker() {
   return (
     <Flex direction="column" gap="2">
       <FieldLabel
-        label="Runtime"
-        secondaryLabel="Harness"
+        label={RUNTIME_LABEL}
+        secondaryLabel={RUNTIME_TERM}
         description={
           hasChoice
             ? "Choose what runs the agent. You can change it later from the agent's page."
@@ -192,7 +192,7 @@ export function HarnessPicker() {
       {hasChoice ? (
         <SelectableCardGrid
           role="radiogroup"
-          ariaLabel="Runtime"
+          ariaLabel={RUNTIME_LABEL}
           minWidth={220}
         >
           {choices.map(choice => (
@@ -212,7 +212,11 @@ export function HarnessPicker() {
           ))}
         </SelectableCardGrid>
       ) : (
-        <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
+        <SelectableCardGrid
+          role="list"
+          ariaLabel={RUNTIME_LABEL}
+          minWidth={220}
+        >
           <StaticCard>{content(choices[0])}</StaticCard>
         </SelectableCardGrid>
       )}

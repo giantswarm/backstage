@@ -65,7 +65,11 @@ environment.
 
 Favorites follow the person across browsers. A `generalInformation` meta-agent
 adds a helper banner. Each agent's Harness, and a Harness filter, appear only
-when the agents run on more than one Harness.
+when the agents run on more than one Harness. **Last used by you** shows up
+to three agents, each once, walking the person's sessions newest first and
+counting a session only when its agent is still on the fleet. An agent that
+cannot start a session now stays in it. Like every item of the list, each
+opens the agent's page, where **Use this agent** starts a session.
 
 Every agent belongs to the platform or to one organization, shown under the
 label **Organization**: the organization's plain name (`acme`) for its
@@ -134,6 +138,14 @@ request instead of a direct change. Update all skills to latest moves every
 git skill of the agent to its repository's newest commit. A skill pinned
 behind the catalog's newest commit shows "Update available"; the mark comes
 from the skill catalog the page reads anyway.
+
+The facts beside the agent page's overview name its **Runtime** as the create
+form does: the Harness's title, **Platform default** once agent-manager's
+`get_info` names that Harness as the platform's, and its name and image
+beneath, read from the one Harness the agent names while the Overview is
+open. A Harness the person cannot read is shown by its name, and an agent
+whose runtime is not known (none named, or an inline one of a runtime the
+portal does not know) reads **Unknown runtime** and says which.
 
 ### Skills
 
@@ -897,7 +909,12 @@ default; picking it leaves `harness` out of the request. Any other pick is sent
 to `validate_agent` and `create_agent`. A single Harness shows read-only, none
 shows no section, and a failed read shows a warning. Changing the installation,
 or picking a model in another namespace, drops the pick. The Harness is fixed
-at create; the edit page shows it read-only.
+at create; the edit page shows it read-only. The field's words (`RUNTIME_LABEL`,
+`PLATFORM_DEFAULT_LABEL`, `harnessTitle`) live in `lib/harnesses.ts`, and its
+card (`HarnessSummary`) is the one Change Harness and the agent page's facts
+show. The review steps and the Details step's More options summary name the
+platform Harness by the same title and mark (`platformRuntimeLine`), or by the
+mark alone until its Harness is read.
 
 ### Extra egress origins
 

@@ -882,27 +882,39 @@ describe('CustomizeAgentsPanel', () => {
   });
 
   describe('last used by you', () => {
-    it('shows the agents of the latest sessions as cards opening a new session', async () => {
+    it('shows the agents of the latest sessions as cards opening their page', async () => {
       const docs = row({ name: 'Docs', technicalName: 'docs' });
       mockAgents = { ...mockAgents, rows: [triage, notes, docs] };
       mockSessions = [
         sessionWith(triage, '2026-10-08T10:00:00Z'),
         sessionWith(docs, '2026-10-09T10:00:00Z'),
-        // Not startable: no card.
+        // Failed since: still a card, since its page says why.
         sessionWith(notes, '2026-10-10T10:00:00Z'),
       ];
       await renderPanel();
 
       const strip = screen.getByRole('region', { name: 'Last used by you' });
       const cards = within(strip).getAllByRole('link');
-      expect(cards).toHaveLength(2);
-      expect(cards[0]).toHaveTextContent('Docs');
+      expect(cards).toHaveLength(3);
+      // The name is the link, as on the list's rows, and opens the agent's
+      // page like every other item of the list: it is where a session
+      // starts, with Use this agent.
+      expect(cards[0]).toHaveAccessibleName('Release notes');
       expect(cards[0]).toHaveAttribute(
         'href',
-        `/?agent=${encodeURIComponent(docs.id)}`,
+        '/customize/agents/golem/engineering/notes',
       );
-      expect(cards[1]).toHaveTextContent('Support triage');
-      expect(cards[1]).toHaveTextContent('Start a session');
+      expect(cards[1]).toHaveAccessibleName('Docs');
+      expect(cards[1]).toHaveAttribute(
+        'href',
+        `/customize/agents/${docs.installation}/${docs.namespace}/docs`,
+      );
+      expect(cards[2]).toHaveAccessibleName('Support triage');
+      expect(cards[2]).toHaveAttribute(
+        'href',
+        '/customize/agents/golem/support/triage',
+      );
+      expect(strip).not.toHaveTextContent('Start a session');
     });
 
     it('shows at most three cards however many sessions there are', async () => {

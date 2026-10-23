@@ -27,7 +27,11 @@ import {
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
-import { harnessTitle } from '../../lib/harnesses';
+import {
+  harnessTitle,
+  platformRuntimeLine,
+  RUNTIME_LABEL,
+} from '../../lib/harnesses';
 import { parseEgressText } from '../../lib/egress';
 import { PickedEgressPolicies } from '../PickedEgressPolicies';
 import { shortCommit } from '../../lib/skills';
@@ -40,6 +44,7 @@ import {
 } from '../../lib/toolset';
 import { agentDetailRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { useRuntimeChoices } from '../HarnessPicker';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
@@ -142,6 +147,8 @@ function CreateAgentReview() {
   const namespace = spec.namespace;
 
   const { info } = useAgentManagerInfo(state.installation);
+  // The platform Harness the runtime field shows, for its summary row.
+  const { platformChoice } = useRuntimeChoices();
   // Not before the sign-in tool is decided: the spec would lack it.
   const validation = useValidateAgent(
     state.installation,
@@ -324,10 +331,10 @@ function CreateAgentReview() {
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>
-          <PlainRow label="Runtime">
+          <PlainRow label={RUNTIME_LABEL}>
             {state.harness
               ? harnessTitle(state.harness)
-              : 'Standard (platform default)'}
+              : platformRuntimeLine(platformChoice)}
           </PlainRow>
           {state.defaultWorkspace && (
             <PlainRow label="Default workspace">

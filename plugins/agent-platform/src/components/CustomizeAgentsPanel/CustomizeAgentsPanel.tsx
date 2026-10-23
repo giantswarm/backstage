@@ -25,6 +25,7 @@ import {
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
+import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
 import { ACCESS_GRANT_HINT, tenantKindOf, tenantOf } from '../../lib/tenants';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
@@ -119,30 +120,18 @@ const useStyles = makeStyles({
       'var(--bui-space-3) var(--bui-space-2) var(--bui-space-3) var(--bui-space-4)',
     color: 'var(--bui-fg-primary)',
   },
+  // Stretched over the row by `useStretchedLinkStyles`, which also draws the
+  // focus ring round the row, as the hover does.
   nameLink: {
     color: 'inherit',
     textDecoration: 'none',
     '&:hover': {
       textDecoration: 'none',
     },
-    '&::after': {
-      content: '""',
-      position: 'absolute',
-      inset: 0,
-    },
-    // The focus ring goes round the row, as the hover does; inset, so the
-    // list's rounded, clipped border does not cut it.
-    '&[data-focus-visible]': {
-      outline: 'none',
-    },
-    '&[data-focus-visible]::after': {
-      outline: '2px solid var(--bui-ring)',
-      outlineOffset: -2,
-    },
   },
+  // Lifted above the name link's stretched hit area: a press on it is its
+  // own.
   star: {
-    position: 'relative',
-    zIndex: 1,
     flex: 'none',
     // A thumb's target at phone width (T22 §2.5), not the mouse's 32px.
     [PHONE_MEDIA]: {
@@ -370,6 +359,7 @@ function AgentListItem({
   onToggleFavorite: () => void;
 }) {
   const classes = useStyles();
+  const stretched = useStretchedLinkStyles();
   const status = agentStatus(row);
   const parts = agentParts(row);
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
@@ -430,7 +420,11 @@ function AgentListItem({
                 variant="body-medium"
                 weight="bold"
                 truncate={truncate}
-                className={[classes.nameLink, isPhone ? classes.twoLines : '']
+                className={[
+                  classes.nameLink,
+                  stretched.link,
+                  isPhone ? classes.twoLines : '',
+                ]
                   .filter(Boolean)
                   .join(' ')}
               >
@@ -503,7 +497,7 @@ function AgentListItem({
     <li className={classes.item}>
       <div className={classes.row}>{content}</div>
       <ButtonIcon
-        className={classes.star}
+        className={`${classes.star} ${stretched.above}`}
         variant="tertiary"
         size="small"
         icon={

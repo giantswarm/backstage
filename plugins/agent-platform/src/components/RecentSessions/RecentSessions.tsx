@@ -16,6 +16,7 @@ import { SESSION_STATE_LABELS } from '@giantswarm/backstage-plugin-agent-platfor
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
+import { useStretchedLinkStyles } from '../../hooks/useStretchedLinkStyles';
 import {
   useWorkspaceNames,
   workspaceInstallations,
@@ -94,33 +95,18 @@ const useStyles = makeStyles({
   active: {
     background: 'var(--bui-bg-neutral-3)',
   },
-  // After `link`, whose hover background it takes back.
+  // After `link`, whose hover background it takes back: the row stretched
+  // over (`useStretchedLinkStyles`) takes the highlight, and the focus ring
+  // with it.
   rowLink: {
     '&:hover': {
       background: 'transparent',
     },
-    '&::after': {
-      content: '""',
-      position: 'absolute',
-      inset: 0,
-      borderRadius: 'inherit',
-    },
-    // The focus ring goes round the row, as the highlight does. Inset, so the
-    // rail's scroll box does not clip it.
-    '&[data-focus-visible]': {
-      outline: 'none',
-    },
-    '&[data-focus-visible]::after': {
-      outline: '2px solid var(--bui-ring)',
-      outlineOffset: -2,
-    },
   },
-  // Above the row's stretched hit area, so the dot's tooltip (its only
+  // Lifted above the row's stretched hit area, so the dot's tooltip (its only
   // visible meaning) is reached by hovering it; a click on it still opens
   // the session, since the dot is inside the link.
   dot: {
-    position: 'relative',
-    zIndex: 1,
     display: 'inline-flex',
   },
   pin: {
@@ -184,6 +170,7 @@ function SessionItem({
   pin?: { isPinned: boolean; onToggle: () => void };
 }) {
   const classes = useStyles();
+  const stretched = useStretchedLinkStyles();
   // With a pin, the row carries the highlight (`item`); without, the link.
   const activeClass = isActive ? classes.active : '';
   return (
@@ -192,7 +179,7 @@ function SessionItem({
         href={href}
         className={
           pin
-            ? `${classes.link} ${classes.rowLink}`
+            ? `${classes.link} ${classes.rowLink} ${stretched.link}`
             : `${classes.link} ${activeClass}`
         }
         aria-current={isActive ? 'page' : undefined}
@@ -205,7 +192,7 @@ function SessionItem({
               A dot with no visible label carries its meaning as a tooltip and
               an accessible name. */}
           {(waiting || working) && (
-            <span className={classes.dot}>
+            <span className={`${classes.dot} ${stretched.above}`}>
               {waiting ? (
                 <StatusDot
                   tone="warning"
