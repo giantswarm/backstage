@@ -61,6 +61,45 @@ describe('followsAfterScroll', () => {
       followsAfterScroll(false, { top: 400, height: 2000 }, at(600, 2000)),
     ).toBe(false);
   });
+
+  it('follows a reader who scrolled down to the end as it was when they began', () => {
+    // Scrolled to the end of 2000; a 100px paragraph streamed in before the
+    // scroll landed: 100 short of the new end, at the end they went to.
+    expect(
+      followsAfterScroll(
+        false,
+        { top: 400, height: 2000 },
+        at(1200, 2100),
+        2000,
+      ),
+    ).toBe(true);
+  });
+
+  it('does not follow a reader who stopped short of the end as it was', () => {
+    expect(
+      followsAfterScroll(
+        false,
+        { top: 400, height: 2000 },
+        at(1100, 2100),
+        2000,
+      ),
+    ).toBe(false);
+    // Nor without a scrolling input to measure it from.
+    expect(
+      followsAfterScroll(false, { top: 400, height: 2000 }, at(1200, 2100)),
+    ).toBe(false);
+  });
+
+  it('leaves the end on a move up even at the end as it was', () => {
+    expect(
+      followsAfterScroll(
+        true,
+        { top: 1300, height: 2100 },
+        at(1200, 2100),
+        2000,
+      ),
+    ).toBe(false);
+  });
 });
 
 describe('onHeightChange', () => {
@@ -289,6 +328,51 @@ describe('useStickToEnd', () => {
     grow(page, 60);
 
     expect(page.state.top).toBe(2360 - 800);
+  });
+
+  it('follows again when a chunk streams in before a scroll down to the end lands', () => {
+    renderAtEnd();
+    page.scrollTo(400);
+    grow(page, 300);
+
+    // A wheel down to the end of 2300; a paragraph taller than the threshold
+    // lands before the scroll does, so it stops 100 short of the new end.
+    fireEvent.wheel(window, { deltaY: 5000 });
+    grow(page, 100);
+    page.scrollTo(2300 - 800);
+    grow(page, 60);
+
+    expect(page.state.top).toBe(2460 - 800);
+  });
+
+  it('measures the end as last rendered, not a chunk already in the DOM', () => {
+    renderAtEnd();
+    page.scrollTo(400);
+    grow(page, 300);
+
+    // A chunk is in the DOM but not in a frame yet when the wheel turns: the
+    // browser scrolls to the end of 2300, the frame before it.
+    page.state.height += 100;
+    fireEvent.wheel(window, { deltaY: 5000 });
+    page.scrollTo(2300 - 800);
+    grow(page, 60);
+
+    expect(page.state.top).toBe(2460 - 800);
+  });
+
+  it('measures the end from the latest scroll only, until it ends', () => {
+    renderAtEnd();
+    page.scrollTo(400);
+    fireEvent.wheel(window, { deltaY: 100 });
+    page.scrollTo(500);
+    fireEvent(window, new Event('scrollend'));
+    grow(page, 100);
+
+    // Moved to the end as it was at that wheel, but with no input since.
+    page.scrollTo(2000 - 800);
+    grow(page, 60);
+
+    expect(page.state.top).toBe(1200);
   });
 
   it('follows again on End, before its smooth scroll gets there', () => {

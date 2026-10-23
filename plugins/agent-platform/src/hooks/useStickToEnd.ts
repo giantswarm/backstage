@@ -55,11 +55,18 @@ export function isAtEnd(metrics: ScrollMetrics): boolean {
  * when it got shorter, scroll anchoring when something above went) moves it
  * by no more than that, and is not. Anything that lands at the end (scrolling
  * back down to it, the content shrinking under the view) follows again.
+ *
+ * `inputHeight` is the content's height when the reader's latest scrolling
+ * input began (a wheel down, a touch, a key, a press on the scrollbar). The
+ * browser scrolls to the end as it was then; a chunk that streams in before
+ * the scroll lands is past it — on a phone a single paragraph is more than the
+ * threshold — so moving down to within the threshold of that end follows too.
  */
 export function followsAfterScroll(
   following: boolean,
   previous: Pick<ScrollMetrics, 'top' | 'height'> | undefined,
   current: ScrollMetrics,
+  inputHeight?: number,
 ): boolean {
   if (previous) {
     const up = previous.top - current.top;
@@ -67,6 +74,16 @@ export function followsAfterScroll(
     // A pixel's slack for sub-pixel layout.
     if (up > shrank + 1) {
       return false;
+    }
+    if (
+      inputHeight !== undefined &&
+      current.top > previous.top &&
+      isAtEnd({
+        ...current,
+        distance: current.distance - (current.height - inputHeight),
+      })
+    ) {
+      return true;
     }
   }
   return isAtEnd(current) || following;
@@ -178,7 +195,8 @@ function staysInside(target: EventTarget | null, scroller: Element): boolean {
  * how far from the end the view happens to be when content arrives: moving up
  * (wheel, swipe, arrow and page keys, the scrollbar, anything that moves the
  * view up by more than the content shrank) leaves the end at once, mid-stream
- * included; scrolling back to within {@link AT_END_THRESHOLD_PX} of it, or
+ * included; scrolling back to within {@link AT_END_THRESHOLD_PX} of it (or of
+ * where it was when the scroll began, the reply streaming on meanwhile), or
  * pressing End, follows again. Wheel, swipe and keys are read as they happen,
  * before the browser scrolls, so a following view never fights a scroll
  * already under way; the scroll events catch the rest. Input that cannot move
@@ -244,6 +262,20 @@ export function useStickToEnd(
 
     let touchHold: { y: number; target: EventTarget } | undefined;
     let scrollbarHold: ReturnType<typeof setTimeout> | undefined;
+    // The content's height when the reader's latest scrolling input began,
+    // until that scroll has ended (see `followsAfterScroll`). As last
+    // rendered, not as read now: a chunk already in the DOM but not yet in a
+    // frame is past the end the browser scrolls to.
+    let inputHeight: number | undefined;
+    const noteInput = () => {
+      inputHeight = Math.min(
+        element.scrollHeight,
+        last.current?.height ?? Infinity,
+      );
+    };
+    const forgetInput = () => {
+      inputHeight = undefined;
+    };
     const isHeld = () => touchHold !== undefined || scrollbarHold !== undefined;
 
     const isWithin = (target: EventTarget | null) =>
@@ -283,6 +315,7 @@ export function useStickToEnd(
         following.current,
         last.current,
         metrics,
+        inputHeight,
       );
       remember(metrics);
       if (scrollbarHold !== undefined) {
@@ -308,7 +341,13 @@ export function useStickToEnd(
 
     const onWheel = (event: WheelEvent) => {
       // A pinch zoom arrives as a wheel with ctrl held.
-      if (!following.current || event.deltaY >= 0 || event.ctrlKey) {
+      if (event.ctrlKey) {
+        return;
+      }
+      if (event.deltaY > 0) {
+        noteInput();
+      }
+      if (!following.current || event.deltaY >= 0) {
         return;
       }
       if (
@@ -358,6 +397,7 @@ export function useStickToEnd(
         return;
       }
       releaseTouch();
+      noteInput();
       touchHold = { y, target: event.target };
       const passive = { passive: true } as const;
       event.target.addEventListener('touchmove', onTouchMove, passive);
@@ -375,6 +415,7 @@ export function useStickToEnd(
           event.clientX >= document.documentElement.clientWidth
         : event.target === element && event.offsetX >= element.clientWidth;
       if (onBar) {
+        noteInput();
         holdScrollbar();
       }
     };
@@ -412,6 +453,9 @@ export function useStickToEnd(
       const up =
         UP_KEYS.has(event.key) ||
         (event.key === ' ' && event.shiftKey && !isControl(event.target));
+      if (!up) {
+        noteInput();
+      }
       if (
         up &&
         following.current &&
@@ -422,10 +466,15 @@ export function useStickToEnd(
       }
     };
 
+    const onScrollEnd = () => {
+      releaseScrollbar();
+      forgetInput();
+    };
+
     const scrollTarget: EventTarget = onDocument ? window : element;
     const passive = { passive: true } as const;
     scrollTarget.addEventListener('scroll', onScroll, passive);
-    scrollTarget.addEventListener('scrollend', releaseScrollbar, passive);
+    scrollTarget.addEventListener('scrollend', onScrollEnd, passive);
     window.addEventListener('wheel', onWheel, passive);
     window.addEventListener('touchstart', onTouchStart, passive);
     window.addEventListener('mousedown', onMouseDown, passive);
@@ -450,7 +499,7 @@ export function useStickToEnd(
 
     return () => {
       scrollTarget.removeEventListener('scroll', onScroll);
-      scrollTarget.removeEventListener('scrollend', releaseScrollbar);
+      scrollTarget.removeEventListener('scrollend', onScrollEnd);
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('mousedown', onMouseDown);
