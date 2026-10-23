@@ -74,7 +74,6 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   agentDetailRouteRef,
-  agentEditRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
 } from '../../routes';
@@ -129,6 +128,7 @@ import { describeCostBasis } from '../../lib/costBasis';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { useSessionEgressRefusals } from '../../hooks/useSessionEgressRefusals';
+import { useEgressRemedy } from '../../hooks/useEgressRemedy';
 import { withEgressRefusals } from '../../lib/egressRefusals';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -458,11 +458,6 @@ export function SessionDetailPage() {
   }, [row?.agentNamespace, row?.agentTechnicalName, handoff]);
   // The agent's own page, for the link on its name in the header below.
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
-  // Its edit page, where an egress refusal on the timeline points.
-  const agentEditRoute = useRouteRef(agentEditRouteRef);
-  const agentEgressHref = agent
-    ? agentEditRoute?.({ installation, ...agent })
-    : undefined;
 
   const send = useSendMessage(installation, sessionId, agent);
   const confirmation = useAnswerConfirmation(installation, sessionId, agent);
@@ -867,6 +862,21 @@ export function SessionDetailPage() {
     }),
     [timelineWithLive, shownItems, egressRefusals],
   );
+  // What a refusal's alert offers for this agent: read once there is one,
+  // since it takes agent-manager's reading of the agent and the person's
+  // access (giantswarm/giantswarm#38814).
+  const egressRemedy = useEgressRemedy({
+    installation,
+    agent,
+    harness: agentRow
+      ? {
+          name: agentRow.harness,
+          title: agentRow.harnessTitle,
+          runtime: agentRow.harnessRuntime,
+        }
+      : undefined,
+    enabled: egressRefusals.length > 0,
+  });
 
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
@@ -1837,7 +1847,7 @@ export function SessionDetailPage() {
             <SessionTimeline
               timeline={shownTimeline}
               agentName={row.agentName}
-              agentEgressHref={agentEgressHref}
+              egressRemedy={egressRemedy}
               agentAvatarUrl={avatarUrl}
               isAgentWorking={showWorking}
               streamLost={streamLost}

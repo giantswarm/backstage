@@ -116,17 +116,25 @@ test('a session shows its egress refusals on the turn, and another person sees n
     `${lab.installation} has no metrics (mimirEnabled: false): no refusal to show`,
   );
   await expect(entry).toBeVisible({ timeout: 120_000 });
-  await expect(entry).toContainText('Egress refused: proxy.golang.org:443');
   await expect(entry).toContainText(
-    `Not in ${labAgent.name}’s egress settings`,
+    'Outgoing connection to proxy.golang.org blocked',
   );
-  await expect(entry).toContainText('2 requests in this turn');
   await expect(entry).toContainText(
-    'can add https://proxy.golang.org to its Extra egress origins',
+    `${labAgent.name} is not allowed to reach this address`,
+  );
+  await expect(entry).toContainText('2 attempts');
+  // The lab agent runs on the platform (kagent) Harness and the admin edits
+  // it, so the remedy is its edit page, once agent-manager has read it.
+  await expect(entry).toContainText(
+    `add https://proxy.golang.org to ${labAgent.name}’s Extra egress origins`,
+    { timeout: 30_000 },
   );
   await expect(
-    entry.getByRole('link', { name: `${labAgent.name}’s egress settings` }),
+    entry.getByRole('link', { name: `Edit ${labAgent.name}`, exact: true }),
   ).toHaveAttribute('href', `${labAgent.detailPath}/edit`);
+  // The port and the origin are folded.
+  await entry.getByRole('button', { name: 'Technical details' }).click();
+  await expect(entry).toContainText('proxy.golang.org:443 (https)');
   expect(queries.length).toBeGreaterThan(0);
   for (const query of queries) {
     expect(query).toContain(`ate_actor_name="${actor}"`);

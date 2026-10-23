@@ -74,6 +74,17 @@ jest.mock('../HarnessPicker', () => ({
   useRuntimeChoices: () => ({ platformChoice: undefined }),
 }));
 jest.mock('../EgressPolicyPicker', () => ({ EgressPolicyPicker: () => null }));
+// The form's runtime, which decides whether extra egress origins are offered:
+// the platform Harness, no other read.
+jest.mock('../../hooks/useHarnessChoices', () => ({
+  useHarnessChoices: () => ({
+    choices: [],
+    platformHarness: 'kagent',
+    platformChoice: undefined,
+    errors: [],
+    isLoading: false,
+  }),
+}));
 jest.mock('../DefaultWorkspacePicker', () => ({
   DefaultWorkspacePicker: () => null,
 }));

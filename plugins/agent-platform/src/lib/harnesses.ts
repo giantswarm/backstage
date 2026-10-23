@@ -124,3 +124,19 @@ export function harnessChoicesOf(
           Number(a.name === platformHarness) || a.name.localeCompare(b.name),
     );
 }
+
+/**
+ * The origins the platform lets agents on a coding Harness reach: agent-manager's
+ * chart value `harness.egress.<harness>`, which it writes for every agent on
+ * that Harness and holds requested origins to (`guardCoding`). agent-manager
+ * does not report it yet (proposed as `get_info.harnessEgress`, keyed by
+ * Harness name, giantswarm/giantswarm#38814), so this answers `undefined` and
+ * the agent form says only that the platform sets the agent's network access.
+ * Once it does, read it here: the form lists what this returns.
+ */
+export function platformEgressOf(
+  _info: AgentManagerInfo | undefined,
+  _harness: string | undefined,
+): string[] | undefined {
+  return undefined;
+}

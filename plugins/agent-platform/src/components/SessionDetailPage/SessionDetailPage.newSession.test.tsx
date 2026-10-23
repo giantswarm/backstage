@@ -52,6 +52,9 @@ jest.mock('../../hooks/useTokenRates', () => ({
 jest.mock('../../hooks/useSessionEgressRefusals', () => ({
   useSessionEgressRefusals: () => [],
 }));
+jest.mock('../../hooks/useEgressRemedy', () => ({
+  useEgressRemedy: () => ({ kind: 'pending' }),
+}));
 
 jest.mock('../../hooks/useMusterServers', () => ({
   useMusterServers: () => ({

@@ -98,6 +98,12 @@ export type NewAgentFormState = {
    */
   egressPolicyRefs: string[];
   /**
+   * The extra origins and EgressPolicies a move to a coding Harness took out,
+   * which reaches its platform list only: what tells the person they are
+   * gone. Replaced by the next Harness pick.
+   */
+  droppedEgress?: DroppedEgress;
+  /**
    * The name of the workspace the agent's Sessions start in unless the person
    * picks another or none (written as `<namespace>/<name>`, see
    * `lib/defaultWorkspace`). `''` for none, the start.
@@ -154,6 +160,12 @@ export type NewAgentFormState = {
    * or *Nothing outside the chat* clears it.
    */
   signInToolDeclined?: boolean;
+};
+
+/** What a move to a coding Harness took out of the form, as entered. */
+export type DroppedEgress = {
+  origins: string[];
+  policies: string[];
 };
 
 /**
@@ -667,17 +679,32 @@ export function NewAgentFormProvider({
                 droppedHarness: prev.harness?.name ?? prev.droppedHarness,
               };
         }),
-      // A coding Harness reaches its platform list only: picked
-      // EgressPolicies go with the move to one.
+      // A coding Harness reaches its platform list only: typed origins and
+      // picked EgressPolicies go with the move to one, and the form says so.
       selectHarness: harness =>
-        setState(prev => ({
-          ...prev,
-          harness,
-          droppedHarness: undefined,
-          egressPolicyRefs: isCodingRuntime(harness?.runtime)
-            ? []
-            : prev.egressPolicyRefs,
-        })),
+        setState(prev => {
+          if (!isCodingRuntime(harness?.runtime)) {
+            return {
+              ...prev,
+              harness,
+              droppedHarness: undefined,
+              droppedEgress: undefined,
+            };
+          }
+          const origins = parseEgressText(prev.egressText);
+          const policies = prev.egressPolicyRefs;
+          return {
+            ...prev,
+            harness,
+            droppedHarness: undefined,
+            egressText: '',
+            egressPolicyRefs: [],
+            droppedEgress:
+              origins.length > 0 || policies.length > 0
+                ? { origins, policies }
+                : undefined,
+          };
+        }),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
       setEgressText: egressText => setState(prev => ({ ...prev, egressText })),

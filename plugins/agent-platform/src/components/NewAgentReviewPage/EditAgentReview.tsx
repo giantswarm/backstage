@@ -58,6 +58,7 @@ import {
   Violations,
   YAML_OPTS,
 } from './reviewParts';
+import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
 
 /** A refused or failed dry run or save, in agent-manager's words. */
 function WriteFailure({
@@ -362,7 +363,12 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             title="Could not check the change"
           />
         )}
-        {violations.length > 0 && <Violations errors={violations} />}
+        {violations.length > 0 && (
+          <Violations
+            errors={violations}
+            title={VALIDATION_REFUSAL_COPY.editTitle}
+          />
+        )}
         {notes.length > 0 && <Notes notes={notes} />}
         {updating.failure && (
           <WriteFailure

@@ -63,6 +63,7 @@ import {
   Violations,
   YAML_OPTS,
 } from './reviewParts';
+import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
 
 /** The headline for a refused write, by agent-manager's code. */
 function refusalTitle(code: CreateAgentFailure['code']): string {
@@ -400,7 +401,12 @@ function CreateAgentReview() {
             description={validation.failure.message}
           />
         )}
-        {violations.length > 0 && <Violations errors={violations} />}
+        {violations.length > 0 && (
+          <Violations
+            errors={violations}
+            title={VALIDATION_REFUSAL_COPY.createTitle}
+          />
+        )}
         {notes.length > 0 && <Notes notes={notes} />}
 
         {creation.failure?.kind === 'not-connected' && (

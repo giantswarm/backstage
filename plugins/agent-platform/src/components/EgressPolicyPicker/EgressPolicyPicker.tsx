@@ -9,9 +9,8 @@ import {
 import { makeStyles } from '@material-ui/core';
 
 import { useAgentManagerEgressPolicies } from '../../hooks/useAgentManagerEgressPolicies';
-import { useHarnessChoices } from '../../hooks/useHarnessChoices';
+import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
 import type { AgentManagerEgressPolicy } from '../../lib/agentManager';
-import { isCodingRuntime } from '../../lib/harnesses';
 import { tenantAdminsOf } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 
@@ -58,31 +57,16 @@ export function egressPolicyOriginsLine(
  */
 export function EgressPolicyPicker() {
   const classes = useStyles();
-  const { state, edit, setEgressPolicyRefs } = useNewAgentForm();
+  const { state, setEgressPolicyRefs } = useNewAgentForm();
   const { installation } = state;
   const namespace = state.tenant ?? state.modelConfigNamespace;
   const { supported, egressPolicies, isLoading, failure } =
     useAgentManagerEgressPolicies(installation, namespace);
 
-  // The Harness's runtime: the picked choice's, else the namespace's
-  // Harness of that name. Until it is known, a Harness other than the
+  // Until the Harness's runtime is known, a Harness other than the
   // platform's may be a coding one, so nothing is offered yet.
-  const harnessName = state.harness?.name ?? edit?.agent.harness;
-  const { choices, platformHarness } = useHarnessChoices(
-    installation,
-    harnessName ? namespace : undefined,
-  );
-  const runtime =
-    state.harness?.runtime ??
-    choices.find(choice => choice.name === harnessName)?.runtime;
-  const onPlatformHarness = !harnessName || harnessName === platformHarness;
-  if (
-    !installation ||
-    !namespace ||
-    !supported ||
-    isCodingRuntime(runtime) ||
-    (!onPlatformHarness && runtime === undefined)
-  ) {
+  const { isCoding } = useFormHarnessRuntime();
+  if (!installation || !namespace || !supported || isCoding !== false) {
     return null;
   }
 

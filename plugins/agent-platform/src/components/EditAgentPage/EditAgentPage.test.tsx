@@ -827,8 +827,9 @@ describe('EditAgentPage', () => {
     await changeDescriptionAndReview(user);
 
     expect(
-      await screen.findByText('agent.description: too long'),
+      await screen.findByText('This change cannot be saved'),
     ).toBeInTheDocument();
+    expect(screen.getByText('agent.description: too long')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
 

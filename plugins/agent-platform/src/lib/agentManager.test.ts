@@ -6,6 +6,7 @@ import {
   helmInstallCommand,
   isSettledVerdict,
   looksNotConnected,
+  codingEgressRefusal,
   missingReleaseFile,
 } from './agentManager';
 
@@ -140,5 +141,50 @@ describe('helmInstallCommand', () => {
 
   it('falls back to the range when the registry did not answer', () => {
     expect(helmInstallCommand(spec, chart)).toContain('--version 1.x');
+  });
+});
+
+describe('codingEgressRefusal', () => {
+  // agent-manager's exact violation (internal/agents/harness_guard.go
+  // guardCoding, through invalidf). The portal recognises this refusal only
+  // by its wording until violations carry codes
+  // (giantswarm/agent-manager#144); a rewording falls back to the generic lead.
+  const refusal =
+    'invalid request: egress origin "https://registry.npmjs.org" is not one of Harness claude\'s origins (https://github.com, https://api.github.com, https://codeload.github.com, https://*.githubusercontent.com): a coding agent reaches its Harness\'s origins only, which the platform sets';
+
+  it('reads the origin, the Harness and its list', () => {
+    expect(codingEgressRefusal(refusal)).toEqual({
+      origin: 'https://registry.npmjs.org',
+      harness: 'claude',
+      allowed: [
+        'https://github.com',
+        'https://api.github.com',
+        'https://codeload.github.com',
+        'https://*.githubusercontent.com',
+      ],
+    });
+  });
+
+  it('reads it without the error class too, and an empty list', () => {
+    expect(
+      codingEgressRefusal(
+        'egress origin "https://proxy.golang.org:8443" is not one of Harness codex-dev\'s origins (none): a coding agent reaches its Harness\'s origins only, which the platform sets',
+      ),
+    ).toEqual({
+      origin: 'https://proxy.golang.org:8443',
+      harness: 'codex-dev',
+      allowed: [],
+    });
+  });
+
+  it('is undefined for any other violation', () => {
+    expect(
+      codingEgressRefusal('skills[0].git.commit: must be a full commit id'),
+    ).toBeUndefined();
+    expect(
+      codingEgressRefusal(
+        'Harness claude runs Claude Code but agent-manager has no egress entry for it',
+      ),
+    ).toBeUndefined();
   });
 });
