@@ -4,6 +4,7 @@ import {
   ClusterTokenError,
   DefaultAuthConnector,
 } from './DefaultAuthConnector';
+import { ProviderCookieQueue } from './providerCookieQueue';
 
 jest.mock('@backstage/core-app-api', () => ({
   ...jest.requireActual('@backstage/core-app-api'),
@@ -31,8 +32,10 @@ function createConnector(
   clusterTokenProvider?: (request?: {
     minLifetimeLeft?: number;
   }) => Promise<{ token: string; expiresInSeconds?: number } | undefined>,
+  cookieQueue = new ProviderCookieQueue(undefined),
 ) {
   return new DefaultAuthConnector({
+    cookieQueue,
     configApi,
     discoveryApi,
     environment: 'development',
@@ -145,55 +148,166 @@ describe('DefaultAuthConnector', () => {
       expect(session).toEqual(legacyRefreshResponse);
     });
 
-    it('sends one cookie refresh per provider at a time: the cookie rotates with each', async () => {
-      let open = 0;
-      let mostOpen = 0;
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockImplementation(async () => {
-          open += 1;
-          mostOpen = Math.max(mostOpen, open);
-          await new Promise(resolve => setTimeout(resolve, 5));
-          open -= 1;
+    describe('cookie refreshes', () => {
+      /** A fetch that answers after `ms`, counting the requests open at once. */
+      function slowRefresh(ms = 5) {
+        const seen = { open: 0, mostOpen: 0 };
+        const spy = jest.spyOn(global, 'fetch').mockImplementation(async () => {
+          seen.open += 1;
+          seen.mostOpen = Math.max(seen.mostOpen, seen.open);
+          await new Promise(resolve => setTimeout(resolve, ms));
+          seen.open -= 1;
           return new Response(JSON.stringify(legacyRefreshResponse), {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
           });
         });
-      // The session manager's refresh and a lasting-token refresh, through
-      // two connectors of the same provider, plus one for another scope.
-      const sessions = await Promise.all([
-        createConnector().refreshSession({ scopes: new Set(['openid']) }),
-        createConnector().refreshSession({ scopes: new Set(['openid']) }),
-        createConnector().refreshSession({
-          scopes: new Set(['openid', 'groups']),
-        }),
-      ]);
+        return { spy, seen };
+      }
 
-      expect(mostOpen).toBe(1);
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
-      expect(sessions).toEqual([
-        legacyRefreshResponse,
-        legacyRefreshResponse,
-        legacyRefreshResponse,
-      ]);
-    });
+      function scopesSent(spy: jest.SpyInstance): (string | null)[] {
+        return spy.mock.calls
+          .map(([url]) => new URL(String(url)))
+          .filter(url => url.pathname.endsWith('/refresh'))
+          .map(url => url.searchParams.get('scope'));
+      }
 
-    it('lets a later refresh go out after a failed one', async () => {
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValueOnce(new Response('{}', { status: 401 }))
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify(legacyRefreshResponse), { status: 200 }),
-        );
+      it('sends one refresh of a provider at a time, across its connectors', async () => {
+        const queue = new ProviderCookieQueue(undefined);
+        const { spy, seen } = slowRefresh();
 
-      await expect(
-        createConnector().refreshSession({ scopes: new Set(['openid']) }),
-      ).rejects.toMatchObject({ status: 401 });
-      await expect(
-        createConnector().refreshSession({ scopes: new Set(['openid']) }),
-      ).resolves.toEqual(legacyRefreshResponse);
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
+        const sessions = await Promise.all([
+          createConnector(undefined, queue).refreshSession({
+            scopes: new Set(['openid']),
+          }),
+          createConnector(undefined, queue).refreshSession({
+            scopes: new Set(['email']),
+          }),
+          createConnector(undefined, queue).refreshSession({
+            scopes: new Set(['groups']),
+          }),
+        ]);
+
+        expect(seen.mostOpen).toBe(1);
+        expect(scopesSent(spy)).toEqual(['openid', 'email', 'groups']);
+        expect(sessions).toEqual([
+          legacyRefreshResponse,
+          legacyRefreshResponse,
+          legacyRefreshResponse,
+        ]);
+      });
+
+      it('joins a pending refresh whose scopes cover the ones asked for', async () => {
+        const queue = new ProviderCookieQueue(undefined);
+        const { spy } = slowRefresh();
+
+        await Promise.all([
+          // The session manager's: the defaults plus what the backend granted.
+          createConnector(undefined, queue).refreshSession({
+            scopes: new Set(['openid', 'groups', 'offline_access']),
+          }),
+          // A lasting-token refresh: the defaults only.
+          createConnector(undefined, queue).refreshSession({
+            scopes: new Set(['openid', 'groups']),
+          }),
+          // Another scope, then the first one's again: it joins the first.
+          createConnector(undefined, queue).refreshSession({
+            scopes: new Set(['email']),
+          }),
+          createConnector(undefined, queue).refreshSession({
+            scopes: new Set(['openid']),
+          }),
+        ]);
+
+        expect(scopesSent(spy)).toEqual([
+          'openid groups offline_access',
+          'email',
+        ]);
+      });
+
+      it('sends a refresh queued behind a failing one', async () => {
+        const queue = new ProviderCookieQueue(undefined);
+        const spy = jest
+          .spyOn(global, 'fetch')
+          .mockResolvedValueOnce(new Response('{}', { status: 401 }))
+          .mockResolvedValueOnce(
+            new Response(JSON.stringify(legacyRefreshResponse), {
+              status: 200,
+            }),
+          );
+
+        const [failed, refreshed] = await Promise.allSettled([
+          createConnector(undefined, queue).refreshSession({
+            scopes: new Set(['openid']),
+          }),
+          createConnector(undefined, queue).refreshSession({
+            scopes: new Set(['openid', 'groups']),
+          }),
+        ]);
+
+        expect(failed).toMatchObject({
+          status: 'rejected',
+          reason: { status: 401 },
+        });
+        expect(refreshed).toEqual({
+          status: 'fulfilled',
+          value: legacyRefreshResponse,
+        });
+        expect(scopesSent(spy)).toEqual(['openid', 'openid groups']);
+      });
+
+      it('bounds each refresh, so a stalled one does not hold the queue', async () => {
+        const fetchSpy = mockLegacyRefresh();
+
+        await createConnector().refreshSession({ scopes: new Set(['openid']) });
+
+        const [, init] = fetchSpy.mock.calls[0];
+        expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
+      });
+
+      it('sends no refresh that waited across a sign-out, and the logout waits its turn', async () => {
+        const queue = new ProviderCookieQueue(undefined);
+        const { spy, seen } = slowRefresh();
+        const connector = createConnector(undefined, queue);
+
+        const inFlight = connector.refreshSession({
+          scopes: new Set(['openid']),
+        });
+        const waiting = connector.refreshSession({
+          scopes: new Set(['email']),
+        });
+        const logout = connector.removeSession();
+
+        await expect(inFlight).resolves.toEqual(legacyRefreshResponse);
+        await expect(waiting).rejects.toMatchObject({
+          name: 'AuthRefreshAbandonedError',
+        });
+        await logout;
+        expect(seen.mostOpen).toBe(1);
+        expect(
+          spy.mock.calls.map(([url]) => new URL(String(url)).pathname),
+        ).toEqual([
+          '/api/auth/oidc-golem/refresh',
+          '/api/auth/oidc-golem/logout',
+        ]);
+      });
+
+      it('never hands a new session a refresh pending from the one before', async () => {
+        const queue = new ProviderCookieQueue(undefined);
+        const { spy } = slowRefresh();
+        const connector = createConnector(undefined, queue);
+
+        const before = connector.refreshSession({
+          scopes: new Set(['openid']),
+        });
+        // The first refresh is on the wire when the new session begins.
+        await new Promise(resolve => setTimeout(resolve, 1));
+        expect(spy).toHaveBeenCalledTimes(1);
+        queue.sessionChanged('oidc-golem');
+        const after = connector.refreshSession({ scopes: new Set(['openid']) });
+        await Promise.all([before, after]);
+
+        expect(scopesSent(spy)).toEqual(['openid', 'openid']);
+      });
     });
   });
 
@@ -207,6 +321,7 @@ describe('DefaultAuthConnector', () => {
         getBaseUrl,
       } as unknown as DiscoveryApiClient;
       const connector = new DefaultAuthConnector({
+        cookieQueue: new ProviderCookieQueue(undefined),
         configApi,
         discoveryApi: scopedDiscoveryApi,
         environment: 'development',
@@ -255,6 +370,7 @@ describe('DefaultAuthConnector', () => {
 
     function createPinnedConnector() {
       return new DefaultAuthConnector({
+        cookieQueue: new ProviderCookieQueue(undefined),
         configApi,
         discoveryApi,
         environment: 'production',
@@ -331,6 +447,7 @@ describe('DefaultAuthConnector', () => {
       configApi?: ConfigApi;
     }) {
       return new DefaultAuthConnector({
+        cookieQueue: new ProviderCookieQueue(undefined),
         configApi: options.configApi ?? configApi,
         discoveryApi,
         environment: 'production',
