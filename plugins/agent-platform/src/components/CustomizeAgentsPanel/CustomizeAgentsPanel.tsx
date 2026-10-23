@@ -25,11 +25,7 @@ import {
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
-import {
-  ACCESS_GRANT_HINT,
-  PLATFORM_TENANT_NAMESPACE,
-  organizationOf,
-} from '../../lib/tenants';
+import { ACCESS_GRANT_HINT, tenantKindOf, tenantOf } from '../../lib/tenants';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
   agentHarnesses,
@@ -219,6 +215,22 @@ const useStyles = makeStyles({
       overflowWrap: 'anywhere',
     },
   },
+  // Wider than the other facts: its text carries its label, and the
+  // organization's name still needs room after "Organization: ".
+  organizationFact: {
+    flex: '0 0 220px',
+    [PHONE_MEDIA]: {
+      flex: '0 1 auto',
+    },
+  },
+  // A platform agent's empty Organization column, so its other columns line
+  // up with an organization's row however the facts wrap. A phone's facts
+  // have no columns to line up: there it is gone.
+  noFact: {
+    [PHONE_MEDIA]: {
+      display: 'none',
+    },
+  },
   // At phone width a name and a description wrap to two lines instead of
   // being cut to one (T22 P2): a phone has no hover to read the rest in a
   // tooltip.
@@ -304,32 +316,27 @@ type AgentFact = {
   label: string;
   /** The tooltip's fuller wording of `text`; `text` itself by default. */
   detail?: string;
+  className?: string;
 };
 
 /**
  * A row's Organization fact, where the list's agents belong to more than one
- * tenant. A row has no label for it, so an organization reads
- * "Organization: acme", as the agent's page has it, and is not taken for the
- * environment beside it. An agent of the platform belongs to no organization
- * and has no fact at all: a "None" without its label says nothing (its page
- * says "None", and what that means). Another namespace already says what it
- * is (`namespace sre-team`).
+ * tenant, in the words of the Organization filter's options (`tenantOf`).
+ * A row has no label for it, so an organization reads "Organization: acme",
+ * as the agent's page has it, and is not taken for the environment beside it.
+ * An agent of the platform belongs to no organization and has no text there:
+ * a "None" without its label says nothing (its page says "None", and what
+ * that means). Another namespace already says what it is
+ * (`namespace sre-team`).
  */
-function organizationFact(row: AgentRow): AgentFact[] {
-  if (row.namespace === PLATFORM_TENANT_NAMESPACE || !row.tenant) {
-    return [];
+function organizationText(namespace: string): string {
+  const kind = tenantKindOf(namespace);
+  if (kind === 'platform') {
+    return '';
   }
-  const organization = organizationOf(row.namespace);
-  return [
-    organization === undefined
-      ? { key: 'tenant', text: row.tenant, label: 'Organization' }
-      : {
-          key: 'tenant',
-          text: `Organization: ${organization}`,
-          label: 'Organization',
-          detail: organization,
-        },
-  ];
+  return kind === 'organization'
+    ? `Organization: ${tenantOf(namespace)}`
+    : tenantOf(namespace);
 }
 
 /**
@@ -368,10 +375,23 @@ function AgentListItem({
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
+  const organization = showTenant ? organizationText(row.namespace) : '';
   const facts: AgentFact[] = [
-    // First, so that the facts after it, right-aligned in their fixed
-    // columns, line up with those of a platform agent's row, which has none.
-    ...(showTenant ? organizationFact(row) : []),
+    // First, and on every row of a list that names organizations, empty on a
+    // platform agent's: the columns after it line up from row to row.
+    ...(showTenant
+      ? [
+          {
+            key: 'tenant',
+            text: organization,
+            label: 'Organization',
+            detail: tenantOf(row.namespace),
+            className: organization
+              ? classes.organizationFact
+              : `${classes.organizationFact} ${classes.noFact}`,
+          },
+        ]
+      : []),
     { key: 'model', text: row.model ?? '', label: 'Model' },
     // The title, as main's Harness column led with; the name joins it in the
     // tooltip.
@@ -462,7 +482,9 @@ function AgentListItem({
               variant="body-small"
               color="secondary"
               truncate={truncate}
-              className={classes.fact}
+              className={[classes.fact, fact.className]
+                .filter(Boolean)
+                .join(' ')}
               title={
                 fact.text
                   ? `${fact.label}: ${fact.detail ?? fact.text}`

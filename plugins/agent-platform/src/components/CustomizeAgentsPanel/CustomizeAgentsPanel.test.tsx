@@ -1188,12 +1188,15 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       within(sre).queryByRole('button', { name: /None/ }),
     ).not.toBeInTheDocument();
     // An organization's agent names it with its label, not to be taken for
-    // the environment, as the first fact: the rest line up with the
-    // platform agent's.
+    // the environment, as the first fact. The platform agent's row keeps the
+    // column, empty and untitled, so the facts after it line up.
     const fact = within(listed()[1]).getByText('Organization: acme');
     expect(fact).toHaveAttribute('title', 'Organization: acme');
     expect(fact.nextElementSibling).toHaveTextContent('Opus');
-    expect(within(sre).getByText('Opus').previousElementSibling).toBeNull();
+    const empty = within(sre).getByText('Opus').previousElementSibling;
+    expect(empty).toHaveTextContent(/^$/);
+    expect(empty).not.toHaveAttribute('title');
+    expect(empty?.previousElementSibling).toBeNull();
     expect(await filterOptions('organization')).toEqual(['acme 2', 'None 1']);
     expect(await filterOptions('created by')).toEqual(['Me 1']);
 
@@ -1203,7 +1206,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     ]);
   });
 
-  it('names another namespace an agent lives in as it is, and no organization where there is only one', async () => {
+  it('names another namespace as it is, an organization as its filter option does, and no organization where there is only one', async () => {
     const billing = row({
       name: 'Billing',
       technicalName: 'billing',
@@ -1219,6 +1222,14 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
           tenant: 'namespace sre-team',
         }),
         billing,
+        // An organization named like the platform's None keeps its filter
+        // option's qualifier.
+        row({
+          name: 'Odd',
+          technicalName: 'odd',
+          namespace: 'org-none',
+          tenant: 'organization none',
+        }),
       ],
       isLoading: false,
       hasInstallations: true,
@@ -1231,6 +1242,12 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
       'Organization: namespace sre-team',
     );
     expect(listed()[1]).toHaveTextContent('Organization: acme');
+    expect(
+      within(listed()[2]).getByText('Organization: organization none'),
+    ).toHaveAttribute('title', 'Organization: organization none');
+    expect(await filterOptions('organization')).toContain(
+      'organization none 1',
+    );
     unmount();
 
     // One organization's agents alone: the list says it of none of them.
