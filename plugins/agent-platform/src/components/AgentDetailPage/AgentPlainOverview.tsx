@@ -5,12 +5,15 @@ import { makeStyles } from '@material-ui/core';
 import {
   Agent,
   AgentSkill,
+  Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   CollapsibleMarkdown,
   DateComponent,
   type Fact,
+  InfoHint,
+  MONO,
   PageSection,
   ShowMore,
   TechnicalDetailsFoldOut,
@@ -20,6 +23,14 @@ import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
+import {
+  harnessChoiceOf,
+  harnessTitle,
+  PLATFORM_DEFAULT_LABEL,
+  RUNTIME_DESCRIPTION,
+  RUNTIME_LABEL,
+  runtimeLabel,
+} from '../../lib/harnesses';
 import type { ClientServingSummary } from '../../lib/serving';
 import {
   canonicalSkillId,
@@ -512,19 +523,106 @@ function ModelFact({
 }
 
 /**
- * The facts beside the overview: the model, where it runs, the tenant it
- * belongs to, who created it and since when.
+ * The Harness the agent runs on, in the create form's words: the title its
+ * card carried, the platform default's mark and the Harness's name beneath.
+ * A Harness the person cannot read is known by its name alone, and an agent
+ * that names none says so rather than leaving the fact blank.
+ */
+function RuntimeFact({
+  agent,
+  harness,
+  isReading,
+  platformHarness,
+}: {
+  agent: Agent;
+  harness?: Harness;
+  isReading: boolean;
+  platformHarness: string;
+}) {
+  const name = agent.getHarnessName();
+  const choice = harness ? harnessChoiceOf(harness) : undefined;
+
+  let title: ReactNode;
+  let note: string | undefined;
+  if (choice) {
+    title = harnessTitle(choice);
+  } else if (name) {
+    title = <span style={MONO}>{name}</span>;
+    note = isReading ? undefined : 'Its runtime could not be read.';
+  } else {
+    // An inline Harness, which the chart never renders: its runtime family
+    // is all there is to name.
+    const inlineRuntime = agent.getInlineHarnessRuntime();
+    title = runtimeLabel(inlineRuntime);
+    note = inlineRuntime ? undefined : 'The agent names no Harness.';
+  }
+
+  return (
+    <Flex direction="column" gap="1">
+      {/* A long display name wraps beside the hint, never past a phone's
+          343px column. */}
+      <Flex align="center" gap="1">
+        <Text
+          variant="body-small"
+          style={{ minWidth: 0, overflowWrap: 'anywhere' }}
+        >
+          {title}
+        </Text>
+        <InfoHint label="What the runtime is" size="medium">
+          {RUNTIME_DESCRIPTION}
+        </InfoHint>
+      </Flex>
+      {name && name === platformHarness && (
+        <Text variant="body-x-small" color="secondary">
+          {PLATFORM_DEFAULT_LABEL}
+        </Text>
+      )}
+      {choice && (
+        <Text
+          variant="body-x-small"
+          color="secondary"
+          style={{ overflowWrap: 'anywhere' }}
+        >
+          Harness <span style={MONO}>{choice.name}</span>
+          {choice.imageName && (
+            <>
+              {' · '}
+              <span style={MONO}>{choice.imageName}</span>
+            </>
+          )}
+        </Text>
+      )}
+      {note && (
+        <Text variant="body-x-small" color="secondary">
+          {note}
+        </Text>
+      )}
+    </Flex>
+  );
+}
+
+/**
+ * The facts beside the overview: the model and the runtime, where it runs,
+ * the tenant it belongs to, who created it and since when.
  */
 export function agentFacts({
   agent,
   installation,
   modelConfig,
   modelServing,
+  harness,
+  isReadingHarness = false,
+  platformHarness,
 }: {
   agent: Agent;
   installation: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
+  /** The Harness the agent names, once read. */
+  harness?: Harness;
+  isReadingHarness?: boolean;
+  /** agent-manager's platform Harness, marked as the default. */
+  platformHarness: string;
 }): Fact[] {
   const failure = agent.getFailure();
   const created = agent.getCreatedTimestamp();
@@ -538,6 +636,17 @@ export function agentFacts({
           modelConfig={modelConfig}
           modelServing={modelServing}
           isFailing={failure?.field === 'model'}
+        />
+      ),
+    },
+    {
+      label: RUNTIME_LABEL,
+      value: (
+        <RuntimeFact
+          agent={agent}
+          harness={harness}
+          isReading={isReadingHarness}
+          platformHarness={platformHarness}
         />
       ),
     },

@@ -64,7 +64,9 @@ environment.
 
 Favorites follow the person across browsers. A `generalInformation` meta-agent
 adds a helper banner. Each agent's Harness, and a Harness filter, appear only
-when the agents run on more than one Harness.
+when the agents run on more than one Harness. **Last used by you** shows the
+agents of the person's three latest sessions; like every item of the list,
+each opens the agent's page, where **Use this agent** starts a session.
 
 **New agent** (`/customize/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
@@ -102,6 +104,12 @@ request instead of a direct change. Update all skills to latest moves every
 git skill of the agent to its repository's newest commit. A skill pinned
 behind the catalog's newest commit shows "Update available"; the mark comes
 from the skill catalog the page reads anyway.
+
+The facts beside the agent page's overview name its **Runtime** as the create
+form does: the Harness's title, **Platform default** on the platform Harness,
+and its name and image beneath, read from the one Harness the agent names. A
+Harness the person cannot read is shown by its name, and an agent that names
+none reads **Unknown runtime**.
 
 ### Skills
 
@@ -790,7 +798,9 @@ default; picking it leaves `harness` out of the request. Any other pick is sent
 to `validate_agent` and `create_agent`. A single Harness shows read-only, none
 shows no section, and a failed read shows a warning. Changing the installation,
 or picking a model in another namespace, drops the pick. The Harness is fixed
-at create; the edit page shows it read-only.
+at create; the edit page shows it read-only. The field's words (`RUNTIME_LABEL`,
+`PLATFORM_DEFAULT_LABEL`, `harnessTitle`) live in `lib/harnesses.ts`, which the
+agent page's facts read too.
 
 ### Extra egress origins
 

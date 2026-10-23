@@ -877,7 +877,7 @@ describe('CustomizeAgentsPanel', () => {
   });
 
   describe('last used by you', () => {
-    it('shows the agents of the latest sessions as cards opening a new session', async () => {
+    it('shows the agents of the latest sessions as cards opening their page', async () => {
       const docs = row({ name: 'Docs', technicalName: 'docs' });
       mockAgents = { ...mockAgents, rows: [triage, notes, docs] };
       mockSessions = [
@@ -892,12 +892,18 @@ describe('CustomizeAgentsPanel', () => {
       const cards = within(strip).getAllByRole('link');
       expect(cards).toHaveLength(2);
       expect(cards[0]).toHaveTextContent('Docs');
+      // The agent's page, like every other item of the list: it is where a
+      // session starts, with Use this agent.
       expect(cards[0]).toHaveAttribute(
         'href',
-        `/?agent=${encodeURIComponent(docs.id)}`,
+        `/customize/agents/${docs.installation}/${docs.namespace}/docs`,
       );
       expect(cards[1]).toHaveTextContent('Support triage');
-      expect(cards[1]).toHaveTextContent('Start a session');
+      expect(cards[1]).toHaveAttribute(
+        'href',
+        '/customize/agents/golem/support/triage',
+      );
+      expect(cards[1]).not.toHaveTextContent('Start a session');
     });
 
     it('shows at most three cards however many sessions there are', async () => {

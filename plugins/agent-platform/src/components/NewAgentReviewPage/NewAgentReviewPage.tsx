@@ -27,7 +27,7 @@ import {
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
-import { harnessTitle } from '../../lib/harnesses';
+import { harnessTitle, RUNTIME_LABEL } from '../../lib/harnesses';
 import { parseEgressText } from '../../lib/egress';
 import { PickedEgressPolicies } from '../PickedEgressPolicies';
 import { shortCommit } from '../../lib/skills';
@@ -324,7 +324,7 @@ function CreateAgentReview() {
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>
-          <PlainRow label="Runtime">
+          <PlainRow label={RUNTIME_LABEL}>
             {state.harness
               ? harnessTitle(state.harness)
               : 'Standard (platform default)'}

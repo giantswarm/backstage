@@ -1,12 +1,13 @@
 import { useId, useMemo } from 'react';
 import { Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
-import { useNewSessionHref } from '../../hooks/useNewSessionHref';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import { recentAgentUses } from '../../lib/recentAgents';
+import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { useAgents } from '../AgentsDataProvider';
 import { useSessions } from '../SessionsDataProvider';
@@ -62,19 +63,15 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
   },
-  action: {
-    flex: 'none',
-    whiteSpace: 'nowrap',
-    color: 'var(--bui-fg-link, #00609c)',
-  },
 });
 
 /**
  * Customize → Agents' "Last used by you" strip, the artboard's only agent
  * cards: the agents of the person's latest sessions (at most three, so the
- * strip is the same size at 3 agents and at 300), each one press from a new
- * session with it on the home screen. Hidden when the person has no session
- * with a startable agent yet.
+ * strip is the same size at 3 agents and at 300), each opening the agent's
+ * page like every other item of the list; the page's **Use this agent**
+ * starts a session. Hidden when the person has no session with a startable
+ * agent yet.
  *
  * Reads `useAgents` and `useSessions`, so it renders under an
  * `AgentsDataProvider` and a `SessionsDataProvider`. Sessions from an
@@ -87,7 +84,7 @@ export function LastUsedAgents() {
   const buildAvatarUrl = useAgentAvatarUrl();
   const { rows: agents } = useAgents();
   const { rows: sessions, notUserScopedInstallations } = useSessions();
-  const newSessionHref = useNewSessionHref();
+  const agentDetailRoute = useRouteRef(agentDetailRouteRef);
 
   const recent = useMemo(() => {
     const notMine = new Set(notUserScopedInstallations);
@@ -97,9 +94,9 @@ export function LastUsedAgents() {
     );
   }, [agents, sessions, notUserScopedInstallations]);
 
-  // Each card opens a new session; with no new-session screen to open, the
-  // strip has nothing to offer.
-  if (recent.length === 0 || !newSessionHref) {
+  // Each card opens the agent's page; with no page to open, the strip has
+  // nothing to offer.
+  if (recent.length === 0 || !agentDetailRoute) {
     return null;
   }
 
@@ -116,7 +113,14 @@ export function LastUsedAgents() {
       <ul className={classes.grid}>
         {recent.map(({ agent, lastUsedAt }) => (
           <li key={agent.id}>
-            <Link href={newSessionHref(agent)} className={classes.card}>
+            <Link
+              href={agentDetailRoute({
+                installation: agent.installation,
+                namespace: agent.namespace,
+                name: agent.technicalName,
+              })}
+              className={classes.card}
+            >
               <AgentAvatar
                 size="medium"
                 purpose="decoration"
@@ -137,9 +141,6 @@ export function LastUsedAgents() {
                   </Text>
                 )}
               </span>
-              <Text as="span" variant="body-small" className={classes.action}>
-                Start a session
-              </Text>
             </Link>
           </li>
         ))}

@@ -17,7 +17,11 @@ import {
   type CommitAgentResult,
   type WriteMode,
 } from '../../lib/agentManager';
-import { harnessTitle, type HarnessChoice } from '../../lib/harnesses';
+import {
+  harnessTitle,
+  RUNTIME_LABEL,
+  type HarnessChoice,
+} from '../../lib/harnesses';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
@@ -268,7 +272,7 @@ export function AgentChangeHarnessDialog({
         {choices.length > 0 && (
           <SelectableCardGrid
             role="radiogroup"
-            ariaLabel="Runtime"
+            ariaLabel={RUNTIME_LABEL}
             minWidth={220}
           >
             {choices.map(choice => (

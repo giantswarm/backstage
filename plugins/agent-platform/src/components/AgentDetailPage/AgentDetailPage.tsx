@@ -17,6 +17,7 @@ import { Alert, Button, Flex } from '@backstage/ui';
 import {
   Agent,
   ErrorsProvider,
+  Harness,
   HelmRelease,
   isNotFoundError,
   ModelConfig,
@@ -64,6 +65,7 @@ import {
 } from '../../hooks/useNewSessionHandoff';
 import type { ComposerImage } from '../../lib/messageImages';
 import { AvatarSize } from '../../lib/agentAvatar';
+import { DEFAULT_PLATFORM_HARNESS } from '../../lib/harnesses';
 import { clientLookupOf } from '../../lib/serving';
 import { toolsetHasTools } from '../../lib/toolset';
 import {
@@ -272,6 +274,17 @@ function AgentDetailPageContent() {
     ModelConfig,
     { name: modelConfigName ?? '', namespace, enableDiscovery: false },
     { enabled: Boolean(modelConfigName) },
+  );
+
+  // The Harness it names, read on its own like the ModelConfig, so the facts
+  // call the runtime what the create form called it. A person who may not
+  // read Harnesses still sees its name.
+  const harnessName = agent?.getHarnessName();
+  const { resource: harness, isLoading: isReadingHarness } = useResource(
+    installation,
+    Harness,
+    { name: harnessName ?? '', namespace, enableDiscovery: false },
+    { enabled: Boolean(harnessName) },
   );
 
   // What the serving layer says about the model behind that ModelConfig — the
@@ -1010,6 +1023,10 @@ function AgentDetailPageContent() {
               installation,
               modelConfig,
               modelServing: agentRow?.modelServing,
+              harness,
+              isReadingHarness: Boolean(harnessName) && isReadingHarness,
+              platformHarness:
+                agentManagerInfo?.harness?.name || DEFAULT_PLATFORM_HARNESS,
             })}
           />
         ) : undefined

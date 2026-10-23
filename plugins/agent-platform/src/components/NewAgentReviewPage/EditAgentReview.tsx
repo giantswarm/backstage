@@ -31,7 +31,11 @@ import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
 import { PickedEgressPolicies } from '../PickedEgressPolicies';
 import { pluginEntryName, pluginSummary } from '../../lib/plugins';
-import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
+import {
+  DEFAULT_PLATFORM_HARNESS,
+  harnessTitle,
+  RUNTIME_LABEL,
+} from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { shortPin } from '../AgentDetailPage/helpers';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
@@ -285,7 +289,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>
-          {runtime && <PlainRow label="Runtime">{runtime}</PlainRow>}
+          {runtime && <PlainRow label={RUNTIME_LABEL}>{runtime}</PlainRow>}
           {state.defaultWorkspace && (
             <PlainRow label="Default workspace">
               {state.defaultWorkspace}

@@ -7,6 +7,19 @@ import type {
 export const DEFAULT_PLATFORM_HARNESS = 'kagent';
 
 /**
+ * The words for an agent's Harness wherever a person reads it: the create and
+ * edit form's runtime field, its review and the agent page's facts, so the
+ * two read the same.
+ */
+export const RUNTIME_LABEL = 'Runtime';
+/** The technical term beside {@link RUNTIME_LABEL}. */
+export const RUNTIME_TERM = 'Harness';
+/** What the runtime is, in one sentence. */
+export const RUNTIME_DESCRIPTION = 'What runs the agent.';
+/** The mark on the platform Harness, the one a request naming none gets. */
+export const PLATFORM_DEFAULT_LABEL = 'Platform default';
+
+/**
  * A Harness an agent can be created on, as the wizard offers it. The name is
  * what `create_agent` takes as `harness` and what the Agent object carries in
  * `spec.harnessRef.name`.
