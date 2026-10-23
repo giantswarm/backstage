@@ -1160,7 +1160,7 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     mockMetaAgent = undefined;
   });
 
-  it('filters by organization and by who created the agent, each row naming its organization', async () => {
+  it('filters by organization and by who created the agent, each organization’s row naming its organization', async () => {
     mockAgents = {
       rows: [
         row({
@@ -1168,12 +1168,14 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
           technicalName: 'sre',
           namespace: 'kagent',
           tenant: 'None',
+          model: 'Opus',
         }),
         row({
           name: 'Billing',
           technicalName: 'billing',
           namespace: 'org-acme',
           tenant: 'acme',
+          model: 'Opus',
           createdBy: mockCaller,
         }),
         row({
@@ -1190,19 +1192,23 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     };
     await renderPanel();
 
-    // The platform's agent belongs to no organization: None, and a hint
-    // that says it is available to all of them, a button of its own beside
-    // the row's link, which the keyboard reaches.
+    // The platform's agent belongs to no organization, and its row says
+    // nothing of one: no "None" without its label, no info icon.
     const sre = listed()[0];
-    expect(sre).toHaveTextContent('None');
-    expect(sre).not.toHaveTextContent('Platform');
-    const hint = within(sre).getByRole('button', { name: 'What None means' });
-    expect(hint.closest('a')).toBeNull();
-    // In the tab order; its text is `OrganizationValue`'s own test.
-    expect(hint.tabIndex).toBeGreaterThanOrEqual(0);
+    expect(sre).not.toHaveTextContent(/None|Organization|Platform/);
     expect(
-      within(listed()[1]).queryByRole('button', { name: /None/ }),
-    ).toBeNull();
+      within(sre).queryByRole('button', { name: /None/ }),
+    ).not.toBeInTheDocument();
+    // An organization's agent names it with its label, not to be taken for
+    // the environment, as the first fact. The platform agent's row keeps the
+    // column, empty and untitled, so the facts after it line up.
+    const fact = within(listed()[1]).getByText('Organization: acme');
+    expect(fact).toHaveAttribute('title', 'Organization: acme');
+    expect(fact.nextElementSibling).toHaveTextContent('Opus');
+    const empty = within(sre).getByText('Opus').previousElementSibling;
+    expect(empty).toHaveTextContent(/^$/);
+    expect(empty).not.toHaveAttribute('title');
+    expect(empty?.previousElementSibling).toBeNull();
     expect(await filterOptions('organization')).toEqual(['acme 2', 'None 1']);
     expect(await filterOptions('created by')).toEqual(['Me 1']);
 
@@ -1210,6 +1216,56 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     expect(listed().map(item => item.textContent)).toEqual([
       expect.stringContaining('Billing'),
     ]);
+  });
+
+  it('names another namespace as it is, an organization as its filter option does, and no organization where there is only one', async () => {
+    const billing = row({
+      name: 'Billing',
+      technicalName: 'billing',
+      namespace: 'org-acme',
+      tenant: 'acme',
+    });
+    mockAgents = {
+      rows: [
+        row({
+          name: 'SRE',
+          technicalName: 'sre',
+          namespace: 'sre-team',
+          tenant: 'namespace sre-team',
+        }),
+        billing,
+        // An organization named like the platform's None keeps its filter
+        // option's qualifier.
+        row({
+          name: 'Odd',
+          technicalName: 'odd',
+          namespace: 'org-none',
+          tenant: 'organization none',
+        }),
+      ],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    const { unmount } = await renderPanel();
+
+    expect(within(listed()[0]).getByText('namespace sre-team')).toHaveAttribute(
+      'title',
+      'Organization: namespace sre-team',
+    );
+    expect(listed()[1]).toHaveTextContent('Organization: acme');
+    expect(
+      within(listed()[2]).getByText('Organization: organization none'),
+    ).toHaveAttribute('title', 'Organization: organization none');
+    expect(await filterOptions('organization')).toContain(
+      'organization none 1',
+    );
+    unmount();
+
+    // One organization's agents alone: the list says it of none of them.
+    mockAgents = { ...mockAgents, rows: [billing] };
+    await renderPanel();
+    expect(listed()[0]).not.toHaveTextContent('Organization');
   });
 
   it('offers the model dropdown over three agents on one model, none starred', async () => {

@@ -373,23 +373,28 @@ test.describe('agents per tenant', () => {
       test.setTimeout(rosterWait * 2 + 60_000);
       const alice = await signInAs(users.alice);
       await open(alice, '/customize/agents', users.alice);
-      for (const [name, label] of [
-        [agent.name, organization],
-        // The platform's agent belongs to no organization.
-        [labAgent.name, 'None'],
-      ]) {
-        await searchRoster(alice, name);
-        await expect(
-          rosterRowOf(alice, name),
-          `${name} is listed with its organization`,
-        ).toContainText(label, { timeout: rosterWait });
-      }
+      await searchRoster(alice, agent.name);
+      await expect(
+        rosterRowOf(alice, agent.name),
+        `${agent.name} is listed with its organization`,
+      ).toContainText(`Organization: ${organization}`, { timeout: rosterWait });
+      // The platform's agent belongs to no organization, and its row says
+      // nothing of one.
+      await searchRoster(alice, labAgent.name);
+      await expect(rosterLinkOf(alice, labAgent.name)).toBeVisible({
+        timeout: rosterWait,
+      });
+      await expect(
+        rosterRowOf(alice, labAgent.name).getByText(
+          /^(None|Organization: .*)$/,
+        ),
+        'the platform agent’s row names no organization',
+      ).toHaveCount(0);
       await expect(
         rosterRowOf(alice, labAgent.name).getByRole('button', {
           name: 'What None means',
         }),
-        'None says what it means, on a button of its own',
-      ).toBeVisible();
+      ).toHaveCount(0);
 
       const bob = await signInAs(users.bob);
       await open(bob, '/customize/agents', users.bob);
