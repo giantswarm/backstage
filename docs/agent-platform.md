@@ -80,15 +80,24 @@ organizations" (`OrganizationValue`). (The code and agent-manager call this the
 agent's tenant; the UI never does.) The agent's page names it beside the
 overview. Where the agents belong to more than one, the filter bar filters by
 it, the platform's agents under the option "None", and the row of an
-organization's agent names it as its first fact, "Organization: acme", in a
-column wider than the others: a row has no labels, and a bare `acme` would read
-like the environment beside it. The name is the filter option's
-(`organization none` for an organization named `none`). A platform agent's row
-leaves that column empty, since a "None" without its label says nothing; the
-column stays, so every row has the same fixed columns and they line up however
-the facts wrap (at phone width, where the facts have no columns, it is gone).
-An agent in another namespace reads `namespace <name>` there. A row's link is the agent's name, its hit area
-stretched over the row, so the star is a button of its own above it. The New
+organization's agent names it beside the agent's name, "Organization: acme",
+since it says whose agent it is: a row has no labels, and a bare `acme` would
+read like the environment among the facts. The name is the filter option's
+(`organization none` for an organization named `none`); a long one truncates,
+taking at most half the name's line. The name link's tooltip gives the name
+and the organization in full, wherever the row is pointed at: the link's hit
+area covers the row, the organization's text included, which is also the
+link's accessible description. A
+platform agent's row names none: a "None" without its label would say
+nothing. An agent in another namespace reads `namespace <name>` there. The
+facts (model, Harness, skills and connectors, environment) are the same fixed
+columns on every row, so they line up from row to row: beside the name where
+the name keeps at least 320px (220px in a list that names no organizations),
+otherwise on one line under the name and its description, on every row of the
+list alike. At phone width they wrap under the name, and the organization goes
+under a name too long for its line and wraps there. A
+row's link is the agent's name, its hit area stretched over the row, so the
+star is a button of its own above it. The New
 agent form asks for it on Details from the places agent-manager lets the person
 create in (`get_info.namespaces.managed`): the only one is picked and named.
 Several of more than one kind are offered as a choice of **Platform**,
