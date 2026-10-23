@@ -10,6 +10,7 @@ import {
   AzureASOManagedCluster,
   AzureCluster,
   Cluster,
+  KubeObjectInterface,
   ProviderCluster,
   VCDCluster,
   VSphereCluster,
@@ -24,9 +25,20 @@ function isImported(cluster: Cluster) {
   return getClusterAppName(cluster) === Constants.CAPI_IMPORTER_APP_NAME;
 }
 
-function isDeleting(cluster: Cluster) {
-  return typeof cluster.getDeletionTimestamp() !== 'undefined';
+/** Deletion was requested and the object is not gone yet. */
+export function isMarkedForDeletion(object: KubeObjectInterface): boolean {
+  return object.metadata?.deletionTimestamp !== undefined;
 }
+
+export function isClusterDeleting(cluster: Cluster): boolean {
+  return isMarkedForDeletion(cluster.jsonData);
+}
+
+/** How often a page re-reads a cluster being deleted, and what it shows of it. */
+export const DELETING_CLUSTER_REFRESH_MS = 10_000;
+
+/** How often a page re-reads a live cluster, to notice a deletion that starts. */
+export const LIVE_CLUSTER_REFRESH_MS = 60_000;
 
 function isCreating(cluster: Cluster) {
   const controlPlaneInitializedCondition =
@@ -92,7 +104,7 @@ export function calculateClusterType(cluster: Cluster) {
 }
 
 export function calculateClusterStatus(cluster: Cluster) {
-  if (isDeleting(cluster)) {
+  if (isClusterDeleting(cluster)) {
     return ClusterStatuses.Deleting;
   }
 
