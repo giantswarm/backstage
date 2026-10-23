@@ -1,5 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import {
   HelmRelease,
   ModelConfig,
@@ -8,6 +8,12 @@ import {
 
 import { deploymentDetailsExternalRouteRef } from '../../../routes';
 import { ModelHelmReleaseCard } from './ModelHelmReleaseCard';
+
+/** A fact's value, by its label. */
+function factValue(label: string): HTMLElement {
+  return screen.getByText(label).closest('dt')!
+    .nextElementSibling as HTMLElement;
+}
 
 const mockUseResource = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -127,8 +133,10 @@ describe('ModelHelmReleaseCard', () => {
       { name: 'kagent-models', namespace: 'flux-system' },
       { enabled: true },
     );
+    // Its namespace and name as two facts, the name linked.
+    expect(factValue('Namespace')).toHaveTextContent(/^flux-system$/);
     expect(
-      screen.getByRole('link', { name: 'flux-system/kagent-models' }),
+      within(factValue('Name')).getByRole('link', { name: 'kagent-models' }),
     ).toHaveAttribute(
       'href',
       '/deployments/inst-1/helmrelease/flux-system/kagent-models',
@@ -138,7 +146,7 @@ describe('ModelHelmReleaseCard', () => {
     expect(screen.getByText('1.2.3')).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
     // Helm's own name for the release is the HelmRelease's: said once.
-    expect(screen.queryByText('Helm release')).toBeNull();
+    expect(screen.queryByText(/^Helm release/)).toBeNull();
   });
 
   it('says why a HelmRelease is not ready', async () => {
@@ -167,7 +175,7 @@ describe('ModelHelmReleaseCard', () => {
     await renderCard(model(FLUX_LABELS, HELM_ANNOTATIONS));
 
     expect(
-      screen.getByRole('link', { name: 'flux-system/kagent-models' }),
+      screen.getByRole('link', { name: 'kagent-models' }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -180,8 +188,10 @@ describe('ModelHelmReleaseCard', () => {
   it('names a release Helm installed without Flux, and reads nothing', async () => {
     await renderCard(model({}, HELM_ANNOTATIONS));
 
-    expect(screen.getByText('Helm release')).toBeInTheDocument();
-    expect(screen.getByText('flux-system/kagent-models')).toBeInTheDocument();
+    expect(factValue('Helm release namespace')).toHaveTextContent(
+      /^flux-system$/,
+    );
+    expect(factValue('Helm release name')).toHaveTextContent(/^kagent-models$/);
     expect(
       screen.getByText(
         'Helm installed this release without a Flux HelmRelease, so there is no release resource to read.',

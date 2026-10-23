@@ -78,6 +78,19 @@ describe('agentShellLightColors', () => {
     ).toBeGreaterThanOrEqual(3);
   });
 
+  // The rule for links on a tinted surface (agent-shell.css).
+  it('sets links at 4.5:1 against the tinted surface and the alert backgrounds', () => {
+    const colors = agentShellLightColors;
+    for (const surface of [
+      colors.subtleSurface,
+      colors.infoBackground,
+      colors.successBackground,
+      colors.warningBackground,
+    ]) {
+      expect(contrast(colors.link, surface)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it('lists the light palette by role', () => {
     expect(agentShellLightColors).toEqual({
       primary: '#002645',

@@ -47,6 +47,7 @@ import {
   useCatalogFilters,
   usePhoneColumns,
   useSplatBasePath,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
@@ -69,7 +70,6 @@ import {
   sharedIdentityReason,
   sharedIdentityTitle,
 } from '../../lib/sharedIdentity';
-import { shortCommit } from '../../lib/skills';
 import {
   lastSyncResult,
   pushedSinceSync,
@@ -696,8 +696,8 @@ function RepositoriesTab({
       defaultWidth: '1fr',
       cell: mirror => (
         <Cell>
-          <code title={mirror.head}>
-            {mirror.head ? shortCommit(mirror.head) : '—'}
+          <code>
+            {mirror.head ? <CommitSha value={mirror.head} copy={false} /> : '—'}
           </code>
         </Cell>
       ),

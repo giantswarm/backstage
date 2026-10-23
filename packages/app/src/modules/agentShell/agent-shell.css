@@ -103,21 +103,41 @@ html[data-agent-shell]
 }
 
 /*
- * Links inside a banner (bui `Alert`). An alert sets its text in its status's
- * on-background colour, and a link in it — bui's `Link` or core-components'
- * MUI one — came out in a near copy of that colour without an underline, so
- * it could not be told from the text. Inside every alert a link is underlined
- * and takes the shell's link colour, which holds 4.5:1 against each light
- * alert background (info, success, warning, danger); dark mode takes bui's
- * info foreground, which holds it against the dark ones. Buttons rendered as
- * links (`ButtonLink`) keep their button look. Unlayered, so it wins over
- * MUI's link classes as well as bui's.
+ * Links on a tinted surface: inside a banner (bui `Alert`), and on bui's
+ * neutral-2 surface, the #f0f4f6 a `Card` takes inside a white one (the
+ * Technical details fold-out's cards) or a `Box bg="neutral"` nested once.
+ *
+ * There a link could not be told from the text: an alert sets its text in its
+ * status's on-background colour, and a link came out in a near copy of it;
+ * core-components' MUI link takes the shell's primary, the body text's own
+ * colour, underlined only on hover; and bui's 30% underline all but vanishes
+ * on the tint. On these surfaces every text link — bui's `Link` or MUI's —
+ * takes the shell's link colour and a solid underline, whatever its `color`.
+ * The colour holds 4.5:1 against the tint (6.0:1) and each light alert
+ * background (info, success, warning, danger). Against the body text it is
+ * only 2.3:1, short of the 3:1 at which colour alone may mark a link, so the
+ * underline is what marks it. Hover darkens it and thickens the line.
+ *
+ * Buttons rendered as links (`ButtonLink`), tabs, menu items and tags keep
+ * their own look. Unlayered, so it wins over MUI's link classes as well as
+ * bui's.
  */
+
+/* In a banner, wherever the banner sits. */
 html[data-agent-shell]
   .bui-Alert
-  a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ) {
   color: var(--agent-shell-link);
   text-decoration-line: underline;
+  text-decoration-color: currentColor;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
 }
@@ -128,16 +148,29 @@ html[data-agent-shell]
     .bui-Button,
     .bui-ButtonLink,
     .bui-ButtonIcon,
-    [class*='MuiButton']
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
   ):hover {
   color: var(--agent-shell-link-hover);
   text-decoration-thickness: 2px;
 }
 
+/* Dark mode takes bui's info foreground, which holds 4.5:1 against the dark
+   alert backgrounds. */
 html[data-agent-shell]
   body[data-theme-mode='dark']
   .bui-Alert
-  a:not(.bui-Button, .bui-ButtonLink, .bui-ButtonIcon, [class*='MuiButton']) {
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ) {
   color: var(--bui-fg-info);
 }
 
@@ -148,9 +181,51 @@ html[data-agent-shell]
     .bui-Button,
     .bui-ButtonLink,
     .bui-ButtonIcon,
-    [class*='MuiButton']
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
   ):hover {
   color: var(--bui-fg-info-on-bg);
+}
+
+/* On the neutral-2 tint. A surface nested inside it is bui's neutral-3, white
+   in the light theme, so its links keep bui's own look. Light mode only, as
+   the shell is: the dark neutral-3 is a tint of its own, and no dark colour
+   here has been checked against it. */
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  [data-bg='neutral-2']
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ):not([data-bg='neutral-3'] a) {
+  color: var(--agent-shell-link);
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  [data-bg='neutral-2']
+  a:not(
+    .bui-Button,
+    .bui-ButtonLink,
+    .bui-ButtonIcon,
+    .bui-Tag,
+    [class*='MuiButton'],
+    [role='tab'],
+    [role='menuitem']
+  ):not([data-bg='neutral-3'] a):hover {
+  color: var(--agent-shell-link-hover);
+  text-decoration-thickness: 2px;
 }
 
 /*

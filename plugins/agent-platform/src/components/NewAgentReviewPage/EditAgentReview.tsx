@@ -6,6 +6,7 @@ import {
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
@@ -38,7 +39,6 @@ import {
   RUNTIME_LABEL,
 } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
-import { shortPin } from '../AgentDetailPage/helpers';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
@@ -451,9 +451,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                         {skill.name}{' '}
                         <span className={classes.code}>
                           @
-                          {shortPin(
-                            'git' in skill ? skill.git.commit : skill.oci,
-                          )}
+                          <CommitSha
+                            value={
+                              'git' in skill ? skill.git.commit : skill.oci
+                            }
+                          />
                         </span>
                       </span>
                     ))}
@@ -468,7 +470,10 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                         {index > 0 ? ', ' : ''}
                         {pluginEntryName(plugin)}{' '}
                         <span className={classes.code}>
-                          @{shortPin(plugin.git?.commit ?? plugin.oci ?? '')}
+                          @
+                          <CommitSha
+                            value={plugin.git?.commit ?? plugin.oci ?? ''}
+                          />
                         </span>
                       </span>
                     ))}

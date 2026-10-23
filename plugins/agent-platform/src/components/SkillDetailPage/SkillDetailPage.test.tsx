@@ -13,6 +13,18 @@ import type { AgentRow } from '../AgentsDataProvider';
 import { evaluationPrompt } from './evaluationPrompt';
 import { SkillDetailPage } from './SkillDetailPage';
 
+/**
+ * The innermost element whose text, across its children, reads `text`: a
+ * sentence with a short commit (`CommitSha`) in it is several elements.
+ */
+function byFullText(text: string) {
+  return screen.getByText(
+    (_content, element) =>
+      element?.textContent === text &&
+      Array.from(element.children).every(child => child.textContent !== text),
+  );
+}
+
 const REPO = 'https://github.com/giantswarm/skills';
 
 const mockNavigate = jest.fn();
@@ -238,12 +250,20 @@ describe('SkillDetailPage', () => {
     );
     expect(screen.queryByRole('link', { name: /View source/ })).toBeNull();
     // Labels, values and links read at the shell's body size.
-    for (const text of ['Branch', 'main', 'a1b2c3d']) {
+    for (const text of ['Branch', 'main']) {
       expect(within(facts).getByText(text)).toHaveAttribute(
         'data-variant',
         'body-medium',
       );
     }
+    expect(
+      within(facts).getByRole('link', { name: 'a1b2c3d' }),
+    ).toHaveAttribute('data-variant', 'body-medium');
+    // The full commit on hover.
+    expect(within(facts).getByText('a1b2c3d')).toHaveAttribute(
+      'title',
+      skill.commit,
+    );
     // The Overview reads nothing more than the listing has.
     expect(mockUseSkillContent).not.toHaveBeenCalled();
   });
@@ -332,7 +352,7 @@ describe('SkillDetailPage', () => {
     expect(screen.queryByText('other-bot')).not.toBeInTheDocument();
     // Nobody behind: a quiet line, and no Update agents action.
     expect(
-      screen.getByText('All agents use the newest version (a1b2c3d).'),
+      byFullText('All agents use the newest version (a1b2c3d).'),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Update agents' }),
@@ -353,11 +373,12 @@ describe('SkillDetailPage', () => {
     await renderPage('giantswarm/skills/ticket-triage/used-by');
 
     // The behind row says so; the line under the list counts them.
+    // The full pin on hover.
     expect(
       screen.getByText('gazelle · older version (cb1fb76)'),
-    ).toBeInTheDocument();
+    ).toHaveAttribute('title', `Pinned at ${OLD_COMMIT}`);
     expect(
-      screen.getByText(
+      byFullText(
         'One agent pins an older commit than the newest (a1b2c3d). Update agents moves it there.',
       ),
     ).toBeInTheDocument();
@@ -523,7 +544,7 @@ describe('SkillDetailPage', () => {
 
       expect(screen.getByText('Classify.')).toBeInTheDocument();
       expect(
-        screen.getByText('ticket-triage/SKILL.md at a1b2c3d'),
+        byFullText('ticket-triage/SKILL.md at a1b2c3d'),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('navigation', { name: 'Skill files' }),
@@ -564,14 +585,14 @@ describe('SkillDetailPage', () => {
     mockCatalog = { ...loaded, skills: [{ ...skill, fileCount: 3 }] };
     const { unmount } = await renderPage();
     expect(
-      screen.getByText('Read from giantswarm/skills at a1b2c3d · 2 more files'),
+      byFullText('Read from giantswarm/skills at a1b2c3d · 2 more files'),
     ).toBeInTheDocument();
     unmount();
 
     mockCatalog = { ...loaded, skills: [{ ...skill, fileCount: 1 }] };
     await renderPage();
     expect(
-      screen.getByText('Read from giantswarm/skills at a1b2c3d'),
+      byFullText('Read from giantswarm/skills at a1b2c3d'),
     ).toBeInTheDocument();
   });
 
@@ -671,7 +692,8 @@ describe('SkillDetailPage', () => {
       screen.queryByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).not.toBeInTheDocument();
     // The latest commit is plain text: there is no github.com tree to open.
-    expect(screen.getByText('a1b2c3d')).toBeInTheDocument();
+    // Short, as in the header's line, the full commit in its title.
+    expect(screen.getAllByTitle(skill.commit)).toHaveLength(2);
     expect(screen.queryByRole('link', { name: 'a1b2c3d' })).toBeNull();
     // Readable all the same: its instructions are a tab away.
     expect(screen.getByRole('tab', { name: 'Instructions' })).toHaveAttribute(

@@ -16,6 +16,7 @@ import {
   ConfirmDialog,
   useFieldValidation,
   useGroupFieldError,
+  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -33,7 +34,6 @@ import {
 } from '../../hooks/useUpdateAgent';
 import type { MusterServerPresence } from '../../hooks/useMusterServerAvailability';
 import { agentManagerBlocker, type AgentUpdate } from '../../lib/agentManager';
-import { shortCommit } from '../../lib/skills';
 import type { AgentRow } from '../AgentsDataProvider';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { ShowMore, USED_BY_ROWS } from '../ShowMore';
@@ -409,13 +409,9 @@ function AgentLine({
       <Flex direction="column" gap="1" className={classes.detail}>
         <Text variant="body-small" color="secondary">
           {row.installation} · {row.namespace} ·{' '}
-          <span className={classes.code} title={pinned}>
-            {shortCommit(pinned)}
-          </span>
+          <CommitSha value={pinned} copy={false} className={classes.code} />
           {' → '}
-          <span className={classes.code} title={head}>
-            {shortCommit(head)}
-          </span>
+          <CommitSha value={head} copy={false} className={classes.code} />
         </Text>
         {note && (
           <Text id={noteId} variant="body-small" color="secondary">
@@ -676,12 +672,10 @@ export function SkillUpdateAgentsDialog({
         <Text as="p" variant="body-medium" style={{ margin: 0 }}>
           {behind.length === 1 ? 'This agent pins' : 'These agents pin'} the
           skill at an older commit than the newest one,{' '}
-          <span className={classes.code} title={head}>
-            {shortCommit(head)}
-          </span>
-          . Updating an agent re-pins every git skill it mounts — this one and
-          any others — to the head of its repository's default branch; nothing
-          else about the agent changes.
+          <CommitSha value={head} className={classes.code} />. Updating an agent
+          re-pins every git skill it mounts — this one and any others — to the
+          head of its repository's default branch; nothing else about the agent
+          changes.
         </Text>
         {proposing > 0 && !isDone && (
           <Text as="p" variant="body-small" color="secondary">

@@ -5,3 +5,4 @@ export * from './managementClusterVersions';
 export * from './jwtClaims';
 export * from './mimirMetrics';
 export * from './musterUnauthorized';
+export * from './shortSha';

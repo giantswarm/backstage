@@ -140,13 +140,20 @@ describe('GitOps display helpers', () => {
     ).toEqual({
       kind: 'HelmRelease',
       id: 'agent-platform/agent-platform-mcps',
+      name: 'agent-platform-mcps',
+      namespace: 'agent-platform',
     });
     expect(
       gitOpsManagerDescription({
         fluxKustomization: 'flux-extras',
         fluxKustomizationNamespace: 'flux-giantswarm',
       }),
-    ).toEqual({ kind: 'Kustomization', id: 'flux-giantswarm/flux-extras' });
+    ).toEqual({
+      kind: 'Kustomization',
+      id: 'flux-giantswarm/flux-extras',
+      name: 'flux-extras',
+      namespace: 'flux-giantswarm',
+    });
     expect(gitOpsManagerDescription({ managedBy: 'flux' })).toBeUndefined();
   });
 });

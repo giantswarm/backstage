@@ -165,4 +165,12 @@ describe('<Version />', () => {
       }
     });
   });
+
+  it('shortens a branch build’s commit to seven characters, the full version in its title', async () => {
+    const version = '0.24.2-9ec68e75e1d35d5afea9ff9f03ccb2ca862ff6ca';
+    const { getByText, getByTitle } = await renderComponent({ version });
+
+    expect(getByText('0.24.2-9ec68e7')).toBeInTheDocument();
+    expect(getByTitle(version)).toHaveTextContent('0.24.2-9ec68e7');
+  });
 });

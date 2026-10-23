@@ -74,6 +74,24 @@ test('agent egress: a tls:// service needs a port and lands on the Configuration
       card.getByText(TLS_ORIGIN, { exact: true }),
       'the Configuration card lists the tls:// service under Extra egress',
     ).toBeVisible({ timeout: 60_000 });
+    // A link on the card's tinted surface reads as one: the shell's link
+    // colour and a solid underline (agent-shell.css).
+    const link = card.getByRole('link').first();
+    await expect(link).toHaveCSS('color', 'rgb(0, 96, 156)');
+    await expect(link).toHaveCSS('text-decoration-line', 'underline');
+    // The Resource card: namespace and name as two facts, no copy button.
+    const resource = admin
+      .getByRole('heading', { name: 'Resource', exact: true })
+      .locator('xpath=ancestor::*[.//dt][1]');
+    await expect(
+      resource.locator('dt', { hasText: /^Namespace$/ }).locator('+ dd'),
+    ).toHaveText(detailPath.split('/').at(-2)!);
+    await expect(
+      resource.locator('dt', { hasText: /^Name$/ }).locator('+ dd'),
+    ).toHaveText(agentSlug);
+    await expect(
+      admin.getByRole('button', { name: 'Copy system prompt' }),
+    ).toHaveCount(0);
     await testInfo.attach('configuration-card', {
       body: await card.screenshot(),
       contentType: 'image/png',

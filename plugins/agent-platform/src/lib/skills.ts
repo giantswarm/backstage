@@ -136,11 +136,6 @@ export function repoSlug(repoUrl: string): string {
   return repoUrl.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
 }
 
-/** The abbreviated commit id, as git prints it. */
-export function shortCommit(commit: string): string {
-  return commit.slice(0, 7);
-}
-
 /** Whether two commit ids name the same commit, either possibly abbreviated. */
 export function sameCommit(a: string, b: string): boolean {
   const x = a.trim().toLowerCase();

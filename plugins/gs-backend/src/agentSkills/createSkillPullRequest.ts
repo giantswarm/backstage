@@ -3,6 +3,7 @@ import { dump } from 'js-yaml';
 import { GitHubApiError, parseRepoUrl } from './discoverAgentSkills';
 import { splitSkillMarkdown } from './frontmatter';
 import { isSkillFilePath } from './skillFiles';
+import { shortSha } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
  * The header the signed-in person's GitHub access token travels in, from the
@@ -354,13 +355,13 @@ export async function createSkillPullRequest(
       if (!atStart) {
         throw new GitHubApiError(
           404,
-          `There is no ${path} at commit ${startCommit.slice(0, 7)} in ${owner}/${repo}, the commit the edit started from.`,
+          `There is no ${path} at commit ${shortSha(startCommit)} in ${owner}/${repo}, the commit the edit started from.`,
         );
       }
       if (atStart.sha !== current.sha) {
         throw new GitHubApiError(
           409,
-          `The skill changed since you started editing: ${path} on ${base} is no longer the version of commit ${startCommit.slice(0, 7)}. Reload the skill and make the edit on its current version.`,
+          `The skill changed since you started editing: ${path} on ${base} is no longer the version of commit ${shortSha(startCommit)}. Reload the skill and make the edit on its current version.`,
         );
       }
       started = atStart;
@@ -497,7 +498,7 @@ export async function createSkillPullRequest(
   const origin = isUpdate
     ? `Edited from the skill's page in the portal${
         options.baseCommit
-          ? `, starting from commit ${options.baseCommit.slice(0, 7)}`
+          ? `, starting from commit ${shortSha(options.baseCommit)}`
           : ''
       }. Agents keep the commit they are pinned to until their skills are updated.`
     : "Opened from the portal's Customize → Skills tab. The skill appears in the catalog once this merges.";

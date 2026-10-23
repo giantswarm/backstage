@@ -6,6 +6,7 @@ export * from './BusyDialog';
 export * from './CatalogFilters';
 export * from './Autocomplete';
 export * from './CodeBlock';
+export * from './CommitSha';
 export * from './Collapsible';
 export * from './CollapsibleMarkdown';
 export * from './CollapsibleMarkdownCard';
