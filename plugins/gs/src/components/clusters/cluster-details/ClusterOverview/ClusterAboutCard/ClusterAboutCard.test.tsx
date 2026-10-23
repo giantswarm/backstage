@@ -36,10 +36,12 @@ function createCluster({
   controlPlaneRef,
   labels,
   infrastructureKind = 'AzureASOManagedCluster',
+  deletionTimestamp,
 }: {
   controlPlaneRef?: ControlPlaneRef;
   labels?: Record<string, string>;
   infrastructureKind?: string;
+  deletionTimestamp?: string;
 } = {}) {
   return new Cluster(
     {
@@ -50,6 +52,7 @@ function createCluster({
         namespace: 'org-test',
         annotations: { 'cluster.giantswarm.io/description': 'Test cluster' },
         ...(labels && { labels }),
+        ...(deletionTimestamp && { deletionTimestamp }),
       },
       spec: {
         ...(controlPlaneRef && { controlPlaneRef }),
@@ -87,9 +90,12 @@ function mockResponse(body: unknown): Response {
 
 type ProxyArgs = { clusterName: string; path: string };
 
+// `gone` paths 404 the way the apiserver answers for a missing object, naming
+// it; any other unknown path 404s without a body.
 function createMockKubernetesApi(
   responses: Record<string, unknown>,
   forbidden: string[] = [],
+  gone: string[] = [],
 ) {
   return {
     proxy: jest.fn(async ({ path }: ProxyArgs) => {
@@ -98,6 +104,20 @@ function createMockKubernetesApi(
       }
       if (forbidden.includes(path)) {
         return { ok: false, status: 403, statusText: 'Forbidden' } as Response;
+      }
+      if (gone.includes(path)) {
+        const name = path.split('/').filter(Boolean).pop();
+        return {
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+          json: async () => ({
+            kind: 'Status',
+            reason: 'NotFound',
+            message: `"${name}" not found`,
+            details: { name },
+          }),
+        } as Response;
       }
       return { ok: false, status: 404, statusText: 'Not Found' } as Response;
     }),
@@ -691,6 +711,67 @@ describe('ClusterAboutCard', () => {
           'Could not read the node pools: Access forbidden.',
         ),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('with a control plane that is gone', () => {
+    const kubeadmControlPlaneRef = {
+      apiGroup: 'controlplane.cluster.x-k8s.io',
+      kind: 'KubeadmControlPlane',
+      name: 'my-cluster',
+      namespace: 'org-test',
+    };
+    const controlPlanePath =
+      '/apis/controlplane.cluster.x-k8s.io/v1beta2/namespaces/org-test/kubeadmcontrolplanes/my-cluster/';
+    const apiWithoutControlPlane = () =>
+      createMockKubernetesApi(
+        {
+          '/apis/controlplane.cluster.x-k8s.io': controlPlaneGroupResponse,
+          '/apis/controlplane.cluster.x-k8s.io/v1beta2':
+            controlPlaneResourcesResponse,
+        },
+        [],
+        [controlPlanePath],
+      );
+    const kubernetesVersionErrorIcon = () =>
+      screen
+        .getByRole('heading', { name: 'Kubernetes version' })
+        .parentElement?.querySelector('svg');
+
+    it('reads "n/a" without an error while the cluster is being deleted', async () => {
+      mockUseCurrentCluster.mockReturnValue({
+        installationName: INSTALLATION,
+        cluster: createCluster({
+          controlPlaneRef: kubeadmControlPlaneRef,
+          deletionTimestamp: '2026-09-30T10:00:00Z',
+        }),
+        isDeleting: true,
+      });
+      const api = apiWithoutControlPlane();
+
+      await renderCard(api);
+
+      await waitFor(() =>
+        expect(requestedPaths(api)).toContain(controlPlanePath),
+      );
+      await settle();
+      expect(
+        kubernetesVersionField().getByLabelText('no information available'),
+      ).toBeInTheDocument();
+      expect(kubernetesVersionErrorIcon()).toBeNull();
+    });
+
+    it('shows the error for a cluster that is not being deleted', async () => {
+      mockUseCurrentCluster.mockReturnValue({
+        installationName: INSTALLATION,
+        cluster: createCluster({ controlPlaneRef: kubeadmControlPlaneRef }),
+        clusterApp,
+        isDeleting: false,
+      });
+
+      await renderCard(apiWithoutControlPlane());
+
+      await waitFor(() => expect(kubernetesVersionErrorIcon()).not.toBeNull());
     });
   });
 });
