@@ -5,6 +5,7 @@ export {
 } from './NewAgentFormProvider';
 export type {
   AgentWizardEdit,
+  DroppedEgress,
   NewAgentFormState,
   NewAgentFormContextValue,
   NewAgentField,

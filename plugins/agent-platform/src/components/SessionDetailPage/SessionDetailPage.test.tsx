@@ -26,6 +26,7 @@ import type { UseCreateSessionResult } from '../../hooks/useCreateSession';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline, type TimelineItem } from '../../lib/kagentTimeline';
+import type { EgressRefusal } from '../../lib/egressRefusals';
 import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
   deriveSessionState,
@@ -154,9 +155,18 @@ jest.mock('../../hooks/useTokenRates', () => ({
 }));
 
 // Stubbed like `useTokenRates`: it reads Mimir through the gs plugin's api ref.
-// The refusals on a timeline are covered in SessionTimeline's tests.
+// The refusals on a timeline are covered in SessionTimeline's tests; a test
+// sets `mockEgressRefusals` for one, and `beforeEach` clears it.
+let mockEgressRefusals: EgressRefusal[] = [];
 jest.mock('../../hooks/useSessionEgressRefusals', () => ({
-  useSessionEgressRefusals: () => [],
+  useSessionEgressRefusals: () => mockEgressRefusals,
+}));
+
+// The remedy reads agent-manager, the Harnesses and the person's access; its
+// cases are covered by `egressRemedyKind`'s and EgressRefusedEntry's tests.
+const mockUseEgressRemedy = jest.fn();
+jest.mock('../../hooks/useEgressRemedy', () => ({
+  useEgressRemedy: (options: unknown) => mockUseEgressRemedy(options),
 }));
 
 // The person's ChatGPT connection: it reads a ModelConfig and muster, neither
@@ -440,6 +450,9 @@ function lastProvidedActions() {
 describe('SessionDetailPage', () => {
   beforeEach(() => {
     mockPricedRate = undefined;
+    mockEgressRefusals = [];
+    mockUseEgressRemedy.mockReset();
+    mockUseEgressRemedy.mockReturnValue({ kind: 'pending' });
     providedActions.mockClear();
     mockRenameSession.mockReset();
     mockSendMessage.mockReset();
@@ -707,6 +720,47 @@ describe('SessionDetailPage', () => {
     await render();
 
     expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+  });
+
+  it('reads the remedy for an egress refusal only once the timeline shows one', async () => {
+    await render();
+
+    expect(mockUseEgressRemedy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(screen.queryByTestId('timeline-egress-refused')).toBeNull();
+  });
+
+  it('shows the remedy for the session’s agent under its egress refusal', async () => {
+    mockEgressRefusals = [
+      {
+        scheme: 'https',
+        host: 'registry.npmjs.org',
+        port: 443,
+        at: new Date().toISOString(),
+        count: 2,
+      },
+    ];
+    mockUseEgressRemedy.mockReturnValue({
+      kind: 'platform',
+      runtime: 'Claude Code',
+    });
+
+    await render();
+
+    expect(mockUseEgressRemedy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        installation: 'gazelle',
+        enabled: true,
+        agent: { namespace: 'kagent', name: 'issue-tracker' },
+      }),
+    );
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        /can only reach the addresses the platform allows for Claude Code\. Ask your platform team to allow registry\.npmjs\.org\./,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('shows a not-found state rather than an error for a missing session', async () => {

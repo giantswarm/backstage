@@ -496,6 +496,40 @@ export function missingGitHubAuthorization(
 }
 
 /**
+ * agent-manager's refusal of an extra egress origin on a coding Harness: such
+ * an agent reaches its Harness's platform list only (`guardCoding` in
+ * agent-manager's internal/agents/harness_guard.go), and `validate_agent`
+ * names each other origin requested.
+ */
+export type CodingEgressRefusal = {
+  /** The origin refused, as requested. */
+  origin: string;
+  /** The Harness's name. */
+  harness: string;
+};
+
+// `validate_agent` reports violations in prose only (structured codes are
+// giantswarm/agent-manager#144), so the message is parsed; the test pins
+// agent-manager's exact wording. A rewording there turns this back into the
+// generic refusal, nothing worse.
+const CODING_EGRESS_REFUSAL =
+  /egress origin "([^"]+)" is not one of Harness (\S+?)'s origins \(.*\): a coding agent reaches its Harness's origins only/;
+
+/**
+ * Whether a `validate_agent` violation is the refusal of an egress origin on
+ * a coding Harness, and if so which. `undefined` for any other violation.
+ */
+export function codingEgressRefusal(
+  violation: string,
+): CodingEgressRefusal | undefined {
+  const match = violation.match(CODING_EGRESS_REFUSAL);
+  if (!match) {
+    return undefined;
+  }
+  return { origin: match[1], harness: match[2] };
+}
+
+/**
  * The person's muster session holds no connection to agent-manager yet: the
  * tool is not in the session's tool set, or muster refuses to open the
  * connection. A sign-in to the server in muster fixes it; the review page

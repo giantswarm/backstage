@@ -57,9 +57,11 @@ import {
   toolsetSummaryLabel,
   UnderlyingModelItem,
   useReviewStyles,
-  Violations,
   YAML_OPTS,
 } from './reviewParts';
+import { VALIDATION_REFUSAL_COPY } from '../../lib/egressCopy';
+import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
+import { ValidationRefusal } from '../ValidationRefusal';
 
 /**
  * A refused or failed dry run or save, in agent-manager's words. The two
@@ -125,6 +127,8 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const { info } = useAgentManagerInfo(installation);
   // The platform Harness the runtime field shows, for its summary row.
   const { platformChoice } = useRuntimeChoices();
+  // The Harness a refusal names, by the title the runtime field shows.
+  const formRuntime = useFormHarnessRuntime();
   const viaPullRequest = writeMode === 'commit';
 
   // The selection with the sign-in tool the Tools step adds: an agent whose
@@ -381,7 +385,13 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             title="Could not check the change"
           />
         )}
-        {violations.length > 0 && <Violations errors={violations} />}
+        {violations.length > 0 && (
+          <ValidationRefusal
+            errors={violations}
+            title={VALIDATION_REFUSAL_COPY.editTitle}
+            harness={formRuntime.harness}
+          />
+        )}
         {notes.length > 0 && <Notes notes={notes} />}
         {updating.failure && (
           <WriteFailure

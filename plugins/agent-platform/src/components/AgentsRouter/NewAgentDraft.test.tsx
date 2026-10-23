@@ -71,7 +71,11 @@ jest.mock('../TenantPicker', () => ({ TenantPicker: () => null }));
 jest.mock('../HarnessPicker', () => ({
   HarnessPicker: () => null,
   // The platform Harness not read: the summaries name it by its mark.
-  useRuntimeChoices: () => ({ platformChoice: undefined }),
+  useRuntimeChoices: () => ({
+    choices: [],
+    platformHarness: 'kagent',
+    platformChoice: undefined,
+  }),
 }));
 jest.mock('../EgressPolicyPicker', () => ({ EgressPolicyPicker: () => null }));
 jest.mock('../DefaultWorkspacePicker', () => ({

@@ -338,6 +338,12 @@ const draftCount = () =>
   Object.keys(window.sessionStorage).filter(key => key.startsWith('gs-draft:'))
     .length;
 
+/** The review step's refusal, by its title. */
+async function refusalAlert(title: string): Promise<HTMLElement> {
+  const heading = await screen.findByText(title);
+  return heading.closest('.bui-Alert') as HTMLElement;
+}
+
 const deployButton = () =>
   screen.getByRole('button', { name: /^(Create agent|Creating…)$/ });
 
@@ -633,7 +639,7 @@ describe('NewAgentReviewPage', () => {
     );
   });
 
-  it("shows the dry run's violations inline and withholds Deploy", async () => {
+  it("leads a refusal it does not recognise plainly, with the dry run's violations folded, and withholds Deploy", async () => {
     await renderReview({
       violations: [
         'modelConfig "opus-4-7" not found in namespace kagent; valid: default-model-config',
@@ -641,13 +647,67 @@ describe('NewAgentReviewPage', () => {
       ],
     });
 
-    const list = await screen.findByRole('list', { name: 'Violations' });
+    const alert = await refusalAlert('This agent cannot be created');
+    expect(
+      within(alert).getByText(
+        'The platform’s checks refused this configuration. Change what the technical details name, or ask your platform team for help.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      within(alert).getByRole('button', { name: 'Technical details' }),
+    );
+    const list = within(alert).getByRole('list', { name: 'Violations' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
     expect(list).toHaveTextContent('valid: default-model-config');
-    expect(
-      screen.getByText('agent-manager refuses this configuration'),
-    ).toBeInTheDocument();
     expect(deployButton()).toBeDisabled();
+  });
+
+  it('words an egress origin refused on a coding Harness, agent-manager’s text folded', async () => {
+    const refusal =
+      'invalid request: egress origin "https://registry.npmjs.org" is not one of Harness claude\'s origins (https://github.com, https://api.github.com): a coding agent reaches its Harness\'s origins only, which the platform sets';
+    await renderReview({
+      harness: { name: 'claude', runtime: 'claude' },
+      violations: [refusal],
+    });
+
+    const alert = await refusalAlert('This agent cannot be created');
+    expect(
+      within(alert).getByText(
+        'Claude Code agents can only reach addresses the platform allows. Remove https://registry.npmjs.org, or ask your platform team to allow it.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(alert).queryByText(/checks refused/)).toBeNull();
+    await userEvent.click(
+      within(alert).getByRole('button', { name: 'Technical details' }),
+    );
+    expect(
+      within(within(alert).getByRole('list', { name: 'Violations' })).getByText(
+        refusal,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('words a recognised refusal beside one it does not recognise', async () => {
+    await renderReview({
+      harness: { name: 'claude', runtime: 'claude' },
+      violations: [
+        'egress origin "https://registry.npmjs.org" is not one of Harness claude\'s origins (none): a coding agent reaches its Harness\'s origins only, which the platform sets',
+        'egress origin "https://proxy.golang.org" is not one of Harness claude\'s origins (none): a coding agent reaches its Harness\'s origins only, which the platform sets',
+        'skills[0].git.commit: must be a full commit id',
+      ],
+    });
+
+    const alert = await refusalAlert('This agent cannot be created');
+    expect(
+      within(alert).getByText(
+        'Claude Code agents can only reach addresses the platform allows. Remove https://registry.npmjs.org and https://proxy.golang.org, or ask your platform team to allow them.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(alert).getByText(
+        'The platform’s checks refused more of it. Change what the technical details name, or ask your platform team for help.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows the dry run's notes beside a valid result and keeps Deploy", async () => {

@@ -938,6 +938,20 @@ two labels under it; nothing opens every host. `lib/egress.ts` applies the
 CRD's rules client-side: an http(s) origin with a lowercase host and optional
 port, no path, at most 270 characters each, at most 64 entries, no duplicates.
 
+**Not on a coding Harness.** An agent on one (every runtime but `kagent`)
+reaches the platform's list for its Harness only, and agent-manager refuses any
+other origin (`guardCoding`), so the form shows a read-only Network access line
+in place of the field, as the EgressPolicy picker is hidden there.
+`useFormHarnessRuntime` decides both, reading the runtime where the runtime
+field does (`useRuntimeChoices`), the platform Harness included. While the
+runtime is unknown the field stays, and is checked and sent; once it is known
+to be a coding one the form stops checking it (`egressSetByPlatform`) and, on
+create, drops typed origins and picked EgressPolicies and says once what it
+removed (never kept in the draft). The platform's list itself is not shown
+yet: agent-manager does not report it (proposed as `get_info.harnessEgress`);
+`platformEgressOf` in `lib/harnesses.ts` is where it goes, and the line lists
+what it returns.
+
 ### The review page is agent-manager's dry run
 
 The review page turns the form into agent-manager's create contract
@@ -953,7 +967,15 @@ answer is rendered verbatim:
   range (`DefaultChartSemver`), so an agent never moves to 2.0.
 - **`errors[]`** — schema violations and failed preconditions (an unknown
   ModelConfig, an unpinnable skill, a malformed selector). **Create agent** is
-  withheld while any is present; `notes` are shown as information.
+  withheld while any is present; `notes` are shown as information. The
+  refusal (`ValidationRefusal`: "This agent cannot be created", "This change
+  cannot be saved" on edit, "This agent cannot be moved to {runtime}" in
+  Change Harness) leads with what to do and folds agent-manager's words under
+  Technical details. An egress origin refused on a coding Harness is
+  recognised by its wording (`codingEgressRefusal`) and named ("Claude Code
+  agents can only reach addresses the platform allows. Remove …"); any other
+  refusal gets a generic lead, until violations carry codes
+  (giantswarm/agent-manager#144).
 - **`manifests.values`** — the composed values, offered as the manual
   fallback's `values.yaml` with a `helm install` command from `get_info`'s chart
   (`ociUrl`, `latestVersion`).
@@ -1579,6 +1601,41 @@ to 480 px high.
 **Unreadable messages are counted.** `skippedMessages` counts history entries
 that failed the schema (artifact and status updates excluded), and the warning
 renders even when every entry failed.
+
+#### Egress refusals
+
+A connection the egress gateway refused shows on the turn that met it, one
+warning per destination ("Outgoing connection to {host} blocked", then "{agent}
+is not allowed to reach this address · {time} · {n} attempts"), read from
+`agentgateway_atenet_egress_refusals_total` for the Session's actor
+(`useSessionEgressRefusals`). The port, scheme and origin are folded under
+Technical details.
+
+Once a refusal shows, `useEgressRemedy` reads the agent and picks the remedy
+(`egressRemedyKind`, giantswarm/giantswarm#38814), in this order:
+
+| Case                                                        | Remedy                                                     |
+| ----------------------------------------------------------- | ---------------------------------------------------------- |
+| Coding Harness, `get_info` reports `toolchains`             | Start a session with a toolchain, or ask the platform team |
+| Coding Harness, no toolchains                               | Ask the platform team                                      |
+| From Git, HelmRelease outside the agent's namespace         | Changed in Git                                             |
+| From Git, agent-manager cannot commit                       | Changed in Git                                             |
+| Written live, the person may not update the HelmRelease     | An editor can allow it; links the agent's page             |
+| Written live (or by pull request), the person may update it | Add the origin; links the edit page                        |
+| The agent or its runtime cannot be read                     | Neutral: ask the platform team; nothing is promised        |
+
+A coding Harness (every runtime but `kagent`) reaches the platform's list for
+it only (agent-manager's `guardCoding`), so it is decided first, from the
+fleet's Agent row or the namespace's Harnesses, without `get_agent`. "Outside
+agent-manager's directory" is the cheap signal from `get_agent` (`managed:
+gitops` and a HelmRelease namespace other than the agent's). While anything
+is read (muster's server list included), the warning shows without a remedy;
+where agent-manager is not on the installation or `get_info` fails, it gives
+the neutral one, and an inline Harness whose runtime the fleet's row did not
+read is unknown, never the platform's. Every word of the warning, of a dry
+run's refusal and of the form's coding-Harness line lives in
+`lib/egressCopy.ts`, for other surfaces that report the same refusal
+(klaus-gateway's Slack notice).
 
 ### What it cannot show
 
