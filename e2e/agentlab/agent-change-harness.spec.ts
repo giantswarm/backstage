@@ -77,6 +77,13 @@ test('change Harness: refused towards codex, moved to Claude Code, the earlier s
     // --- Change Harness: codex refused -------------------------------------
     await dismissInboxToasts(admin);
     await open(admin, detailPath);
+    const facts = admin.getByRole('complementary', {
+      name: 'About this agent',
+    });
+    await expect(
+      facts,
+      "the facts name the runtime in the create form's words",
+    ).toContainText('Platform default');
     await admin.getByRole('button', { name: 'Agent actions' }).click();
     await admin.getByRole('menuitem', { name: 'Change Harness…' }).click();
     const dialog = admin.getByRole('dialog', { name: /Change the Harness/ });
@@ -115,6 +122,10 @@ test('change Harness: refused towards codex, moved to Claude Code, the earlier s
       admin.getByText(/The agent is ready on Harness claude \(runtime changed/),
       'the page follows the new revision until it is Ready on Claude Code',
     ).toBeVisible({ timeout: 6 * 60_000 });
+    await expect(facts, 'the facts follow the new runtime').toContainText(
+      'Harness claude',
+    );
+    await expect(facts).not.toContainText('Platform default');
 
     // --- The earlier session: marked, and still answering --------------------
     await open(admin, `${detailPath}/sessions`);

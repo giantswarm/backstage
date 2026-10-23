@@ -31,13 +31,19 @@ import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
 import { PickedEgressPolicies } from '../PickedEgressPolicies';
 import { pluginEntryName, pluginSummary } from '../../lib/plugins';
-import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
+import {
+  harnessTitle,
+  platformHarnessOf,
+  platformRuntimeLine,
+  RUNTIME_LABEL,
+} from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { shortPin } from '../AgentDetailPage/helpers';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { useRuntimeChoices } from '../HarnessPicker';
 import { type AgentWizardEdit, useNewAgentForm } from '../NewAgentFormProvider';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import {
@@ -98,6 +104,8 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const { hasRepositories } = useSkillCatalog();
   const { agent, installation, writeMode, detailHref } = edit;
   const { info } = useAgentManagerInfo(installation);
+  // The platform Harness the runtime field shows, for its summary row.
+  const { platformChoice } = useRuntimeChoices();
   const viaPullRequest = writeMode === 'commit';
 
   // The selection with the sign-in tool the Tools step adds: an agent whose
@@ -253,8 +261,8 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   // In words only (QA R2-2): a Harness known by its name alone (the agent's
   // own, unchanged) has no title to show, so its row is left to Technical
   // details' Harness.
-  const platformHarness = info?.harness?.name || DEFAULT_PLATFORM_HARNESS;
-  let runtime: string | undefined = 'Standard (platform default)';
+  const platformHarness = platformHarnessOf(info);
+  let runtime: string | undefined = platformRuntimeLine(platformChoice);
   if (state.harness && state.harness.name !== platformHarness) {
     runtime =
       state.harness.displayName || state.harness.runtime
@@ -285,7 +293,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>
-          {runtime && <PlainRow label="Runtime">{runtime}</PlainRow>}
+          {runtime && <PlainRow label={RUNTIME_LABEL}>{runtime}</PlainRow>}
           {state.defaultWorkspace && (
             <PlainRow label="Default workspace">
               {state.defaultWorkspace}

@@ -3,8 +3,36 @@ import type {
   HarnessRuntime,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
+import type { AgentManagerInfo } from './agentManager';
+
 /** agent-manager's platform Harness when `get_info` has not answered. */
 export const DEFAULT_PLATFORM_HARNESS = 'kagent';
+
+/**
+ * The words for an agent's Harness wherever a person reads it: the create and
+ * edit form's runtime field, its review and the agent page's facts, so the
+ * two read the same.
+ */
+export const RUNTIME_LABEL = 'Runtime';
+/** The technical term beside {@link RUNTIME_LABEL}. */
+export const RUNTIME_TERM = 'Harness';
+/** What the runtime is, in one sentence. */
+export const RUNTIME_DESCRIPTION = 'What runs the agent.';
+/** The mark on the platform Harness, the one a request naming none gets. */
+export const PLATFORM_DEFAULT_LABEL = 'Platform default';
+
+/**
+ * The platform Harness agent-manager composes when a request names none:
+ * `get_info`'s, else {@link DEFAULT_PLATFORM_HARNESS} while it has not
+ * answered. Right for what a request will get; a page that marks a Harness
+ * as the platform's reads `info?.harness?.name` alone, so it never marks one
+ * on a guess.
+ */
+export function platformHarnessOf(
+  info: Pick<AgentManagerInfo, 'harness'> | undefined,
+): string {
+  return info?.harness?.name || DEFAULT_PLATFORM_HARNESS;
+}
 
 /**
  * A Harness an agent can be created on, as the wizard offers it. The name is
@@ -47,6 +75,16 @@ export function runtimeLabel(runtime: HarnessRuntime | undefined): string {
  */
 export function harnessTitle(choice: HarnessChoice): string {
   return choice.displayName ?? runtimeLabel(choice.runtime);
+}
+
+/**
+ * The platform Harness in one line, as a summary row reads it: its title and
+ * the platform default's mark, or the mark alone until (or unless) it is read.
+ */
+export function platformRuntimeLine(choice: HarnessChoice | undefined): string {
+  return choice
+    ? `${harnessTitle(choice)} · ${PLATFORM_DEFAULT_LABEL}`
+    : PLATFORM_DEFAULT_LABEL;
 }
 
 /** `gsoci.azurecr.io/giantswarm/kagent/claude-harness@sha256:…` → `claude-harness`. */
