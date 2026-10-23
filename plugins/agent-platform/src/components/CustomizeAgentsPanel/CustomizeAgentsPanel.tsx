@@ -28,6 +28,7 @@ import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import {
   ACCESS_GRANT_HINT,
   PLATFORM_TENANT_NAMESPACE,
+  organizationOf,
 } from '../../lib/tenants';
 import type { AvatarSize } from '../../lib/agentAvatar';
 import {
@@ -48,7 +49,6 @@ import {
 import { FirstAgentCard } from '../FirstAgentCard';
 import { KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
-import { OrganizationValue } from '../OrganizationValue';
 import { SessionsDataProvider } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -98,9 +98,8 @@ const useStyles = makeStyles({
     overflow: 'hidden',
   },
   // The row opens the agent: its name is the link, whose hit area stretches
-  // over the whole row (as `StackedRowList`'s does), so the buttons in it --
-  // the star, an Organization fact's info icon -- sit above that area rather
-  // than inside a link. The hover tints the row.
+  // over the whole row (as `StackedRowList`'s does), so the star sits above
+  // that area rather than inside a link. The hover tints the row.
   item: {
     position: 'relative',
     display: 'flex',
@@ -144,11 +143,6 @@ const useStyles = makeStyles({
       outline: '2px solid var(--bui-ring)',
       outlineOffset: -2,
     },
-  },
-  // Above the name link's stretched hit area: a press on it is its own.
-  aboveLink: {
-    position: 'relative',
-    zIndex: 1,
   },
   star: {
     position: 'relative',
@@ -211,6 +205,7 @@ const useStyles = makeStyles({
     flexWrap: 'wrap',
     columnGap: 'var(--bui-space-4)',
     rowGap: 2,
+    alignItems: 'baseline',
     [PHONE_MEDIA]: {
       flexBasis: '100%',
     },
@@ -302,11 +297,47 @@ export function agentFacets(
   ];
 }
 
+/** One of a row's facts, as text with its label in the tooltip. */
+type AgentFact = {
+  key: string;
+  text: string;
+  label: string;
+  /** The tooltip's fuller wording of `text`; `text` itself by default. */
+  detail?: string;
+};
+
+/**
+ * A row's Organization fact, where the list's agents belong to more than one
+ * tenant. A row has no label for it, so an organization reads
+ * "Organization: acme", as the agent's page has it, and is not taken for the
+ * environment beside it. An agent of the platform belongs to no organization
+ * and has no fact at all: a "None" without its label says nothing (its page
+ * says "None", and what that means). Another namespace already says what it
+ * is (`namespace sre-team`).
+ */
+function organizationFact(row: AgentRow): AgentFact[] {
+  if (row.namespace === PLATFORM_TENANT_NAMESPACE || !row.tenant) {
+    return [];
+  }
+  const organization = organizationOf(row.namespace);
+  return [
+    organization === undefined
+      ? { key: 'tenant', text: row.tenant, label: 'Organization' }
+      : {
+          key: 'tenant',
+          text: `Organization: ${organization}`,
+          label: 'Organization',
+          detail: organization,
+        },
+  ];
+}
+
 /**
  * One agent as the prototype's list row: avatar, name — with its state inline
- * only when it is not Ready — and what it is for, then its model, its Harness
- * and the environment when there is more than one of each, and its skills
- * and connectors.
+ * only when it is not Ready — and what it is for, then its organization, its
+ * model, its Harness, its skills and connectors and its environment, the
+ * organization, Harness and environment when the list has more than one of
+ * each.
  */
 function AgentListItem({
   row,
@@ -337,15 +368,10 @@ function AgentListItem({
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
-  const facts: {
-    key: string;
-    text: string;
-    label: string;
-    /** The tooltip's fuller wording of `text`; `text` itself by default. */
-    detail?: string;
-    /** What shows in place of `text`, where it is more than text. */
-    value?: ReactNode;
-  }[] = [
+  const facts: AgentFact[] = [
+    // First, so that the facts after it, right-aligned in their fixed
+    // columns, line up with those of a platform agent's row, which has none.
+    ...(showTenant ? organizationFact(row) : []),
     { key: 'model', text: row.model ?? '', label: 'Model' },
     // The title, as main's Harness column led with; the name joins it in the
     // tooltip.
@@ -360,25 +386,6 @@ function AgentListItem({
         ]
       : []),
     { key: 'parts', text: parts, label: 'Skills and connectors' },
-    ...(showTenant && row.tenant
-      ? [
-          {
-            key: 'tenant',
-            text: row.tenant,
-            label: 'Organization',
-            ...(row.namespace === PLATFORM_TENANT_NAMESPACE
-              ? {
-                  value: (
-                    <OrganizationValue
-                      namespace={row.namespace}
-                      className={classes.aboveLink}
-                    />
-                  ),
-                }
-              : {}),
-          },
-        ]
-      : []),
     ...(showInstallation
       ? [{ key: 'installation', text: row.installation, label: 'Environment' }]
       : []),
@@ -454,18 +461,15 @@ function AgentListItem({
               as="span"
               variant="body-small"
               color="secondary"
-              // A value with a button (the info icon) is short, and is not cut:
-              // the cut would clip the button's hit area.
-              truncate={fact.value ? undefined : truncate}
+              truncate={truncate}
               className={classes.fact}
-              // No native tooltip over the info icon's own.
               title={
-                fact.text && !fact.value
+                fact.text
                   ? `${fact.label}: ${fact.detail ?? fact.text}`
                   : undefined
               }
             >
-              {fact.value ?? fact.text}
+              {fact.text}
             </Text>
           ))}
         </div>
