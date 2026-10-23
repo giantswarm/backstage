@@ -30,7 +30,9 @@ export class DexRefusedLogin extends Error {
     readonly email: string,
     refusal: string,
   ) {
-    super(`the lab Dex refused the login of ${email}: ${refusal}`);
+    super(
+      `the lab Dex refused the login of ${email}: ${refusal.trim().replace(/\.$/, '')}`,
+    );
     this.name = 'DexRefusedLogin';
   }
 }
