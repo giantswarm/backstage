@@ -334,9 +334,10 @@ export function AgentUpdateSkillsDialog({
   );
   // The write itself can still answer it when the dry run did not (it was
   // refused for another reason, or the file went in between).
-  const missing =
-    missingReleaseFile(commitDryRun.failure) ??
-    missingReleaseFile(updating.failure);
+  const missingFailure = [commitDryRun.failure, updating.failure].find(
+    candidate => missingReleaseFile(candidate) !== undefined,
+  );
+  const missing = missingReleaseFile(missingFailure);
 
   const gitSkills = plan.filter(entry => entry.kind === 'git');
   const notConnected =
@@ -519,7 +520,13 @@ export function AgentUpdateSkillsDialog({
             either way. The indicator stays mounted from the first question to
             the last, so it does not restart between them. */}
         <div className={classes.status}>
-          {missing && <MissingReleaseFileAlert missing={missing} />}
+          {missing && (
+            <MissingReleaseFileAlert
+              missing={missing}
+              message={missingFailure?.message}
+              action="skills"
+            />
+          )}
           {isLoading && (
             <LoadingIndicator
               label={
