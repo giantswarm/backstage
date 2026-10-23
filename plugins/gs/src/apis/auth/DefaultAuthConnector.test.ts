@@ -144,6 +144,57 @@ describe('DefaultAuthConnector', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(session).toEqual(legacyRefreshResponse);
     });
+
+    it('sends one cookie refresh per provider at a time: the cookie rotates with each', async () => {
+      let open = 0;
+      let mostOpen = 0;
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(async () => {
+          open += 1;
+          mostOpen = Math.max(mostOpen, open);
+          await new Promise(resolve => setTimeout(resolve, 5));
+          open -= 1;
+          return new Response(JSON.stringify(legacyRefreshResponse), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        });
+      // The session manager's refresh and a lasting-token refresh, through
+      // two connectors of the same provider, plus one for another scope.
+      const sessions = await Promise.all([
+        createConnector().refreshSession({ scopes: new Set(['openid']) }),
+        createConnector().refreshSession({ scopes: new Set(['openid']) }),
+        createConnector().refreshSession({
+          scopes: new Set(['openid', 'groups']),
+        }),
+      ]);
+
+      expect(mostOpen).toBe(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(sessions).toEqual([
+        legacyRefreshResponse,
+        legacyRefreshResponse,
+        legacyRefreshResponse,
+      ]);
+    });
+
+    it('lets a later refresh go out after a failed one', async () => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(new Response('{}', { status: 401 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(legacyRefreshResponse), { status: 200 }),
+        );
+
+      await expect(
+        createConnector().refreshSession({ scopes: new Set(['openid']) }),
+      ).rejects.toMatchObject({ status: 401 });
+      await expect(
+        createConnector().refreshSession({ scopes: new Set(['openid']) }),
+      ).resolves.toEqual(legacyRefreshResponse);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('installation scoping (buildUrl)', () => {

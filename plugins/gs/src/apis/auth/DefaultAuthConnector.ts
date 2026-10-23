@@ -47,6 +47,20 @@ import {
 let warned = false;
 
 /**
+ * The cookie refresh in flight per provider, and the scope it asked for.
+ * Every refresh rotates the provider's refresh cookie, so two sent at once
+ * carry the same cookie and the backend refuses one of them ("Missing session
+ * cookie"), which ends the session. The session manager's own refresh and a
+ * lasting-token refresh (`LastingIdTokens`) reach the same provider through
+ * different connectors' calls; they share one request here, and a refresh for
+ * another scope waits for the one in flight.
+ */
+const cookieRefreshes = new Map<
+  string,
+  { scope: string | undefined; answer: Promise<unknown> }
+>();
+
+/**
  * Short-lived cluster token minted by the cluster token broker.
  */
 export type ClusterToken = {
@@ -255,10 +269,39 @@ export class DefaultAuthConnector<
       });
     }
 
+    const scope = options && this.joinScopesFunc(options.scopes);
+    return await this.sessionTransform(await this.cookieRefresh(scope));
+  }
+
+  /**
+   * The backend's `/refresh` answer for `scope`, one request at a time per
+   * provider (see {@link cookieRefreshes}).
+   */
+  private cookieRefresh(scope: string | undefined): Promise<unknown> {
+    const key = this.provider.id;
+    const inFlight = cookieRefreshes.get(key);
+    if (inFlight && inFlight.scope === scope) {
+      return inFlight.answer;
+    }
+    const answer = (
+      inFlight?.answer.catch(() => undefined) ?? Promise.resolve()
+    ).then(() => this.fetchRefresh(scope));
+    const entry = { scope, answer };
+    cookieRefreshes.set(key, entry);
+    const settled = () => {
+      if (cookieRefreshes.get(key) === entry) {
+        cookieRefreshes.delete(key);
+      }
+    };
+    answer.then(settled, settled);
+    return answer;
+  }
+
+  private async fetchRefresh(scope: string | undefined): Promise<unknown> {
     const res = await fetch(
       await this.buildUrl('/refresh', {
         optional: true,
-        ...(options && { scope: this.joinScopesFunc(options.scopes) }),
+        ...(scope !== undefined && { scope }),
       }),
       {
         headers: {
@@ -287,7 +330,7 @@ export class DefaultAuthConnector<
       }
       throw error;
     }
-    return await this.sessionTransform(authInfo);
+    return authInfo;
   }
 
   /**

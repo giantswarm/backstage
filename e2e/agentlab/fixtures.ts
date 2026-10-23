@@ -974,7 +974,12 @@ export function rosterRowOf(page: Page, name: string): Locator {
     .getByRole('main')
     .getByRole('list', { name: /^(Favorite agents|Agents)$/ })
     .getByRole('listitem')
-    .filter({ has: rosterLinkOf(page, name) });
+    .filter({
+      // Relative to the row: rosterLinkOf starts at `main`, which no row holds.
+      has: page
+        .getByRole('link')
+        .filter({ has: page.getByText(name, { exact: true }) }),
+    });
 }
 
 /**
