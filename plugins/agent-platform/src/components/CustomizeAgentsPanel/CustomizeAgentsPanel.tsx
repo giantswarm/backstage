@@ -154,7 +154,10 @@ const useStyles = makeStyles({
     marginBottom: 'var(--bui-space-3)',
   },
   // Name and description, then the facts: side by side where there is room,
-  // the facts wrapping under the name at phone width.
+  // the facts on a line of their own under the name where there is not. Every
+  // row of a list has the same facts in the same fixed columns, and the name
+  // the same least width, so all rows of a list wrap at the same width and
+  // their columns line up either way.
   body: {
     flex: '1 1 auto',
     minWidth: 0,
@@ -171,17 +174,47 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
   },
+  // Where the rows name organizations: room for one beside the name, or the
+  // facts move under the name rather than squeeze them. A list without them
+  // keeps its rows on one line down to the narrower 220px.
+  mainWithOrganization: {
+    flexBasis: 320,
+  },
+  // The name, its organization and its state on one baseline, as the facts.
   nameLine: {
     display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--bui-space-2)',
+    alignItems: 'baseline',
+    columnGap: 'var(--bui-space-2)',
+    rowGap: 2,
     minWidth: 0,
+    // A phone's name takes two lines: its organization goes under it.
+    [PHONE_MEDIA]: {
+      flexWrap: 'wrap',
+    },
   },
+  // Whose agent it is, beside its name: never more than half the line, so a
+  // long name and a long organization each keep some of it, and never
+  // squeezed out by the name.
+  // On a phone it shrinks to its line and wraps there instead.
+  organization: {
+    flex: 'none',
+    maxWidth: '50%',
+    [PHONE_MEDIA]: {
+      flex: '0 1 auto',
+      minWidth: 0,
+      maxWidth: 'none',
+      overflowWrap: 'anywhere',
+    },
+  },
+  // On the name's baseline by its label; the dot stays centred on the label.
   status: {
     flex: 'none',
     display: 'inline-flex',
-    alignItems: 'center',
+    alignItems: 'baseline',
     gap: 'var(--bui-space-1)',
+    '& > [data-tone]': {
+      alignSelf: 'center',
+    },
   },
   facts: {
     flex: '0 1 auto',
@@ -202,22 +235,6 @@ const useStyles = makeStyles({
     [PHONE_MEDIA]: {
       flex: '0 1 auto',
       overflowWrap: 'anywhere',
-    },
-  },
-  // Wider than the other facts: its text carries its label, and the
-  // organization's name still needs room after "Organization: ".
-  organizationFact: {
-    flex: '0 0 220px',
-    [PHONE_MEDIA]: {
-      flex: '0 1 auto',
-    },
-  },
-  // A platform agent's empty Organization column, so its other columns line
-  // up with an organization's row however the facts wrap. A phone's facts
-  // have no columns to line up: there it is gone.
-  noFact: {
-    [PHONE_MEDIA]: {
-      display: 'none',
     },
   },
   // At phone width a name and a description wrap to two lines instead of
@@ -305,14 +322,14 @@ type AgentFact = {
   label: string;
   /** The tooltip's fuller wording of `text`; `text` itself by default. */
   detail?: string;
-  className?: string;
 };
 
 /**
- * A row's Organization fact, where the list's agents belong to more than one
- * tenant, in the words of the Organization filter's options (`tenantOf`).
- * A row has no label for it, so an organization reads "Organization: acme",
- * as the agent's page has it, and is not taken for the environment beside it.
+ * A row's organization, beside its name, where the list's agents belong to
+ * more than one tenant, in the words of the Organization filter's options
+ * (`tenantOf`). A row has no labels, so an organization reads
+ * "Organization: acme", as the agent's page has it, and is not taken for the
+ * environment among the facts.
  * An agent of the platform belongs to no organization and has no text there:
  * a "None" without its label says nothing (its page says "None", and what
  * that means). Another namespace already says what it is
@@ -329,8 +346,8 @@ function organizationText(namespace: string): string {
 }
 
 /**
- * One agent as the prototype's list row: avatar, name — with its state inline
- * only when it is not Ready — and what it is for, then its organization, its
+ * One agent as the prototype's list row: avatar, name — with its organization
+ * and, only when it is not Ready, its state — and what it is for, then its
  * model, its Harness, its skills and connectors and its environment, the
  * organization, Harness and environment when the list has more than one of
  * each.
@@ -366,22 +383,15 @@ function AgentListItem({
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
   const organization = showTenant ? organizationText(row.namespace) : '';
+  const organizationId = useId();
+  // The name's tooltip, with the organization beside it on a line of its own:
+  // the name link's hit area covers the row, so the row shows this tooltip
+  // wherever it is pointed at, the organization's text included, and either
+  // can be read in full however it is cut. A phone has no hover.
+  const nameTitle = isPhone
+    ? undefined
+    : [row.name, organization].filter(Boolean).join('\n');
   const facts: AgentFact[] = [
-    // First, and on every row of a list that names organizations, empty on a
-    // platform agent's: the columns after it line up from row to row.
-    ...(showTenant
-      ? [
-          {
-            key: 'tenant',
-            text: organization,
-            label: 'Organization',
-            detail: tenantOf(row.namespace),
-            className: organization
-              ? classes.organizationFact
-              : `${classes.organizationFact} ${classes.noFact}`,
-          },
-        ]
-      : []),
     { key: 'model', text: row.model ?? '', label: 'Model' },
     // The title, as main's Harness column led with; the name joins it in the
     // tooltip.
@@ -410,7 +420,13 @@ function AgentListItem({
         src={avatarUrl ?? ''}
       />
       <div className={classes.body}>
-        <div className={classes.main}>
+        <div
+          className={
+            showTenant
+              ? `${classes.main} ${classes.mainWithOrganization}`
+              : classes.main
+          }
+        >
           <div className={classes.nameLine}>
             {/* The link is the name itself, so a long name truncates with
                 its ellipsis, as the text does without one. */}
@@ -420,6 +436,8 @@ function AgentListItem({
                 variant="body-medium"
                 weight="bold"
                 truncate={truncate}
+                title={nameTitle}
+                aria-describedby={organization ? organizationId : undefined}
                 className={[
                   classes.nameLink,
                   stretched.link,
@@ -436,9 +454,26 @@ function AgentListItem({
                 variant="body-medium"
                 weight="bold"
                 truncate={truncate}
+                title={nameTitle}
                 className={isPhone ? classes.twoLines : undefined}
               >
                 {row.name}
+              </Text>
+            )}
+            {/* Whose agent it is, with the name rather than among the facts:
+                every row keeps the same fact columns, and a platform agent's
+                row has nothing here. Its tooltip is the name's (above): a
+                title of its own would sit under the link's hit area. */}
+            {organization && (
+              <Text
+                as="span"
+                id={organizationId}
+                variant="body-small"
+                color="secondary"
+                truncate={truncate}
+                className={classes.organization}
+              >
+                {organization}
               </Text>
             )}
             {/* The state shows only when it needs a look, as in the
@@ -468,7 +503,8 @@ function AgentListItem({
             </Text>
           )}
         </div>
-        <div className={classes.facts}>
+        {/* The test id: agentlab's tenants spec lines the rows' facts up. */}
+        <div className={classes.facts} data-testid="agent-facts">
           {facts.map(fact => (
             <Text
               key={fact.key}
@@ -476,9 +512,7 @@ function AgentListItem({
               variant="body-small"
               color="secondary"
               truncate={truncate}
-              className={[classes.fact, fact.className]
-                .filter(Boolean)
-                .join(' ')}
+              className={classes.fact}
               title={
                 fact.text
                   ? `${fact.label}: ${fact.detail ?? fact.text}`
