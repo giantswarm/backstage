@@ -330,6 +330,34 @@ in the page) and, through the browser's own prompt, a reload or a closed tab.
 The browser's Back, the command palette and navigation that code starts are
 not held: the app's router has no navigation blocker.
 
+### Workspaces
+
+A workspace is the repositories agent sessions work on, kept by
+workspace-manager. Each source is one owner on one provider instance and
+selects repositories by name, by language and topic filters, or both. Its
+exclusions are repository names, exact and compared without case, never
+patterns. They follow workspace-manager's `provider.Select`: an exclusion
+drops a repository whatever selects it, a pick by name included, and the
+manager keeps an exclusion that names no selected repository (it leaves
+nothing out until a filter selects that name).
+
+The editor (`/customize/workspaces/new`, `…/<installation>/<organization>/<name>/edit`)
+shows a source's exclusions under **Exclusions**: each a tag to remove, what
+they leave out now, and a field that offers the repositories the source
+selects now (`preview_workspace` with that source alone) and takes a typed
+name too. Unticking a filter match in the repository table excludes it as
+well. The source's count is the draft's own where it can be: without filters,
+the picks by name less the excluded ones. With filters only the manager knows
+which matches an exclusion drops, so the count waits for its answer
+("counting…", or "total not known" when it fails) rather than subtracting
+exclusions that may match nothing. The preview's "n excluded" is the
+manager's count of repositories the exclusions left out.
+
+The Workspaces tab sums each source up in its Sources column: the owner and
+the number of repositories it selects (`example-org · 7 repositories`), or,
+for a source with filters, the filters and the picks by name. The lists in
+full are on the workspace's page.
+
 ## Usage
 
 `/usage` reports over 7, 30 (the default) or 90 days:

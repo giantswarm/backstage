@@ -1,6 +1,8 @@
 import {
   searchWorkspaces,
   sourceLabel,
+  sourceSummary,
+  sourcesSummary,
   storedLabel,
   SYNC_FOLLOW_MS,
   SYNC_REFETCH_MS,
@@ -42,6 +44,56 @@ describe('sourceLabel', () => {
     ],
   ])('%j reads %s', (source, label) => {
     expect(sourceLabel(source)).toBe(label);
+  });
+});
+
+describe('sourceSummary', () => {
+  const apps = Array.from({ length: 7 }, (_, i) => `app-${i + 1}`);
+  const old = Array.from({ length: 8 }, (_, i) => `old-${i + 1}`);
+
+  it.each([
+    [
+      { provider: 'github', owner: 'o', repositories: apps, exclude: old },
+      'o · 7 repositories',
+    ],
+    [
+      {
+        provider: 'github',
+        owner: 'o',
+        repositories: apps,
+        exclude: ['app-1', 'old-1'],
+      },
+      'o · 6 repositories',
+    ],
+    [
+      { provider: 'github', owner: 'o', repositories: ['a'] },
+      'o · 1 repository',
+    ],
+    [{ provider: 'github', owner: 'o' }, 'o · all repositories'],
+    [
+      {
+        provider: 'github',
+        owner: 'o',
+        repositories: ['a', 'b'],
+        filters: {
+          languages: ['Go'],
+          topics: { match: 'all' as const, names: ['mcp', 'auth'] },
+        },
+        exclude: ['b', 'sandbox'],
+      },
+      'o · lang Go · topic mcp + auth · 1 by name',
+    ],
+  ])('%j reads %s', (source, label) => {
+    expect(sourceSummary(source)).toBe(label);
+  });
+
+  it('joins the sources', () => {
+    expect(
+      sourcesSummary([
+        { provider: 'github', owner: 'o', repositories: ['a'] },
+        { provider: 'gitlab', owner: 'g', filters: { languages: ['Go'] } },
+      ]),
+    ).toBe('o · 1 repository; g · lang Go');
   });
 });
 

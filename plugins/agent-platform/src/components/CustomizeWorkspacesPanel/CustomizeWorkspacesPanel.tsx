@@ -45,8 +45,8 @@ import {
 import {
   searchWorkspaces,
   sizeLabel,
-  sourceLabel,
-  sourcesLabel,
+  sourceSummary,
+  sourcesSummary,
   storedLabel,
   syncState,
   WORKSPACES_BLOCKED,
@@ -330,7 +330,7 @@ export function CustomizeWorkspacesPanel({
             ...(showInstallation ? [row.installation] : []),
             // At phone width the Sources column is hidden: they join the
             // name's line.
-            ...(isPhone ? [sourcesLabel(row.sources)] : []),
+            ...(isPhone ? [sourcesSummary(row.sources)] : []),
           ].join(' · ')}
         />
       ),
@@ -339,13 +339,14 @@ export function CustomizeWorkspacesPanel({
       id: 'sources',
       label: 'Sources',
       defaultWidth: '2fr',
-      // One line per source.
+      // One line per source, in short: the lists in full are on the
+      // workspace's page.
       cell: row => (
         <Cell>
           <Flex direction="column" gap="0">
             {row.sources.map((source, index) => (
               <Text key={index} variant="body-medium">
-                {sourceLabel(source)}
+                {sourceSummary(source)}
               </Text>
             ))}
           </Flex>

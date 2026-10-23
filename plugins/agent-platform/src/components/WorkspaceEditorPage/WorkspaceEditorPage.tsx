@@ -385,7 +385,6 @@ function WorkspaceEditor({
           new Set(draft?.sources.map(source => source.provider)).size
         }
         disk={disk}
-        excluded={draft?.sources.flatMap(source => source.exclude) ?? []}
       />
     </Flex>
   );

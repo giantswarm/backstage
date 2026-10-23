@@ -56,15 +56,14 @@ export type WorkspacePreviewPanelProps = {
   providerCount: number;
   /** The disk: "about 8 GiB, automatic", "7 GiB, at least 20 GiB". */
   disk: string | undefined;
-  /** The repositories the sources exclude, by name. */
-  excluded: string[];
 };
 
 /**
  * What the draft selects now, as `preview_workspace` resolves it: the count
- * and size, the disk, what is excluded, and each repository with its
- * language, last push, size and why it is in. Nothing here says whether the
- * person can read a repository: that is checked when a session starts.
+ * and size, the disk, how many the exclusions left out, and each repository
+ * with its language, last push, size and why it is in. Nothing here says
+ * whether the person can read a repository: that is checked when a session
+ * starts.
  */
 export function WorkspacePreviewPanel({
   preview,
@@ -76,7 +75,6 @@ export function WorkspacePreviewPanel({
   onPage,
   providerCount,
   disk,
-  excluded,
 }: WorkspacePreviewPanelProps) {
   const note = (
     <Text variant="body-small" color="secondary">
@@ -100,9 +98,11 @@ export function WorkspacePreviewPanel({
         Math.ceil(preview.matching / (preview.pageSize || EDITOR_PAGE_SIZE)),
       )
     : 1;
+  // What the exclusions left out, as the manager counts it: an exclusion
+  // that matches nothing selected leaves nothing out.
   const left = [
-    excluded.length > 0
-      ? `${excluded.length} excluded: ${excluded.join(', ')}`
+    preview && preview.excluded > 0
+      ? `${preview.excluded} excluded`
       : undefined,
     preview && preview.skippedArchived > 0
       ? `${preview.skippedArchived} archived left out`

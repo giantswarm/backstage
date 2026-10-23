@@ -10,6 +10,7 @@ import type { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
 import { awaitSync } from '../lib/awaitedSyncs';
 import {
   previewableSources,
+  type SourceDraft,
   toCreateInput,
   toSizing,
   toUpdateInput,
@@ -232,6 +233,32 @@ export function useWorkspacePreview(
       request !== JSON.stringify({ sources, sizing, page, search }) ||
       query.isPlaceholderData,
   };
+}
+
+/**
+ * What one source selects, as the manager resolves it: `preview_workspace`
+ * with the source alone, debounced like the draft's preview. Only the
+ * manager knows which of a filter's matches an exclusion drops, so the form
+ * counts a source with filters this way; the exclusion field lists what a
+ * source selects with it too. Nothing is read while `enabled` is false.
+ */
+export function useSourcePreview(
+  client: WorkspaceManagerClient | undefined,
+  organization: string | undefined,
+  source: SourceDraft,
+  { enabled, search = '' }: { enabled: boolean; search?: string },
+) {
+  return useWorkspacePreview(
+    client,
+    organization,
+    {
+      name: '',
+      sources: enabled ? [source] : [],
+      minimumGiB: '',
+      headroom: '',
+    },
+    { page: 1, search },
+  );
 }
 
 export type SaveWorkspace = {

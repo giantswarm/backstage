@@ -46,43 +46,57 @@ function pageOf<T>(items: T[], page = 1, pageSize = 50) {
   return items.slice((page - 1) * pageSize, page * pageSize);
 }
 
+/** Whether a source names a repository among `names`, without case. */
+function names(list: string[] | undefined, repository: FakeRepository) {
+  return (list ?? []).some(
+    name => name.toLowerCase() === repository.name.toLowerCase(),
+  );
+}
+
+/**
+ * Why a source takes a repository, as the manager's `provider.Select`: by
+ * name, or by every filter set (archived and forks only when included).
+ * `loose` ignores the exclusions and the archived and fork rules, which is
+ * what the manager counts what they left out against.
+ */
 function selects(
   source: WorkspaceSource,
   repository: FakeRepository,
+  { loose = false }: { loose?: boolean } = {},
 ): string[] {
   if (
     repository.provider !== source.provider ||
     repository.owner !== source.owner ||
-    source.exclude?.includes(repository.name)
+    (!loose && names(source.exclude, repository))
   ) {
     return [];
   }
   const why: string[] = [];
-  if (source.repositories?.includes(repository.name)) {
+  if (names(source.repositories, repository)) {
     why.push('name');
   }
   const filters = source.filters;
   if (filters && (filters.languages?.length || filters.topics?.names.length)) {
-    if (repository.archived && !source.includeArchived) {
+    if (repository.archived && !source.includeArchived && !loose) {
       return why;
     }
-    if (repository.fork && !source.includeForks) {
+    if (repository.fork && !source.includeForks && !loose) {
       return why;
     }
     const language =
       !filters.languages?.length ||
       filters.languages.includes(repository.language ?? '');
-    const names = filters.topics?.names ?? [];
+    const topics = filters.topics?.names ?? [];
     const topic =
-      names.length === 0 ||
+      topics.length === 0 ||
       (filters.topics?.match === 'all'
-        ? names.every(t => repository.topics.includes(t))
-        : names.some(t => repository.topics.includes(t)));
+        ? topics.every(t => repository.topics.includes(t))
+        : topics.some(t => repository.topics.includes(t)));
     if (language && topic) {
       if (filters.languages?.length) {
         why.push(`language ${repository.language}`);
       }
-      for (const t of names.filter(n => repository.topics.includes(n))) {
+      for (const t of topics.filter(n => repository.topics.includes(n))) {
         why.push(`topic ${t}`);
       }
     }
@@ -168,12 +182,13 @@ export function createWorkspaceManagerFake({
       const selected: PreviewRepository[] = [];
       for (const repository of repositories) {
         const why = sources.flatMap(source => selects(source, repository));
+        // Left out by an exclusion: a selector took it, an exclusion dropped it.
         if (
+          why.length === 0 &&
           sources.some(
             s =>
-              s.provider === repository.provider &&
-              s.owner === repository.owner &&
-              s.exclude?.includes(repository.name),
+              names(s.exclude, repository) &&
+              selects(s, repository, { loose: true }).length > 0,
           )
         ) {
           excluded += 1;

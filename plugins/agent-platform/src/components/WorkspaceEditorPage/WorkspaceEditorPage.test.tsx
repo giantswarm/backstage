@@ -8,13 +8,14 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
-import type { Workspace } from '../../lib/workspaceManager';
+import type { Workspace, WorkspaceSource } from '../../lib/workspaceManager';
 import { workspacesRouteRef } from '../../routes';
 import { WorkspaceEditorPage } from './WorkspaceEditorPage';
 import {
@@ -187,10 +188,22 @@ describe('WorkspaceEditorPage', () => {
     fireEvent.click(
       await source(0).findByRole('checkbox', { name: 'mcp-prometheus' }),
     );
+    // The exclusion shows in the source's exclusions, to remove there too.
+    expect(
+      within(source(0).getByTestId('source-exclusions')).getByRole('row', {
+        name: 'mcp-prometheus',
+      }),
+    ).toBeInTheDocument();
+    // With filters only the manager knows what an exclusion drops.
     expect(source(0).getByTestId('repository-summary')).toHaveTextContent(
-      '2 by filter · 0 by name · 1 excluded = 1 repository',
+      '2 by filter · 0 by name · counting…',
     );
     await settlePreview();
+    await waitFor(() =>
+      expect(source(0).getByTestId('repository-summary')).toHaveTextContent(
+        '2 by filter · 0 by name · 1 excluded = 1 repository',
+      ),
+    );
     await waitFor(() =>
       expect(
         preview.queryByText('acme/mcp-prometheus'),
@@ -659,6 +672,183 @@ describe('WorkspaceEditorPage', () => {
       expect(mockNavigate).toHaveBeenCalledWith(
         '/customize/workspaces/lab/acme/platform-mcp',
       ),
+    );
+  });
+});
+
+/** A stored workspace of one github source on acme. */
+function storedWorkspace(selection: Partial<WorkspaceSource>): Workspace {
+  return {
+    name: 'portal',
+    organization: 'acme',
+    sources: [{ provider: 'github', owner: 'acme', ...selection }],
+    sync: { schedule: 'nightly' },
+    resourceVersion: '7',
+    createdAt: '2026-10-01T00:00:00Z',
+    repositories: 0,
+    sessions: 0,
+  };
+}
+
+const exclusions = () => within(source(0).getByTestId('source-exclusions'));
+
+describe('WorkspaceEditorPage exclusions', () => {
+  const APPS = Array.from({ length: 7 }, (_, i) =>
+    repo('github', 'acme', `app-${i + 1}`, 'Go'),
+  );
+  const OLD = Array.from({ length: 8 }, (_, i) =>
+    repo('github', 'acme', `old-${i + 1}`, 'Go'),
+  );
+
+  it('counts 7 picks by name as 7 when none of the 8 exclusions names one', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: [...APPS, ...OLD],
+      workspaces: [
+        storedWorkspace({
+          repositories: APPS.map(r => r.name),
+          exclude: OLD.map(r => r.name),
+        }),
+      ],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    await settlePreview();
+
+    expect(
+      await source(0).findByTestId('repository-summary'),
+    ).toHaveTextContent(/^7 by name = 7 repositories$/);
+    expect(exclusions().getByTestId('exclusion-effect')).toHaveTextContent(
+      'Nothing is left out: the 8 exclusions match nothing the source selects.',
+    );
+    expect(
+      within(
+        exclusions().getByRole('grid', { name: 'Excluded repositories' }),
+      ).getAllByRole('row'),
+    ).toHaveLength(8);
+    expect(
+      await screen.findByText('1 source on 1 provider · 7 repositories'),
+    ).toBeInTheDocument();
+    const preview = within(screen.getByTestId('workspace-preview'));
+    expect(await preview.findByTestId('preview-total')).toHaveTextContent(
+      '7 repositories',
+    );
+    expect(preview.queryByText(/excluded/)).not.toBeInTheDocument();
+  });
+
+  it('adds an exclusion from the selection and one by name, removes one, previews and saves them', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: [...APPS.slice(0, 3), OLD[0]],
+      workspaces: [
+        storedWorkspace({
+          repositories: ['app-1', 'app-2', 'app-3'],
+          exclude: ['old-1'],
+        }),
+      ],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    await settlePreview();
+    expect(
+      await source(0).findByTestId('repository-summary'),
+    ).toHaveTextContent('3 by name = 3 repositories');
+
+    // Remove: the tag's own button.
+    fireEvent.click(exclusions().getByRole('button', { name: /old-1/ }));
+    expect(exclusions().getByText('Nothing excluded.')).toBeInTheDocument();
+
+    // Add from what the source selects now, as the manager resolves it.
+    const field = exclusions().getByRole('combobox', {
+      name: /^Exclude a repository/,
+    });
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await user.click(field);
+    await user.type(field, 'app');
+    await settlePreview();
+    await user.click(await screen.findByRole('option', { name: /^app-2/ }));
+    await waitFor(() =>
+      expect(source(0).getByTestId('repository-summary')).toHaveTextContent(
+        '3 by name · 1 excluded = 2 repositories',
+      ),
+    );
+    expect(exclusions().getByTestId('exclusion-effect')).toHaveTextContent(
+      '1 repository left out.',
+    );
+    // The picker shows an excluded pick as out.
+    await user.keyboard('{Escape}');
+    expect(
+      source(0).getByRole('checkbox', { name: 'app-2' }),
+    ).not.toBeChecked();
+
+    // Add a name the source does not select: the manager keeps it.
+    await user.click(field);
+    await user.type(field, 'future-repo');
+    await settlePreview();
+    await user.click(
+      await screen.findByRole('option', { name: /^Exclude “future-repo”/ }),
+    );
+    await waitFor(() =>
+      expect(exclusions().getByTestId('exclusion-effect')).toHaveTextContent(
+        '1 repository left out; 1 exclusion matches nothing the source selects: future-repo.',
+      ),
+    );
+
+    // The list opens again for the next one; Escape closes it.
+    await user.keyboard('{Escape}');
+    await settlePreview();
+    const preview = within(screen.getByTestId('workspace-preview'));
+    await waitFor(() =>
+      expect(preview.getByTestId('preview-total')).toHaveTextContent(
+        '2 repositories',
+      ),
+    );
+    expect(preview.getByText(/1 excluded/)).toBeInTheDocument();
+    expect(preview.queryByText('acme/app-2')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(fake.callsOf('update_workspace')).toHaveLength(1),
+    );
+    expect(fake.callsOf('update_workspace')[0].sources).toEqual([
+      {
+        provider: 'github',
+        owner: 'acme',
+        repositories: ['app-1', 'app-2', 'app-3'],
+        exclude: ['app-2', 'future-repo'],
+      },
+    ]);
+  });
+
+  it("counts a filter's matches with the manager: an exclusion drops a pick by name too, and one that names nothing selected drops nothing", async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [
+        storedWorkspace({
+          filters: { languages: ['Go'] },
+          repositories: ['portal'],
+          exclude: ['mcp-prometheus', 'portal', 'gone'],
+        }),
+      ],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    await settlePreview();
+
+    // Go: mcp-kubernetes, mcp-prometheus and operator; by name: portal.
+    // mcp-prometheus and portal are excluded, gone matches nothing.
+    await waitFor(() =>
+      expect(source(0).getByTestId('repository-summary')).toHaveTextContent(
+        '3 by filter · 1 by name · 2 excluded = 2 repositories',
+      ),
+    );
+    expect(exclusions().getByTestId('exclusion-effect')).toHaveTextContent(
+      '2 repositories left out; 1 exclusion matches nothing the source selects.',
+    );
+    const preview = within(screen.getByTestId('workspace-preview'));
+    expect(await preview.findByTestId('preview-total')).toHaveTextContent(
+      '2 repositories',
     );
   });
 });
