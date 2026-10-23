@@ -34326,19 +34326,19 @@ __metadata:
   linkType: hard
 
 "lint-staged@npm:^17.0.0":
-  version: 17.5.1
-  resolution: "lint-staged@npm:17.5.1"
+  version: 17.6.0
+  resolution: "lint-staged@npm:17.6.0"
   dependencies:
     picomatch: "npm:^4.0.7"
     string-argv: "npm:^0.3.2"
     tinyexec: "npm:^1.3.1"
-    yaml: "npm:^2.9.0"
+    yaml: "npm:^2.9.1"
   dependenciesMeta:
     yaml:
       optional: true
   bin:
     lint-staged: bin/lint-staged.js
-  checksum: 10c0/8063dab2c1d44b126432bd08a74ed98fcd90976dc5ed94172c3e70f2466b1268aa98c4b646f810c22e9b56923be7772f549f70e5b985d59b4bd0c68e36fe6524
+  checksum: 10c0/016905cebb46de70ff8de63db8527592d595709b31982f274677f252ac2037f2e446c92e0662ef6ba6a0dbf42e36324ae30df4d8b4cbc5032d219343cc306512
   languageName: node
   linkType: hard
 
@@ -37301,8 +37301,8 @@ __metadata:
   linkType: hard
 
 "node-gyp@npm:^13.0.0, node-gyp@npm:latest":
-  version: 13.0.2
-  resolution: "node-gyp@npm:13.0.2"
+  version: 13.1.0
+  resolution: "node-gyp@npm:13.1.0"
   dependencies:
     env-paths: "npm:^2.2.0"
     exponential-backoff: "npm:^3.1.1"
@@ -37310,13 +37310,13 @@ __metadata:
     nopt: "npm:^10.0.0"
     proc-log: "npm:^7.0.0"
     semver: "npm:^7.3.5"
-    tar: "npm:^7.5.4"
+    tar: "npm:^7.5.7"
     tinyglobby: "npm:^0.2.12"
     undici: "npm:^8.4.1"
     which: "npm:^7.0.0"
   bin:
     node-gyp: bin/node-gyp.js
-  checksum: 10c0/29d33ccf47ffeeb5e7af925550b416f698a26a72eb10975c7eb5775c1d0cecacd76d164a4aa45503d3ddcece209db65c712be00423c69381a4cd14e2e6540559
+  checksum: 10c0/c6693e52e0e111b21f5cd8ff303b41b51f40338adcc79ac5c6a02399eba7039d50dc816dcafcc485870291a641f7cb75db8887a9bdd0de537fe635a3a81cba5b
   languageName: node
   linkType: hard
 
@@ -46596,7 +46596,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"yaml@npm:^2.0.0, yaml@npm:^2.2.1, yaml@npm:^2.2.2, yaml@npm:^2.3.4, yaml@npm:^2.6.1, yaml@npm:^2.8.3, yaml@npm:^2.9.0":
+"yaml@npm:^2.0.0, yaml@npm:^2.2.1, yaml@npm:^2.2.2, yaml@npm:^2.3.4, yaml@npm:^2.6.1, yaml@npm:^2.8.3, yaml@npm:^2.9.0, yaml@npm:^2.9.1":
   version: 2.9.1
   resolution: "yaml@npm:2.9.1"
   bin:
