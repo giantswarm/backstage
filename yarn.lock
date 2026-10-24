@@ -32482,30 +32482,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"isomorphic-git@npm:^1.23.0":
-  version: 1.27.1
-  resolution: "isomorphic-git@npm:1.27.1"
-  dependencies:
-    async-lock: "npm:^1.4.1"
-    clean-git-ref: "npm:^2.0.1"
-    crc-32: "npm:^1.2.0"
-    diff3: "npm:0.0.3"
-    ignore: "npm:^5.1.4"
-    minimisted: "npm:^2.0.0"
-    pako: "npm:^1.0.10"
-    pify: "npm:^4.0.1"
-    readable-stream: "npm:^3.4.0"
-    sha.js: "npm:^2.4.9"
-    simple-get: "npm:^4.0.1"
-  bin:
-    isogit: cli.cjs
-  checksum: 10c0/2816bfda84beac04e91e9e3937bc6443f674af54187a1bd9d4a1f68fe82d048b77ce23dbe727fd3a75459d205187b16d9f5c9f4b1924e0a8b2d941414894f04c
-  languageName: node
-  linkType: hard
-
-"isomorphic-git@npm:^1.27.1":
-  version: 1.43.2
-  resolution: "isomorphic-git@npm:1.43.2"
+"isomorphic-git@npm:^1.23.0, isomorphic-git@npm:^1.27.1":
+  version: 1.44.3
+  resolution: "isomorphic-git@npm:1.44.3"
   dependencies:
     async-lock: "npm:^1.4.1"
     clean-git-ref: "npm:^2.0.1"
@@ -32520,7 +32499,7 @@ __metadata:
     simple-get: "npm:^4.0.1"
   bin:
     isogit: cli.cjs
-  checksum: 10c0/6beed51d4b5eb900b89062693a0bc88fc4a2cf63ca8f66c7741d84035072eae513dd485f2bd095cf0bb5c9684555d3a8ffaa1edc5184803fe5161530e6e10bc1
+  checksum: 10c0/dcb6c4e454bcafd6e2d3a2562d15f1b7cd1646bbc7dbdb8ad533b02dd924f9796e7d0cb57ae6a0b6f9d682854e1dc0f8ac6b3423b3622ac04ff4d655408f3625
   languageName: node
   linkType: hard
 
