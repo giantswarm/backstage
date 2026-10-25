@@ -70,7 +70,7 @@
     "lodash": "^4.17.21",
     "mermaid": "^11.14.0",
     "qs": "^6.14.0",
-    "react-aria-components": "~1.17.0",
+    "react-aria-components": "~1.22.0",
     "react-helmet": "6.1.0",
     "react-markdown": "^8.0.0",
     "react-syntax-highlighter": "^16.0.0",
