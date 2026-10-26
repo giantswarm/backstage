@@ -9,6 +9,10 @@ import {
 } from './kagentStreamTurn';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { buildTimeline, TimelineItem } from './kagentTimeline';
+import {
+  NOTICE_STALE,
+  sessionWithNotices,
+} from './__fixtures__/workspaceNotice';
 
 describe('createSseDataDecoder', () => {
   it('decodes one event per blank-line delimiter', () => {
@@ -1310,3 +1314,105 @@ describe('resuming a cut stream', () => {
     expect(turn.taskId).toBe('task-1');
   });
 });
+
+describe('a workspace setup notice in the stream', () => {
+  const taskId = 'task-1';
+  const noticeUpdate = {
+    statusUpdate: {
+      taskId,
+      contextId: 'ctx-1',
+      status: {
+        state: 'TASK_STATE_WORKING',
+        message: {
+          messageId: 'notice-1',
+          contextId: 'ctx-1',
+          taskId,
+          role: 'ROLE_AGENT',
+          parts: [{ text: NOTICE_STALE }],
+        },
+      },
+    },
+  };
+  const chunk = (text: string, partial: boolean) => ({
+    artifactUpdate: {
+      taskId,
+      contextId: 'ctx-1',
+      artifact: {
+        artifactId: 'reply-1',
+        parts: [{ text }],
+        metadata: { kagent_partial: partial },
+      },
+      ...(partial ? { append: true } : { lastChunk: true }),
+    },
+  });
+  const fold = (events: unknown[]) =>
+    events.reduce<StreamTurn>(
+      (state, event) => applyStreamEvent(state, event),
+      createStreamTurn('sent-1'),
+    );
+
+  it('is a notice item from the moment it arrives, not the start of a reply', () => {
+    const turn = fold([noticeUpdate]);
+    expect(turn.live).toBeUndefined();
+    expect(turn.items).toEqual([
+      expect.objectContaining({
+        kind: 'workspace-notice',
+        messageId: 'notice-1',
+        notice: expect.objectContaining({ severity: 'warning' }),
+      }),
+    ]);
+  });
+
+  it('keeps the reply that follows it apart', () => {
+    const partway = fold([
+      noticeUpdate,
+      chunk('No, ', true),
+      chunk('gh', true),
+    ]);
+    expect(partway.items.map(item => item.kind)).toEqual(['workspace-notice']);
+    expect(partway.live).toEqual(
+      expect.objectContaining({ kind: 'agent-message', text: 'No, gh' }),
+    );
+
+    const done = fold([
+      noticeUpdate,
+      chunk('No, ', true),
+      chunk('gh', true),
+      chunk('No, gh is not installed.', false),
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'ctx-1',
+          status: { state: 'TASK_STATE_COMPLETED' },
+        },
+      },
+    ]);
+    expect(done.items.map(item => item.kind)).toEqual([
+      'workspace-notice',
+      'agent-message',
+    ]);
+    expect(done.items[1]).toEqual(
+      expect.objectContaining({ text: 'No, gh is not installed.' }),
+    );
+  });
+
+  it('shows a repeat of the same notice once', () => {
+    expect(fold([noticeUpdate, noticeUpdate]).items).toHaveLength(1);
+  });
+
+  it('is the item the poll makes of the same message', () => {
+    const streamed = fold([noticeUpdate]).items[0];
+    const polled = timelineFor(sessionWithNotices).items.find(
+      item => item.messageId === 'notice-1',
+    );
+    expect(polled).toEqual({
+      ...streamed,
+      id: polled?.id,
+      at: polled?.at,
+    });
+  });
+});
+
+function timelineFor(fixture: unknown) {
+  return buildTimeline(normalizeTaskList(fixture).tasks);
+}

@@ -31,6 +31,8 @@ import {
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
+import { readWorkspaceNotice, WorkspaceNotice } from './workspaceNotice';
+
 /** Fields every timeline item carries. */
 type TimelineItemBase = {
   /** Stable React key, unique within a session. */
@@ -152,6 +154,16 @@ export type TimelineItem =
        * entry says so without inventing a reason.
        */
       reason?: string;
+    })
+  | (TimelineItemBase & {
+      /**
+       * A workspace setup notice: kagent's harness reporting on the session's
+       * directory before the turn starts (see `workspaceNotice.ts`). It arrives
+       * as an agent message but is not the agent's reply, so it is its own kind
+       * and never counts as one.
+       */
+      kind: 'workspace-notice';
+      notice: WorkspaceNotice;
     })
   | (TimelineItemBase & {
       /**
@@ -427,6 +439,23 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         const report = readUsageReport(message.metadata);
         tokens = addTokenUsage(tokens, report?.usage);
         taskContext = foldContext(taskContext, report?.context);
+      }
+
+      // The harness's report on the session's directory, not the agent's words:
+      // a status of the turn, under the message's id so the streamed copy of it
+      // is recognised.
+      const notice = isUser ? undefined : readWorkspaceNotice(message);
+      if (notice) {
+        items.push({
+          kind: 'workspace-notice',
+          id: `${taskIndex}:${entryIndex}:${items.length}`,
+          at,
+          author,
+          taskIndex,
+          messageId: message.messageId,
+          notice,
+        });
+        return;
       }
 
       const parts = Array.isArray(message.parts) ? message.parts : [];

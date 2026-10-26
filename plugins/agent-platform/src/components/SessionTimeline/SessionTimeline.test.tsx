@@ -10,6 +10,11 @@ import {
 } from '../../lib/kagentTimeline';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { RECENT_TURNS, SessionTimeline } from './SessionTimeline';
+import { applyStreamEvent, createStreamTurn } from '../../lib/kagentStreamTurn';
+import {
+  NOTICE_STALE,
+  sessionWithNotices,
+} from '../../lib/__fixtures__/workspaceNotice';
 import { TimelineEntry } from './TimelineEntry';
 
 import {
@@ -1833,5 +1838,76 @@ describe('egress refusals', () => {
       ),
     ).toBeInTheDocument();
     expect(within(entry).queryByRole('link')).not.toBeInTheDocument();
+  });
+});
+
+describe('workspace setup notices', () => {
+  it('shows a notice as a status of its turn, above the agent’s name and reply', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(sessionWithNotices)}
+        agentName="Claude Code"
+      />,
+    );
+
+    const notices = screen.getAllByTestId('timeline-workspace-notice');
+    expect(notices.map(notice => notice.dataset.severity)).toEqual([
+      'warning',
+      'info',
+    ]);
+    const replies = screen.getAllByTestId('timeline-agent-message');
+    expect(replies.map(reply => reply.textContent)).toEqual([
+      'No, the gh CLI is not installed here.',
+      "I'm Claude.",
+    ]);
+    const [firstName] = screen.getAllByText('Claude Code');
+    // Notice, then the agent's name, then its reply.
+    expect(
+      notices[0].compareDocumentPosition(firstName) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      firstName.compareDocumentPosition(replies[0]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('renders the streamed notice as the polled one', async () => {
+    const streamed = applyStreamEvent(createStreamTurn('user-1'), {
+      statusUpdate: {
+        taskId: 'task-1',
+        contextId: 'ctx-1',
+        status: {
+          state: 'TASK_STATE_WORKING',
+          message: {
+            messageId: 'notice-1',
+            role: 'ROLE_AGENT',
+            parts: [{ text: NOTICE_STALE }],
+          },
+        },
+      },
+    });
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={{
+          ...timelineFor(tasksEmpty),
+          items: [
+            { kind: 'user-message', id: 'u', taskIndex: 0, text: 'hi' },
+            ...streamed.items,
+          ],
+        }}
+        agentName="Claude Code"
+        isAgentWorking
+      />,
+    );
+
+    expect(
+      within(screen.getByTestId('timeline-workspace-notice')).getByText(
+        'Workspace setup: 3 repositories not updated',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-agent-message'),
+    ).not.toBeInTheDocument();
   });
 });

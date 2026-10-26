@@ -18,6 +18,10 @@ import {
   tasksMalformed as malformed,
   tasksV099 as kagentPrefixed,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
+import {
+  NOTICE_STALE,
+  sessionWithNotices,
+} from './__fixtures__/workspaceNotice';
 
 /** Parse a fixture the way the client does, then build its timeline. */
 function timelineFor(fixture: unknown): ReturnType<typeof buildTimeline> {
@@ -1333,5 +1337,66 @@ describe('buildTimeline — attachments', () => {
     expect((second as { preview: object }).preview).toBe(
       (first as { preview: object }).preview,
     );
+  });
+});
+
+describe('buildTimeline — workspace setup notices', () => {
+  it('reads a notice as a status of its turn, never as the agent’s reply', () => {
+    const { items } = timelineFor(sessionWithNotices);
+    expect(items.map(item => `${item.taskIndex}:${item.kind}`)).toEqual([
+      '0:user-message',
+      '0:workspace-notice',
+      '0:agent-message',
+      '1:user-message',
+      '1:workspace-notice',
+      '1:agent-message',
+    ]);
+    const replies = items.filter(item => item.kind === 'agent-message');
+    expect(replies.map(item => 'text' in item && item.text)).toEqual([
+      'No, the `gh` CLI is not installed here.',
+      "I'm Claude.",
+    ]);
+  });
+
+  it('carries the parsed notice and the message’s id', () => {
+    const notices = timelineFor(sessionWithNotices).items.filter(
+      item => item.kind === 'workspace-notice',
+    );
+    expect(notices).toEqual([
+      expect.objectContaining({
+        messageId: 'notice-1',
+        notice: expect.objectContaining({
+          severity: 'warning',
+          entries: [expect.objectContaining({ kind: 'stale' })],
+        }),
+      }),
+      expect.objectContaining({
+        messageId: 'notice-2',
+        notice: expect.objectContaining({
+          severity: 'info',
+          entries: [expect.objectContaining({ kind: 'recovered' })],
+        }),
+      }),
+    ]);
+  });
+
+  it('leaves the person’s message that says the same words a message', () => {
+    const { items } = timelineFor({
+      tasks: [
+        {
+          id: 'task-1',
+          contextId: 'ctx-1',
+          status: { state: 'TASK_STATE_COMPLETED' },
+          history: [
+            {
+              messageId: 'user-1',
+              role: 'ROLE_USER',
+              parts: [{ text: NOTICE_STALE }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(kinds(items)).toEqual(['user-message']);
   });
 });

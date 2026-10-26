@@ -1602,6 +1602,34 @@ to 480 px high.
 that failed the schema (artifact and status updates excluded), and the warning
 renders even when every entry failed.
 
+#### Workspace setup notices
+
+Before a turn starts, kagent's harness can report on the session's directory
+(`Report.TurnNotice()` in kagent's `go/harness/workspace/workspace.go`). The
+report arrives as the turn's first `status-update`, an agent message of one
+text part, and stays in the task's history, but it is not the agent's reply:
+`lib/workspaceNotice.ts` recognises it and the timeline makes it a
+`workspace-notice` item, live and from history alike. It renders as an alert
+above the agent's name, one summary line per variant, with the per-repository
+reasons (git's output) folded under Technical details:
+
+| Notice text starts with                                      | Summary                                            | Severity |
+| ------------------------------------------------------------ | -------------------------------------------------- | -------- |
+| `Workspace setup failed:`                                    | Workspace setup failed                             | warning  |
+| `Workspace setup: this session's directory was set up again` | Workspace setup: directory set up again            | warning  |
+| `Workspace setup: these repositories stay at … last sync`    | Workspace setup: _n_ repositories not updated      | warning  |
+| `Workspace setup: … they are up to date now:`                | Workspace setup: _n_ repositories up to date again | info     |
+
+One notice can hold several variants, one per line; it is titled by its first
+warning, and a line it does not recognise is shown as kagent wrote it. Nothing
+marks a notice on the wire yet, so it is recognised by the `Workspace setup`
+prefix on an agent message of text alone (`isWorkspaceNotice`); a
+`kagent.dev/notice: workspace-setup` metadata key (or `kagent.dev/a2a/notice`)
+is read too, so the switch to a marker needs no change here. Since it is its
+own kind, a notice never counts as a reply: not in a continuation's carried
+conversation, not as the answer that makes a message "answered", and not as
+the Create agent assist's proposal.
+
 #### Egress refusals
 
 A connection the egress gateway refused shows on the turn that met it, one
