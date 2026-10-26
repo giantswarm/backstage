@@ -2486,8 +2486,14 @@ Human-in-the-loop is the negotiated A2A extension
 carries in its `metadata`, under the extension URI (also listed in
 `message.extensions`), either a `tool_approval_request` (`tools[]` with `id`,
 the proposed `call_id`, `name`, `args`) or an `ask_user_request` (`id`,
-`questions[]` with `question`, `choices`, `multiple`). Without the negotiation
-there is nothing to answer.
+`questions[]` with `question`, `choices`, `multiple`). A task waiting at
+`auth-required` carries a `url_elicitation_request` instead (`id`, `server`,
+`message`, `url`): an MCP server's URL elicitation, such as muster's sign-in
+link for a backend the person has not connected, from a runtime that relays MCP
+URL elicitations (the claude and codex Harnesses, the Go ADK). Its reply is a
+`url_elicitation_response` with `action` `accept` (an approval: the person
+signed in) or `decline` (a rejection). Without the negotiation there is nothing
+to answer.
 
 The reply names the task (`taskId`) and carries the typed response in the same
 place. The page sends it over `SendStreamingMessage`
@@ -2559,6 +2565,18 @@ Decline into an approval. In the decline reason box Enter confirms the decline.
 typed words reach the agent inside the `answer` array (only the message's text
 part is discarded). A question can be answered with a choice, text or both,
 sent choices first.
+
+A `url_elicitation_request` is read off the status message's metadata
+(`readUrlElicitationRequest` in `agent-platform-common`) and renders as the
+sign-in card (`SignInRequestPanel`) in place of the question card. `server` is
+the MCP server that asked, muster for every backend behind it, so the card
+attributes the request to it ("muster asks you to sign in so the agent can
+continue") and quotes its message, which names the backend ("Sign in to github
+to continue."). Inside a session the link is one of the session's connector
+sign-ins (below), returning to the page, and muster's return answers `accept`
+for the person, once, from the tab that started it; whatever server muster
+reports on the way back counts, since the card does not know the backend's
+name. _I've signed in_ answers it by hand, _Not now_ declines.
 
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.

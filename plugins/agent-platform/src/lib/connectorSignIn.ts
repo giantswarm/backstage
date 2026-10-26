@@ -57,6 +57,12 @@ export type ConnectorSignInLink = {
   label: string;
   /** When muster answered with it, when known. */
   issuedAt?: string;
+  /**
+   * Set for the link of an MCP server's URL elicitation the agent waits on:
+   * `label` then names the server that asked, not what the person signs in
+   * to, and the server muster reports on the way back is not checked.
+   */
+  asked?: boolean;
 };
 
 /**
