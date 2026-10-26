@@ -1621,14 +1621,18 @@ reasons (git's output) folded under Technical details:
 | `Workspace setup: … they are up to date now:`                | Workspace setup: _n_ repositories up to date again | info     |
 
 One notice can hold several variants, one per line; it is titled by its first
-warning, and a line it does not recognise is shown as kagent wrote it. Nothing
-marks a notice on the wire yet, so it is recognised by the `Workspace setup`
-prefix on an agent message of text alone (`isWorkspaceNotice`); a
-`kagent.dev/notice: workspace-setup` metadata key (or `kagent.dev/a2a/notice`)
-is read too, so the switch to a marker needs no change here. Since it is its
-own kind, a notice never counts as a reply: not in a continuation's carried
-conversation, not as the answer that makes a message "answered", and not as
-the Create agent assist's proposal.
+warning, and text it does not recognise is kept and shown as kagent wrote it.
+Nothing marks a notice on the wire yet, so `isWorkspaceNotice` recognises it by
+the `Workspace setup` prefix, and only on the message that opens the agent's
+side of its turn: an agent message of text alone, with nothing from the agent
+before it, recorded in history rather than read back from an output artifact
+or the completed task's status message. A reply that starts with the same
+words therefore stays a reply. A `kagent.dev/notice: workspace-setup` metadata
+key (or `kagent.dev/a2a/notice`, both read by `readKagentNotice` in
+agent-platform-common) marks a notice wherever it sits, so the switch to a
+marker needs no change here. Since it is its own kind, a notice never counts as
+a reply: not in a continuation's carried conversation, not as the answer that
+makes a message "answered", and not as the Create agent assist's proposal.
 
 #### Egress refusals
 

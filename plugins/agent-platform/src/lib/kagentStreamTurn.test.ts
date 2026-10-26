@@ -1400,6 +1400,80 @@ describe('a workspace setup notice in the stream', () => {
     expect(fold([noticeUpdate, noticeUpdate]).items).toHaveLength(1);
   });
 
+  it('shows a repeat of a notice without an id once', () => {
+    const anonymous = {
+      statusUpdate: {
+        ...noticeUpdate.statusUpdate,
+        status: {
+          ...noticeUpdate.statusUpdate.status,
+          message: {
+            role: 'ROLE_AGENT',
+            parts: [{ text: NOTICE_STALE }],
+          },
+        },
+      },
+    };
+    expect(
+      fold([
+        anonymous,
+        {
+          statusUpdate: {
+            ...anonymous.statusUpdate,
+            status: {
+              ...anonymous.statusUpdate.status,
+              state: 'TASK_STATE_FAILED',
+            },
+          },
+        },
+      ]).items.filter(item => item.kind === 'workspace-notice'),
+    ).toHaveLength(1);
+  });
+
+  it('leaves a reply that starts with the same words a reply', () => {
+    // As an artifact (Go executor), and as a status-update message after the
+    // agent has already said something (Python executor).
+    const reply = 'Workspace setup here uses mirrors.';
+    const asArtifact = fold([chunk(reply, false)]);
+    expect(asArtifact.items.map(item => item.kind)).toEqual(['agent-message']);
+
+    const afterWords = fold([
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'ctx-1',
+          status: {
+            state: 'TASK_STATE_WORKING',
+            message: {
+              messageId: 'said-1',
+              role: 'ROLE_AGENT',
+              parts: [{ text: 'Let me look.' }],
+            },
+          },
+        },
+      },
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'ctx-1',
+          status: {
+            state: 'TASK_STATE_WORKING',
+            message: {
+              messageId: 'reply-1',
+              role: 'ROLE_AGENT',
+              parts: [{ text: reply }],
+            },
+          },
+        },
+      },
+    ]);
+    expect(
+      afterWords.items.some(item => item.kind === 'workspace-notice'),
+    ).toBe(false);
+    expect(afterWords.live).toEqual(
+      expect.objectContaining({ kind: 'agent-message', text: reply }),
+    );
+  });
+
   it('is the item the poll makes of the same message', () => {
     const streamed = fold([noticeUpdate]).items[0];
     const polled = timelineFor(sessionWithNotices).items.find(

@@ -3,6 +3,7 @@ import {
   readKagentMetadata,
   readKagentMetadataRecord,
   readKagentMetadataString,
+  readKagentNotice,
   readKagentSubagentUsage,
   readKagentTimelinePosition,
 } from './kagentMetadata';
@@ -188,4 +189,22 @@ describe('readKagentSubagentUsage', () => {
       ).toEqual({ promptTokenCount: 7 });
     },
   );
+});
+
+describe('readKagentNotice', () => {
+  it.each(['kagent.dev/notice', 'kagent.dev/a2a/notice'])(
+    'reads the mark under %s',
+    key => {
+      expect(readKagentNotice({ [key]: 'workspace-setup' })).toBe(
+        'workspace-setup',
+      );
+    },
+  );
+
+  it('is undefined without a mark, or with an empty or non-string one', () => {
+    expect(readKagentNotice(undefined)).toBeUndefined();
+    expect(readKagentNotice({})).toBeUndefined();
+    expect(readKagentNotice({ 'kagent.dev/notice': '' })).toBeUndefined();
+    expect(readKagentNotice({ 'kagent.dev/notice': true })).toBeUndefined();
+  });
 });

@@ -560,22 +560,34 @@ function ingestIncrementalMessage(turn: StreamTurn, message: A2aMessageWire) {
  * A workspace setup notice, as the item `buildTimeline` makes of it, when the
  * message is one. It arrives whole on the turn's first `status-update`, so it
  * is never a run of text to extend: as one, it showed as the start of the
- * agent's reply. A repeat of one already shown is taken and dropped.
+ * agent's reply.
+ *
+ * Only a message that opens the agent's side of the turn is tested, as on the
+ * poll side (`NoticePosition`): nothing streamed yet but notices, so a repeat
+ * of the notice still reads as one and is taken and dropped — by its id, or by
+ * its text when it carries none. The test is skipped outright once the agent
+ * has said anything, which keeps it off the per-delta path.
  */
 function ingestWorkspaceNotice(
   turn: StreamTurn,
   message: A2aMessageWire,
 ): boolean {
-  const notice = readWorkspaceNotice(message);
+  const opensTurn =
+    turn.live === undefined &&
+    turn.items.every(item => item.kind === 'workspace-notice');
+  const notice = readWorkspaceNotice(message, { opensTurn });
   if (!notice) {
     return false;
   }
-  if (
-    message.messageId &&
-    turn.items.some(item => item.messageId === message.messageId)
-  ) {
+  const repeats = turn.items.some(item =>
+    message.messageId
+      ? item.messageId === message.messageId
+      : item.kind === 'workspace-notice' && item.notice.text === notice.text,
+  );
+  if (repeats) {
     return true;
   }
+  // Only a marked notice can find a run open.
   flushLiveRun(turn);
   turn.items = [
     ...turn.items,

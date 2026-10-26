@@ -50,6 +50,7 @@ function hasEntryDetail(entry: NoticeEntry): boolean {
     case 'failed':
       return Boolean(entry.error);
     case 'stale':
+      return entry.repositories.length > 0 || Boolean(entry.note);
     case 'recovered':
       return entry.repositories.length > 0;
     case 'other':
@@ -76,23 +77,32 @@ function EntryDetail({ entry }: { entry: NoticeEntry }) {
           <Text variant="body-small">
             These repositories stay at the workspace’s last sync:
           </Text>
-          <ul className={classes.list}>
-            {entry.repositories.map(repository => (
-              <li key={repository.name}>
-                <Text variant="body-small">
-                  <span className={classes.name}>{repository.name}</span>
-                  {repository.reason && (
-                    <>
-                      {': '}
-                      <span className={classes.output}>
-                        {repository.reason}
-                      </span>
-                    </>
-                  )}
-                </Text>
-              </li>
-            ))}
-          </ul>
+          {entry.repositories.length > 0 && (
+            <ul className={classes.list}>
+              {entry.repositories.map((repository, index) => (
+                <li key={index}>
+                  <Text variant="body-small">
+                    <span className={classes.name}>{repository.name}</span>
+                    {repository.reason && (
+                      <>
+                        {': '}
+                        <span className={classes.output}>
+                          {repository.reason}
+                        </span>
+                      </>
+                    )}
+                  </Text>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* What came with the list but is not a repository line, as kagent
+              wrote it. */}
+          {entry.note && (
+            <Text variant="body-small" className={classes.output}>
+              {entry.note}
+            </Text>
+          )}
         </Flex>
       );
     case 'recovered':
@@ -103,8 +113,8 @@ function EntryDetail({ entry }: { entry: NoticeEntry }) {
             are up to date now:
           </Text>
           <ul className={classes.list}>
-            {entry.repositories.map(name => (
-              <li key={name}>
+            {entry.repositories.map((name, index) => (
+              <li key={index}>
                 <Text variant="body-small" className={classes.name}>
                   {name}
                 </Text>

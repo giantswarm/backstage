@@ -1,9 +1,8 @@
 import {
   A2aMessageWire,
-  isRecord,
   isThoughtPart,
   parsePart,
-  readMessageText,
+  readKagentNotice,
   readPartText,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
@@ -23,13 +22,8 @@ import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 /** What every notice text starts with, and each of its variants' lines. */
 const NOTICE_PREFIX = 'Workspace setup';
 
-/**
- * The marker kagent is expected to put on a notice, so it no longer has to be
- * recognised by its words. Read under the public metadata contract's
- * `kagent.dev/a2a/` prefix too, wherever kagent settles on.
- */
-const NOTICE_METADATA_KEYS = ['kagent.dev/notice', 'kagent.dev/a2a/notice'];
-const NOTICE_METADATA_VALUE = 'workspace-setup';
+/** The mark kagent is expected to put on a notice (`readKagentNotice`). */
+const NOTICE_MARK = 'workspace-setup';
 
 /** One variant of a notice: one line, or a header line and its list. */
 export type WorkspaceNoticeEntry =
@@ -42,10 +36,14 @@ export type WorkspaceNoticeEntry =
   | { kind: 'reset'; text: string }
   /** Repositories an earlier turn could not clone or fetch, up to date now. */
   | { kind: 'recovered'; repositories: string[] }
-  /** Repositories left at the workspace's last sync, each with its reason. */
+  /**
+   * Repositories left at the workspace's last sync, each with its reason.
+   * `note` holds what came with the list but is not a repository line.
+   */
   | {
       kind: 'stale';
       repositories: { name: string; reason?: string }[];
+      note?: string;
     }
   /** A line this portal does not know yet, kept as kagent wrote it. */
   | { kind: 'other'; text: string };
@@ -53,56 +51,121 @@ export type WorkspaceNoticeEntry =
 export type WorkspaceNoticeSeverity = 'warning' | 'info';
 
 export type WorkspaceNotice = {
+  /** The notice as kagent wrote it, trimmed: what tells a repeat of it. */
+  text: string;
   /** Its variants, in the order kagent wrote them. Never empty. */
   entries: WorkspaceNoticeEntry[];
   /** The most severe of its entries' ({@link entrySeverity}). */
   severity: WorkspaceNoticeSeverity;
 };
 
+/** Where a candidate message sits in its turn. */
+export type NoticePosition = {
+  /**
+   * The message opens the agent's side of its turn: nothing from the agent
+   * came before it, and kagent recorded it as a message, not as an output
+   * artifact or the completed task's status message. The harness sends a
+   * notice as the turn's first `status-update`, so only such a message is
+   * tested for the prefix; a reply that happens to start with the same words
+   * stays a reply.
+   */
+  opensTurn: boolean;
+};
+
+/**
+ * The notice's text when a message is one, else undefined. A marked message is
+ * one wherever it sits; until kagent marks notices, the only tell is an agent
+ * message of text alone, opening its turn, that starts with "Workspace
+ * setup". A message that also carries a call or a file is the model's.
+ */
+function readNoticeText(
+  message: A2aMessageWire,
+  { opensTurn }: NoticePosition,
+): string | undefined {
+  if (message.role === 'user') {
+    return undefined;
+  }
+  const marked = readKagentNotice(message.metadata) === NOTICE_MARK;
+  if (!marked && !opensTurn) {
+    return undefined;
+  }
+  const chunks: string[] = [];
+  for (const rawPart of Array.isArray(message.parts) ? message.parts : []) {
+    const part = parsePart(rawPart);
+    const text = part && !isThoughtPart(part) ? readPartText(part) : undefined;
+    if (text !== undefined) {
+      chunks.push(text);
+    } else if (!marked) {
+      return undefined;
+    }
+  }
+  const text = chunks.join('\n').trim();
+  if (!text) {
+    return undefined;
+  }
+  return marked || text.startsWith(NOTICE_PREFIX) ? text : undefined;
+}
+
 /**
  * Whether a message is a workspace setup notice rather than something the
- * agent said.
- *
- * Until kagent marks notices, the only tell is the text: an agent message of
- * text alone that starts with "Workspace setup". A message that also carries a
- * call or a file is the model's, whatever its words. Once the metadata marker
- * is set, it decides on its own, and the prefix test can go.
+ * agent said. The one place that decides; see {@link NoticePosition} for why
+ * the position matters.
  */
-export function isWorkspaceNotice(message: A2aMessageWire): boolean {
-  if (message.role === 'user') {
-    return false;
-  }
-  const bag = isRecord(message.metadata) ? message.metadata : undefined;
-  if (NOTICE_METADATA_KEYS.some(key => bag?.[key] === NOTICE_METADATA_VALUE)) {
-    return true;
-  }
-  const parts = Array.isArray(message.parts) ? message.parts : [];
-  const textOnly = parts.every(rawPart => {
-    const part = parsePart(rawPart);
-    return (
-      part !== undefined &&
-      readPartText(part) !== undefined &&
-      !isThoughtPart(part)
-    );
-  });
-  return (
-    textOnly && (readMessageText(message)?.startsWith(NOTICE_PREFIX) ?? false)
-  );
+export function isWorkspaceNotice(
+  message: A2aMessageWire,
+  position: NoticePosition,
+): boolean {
+  return readNoticeText(message, position) !== undefined;
 }
 
 /** The notice a message carries, or undefined when it is not one. */
 export function readWorkspaceNotice(
   message: A2aMessageWire,
+  position: NoticePosition,
 ): WorkspaceNotice | undefined {
-  if (!isWorkspaceNotice(message)) {
-    return undefined;
-  }
-  const text = readMessageText(message);
-  return text ? parseWorkspaceNotice(text) : undefined;
+  const text = readNoticeText(message, position);
+  return text === undefined ? undefined : parseWorkspaceNotice(text);
 }
 
-/** `- owner/repo: reason`, one per repository under a "last sync" line. */
-const REPOSITORY_LINE = /^-\s+([^\s:]+)(?::\s*(.*))?$/;
+/**
+ * One repository per line, under a list's header: `- owner/repo: reason` as
+ * kagent writes it, and forgiving of other bullets and of anything but a
+ * colon between the name and the reason (`- owner/repo (main): …`,
+ * `* owner/repo — …`).
+ */
+const REPOSITORY_LINE = /^[-*•]\s+(\S+?)(?::\s*(.*)|\s+(?:[—–-]\s*)?(.*))?$/;
+
+/** A repository's `owner/name`, as far as a list's text is concerned. */
+const REPOSITORY_NAME = /^[\w.-]+(?:\/[\w.-]+)+$/;
+
+function readRepositoryLine(
+  line: string,
+): { name: string; reason?: string } | undefined {
+  const match = REPOSITORY_LINE.exec(line);
+  if (!match) {
+    return undefined;
+  }
+  const reason = (match[2] ?? match[3])?.trim();
+  return reason ? { name: match[1], reason } : { name: match[1] };
+}
+
+/**
+ * The names in `acme/app, acme/docs.`, or undefined when any of it is not a
+ * repository name, so a sentence is never taken for a list.
+ */
+function readNameList(text: string): string[] | undefined {
+  const names = text
+    .replace(/\.$/, '')
+    .split(',')
+    .map(name => name.trim())
+    .filter(Boolean);
+  return names.length > 0 && names.every(name => REPOSITORY_NAME.test(name))
+    ? names
+    : undefined;
+}
+
+const join = (head: string | undefined, line: string) =>
+  head ? `${head}\n${line}` : line;
 
 /** One variant's header line, or undefined when the line starts none. */
 function readEntryLine(line: string): WorkspaceNoticeEntry | undefined {
@@ -129,8 +192,20 @@ function readEntryLine(line: string): WorkspaceNoticeEntry | undefined {
         .filter(Boolean),
     };
   }
-  if (/\bstay at the workspace.s last sync\b/i.test(rest)) {
-    return { kind: 'stale', repositories: [] };
+  const stale = /\bstay at the workspace.s last sync\b[.:]?\s*(.*)$/i.exec(
+    rest,
+  );
+  if (stale) {
+    // The list is meant to follow on lines of its own; one that comes on the
+    // header line is read as names, and anything else kept as a note.
+    const after = stale[1].trim();
+    if (!after) {
+      return { kind: 'stale', repositories: [] };
+    }
+    const names = readNameList(after);
+    return names
+      ? { kind: 'stale', repositories: names.map(name => ({ name })) }
+      : { kind: 'stale', repositories: [], note: after };
   }
   if (/\bset up again\b/i.test(rest)) {
     return {
@@ -141,26 +216,44 @@ function readEntryLine(line: string): WorkspaceNoticeEntry | undefined {
   return { kind: 'other', text: line };
 }
 
-/** A line that carries on the entry before it: a reason or an error that wrapped. */
-function continueEntry(entry: WorkspaceNoticeEntry, line: string) {
-  const join = (head: string | undefined) => (head ? `${head}\n${line}` : line);
+/**
+ * A line that starts no variant, given the entry before it. Returns a new
+ * entry when the line cannot belong to that one, so it is kept on its own
+ * rather than dropped.
+ */
+function continueEntry(
+  entry: WorkspaceNoticeEntry,
+  line: string,
+): WorkspaceNoticeEntry | undefined {
   switch (entry.kind) {
     case 'failed':
-      entry.error = join(entry.error);
-      return;
+      entry.error = join(entry.error, line);
+      return undefined;
     case 'stale': {
+      const repository = readRepositoryLine(line);
       const last = entry.repositories.at(-1);
-      if (last) {
-        last.reason = join(last.reason);
+      if (repository) {
+        entry.repositories.push(repository);
+      } else if (last) {
+        // A reason that ran over several lines.
+        last.reason = join(last.reason, line);
+      } else {
+        entry.note = join(entry.note, line);
       }
-      return;
+      return undefined;
     }
-    case 'reset':
-    case 'other':
-      entry.text = join(entry.text);
-      return;
+    case 'recovered': {
+      const repository = readRepositoryLine(line);
+      const names = repository ? [repository.name] : readNameList(line);
+      if (!names) {
+        return { kind: 'other', text: line };
+      }
+      entry.repositories.push(...names);
+      return undefined;
+    }
     default:
-      return;
+      entry.text = join(entry.text, line);
+      return undefined;
   }
 }
 
@@ -170,8 +263,8 @@ function continueEntry(entry: WorkspaceNoticeEntry, line: string) {
  * One notice can hold several, one per line, each starting with "Workspace
  * setup"; a "last sync" line is followed by one `- owner/repo: reason` line
  * per repository. A line that starts nothing carries on the entry before it.
- * Nothing is dropped: text this reader does not recognise becomes an `other`
- * entry, shown as kagent wrote it.
+ * Nothing is dropped: text this reader does not recognise is kept, as an
+ * `other` entry or a list's note, and shown as kagent wrote it.
  */
 export function parseWorkspaceNotice(text: string): WorkspaceNotice {
   const entries: WorkspaceNoticeEntry[] = [];
@@ -180,31 +273,19 @@ export function parseWorkspaceNotice(text: string): WorkspaceNotice {
     if (!line) {
       continue;
     }
-    const entry = readEntryLine(line);
+    const current = entries.at(-1);
+    const entry =
+      readEntryLine(line) ??
+      (current ? continueEntry(current, line) : { kind: 'other', text: line });
     if (entry) {
       entries.push(entry);
-      continue;
-    }
-    const current = entries.at(-1);
-    const repository =
-      current?.kind === 'stale' ? REPOSITORY_LINE.exec(line) : null;
-    if (current?.kind === 'stale' && repository) {
-      current.repositories.push(
-        repository[2]
-          ? { name: repository[1], reason: repository[2] }
-          : { name: repository[1] },
-      );
-    } else if (current) {
-      continueEntry(current, line);
-    } else {
-      // Only a notice recognised by its marker can open without the prefix.
-      entries.push({ kind: 'other', text: line });
     }
   }
   if (entries.length === 0) {
     entries.push({ kind: 'other', text: text.trim() });
   }
   return {
+    text: text.trim(),
     entries,
     severity: entries.some(entry => entrySeverity(entry) === 'warning')
       ? 'warning'
@@ -232,8 +313,11 @@ export function entrySeverity(
   }
 }
 
+/** "3 repositories", or "some repositories" when the list could not be read. */
 function repositories(count: number): string {
-  return countNoun(count, 'repository', 'repositories');
+  return count > 0
+    ? countNoun(count, 'repository', 'repositories')
+    : 'some repositories';
 }
 
 /** An entry in one line, as the notice's title or a line under it. */
