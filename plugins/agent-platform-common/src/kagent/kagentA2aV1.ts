@@ -228,7 +228,7 @@ function readHitlPayload(
 
 /**
  * An MCP server's URL elicitation, such as muster's sign-in link: the request
- * of a task paused at `auth-required` (the HITL `url_elicitation_request`).
+ * of a paused task (the HITL `url_elicitation_request`).
  * `server` is the MCP server that asked, which for a platform agent is muster;
  * what needs the sign-in is in its `message`.
  */

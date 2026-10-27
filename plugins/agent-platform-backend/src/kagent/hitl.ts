@@ -52,7 +52,7 @@ export type HitlRequest =
       }[];
     }
   | {
-      /** An MCP server's sign-in link; the task waits at `auth-required`. */
+      /** An MCP server's sign-in link the task waits on. */
       type: typeof HITL_TYPE_URL_ELICITATION_REQUEST;
       /** Correlates the reply with the request; echoed back verbatim. */
       id: string;

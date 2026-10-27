@@ -59,9 +59,9 @@ const questionTask = (id: string) =>
   ]);
 
 describe('readPendingConfirmation', () => {
-  it('reads an MCP server sign-in the task waits on at auth-required', () => {
+  it('reads an MCP server sign-in the task waits on', () => {
     const signIn = {
-      ...task('task-1', 'auth-required', [
+      ...task('task-1', 'input-required', [
         { kind: 'text', text: 'Sign in to github to continue.' },
       ]),
     } as unknown as { status: { message: Record<string, unknown> } };

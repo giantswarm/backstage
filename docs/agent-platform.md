@@ -2484,11 +2484,10 @@ Human-in-the-loop is the negotiated A2A extension
 `https://kagent.dev/extensions/hitl/v1`. The backend requests it on every turn
 (gRPC metadata `a2a-extensions`). A suspended task's `status.message` then
 carries in its `metadata`, under the extension URI (also listed in
-`message.extensions`), either a `tool_approval_request` (`tools[]` with `id`,
-the proposed `call_id`, `name`, `args`) or an `ask_user_request` (`id`,
-`questions[]` with `question`, `choices`, `multiple`). A task waiting at
-`auth-required` carries a `url_elicitation_request` instead (`id`, `server`,
-`message`, `url`): an MCP server's URL elicitation, such as muster's sign-in
+`message.extensions`), a `tool_approval_request` (`tools[]` with `id`, the
+proposed `call_id`, `name`, `args`), an `ask_user_request` (`id`, `questions[]`
+with `question`, `choices`, `multiple`) or a `url_elicitation_request` (`id`,
+`server`, `message`, `url`). The last is an MCP server's URL elicitation, such as muster's sign-in
 link for a backend the person has not connected, from a runtime that relays MCP
 URL elicitations (the claude and codex Harnesses, the Go ADK). Its reply is a
 `url_elicitation_response` with `action` `accept` (an approval: the person

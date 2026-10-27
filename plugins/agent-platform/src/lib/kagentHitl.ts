@@ -39,7 +39,7 @@ export type PendingConfirmation = {
    * What is being asked. `'input'` is a question put through `ask_user`;
    * `'approval'` is "may I run this tool", which takes a yes/no rather than an
    * answer. ADK wraps both in the same confirmation request. `'sign-in'` is an
-   * MCP server's sign-in link (a URL elicitation, the task at `auth-required`):
+   * MCP server's sign-in link (a URL elicitation):
    * the person opens it, then the agent continues.
    */
   asks: 'input' | 'approval' | 'sign-in';
