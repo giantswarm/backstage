@@ -55,6 +55,7 @@ describe('customSignInResolver', () => {
       {
         federated_claims: { connector_id: 'giantswarm-ad', user_id: 'u1' },
         email: 'user@giantswarm.io',
+        email_verified: true,
       },
       ctx,
     );
@@ -84,6 +85,7 @@ describe('customSignInResolver', () => {
         await resolve(
           federated(dexSubject('u6', 'giantswarm-ad'), {
             email: 'user@giantswarm.io',
+            email_verified: true,
           }),
           ctx,
         );
@@ -117,6 +119,7 @@ describe('customSignInResolver', () => {
         await resolve(
           federated(dexSubject('u'.repeat(200), 'giantswarm-ad'), {
             email: 'user@giantswarm.io',
+            email_verified: true,
           }),
           ctx,
         );
@@ -167,6 +170,7 @@ describe('customSignInResolver', () => {
       {
         federated_claims: { connector_id: 'giantswarm-github', user_id: 'u4' },
         email: 'someone@giantswarm.io',
+        email_verified: true,
       },
       ctx,
     );
@@ -175,6 +179,30 @@ describe('customSignInResolver', () => {
       filter: { 'spec.profile.email': 'someone@giantswarm.io' },
     });
   });
+
+  it.each([
+    ['without email_verified', {}],
+    ['with email_verified false', { email_verified: false }],
+  ])(
+    'falls back to the guest user when a giantswarm-ad email is %s',
+    async (_, verified) => {
+      const ctx = makeContext();
+
+      await resolve(
+        {
+          federated_claims: { connector_id: 'giantswarm-ad', user_id: 'u7' },
+          email: 'user@giantswarm.io',
+          ...verified,
+        },
+        ctx,
+      );
+
+      expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
+      expect(ctx.issueToken).toHaveBeenCalledWith({
+        claims: { sub: 'user:default/guest', ent: ['user:default/guest'] },
+      });
+    },
+  );
 
   it('falls back to the guest user when a giantswarm-ad token carries no email', async () => {
     const ctx = makeContext();
@@ -198,6 +226,7 @@ describe('customSignInResolver', () => {
       {
         federated_claims: { connector_id: 'giantswarm-ad', user_id: 'u3' },
         email: 'user@giantswarm.io',
+        email_verified: true,
       },
       ctx,
     );
