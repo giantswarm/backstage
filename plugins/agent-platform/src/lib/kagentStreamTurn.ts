@@ -26,6 +26,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { TimelineItem } from './kagentTimeline';
+import { readWorkspaceNotice } from './workspaceNotice';
 
 /**
  * Interpreting one A2A `message/stream` turn, live.
@@ -470,6 +471,9 @@ function ingestCompleteMessage(
   ) {
     return false;
   }
+  if (ingestWorkspaceNotice(turn, message)) {
+    return true;
+  }
   const author = readKagentMetadataString(message.metadata, 'author');
   const parts = Array.isArray(message.parts) ? message.parts : [];
 
@@ -527,6 +531,9 @@ function ingestCompleteMessage(
  * above every sentence.
  */
 function ingestIncrementalMessage(turn: StreamTurn, message: A2aMessageWire) {
+  if (ingestWorkspaceNotice(turn, message)) {
+    return;
+  }
   const author = readKagentMetadataString(message.metadata, 'author');
   const parts = Array.isArray(message.parts) ? message.parts : [];
   for (const rawPart of parts) {
@@ -547,6 +554,54 @@ function ingestIncrementalMessage(turn: StreamTurn, message: A2aMessageWire) {
     }
     ingestDataPart(turn, part, author, message.messageId);
   }
+}
+
+/**
+ * A workspace setup notice, as the item `buildTimeline` makes of it, when the
+ * message is one. It arrives whole on the turn's first `status-update`, so it
+ * is never a run of text to extend: as one, it showed as the start of the
+ * agent's reply.
+ *
+ * Only a message that opens the agent's side of the turn is tested, as on the
+ * poll side (`NoticePosition`): nothing streamed yet but notices, so a repeat
+ * of the notice still reads as one and is taken and dropped — by its id, or by
+ * its text when it carries none. The test is skipped outright once the agent
+ * has said anything, which keeps it off the per-delta path.
+ */
+function ingestWorkspaceNotice(
+  turn: StreamTurn,
+  message: A2aMessageWire,
+): boolean {
+  const opensTurn =
+    turn.live === undefined &&
+    turn.items.every(item => item.kind === 'workspace-notice');
+  const notice = readWorkspaceNotice(message, { opensTurn });
+  if (!notice) {
+    return false;
+  }
+  const repeats = turn.items.some(item =>
+    message.messageId
+      ? item.messageId === message.messageId
+      : item.kind === 'workspace-notice' && item.notice.text === notice.text,
+  );
+  if (repeats) {
+    return true;
+  }
+  // Only a marked notice can find a run open.
+  flushLiveRun(turn);
+  turn.items = [
+    ...turn.items,
+    {
+      kind: 'workspace-notice',
+      id: `stream:${turn.nextItemId}`,
+      taskIndex: 0,
+      messageId: message.messageId,
+      author: readKagentMetadataString(message.metadata, 'author'),
+      notice,
+    },
+  ];
+  turn.nextItemId += 1;
+  return true;
 }
 
 /**
