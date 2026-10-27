@@ -67,9 +67,24 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
   }
 
+  /** app.telemetrydeck, as the connector reads it. */
+  function withTelemetryConfig(telemetrydeck: Record<string, unknown>) {
+    jest.mocked(configApi.getOptionalConfig).mockReturnValue({
+      getOptional: (key: string) => telemetrydeck[key],
+      getString: (key: string) => {
+        const value = telemetrydeck[key];
+        if (typeof value !== 'string' || !value) {
+          throw new Error(`Missing required config value at '${key}'`);
+        }
+        return value;
+      },
+    } as unknown as ReturnType<ConfigApi['getOptionalConfig']>);
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(configApi.getOptionalString).mockReturnValue(undefined);
+    withTelemetryConfig({ appID: 'APP-ID', salt: 'salt' });
   });
 
   it('reports untracked page views for paths that matched a registered route', () => {
@@ -150,11 +165,11 @@ describe('TelemetryDeckAnalyticsApi', () => {
   });
 
   it('adds the deployment ID to the pageview signal when configured', async () => {
-    jest
-      .mocked(configApi.getOptionalString)
-      .mockImplementation(key =>
-        key === 'app.telemetrydeck.deploymentID' ? 'DEPLOYMENT-ID' : undefined,
-      );
+    withTelemetryConfig({
+      appID: 'APP-ID',
+      salt: 'salt',
+      deploymentID: 'DEPLOYMENT-ID',
+    });
 
     navigateInTestApp('/clusters', { registerRoute: true });
     await flushPromises();
@@ -167,21 +182,6 @@ describe('TelemetryDeckAnalyticsApi', () => {
   });
 
   describe('initialisation', () => {
-    function withTelemetryConfig(telemetrydeck: Record<string, unknown>) {
-      jest.mocked(configApi.getOptionalConfig).mockReturnValue({
-        getOptional: (key: string) => telemetrydeck[key],
-        getOptionalBoolean: (key: string) =>
-          telemetrydeck[key] as boolean | undefined,
-        getString: (key: string) => {
-          const value = telemetrydeck[key];
-          if (typeof value !== 'string' || !value) {
-            throw new Error(`Missing required config value at '${key}'`);
-          }
-          return value;
-        },
-      } as unknown as ReturnType<ConfigApi['getOptionalConfig']>);
-    }
-
     function navigateTwice() {
       const api = createApi();
       for (const path of ['/clusters', '/catalog']) {
@@ -202,7 +202,6 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
 
     afterEach(() => {
-      jest.mocked(configApi.getOptionalConfig).mockReturnValue(undefined);
       warn.mockRestore();
       error.mockRestore();
     });
@@ -244,8 +243,45 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
 
     it.each([
+      ['missing', undefined],
+      ['null', null],
+    ])(
+      'sends nothing and says nothing when app.telemetrydeck is %s',
+      async () => {
+        // The config reader answers undefined for both.
+        jest.mocked(configApi.getOptionalConfig).mockReturnValue(undefined);
+
+        navigateTwice();
+        await flushPromises();
+
+        expect(TelemetryDeck).not.toHaveBeenCalled();
+        expect(mockSignal).not.toHaveBeenCalled();
+        expect(warn).not.toHaveBeenCalled();
+        expect(error).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['an empty string', ''],
+      ['a number', 12345],
+    ])('sends no deployment ID for %s', async (_, deploymentID) => {
+      withTelemetryConfig({ appID: 'APP-ID', salt: 'salt', deploymentID });
+
+      navigateTwice();
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledTimes(2);
+      expect(mockSignal).toHaveBeenCalledWith(
+        'pageview',
+        expect.not.objectContaining({ deploymentID: expect.anything() }),
+      );
+      expect(error).not.toHaveBeenCalled();
+    });
+
+    it.each([
       ['set', true, true],
       ['unset', undefined, false],
+      ['not a boolean', 'enabled', false],
     ])(
       'files the signals as test data when testMode is %s',
       async (_, testMode, expected) => {
@@ -333,13 +369,11 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
 
     it('adds the deployment ID to an action signal when configured', async () => {
-      jest
-        .mocked(configApi.getOptionalString)
-        .mockImplementation(key =>
-          key === 'app.telemetrydeck.deploymentID'
-            ? 'DEPLOYMENT-ID'
-            : undefined,
-        );
+      withTelemetryConfig({
+        appID: 'APP-ID',
+        salt: 'salt',
+        deploymentID: 'DEPLOYMENT-ID',
+      });
 
       captureAction('AgentPlatform.agentCreated', { mode: 'deploy' });
       await flushPromises();
