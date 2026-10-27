@@ -11,6 +11,16 @@ set and an empty app ID sends no usage data and its backend logs one warning at
 startup saying so. `app.telemetrydeck: null` turns telemetry off without the
 warning.
 
+Two optional keys serve a portal that a tool sets up rather than Giant Swarm.
+`app.telemetrydeck.deploymentID` is sent as `deploymentID` with every signal:
+[agentlab](https://github.com/giantswarm/agentlab/blob/main/docs/telemetry.md)
+sets it to a random ID of the lab, which the agentlab CLI's own signals carry
+too, so that the portal's usage can be read next to the commands that built
+the lab. The salt then belongs to the lab as well, so that its users, whose
+names are the same in every lab, count apart from every other lab's.
+`app.telemetrydeck.testMode: true` files the signals as test data, as a portal
+on `localhost` always does.
+
 ## Page views
 
 Every navigation sends one `pageview` signal with the page's name (`page`, for
