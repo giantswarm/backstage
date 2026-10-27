@@ -48,6 +48,7 @@ export const SHELL_SPECS = [
   'new-agent-draft.spec.ts',
   'model-backends.spec.ts',
   'models.spec.ts',
+  'roster-namespaced.spec.ts',
   'serve-node-choice.spec.ts',
   'serve-through-model-manager.spec.ts',
   'served-model-api.spec.ts',
