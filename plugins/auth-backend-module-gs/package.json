@@ -40,6 +40,7 @@
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
+    "@backstage/catalog-model": "backstage:^",
     "@backstage/cli": "backstage:^",
     "@types/express": "^5.0.0",
     "@types/passport-oauth2": "^1",

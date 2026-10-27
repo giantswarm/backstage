@@ -231,9 +231,9 @@ gs:
 A Dex deployment needs both of the scopes above:
 
 - `federated:id` adds the `federated_claims` the main sign-in resolver reads to
-  map a user onto a catalog entity. Without it the resolver falls back to the
-  email of the token and the `giantswarm-ad` and `giantswarm-github` connector
-  lookups never run, which changes which catalog user a person signs in as.
+  map a user onto a catalog entity. Without it the `giantswarm-ad` and
+  `giantswarm-github` connector lookups never run, and every person signs in
+  as `user:oidc/<sub>` instead of their catalog user.
 - `audience:server:client_id:dex-k8s-authenticator` is a cross-client scope that
   makes Dex name the `dex-k8s-authenticator` client in the audience of the
   token. Add one such scope per client whose audience a forwarded token must
@@ -244,6 +244,13 @@ A Dex deployment needs both of the scopes above:
 Keycloak and Entra ID need no extra scope. They reject both scopes above with
 `invalid_scope` and show no login page, so leave `gs.auth.extraScopes` unset or
 set it to `[]`.
+
+A person who signs in through any other Dex connector resolves to
+`user:dex-<connector id>/<upstream user id>` from the `federated_claims` of the
+token (a connector or user id that is not a plain lowercase name is shortened
+to a hash), and a person from an issuer without `federated_claims` to
+`user:oidc/<sub>`. These users have no catalog entity, and a token that lacks
+those claims is refused.
 
 ### Changing the scopes on a running instance
 
