@@ -1,3 +1,8 @@
+/**
+ * @jest-environment-options {"url": "https://portal.example.com/"}
+ *
+ * Not localhost, where the connector always files signals as test data.
+ */
 import { ConfigApi, IdentityApi } from '@backstage/core-plugin-api';
 import {
   analyticsApiRef,
@@ -144,10 +149,29 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
   });
 
+  it('adds the deployment ID to the pageview signal when configured', async () => {
+    jest
+      .mocked(configApi.getOptionalString)
+      .mockImplementation(key =>
+        key === 'app.telemetrydeck.deploymentID' ? 'DEPLOYMENT-ID' : undefined,
+      );
+
+    navigateInTestApp('/clusters', { registerRoute: true });
+    await flushPromises();
+
+    expect(mockSignal).toHaveBeenCalledWith('pageview', {
+      page: 'Clusters index',
+      path: '/clusters',
+      deploymentID: 'DEPLOYMENT-ID',
+    });
+  });
+
   describe('initialisation', () => {
     function withTelemetryConfig(telemetrydeck: Record<string, unknown>) {
       jest.mocked(configApi.getOptionalConfig).mockReturnValue({
         getOptional: (key: string) => telemetrydeck[key],
+        getOptionalBoolean: (key: string) =>
+          telemetrydeck[key] as boolean | undefined,
         getString: (key: string) => {
           const value = telemetrydeck[key];
           if (typeof value !== 'string' || !value) {
@@ -219,6 +243,23 @@ describe('TelemetryDeckAnalyticsApi', () => {
       expect(error).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['set', true, true],
+      ['unset', undefined, false],
+    ])(
+      'files the signals as test data when testMode is %s',
+      async (_, testMode, expected) => {
+        withTelemetryConfig({ appID: 'APP-ID', salt: 'salt', testMode });
+
+        navigateTwice();
+        await flushPromises();
+
+        expect(TelemetryDeck).toHaveBeenCalledWith(
+          expect.objectContaining({ testMode: expected }),
+        );
+      },
+    );
+
     it('logs an initialisation failure once and sends nothing', async () => {
       withTelemetryConfig({ appID: 'APP-ID' });
 
@@ -288,6 +329,24 @@ describe('TelemetryDeckAnalyticsApi', () => {
       expect(mockSignal).toHaveBeenCalledWith('AgentPlatform.agentCreated', {
         mode: 'deploy',
         'TelemetryDeck.AppInfo.version': '2.81.5',
+      });
+    });
+
+    it('adds the deployment ID to an action signal when configured', async () => {
+      jest
+        .mocked(configApi.getOptionalString)
+        .mockImplementation(key =>
+          key === 'app.telemetrydeck.deploymentID'
+            ? 'DEPLOYMENT-ID'
+            : undefined,
+        );
+
+      captureAction('AgentPlatform.agentCreated', { mode: 'deploy' });
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledWith('AgentPlatform.agentCreated', {
+        mode: 'deploy',
+        deploymentID: 'DEPLOYMENT-ID',
       });
     });
 

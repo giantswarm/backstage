@@ -15,7 +15,7 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private readonly configApi: ConfigApi;
   private readonly identityApi: IdentityApi;
   private readonly errorReporterApi?: ErrorReporterApi;
-  private readonly versionPayload: Record<string, string>;
+  private readonly commonPayload: Record<string, string>;
   private instance: Promise<TelemetryDeck | undefined> | undefined;
 
   private constructor(options: {
@@ -30,9 +30,17 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     // does not set it.
     const releaseVersion =
       options.configApi.getOptionalString('app.releaseVersion');
-    this.versionPayload = releaseVersion
-      ? { 'TelemetryDeck.AppInfo.version': releaseVersion }
-      : {};
+    // Names the deployment of a portal a tool set up (agentlab), whose own
+    // signals carry the same ID.
+    const deploymentID = options.configApi.getOptionalString(
+      'app.telemetrydeck.deploymentID',
+    );
+    this.commonPayload = {
+      ...(releaseVersion
+        ? { 'TelemetryDeck.AppInfo.version': releaseVersion }
+        : {}),
+      ...(deploymentID ? { deploymentID } : {}),
+    };
   }
 
   static fromConfig(options: {
@@ -64,7 +72,9 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     const telemetryConfig =
       this.configApi.getOptionalConfig('app.telemetrydeck');
     const testMode =
-      window.location.hostname === 'localhost' || !telemetryConfig;
+      window.location.hostname === 'localhost' ||
+      !telemetryConfig ||
+      telemetryConfig.getOptionalBoolean('testMode') === true;
 
     // Not getOptionalString: the config reader refuses an empty string, the
     // base config's value.
@@ -155,7 +165,7 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
       .then(td =>
         td?.signal(portalEvent.name, {
           ...portalEvent.attributes,
-          ...this.versionPayload,
+          ...this.commonPayload,
         }),
       )
       // A failed send (offline, blocked by the browser) is not an error.
@@ -187,9 +197,7 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     }
 
     this.getInstance()
-      .then(td =>
-        td?.signal('pageview', { ...payload, ...this.versionPayload }),
-      )
+      .then(td => td?.signal('pageview', { ...payload, ...this.commonPayload }))
       // A failed send (offline, blocked by the browser) is not an error.
       .catch(() => {});
   }
