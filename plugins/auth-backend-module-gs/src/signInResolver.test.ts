@@ -28,6 +28,25 @@ function resolve(userinfo: object, ctx: ReturnType<typeof makeContext>) {
   );
 }
 
+/** A Dex `sub`: base64url of `IDTokenSubject { user_id = 1; conn_id = 2; }`. */
+function dexSubject(userId: string, connectorId: string): string {
+  const field = (tag: number, value: string) => {
+    const bytes = Buffer.from(value, 'utf8');
+    const length: number[] = [];
+    let rest = bytes.length;
+    while (rest > 0x7f) {
+      length.push((rest & 0x7f) | 0x80);
+      rest >>= 7;
+    }
+    length.push(rest);
+    return Buffer.concat([Buffer.from([tag, ...length]), bytes]);
+  };
+  return Buffer.concat([
+    field(0x0a, userId),
+    field(0x12, connectorId),
+  ]).toString('base64url');
+}
+
 describe('customSignInResolver', () => {
   it('looks a Dex giantswarm-ad user up by email', async () => {
     const ctx = makeContext();
@@ -45,24 +64,83 @@ describe('customSignInResolver', () => {
     });
   });
 
-  it.each(['giantswarm-simple-oidc', 'giantswarm-graveler-oidc'])(
-    'looks a Dex %s user up by email',
-    async connectorId => {
-      const ctx = makeContext();
+  describe.each(['giantswarm-simple-oidc', 'giantswarm-graveler-oidc'])(
+    'a person federated through %s',
+    federatingConnector => {
+      function federated(upstreamSubject: string, userinfo: object) {
+        return {
+          sub: dexSubject(upstreamSubject, federatingConnector),
+          federated_claims: {
+            connector_id: federatingConnector,
+            user_id: upstreamSubject,
+          },
+          ...userinfo,
+        };
+      }
 
-      await resolve(
-        {
-          sub: 'CgJ1MRIGc2ltcGxl',
-          federated_claims: { connector_id: connectorId, user_id: 'u6' },
-          email: 'user@giantswarm.io',
-        },
-        ctx,
-      );
+      it('is looked up by email after giantswarm-ad upstream', async () => {
+        const ctx = makeContext();
 
-      expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
-        filter: { 'spec.profile.email': 'user@giantswarm.io' },
+        await resolve(
+          federated(dexSubject('u6', 'giantswarm-ad'), {
+            email: 'user@giantswarm.io',
+          }),
+          ctx,
+        );
+
+        expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
+          filter: { 'spec.profile.email': 'user@giantswarm.io' },
+        });
+        expect(ctx.issueToken).not.toHaveBeenCalled();
       });
-      expect(ctx.issueToken).not.toHaveBeenCalled();
+
+      it('is looked up by username after giantswarm-github upstream, whatever the email', async () => {
+        const ctx = makeContext();
+
+        await resolve(
+          federated(dexSubject('1234567', 'giantswarm-github'), {
+            email: 'someone@gmail.com',
+            preferred_username: 'someone',
+          }),
+          ctx,
+        );
+
+        expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
+          filter: { 'metadata.name': 'someone' },
+        });
+        expect(ctx.issueToken).not.toHaveBeenCalled();
+      });
+
+      it('reads an upstream subject longer than 127 bytes', async () => {
+        const ctx = makeContext();
+
+        await resolve(
+          federated(dexSubject('u'.repeat(200), 'giantswarm-ad'), {
+            email: 'user@giantswarm.io',
+          }),
+          ctx,
+        );
+
+        expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
+          filter: { 'spec.profile.email': 'user@giantswarm.io' },
+        });
+      });
+
+      it.each([
+        ['another upstream connector', dexSubject('a1', 'customer-ad')],
+        ['an upstream subject that is not a Dex subject', 'not a dex subject'],
+      ])('is not looked up in the catalog after %s', async (_, upstream) => {
+        const ctx = makeContext();
+
+        await resolve(
+          federated(upstream, { email: 'user@giantswarm.io' }),
+          ctx,
+        );
+
+        expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
+        const { claims } = ctx.issueToken.mock.calls[0][0];
+        expect(parseEntityRef(claims.sub).namespace).toBe('oidc');
+      });
     },
   );
 
@@ -82,7 +160,7 @@ describe('customSignInResolver', () => {
     });
   });
 
-  it('falls back to the guest user when a giantswarm-github token carries no username', async () => {
+  it('looks a giantswarm-github user without a username up by email', async () => {
     const ctx = makeContext();
 
     await resolve(
@@ -93,9 +171,8 @@ describe('customSignInResolver', () => {
       ctx,
     );
 
-    expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
-    expect(ctx.issueToken).toHaveBeenCalledWith({
-      claims: { sub: 'user:default/guest', ent: ['user:default/guest'] },
+    expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
+      filter: { 'spec.profile.email': 'someone@giantswarm.io' },
     });
   });
 

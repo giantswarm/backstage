@@ -246,10 +246,15 @@ Keycloak and Entra ID need no extra scope. They reject both scopes above with
 `invalid_scope` and show no login page, so leave `gs.auth.extraScopes` unset or
 set it to `[]`.
 
-The `giantswarm-simple-oidc` and `giantswarm-graveler-oidc` connectors, which
-federate to the Dex of gazelle and graveler, are looked up in the catalog by
-email like `giantswarm-ad`. A sign-in through a Giant Swarm connector that
-matches no catalog user signs in as `user:default/guest`.
+A `giantswarm-ad` sign-in is looked up in the catalog by email, and a
+`giantswarm-github` sign-in by GitHub login, or by email when the token has no
+`preferred_username`. The `giantswarm-simple-oidc` and
+`giantswarm-graveler-oidc` connectors federate to the Dex of gazelle and
+graveler. Their sign-ins are looked up as if made through the connector the
+person used on that Dex, which the federated `user_id` names, so a person who
+signs in there with GitHub and a personal email still finds their catalog
+user. A sign-in through a Giant Swarm connector that matches no catalog user
+signs in as `user:default/guest`.
 
 A person who signs in through any other Dex connector, or through an issuer
 without `federated_claims`, resolves to `user:oidc/<name>`, where the name is
