@@ -17,6 +17,10 @@ import {
   GithubActionsRecentRunsEntityCard,
 } from './GithubActionsOverrides';
 
+// The overrides are typed as a plain ExtensionDefinition, so the tester cannot
+// infer the type of their filter output.
+type EntityFilter = ((entity: Entity) => boolean) | undefined;
+
 const component: Entity = {
   apiVersion: 'backstage.io/v1alpha1',
   kind: 'Component',
@@ -43,14 +47,14 @@ describe.each([
     (musterGrant: boolean) =>
       createExtensionTester(GithubActionsEntityContent, {
         apis: loginApis(musterGrant),
-      }).get(EntityContentBlueprint.dataRefs.filterFunction),
+      }).get(EntityContentBlueprint.dataRefs.filterFunction) as EntityFilter,
   ],
   [
     'the recent-runs card',
     (musterGrant: boolean) =>
       createExtensionTester(GithubActionsRecentRunsEntityCard, {
         apis: loginApis(musterGrant),
-      }).get(EntityCardBlueprint.dataRefs.filterFunction),
+      }).get(EntityCardBlueprint.dataRefs.filterFunction) as EntityFilter,
   ],
 ])('%s', (_, filterOf) => {
   it("is offered with a GitHub login, on the plugin's own filter", () => {

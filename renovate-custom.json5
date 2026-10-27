@@ -41,6 +41,15 @@
       matchPackageNames: ['@backstage{/,}**'],
     },
     {
+      // react-aria and react-aria-components follow the versions @backstage/ui
+      // pins, and @backstage/ui follows backstage.json, which Renovate does not
+      // bump. Another version installs a second copy: RouteTabs' RouterProvider
+      // no longer reaches the bui Tabs and Links, and their navigation falls
+      // back to the browser. They move with each Backstage bump.
+      matchPackageNames: ['react-aria', 'react-aria-components'],
+      enabled: false,
+    },
+    {
       // Group the PagerDuty frontend plugin together with its backend
       // counterpart so they are always proposed in one PR. The two packages
       // are released in lockstep and share the same integration surface, so

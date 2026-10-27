@@ -1,4 +1,7 @@
-import type { ApiHolder } from '@backstage/frontend-plugin-api';
+import type {
+  ApiHolder,
+  ExtensionDefinition,
+} from '@backstage/frontend-plugin-api';
 import githubActionsPlugin from '@backstage-community/plugin-github-actions/alpha';
 import { hasGithubLogin } from '../auth/hasGithubLogin';
 
@@ -15,17 +18,20 @@ function githubLoginParams(apis: ApiHolder) {
  * unless `app.extensions` turns it off) read GitHub as the signed-in person.
  * On a portal without a GitHub login (`hasGithubLogin`) they are not
  * offered, instead of opening a login dialog that cannot succeed.
+ *
+ * Typed as a plain ExtensionDefinition: the inferred type names the plugin's
+ * own nested @backstage packages, which this module cannot reference.
  */
-export const GithubActionsEntityContent = githubActionsPlugin
-  .getExtension('entity-content:github-actions')
-  .override({
+export const GithubActionsEntityContent: ExtensionDefinition =
+  githubActionsPlugin.getExtension('entity-content:github-actions').override({
     factory: (originalFactory, { apis }) =>
       originalFactory(githubLoginParams(apis)),
   });
 
-export const GithubActionsRecentRunsEntityCard = githubActionsPlugin
-  .getExtension('entity-card:github-actions/recent-workflow-runs')
-  .override({
-    factory: (originalFactory, { apis }) =>
-      originalFactory(githubLoginParams(apis)),
-  });
+export const GithubActionsRecentRunsEntityCard: ExtensionDefinition =
+  githubActionsPlugin
+    .getExtension('entity-card:github-actions/recent-workflow-runs')
+    .override({
+      factory: (originalFactory, { apis }) =>
+        originalFactory(githubLoginParams(apis)),
+    });
