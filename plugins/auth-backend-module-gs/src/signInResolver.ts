@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { NotAllowedError } from '@backstage/errors';
 import {
   AuthResolverContext,
   OAuthAuthenticatorResult,
@@ -6,9 +8,68 @@ import {
 import { OidcAuthResult } from '@backstage/plugin-auth-backend-module-oidc-provider';
 
 type IdPClaim = {
-  connector_id: string;
-  user_id: string;
+  connector_id?: unknown;
+  user_id?: unknown;
 };
+
+/** Dex connectors whose people are Giant Swarm staff in the catalog. */
+const GIANT_SWARM_CONNECTORS = new Set(['giantswarm-ad', 'giantswarm-github']);
+
+/**
+ * Dex connectors that federate to the Dex of gazelle and graveler. Their
+ * `user_id` is the `sub` of that Dex, which names the connector the person
+ * signed in with there.
+ */
+const FEDERATING_CONNECTORS = new Set([
+  'giantswarm-simple-oidc',
+  'giantswarm-graveler-oidc',
+]);
+
+/** Namespace of every identity that is not looked up in the catalog. */
+const EXTERNAL_NAMESPACE = 'oidc';
+
+/**
+ * The entity name of a token subject. Hashing keeps any subject a valid
+ * entity name and keeps subjects that differ only in case apart under the
+ * case-insensitive comparison of entity refs.
+ */
+function subjectName(subject: string): string {
+  return createHash('sha256').update(subject).digest('hex').slice(0, 40);
+}
+
+/**
+ * The connector named by a Dex subject: the base64url encoding of the
+ * protobuf message `IDTokenSubject { string user_id = 1; string conn_id = 2; }`.
+ */
+function dexSubjectConnector(subject: unknown): string | undefined {
+  if (typeof subject !== 'string') {
+    return undefined;
+  }
+  const bytes = Buffer.from(subject, 'base64url');
+  let offset = 0;
+  while (offset < bytes.length) {
+    const tag = bytes[offset++];
+    let length = 0;
+    for (let shift = 0; ; shift += 7) {
+      if (offset >= bytes.length || shift > 28) {
+        return undefined;
+      }
+      const byte = bytes[offset++];
+      length |= (byte & 0x7f) << shift;
+      if ((byte & 0x80) === 0) {
+        break;
+      }
+    }
+    if ((tag & 0x07) !== 2 || offset + length > bytes.length) {
+      return undefined;
+    }
+    if (tag >> 3 === 2) {
+      return bytes.toString('utf8', offset, offset + length);
+    }
+    offset += length;
+  }
+  return undefined;
+}
 
 function signInWithGuestUser(ctx: AuthResolverContext) {
   const guestUserRef = 'user:default/guest';
@@ -22,9 +83,15 @@ function signInWithGuestUser(ctx: AuthResolverContext) {
 }
 
 /**
- * Maps an OIDC identity onto a catalog user. `federated_claims` is Dex-specific
- * and absent on any other issuer, so the connector-based lookups are skipped
- * when the claim is missing and the email of the token decides the user.
+ * Maps an OIDC identity onto a Backstage user.
+ *
+ * Identities from the Giant Swarm Dex connectors, directly or through the Dex
+ * of gazelle and graveler, are looked up in the catalog, whose users live in
+ * the `default` namespace. Every other identity resolves
+ * to `user:oidc/<name>` from the token's `sub`, which the issuer keeps unique
+ * (Dex encodes the connector and upstream user id into it). Such users have
+ * no catalog entity and never resolve into `default`; a token without a `sub`
+ * is refused.
  */
 export const customSignInResolver: SignInResolver<
   OAuthAuthenticatorResult<OidcAuthResult>
@@ -32,39 +99,48 @@ export const customSignInResolver: SignInResolver<
   const userInfo = info.result.fullProfile.userinfo;
 
   const idpClaim = userInfo.federated_claims as IdPClaim | undefined;
-  const connectorId = idpClaim?.connector_id;
+  const connectorId =
+    typeof idpClaim?.connector_id === 'string' &&
+    FEDERATING_CONNECTORS.has(idpClaim.connector_id)
+      ? dexSubjectConnector(idpClaim.user_id)
+      : idpClaim?.connector_id;
 
-  try {
-    if (connectorId === 'giantswarm-ad' && userInfo.email) {
-      return await ctx.signInWithCatalogUser({
-        filter: {
-          'spec.profile.email': userInfo.email,
-        },
-      });
-    }
+  if (
+    typeof connectorId === 'string' &&
+    GIANT_SWARM_CONNECTORS.has(connectorId)
+  ) {
+    return signInGiantSwarmUser(connectorId, userInfo, ctx);
+  }
 
-    if (connectorId === 'giantswarm-github' && userInfo.preferred_username) {
-      return await ctx.signInWithCatalogUser({
-        filter: {
-          'metadata.name': userInfo.preferred_username,
-        },
-      });
-    }
-  } catch (err) {
+  if (typeof userInfo.sub !== 'string' || userInfo.sub === '') {
+    throw new NotAllowedError('The identity token names no subject');
+  }
+  const userRef = `user:${EXTERNAL_NAMESPACE}/${subjectName(userInfo.sub)}`;
+
+  return ctx.issueToken({
+    claims: {
+      sub: userRef,
+      ent: [userRef],
+    },
+  });
+};
+
+async function signInGiantSwarmUser(
+  connectorId: string,
+  userInfo: OidcAuthResult['userinfo'],
+  ctx: AuthResolverContext,
+) {
+  const [field, value] =
+    connectorId === 'giantswarm-github' && userInfo.preferred_username
+      ? ['metadata.name', userInfo.preferred_username]
+      : ['spec.profile.email', userInfo.email];
+  if (!value) {
     return signInWithGuestUser(ctx);
   }
 
-  if (userInfo.email) {
-    const username = userInfo.email.split('@')[0];
-    const userRef = `user:default/${username}`;
-
-    return ctx.issueToken({
-      claims: {
-        sub: userRef,
-        ent: [userRef],
-      },
-    });
+  try {
+    return await ctx.signInWithCatalogUser({ filter: { [field]: value } });
+  } catch (err) {
+    return signInWithGuestUser(ctx);
   }
-
-  return signInWithGuestUser(ctx);
-};
+}

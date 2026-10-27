@@ -231,9 +231,10 @@ gs:
 A Dex deployment needs both of the scopes above:
 
 - `federated:id` adds the `federated_claims` the main sign-in resolver reads to
-  map a user onto a catalog entity. Without it the resolver falls back to the
-  email of the token and the `giantswarm-ad` and `giantswarm-github` connector
-  lookups never run, which changes which catalog user a person signs in as.
+  map a user onto a catalog entity. Without it the `giantswarm-ad` and
+  `giantswarm-github` connector lookups never run, and every person signs in
+  as `user:oidc/<name>` from the `sub` of the token instead of their catalog
+  user.
 - `audience:server:client_id:dex-k8s-authenticator` is a cross-client scope that
   makes Dex name the `dex-k8s-authenticator` client in the audience of the
   token. Add one such scope per client whose audience a forwarded token must
@@ -244,6 +245,21 @@ A Dex deployment needs both of the scopes above:
 Keycloak and Entra ID need no extra scope. They reject both scopes above with
 `invalid_scope` and show no login page, so leave `gs.auth.extraScopes` unset or
 set it to `[]`.
+
+A `giantswarm-ad` sign-in is looked up in the catalog by email, and a
+`giantswarm-github` sign-in by GitHub login, or by email when the token has no
+`preferred_username`. The `giantswarm-simple-oidc` and
+`giantswarm-graveler-oidc` connectors federate to the Dex of gazelle and
+graveler. Their sign-ins are looked up as if made through the connector the
+person used on that Dex, which the federated `user_id` names, so a person who
+signs in there with GitHub and a personal email still finds their catalog
+user. A sign-in through a Giant Swarm connector that matches no catalog user
+signs in as `user:default/guest`.
+
+A person who signs in through any other Dex connector, or through an issuer
+without `federated_claims`, resolves to `user:oidc/<name>`, where the name is
+a hash of the `sub` of the token. These users have no catalog entity, and a
+token without a `sub` is refused.
 
 ### Changing the scopes on a running instance
 
