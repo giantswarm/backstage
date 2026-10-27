@@ -45,6 +45,27 @@ describe('customSignInResolver', () => {
     });
   });
 
+  it.each(['giantswarm-simple-oidc', 'giantswarm-graveler-oidc'])(
+    'looks a Dex %s user up by email',
+    async connectorId => {
+      const ctx = makeContext();
+
+      await resolve(
+        {
+          sub: 'CgJ1MRIGc2ltcGxl',
+          federated_claims: { connector_id: connectorId, user_id: 'u6' },
+          email: 'user@giantswarm.io',
+        },
+        ctx,
+      );
+
+      expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
+        filter: { 'spec.profile.email': 'user@giantswarm.io' },
+      });
+      expect(ctx.issueToken).not.toHaveBeenCalled();
+    },
+  );
+
   it('looks a Dex giantswarm-github user up by username', async () => {
     const ctx = makeContext();
 

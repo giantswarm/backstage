@@ -246,6 +246,10 @@ Keycloak and Entra ID need no extra scope. They reject both scopes above with
 `invalid_scope` and show no login page, so leave `gs.auth.extraScopes` unset or
 set it to `[]`.
 
+The `giantswarm-simple-oidc` and `giantswarm-graveler-oidc` connectors, which
+federate to the Dex of gazelle and graveler, are looked up in the catalog by
+email like `giantswarm-ad`.
+
 A person who signs in through any other Dex connector, or through an issuer
 without `federated_claims`, resolves to `user:oidc/<name>`, where the name is
 the `sub` of the token, or a hash of it when it is not a plain lowercase name.

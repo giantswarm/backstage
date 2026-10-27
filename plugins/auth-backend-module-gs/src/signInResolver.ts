@@ -11,7 +11,18 @@ type IdPClaim = {
   connector_id?: unknown;
 };
 
-const GIANT_SWARM_CONNECTORS = new Set(['giantswarm-ad', 'giantswarm-github']);
+/**
+ * Dex connectors whose people are Giant Swarm staff in the catalog.
+ * `giantswarm-simple-oidc` and `giantswarm-graveler-oidc` federate to the Dex
+ * of gazelle and graveler, which sign staff in through `giantswarm-ad` and
+ * `giantswarm-github` and pass on their email.
+ */
+const GIANT_SWARM_CONNECTORS = new Set([
+  'giantswarm-ad',
+  'giantswarm-github',
+  'giantswarm-simple-oidc',
+  'giantswarm-graveler-oidc',
+]);
 
 /** Namespace of every identity that is not looked up in the catalog. */
 const EXTERNAL_NAMESPACE = 'oidc';
@@ -87,7 +98,7 @@ async function signInGiantSwarmUser(
   ctx: AuthResolverContext,
 ) {
   try {
-    if (connectorId === 'giantswarm-ad' && userInfo.email) {
+    if (connectorId !== 'giantswarm-github' && userInfo.email) {
       return await ctx.signInWithCatalogUser({
         filter: {
           'spec.profile.email': userInfo.email,
