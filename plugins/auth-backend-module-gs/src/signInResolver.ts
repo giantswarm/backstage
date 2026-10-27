@@ -71,6 +71,16 @@ function dexSubjectConnector(subject: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * The token's email when the issuer has verified it. An unverified email
+ * names nobody: it is whatever the upstream account claims.
+ */
+function verifiedEmail(
+  userInfo: OidcAuthResult['userinfo'],
+): string | undefined {
+  return userInfo.email_verified === true ? userInfo.email : undefined;
+}
+
 function signInWithGuestUser(ctx: AuthResolverContext) {
   const guestUserRef = 'user:default/guest';
 
@@ -133,7 +143,7 @@ async function signInGiantSwarmUser(
   const [field, value] =
     connectorId === 'giantswarm-github' && userInfo.preferred_username
       ? ['metadata.name', userInfo.preferred_username]
-      : ['spec.profile.email', userInfo.email];
+      : ['spec.profile.email', verifiedEmail(userInfo)];
   if (!value) {
     return signInWithGuestUser(ctx);
   }
