@@ -82,7 +82,7 @@ describe('customSignInResolver', () => {
     });
   });
 
-  it('signs a giantswarm-github user without a username in by email', async () => {
+  it('falls back to the guest user when a giantswarm-github token carries no username', async () => {
     const ctx = makeContext();
 
     await resolve(
@@ -95,7 +95,7 @@ describe('customSignInResolver', () => {
 
     expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
     expect(ctx.issueToken).toHaveBeenCalledWith({
-      claims: { sub: 'user:default/someone', ent: ['user:default/someone'] },
+      claims: { sub: 'user:default/guest', ent: ['user:default/guest'] },
     });
   });
 
@@ -198,15 +198,6 @@ describe('customSignInResolver', () => {
       expect(kind).toBe('user');
       expect(namespace).toBe('oidc');
       expect(KubernetesValidatorFunctions.isValidObjectName(name)).toBe(true);
-    });
-
-    it('keeps a subject that is a plain name readable', async () => {
-      const ref = await issuedRef({
-        sub: 'f3c1e2d4-0000-4000-8000-000000000001',
-        email: 'alice@customer.com',
-      });
-
-      expect(ref).toBe('user:oidc/f3c1e2d4-0000-4000-8000-000000000001');
     });
 
     it.each([

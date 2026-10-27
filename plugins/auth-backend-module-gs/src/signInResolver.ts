@@ -27,20 +27,13 @@ const GIANT_SWARM_CONNECTORS = new Set([
 /** Namespace of every identity that is not looked up in the catalog. */
 const EXTERNAL_NAMESPACE = 'oidc';
 
-const PLAIN_NAME = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/;
-
 /**
- * The entity name of a token subject. A subject that already is a lowercase
- * entity name without `_` is used as is; any other subject maps to
- * `h_<hash>`, which always contains `_`, so the two forms never overlap and
- * subjects differing only in case stay apart under the case-insensitive
- * comparison of entity refs.
+ * The entity name of a token subject. Hashing keeps any subject a valid
+ * entity name and keeps subjects that differ only in case apart under the
+ * case-insensitive comparison of entity refs.
  */
 function subjectName(subject: string): string {
-  if (PLAIN_NAME.test(subject) && subject.length <= 63) {
-    return subject;
-  }
-  return `h_${createHash('sha256').update(subject).digest('hex').slice(0, 40)}`;
+  return createHash('sha256').update(subject).digest('hex').slice(0, 40);
 }
 
 function signInWithGuestUser(ctx: AuthResolverContext) {
@@ -97,37 +90,17 @@ async function signInGiantSwarmUser(
   userInfo: OidcAuthResult['userinfo'],
   ctx: AuthResolverContext,
 ) {
-  try {
-    if (connectorId !== 'giantswarm-github' && userInfo.email) {
-      return await ctx.signInWithCatalogUser({
-        filter: {
-          'spec.profile.email': userInfo.email,
-        },
-      });
-    }
-
-    if (connectorId === 'giantswarm-github' && userInfo.preferred_username) {
-      return await ctx.signInWithCatalogUser({
-        filter: {
-          'metadata.name': userInfo.preferred_username,
-        },
-      });
-    }
-  } catch (err) {
+  const [field, value] =
+    connectorId === 'giantswarm-github'
+      ? ['metadata.name', userInfo.preferred_username]
+      : ['spec.profile.email', userInfo.email];
+  if (!value) {
     return signInWithGuestUser(ctx);
   }
 
-  if (userInfo.email) {
-    const username = userInfo.email.split('@')[0];
-    const userRef = `user:default/${username}`;
-
-    return ctx.issueToken({
-      claims: {
-        sub: userRef,
-        ent: [userRef],
-      },
-    });
+  try {
+    return await ctx.signInWithCatalogUser({ filter: { [field]: value } });
+  } catch (err) {
+    return signInWithGuestUser(ctx);
   }
-
-  return signInWithGuestUser(ctx);
 }

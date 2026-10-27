@@ -248,12 +248,13 @@ set it to `[]`.
 
 The `giantswarm-simple-oidc` and `giantswarm-graveler-oidc` connectors, which
 federate to the Dex of gazelle and graveler, are looked up in the catalog by
-email like `giantswarm-ad`.
+email like `giantswarm-ad`. A sign-in through a Giant Swarm connector that
+matches no catalog user signs in as `user:default/guest`.
 
 A person who signs in through any other Dex connector, or through an issuer
 without `federated_claims`, resolves to `user:oidc/<name>`, where the name is
-the `sub` of the token, or a hash of it when it is not a plain lowercase name.
-These users have no catalog entity, and a token without a `sub` is refused.
+a hash of the `sub` of the token. These users have no catalog entity, and a
+token without a `sub` is refused.
 
 ### Changing the scopes on a running instance
 
