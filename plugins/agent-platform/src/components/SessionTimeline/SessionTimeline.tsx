@@ -474,9 +474,12 @@ export function SessionTimeline({
         segments.forEach((segment, segmentIndex) => {
           const first =
             segment.kind === 'item' ? segment.item : segment.items[0];
+          // A workspace setup notice is the harness's, not the agent's, and
+          // comes before anything the agent does: it stands above the agent's
+          // name rather than under it, where it would read as its reply.
           if (isUserItem(first)) {
             needsHeader = true;
-          } else if (needsHeader) {
+          } else if (needsHeader && first.kind !== 'workspace-notice') {
             entries.push(
               <AgentHeader
                 key={`author:${first.id}`}

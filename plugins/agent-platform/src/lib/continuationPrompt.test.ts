@@ -6,6 +6,8 @@ import {
   splitContinuation,
 } from './continuationPrompt';
 import type { TimelineItem } from './kagentTimeline';
+import { parseWorkspaceNotice } from './workspaceNotice';
+import { NOTICE_STALE } from './__fixtures__/workspaceNotice';
 
 let nextId = 0;
 const base = () => ({ id: `item-${(nextId += 1)}`, taskIndex: 0 });
@@ -120,6 +122,28 @@ describe('buildContinuationPrompt', () => {
     );
     expect(text).not.toContain('## My answer');
     expect(text).not.toContain('## My reply');
+  });
+
+  it('leaves out workspace setup notices, which the agent never said', () => {
+    const { text } = buildContinuationPrompt({
+      items: [
+        user('Do you have the gh CLI?'),
+        {
+          ...base(),
+          kind: 'workspace-notice',
+          notice: parseWorkspaceNotice(NOTICE_STALE),
+        },
+        agent('No, it is not installed.'),
+      ],
+      pendingQuestions: [],
+      answers: [],
+    });
+
+    expect(text).not.toContain('Workspace setup');
+    expect(text).not.toContain('acme/app');
+    expect(text).toMatch(
+      /User: Do you have the gh CLI\?\n\nAssistant: No, it is not installed\.$/,
+    );
   });
 
   it('notes approvals, attachments and ended turns in a line each', () => {
