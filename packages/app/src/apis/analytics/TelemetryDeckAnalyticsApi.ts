@@ -16,6 +16,8 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private readonly identityApi: IdentityApi;
   private readonly errorReporterApi?: ErrorReporterApi;
   private readonly versionPayload: Record<string, string>;
+  /** The deployment's ID, read with the rest of app.telemetrydeck. */
+  private deploymentPayload: Record<string, string> = {};
   private instance: Promise<TelemetryDeck | undefined> | undefined;
 
   private constructor(options: {
@@ -44,9 +46,10 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   }
 
   /**
-   * The TelemetryDeck client, created once. Resolves to undefined, after one
-   * console message, when telemetry has no app ID or initialisation fails:
-   * signals are then skipped, never sent to a client that cannot exist.
+   * The TelemetryDeck client, created once. Resolves to undefined when
+   * telemetry is off (`app.telemetrydeck` missing or null), and after one
+   * console message when it has no app ID or initialisation fails: signals
+   * are then skipped, never sent to a client that cannot exist.
    */
   private getInstance(): Promise<TelemetryDeck | undefined> {
     this.instance ??= this.createInstance().catch(error => {
@@ -63,14 +66,18 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private async createInstance(): Promise<TelemetryDeck | undefined> {
     const telemetryConfig =
       this.configApi.getOptionalConfig('app.telemetrydeck');
+    if (!telemetryConfig) {
+      return undefined;
+    }
+    // Not getOptionalBoolean: a value it cannot read would throw, and an
+    // optional flag must not turn usage data off.
     const testMode =
-      window.location.hostname === 'localhost' || !telemetryConfig;
+      window.location.hostname === 'localhost' ||
+      telemetryConfig.getOptional('testMode') === true;
 
     // Not getOptionalString: the config reader refuses an empty string, the
     // base config's value.
-    const appID = telemetryConfig
-      ? telemetryConfig.getOptional('appID')
-      : 'test';
+    const appID = telemetryConfig.getOptional('appID');
     if (typeof appID !== 'string' || !appID.trim()) {
       // eslint-disable-next-line no-console
       console.warn(
@@ -79,11 +86,18 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
       return undefined;
     }
 
+    // Names the deployment of a portal a tool set up (agentlab), whose own
+    // signals carry the same ID. Not getOptionalString, for the same reason.
+    const deploymentID = telemetryConfig.getOptional('deploymentID');
+    if (typeof deploymentID === 'string' && deploymentID.trim()) {
+      this.deploymentPayload = { deploymentID };
+    }
+
     const clientUser = await this.resolveClientUser();
 
     return new TelemetryDeck({
       appID,
-      salt: telemetryConfig ? telemetryConfig.getString('salt') : 'test',
+      salt: telemetryConfig.getString('salt'),
       clientUser,
       testMode,
     });
@@ -156,6 +170,7 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
         td?.signal(portalEvent.name, {
           ...portalEvent.attributes,
           ...this.versionPayload,
+          ...this.deploymentPayload,
         }),
       )
       // A failed send (offline, blocked by the browser) is not an error.
@@ -188,7 +203,11 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
 
     this.getInstance()
       .then(td =>
-        td?.signal('pageview', { ...payload, ...this.versionPayload }),
+        td?.signal('pageview', {
+          ...payload,
+          ...this.versionPayload,
+          ...this.deploymentPayload,
+        }),
       )
       // A failed send (offline, blocked by the browser) is not an error.
       .catch(() => {});
